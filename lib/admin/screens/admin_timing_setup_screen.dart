@@ -75,7 +75,8 @@ class AdminTimingSetupScreen extends StatelessWidget {
                             ? null
                             : scopeLocationIds.length,
                         editingEnabled: editingEnabled,
-                        timingResolutionGateway: timingResolutionGateway ??
+                        timingResolutionGateway:
+                            timingResolutionGateway ??
                             _fallbackTimingResolutionGateway,
                       ),
                   ],
@@ -257,10 +258,7 @@ class _ResolvedTimingFields extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<AdminBusinessTimingResolution>(
-      future: gateway.resolve(
-        operatorId: operatorId,
-        locationId: locationId,
-      ),
+      future: gateway.resolve(operatorId: operatorId, locationId: locationId),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Padding(
@@ -296,8 +294,9 @@ class _ResolvedTimingFields extends StatelessWidget {
         }
         final AdminEffectiveTimingProjection projection;
         try {
-          projection =
-              AdminBusinessTimingResolutionProjection.project(resolution);
+          projection = AdminBusinessTimingResolutionProjection.project(
+            resolution,
+          );
         } on BusinessTimingProfileResolutionException {
           return Padding(
             key: const Key('admin_timing_resolution_error'),
@@ -312,6 +311,9 @@ class _ResolvedTimingFields extends StatelessWidget {
         }
         final effective = projection.effective;
         final sourceLabel = projection.provenance.detailLabel;
+        final timezoneValue = resolution.ianaTimezone?.trim().isNotEmpty == true
+            ? resolution.ianaTimezone!.trim()
+            : effective.businessTimezone;
         final periods = effective.servicePeriodDefinitions.toList()
           ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
         return Column(
@@ -322,11 +324,11 @@ class _ResolvedTimingFields extends StatelessWidget {
               label: 'Effective from',
               value: projection.effectiveDateLabel,
             ),
-            AdminDetailRow(
-              label: 'Timezone',
-              value: effective.businessTimezone,
+            AdminDetailRow(label: 'Timezone', value: timezoneValue),
+            const AdminDetailRow(
+              label: 'Timezone source',
+              value: 'Location timezone',
             ),
-            AdminDetailRow(label: 'Timezone source', value: sourceLabel),
             AdminDetailRow(
               label: 'Business day starts',
               value: effective.businessDayStartLocalTime,
@@ -338,6 +340,7 @@ class _ResolvedTimingFields extends StatelessWidget {
                 effective.weekStartDay,
               ),
             ),
+            AdminDetailRow(label: 'Week-start source', value: sourceLabel),
             const SizedBox(height: 16),
             Container(
               key: const Key('admin_timing_service_periods_panel'),
@@ -357,16 +360,14 @@ class _ResolvedTimingFields extends StatelessWidget {
                           '${period.startLocalTime} - ${period.endLocalTime}',
                       daysLabel:
                           AdminBusinessTimingResolutionProjection.daysLabel(
-                        period.applicableDays,
-                      ),
+                            period.applicableDays,
+                          ),
                     ),
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       'Source: $sourceLabel',
-                      style: AppTextStyles.mono11(
-                        color: AppColors.textMuted,
-                      ),
+                      style: AppTextStyles.mono11(color: AppColors.textMuted),
                     ),
                   ),
                 ],

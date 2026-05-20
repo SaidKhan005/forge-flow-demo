@@ -26,11 +26,16 @@ void main() {
       String roleName = 'Server',
       String laborBucket = 'foh',
       double hourlyRate = 18.50,
+      String locationId = 'loc-1',
+      String scopeType = 'location',
+      String? orgUnitId,
+      String? inheritedFromScopeId,
+      String? sourceLabel,
     }) {
       return <String, Object?>{
         'server_id': serverId,
         'operator_id': 'op-1',
-        'location_id': 'loc-1',
+        'location_id': locationId,
         'restaurant_id': 'rest-1',
         'role_name': roleName,
         'labor_bucket': laborBucket,
@@ -46,6 +51,10 @@ void main() {
         'created_at': '2026-05-07T12:00:00Z',
         'updated_at': '2026-05-07T12:00:00Z',
         'updated_by': 'user-1',
+        'scope_type': scopeType,
+        'org_unit_id': orgUnitId,
+        'inherited_from_scope_id': inheritedFromScopeId,
+        'source_label': sourceLabel,
       };
     }
 
@@ -94,6 +103,36 @@ void main() {
       );
       expect(request.url.queryParameters['include_hierarchy'], 'true');
       expect(request.headers['authorization'], 'Bearer demo-id-token');
+    });
+
+    test('list parses hierarchy scope provenance fields', () async {
+      final gateway = buildGateway(
+        responses: () => <http.Response>[
+          http.Response(
+            jsonEncode(<String, Object?>{
+              'wage_role_rows': <Map<String, Object?>>[
+                rowPayload(
+                  serverId: 'business-server',
+                  locationId: '',
+                  scopeType: 'operator_wide',
+                  inheritedFromScopeId: 'op-1',
+                  sourceLabel: 'Brio Group',
+                ),
+              ],
+              'next_cursor': null,
+            }),
+            200,
+            headers: const <String, String>{'content-type': 'application/json'},
+          ),
+        ],
+      );
+
+      final rows = await gateway.list(operatorId: 'op-1', locationId: 'loc-1');
+
+      expect(rows.single.scopeType, 'operator_wide');
+      expect(rows.single.locationId, '');
+      expect(rows.single.inheritedFromScopeId, 'op-1');
+      expect(rows.single.sourceLabel, 'Brio Group');
     });
 
     test('upsert sends Idempotency-Key + the request body', () async {

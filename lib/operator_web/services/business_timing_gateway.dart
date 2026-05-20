@@ -157,12 +157,6 @@ class DemoBusinessTimingGateway implements BusinessTimingGateway {
           sourceLabel: 'Operator default',
           inherited: true,
         ),
-        BusinessTimingInheritedValue(
-          label: 'Shift close authority',
-          value: 'Vendor finalization',
-          sourceLabel: 'Operator default',
-          inherited: true,
-        ),
       ],
       servicePeriods: const <BusinessTimingServicePeriod>[
         BusinessTimingServicePeriod(

@@ -30,26 +30,34 @@ import 'package:forge_and_flow/domain/services/business_timing_profile_resolver.
 void main() {
   group('AdminBusinessTimingResolutionProjection', () {
     test('admin Timing dialog labels timezone as location-owned', () {
-      final source =
-          File('lib/admin/screens/operator_location_admin_screen.dart')
-              .readAsStringSync();
-      expect(source, contains("label: 'Timezone source'"));
-      expect(source, contains("value: 'Location timezone'"));
-    });
-
-    test('throws for an empty candidate chain (caller renders empty state)',
-        () {
-      final resolution = _resolution(
-        candidates: const <AdminResolutionCandidate>[],
-      );
-      expect(
-        () => AdminBusinessTimingResolutionProjection.project(resolution),
-        throwsA(isA<BusinessTimingProfileResolutionException>()),
-      );
+      final operatorLocationSource = File(
+        'lib/admin/screens/operator_location_admin_screen.dart',
+      ).readAsStringSync();
+      final timingSetupSource = File(
+        'lib/admin/screens/admin_timing_setup_screen.dart',
+      ).readAsStringSync();
+      expect(operatorLocationSource, contains("label: 'Timezone source'"));
+      expect(operatorLocationSource, contains("value: 'Location timezone'"));
+      expect(operatorLocationSource, contains("label: 'Week-start source'"));
+      expect(timingSetupSource, contains("label: 'Timezone source'"));
+      expect(timingSetupSource, contains("value: 'Location timezone'"));
+      expect(timingSetupSource, contains("label: 'Week-start source'"));
     });
 
     test(
-        'operator-default-only chain: provenance is "Operator default" and '
+      'throws for an empty candidate chain (caller renders empty state)',
+      () {
+        final resolution = _resolution(
+          candidates: const <AdminResolutionCandidate>[],
+        );
+        expect(
+          () => AdminBusinessTimingResolutionProjection.project(resolution),
+          throwsA(isA<BusinessTimingProfileResolutionException>()),
+        );
+      },
+    );
+
+    test('operator-default-only chain: provenance is "Operator default" and '
         'inherited', () {
       final resolution = _resolution(
         candidates: <AdminResolutionCandidate>[
@@ -62,19 +70,21 @@ void main() {
           ),
         ],
       );
-      final projection =
-          AdminBusinessTimingResolutionProjection.project(resolution);
+      final projection = AdminBusinessTimingResolutionProjection.project(
+        resolution,
+      );
       expect(projection.provenance.sourceLabel, equals('Operator default'));
       expect(projection.provenance.inheritedFromAncestor, isTrue);
-      expect(projection.provenance.detailLabel,
-          equals('Inherited (Operator default)'));
+      expect(
+        projection.provenance.detailLabel,
+        equals('Inherited (Operator default)'),
+      );
       expect(projection.hasLocationOverride, isFalse);
       expect(projection.effective.businessTimezone, equals('America/Toronto'));
     });
 
     // ---- Mandatory parity test (spec §4 / D7/G51 lesson) ----
-    test(
-        'PARITY: same candidate chain through the blessed projector mapping '
+    test('PARITY: same candidate chain through the blessed projector mapping '
         'and the S4 admin projection resolves identically', () {
       // Canonical reference: the blessed
       // `sink_business_date_projector._toBusinessTimingProfile` row->
@@ -123,8 +133,9 @@ void main() {
           seedCloseAuthority: false,
         ),
       ];
-      final canonical =
-          BusinessTimingProfileResolver.resolve(canonicalCandidates);
+      final canonical = BusinessTimingProfileResolver.resolve(
+        canonicalCandidates,
+      );
 
       // S4 admin path: the SAME chain in the documented S2 wire shape,
       // every field denormalised on every rung (the canonical CTE
@@ -142,8 +153,14 @@ void main() {
             dayStart: '04:00',
             weekStart: 'monday',
             periods: <AdminResolutionServicePeriod>[
-              _period('lunch', 'Lunch', '11:00', '15:00',
-                  shortLabel: 'L', sortOrder: 1),
+              _period(
+                'lunch',
+                'Lunch',
+                '11:00',
+                '15:00',
+                shortLabel: 'L',
+                sortOrder: 1,
+              ),
             ],
           ),
           _candidate(
@@ -156,8 +173,14 @@ void main() {
             dayStart: '05:00',
             weekStart: 'monday',
             periods: <AdminResolutionServicePeriod>[
-              _period('lunch', 'Lunch', '11:00', '15:00',
-                  shortLabel: 'L', sortOrder: 1),
+              _period(
+                'lunch',
+                'Lunch',
+                '11:00',
+                '15:00',
+                shortLabel: 'L',
+                sortOrder: 1,
+              ),
             ],
           ),
           _candidate(
@@ -170,19 +193,27 @@ void main() {
             dayStart: '05:00',
             weekStart: 'monday',
             periods: <AdminResolutionServicePeriod>[
-              _period('lunch', 'Lunch', '11:00', '15:00',
-                  shortLabel: 'L', sortOrder: 1),
+              _period(
+                'lunch',
+                'Lunch',
+                '11:00',
+                '15:00',
+                shortLabel: 'L',
+                sortOrder: 1,
+              ),
             ],
           ),
         ],
       );
-      final admin =
-          AdminBusinessTimingResolutionProjection.project(resolution)
-              .effective;
+      final admin = AdminBusinessTimingResolutionProjection.project(
+        resolution,
+      ).effective;
 
       expect(admin.businessTimezone, equals(canonical.businessTimezone));
-      expect(admin.businessDayStartLocalTime,
-          equals(canonical.businessDayStartLocalTime));
+      expect(
+        admin.businessDayStartLocalTime,
+        equals(canonical.businessDayStartLocalTime),
+      );
       expect(admin.weekStartDay, equals(canonical.weekStartDay));
       expect(admin.resolvedScope, equals(canonical.resolvedScope));
       expect(admin.resolvedScopeId, equals(canonical.resolvedScopeId));
@@ -203,8 +234,7 @@ void main() {
     });
 
     // ---- Provenance: 3-level fixture + deliberate same-value override
-    test(
-        'PROVENANCE: a same-value override on the location rung is labeled '
+    test('PROVENANCE: a same-value override on the location rung is labeled '
         'an override, not "inherited"', () {
       // operator weekStart=monday -> org-unit weekStart=monday
       // (DELIBERATE same value) -> location weekStart=monday (also a
@@ -245,8 +275,9 @@ void main() {
           ),
         ],
       );
-      final projection =
-          AdminBusinessTimingResolutionProjection.project(resolution);
+      final projection = AdminBusinessTimingResolutionProjection.project(
+        resolution,
+      );
       expect(projection.effective.weekStartDay, equals(DateTime.monday));
       expect(
         AdminBusinessTimingResolutionProjection.weekdayLabel(
@@ -257,16 +288,18 @@ void main() {
       // Deepest configured scope is the LOCATION rung => override,
       // NOT inherited. The old synthetic path would have said
       // "Inherited from business".
-      expect(projection.provenance.inheritedFromAncestor, isFalse,
-          reason: 'same-value deeper override must NOT read as inherited');
+      expect(
+        projection.provenance.inheritedFromAncestor,
+        isFalse,
+        reason: 'same-value deeper override must NOT read as inherited',
+      );
       expect(projection.provenance.sourceLabel, equals('Location override'));
       expect(projection.provenance.detailLabel, equals('Location override'));
       expect(projection.hasLocationOverride, isTrue);
     });
 
     // ---- No-synthetic regression: real 4-period / non-Monday config
-    test(
-        'NO-SYNTHETIC: a 4th service period + a non-default week-start '
+    test('NO-SYNTHETIC: a 4th service period + a non-default week-start '
         'render the REAL resolved values', () {
       // The deleted G41 path hardcoded exactly 3 periods (Lunch /
       // Dinner / Late night) + "Monday"; the deleted G42 path used
@@ -283,12 +316,30 @@ void main() {
             rank: 0,
             weekStart: 'thursday',
             periods: <AdminResolutionServicePeriod>[
-              _period('breakfast', 'Breakfast', '06:00', '10:30',
-                  shortLabel: 'B', sortOrder: 1),
-              _period('lunch', 'Lunch', '10:30', '15:00',
-                  shortLabel: 'L', sortOrder: 2),
-              _period('dinner', 'Dinner', '15:00', '21:00',
-                  shortLabel: 'D', sortOrder: 3),
+              _period(
+                'breakfast',
+                'Breakfast',
+                '06:00',
+                '10:30',
+                shortLabel: 'B',
+                sortOrder: 1,
+              ),
+              _period(
+                'lunch',
+                'Lunch',
+                '10:30',
+                '15:00',
+                shortLabel: 'L',
+                sortOrder: 2,
+              ),
+              _period(
+                'dinner',
+                'Dinner',
+                '15:00',
+                '21:00',
+                shortLabel: 'D',
+                sortOrder: 3,
+              ),
               _period(
                 'weekend_brunch',
                 'Weekend Brunch',
@@ -302,8 +353,9 @@ void main() {
           ),
         ],
       );
-      final projection =
-          AdminBusinessTimingResolutionProjection.project(resolution);
+      final projection = AdminBusinessTimingResolutionProjection.project(
+        resolution,
+      );
       final periods = projection.effective.servicePeriodDefinitions.toList()
         ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
@@ -338,40 +390,45 @@ void main() {
       );
     });
 
-    test('InMemory gateway returns an empty chain for an unseeded key',
-        () async {
-      final gw = InMemoryAdminBusinessTimingResolutionGateway();
-      final res = await gw.resolve(operatorId: 'op-x', locationId: 'loc-x');
-      expect(res.candidates, isEmpty);
-      expect(res.operatorId, equals('op-x'));
-      expect(res.locationId, equals('loc-x'));
-    });
+    test(
+      'InMemory gateway returns an empty chain for an unseeded key',
+      () async {
+        final gw = InMemoryAdminBusinessTimingResolutionGateway();
+        final res = await gw.resolve(operatorId: 'op-x', locationId: 'loc-x');
+        expect(res.candidates, isEmpty);
+        expect(res.operatorId, equals('op-x'));
+        expect(res.locationId, equals('loc-x'));
+      },
+    );
 
-    test('InMemory gateway serves a seeded chain by (operator, location)',
-        () async {
-      final gw = InMemoryAdminBusinessTimingResolutionGateway();
-      gw.put(
-        'op-1',
-        'loc-1',
-        _resolution(
-          candidates: <AdminResolutionCandidate>[
-            _candidate(
-              profileId: 'op-default',
-              scopeType: 'operator',
-              scopeId: 'op-1',
-              scopeLabel: 'Acme Eats',
-              rank: 0,
-            ),
-          ],
-        ),
-      );
-      final res = await gw.resolve(operatorId: 'op-1', locationId: 'loc-1');
-      expect(res.candidates, hasLength(1));
-      final projection =
-          AdminBusinessTimingResolutionProjection.project(res);
-      expect(projection.effective.businessTimezone,
-          equals('America/Toronto'));
-    });
+    test(
+      'InMemory gateway serves a seeded chain by (operator, location)',
+      () async {
+        final gw = InMemoryAdminBusinessTimingResolutionGateway();
+        gw.put(
+          'op-1',
+          'loc-1',
+          _resolution(
+            candidates: <AdminResolutionCandidate>[
+              _candidate(
+                profileId: 'op-default',
+                scopeType: 'operator',
+                scopeId: 'op-1',
+                scopeLabel: 'Acme Eats',
+                rank: 0,
+              ),
+            ],
+          ),
+        );
+        final res = await gw.resolve(operatorId: 'op-1', locationId: 'loc-1');
+        expect(res.candidates, hasLength(1));
+        final projection = AdminBusinessTimingResolutionProjection.project(res);
+        expect(
+          projection.effective.businessTimezone,
+          equals('America/Toronto'),
+        );
+      },
+    );
   });
 }
 
@@ -420,7 +477,8 @@ AdminResolutionCandidate _candidate({
     effectiveAtBusinessDate: '2026-05-01',
     weekStartDay: weekStart,
     businessDayStartLocal: dayStart,
-    servicePeriods: periods ??
+    servicePeriods:
+        periods ??
         <AdminResolutionServicePeriod>[
           _period('lunch', 'Lunch', '11:00', '15:00'),
         ],
@@ -462,7 +520,8 @@ BusinessTimingProfile _blessedProfile({
     businessDayStartLocalTime: dayStart,
     weekStartDay: weekStart,
     servicePeriodDefinitions: periods,
-    shiftCloseAuthority:
-        seedCloseAuthority ? ShiftCloseAuthority.vendorFinalization : null,
+    shiftCloseAuthority: seedCloseAuthority
+        ? ShiftCloseAuthority.vendorFinalization
+        : null,
   );
 }

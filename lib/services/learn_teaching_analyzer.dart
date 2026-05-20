@@ -173,7 +173,7 @@ class LearnTeachingAnalyzer {
             ? ''
             : ', while $contrast holds on plan';
         primaryFixLine =
-            '${leakCard.shortLabel} is $direction at $periodLabel — it has '
+            '${leakCard.shortLabel} is $direction at $periodLabel: it has '
             'leaked $recurrence$contrastClause. Tighten $periodLabel first.';
       } else if (topLeakDayparts.isEmpty) {
         primaryFixLine = 'Fix ${primaryLeakSideLabel.toLowerCase()} first.';

@@ -174,6 +174,54 @@ void main() {
     );
   });
 
+  testWidgets(
+    'location override hides shadowed Business row for the same role',
+    (tester) async {
+      await sizeViewport(tester);
+      final gateway = OperatorWebDemoWageAuthorityGateway(
+        initial: <WageRoleRowRecord>[
+          rec(
+            id: 'biz-server',
+            scopeType: 'operator_wide',
+            locationId: '',
+            hourlyRate: 16.50,
+          ),
+          rec(
+            id: 'loc-server',
+            scopeType: 'location',
+            locationId: 'loc-harbour',
+            hourlyRate: 19.25,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session(<String>['operator_owner']),
+            locationId: 'loc-harbour',
+            locationName: 'Harbour',
+            gateway: gateway,
+            hierarchyNodes: nodes,
+            ancestorOrgUnitIdsNearestFirst: const <String>[],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('wage_authority_row_display_loc-server')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('wage_authority_row_display_biz-server')),
+        findsNothing,
+      );
+      expect(find.textContaining('@ \$19.25/hr'), findsOneWidget);
+      expect(find.textContaining('@ \$16.50/hr'), findsNothing);
+    },
+  );
+
   testWidgets('no hierarchy → degrades to Location notice, no misleading '
       'backend-only copy', (tester) async {
     await sizeViewport(tester);

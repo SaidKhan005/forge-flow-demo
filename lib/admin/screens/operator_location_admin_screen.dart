@@ -3800,6 +3800,7 @@ class _AdminLocationTimingResolvedBody extends StatelessWidget {
                 effective.weekStartDay,
               ),
             ),
+            _TimingDialogRow(label: 'Week-start source', value: sourceLabel),
             // Per-Daypart V1 Slice 1.5 / Gap 31: the "Shift close
             // authority" row stays removed (operator decision
             // 2026-05-15 — close-authority is auto-derived per shift).

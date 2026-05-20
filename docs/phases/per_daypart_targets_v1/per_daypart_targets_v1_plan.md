@@ -554,11 +554,16 @@ Original sequence: Slice 0, 1, 2, 3, 4, 5, 6. Amended sequence after audit findi
 - `data_accuracy_screen.dart` HierarchyScopeNotice (Gap 29)
 - Mobile settings scope chips (Gap 30)
 - `shift_close_authority` stale decision row — closed by auto-derived close authority
-- Wage Authority business-default scope (Gap 32)
+- Wage Authority business-default scope (Gap 32) - implemented in current
+  branch; continuation pass closed live-read source fields and shadowed-row
+  display.
 - Hidden `_WageMixEditorScreen` cleanup (Gap 33)
 - Walk-in handling per-period (Gap 37) — follow-up closed 2026-05-20
 - Polling tier per-period (Gap 38) — out of scope, documented
-- Learn analyzer narration per-period (Gap 39 narration layer)
+- Learn analyzer narration per-period (Gap 39 narration layer) - implemented
+  in analyzer copy and pinned with period-specific tests. Visible Learn card
+  body/action copy can be revisited later only if product wants the catalog
+  story text itself rewritten per service period.
 
 ---
 

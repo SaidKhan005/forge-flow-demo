@@ -86,6 +86,70 @@ void main() {
         expect(timing['source_scope_type'], 'operator');
       },
     );
+
+    test('wage role hierarchy read serializes scope provenance', () async {
+      final pool = _RecordingPostgresPool(
+        returningSessionId: '11111111-1111-4111-8111-111111111111',
+        onQuery: (sql, parameters) {
+          if (sql.contains('from public.wage_role_rows wr')) {
+            return <PostgresRow>[
+              <String, Object?>{
+                'server_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                'operator_id': '33333333-3333-4333-8333-333333333333',
+                'location_id': '',
+                'restaurant_id': 'rest-a',
+                'role_name': 'Server',
+                'labor_bucket': 'foh',
+                'hourly_rate': 18.50,
+                'weighted_hours': 32.0,
+                'job_code': null,
+                'vendor_id': null,
+                'vendor_role_id': null,
+                'source': 'operator_manual',
+                'is_active': true,
+                'effective_at': DateTime.utc(2026, 5, 7, 12),
+                'metadata': <String, Object?>{},
+                'created_at': DateTime.utc(2026, 5, 7, 12),
+                'updated_at': DateTime.utc(2026, 5, 7, 12),
+                'updated_by': 'user-1',
+                'scope_type': 'operator_wide',
+                'org_unit_id': null,
+                'inherited_from_scope_id':
+                    '33333333-3333-4333-8333-333333333333',
+                'source_label': 'Brio Group',
+              },
+            ];
+          }
+          return const <PostgresRow>[];
+        },
+      );
+      final gateway = RepositoryMobileOperationalSyncProxyGateway(
+        tenantWrapper: TenantTransactionWrapper(pool),
+      );
+
+      final payload = await gateway.fetchWageRoleRows(
+        scope: const OperatorContext(
+          userId: '22222222-2222-4222-8222-222222222222',
+          operatorId: '33333333-3333-4333-8333-333333333333',
+          locationId: '44444444-4444-4444-8444-444444444444',
+          roles: <String>['operator_owner'],
+        ),
+        operatorId: '33333333-3333-4333-8333-333333333333',
+        locationId: '44444444-4444-4444-8444-444444444444',
+        modifiedSince: null,
+        pageSize: 50,
+        includeHierarchy: true,
+      );
+
+      final rows = payload['wage_role_rows'] as List<Object?>;
+      final row = rows.single as Map<String, Object?>;
+      expect(row['scope_type'], 'operator_wide');
+      expect(
+        row['inherited_from_scope_id'],
+        '33333333-3333-4333-8333-333333333333',
+      );
+      expect(row['source_label'], 'Brio Group');
+    });
   });
 
   group('buildAuthSessionLedgerWriter', () {

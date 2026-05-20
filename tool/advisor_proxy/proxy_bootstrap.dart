@@ -4553,6 +4553,10 @@ class RepositoryMobileOperationalSyncProxyGateway
       'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
       'updated_by': row['updated_by'],
+      'scope_type': row['scope_type'] ?? 'location',
+      'org_unit_id': row['org_unit_id'],
+      'inherited_from_scope_id': row['inherited_from_scope_id'],
+      'source_label': row['source_label'],
     };
   }
 

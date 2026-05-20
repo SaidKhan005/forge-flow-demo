@@ -124,3 +124,48 @@
 - Hidden admin routes were classified:
   - role-catalog publish already has an Admin surface,
   - heap snapshot capture remains internal support/pressure tooling unless a real Admin workflow needs it.
+
+## Continuation pass - non-low-priority scope
+
+- Low-priority cleanup is intentionally skipped for now:
+  - hidden/dead mobile wage editor cleanup,
+  - polling tier per-period extensions unless a real workflow needs them,
+  - heap snapshot UI.
+- Service-period metadata and org-unit timing authoring are now closed in the
+  current branch. Operator Web can edit day chips, short labels, sort order,
+  and org-unit timing scope.
+- Wage Authority scope parity is closed in the current branch. New rows can be
+  saved at business, org-unit, or location scope, and inherited rows show where
+  they came from.
+- Benchmark override writes remain intentionally disabled on old server routes:
+  old POST, PATCH, DELETE, and admin-undo calls return HTTP 410. The app path
+  for changing active baselines is mobile Baseline Manager selected-star
+  selection.
+- Learn period-specific narration is in scope for this continuation pass:
+  when the leak is in Friday Dinner, Learn should coach Friday Dinner using
+  Friday Dinner's target row, not only the whole-day target.
+- Timing source-label mismatches are also in scope for this continuation pass:
+  Admin timezone source should be location-owned, Admin week-start needs a
+  source row, Operator Web service periods need source labels, and the demo
+  Shift-close setup row should stay removed because shift close is automatic.
+- Wage Authority live-read/display parity is also in scope:
+  inherited wage source fields must cross the proxy wire, and shadowed
+  higher-scope rows should not duplicate the effective location row.
+- Legacy alias retirement remains a staged future pass. Current code still
+  accepts old fixed covers fields for compatibility, while new Admin and
+  Operator Web writes use `covers_source_per_service_period`.
+
+## Continuation pass results
+
+- Learn now says the leaking service period directly. Example: Friday Dinner
+  can coach to Friday Dinner's target numbers while contrasting Friday Lunch
+  if Friday Lunch is holding on plan.
+- Admin Timing now treats timezone as location-owned and labels week-start
+  provenance.
+- Operator Web Business Setup now shows service-period source labels.
+- The demo timing fallback no longer shows Shift close authority.
+- Wage Authority now carries scope/source fields through live reads.
+- Wage Authority now shows the effective row only when a lower-scope wage
+  overrides a higher-scope wage for the same role.
+- Alias retirement is still documented as a future staged pass, not a silent
+  compatibility break.

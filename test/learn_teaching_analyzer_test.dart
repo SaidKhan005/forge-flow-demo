@@ -21,16 +21,16 @@ import 'package:forge_and_flow/services/learn_teaching_analyzer.dart';
 /// Used to keep existing tests compatible while proving the analyzer
 /// no longer reads BaselineData directly.
 LearnBenchmarkContext _contextFromBaseline() => LearnBenchmarkContext(
-      benchmarkSourceLabel: BaselineData.hasManagerOverride
-          ? 'MANAGER STAR SHIFTS'
-          : 'SYSTEM BENCHMARK SET',
-      selectedShiftCount: BaselineData.selectedRecordCount,
-      targetCPLH: BaselineData.derivedTargetCPLH,
-      targetSPLH: BaselineData.derivedTargetSPLH,
-      targetPPA: BaselineData.derivedTargetPPA,
-      rangeQualityLabel: BaselineData.baselineRangeValidation.statusLabel,
-      rangeQualityMessage: BaselineData.baselineRangeValidation.message,
-    );
+  benchmarkSourceLabel: BaselineData.hasManagerOverride
+      ? 'MANAGER STAR SHIFTS'
+      : 'SYSTEM BENCHMARK SET',
+  selectedShiftCount: BaselineData.selectedRecordCount,
+  targetCPLH: BaselineData.derivedTargetCPLH,
+  targetSPLH: BaselineData.derivedTargetSPLH,
+  targetPPA: BaselineData.derivedTargetPPA,
+  rangeQualityLabel: BaselineData.baselineRangeValidation.statusLabel,
+  rangeQualityMessage: BaselineData.baselineRangeValidation.message,
+);
 
 void main() {
   setUp(() {
@@ -59,10 +59,11 @@ void main() {
       expect(summary.primaryLeakCount, equals(0));
       expect(summary.topLeakDayparts, isEmpty);
       expect(summary.benchmarkDayparts, isEmpty);
-      expect(summary.primaryFixLine,
-          equals('Keep closing shifts so Learn can detect repeating leaks.'));
-      expect(summary.studyLine,
-          equals('No benchmark dayparts recorded yet.'));
+      expect(
+        summary.primaryFixLine,
+        equals('Keep closing shifts so Learn can detect repeating leaks.'),
+      );
+      expect(summary.studyLine, equals('No benchmark dayparts recorded yet.'));
     });
   });
 
@@ -72,11 +73,21 @@ void main() {
     test('override context shows MANAGER STAR SHIFTS', () {
       BaselineData.applyManagerOverride([
         const DaypartBaseline(
-            daypart: 'lunch', cplh: 4.5, splh: 180, ppa: 42, covers: 170,
-            isSelected: true),
+          daypart: 'lunch',
+          cplh: 4.5,
+          splh: 180,
+          ppa: 42,
+          covers: 170,
+          isSelected: true,
+        ),
         const DaypartBaseline(
-            daypart: 'dinner', cplh: 4.3, splh: 177, ppa: 43, covers: 228,
-            isSelected: true),
+          daypart: 'dinner',
+          cplh: 4.3,
+          splh: 177,
+          ppa: 43,
+          covers: 228,
+          isSelected: true,
+        ),
       ]);
 
       final ctx = _contextFromBaseline();
@@ -149,14 +160,22 @@ void main() {
         benchmarkContext: ctx,
       );
 
-      expect(learnSummary.primaryLeakId,
-          equals(historySummary.mostCommonLeakId));
-      expect(learnSummary.primaryLeakCount,
-          equals(historySummary.mostCommonLeakCount));
-      expect(learnSummary.topLeakDayparts,
-          equals(historySummary.topLeakDayparts));
-      expect(learnSummary.benchmarkDayparts,
-          equals(historySummary.benchmarkDayparts));
+      expect(
+        learnSummary.primaryLeakId,
+        equals(historySummary.mostCommonLeakId),
+      );
+      expect(
+        learnSummary.primaryLeakCount,
+        equals(historySummary.mostCommonLeakCount),
+      );
+      expect(
+        learnSummary.topLeakDayparts,
+        equals(historySummary.topLeakDayparts),
+      );
+      expect(
+        learnSummary.benchmarkDayparts,
+        equals(historySummary.benchmarkDayparts),
+      );
     });
   });
 
@@ -211,12 +230,18 @@ void main() {
         benchmarkContext: ctx,
       );
 
-      expect(learnSummary.primaryBenchmarkId,
-          equals(historySummary.mostCommonBenchmarkId));
-      expect(learnSummary.primaryBenchmarkCount,
-          equals(historySummary.mostCommonBenchmarkCount));
-      expect(learnSummary.primaryBenchmarkSideLabel,
-          equals(historySummary.mostCommonBenchmarkSideLabel));
+      expect(
+        learnSummary.primaryBenchmarkId,
+        equals(historySummary.mostCommonBenchmarkId),
+      );
+      expect(
+        learnSummary.primaryBenchmarkCount,
+        equals(historySummary.mostCommonBenchmarkCount),
+      );
+      expect(
+        learnSummary.primaryBenchmarkSideLabel,
+        equals(historySummary.mostCommonBenchmarkSideLabel),
+      );
     });
   });
 
@@ -306,7 +331,8 @@ void main() {
     test('system_baseline maps to SYSTEM BENCHMARK SET', () {
       expect(
         LearnBenchmarkContextService.sourceLabelFromProfileType(
-            'system_baseline'),
+          'system_baseline',
+        ),
         equals('SYSTEM BENCHMARK SET'),
       );
     });
@@ -314,7 +340,8 @@ void main() {
     test('cycle_recommended maps to SYSTEM BENCHMARK SET', () {
       expect(
         LearnBenchmarkContextService.sourceLabelFromProfileType(
-            'cycle_recommended'),
+          'cycle_recommended',
+        ),
         equals('SYSTEM BENCHMARK SET'),
       );
     });
@@ -322,7 +349,8 @@ void main() {
     test('manager_override maps to MANAGER STAR SHIFTS', () {
       expect(
         LearnBenchmarkContextService.sourceLabelFromProfileType(
-            'manager_override'),
+          'manager_override',
+        ),
         equals('MANAGER STAR SHIFTS'),
       );
     });
@@ -330,7 +358,8 @@ void main() {
     test('cycle_manager_override maps to MANAGER STAR SHIFTS', () {
       expect(
         LearnBenchmarkContextService.sourceLabelFromProfileType(
-            'cycle_manager_override'),
+          'cycle_manager_override',
+        ),
         equals('MANAGER STAR SHIFTS'),
       );
     });
@@ -338,7 +367,8 @@ void main() {
     test('admin_replacement maps to ADMIN REPLACEMENT', () {
       expect(
         LearnBenchmarkContextService.sourceLabelFromProfileType(
-            'admin_replacement'),
+          'admin_replacement',
+        ),
         equals('ADMIN REPLACEMENT'),
       );
     });
@@ -346,7 +376,8 @@ void main() {
     test('cycle_admin_replacement maps to ADMIN REPLACEMENT', () {
       expect(
         LearnBenchmarkContextService.sourceLabelFromProfileType(
-            'cycle_admin_replacement'),
+          'cycle_admin_replacement',
+        ),
         equals('ADMIN REPLACEMENT'),
       );
     });
@@ -354,7 +385,8 @@ void main() {
     test('unknown source type falls back to SYSTEM BENCHMARK SET', () {
       expect(
         LearnBenchmarkContextService.sourceLabelFromProfileType(
-            'something_unknown'),
+          'something_unknown',
+        ),
         equals('SYSTEM BENCHMARK SET'),
       );
     });
@@ -370,34 +402,30 @@ void main() {
 
     test('bridge-only mode returns bridge context cleanly', () async {
       LearnBenchmarkContextService.enableBridgeOnly();
-      final ctx =
-          await LearnBenchmarkContextService.instance.resolve();
+      final ctx = await LearnBenchmarkContextService.instance.resolve();
       expect(ctx.benchmarkSourceLabel, equals('SYSTEM BENCHMARK SET'));
       expect(ctx.targetCPLH, equals(BaselineData.derivedTargetCPLH));
     });
 
     test('null profile bootstrap returns bridge context', () async {
-      LearnBenchmarkContextService.testCanonicalOverride =
-          () async => null;
-      final ctx =
-          await LearnBenchmarkContextService.instance.resolve();
+      LearnBenchmarkContextService.testCanonicalOverride = () async => null;
+      final ctx = await LearnBenchmarkContextService.instance.resolve();
       expect(ctx.benchmarkSourceLabel, equals('SYSTEM BENCHMARK SET'));
       expect(ctx.targetCPLH, equals(BaselineData.derivedTargetCPLH));
     });
 
     test('canonical override returns injected context', () async {
-      LearnBenchmarkContextService.testCanonicalOverride =
-          () async => const LearnBenchmarkContext(
-                benchmarkSourceLabel: 'ADMIN REPLACEMENT',
-                selectedShiftCount: 5,
-                targetCPLH: 9.9,
-                targetSPLH: 300.0,
-                targetPPA: 60.0,
-                rangeQualityLabel: 'Test',
-                rangeQualityMessage: 'Test message.',
-              );
-      final ctx =
-          await LearnBenchmarkContextService.instance.resolve();
+      LearnBenchmarkContextService.testCanonicalOverride = () async =>
+          const LearnBenchmarkContext(
+            benchmarkSourceLabel: 'ADMIN REPLACEMENT',
+            selectedShiftCount: 5,
+            targetCPLH: 9.9,
+            targetSPLH: 300.0,
+            targetPPA: 60.0,
+            rangeQualityLabel: 'Test',
+            rangeQualityMessage: 'Test message.',
+          );
+      final ctx = await LearnBenchmarkContextService.instance.resolve();
       expect(ctx.benchmarkSourceLabel, equals('ADMIN REPLACEMENT'));
       expect(ctx.targetCPLH, equals(9.9));
     });
@@ -446,6 +474,104 @@ void main() {
       expect(summary.coachToLine, contains('6.0 CPLH'));
       expect(summary.coachToLine, contains('250 SPLH'));
       expect(summary.coachToLine, contains('55 PPA'));
+    });
+  });
+
+  group('M - period-specific narration', () {
+    test('uses the leaking service period and its own targets', () {
+      final ctx = const LearnBenchmarkContext(
+        benchmarkSourceLabel: 'MANAGER STAR SHIFTS',
+        selectedShiftCount: 8,
+        targetCPLH: 5.0,
+        targetSPLH: 200.0,
+        targetPPA: 50.0,
+        rangeQualityLabel: 'Good',
+        rangeQualityMessage: 'Range is adequate.',
+        dayparts: <LearnBenchmarkContextDaypart>[
+          LearnBenchmarkContextDaypart(
+            servicePeriodId: 'lunch',
+            daypartTargetCPLH: 4.6,
+            daypartTargetSPLH: 180.0,
+            daypartTargetPPA: 44.0,
+            daypartOpzFloorCPLH: 3.8,
+            daypartOpzCeilingCPLH: 5.4,
+          ),
+          LearnBenchmarkContextDaypart(
+            servicePeriodId: 'dinner',
+            daypartTargetCPLH: 6.2,
+            daypartTargetSPLH: 255.0,
+            daypartTargetPPA: 62.0,
+            daypartOpzFloorCPLH: 4.8,
+            daypartOpzCeilingCPLH: 6.8,
+          ),
+        ],
+      );
+
+      final summary = LearnTeachingAnalyzer.summarize(
+        patternRecords: const <HistoryPatternRecord>[
+          HistoryPatternRecord(
+            weekId: '2026-W01',
+            weekLabel: 'Week 1',
+            dayLabel: 'Friday',
+            daypart: 'dinner',
+            servicePeriodLabel: 'Dinner',
+            servicePeriodSortOrder: 2,
+            leverId: 'cplh_down',
+            isBenchmark: false,
+          ),
+          HistoryPatternRecord(
+            weekId: '2026-W02',
+            weekLabel: 'Week 2',
+            dayLabel: 'Friday',
+            daypart: 'dinner',
+            servicePeriodLabel: 'Dinner',
+            servicePeriodSortOrder: 2,
+            leverId: 'cplh_down',
+            isBenchmark: false,
+          ),
+          HistoryPatternRecord(
+            weekId: '2026-W03',
+            weekLabel: 'Week 3',
+            dayLabel: 'Friday',
+            daypart: 'dinner',
+            servicePeriodLabel: 'Dinner',
+            servicePeriodSortOrder: 2,
+            leverId: 'cplh_down',
+            isBenchmark: false,
+          ),
+          HistoryPatternRecord(
+            weekId: '2026-W01',
+            weekLabel: 'Week 1',
+            dayLabel: 'Friday',
+            daypart: 'lunch',
+            servicePeriodLabel: 'Lunch',
+            servicePeriodSortOrder: 1,
+            leverId: 'cplh_up',
+            isBenchmark: true,
+          ),
+          HistoryPatternRecord(
+            weekId: '2026-W02',
+            weekLabel: 'Week 2',
+            dayLabel: 'Friday',
+            daypart: 'lunch',
+            servicePeriodLabel: 'Lunch',
+            servicePeriodSortOrder: 1,
+            leverId: 'cplh_up',
+            isBenchmark: true,
+          ),
+        ],
+        weekCount: 4,
+        benchmarkContext: ctx,
+      );
+
+      expect(summary.primaryFixLine, contains('Friday Dinner'));
+      expect(summary.primaryFixLine, contains('Friday Lunch holds on plan'));
+      expect(summary.primaryFixLine, isNot(contains('\u2014')));
+      expect(summary.coachToLine, contains('Coach Friday Dinner'));
+      expect(summary.coachToLine, contains('6.2 CPLH'));
+      expect(summary.coachToLine, contains('255 SPLH'));
+      expect(summary.coachToLine, contains('62 PPA'));
+      expect(summary.coachToLine, contains('your Friday Dinner numbers'));
     });
   });
 }

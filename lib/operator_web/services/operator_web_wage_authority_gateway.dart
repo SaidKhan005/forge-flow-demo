@@ -709,6 +709,7 @@ class OperatorWebDemoWageAuthorityGateway
       scopeType: existing.scopeType,
       orgUnitId: existing.orgUnitId,
       inheritedFromScopeId: existing.inheritedFromScopeId,
+      sourceLabel: existing.sourceLabel,
     );
     return true;
   }

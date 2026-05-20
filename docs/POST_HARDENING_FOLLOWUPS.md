@@ -408,6 +408,13 @@ orphans with no active slice:
   re-flag in hierarchy/parity audits. Reopening requires explicit
   operator approval (schema + RLS-touching).
 
+  **2026-05-20 supersession:** this location-only B2 note is no longer
+  current for the active branch. Wage rows now carry hierarchy scope,
+  Operator Web can save business/org-unit/location wage rows, and the
+  continuation pass closed the live-read source-field and shadowed-row
+  display gaps. Do not use the older "location-only by design" wording
+  as audit authority for current Wage Authority code.
+
 - **B1 — Forecast / weekly-plan / data-accuracy settings are
   location-scoped only; hierarchy/inherited values deliberately NOT
   done (accepted, document only).** Operator decision 2026-05-16: the
