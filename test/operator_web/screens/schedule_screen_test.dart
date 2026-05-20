@@ -305,7 +305,9 @@ void main() {
           find.byKey(const Key('schedule_screen_hierarchy_scope')),
           findsOneWidget,
         );
-        // The triple is present.
+        // Scope and inheritance are present. The Plan header already
+        // names the effective locked week, so this card keeps that row
+        // out of the scan path.
         expect(
           find.byKey(const Key('schedule_screen_hierarchy_scope_selected_row')),
           findsOneWidget,
@@ -320,12 +322,14 @@ void main() {
           find.byKey(
             const Key('schedule_screen_hierarchy_scope_effective_row'),
           ),
-          findsOneWidget,
+          findsNothing,
         );
-        // Backend-only carve-out explainer renders for forward-looking
-        // inheritance coverage.
+        // Backend-only carve-out explainer is available from the heading
+        // help icon for forward-looking inheritance coverage.
         expect(
-          find.byKey(const Key('schedule_screen_hierarchy_scope_backend_only')),
+          find.byKey(
+            const Key('schedule_screen_hierarchy_scope_backend_only_help'),
+          ),
           findsOneWidget,
         );
         // Plain-English copy (no engineering jargon).

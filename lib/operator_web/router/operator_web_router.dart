@@ -383,6 +383,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   late String _selectedNavId;
   bool _busy = false;
   bool _scrollMyAccountSecurityOnFirstBuild = false;
+  bool _scrollDataAccuracyWageAuthorityOnFirstBuild = false;
   late final _OperatorWebHandoffLanding? _handoffLanding;
   bool _handoffRedeemStarted = false;
   bool _handoffRedeemComplete = false;
@@ -575,6 +576,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     setState(() {
       _selectedNavId = id;
       _scrollMyAccountSecurityOnFirstBuild = false;
+      _scrollDataAccuracyWageAuthorityOnFirstBuild = false;
       // Switching to a different top-level nav exits any roles
       // sub-route.
       if (id != kOperatorWebNavRoles) {
@@ -587,6 +589,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       if (id != kOperatorWebNavBusinessSetup) {
         _editingBusinessTiming = false;
       }
+    });
+  }
+
+  void _openDataAccuracyWageAuthority() {
+    setState(() {
+      _selectedNavId = kOperatorWebNavDataAccuracy;
+      _scrollDataAccuracyWageAuthorityOnFirstBuild = true;
+      _scrollMyAccountSecurityOnFirstBuild = false;
+      _rolesSubRoute = null;
+      _rolesEditTarget = null;
+      _editingBusinessTiming = false;
     });
   }
 
@@ -1699,6 +1712,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 ancestorOrgUnitIdsNearestFirst:
                     _wageAncestorOrgUnitIdsNearestFirst(locationScope),
                 businessName: session.businessName,
+                scrollToWageAuthority:
+                    _scrollDataAccuracyWageAuthorityOnFirstBuild,
               );
             },
           );
@@ -1771,6 +1786,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                         restaurantId: locationScope.id,
                       ),
                     )),
+            onOpenWageAuthority: _openDataAccuracyWageAuthority,
           );
         }
         break;
