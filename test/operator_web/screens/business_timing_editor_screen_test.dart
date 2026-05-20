@@ -326,6 +326,26 @@ void main() {
     );
   });
 
+  testWidgets('schedule mode opens with a scheduled date and labels', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(
+        BusinessTimingEditorScreen(
+          session: session,
+          gateway: _FakeBusinessTimingGateway(),
+          scheduleMode: true,
+          initialEffectiveAt: DateTime(2026, 5, 21),
+        ),
+      ),
+    );
+
+    expect(find.text('Schedule timing change'), findsNWidgets(2));
+    expect(find.text('2026-05-21'), findsOneWidget);
+  });
+
   testWidgets('Wave 2 H-2: hierarchy tree mounts and highlights default scope', (
     tester,
   ) async {

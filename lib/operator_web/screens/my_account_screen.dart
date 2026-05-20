@@ -56,7 +56,6 @@ import '../account/mfa_card_controller.dart';
 import '../account/operator_web_account_actions.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
-import '../services/operator_web_url_launcher.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_security_gateway.dart';
 import 'edit_self_profile_dialog.dart';
@@ -69,6 +68,7 @@ class MyAccountScreen extends StatefulWidget {
     required this.session,
     this.actions,
     this.securityGateway,
+    this.onOpenAuditLog,
     this.scrollToSecurityOnFirstBuild = false,
     this.now,
   });
@@ -76,6 +76,7 @@ class MyAccountScreen extends StatefulWidget {
   final OperatorWebSession session;
   final OperatorWebAccountActions? actions;
   final WebSecurityGateway? securityGateway;
+  final VoidCallback? onOpenAuditLog;
   final bool scrollToSecurityOnFirstBuild;
 
   /// Test seam for the time-relative login-history filter.
@@ -609,8 +610,8 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     return error.message;
   }
 
-  Future<void> _handleOpenAuditLog() {
-    return openOperatorWebRedirect('/audit-log');
+  void _handleOpenAuditLog() {
+    widget.onOpenAuditLog?.call();
   }
 
   @override
