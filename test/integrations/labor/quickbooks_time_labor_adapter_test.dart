@@ -747,16 +747,28 @@ void main() {
       );
     });
 
-    test('webhook signature verifier file does NOT exist for poll-only adapter',
-        () {
+    test('webhook signature verifier file exists for poll-only adapter '
+        '(Phase 8.gap-1 framework parity)', () {
+      // Phase 8.gap-1 doctrine: every documented vendor adapter ships a
+      // signature verifier file even when `webhookSupport = pollOnly`,
+      // so the production binder boot path does not log a "missing
+      // verifier" warning for the poll-only roster and so a future
+      // QuickBooks Time webhook release has a documented landing
+      // surface mirroring every other vendor. The verifier itself is
+      // gated at runtime by `webhookSupport`; `handleWebhook` on the
+      // adapter throws under pollOnly regardless of whether the
+      // verifier file is on disk, so shipping the file is a doctrine +
+      // binder-warning hygiene matter, not a runtime gate.
       final verifier = File(
         'lib/integrations/labor/quickbooks_time_webhook_signature_verifier.dart',
       );
       expect(
         verifier.existsSync(),
-        isFalse,
-        reason: 'pollOnly vendor must not ship a signature verifier; '
-            'webhook_signature.md documents this as N/A',
+        isTrue,
+        reason: 'Phase 8.gap-1 requires the verifier landing file for '
+            'every documented vendor, including poll-only roster '
+            'members. See the file header for the documented '
+            'algorithm + the gap-1.live.sandbox verification plan.',
       );
     });
   });
