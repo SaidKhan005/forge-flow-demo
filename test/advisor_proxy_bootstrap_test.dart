@@ -33,6 +33,8 @@ import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
+import '../tool/advisor_proxy/email_dispatch/vendor_lifecycle_notification_dispatcher.dart';
+import '../tool/advisor_proxy/email_dispatch/vendor_lifecycle_promotion_routes.dart';
 import '../tool/advisor_proxy/proxy_bootstrap.dart';
 
 void main() {
@@ -303,6 +305,14 @@ void main() {
       // unmet. The two expectations pin both invariants together so a
       // future regression that drops the production wiring back to
       // [NoopDefaultRoleCatalogAuditSink] fails this test loudly.
+      expect(
+        bindings.vendorLifecycleNotificationDispatcher,
+        isA<VendorLifecycleNotificationDispatcher>(),
+      );
+      expect(
+        bindings.vendorLifecyclePromotionIdempotencyStore,
+        isA<VendorLifecyclePromotionIdempotencyStore>(),
+      );
       expect(
         bindings.defaultRoleCatalogAdminRouter,
         isA<DefaultRoleCatalogAdminRouter>(),

@@ -130,6 +130,8 @@ import 'health_producers/producer_registry.dart';
 import 'heap_snapshot_capture_routes.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
+import 'email_dispatch/vendor_lifecycle_notification_dispatcher.dart';
+import 'email_dispatch/vendor_lifecycle_promotion_routes.dart';
 import 'email_dispatch/notification_event_fanout.dart';
 import 'email_dispatch/postgres_notification_fanout_bindings.dart';
 import 'email_soak_probe_routes.dart';
@@ -255,6 +257,8 @@ class ProxyProductionBindings {
     required this.auditChainAnchorsGateway,
     required this.connectorBackfillJobsRouter,
     required this.vendorLifecycleRecentlyAvailableRouter,
+    required this.vendorLifecycleNotificationDispatcher,
+    required this.vendorLifecyclePromotionIdempotencyStore,
     required this.notificationPreferencesRouter,
     required this.notificationEventFanout,
     required this.demoModeMasterSwitchRouter,
@@ -468,6 +472,19 @@ class ProxyProductionBindings {
   /// see.
   final OperatorVendorLifecycleRecentlyAvailableRouter
   vendorLifecycleRecentlyAvailableRouter;
+
+  /// Phase 8 V1.E - production dispatcher for the server-only vendor
+  /// lifecycle promotion notification route. Reads pending Notify-me
+  /// rows, enqueues email_outbox rows, stamps notified_at, and fans out
+  /// push/inbox/email enrichments through [notificationEventFanout].
+  final VendorLifecycleNotificationDispatcher
+  vendorLifecycleNotificationDispatcher;
+
+  /// Phase 8 V1.E - admin idempotency adapter for the promotion route.
+  /// Backed by [adminRequestIdempotencyStore] so retried POSTs replay
+  /// instead of sending duplicate vendor-ready notifications.
+  final VendorLifecyclePromotionIdempotencyStore
+  vendorLifecyclePromotionIdempotencyStore;
 
   /// Phase 8 W2.B - per-actor notification preferences router. Backed
   /// by [NotificationPreferencesRepository] (tenant pool, per-user
@@ -1050,6 +1067,24 @@ ProxyProductionBindings buildProxyProductionBindings(
     adminWrapper: adminWrapper,
     pushOutboxRepository: MobilePushOutboxRepository(tenantWrapper),
   );
+  final vendorLifecycleNotificationDispatcher =
+      VendorLifecycleNotificationDispatcher(
+        notificationRepository: _PostgresVendorLifecycleNotificationRepository(
+          adminWrapper: adminWrapper,
+        ),
+        outboxRepository: _PostgresVendorLifecycleEmailOutboxRepository(
+          adminWrapper: adminWrapper,
+        ),
+        contextResolver: _PostgresVendorNotificationContextResolver(
+          adminWrapper: adminWrapper,
+          publicBaseUri: config.publicBaseUri,
+        ).resolve,
+        eventFanout: ({required operatorId, required envelope}) =>
+            notificationEventFanout.fanOut(
+              operatorId: operatorId,
+              envelope: envelope,
+            ),
+      );
   // Lane B B11.1 — auth handoff (mobile→web) mint + redeem router.
   // Tenant pool + per-tenant RLS policy on `handoff_codes`. The audit
   // sink fans `auth.handoff.code_created` / `auth.handoff.redeemed`
@@ -1288,6 +1323,13 @@ ProxyProductionBindings buildProxyProductionBindings(
   // docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
   // finding #2.
   final sessionRecordIncompleteGauge = SessionRecordIncompleteGauge();
+  final adminRequestIdempotencyStore = PostgresAdminRequestIdempotencyStore(
+    pool: adminPool,
+  );
+  final vendorLifecyclePromotionIdempotencyStore =
+      _VendorLifecyclePromotionAdminIdempotencyStore(
+        adminStore: adminRequestIdempotencyStore,
+      );
 
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
@@ -1562,9 +1604,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     // operator_id column (admin actors live outside any tenant scope)
     // and the HARD-H migration grants `service_role` SELECT/INSERT/
     // UPDATE on the table.
-    adminRequestIdempotencyStore: PostgresAdminRequestIdempotencyStore(
-      pool: adminPool,
-    ),
+    adminRequestIdempotencyStore: adminRequestIdempotencyStore,
     // Phase 11A.4b — LLM providers feeding the AdvisorRequestPipeline.
     llmProvider: llmProviders.primary,
     secondaryLlmProvider: llmProviders.secondary,
@@ -1650,6 +1690,10 @@ ProxyProductionBindings buildProxyProductionBindings(
     connectorBackfillJobsRouter: connectorBackfillJobsRouter,
     vendorLifecycleRecentlyAvailableRouter:
         vendorLifecycleRecentlyAvailableRouter,
+    vendorLifecycleNotificationDispatcher:
+        vendorLifecycleNotificationDispatcher,
+    vendorLifecyclePromotionIdempotencyStore:
+        vendorLifecyclePromotionIdempotencyStore,
     notificationPreferencesRouter: notificationPreferencesRouter,
     notificationEventFanout: notificationEventFanout,
     demoModeMasterSwitchRouter: demoModeMasterSwitchRouter,
@@ -1814,7 +1858,264 @@ class _PostgresOperatorRecentlyAvailableVendorsGateway
   }
 }
 
-/// Doc 1 wage/role editor write proof — production audit sink for
+abstract class _VendorLifecyclePromotionAuditReasons {
+  static const String listPendingOperators =
+      'vendor_lifecycle_promotion.list_pending_operators';
+  static const String fetchPending = 'vendor_lifecycle_promotion.fetch_pending';
+  static const String enqueueEmail = 'vendor_lifecycle_promotion.enqueue_email';
+  static const String resolveContext =
+      'vendor_lifecycle_promotion.resolve_context';
+}
+
+class _PostgresVendorLifecycleNotificationRepository
+    implements VendorLifecycleNotificationReadRepository {
+  _PostgresVendorLifecycleNotificationRepository({
+    required TenantTransactionWrapper adminWrapper,
+  }) : _adminWrapper = adminWrapper;
+
+  final TenantTransactionWrapper _adminWrapper;
+
+  @override
+  Future<List<String>> pendingOperatorIdsForVendor({required String vendorId}) {
+    return _adminWrapper.runAsSystem<List<String>>((exec) async {
+      final rows = await exec.query(
+        'select distinct operator_id::text as operator_id '
+        '  from public.vendor_lifecycle_notification '
+        ' where vendor_id = @vendor_id '
+        '   and notified_at is null '
+        ' order by operator_id',
+        parameters: <String, Object?>{'vendor_id': vendorId},
+      );
+      return <String>[for (final row in rows) row['operator_id']! as String];
+    }, reason: _VendorLifecyclePromotionAuditReasons.listPendingOperators);
+  }
+
+  @override
+  Future<List<PendingVendorNotification>> fetchPendingForVendor({
+    required String operatorId,
+    required String vendorId,
+  }) {
+    return _adminWrapper.runAsSystem<List<PendingVendorNotification>>((
+      exec,
+    ) async {
+      final rows = await exec.query(
+        'select notification_id::text as notification_id, '
+        '       operator_id::text as operator_id, '
+        '       vendor_id, '
+        '       email '
+        '  from public.vendor_lifecycle_notification '
+        ' where operator_id = @operator_id::uuid '
+        '   and vendor_id = @vendor_id '
+        '   and notified_at is null '
+        ' order by requested_at, notification_id',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'vendor_id': vendorId,
+        },
+      );
+      return <PendingVendorNotification>[
+        for (final row in rows)
+          PendingVendorNotification(
+            notificationId: row['notification_id']! as String,
+            operatorId: row['operator_id']! as String,
+            vendorId: row['vendor_id']! as String,
+            recipientEmail: row['email']! as String,
+          ),
+      ];
+    }, reason: _VendorLifecyclePromotionAuditReasons.fetchPending);
+  }
+}
+
+class _PostgresVendorLifecycleEmailOutboxRepository
+    implements EmailOutboxEnqueueRepository {
+  _PostgresVendorLifecycleEmailOutboxRepository({
+    required TenantTransactionWrapper adminWrapper,
+  }) : _adminWrapper = adminWrapper;
+
+  final TenantTransactionWrapper _adminWrapper;
+
+  @override
+  Future<bool> claimAndEnqueue({
+    required PendingVendorNotification notification,
+    required String templateId,
+    required String? recipientDisplayName,
+    required Map<String, String> templateData,
+    required DateTime stampedAt,
+  }) {
+    return _adminWrapper.runAsSystem<bool>((exec) async {
+      final claimedRows = await exec.query(
+        'update public.vendor_lifecycle_notification '
+        '   set notified_at = @notified_at::timestamptz '
+        ' where operator_id = @operator_id::uuid '
+        '   and notification_id = @notification_id::uuid '
+        '   and notified_at is null '
+        ' returning notification_id::text as notification_id',
+        parameters: <String, Object?>{
+          'operator_id': notification.operatorId,
+          'notification_id': notification.notificationId,
+          'notified_at': stampedAt.toUtc(),
+        },
+      );
+      if (claimedRows.isEmpty) {
+        return false;
+      }
+
+      final idempotencyKey = templateData['idempotency_key'];
+      if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
+        final existingRows = await exec.query(
+          'select email_id::text as email_id '
+          '  from public.email_outbox '
+          ' where operator_id = @operator_id::uuid '
+          '   and template_id = @template_id '
+          "   and template_data ->> 'idempotency_key' = @idempotency_key "
+          ' limit 1',
+          parameters: <String, Object?>{
+            'operator_id': notification.operatorId,
+            'template_id': templateId,
+            'idempotency_key': idempotencyKey,
+          },
+        );
+        if (existingRows.isNotEmpty) return true;
+      }
+      await exec.execute(
+        'insert into public.email_outbox ('
+        '  operator_id, recipient_email, recipient_display_name, '
+        '  template_id, template_data, scheduled_for, status, attempt_count'
+        ') values ('
+        '  @operator_id::uuid, @recipient_email, '
+        '  @recipient_display_name, @template_id, @template_data::jsonb, '
+        "  now(), 'pending', 0"
+        ')',
+        parameters: <String, Object?>{
+          'operator_id': notification.operatorId,
+          'recipient_email': notification.recipientEmail,
+          'recipient_display_name': recipientDisplayName,
+          'template_id': templateId,
+          'template_data': jsonEncode(templateData),
+        },
+      );
+      return true;
+    }, reason: _VendorLifecyclePromotionAuditReasons.enqueueEmail);
+  }
+}
+
+class _PostgresVendorNotificationContextResolver {
+  _PostgresVendorNotificationContextResolver({
+    required TenantTransactionWrapper adminWrapper,
+    required Uri publicBaseUri,
+  }) : _adminWrapper = adminWrapper,
+       _publicBaseUri = publicBaseUri;
+
+  final TenantTransactionWrapper _adminWrapper;
+  final Uri _publicBaseUri;
+
+  Future<VendorNotificationOperatorContext> resolve({
+    required String operatorId,
+    required String vendorId,
+  }) async {
+    final operatorName = await _operatorBusinessName(operatorId) ?? operatorId;
+    final vendorName =
+        lookupVendorCapability(vendorId)?.displayName.trim() ?? vendorId;
+    return VendorNotificationOperatorContext(
+      operatorBusinessName: operatorName,
+      vendorDisplayName: vendorName.isEmpty ? vendorId : vendorName,
+      integrationConsoleUrl: _vendorConnectionsUrl(),
+    );
+  }
+
+  Future<String?> _operatorBusinessName(String operatorId) {
+    return _adminWrapper.runAsSystem<String?>((exec) async {
+      final rows = await exec.query(
+        'select business_name '
+        '  from public.operators '
+        ' where operator_id = @operator_id::uuid '
+        ' limit 1',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (rows.isEmpty) return null;
+      final value = rows.single['business_name'] as String?;
+      final trimmed = value?.trim();
+      return trimmed == null || trimmed.isEmpty ? null : trimmed;
+    }, reason: _VendorLifecyclePromotionAuditReasons.resolveContext);
+  }
+
+  String _vendorConnectionsUrl() {
+    final raw = _publicBaseUri.toString();
+    final trimmed = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+    return '$trimmed/vendor-connections';
+  }
+}
+
+class _VendorLifecyclePromotionAdminIdempotencyStore
+    implements VendorLifecyclePromotionIdempotencyStore {
+  _VendorLifecyclePromotionAdminIdempotencyStore({
+    required AdminRequestIdempotencyStore adminStore,
+  }) : _adminStore = adminStore;
+
+  final AdminRequestIdempotencyStore _adminStore;
+
+  @override
+  Future<VendorLifecyclePromotionIdempotencyEntry?> lookup({
+    required String idempotencyKey,
+    required String requestType,
+    required String requestBodyHash,
+  }) async {
+    try {
+      final entry = await _adminStore.lookup(
+        idempotencyKey: idempotencyKey,
+        requestType: requestType,
+        requestBodyHash: requestBodyHash,
+      );
+      if (entry == null) return null;
+      return VendorLifecyclePromotionIdempotencyEntry(
+        responseStatus: entry.responseStatus,
+        responsePayload: entry.responsePayload,
+        expiresAt: entry.expiresAt,
+      );
+    } on AdminIdempotencyKeyConflict catch (error) {
+      throw VendorLifecyclePromotionIdempotencyConflict(message: error.message);
+    }
+  }
+
+  @override
+  Future<bool> reserve({
+    required String idempotencyKey,
+    required String requestType,
+    required String? actorUserId,
+    required String requestBodyHash,
+  }) async {
+    try {
+      return _adminStore.reserve(
+        idempotencyKey: idempotencyKey,
+        requestType: requestType,
+        actorUserId: actorUserId,
+        requestBodyHash: requestBodyHash,
+      );
+    } on AdminIdempotencyKeyConflict catch (error) {
+      throw VendorLifecyclePromotionIdempotencyConflict(message: error.message);
+    }
+  }
+
+  @override
+  Future<void> completeReservation({
+    required String idempotencyKey,
+    required int responseStatus,
+    required Map<String, Object?> responsePayload,
+  }) {
+    return _adminStore.completeReservation(
+      idempotencyKey: idempotencyKey,
+      responseStatus: responseStatus,
+      responsePayload: responsePayload,
+    );
+  }
+
+  @override
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) {
+    return _adminStore.tryReclaimOrphan(idempotencyKey: idempotencyKey);
+  }
+}
+
+/// Doc 1 wage/role editor write proof - production audit sink for
 /// `wage_role_rows` POST/DELETE writes. Mirrors
 /// [ProductionOperatorWriteAuditSink] (used by the operator account /
 /// business-timing write router) so wage edits land one hash-chained
@@ -9949,10 +10250,7 @@ _ProjectionRetryClaimability _projectionRetryClaimability(
   final isRetryEligibleStatus = status == 'pending' || isReclaimableRunning;
   final isDue = nextAttemptAt == null || !nextAttemptAt.isAfter(asOf.toUtc());
   final isClaimable =
-      isRetryEligibleStatus &&
-      !isCompleted &&
-      !isDeadLettered &&
-      isDue;
+      isRetryEligibleStatus && !isCompleted && !isDeadLettered && isDue;
 
   if (isDeadLettered) {
     return const _ProjectionRetryClaimability(

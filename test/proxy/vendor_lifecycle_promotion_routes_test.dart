@@ -50,11 +50,11 @@ void main() {
       final request = await _captureRequest(
         router: router,
         method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
         headers: <String, String>{},
-        body:
-            jsonEncode(<String, Object?>{'new_lifecycle_state': 'productionCredentialed'}),
+        body: jsonEncode(<String, Object?>{
+          'new_lifecycle_state': 'productionCredentialed',
+        }),
       );
 
       expect(request.handled, isTrue);
@@ -72,13 +72,11 @@ void main() {
       final request = await _captureRequest(
         router: router,
         method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/lifecycle-promotion-notification',
-        headers: <String, String>{
-          'Idempotency-Key': 'test-key-1',
-        },
-        body:
-            jsonEncode(<String, Object?>{'new_lifecycle_state': 'productionCredentialed'}),
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        headers: <String, String>{'Idempotency-Key': 'test-key-1'},
+        body: jsonEncode(<String, Object?>{
+          'new_lifecycle_state': 'productionCredentialed',
+        }),
       );
 
       expect(request.handled, isTrue);
@@ -86,24 +84,21 @@ void main() {
       expect(request.bodyJson['error'], 'permission_denied');
     });
 
-    test('200 on the happy path with the dispatch outcome envelope',
-        () async {
+    test('200 on the happy path with the dispatch outcome envelope', () async {
       final notifications = _SeededNotificationRepo()
         ..seed('op-1', 'toast', <String>['n-1', 'n-2']);
       final outbox = _RecordingOutbox();
       final dispatcher = VendorLifecycleNotificationDispatcher(
         notificationRepository: notifications,
         outboxRepository: outbox,
-        contextResolver: ({
-          required String operatorId,
-          required String vendorId,
-        }) async {
-          return const VendorNotificationOperatorContext(
-            operatorBusinessName: 'Acme Bistro',
-            vendorDisplayName: 'Toast',
-            integrationConsoleUrl: 'https://app.forgeflow.app',
-          );
-        },
+        contextResolver:
+            ({required String operatorId, required String vendorId}) async {
+              return const VendorNotificationOperatorContext(
+                operatorBusinessName: 'Acme Bistro',
+                vendorDisplayName: 'Toast',
+                integrationConsoleUrl: 'https://app.forgeflow.app',
+              );
+            },
       );
       final router = VendorLifecyclePromotionRouter(
         dispatcher: dispatcher,
@@ -115,13 +110,11 @@ void main() {
       final request = await _captureRequest(
         router: router,
         method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/lifecycle-promotion-notification',
-        headers: <String, String>{
-          'Idempotency-Key': 'test-key-happy-1',
-        },
-        body:
-            jsonEncode(<String, Object?>{'new_lifecycle_state': 'productionCredentialed'}),
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        headers: <String, String>{'Idempotency-Key': 'test-key-happy-1'},
+        body: jsonEncode(<String, Object?>{
+          'new_lifecycle_state': 'productionCredentialed',
+        }),
       );
 
       expect(request.handled, isTrue);
@@ -130,29 +123,25 @@ void main() {
       expect(request.bodyJson['notifications_enqueued'], 2);
       expect(request.bodyJson['operators_touched'], 1);
       expect(request.bodyJson['notifications_skipped'], 0);
-      expect(request.bodyJson['dispatched_at'],
-          '2026-05-06T14:00:00.000Z');
+      expect(request.bodyJson['dispatched_at'], '2026-05-06T14:00:00.000Z');
       expect(outbox.recorded, hasLength(2));
     });
 
-    test('idempotency replay short-circuits to cached response',
-        () async {
+    test('idempotency replay short-circuits to cached response', () async {
       final notifications = _SeededNotificationRepo()
         ..seed('op-1', 'toast', <String>['n-1', 'n-2']);
       final outbox = _RecordingOutbox();
       final dispatcher = VendorLifecycleNotificationDispatcher(
         notificationRepository: notifications,
         outboxRepository: outbox,
-        contextResolver: ({
-          required String operatorId,
-          required String vendorId,
-        }) async {
-          return const VendorNotificationOperatorContext(
-            operatorBusinessName: 'Acme Bistro',
-            vendorDisplayName: 'Toast',
-            integrationConsoleUrl: 'https://app.forgeflow.app',
-          );
-        },
+        contextResolver:
+            ({required String operatorId, required String vendorId}) async {
+              return const VendorNotificationOperatorContext(
+                operatorBusinessName: 'Acme Bistro',
+                vendorDisplayName: 'Toast',
+                integrationConsoleUrl: 'https://app.forgeflow.app',
+              );
+            },
       );
       final store = _InMemoryIdempotencyStore();
       final router = VendorLifecyclePromotionRouter(
@@ -165,11 +154,8 @@ void main() {
       final first = await _captureRequest(
         router: router,
         method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/lifecycle-promotion-notification',
-        headers: <String, String>{
-          'Idempotency-Key': 'replay-key-1',
-        },
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        headers: <String, String>{'Idempotency-Key': 'replay-key-1'},
         body: jsonEncode(<String, Object?>{
           'new_lifecycle_state': 'productionCredentialed',
         }),
@@ -177,11 +163,8 @@ void main() {
       final second = await _captureRequest(
         router: router,
         method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/lifecycle-promotion-notification',
-        headers: <String, String>{
-          'Idempotency-Key': 'replay-key-1',
-        },
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        headers: <String, String>{'Idempotency-Key': 'replay-key-1'},
         body: jsonEncode(<String, Object?>{
           'new_lifecycle_state': 'productionCredentialed',
         }),
@@ -195,17 +178,45 @@ void main() {
       expect(outbox.recorded, hasLength(2));
     });
 
-    test('400 when new_lifecycle_state is missing from the body',
-        () async {
+    test('same idempotency key with a different body returns 409', () async {
+      final store = _InMemoryIdempotencyStore();
+      final router = VendorLifecyclePromotionRouter(
+        dispatcher: _buildDispatcher(),
+        authorizer: (_) async => true,
+        idempotencyStore: store,
+      );
+
+      final first = await _captureRequest(
+        router: router,
+        method: 'POST',
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        headers: <String, String>{'Idempotency-Key': 'conflict-key-1'},
+        body: jsonEncode(<String, Object?>{
+          'new_lifecycle_state': 'productionCredentialed',
+        }),
+      );
+      final second = await _captureRequest(
+        router: router,
+        method: 'POST',
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        headers: <String, String>{'Idempotency-Key': 'conflict-key-1'},
+        body: jsonEncode(<String, Object?>{
+          'new_lifecycle_state': 'sandboxVerified',
+        }),
+      );
+
+      expect(first.statusCode, 200);
+      expect(second.statusCode, 409);
+      expect(second.bodyJson['error'], 'idempotency_key_conflict');
+    });
+
+    test('400 when new_lifecycle_state is missing from the body', () async {
       final router = _buildRouter();
       final request = await _captureRequest(
         router: router,
         method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/lifecycle-promotion-notification',
-        headers: <String, String>{
-          'Idempotency-Key': 'missing-state-1',
-        },
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        headers: <String, String>{'Idempotency-Key': 'missing-state-1'},
         body: jsonEncode(<String, Object?>{}),
       );
 
@@ -219,11 +230,8 @@ void main() {
       final request = await _captureRequest(
         router: router,
         method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/lifecycle-promotion-notification',
-        headers: <String, String>{
-          'Idempotency-Key': 'bad-json-1',
-        },
+        path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+        headers: <String, String>{'Idempotency-Key': 'bad-json-1'},
         body: '{not valid json',
       );
 
@@ -232,64 +240,63 @@ void main() {
       expect(request.bodyJson['error'], 'invalid_json_body');
     });
 
-    test('returns false for path with extra segments after vendor id',
-        () async {
-      final router = _buildRouter();
-      final request = await _captureRequest(
-        router: router,
-        method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/extra/lifecycle-promotion-notification',
-        headers: <String, String>{},
-        body: null,
-      );
+    test(
+      'returns false for path with extra segments after vendor id',
+      () async {
+        final router = _buildRouter();
+        final request = await _captureRequest(
+          router: router,
+          method: 'POST',
+          path:
+              '/v1/admin/vendors/toast/extra/lifecycle-promotion-notification',
+          headers: <String, String>{},
+          body: null,
+        );
 
-      expect(request.handled, isFalse);
-    });
+        expect(request.handled, isFalse);
+      },
+    );
 
-    test('non-productionCredentialed state is a no-op (dispatcher decides)',
-        () async {
-      final notifications = _SeededNotificationRepo()
-        ..seed('op-1', 'toast', <String>['n-1']);
-      final outbox = _RecordingOutbox();
-      final dispatcher = VendorLifecycleNotificationDispatcher(
-        notificationRepository: notifications,
-        outboxRepository: outbox,
-        contextResolver: ({
-          required String operatorId,
-          required String vendorId,
-        }) async {
-          return const VendorNotificationOperatorContext(
-            operatorBusinessName: 'Acme Bistro',
-            vendorDisplayName: 'Toast',
-            integrationConsoleUrl: 'https://app.forgeflow.app',
-          );
-        },
-      );
-      final router = VendorLifecyclePromotionRouter(
-        dispatcher: dispatcher,
-        authorizer: (_) async => true,
-        idempotencyStore: _InMemoryIdempotencyStore(),
-      );
+    test(
+      'non-productionCredentialed state is a no-op (dispatcher decides)',
+      () async {
+        final notifications = _SeededNotificationRepo()
+          ..seed('op-1', 'toast', <String>['n-1']);
+        final outbox = _RecordingOutbox();
+        final dispatcher = VendorLifecycleNotificationDispatcher(
+          notificationRepository: notifications,
+          outboxRepository: outbox,
+          contextResolver:
+              ({required String operatorId, required String vendorId}) async {
+                return const VendorNotificationOperatorContext(
+                  operatorBusinessName: 'Acme Bistro',
+                  vendorDisplayName: 'Toast',
+                  integrationConsoleUrl: 'https://app.forgeflow.app',
+                );
+              },
+        );
+        final router = VendorLifecyclePromotionRouter(
+          dispatcher: dispatcher,
+          authorizer: (_) async => true,
+          idempotencyStore: _InMemoryIdempotencyStore(),
+        );
 
-      final request = await _captureRequest(
-        router: router,
-        method: 'POST',
-        path:
-            '/v1/admin/vendors/toast/lifecycle-promotion-notification',
-        headers: <String, String>{
-          'Idempotency-Key': 'sandbox-promote-1',
-        },
-        body: jsonEncode(<String, Object?>{
-          'new_lifecycle_state': 'sandboxVerified',
-        }),
-      );
+        final request = await _captureRequest(
+          router: router,
+          method: 'POST',
+          path: '/v1/admin/vendors/toast/lifecycle-promotion-notification',
+          headers: <String, String>{'Idempotency-Key': 'sandbox-promote-1'},
+          body: jsonEncode(<String, Object?>{
+            'new_lifecycle_state': 'sandboxVerified',
+          }),
+        );
 
-      expect(request.handled, isTrue);
-      expect(request.statusCode, 200);
-      expect(request.bodyJson['notifications_enqueued'], 0);
-      expect(outbox.recorded, isEmpty);
-    });
+        expect(request.handled, isTrue);
+        expect(request.statusCode, 200);
+        expect(request.bodyJson['notifications_enqueued'], 0);
+        expect(outbox.recorded, isEmpty);
+      },
+    );
   });
 }
 
@@ -310,16 +317,14 @@ VendorLifecycleNotificationDispatcher _buildDispatcher() {
   return VendorLifecycleNotificationDispatcher(
     notificationRepository: _SeededNotificationRepo(),
     outboxRepository: _RecordingOutbox(),
-    contextResolver: ({
-      required String operatorId,
-      required String vendorId,
-    }) async {
-      return const VendorNotificationOperatorContext(
-        operatorBusinessName: 'Acme Bistro',
-        vendorDisplayName: 'Toast',
-        integrationConsoleUrl: 'https://app.forgeflow.app',
-      );
-    },
+    contextResolver:
+        ({required String operatorId, required String vendorId}) async {
+          return const VendorNotificationOperatorContext(
+            operatorBusinessName: 'Acme Bistro',
+            vendorDisplayName: 'Toast',
+            integrationConsoleUrl: 'https://app.forgeflow.app',
+          );
+        },
   );
 }
 
@@ -409,9 +414,7 @@ Future<_CapturedRequest> _captureRequest({
         clientRequest.contentLength = 0;
       }
       final clientResponse = await clientRequest.close();
-      final responseText = await clientResponse
-          .transform(utf8.decoder)
-          .join();
+      final responseText = await clientResponse.transform(utf8.decoder).join();
       final handled = await handledCompleter.future;
       return _CapturedRequest(
         handled: handled,
@@ -430,13 +433,11 @@ class _SeededNotificationRepo
   final Map<String, Map<String, List<_Pending>>> _rows =
       <String, Map<String, List<_Pending>>>{};
 
-  void seed(
-    String operatorId,
-    String vendorId,
-    List<String> notificationIds,
-  ) {
-    final byVendor =
-        _rows.putIfAbsent(operatorId, () => <String, List<_Pending>>{});
+  void seed(String operatorId, String vendorId, List<String> notificationIds) {
+    final byVendor = _rows.putIfAbsent(
+      operatorId,
+      () => <String, List<_Pending>>{},
+    );
     final list = byVendor.putIfAbsent(vendorId, () => <_Pending>[]);
     for (final id in notificationIds) {
       list.add(_Pending(id: id, email: '$id@example.test'));
@@ -448,8 +449,11 @@ class _SeededNotificationRepo
     required String vendorId,
   }) async {
     return _rows.entries
-        .where((e) => (e.value[vendorId] ?? const <_Pending>[])
-            .any((row) => !row.notified))
+        .where(
+          (e) => (e.value[vendorId] ?? const <_Pending>[]).any(
+            (row) => !row.notified,
+          ),
+        )
         .map((e) => e.key)
         .toList();
   }
@@ -462,31 +466,15 @@ class _SeededNotificationRepo
     final rows = _rows[operatorId]?[vendorId] ?? const <_Pending>[];
     return rows
         .where((row) => !row.notified)
-        .map((row) => PendingVendorNotification(
-              notificationId: row.id,
-              operatorId: operatorId,
-              vendorId: vendorId,
-              recipientEmail: row.email,
-            ))
+        .map(
+          (row) => PendingVendorNotification(
+            notificationId: row.id,
+            operatorId: operatorId,
+            vendorId: vendorId,
+            recipientEmail: row.email,
+          ),
+        )
         .toList(growable: false);
-  }
-
-  @override
-  Future<void> markNotified({
-    required String operatorId,
-    required String notificationId,
-    required DateTime stampedAt,
-  }) async {
-    final byVendor =
-        _rows[operatorId] ?? const <String, List<_Pending>>{};
-    for (final rows in byVendor.values) {
-      for (final row in rows) {
-        if (row.id == notificationId) {
-          row.notified = true;
-          return;
-        }
-      }
-    }
   }
 }
 
@@ -501,40 +489,89 @@ class _RecordingOutbox implements EmailOutboxEnqueueRepository {
   final List<Map<String, Object?>> recorded = <Map<String, Object?>>[];
 
   @override
-  Future<void> enqueue({
-    required String operatorId,
+  Future<bool> claimAndEnqueue({
+    required PendingVendorNotification notification,
     required String templateId,
-    required String recipientEmail,
     required String? recipientDisplayName,
     required Map<String, String> templateData,
+    required DateTime stampedAt,
   }) async {
     recorded.add(<String, Object?>{
-      'operator_id': operatorId,
+      'operator_id': notification.operatorId,
       'template_id': templateId,
-      'recipient_email': recipientEmail,
+      'recipient_email': notification.recipientEmail,
       'recipient_display_name': recipientDisplayName,
       'template_data': Map<String, String>.from(templateData),
     });
+    return true;
   }
 }
 
 class _InMemoryIdempotencyStore
     implements VendorLifecyclePromotionIdempotencyStore {
-  final Map<String, Map<String, Object?>> _cache =
-      <String, Map<String, Object?>>{};
+  final Map<String, _IdempotencyEntry> _cache = <String, _IdempotencyEntry>{};
 
   @override
-  Future<Map<String, Object?>?> peek({required String idempotencyKey}) async {
+  Future<VendorLifecyclePromotionIdempotencyEntry?> lookup({
+    required String idempotencyKey,
+    required String requestType,
+    required String requestBodyHash,
+  }) async {
     final cached = _cache[idempotencyKey];
     if (cached == null) return null;
-    return Map<String, Object?>.from(cached);
+    if (cached.requestType != requestType ||
+        cached.requestBodyHash != requestBodyHash) {
+      throw const VendorLifecyclePromotionIdempotencyConflict(
+        message: 'Idempotency-Key was already used for another request',
+      );
+    }
+    return VendorLifecyclePromotionIdempotencyEntry(
+      responseStatus: cached.responseStatus,
+      responsePayload: cached.responsePayload == null
+          ? null
+          : Map<String, Object?>.from(cached.responsePayload!),
+      expiresAt: null,
+    );
   }
 
   @override
-  Future<void> remember({
+  Future<bool> reserve({
     required String idempotencyKey,
-    required Map<String, Object?> response,
+    required String requestType,
+    required String? actorUserId,
+    required String requestBodyHash,
   }) async {
-    _cache[idempotencyKey] = Map<String, Object?>.from(response);
+    if (_cache.containsKey(idempotencyKey)) return false;
+    _cache[idempotencyKey] = _IdempotencyEntry(
+      requestType: requestType,
+      requestBodyHash: requestBodyHash,
+    );
+    return true;
   }
+
+  @override
+  Future<void> completeReservation({
+    required String idempotencyKey,
+    required int responseStatus,
+    required Map<String, Object?> responsePayload,
+  }) async {
+    final entry = _cache[idempotencyKey];
+    if (entry == null) return;
+    entry.responseStatus = responseStatus;
+    entry.responsePayload = Map<String, Object?>.from(responsePayload);
+  }
+
+  @override
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
+    return false;
+  }
+}
+
+class _IdempotencyEntry {
+  _IdempotencyEntry({required this.requestType, required this.requestBodyHash});
+
+  final String requestType;
+  final String requestBodyHash;
+  int? responseStatus;
+  Map<String, Object?>? responsePayload;
 }
