@@ -1,0 +1,6 @@
+# Active execution plans land here.
+#
+# When a plan is closed (its slices have all landed), move it to
+# `docs/archive/_execution/<dated-subfolder>/` via history-preserving
+# `git mv`. See `docs/README.md` and the CLAUDE.md "Doc Lean-Out &
+# Archive Pass" section for the procedure.
