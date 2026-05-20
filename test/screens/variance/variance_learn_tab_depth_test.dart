@@ -40,6 +40,7 @@ import 'package:forge_and_flow/models/week_record.dart';
 import 'package:forge_and_flow/models/week_data.dart';
 import 'package:forge_and_flow/screens/variance/variance_learn_tab.dart';
 import 'package:forge_and_flow/services/learn_benchmark_context_service.dart';
+import 'package:forge_and_flow/services/restaurant_timing_config_read_service.dart';
 import 'package:forge_and_flow/services/shift_data_source.dart';
 import 'package:provider/provider.dart';
 
@@ -162,9 +163,21 @@ Widget _harness(_FakeShiftDataSource source) => MaterialApp(
   ),
 );
 
+// State-pollution / cold-boot resilience: under the full `flutter test`
+// baseline (and under parallel-isolate contention), the FIRST SQLite
+// access in this isolate triggers the heavy cold-boot demo seed
+// (`SqliteDatabase._seedColdBootDemo`). That seed runs the first time the
+// LearnTab's `_loadServicePeriodDefinitions` hits the active timing
+// config repository, and on a loaded host it can easily exceed several
+// seconds. The original tight `30 × 50ms` budget on the spinner-gone
+// loop then expires before the spinner clears and the test fails with
+// "Found 0 widgets with text 'Recurring Leak'". The pump budget is
+// raised here to ride out the seed under contention. `setUpAll` also
+// pre-warms SQLite once before any widget pump so the seed cost is paid
+// before the timing-sensitive pump loop ever starts.
 Future<void> _pumpLearnReady(WidgetTester tester) async {
   await tester.pump();
-  for (var i = 0; i < 30; i++) {
+  for (var i = 0; i < 200; i++) {
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
@@ -174,7 +187,7 @@ Future<void> _pumpLearnReady(WidgetTester tester) async {
     }
   }
   await tester.pump(const Duration(milliseconds: 350));
-  for (var i = 0; i < 10; i++) {
+  for (var i = 0; i < 60; i++) {
     if (find.text('Recurring Leak').evaluate().isNotEmpty) break;
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -198,6 +211,18 @@ List<HistoryPatternRecord> _recurringLeakPatterns() => <HistoryPatternRecord>[
 // --- Tests -----------------------------------------------------------------
 
 void main() {
+  // Pre-warm SQLite once before any widget test runs. The LearnTab's
+  // `_loadServicePeriodDefinitions` reads the active timing config, which
+  // on first access in a fresh isolate triggers the heavy cold-boot demo
+  // seed inside `SqliteDatabase._initDb`. Under parallel-isolate
+  // contention this can take several seconds — long enough to exceed the
+  // per-test pump budget and surface as a "Found 0 widgets with text
+  // 'Recurring Leak'" flake. Hoisting the first hit out to `setUpAll`
+  // pays the seed cost once, outside any timer-sensitive pump loop.
+  setUpAll(() async {
+    await RestaurantTimingConfigReadService.instance.getActiveTimingConfig();
+  });
+
   setUp(() {
     LearnBenchmarkContextService.testCanonicalOverride = () async => _ctx;
   });

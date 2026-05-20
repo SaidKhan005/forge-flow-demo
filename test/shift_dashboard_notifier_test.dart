@@ -8,6 +8,25 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/models/current_state_freshness.dart';
 
+/// Wait for the notifier to finish its constructor-initiated `_load()`.
+///
+/// State-pollution / cold-boot resilience: under the full `flutter test`
+/// baseline (and under parallel-isolate contention), the notifier's
+/// `_load()` can easily take longer than the fixed 500ms delay that
+/// previously gated these expectations. When it does, `notifier.status`
+/// is still null at expectation time and `status!.type` throws an NPE —
+/// surfacing as a flaky test that passes alone but fails in the baseline.
+/// Polling on `isLoading == false` (the post-publish flip) with a
+/// generous total budget pays the cost only when the load actually takes
+/// that long, while keeping the fast path fast.
+Future<void> _waitForLoad(ShiftDashboardNotifier notifier) async {
+  const maxIterations = 120; // 120 × 100ms = 12s ceiling under contention.
+  for (var i = 0; i < maxIterations; i++) {
+    if (!notifier.isLoading) return;
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+}
+
 void main() {
   setUp(() async {
     await SqliteDatabase.instance.reseedDemo();
@@ -230,7 +249,7 @@ void main() {
     await SqliteDatabase.instance.clearAllData();
 
     final notifier = ShiftDashboardNotifier();
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+    await _waitForLoad(notifier);
 
     expect(notifier.isLoading, isFalse);
     expect(notifier.readModel, isNull);
