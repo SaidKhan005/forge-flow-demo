@@ -55,6 +55,7 @@ import '../../domain/repositories/target_cycle_repository.dart';
 import '../../domain/repositories/target_profile_repository.dart';
 import '../../domain/repositories/weekly_plan_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
+import '../../infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_data_accuracy_service_period_settings_cache_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
@@ -63,6 +64,7 @@ import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
+import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../../state/app_runtime_invalidation_bus.dart';
 import '../integration/demo_mode_state.dart';
 import 'star_target_sync_resources.dart';
@@ -209,6 +211,7 @@ class PostgresShiftRecordToMobileSync {
     SqliteWageRoleRowRepository? wageRoleRowRepository,
     SqliteDataAccuracyServicePeriodSettingsCacheRepository?
     dataAccuracyServicePeriodSettingsCacheRepository,
+    this.manualCoverEntryDao,
     AppRuntimeInvalidationBus? invalidationBus,
     // PF2 hardening: bumped from 200 → 500 rows per page.
     // Trade-off: each page is ≈2.5 MB of JSON on a 50 K-cover
@@ -257,6 +260,7 @@ class PostgresShiftRecordToMobileSync {
   final SqliteWageRoleRowRepository wageRoleRowRepository;
   final SqliteDataAccuracyServicePeriodSettingsCacheRepository
   dataAccuracyServicePeriodSettingsCacheRepository;
+  final ManualCoverEntryDao? manualCoverEntryDao;
   final ImportTrackingDao watermarkDao;
   final AppRuntimeInvalidationBus invalidationBus;
   final int pageSize;
@@ -748,6 +752,13 @@ class PostgresShiftRecordToMobileSync {
     if (servicePeriodCacheChanged) {
       invalidationBus.notifyImportCompletionPersisted();
     }
+    final manualCoverCacheChanged = await _replaceManualCoverEntriesFromServer(
+      restaurantId: restaurantId,
+      settings: dataAccuracySettings,
+    );
+    if (manualCoverCacheChanged) {
+      invalidationBus.notifyImportCompletionPersisted();
+    }
     _latestWageRoleRows = List<WageRoleRow>.unmodifiable(wageRoleRows);
     _latestPollingTierAssignment = pollingTierAssignment;
     _latestFirstBackfillStatus = firstBackfillStatus;
@@ -772,6 +783,31 @@ class PostgresShiftRecordToMobileSync {
       starTargetMirrors: starTargetMirrors,
       weeklyPlanMirrors: weeklyPlanMirrors,
     );
+  }
+
+  Future<bool> _replaceManualCoverEntriesFromServer({
+    required String restaurantId,
+    required DataAccuracySettingsSnapshot? settings,
+  }) async {
+    final recordedAt =
+        settings?.updatedAt.toUtc().toIso8601String() ??
+        DateTime.now().toUtc().toIso8601String();
+    final entries = <ManualCoverEntry>[
+      if (settings != null)
+        for (final dayEntry in settings.coversManualEntries.entries)
+          for (final periodEntry in dayEntry.value.entries)
+            ManualCoverEntry(
+              restaurantId: restaurantId,
+              businessDate: dayEntry.key,
+              daypart: periodEntry.key,
+              covers: periodEntry.value,
+              recordedAt: recordedAt,
+            ),
+    ];
+    final dao =
+        manualCoverEntryDao ??
+        ManualCoverEntryDao(await SqliteDatabase.instance.database);
+    return dao.replaceAllForRestaurant(restaurantId, entries);
   }
 
   static List<DataAccuracyServicePeriodSetting> _attachCoversSourceMetadata(

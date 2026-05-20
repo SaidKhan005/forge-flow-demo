@@ -82,6 +82,38 @@ class ManualCoverEntryDao {
     );
   }
 
+  /// Replace the cached recent-list rows for [restaurantId] with the
+  /// server-authoritative [entries]. Returns true when the cache changed.
+  Future<bool> replaceAllForRestaurant(
+    String restaurantId,
+    Iterable<ManualCoverEntry> entries,
+  ) async {
+    final target = entries.toList(growable: false);
+    final existing = await listRecentForRestaurant(
+      restaurantId,
+      limit: 1000000,
+    );
+    if (_sameEntrySet(existing, target)) {
+      return false;
+    }
+
+    await _db.transaction((txn) async {
+      await txn.delete(
+        'manual_cover_entries',
+        where: 'restaurant_id = ?',
+        whereArgs: [restaurantId],
+      );
+      for (final entry in target) {
+        await txn.insert(
+          'manual_cover_entries',
+          entry.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+    return true;
+  }
+
   /// Most-recent entries for [restaurantId], newest business_date
   /// first. The optional [limit] caps the result so the Settings
   /// section can show "your last N entries" without unbounded growth.
@@ -117,4 +149,26 @@ class ManualCoverEntryDao {
     if (rows.isEmpty) return null;
     return ManualCoverEntry.fromMap(Map<String, Object?>.from(rows.first));
   }
+
+  static bool _sameEntrySet(
+    List<ManualCoverEntry> left,
+    List<ManualCoverEntry> right,
+  ) {
+    if (left.length != right.length) return false;
+    final leftKeys = <String, ManualCoverEntry>{
+      for (final entry in left) _entryKey(entry): entry,
+    };
+    for (final entry in right) {
+      final existing = leftKeys[_entryKey(entry)];
+      if (existing == null ||
+          existing.covers != entry.covers ||
+          existing.recordedAt != entry.recordedAt) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static String _entryKey(ManualCoverEntry entry) =>
+      '${entry.restaurantId}\u0000${entry.businessDate}\u0000${entry.daypart}';
 }

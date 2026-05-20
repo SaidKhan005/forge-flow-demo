@@ -29,6 +29,7 @@ import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/import_tracking_dao.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
@@ -457,6 +458,84 @@ void main() {
       expect(settings.walkInHandlingMode, 'walk_ins_added_to_reservations');
       expect(settings.walkInManualEntries['2026-05-04'], 9);
       expect(sync.latestDataAccuracySettings?.wageSource, 'manual_mix');
+
+      final db = await SqliteDatabase.instance.database;
+      final manualCoverRows = await ManualCoverEntryDao(
+        db,
+      ).listRecentForRestaurant(rid);
+      expect(manualCoverRows, hasLength(3));
+      expect(
+        manualCoverRows.singleWhere((row) => row.daypart == 'dinner').covers,
+        187,
+      );
+      expect(
+        manualCoverRows
+            .singleWhere((row) => row.daypart == 'dinner')
+            .recordedAt,
+        '2026-05-04T12:00:00.000Z',
+      );
+    },
+  );
+
+  test(
+    'F1b. data_accuracy_settings sync removes stale manual cover cache rows',
+    () async {
+      const rid = 'rest_F1b';
+      final db = await SqliteDatabase.instance.database;
+      final dao = ManualCoverEntryDao(db);
+      await dao.upsert(
+        const ManualCoverEntry(
+          restaurantId: rid,
+          businessDate: '2026-05-04',
+          daypart: 'dinner',
+          covers: 187,
+          recordedAt: '2026-05-04T12:00:00.000Z',
+        ),
+      );
+      await dao.upsert(
+        const ManualCoverEntry(
+          restaurantId: rid,
+          businessDate: '2026-05-05',
+          daypart: 'lunch',
+          covers: 91,
+          recordedAt: '2026-05-04T12:00:00.000Z',
+        ),
+      );
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptDataAccuracySettings(
+          DataAccuracySettingsSnapshot(
+            operatorId: _opId,
+            locationId: _locId,
+            coversManualEntries: const {
+              '2026-05-05': {'lunch': 91},
+            },
+            wageSource: 'vendor',
+            updatedAt: DateTime.utc(2026, 5, 5, 12, 0),
+          ),
+        );
+
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
+      await sync.sync(operatorId: _opId, locationId: _locId, restaurantId: rid);
+
+      expect(
+        await dao.findEntry(
+          restaurantId: rid,
+          businessDate: '2026-05-04',
+          daypart: 'dinner',
+        ),
+        isNull,
+      );
+      final rows = await dao.listRecentForRestaurant(rid);
+      expect(rows, hasLength(1));
+      expect(rows.single.businessDate, '2026-05-05');
+      expect(rows.single.daypart, 'lunch');
+      expect(rows.single.covers, 91);
     },
   );
 
