@@ -30,6 +30,8 @@ import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accurac
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
+  const testBusinessDateIso = '2026-05-06';
+
   // ─── Test fixtures ───────────────────────────────────────────────
 
   const ownerSession = OperatorWebSession(
@@ -139,6 +141,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: InMemoryVendorConnectionsGateway(),
               servicePeriodsLoader: () async =>
                   ServicePeriodDefinitionResolver.demoDefinitions,
@@ -192,6 +195,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
             servicePeriodsLoader: () async =>
                 ServicePeriodDefinitionResolver.demoDefinitions,
@@ -223,6 +227,7 @@ void main() {
           DataAccuracyScreen(
             session: locationManagerSession,
             locationId: locationManagerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -276,6 +281,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: squareGateway,
             ),
           ),
@@ -316,6 +322,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: lightspeedGateway,
             ),
           ),
@@ -412,6 +419,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: squareGateway,
           ),
         ),
@@ -434,6 +442,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
             // Inject the canonical demo service-period set directly so
             // the dinner row renders without depending on
@@ -632,6 +641,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: gateway,
               initialSettings: initialSettings,
               servicePeriodsLoader: () async => configuredPeriods,
@@ -730,6 +740,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -765,6 +776,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: InMemoryVendorConnectionsGateway(),
               tierEmailGateway: gateway,
               tierEmailIdempotencyKeyFactory: () => 'idem-test-1',
@@ -829,6 +841,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: InMemoryVendorConnectionsGateway(),
               tierEmailGateway: gateway,
               tierEmailIdempotencyKeyFactory: () => 'idem-test-2',
@@ -877,6 +890,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
             tierEmailGateway: gateway,
           ),
@@ -921,6 +935,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -990,6 +1005,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: InMemoryVendorConnectionsGateway(),
               // See sibling test "switching dinner to manual" — demo
               // service periods are injected explicitly so the
@@ -1103,6 +1119,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: InMemoryVendorConnectionsGateway(),
               initialSettings: _settingsWithWage(WageSource.manualMix),
               vendorApplicabilityGateway: applicabilityGateway,
@@ -1154,6 +1171,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: InMemoryVendorConnectionsGateway(),
               initialSettings: _settingsWithWage(WageSource.manualMix),
               vendorApplicabilityGateway: applicabilityGateway,
@@ -1185,6 +1203,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
             initialSettings: _settingsWithWage(WageSource.manualMix),
             vendorApplicabilityGateway: applicabilityGateway,
@@ -1213,6 +1232,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: InMemoryVendorConnectionsGateway(),
               initialSettings: _settingsWithWage(WageSource.manualMix),
               vendorApplicabilityGateway: applicabilityGateway,
@@ -1263,6 +1283,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
             dataAccuracyGateway: gateway,
             servicePeriodsLoader: loadPeriods,
@@ -1282,6 +1303,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: 'brio-ottawa-market',
+            businessDateIso: testBusinessDateIso,
             locationName: 'Brio - Ottawa Market',
             gateway: InMemoryVendorConnectionsGateway(),
             dataAccuracyGateway: gateway,
@@ -1321,6 +1343,7 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
               gateway: InMemoryVendorConnectionsGateway(),
               dataAccuracyGateway: gateway,
             ),
@@ -1500,6 +1523,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
             dataAccuracyGateway: gateway,
           ),
@@ -1599,6 +1623,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
             wageAuthorityGateway: wageGateway,
           ),
@@ -1661,6 +1686,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
             gateway: InMemoryVendorConnectionsGateway(),
             wageAuthorityGateway: wageGateway,
             wageAuthorityIdempotencyKeyFactory: () {

@@ -122,7 +122,7 @@ class DataAccuracyScreen extends StatefulWidget {
     this.initialSettings,
     this.dataAccuracyGateway,
     this.vendorApplicabilityGateway,
-    this.businessDateIso = '2026-05-05',
+    required this.businessDateIso,
     this.tierStatus,
     this.walkInModeOverride,
     this.onSaveSettings,
