@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 
 class CoversHistoricalSeedCard extends StatefulWidget {
   const CoversHistoricalSeedCard({
@@ -311,26 +312,10 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.history_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Backfill the last ${widget.dayCount} days of covers',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+          OperatorWebSectionHeading(
+            title: 'Backfill the last ${widget.dayCount} days of covers',
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             "Your POS doesn't expose covers, so F&F has nothing to learn "
             'from yet. Type your past covers (or paste them in) and F&F '
