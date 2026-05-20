@@ -156,7 +156,7 @@ class HierarchyScopeNotice extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               OperatorWebSectionHeading(
-                title: 'Hierarchy scope',
+                title: 'Where this applies',
                 trailing: compact
                     ? helpButton
                     : Row(
