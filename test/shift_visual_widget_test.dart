@@ -188,7 +188,18 @@ void main() {
       );
       final heroMetric = rm.metricCards.firstWhere((m) => m.isHero);
       await _scrollUntilMetricVisible(tester, heroMetric.name);
-      expect(find.text('DRIVER', skipOffstage: false), findsAtLeastNWidgets(1));
+      // 2026-05-20 mobile-UX dial-in: the hero metric chip used to read
+      // 'DRIVER' on the legacy `InputMetricCard` widget. That widget was
+      // replaced by `MetricPill` (feat(11W.metric-pill): converted
+      // from InputMetricCard), and the new chip's label is the metric's
+      // own name (`COVERS` / `CPLH` / `BLENDED WAGE`), not a separate
+      // 'DRIVER' tag. The legacy 'DRIVER' / 'PRIMARY DRIVER' chip is
+      // gone — keeping the not-found assertion as a regression guard,
+      // and asserting the hero metric's own label is now visible
+      // post-scroll.
+      expect(find.text(heroMetric.name, skipOffstage: false),
+          findsAtLeastNWidgets(1));
+      expect(find.text('DRIVER', skipOffstage: false), findsNothing);
       expect(find.text('PRIMARY DRIVER', skipOffstage: false), findsNothing);
       expect(
         find.textContaining('into service', skipOffstage: false),
@@ -567,16 +578,24 @@ void main() {
 
   group('F â€” reservation book signal', () {
     testWidgets(
-      'COVERS card renders “In the books 72” when reservation exists',
+      'COVERS card renders "In the books 72" when reservation exists',
       (tester) async {
         final rm = _fixtureReadModelWithReservation();
         await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
         await tester.pump();
         await tester.pump();
-        expect(
-          find.text('In the books 72', skipOffstage: false),
-          findsOneWidget,
-        );
+        // 2026-05-20 mobile-UX dial-in: the COVERS card sits below the
+        // hero metric on the per-daypart V1 layout. Scroll the
+        // "In the books N" line into view before asserting.
+        final inTheBooks = find.text('In the books 72', skipOffstage: false);
+        if (inTheBooks.evaluate().isEmpty) {
+          await tester.scrollUntilVisible(
+            inTheBooks,
+            240,
+            scrollable: find.byType(Scrollable).first,
+          );
+        }
+        expect(inTheBooks, findsOneWidget);
       },
     );
 
