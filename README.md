@@ -152,6 +152,9 @@ host returned by `scripts\deploy_staging_proxy.ps1`.
 
 - Default web-server port `8181` (`-WebPort 8181`). Pair with the admin
   console on `8182` to run both locally without conflict.
+- `-Mode demo` is the visual audit standard: it opens edit layers with
+  in-memory demo write gateways so changes are temporary and never touch a
+  proxy, vendor, Firebase, or production account.
 - `scripts\run_operator_web_dev.ps1` performs the dev-CSP swap on
   `web/index.html` automatically (production CSP backed up to
   `web/index.prod.html.bak`, restored on exit). Reviewer-judgment detail:
@@ -163,11 +166,12 @@ host returned by `scripts\deploy_staging_proxy.ps1`.
 
 - Defaults to `-Device chrome`. Pass `-Device edge` or `-Device web-server`
   (or `-WebServer -WebPort 8182`) for headless / port-scoped runs.
-- Default `-Mode demo` lands signed in as F&F support with **no login screen**
-  via `ADMIN_SHARE_PREVIEW=true` (read-only). Pass `-DemoFixtureLogin` to
-  instead render the Phase 11A.0 walkthrough picker (`super.admin@` /
-  `support@` / `operator@`) backed by `ADMIN_DEMO_AUTH=true` — useful for
-  exercising the admit / fail-closed paths.
+- Default `-Mode demo` lands signed in as super admin with **no login screen**
+  via `ADMIN_SHARE_PREVIEW=true` plus the super-admin fixture flag, so visual
+  audit can reach admin edit layers without live mutations. Pass
+  `-DemoFixtureLogin` to instead render the Phase 11A.0 walkthrough picker
+  (`super.admin@` / `support@` / `operator@`) backed by
+  `ADMIN_DEMO_AUTH=true` - useful for exercising the admit / fail-closed paths.
 - `.claude/launch.json` integrates with the Claude_Preview MCP tool — invoke
   the matching launch entry to attach the in-IDE preview panel.
 

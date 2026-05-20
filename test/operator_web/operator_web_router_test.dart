@@ -21,6 +21,8 @@ import 'package:forge_and_flow/operator_web/services/demo_team_hierarchy_gateway
 import 'package:forge_and_flow/operator_web/services/demo_team_users_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_vendor_connections_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/business_timing_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/demo_operator_web_write_gateways.dart';
+import 'package:forge_and_flow/operator_web/services/http_business_timing_read_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
 import 'package:forge_and_flow/operator_web/services/web_business_timing_gateway.dart';
@@ -710,6 +712,52 @@ void main() {
       expect(
         find.byKey(const Key('operator_web_business_setup_screen')),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('standard demo Business setup edit opens the timing editor', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final writeGateway = DemoOperatorWebBusinessTimingWriteGateway();
+      final source = _BusinessTimingHierarchyOperatorWebSource(writeGateway);
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavBusinessSetup,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_business_setup_screen')),
+        findsOneWidget,
+      );
+      expect(find.text('Live editor'), findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_business_timing_safe_dialog')),
+        findsNothing,
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_business_timing_edit_button')),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_business_timing_edit_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_business_timing_editor_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_business_timing_safe_dialog')),
+        findsNothing,
       );
     });
 
@@ -1646,7 +1694,12 @@ class _BusinessTimingHierarchyOperatorWebSource extends OperatorWebAuthSource
         OperatorWebBusinessTimingGatewayProvider,
         OperatorWebBusinessTimingWriteGatewayProvider,
         OperatorWebTeamHierarchyGatewayProvider {
-  _BusinessTimingHierarchyOperatorWebSource(this.businessTimingWriteGateway) {
+  _BusinessTimingHierarchyOperatorWebSource(
+    this.businessTimingWriteGateway, {
+    BusinessTimingGateway? businessTimingGateway,
+  }) : businessTimingGateway =
+           businessTimingGateway ??
+           HttpBusinessTimingReadGateway(gateway: businessTimingWriteGateway) {
     _controller.add(_state);
   }
 
@@ -1656,8 +1709,7 @@ class _BusinessTimingHierarchyOperatorWebSource extends OperatorWebAuthSource
   );
 
   @override
-  final BusinessTimingGateway businessTimingGateway =
-      const DemoBusinessTimingGateway();
+  final BusinessTimingGateway businessTimingGateway;
 
   @override
   final WebBusinessTimingGateway businessTimingWriteGateway;
