@@ -183,7 +183,20 @@ void main() {
       );
       // Scoped-override write targets the R7a jsonb column.
       expect(
-        code.contains('covers_source_per_service_period = coalesce('),
+        code.contains('covers_source_per_service_period = ('),
+        isTrue,
+        reason: 'scoped override writes the R7a jsonb column',
+      );
+      expect(
+        code.contains(
+          'data_accuracy_scoped_overrides.'
+          'covers_source_per_service_period',
+        ),
+        isTrue,
+        reason: 'scoped override merges from the existing R7a jsonb column',
+      );
+      expect(
+        code.contains('@covers_per_period::jsonb'),
         isTrue,
         reason: 'scoped override writes the R7a jsonb column',
       );
@@ -573,6 +586,107 @@ void main() {
   });
 
   group('R7b (c) — admin org-unit scoped override → per-period jsonb', () {
+    test(
+      'listDataAccuracyRows emits configured service periods from the '
+      'business timing profile chain so Admin uses real period labels',
+      () async {
+        final servicePeriodDefinitions = <Map<String, Object?>>[
+          <String, Object?>{
+            'id': 'brunch',
+            'label': 'Brunch',
+            'short_label': 'B',
+            'sort_order': 1,
+            'start_local_time': '09:00',
+            'end_local_time': '14:00',
+            'rolls_past_midnight': false,
+            'applicable_days': <int>[6, 7],
+          },
+          <String, Object?>{
+            'id': 'late_service',
+            'label': 'Late service',
+            'short_label': 'LS',
+            'sort_order': 4,
+            'start_local_time': '22:00',
+            'end_local_time': '02:00',
+            'rolls_past_midnight': true,
+            'applicable_days': <int>[5, 6],
+          },
+        ];
+        final pool = _StubPool(
+          rowsByContains: <String, List<PostgresRow>>{
+            'from operators o': <PostgresRow>[
+              <String, Object?>{
+                'operator_id': _opId,
+                'business_name': 'Acme',
+                'location_id': _locId,
+                'location_name': 'North Loop',
+                'setting_id': 'set-1',
+                'covers_source_per_service_period': <String, Object?>{
+                  'brunch': 'manual',
+                  'late_service': 'forecast',
+                },
+                'covers_manual_entries': <String, Object?>{},
+                'wage_source': 'vendor',
+                'walk_in_handling_mode': 'reservations_only',
+                'walk_in_manual_entries': <String, Object?>{},
+                'service_period_definitions': jsonEncode(
+                  servicePeriodDefinitions,
+                ),
+                'created_at': DateTime.utc(2026, 5, 20),
+                'updated_at': DateTime.utc(2026, 5, 20),
+                'updated_by': _userId,
+              },
+            ],
+            'insert into auth_events_audit': <PostgresRow>[
+              <String, Object?>{
+                'event_id': '99999999-9999-4999-8999-999999999999',
+              },
+            ],
+          },
+        );
+        final wrapper = TenantTransactionWrapper(pool);
+        final gateway = RepositoryDataAccuracyAdminProxyGateway(
+          adminWrapper: wrapper,
+          auditRepository: AuthEventsAuditRepository(wrapper),
+        );
+
+        final result = await gateway.listDataAccuracyRows(
+          actorUserId: _userId,
+          adminReason: 'admin.test.list',
+        );
+
+        final selectSql = pool.lastTx!.calls
+            .map((c) => c.sql)
+            .firstWhere((s) => s.contains('from operators o'));
+        expect(selectSql.contains('timing.service_period_definitions'), isTrue);
+        expect(selectSql.contains('public.business_timing_profiles'), isTrue);
+        expect(
+          selectSql.contains('public.business_timing_service_periods'),
+          isTrue,
+        );
+        expect(selectSql.contains('scope.scope_depth desc'), isTrue);
+
+        final row = result.single;
+        final emittedDefinitions =
+            row['service_period_definitions']! as List<Object?>;
+        expect(emittedDefinitions, hasLength(2));
+        final firstDefinition = (emittedDefinitions.first as Map)
+            .cast<String, Object?>();
+        final lastDefinition = (emittedDefinitions.last as Map)
+            .cast<String, Object?>();
+        expect(firstDefinition['id'], 'brunch');
+        expect(lastDefinition['label'], 'Late service');
+        final settings = row['settings']! as Map<String, Object?>;
+        expect(
+          settings['covers_source_per_service_period'],
+          equals(<String, Object?>{
+            'brunch': 'manual',
+            'late_service': 'forecast',
+          }),
+        );
+      },
+    );
+
     test('overrideDataAccuracyScope writes the supplied dayparts into the '
         'R7a covers_source_per_service_period jsonb (no legacy scalar '
         'columns) on an org_unit scope, idempotent + non-destructive '

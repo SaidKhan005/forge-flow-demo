@@ -5429,6 +5429,64 @@ class RepositoryDataAccuracyAdminProxyGateway
 
   static final DateTime _definitionEditedAt = DateTime.utc(2026, 5, 5);
 
+  static const String _currentServicePeriodDefinitionsJoin =
+      'left join lateral ('
+      '  select coalesce(jsonb_agg(jsonb_build_object('
+      "    'id', sp.service_period_key, "
+      "    'label', sp.label, "
+      "    'short_label', sp.short_label, "
+      "    'sort_order', sp.sort_order, "
+      "    'start_local_time', to_char(sp.start_local_time, 'HH24:MI'), "
+      "    'end_local_time', to_char(sp.end_local_time, 'HH24:MI'), "
+      "    'rolls_past_midnight', sp.rolls_past_midnight, "
+      "    'applicable_days', sp.applicable_weekdays"
+      '  ) order by sp.sort_order), \'[]\'::jsonb) '
+      '  as service_period_definitions '
+      '  from ('
+      '    select p.profile_id '
+      '    from ('
+      "      select 'operator'::text as scope_type, "
+      '             l.operator_id as scope_id, '
+      '             0::integer as scope_depth '
+      '      union all '
+      "      select 'org_unit'::text as scope_type, "
+      '             ou.id as scope_id, '
+      '             nlevel(ou.path)::integer as scope_depth '
+      '      from public.org_units ou '
+      '      where ou.operator_id = l.operator_id '
+      '      and ou.path @> l.org_unit_path '
+      '      union all '
+      "      select 'location'::text as scope_type, "
+      '             l.location_id as scope_id, '
+      '             100000::integer as scope_depth'
+      '    ) scope '
+      '    join public.business_timing_profiles p '
+      '    on p.operator_id = l.operator_id '
+      '    and p.scope_type = scope.scope_type '
+      '    and p.scope_id = scope.scope_id '
+      '    where p.effective_from_business_date <= '
+      '          ((now() at time zone l.timezone)::date) '
+      '    and ('
+      '      p.effective_until_business_date is null '
+      '      or ((now() at time zone l.timezone)::date) '
+      '         < p.effective_until_business_date'
+      '    ) '
+      '    and exists ('
+      '      select 1 '
+      '      from public.business_timing_service_periods period_exists '
+      '      where period_exists.operator_id = p.operator_id '
+      '      and period_exists.profile_id = p.profile_id'
+      '    ) '
+      '    order by scope.scope_depth desc, '
+      '             p.effective_from_business_date desc, '
+      '             p.created_at desc '
+      '    limit 1'
+      '  ) resolved_period_profile '
+      '  join public.business_timing_service_periods sp '
+      '  on sp.operator_id = l.operator_id '
+      '  and sp.profile_id = resolved_period_profile.profile_id'
+      ') timing on true ';
+
   @override
   Future<List<Map<String, Object?>>> listDataAccuracyRows({
     required String actorUserId,
@@ -5447,12 +5505,14 @@ class RepositoryDataAccuracyAdminProxyGateway
         's.walk_in_manual_entries, '
         's.created_at, s.updated_at, s.updated_by, '
         's.covers_source_per_service_period_source, '
-        's.wage_source_source, s.walk_in_handling_mode_source '
+        's.wage_source_source, s.walk_in_handling_mode_source, '
+        'timing.service_period_definitions '
         'from operators o '
         'join locations l on l.operator_id = o.operator_id '
         'left join effective_data_accuracy_settings_v s '
         'on s.operator_id = l.operator_id '
         'and s.location_id = l.location_id '
+        '$_currentServicePeriodDefinitionsJoin'
         'order by o.business_name asc, l.created_at asc',
       );
       await _auditOn(
@@ -6746,12 +6806,14 @@ class RepositoryDataAccuracyAdminProxyGateway
       's.walk_in_manual_entries, '
       's.created_at, s.updated_at, s.updated_by, '
       's.covers_source_per_service_period_source, '
-      's.wage_source_source, s.walk_in_handling_mode_source '
+      's.wage_source_source, s.walk_in_handling_mode_source, '
+      'timing.service_period_definitions '
       'from operators o '
       'join locations l on l.operator_id = o.operator_id '
       'left join effective_data_accuracy_settings_v s '
       'on s.operator_id = l.operator_id '
       'and s.location_id = l.location_id '
+      '$_currentServicePeriodDefinitionsJoin'
       '${filter.sql} '
       'order by o.business_name asc, l.created_at asc',
       parameters: <String, Object?>{
@@ -6845,6 +6907,9 @@ class RepositoryDataAccuracyAdminProxyGateway
     return <String, Object?>{
       'operator_ref': _operatorRefJson(row),
       'settings': _settingsJson(row),
+      'service_period_definitions': _jsonList(
+        row['service_period_definitions'],
+      ),
     };
   }
 
@@ -7155,6 +7220,16 @@ class RepositoryDataAccuracyAdminProxyGateway
       if (decoded is Map) return Map<String, Object?>.from(decoded);
     }
     return const <String, Object?>{};
+  }
+
+  static List<Object?> _jsonList(Object? value) {
+    if (value is List<Object?>) return value;
+    if (value is List) return List<Object?>.from(value);
+    if (value is String && value.isNotEmpty) {
+      final decoded = jsonDecode(value);
+      if (decoded is List) return List<Object?>.from(decoded);
+    }
+    return const <Object?>[];
   }
 
   static Map<String, int> _intMap(Map<String, Object?> value) {
