@@ -224,6 +224,10 @@ class _LearnContentState extends State<_LearnContent> {
     final benchmarkCard = topWin == null
         ? null
         : LeverCards.lookup(topWin.dominantLeverId);
+    final leakScopeLabel = summary.topLeakDayparts.isEmpty
+        ? null
+        : summary.topLeakDayparts.first;
+    final winScopeLabel = topWin?.label;
 
     // V2-5: Carousel configuration for the active section. Leak and
     // Wins each render as a 3-frame story (dots adapt to 3); Cross-Axis
@@ -253,12 +257,11 @@ class _LearnContentState extends State<_LearnContent> {
                 heading: leakCard.metric,
                 caption: caption,
                 visualHint: _leverVisualHint(leakCard, favorable: false),
-                // V2-4: emphasis is applied at RENDER over the verbatim
-                // catalog `whatHappened`. `stripMarkup` of this equals
-                // `leakCard.whatHappened` byte-for-byte.
+                // V2-4: emphasis is applied at RENDER over the catalog
+                // copy plus the period label resolved by the analyzer.
                 body: LearnEmphasisMap.emphasizeWhatHappened(
                   leakCard.id,
-                  leakCard.whatHappened,
+                  _scopeStoryCopy(leakScopeLabel, leakCard.whatHappened),
                 ),
                 accent: AppColors.negative,
               );
@@ -269,7 +272,7 @@ class _LearnContentState extends State<_LearnContent> {
                 visualHint: _consequenceHint(leakCard),
                 body: LearnEmphasisMap.emphasizeTeachingNote(
                   leakCard.id,
-                  leakCard.teachingNote,
+                  _scopeStoryCopy(leakScopeLabel, leakCard.teachingNote),
                 ),
                 accent: AppColors.negative,
               );
@@ -279,11 +282,11 @@ class _LearnContentState extends State<_LearnContent> {
                 heading: 'Schedule from the math',
                 body: LearnEmphasisMap.emphasizeWhatToDo(
                   leakCard.id,
-                  leakCard.whatToDo,
+                  _scopeStoryCopy(leakScopeLabel, leakCard.whatToDo),
                 ),
                 actionPlay: LearnEmphasisMap.emphasizeWhatToDo(
                   leakCard.id,
-                  leakCard.whatToDo,
+                  _scopeStoryCopy(leakScopeLabel, leakCard.whatToDo),
                 ),
                 accent: AppColors.sunset,
               );
@@ -311,11 +314,11 @@ class _LearnContentState extends State<_LearnContent> {
                 heading: benchmarkCard.metric,
                 caption: caption,
                 visualHint: _leverVisualHint(benchmarkCard, favorable: true),
-                // V2-4: emphasis applied at RENDER over the verbatim
-                // catalog string (round-trips to it via stripMarkup).
+                // V2-4: emphasis applied at RENDER over the catalog
+                // string plus the repeatable win period label.
                 body: LearnEmphasisMap.emphasizeWhatHappened(
                   benchmarkCard.id,
-                  benchmarkCard.whatHappened,
+                  _scopeStoryCopy(winScopeLabel, benchmarkCard.whatHappened),
                 ),
                 accent: AppColors.positive,
               );
@@ -326,7 +329,7 @@ class _LearnContentState extends State<_LearnContent> {
                 visualHint: _consequenceHint(benchmarkCard),
                 body: LearnEmphasisMap.emphasizeTeachingNote(
                   benchmarkCard.id,
-                  benchmarkCard.teachingNote,
+                  _scopeStoryCopy(winScopeLabel, benchmarkCard.teachingNote),
                 ),
                 accent: AppColors.positive,
               );
@@ -336,11 +339,11 @@ class _LearnContentState extends State<_LearnContent> {
                 heading: 'Bank the setup',
                 body: LearnEmphasisMap.emphasizeWhatToDo(
                   benchmarkCard.id,
-                  benchmarkCard.whatToDo,
+                  _scopeStoryCopy(winScopeLabel, benchmarkCard.whatToDo),
                 ),
                 actionPlay: LearnEmphasisMap.emphasizeWhatToDo(
                   benchmarkCard.id,
-                  benchmarkCard.whatToDo,
+                  _scopeStoryCopy(winScopeLabel, benchmarkCard.whatToDo),
                 ),
                 accent: AppColors.sunset,
               );
@@ -453,6 +456,15 @@ class _LearnHero extends StatelessWidget {
 // already resolved (lever short label / side / cause category, repeat
 // counts, daypart labels). Honest-fallback rules return null so a frame
 // never asserts a denominator or hint the data cannot back.
+
+/// Adds the closed service-period label to the story body when the
+/// analyzer has one. This keeps the catalog global while making the
+/// visible Learn copy specific to the leaking or winning period.
+String _scopeStoryCopy(String? scopeLabel, String copy) {
+  final label = scopeLabel?.trim();
+  if (label == null || label.isEmpty) return copy;
+  return '$label: $copy';
+}
 
 /// Frame-1 caption for the Recurring Leak story. Mirrors the mockup
 /// `.lcap` ("Repeated 6 of last 12 Fri dinners"). Returns null when the

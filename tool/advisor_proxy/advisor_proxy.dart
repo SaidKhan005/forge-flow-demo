@@ -7645,9 +7645,6 @@ abstract class DataAccuracyAdminProxyGateway {
     required String actorUserId,
     required String operatorId,
     required String locationId,
-    String? coversSourceLunch,
-    String? coversSourceDinner,
-    String? coversSourceLateNight,
     Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
@@ -7661,9 +7658,6 @@ abstract class DataAccuracyAdminProxyGateway {
     required String scopeType,
     String? orgUnitId,
     String? locationId,
-    String? coversSourceLunch,
-    String? coversSourceDinner,
-    String? coversSourceLateNight,
     Map<String, String>? coversSourcePerServicePeriod,
     List<String>? clearCoversSourcePerServicePeriod,
     bool clearWageSource = false,
@@ -16697,12 +16691,7 @@ Future<void> _routeDataAccuracyAdmin({
       _writeNotFound(response, request);
       return;
     }
-    final coversLunch = _optionalBodyString(body, 'covers_source_lunch');
-    final coversDinner = _optionalBodyString(body, 'covers_source_dinner');
-    final coversLateNight = _optionalBodyString(
-      body,
-      'covers_source_late_night',
-    );
+    if (_rejectLegacyCoversSourceWriteKeys(response, body)) return;
     final coversPerServicePeriod = _optionalBodyStringMap(
       body,
       'covers_source_per_service_period',
@@ -16725,9 +16714,6 @@ Future<void> _routeDataAccuracyAdmin({
           actorUserId: actorUserId,
           operatorId: pair.operatorId,
           locationId: pair.locationId,
-          coversSourceLunch: coversLunch,
-          coversSourceDinner: coversDinner,
-          coversSourceLateNight: coversLateNight,
           coversSourcePerServicePeriod: coversPerServicePeriod,
           wageSource: wageSource,
           walkInHandlingMode: walkInHandlingMode,
@@ -16755,12 +16741,7 @@ Future<void> _routeDataAccuracyAdmin({
     final scopeType = _requireBodyString(body, 'scope_type');
     final orgUnitId = _optionalBodyString(body, 'org_unit_id');
     final locationId = _optionalBodyString(body, 'location_id');
-    final coversLunch = _optionalBodyString(body, 'covers_source_lunch');
-    final coversDinner = _optionalBodyString(body, 'covers_source_dinner');
-    final coversLateNight = _optionalBodyString(
-      body,
-      'covers_source_late_night',
-    );
+    if (_rejectLegacyCoversSourceWriteKeys(response, body)) return;
     final coversPerServicePeriod = _optionalBodyStringMap(
       body,
       'covers_source_per_service_period',
@@ -16794,9 +16775,6 @@ Future<void> _routeDataAccuracyAdmin({
           scopeType: scopeType,
           orgUnitId: orgUnitId,
           locationId: locationId,
-          coversSourceLunch: coversLunch,
-          coversSourceDinner: coversDinner,
-          coversSourceLateNight: coversLateNight,
           coversSourcePerServicePeriod: coversPerServicePeriod,
           clearCoversSourcePerServicePeriod: clearCoversPerServicePeriod,
           clearWageSource: clearWageSource,
@@ -17473,6 +17451,26 @@ String _requireBodyString(Map<String, Object?> body, String field) {
   return raw.trim();
 }
 
+bool _rejectLegacyCoversSourceWriteKeys(
+  HttpResponse response,
+  Map<String, Object?> body,
+) {
+  const legacyFields = <String>{
+    'covers_source_lunch',
+    'covers_source_dinner',
+    'covers_source_late_night',
+  };
+  if (!legacyFields.any(body.containsKey)) return false;
+  _writeJson(response, 410, const <String, Object?>{
+    'error': 'legacy_covers_source_write_keys_disabled',
+    'message':
+        'legacy covers_source_lunch, covers_source_dinner, and '
+        'covers_source_late_night write keys are disabled; use '
+        'covers_source_per_service_period',
+  });
+  return true;
+}
+
 String? _optionalBodyString(Map<String, Object?> body, String field) {
   if (!body.containsKey(field)) return null;
   final raw = body[field];
@@ -17984,6 +17982,10 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       _writeJson(response, keyError.$1, keyError.$2);
       return;
     }
+  }
+  if (target.resource == 'data_accuracy_settings' &&
+      _rejectLegacyCoversSourceWriteKeys(response, bodyResult.body!)) {
+    return;
   }
 
   try {

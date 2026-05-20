@@ -77,7 +77,7 @@ Worktree: `.codex_worktrees/deeper-parity-audit-wave`
   Server is $19.25, Operator Web should show the $19.25 row only, with the
   correct "set at this location" label.
 - If Admin or an old client still sends an old `covers_source_lunch` field,
-  the server can translate it for now.
+  the server now rejects it with HTTP 410 and asks for the flexible keyed map.
 - New Admin and Operator Web writes should keep using the flexible keyed map,
   so custom periods like `breakfast` and `happy_hour` work.
 

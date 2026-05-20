@@ -447,9 +447,6 @@ abstract class DataAccuracyAdminGateway {
   Future<DataAccuracyAdminRow> overrideDataAccuracy({
     required String operatorId,
     required String locationId,
-    CoversSource? coversSourceLunch,
-    CoversSource? coversSourceDinner,
-    CoversSource? coversSourceLateNight,
     Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
@@ -463,9 +460,6 @@ abstract class DataAccuracyAdminGateway {
     required AdminDataAccuracyMutationScopeType scopeType,
     String? orgUnitId,
     String? locationId,
-    CoversSource? coversSourceLunch,
-    CoversSource? coversSourceDinner,
-    CoversSource? coversSourceLateNight,
     Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
@@ -645,9 +639,6 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   Future<DataAccuracyAdminRow> overrideDataAccuracy({
     required String operatorId,
     required String locationId,
-    CoversSource? coversSourceLunch,
-    CoversSource? coversSourceDinner,
-    CoversSource? coversSourceLateNight,
     Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
@@ -663,12 +654,6 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           '${Uri.encodeComponent(locationId)}',
       idempotencyKey: _newIdempotencyKey('data-accuracy-override'),
       jsonBody: <String, Object?>{
-        if (coversSourceLunch != null)
-          'covers_source_lunch': coversSourceLunch.wire,
-        if (coversSourceDinner != null)
-          'covers_source_dinner': coversSourceDinner.wire,
-        if (coversSourceLateNight != null)
-          'covers_source_late_night': coversSourceLateNight.wire,
         if (coversSourcePerServicePeriod != null &&
             coversSourcePerServicePeriod.isNotEmpty)
           'covers_source_per_service_period': _coversSourcePerServicePeriodJson(
@@ -690,9 +675,6 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     required AdminDataAccuracyMutationScopeType scopeType,
     String? orgUnitId,
     String? locationId,
-    CoversSource? coversSourceLunch,
-    CoversSource? coversSourceDinner,
-    CoversSource? coversSourceLateNight,
     Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
@@ -711,12 +693,6 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         if (orgUnitId != null && orgUnitId.isNotEmpty) 'org_unit_id': orgUnitId,
         if (locationId != null && locationId.isNotEmpty)
           'location_id': locationId,
-        if (coversSourceLunch != null)
-          'covers_source_lunch': coversSourceLunch.wire,
-        if (coversSourceDinner != null)
-          'covers_source_dinner': coversSourceDinner.wire,
-        if (coversSourceLateNight != null)
-          'covers_source_late_night': coversSourceLateNight.wire,
         if (coversSourcePerServicePeriod != null &&
             coversSourcePerServicePeriod.isNotEmpty)
           'covers_source_per_service_period': _coversSourcePerServicePeriodJson(
@@ -1523,9 +1499,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   Future<DataAccuracyAdminRow> overrideDataAccuracy({
     required String operatorId,
     required String locationId,
-    CoversSource? coversSourceLunch,
-    CoversSource? coversSourceDinner,
-    CoversSource? coversSourceLateNight,
     Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
@@ -1541,17 +1514,8 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       ),
     );
     final prev = _readSettings(operatorId, locationId);
-    // Legacy scalar inputs remain accepted for old tests and callers, but
-    // normal admin writes now use the keyed per-period map so custom service
-    // periods stay first-class.
-    final prevLunch = prev.coversSourceFor('lunch');
-    final prevDinner = prev.coversSourceFor('dinner');
-    final prevLateNight = prev.coversSourceFor('late_night');
     final nextPerPeriod = <String, CoversSource>{
       ...prev.coversSourcePerServicePeriod,
-      'lunch': coversSourceLunch ?? prevLunch,
-      'dinner': coversSourceDinner ?? prevDinner,
-      'late_night': coversSourceLateNight ?? prevLateNight,
       ...?coversSourcePerServicePeriod,
     };
     final next = DataAccuracySettings(
@@ -1569,25 +1533,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     );
     _settings[_key(operatorId, locationId)] = next;
     final diff = <String, Object?>{};
-    if (coversSourceLunch != null && coversSourceLunch != prevLunch) {
-      diff['covers_source_lunch'] = <String, String>{
-        'from': prevLunch.wire,
-        'to': coversSourceLunch.wire,
-      };
-    }
-    if (coversSourceDinner != null && coversSourceDinner != prevDinner) {
-      diff['covers_source_dinner'] = <String, String>{
-        'from': prevDinner.wire,
-        'to': coversSourceDinner.wire,
-      };
-    }
-    if (coversSourceLateNight != null &&
-        coversSourceLateNight != prevLateNight) {
-      diff['covers_source_late_night'] = <String, String>{
-        'from': prevLateNight.wire,
-        'to': coversSourceLateNight.wire,
-      };
-    }
     final keyedDiff = <String, Map<String, String>>{};
     if (coversSourcePerServicePeriod != null) {
       for (final entry in coversSourcePerServicePeriod.entries) {
@@ -1646,9 +1591,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     required AdminDataAccuracyMutationScopeType scopeType,
     String? orgUnitId,
     String? locationId,
-    CoversSource? coversSourceLunch,
-    CoversSource? coversSourceDinner,
-    CoversSource? coversSourceLateNight,
     Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
@@ -1672,9 +1614,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         await overrideDataAccuracy(
           operatorId: ref.operatorId,
           locationId: ref.locationId,
-          coversSourceLunch: coversSourceLunch,
-          coversSourceDinner: coversSourceDinner,
-          coversSourceLateNight: coversSourceLateNight,
           coversSourcePerServicePeriod: coversSourcePerServicePeriod,
           wageSource: wageSource,
           walkInHandlingMode: walkInHandlingMode,
@@ -1699,12 +1638,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         if (orgUnitId != null) 'org_unit_id': orgUnitId,
         if (locationId != null) 'location_id': locationId,
         'affected_location_count': refs.length,
-        if (coversSourceLunch != null)
-          'covers_source_lunch': coversSourceLunch.wire,
-        if (coversSourceDinner != null)
-          'covers_source_dinner': coversSourceDinner.wire,
-        if (coversSourceLateNight != null)
-          'covers_source_late_night': coversSourceLateNight.wire,
         if (coversSourcePerServicePeriod != null &&
             coversSourcePerServicePeriod.isNotEmpty)
           'covers_source_per_service_period': _coversSourcePerServicePeriodJson(

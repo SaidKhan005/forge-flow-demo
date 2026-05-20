@@ -14,8 +14,8 @@
 // verbatim catalog body through `LearnEmphasisMap` first, which wraps
 // exact catalog substrings in the V2-4 causal tokens at RENDER time so
 // the mockup `.em-bad` / `.em-good` highlights show. The catalog stays
-// byte-for-byte plain; `InlineEmphasisMarkup.stripMarkup` of any body
-// this card receives equals the plain catalog sentence exactly.
+// byte-for-byte plain; callers may add local context such as a service-period
+// prefix before rendering.
 
 import 'package:flutter/material.dart';
 
@@ -76,8 +76,7 @@ class LearnStoryFrameCard extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [AppColors.backgroundMid, AppColors.cardGlow],
         ),
-        border:
-            Border.all(color: accent.withValues(alpha: 0.35), width: 1),
+        border: Border.all(color: accent.withValues(alpha: 0.35), width: 1),
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
@@ -120,18 +119,14 @@ class LearnStoryFrameCard extends StatelessWidget {
                 // serif .lc h3 heading
                 Text(
                   heading,
-                  style: AppTextStyles.display16(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display16(color: AppColors.textPrimary),
                 ),
                 if (caption != null && caption!.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   // .lcap caption (frame 1 only)
                   Text(
                     caption!,
-                    style: AppTextStyles.mono11(
-                      color: AppColors.textMuted,
-                    ),
+                    style: AppTextStyles.mono11(color: AppColors.textMuted),
                   ),
                 ],
                 if (visualHint != null && visualHint!.isNotEmpty) ...[
