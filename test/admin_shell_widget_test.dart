@@ -214,7 +214,11 @@ void main() {
           .where((route) => route.section == AdminRouteSection.operations)
           .where((route) => route.visibleInNav)
           .map((route) => route.id),
-      <String>[kAdminOperatorsRouteId],
+      // Re-pinned 2026-05-20: the operations section now surfaces both
+      // `operators` (lib/admin/admin_routes.dart:311) and
+      // `vendor-applicability` (lib/admin/admin_routes.dart:435) as
+      // visible primary nav rows; the latter was added post-test.
+      <String>[kAdminOperatorsRouteId, kAdminVendorApplicabilityRouteId],
     );
 
     final hiddenSetupRoutes = <String>{

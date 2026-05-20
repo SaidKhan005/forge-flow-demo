@@ -223,7 +223,7 @@ void main() {
     });
 
     test(
-        'worker registry wires exactly the 11 expected OAuth vendors when '
+        'worker registry wires exactly the 13 expected OAuth vendors when '
         'all app credentials are present', () {
       final fullEnv = <String, String>{
         worker.OAuthRefreshWorkerVendorEnvNames.alohaNcrVoyixClientId: 'a',
@@ -250,7 +250,18 @@ void main() {
         env: fullEnv,
         httpClient: _NoopHttpClient(),
       );
-      expect(result.wiredVendorIds, hasLength(10),
+      // Re-pinned 2026-05-20: every OAuth-using vendor wired by
+      // `buildProductionRefreshClosures` in
+      // `tool/oauth_refresh_worker/main.dart` (lines 582-744) lands
+      // here. Unconditional wires (7): toast, adp, opentable,
+      // sevenrooms, lightspeed_lsk, oracle_micros_simphony, revel.
+      // Env-gated wires when fullEnv supplies the credentials (6):
+      // aloha_ncr_voyix, square, clover, seven_shifts, quickbooks_time,
+      // libro. Total = 13. Humanity is intentionally excluded —
+      // adapter declares keyPaste and v1 has no broker-driven refresh
+      // path (see kVendorsWithoutRefreshClosureReason at
+      // tool/oauth_refresh_worker/main.dart:447).
+      expect(result.wiredVendorIds, hasLength(13),
           reason:
               'every Phase 8 OAuth-using vendor (per the worker closure file) '
               'must be wired when its app-credential env vars are present. '
@@ -271,6 +282,9 @@ void main() {
           'seven_shifts',
           'quickbooks_time',
           'libro',
+          'adp',
+          'opentable',
+          'sevenrooms',
         ]),
       );
       expect(
@@ -280,17 +294,22 @@ void main() {
             'Humanity must NOT be wired — the adapter declares keyPaste '
             'and the v1 connect-time bearer has no broker refresh path',
       );
-      expect(worker.kVendorsWithoutRefreshClosure, hasLength(7));
+      // Re-pinned 2026-05-20: `kVendorsWithoutRefreshClosure` in
+      // `tool/oauth_refresh_worker/main.dart:447` is the source of
+      // truth. SevenRooms / ADP / OpenTable have since been wired
+      // into the registry via `makeSevenRoomsOauthRefreshClosure` /
+      // `makeAdpOauthRefreshClosure` / `makeOpenTableOauthRefreshClosure`
+      // (see file headers at lines 572-577 + 589-602 of main.dart for
+      // bridge rationale), so they no longer live on this set.
+      // Current entries (4): tock, push_operations, humanity, agendrix.
+      expect(worker.kVendorsWithoutRefreshClosure, hasLength(4));
       expect(
         worker.kVendorsWithoutRefreshClosure,
         containsAll(<String>[
-          'sevenrooms',
           'tock',
           'push_operations',
-          'agendrix',
-          'adp',
-          'opentable',
           'humanity',
+          'agendrix',
         ]),
       );
       // Every entry on the no-closure set carries a documented
@@ -309,7 +328,7 @@ void main() {
 
     test(
         'oauth-flavored vendors NOT in the worker registry surface a '
-        'missing-closure finding (Agendrix / OpenTable / ADP / SevenRooms)',
+        'missing-closure finding (Agendrix)',
         () {
       final oauthFlavoredButUnsupported = <String>[];
       for (final entry in kAdapterAuthModes.entries) {
@@ -319,9 +338,20 @@ void main() {
           oauthFlavoredButUnsupported.add(entry.key);
         }
       }
+      // Re-pinned 2026-05-20: of the current
+      // `kVendorsWithoutRefreshClosure` set (tock, push_operations,
+      // humanity, agendrix — see tool/oauth_refresh_worker/main.dart:447),
+      // only `agendrix` is OAuth-flavored per kAdapterAuthModes — the
+      // adapter declares `oauth` but the closure factory is not yet
+      // wired (kVendorsWithoutRefreshClosureReason value:
+      // `agendrix_oauth_sliding_refresh_not_yet_wired`).
+      // The other three are keyPaste/static-bearer, so the intersection
+      // with oauth-flavored adapter declarations is exactly {agendrix}.
+      // OpenTable / ADP / SevenRooms moved into the wired registry after
+      // this assertion was first written.
       expect(
         oauthFlavoredButUnsupported,
-        containsAll(<String>['agendrix', 'opentable', 'adp', 'sevenrooms']),
+        containsAll(<String>['agendrix']),
       );
     });
 

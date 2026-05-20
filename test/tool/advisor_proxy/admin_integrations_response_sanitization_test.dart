@@ -361,6 +361,19 @@ class _StubHttpHeaders implements HttpHeaders {
     return null;
   }
 
+  // Mirrors `dart:io` `HttpHeaders.forEach((String, List<String>) => void)`.
+  // The dispatch wrapper sanitization path iterates request headers
+  // when building its structured-log breadcrumb, so the stub must
+  // satisfy the real typedef (was previously routed through
+  // noSuchMethod, which threw NoSuchMethodError once Dart began
+  // checking the closure signature).
+  @override
+  void forEach(void Function(String name, List<String> values) action) {
+    for (final entry in _values.entries) {
+      action(entry.key.toLowerCase(), <String>[entry.value]);
+    }
+  }
+
   @override
   noSuchMethod(Invocation invocation) =>
       super.noSuchMethod(invocation);
