@@ -63,7 +63,7 @@ Year-rotated date refs that are confusing, not broken:
 | P5 | `test/operator_web/operator_web_router_test.dart` | 57 (KNOWN_FAILING) |
 | P6 | `test/admin/screens/audited_support_actions_admin_screen_test.dart` | 48 |
 | P7 | `test/admin_shell_widget_test.dart` | 47 |
-| P8 | `test/baseline_manager_screen_test.dart` | 39 |
+| P8 | `test/baseline_manager_screen_test.dart` | 39 (SPLIT — now `test/baseline_manager_screen_{core,preview_and_override,calendar_and_navigation,regression_suite}_test.dart` + `test/baseline_manager_screen_test_helpers.dart` per Bucket 5) |
 
 **Fix shape (proven):** replace unbounded `pumpAndSettle()` with bounded
 `for (int i = 0; i < N; i++) { await tester.pump(Duration(milliseconds: M)); }`
@@ -99,22 +99,33 @@ botch with poor commits. Each file goes in its own PR.
 
 Top 3 highest-ROI splits (out of 10 reviewed):
 
-1. **`test/advisor_proxy_test.dart` (8,328 → 5 files)**
+1. **`test/advisor_proxy_test.dart` (8,328 → 5 files)** — split pending.
    - Split: `_config`, `_token_guard`, `_usage_accounting_and_migrations`,
      `_auth_schema_and_jwt`, `_http_scaffold_and_admin_routes`
    - Groups already cohesive; HttpServer fixture is per-group, no shared
      mutable state.
 
-2. **`test/baseline_manager_screen_test.dart` (3,608 → 4 files)**
-   - Split by existing A–U / R1–R10 group labels.
-   - Single top-level `setUp()` needs to be extracted to a shared helper
-     (pairs naturally with Bucket 4).
+2. **`test/baseline_manager_screen_test.dart` (3,608 → 4 files)** — LANDED.
+   Split by existing A–U / R1–R10 group labels into
+   `test/baseline_manager_screen_core_test.dart`,
+   `test/baseline_manager_screen_preview_and_override_test.dart`,
+   `test/baseline_manager_screen_calendar_and_navigation_test.dart`,
+   `test/baseline_manager_screen_regression_suite_test.dart`, with the
+   shared top-level `setUp()` extracted to
+   `test/baseline_manager_screen_test_helpers.dart` (pairs naturally with
+   Bucket 4).
 
-3. **`test/services/integration/canonical_fact_to_closed_shift_input_test.dart` (3,981 → 3 files)**
-   - Split by Block 2 acceptance items A–P (already alphabet-labeled).
-   - Pure const fixtures; no setUp; cleanest split of the three.
+3. **`test/services/integration/canonical_fact_to_closed_shift_input_test.dart` (3,981 → 3 files)** — LANDED.
+   Split by Block 2 acceptance items A–P (already alphabet-labeled) into
+   `test/services/integration/canonical_fact_covers_and_pos_aggregation_test.dart`,
+   `test/services/integration/canonical_fact_wage_and_labor_sources_test.dart`,
+   `test/services/integration/canonical_fact_rls_and_regression_checks_test.dart`,
+   with shared fixtures in
+   `test/services/integration/canonical_fact_test_fixtures.dart`. Pure
+   const fixtures; no setUp; cleanest split of the three.
 
-Together these three reduce ~16,000 lines into 12 focused files.
+Together these three reduce ~16,000 lines into 12 focused files (1 + 2
+landed; advisor_proxy still pending).
 
 Lower-priority splits (do if Bucket 5 lands clean):
 - `test/proxy_auth_operations_route_test.dart` (3,599 → 4)
