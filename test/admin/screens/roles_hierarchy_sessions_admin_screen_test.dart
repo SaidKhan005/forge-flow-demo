@@ -21,6 +21,46 @@ import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gat
 import 'package:forge_and_flow/domain/hierarchy/org_unit_depth_rule.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+// Bounded pump loop: replaces unbounded `tester.pumpAndSettle()` to avoid
+// never-settling timer flake (the dominant flake shape in this repo per
+// docs/KNOWN_FAILING_TESTS.md). 20 frames * 50ms == 1s of virtual time,
+// which exceeds the longest legitimate animation/route transition in
+// this screen's flow. If a future expectation needs more time, prefer a
+// `pumpUntil(tester, () => find.X.evaluate().isNotEmpty)` polling form
+// rather than widening this default.
+Future<void> pumpEventually(
+  WidgetTester tester, {
+  int frames = 20,
+  Duration step = const Duration(milliseconds: 50),
+}) async {
+  for (int i = 0; i < frames; i++) {
+    await tester.pump(step);
+  }
+}
+
+// Polling form: pumps until [condition] returns true, or fails loudly
+// with the exhausted-time budget once [maxIterations] is reached. Use
+// this when the test asserts a specific condition right after the
+// settle (e.g. a dialog has mounted, a snackbar has rendered).
+Future<void> pumpUntil(
+  WidgetTester tester,
+  bool Function() condition, {
+  Duration step = const Duration(milliseconds: 50),
+  int maxIterations = 60,
+}) async {
+  for (int i = 0; i < maxIterations; i++) {
+    if (condition()) return;
+    await tester.pump(step);
+  }
+  expect(
+    condition(),
+    isTrue,
+    reason:
+        'pumpUntil exhausted ${maxIterations * step.inMilliseconds}ms '
+        'budget waiting for condition.',
+  );
+}
+
 void main() {
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -69,9 +109,9 @@ void main() {
       240,
       scrollable: pickerScrollable,
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(checkbox);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
   }
 
   group('role and hierarchy render', () {
@@ -89,7 +129,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.byKey(const Key('admin_rhs_tab_bar')), findsOneWidget);
       expect(find.byKey(const Key('admin_rhs_tab_roles')), findsOneWidget);
@@ -118,7 +158,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('Selected org unit scope'), findsOneWidget);
       expect(find.text('Demo Diner Co. / East Region'), findsOneWidget);
@@ -143,7 +183,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(gateway.listRolesCalls, equals(1));
       expect(gateway.listOrgUnitsCalls, equals(0));
@@ -151,7 +191,7 @@ void main() {
       expect(gateway.listSessionsCalls, equals(0));
 
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(gateway.listRolesCalls, equals(1));
       expect(gateway.listOrgUnitsCalls, equals(1));
@@ -173,10 +213,10 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_rhs_org_unit_$kDemoDinerOrgUnitRoot')),
@@ -207,10 +247,10 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(
           find.byKey(
@@ -262,10 +302,10 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final moveFinder = find.byKey(
         const Key('admin_rhs_location_move_$kDemoDinerLocationToronto'),
@@ -276,7 +316,7 @@ void main() {
 
       await tester.ensureVisible(moveFinder);
       await tester.tap(moveFinder);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_rhs_move_location_dialog')),
@@ -299,17 +339,17 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final addFinder = find.byKey(
         const Key('admin_rhs_org_unit_add_child_$kDemoDinerOrgUnitRoot'),
       );
       expect(addFinder, findsOneWidget);
       await tester.tap(addFinder);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_rhs_add_child_org_unit_dialog')),
@@ -324,7 +364,7 @@ void main() {
         'operator requested hierarchy setup',
       );
       await tester.tap(find.byKey(const Key('admin_rhs_add_org_unit_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('North district'), findsOneWidget);
       final event = gateway.capturedAuditEvents.single;
@@ -349,22 +389,22 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(
         find.byKey(
           const Key('admin_rhs_org_unit_add_child_$kDemoDinerOrgUnitRoot'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_rhs_add_org_unit_name')),
         'North district',
       );
       await tester.tap(find.byKey(const Key('admin_rhs_add_org_unit_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_rhs_add_child_org_unit_dialog')),
@@ -388,9 +428,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // The corp root IS renameable — rename affordance present on the
       // business root (no root carve-out).
@@ -403,7 +443,7 @@ void main() {
           const Key('admin_rhs_org_unit_rename_$kDemoDinerOrgUnitEast'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(
         find.byKey(const Key('admin_rhs_rename_org_unit_dialog')),
         findsOneWidget,
@@ -415,7 +455,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_rhs_rename_org_unit_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Then the shared admin-reason dialog (admin path REQUIRES it).
       await tester.enterText(
@@ -423,7 +463,7 @@ void main() {
         'operator requested label cleanup',
       );
       await tester.tap(find.byKey(const Key('admin_rhs_reason_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('Eastern Region'), findsOneWidget);
       final renameEvents = gateway.capturedAuditEvents
@@ -455,9 +495,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // East + West regions are siblings under root in the demo set.
       await tester.tap(
@@ -465,7 +505,7 @@ void main() {
           const Key('admin_rhs_org_unit_rename_$kDemoDinerOrgUnitEast'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_rhs_rename_org_unit_name')),
         'West region',
@@ -473,7 +513,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_rhs_rename_org_unit_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Client-side re-validation blocks before the reason prompt.
       expect(
@@ -498,9 +538,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(
@@ -525,7 +565,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(
@@ -563,7 +603,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Seeded rows render but the edit button is hidden.
       expect(
@@ -591,7 +631,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_rhs_role_edit_role-seed-operator-owner')),
@@ -613,7 +653,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_rhs_readonly_banner')),
@@ -630,7 +670,7 @@ void main() {
         findsNothing,
       );
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(
         find.byKey(
           const Key('admin_rhs_org_unit_add_child_$kDemoDinerOrgUnitRoot'),
@@ -656,7 +696,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.tap(
           find.byKey(
@@ -665,14 +705,14 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.enterText(
           find.byKey(const Key('admin_rhs_reason_field')),
           'walkthrough verification',
         );
         await tester.tap(find.byKey(const Key('admin_rhs_reason_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(gateway.capturedAuditEvents, hasLength(1));
         final event = gateway.capturedAuditEvents.single;
@@ -697,16 +737,16 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.ensureVisible(
           find.byKey(const Key('admin_rhs_roles_create_custom')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(
           find.byKey(const Key('admin_rhs_roles_create_custom')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(
           find.byKey(const Key('admin_rhs_role_editor_product_tabs')),
@@ -715,7 +755,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_rhs_role_editor_tab_barrio')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         expect(
           find.byKey(const Key('admin_rhs_role_editor_barrio_coming_soon')),
           findsOneWidget,
@@ -724,7 +764,7 @@ void main() {
           const Key('admin_rhs_role_editor_checkbox_barrio.handbook.view'),
         );
         await tester.ensureVisible(barrioCheckbox);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         expect(
           tester.widget<CheckboxListTile>(barrioCheckbox).onChanged,
           isNull,
@@ -733,7 +773,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_rhs_role_editor_tab_forgeflow')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
 
         await tester.enterText(
@@ -751,7 +791,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_rhs_create_custom_role_submit')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(gateway.capturedAuditEvents, hasLength(1));
         final event = gateway.capturedAuditEvents.single;
@@ -780,16 +820,16 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.ensureVisible(
           find.byKey(const Key('admin_rhs_roles_create_custom')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(
           find.byKey(const Key('admin_rhs_roles_create_custom')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_name')),
@@ -806,7 +846,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_rhs_create_custom_role_submit')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(
           find.byKey(const Key('admin_rhs_create_custom_role_dialog')),
@@ -840,16 +880,16 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.ensureVisible(
           find.byKey(const Key('admin_rhs_roles_create_custom')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(
           find.byKey(const Key('admin_rhs_roles_create_custom')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_name')),
@@ -864,7 +904,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_rhs_create_custom_role_submit')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Dialog stays open + no audit row was written.
         expect(
@@ -915,7 +955,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         final button = tester.widget<OutlinedButton>(
           find.byKey(const Key('admin_rhs_session_force_logout_session-actor')),
@@ -939,9 +979,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Root is corp -> "Business"; East/West are regions -> "Region".
       expect(
@@ -1016,14 +1056,14 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(
         find.byKey(const Key('admin_rhs_org_unit_delete_empty-region')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(
         find.byKey(const Key('admin_rhs_delete_org_unit_dialog')),
         findsOneWidget,
@@ -1031,7 +1071,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_rhs_delete_org_unit_confirm')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Then the shared admin-reason dialog.
       await tester.enterText(
@@ -1039,7 +1079,7 @@ void main() {
         'closing the west region',
       );
       await tester.tap(find.byKey(const Key('admin_rhs_reason_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final deleteEvents = gateway.capturedAuditEvents
           .where((e) => e.action == 'team.org_unit.delete')
@@ -1068,26 +1108,26 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(
         find.byKey(
           const Key('admin_rhs_org_unit_delete_$kDemoDinerOrgUnitEast'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(
         find.byKey(const Key('admin_rhs_delete_org_unit_confirm')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_rhs_reason_field')),
         'try to delete east',
       );
       await tester.tap(find.byKey(const Key('admin_rhs_reason_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text(HierarchyValidationCopy.deleteNotEmpty), findsOneWidget);
       expect(
@@ -1110,9 +1150,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(
@@ -1198,9 +1238,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // The 6-deep synthetic chain is taller than the test viewport
       // (GAP A1 added a third org-unit action). Scroll the deepest
@@ -1208,9 +1248,9 @@ void main() {
       // what this test pins, not pixel layout.
       final addN6 = find.byKey(const Key('admin_rhs_org_unit_add_child_n6'));
       await tester.ensureVisible(addN6);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(addN6);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.text(HierarchyValidationCopy.depthCapReached),
@@ -1241,16 +1281,16 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Scroll the depth-5 node into view first (tall synthetic chain).
       final addN5 = find.byKey(const Key('admin_rhs_org_unit_add_child_n5'));
       await tester.ensureVisible(addN5);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(addN5);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_rhs_add_child_org_unit_dialog')),
@@ -1278,7 +1318,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Sweep every visible Text widget; none should contain an em dash.
       final texts = tester.widgetList<Text>(find.byType(Text));
