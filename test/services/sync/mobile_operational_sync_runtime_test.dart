@@ -482,6 +482,13 @@ class _NoopOpenSnapshotRepo implements OpenShiftSnapshotRepository {
   @override
   Future<void> replaceOpenShiftSnapshot(OpenShiftSnapshot snapshot) async {}
 
+  // Production sync calls getCurrentBusinessDate(restaurantId) before
+  // calling fetchResolvedTimingConfig; the test does not exercise the
+  // timing-config branch (the fake client returns null) so any value
+  // is fine — null keeps `businessDate: null` in the fetch path.
+  @override
+  Future<String?> getCurrentBusinessDate(String restaurantId) async => null;
+
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

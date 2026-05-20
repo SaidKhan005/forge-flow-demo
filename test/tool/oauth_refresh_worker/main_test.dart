@@ -292,7 +292,7 @@ void main() {
 
   group('buildProductionRefreshClosures', () {
     test(
-      'registers all 12 closures when every optional credential set '
+      'registers all 13 closures when every optional credential set '
       'is present (Humanity is intentionally omitted — keyPaste path)',
       () {
         final env = <String, String>{
@@ -335,16 +335,18 @@ void main() {
             'quickbooks_time',
             'revel',
             'seven_shifts',
+            'sevenrooms',
             'square',
             'toast',
           ]),
           reason:
-              'all 12 production OAuth refresh factories must register '
+              'all 13 production OAuth refresh factories must register '
               'when their app-credential env names are non-blank; Humanity '
               'is excluded because the adapter declares keyPaste and v1 '
-              'has no broker-driven refresh path. ADP and OpenTable wire '
-              'unconditionally (per-tenant client credentials live on '
-              'bundle metadata) per the 2026-05-09 re-investigation.',
+              'has no broker-driven refresh path. ADP, OpenTable, and '
+              'SevenRooms wire unconditionally (per-tenant client '
+              'credentials live on bundle metadata) per the 2026-05-09 '
+              're-investigation + P1 closeout.',
         );
         expect(result.disabledVendorIds, isEmpty);
         // The seven unsupported vendors (including Humanity) stay

@@ -168,7 +168,13 @@ void main() {
         );
         final presenter = _FakeForegroundPresenter();
         final gateway = _FakeTokenGateway();
-        final routeIntents = MobilePushRouteIntentController();
+        // Inject the in-memory disk store so the coordinator's
+        // initial-message persist/drain path does not hit
+        // SharedPreferences (no plugin registered in the unit-test loop;
+        // the production store keeps SharedPreferences for mobile boot).
+        final routeIntents = MobilePushRouteIntentController(
+          diskStore: InMemoryMobilePushIntentStore(),
+        );
         final coordinator = _buildCoordinator(
           messaging: messaging,
           presenter: presenter,
@@ -185,6 +191,13 @@ void main() {
           MobilePushRouteDestination.notifications,
         );
         expect(pending.single.notificationId, 'from_initial');
+
+        // Drain the fire-and-forget disk async re-publish from
+        // takePendingIntents BEFORE subscribing, so the broadcast
+        // stream only carries the genuinely-new "from_opened" intent
+        // emitted below. (Production behavior is unchanged; the test
+        // just exercises the no-listener cold-start drop semantics.)
+        await _drainMicrotasks();
 
         final streamed = <MobilePushRouteIntent>[];
         final subscription = routeIntents.intents.listen(streamed.add);

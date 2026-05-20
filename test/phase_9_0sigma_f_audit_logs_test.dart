@@ -975,6 +975,7 @@ void main() {
           <String>['sweep', '--as-of-utc=2026-04-28'],
           orchestratorOverride: orchestrator,
           operatorIdReaderOverride: reader,
+          sweepLockIdReaderOverride: const _FakeSweepLockIdReader(),
           out: out,
           err: err,
         );
@@ -1022,6 +1023,7 @@ void main() {
         <String>['sweep'],
         orchestratorOverride: orchestrator,
         operatorIdReaderOverride: reader,
+        sweepLockIdReaderOverride: const _FakeSweepLockIdReader(),
         out: out,
         err: err,
       );
@@ -1056,6 +1058,7 @@ void main() {
         <String>['sweep'],
         orchestratorOverride: orchestrator,
         operatorIdReaderOverride: reader,
+        sweepLockIdReaderOverride: const _FakeSweepLockIdReader(),
         out: out,
         err: err,
       );
@@ -1980,6 +1983,18 @@ class _FakeAnchorWriter implements AuditChainAnchorWriter {
   Future<void> insertAnchor(AuditChainAnchor anchor) async {
     inserts.add(anchor);
   }
+}
+
+/// Test seam for the new sweep advisory-lock id reader. Production
+/// wiring goes through `PostgresSweepLockIdReader`; tests stub it out
+/// so the orchestratorOverride sweep path exits past the lock-id
+/// resolution step.
+class _FakeSweepLockIdReader implements SweepLockIdReader {
+  const _FakeSweepLockIdReader([this.lockId = 42]);
+  final int lockId;
+
+  @override
+  Future<int> readSweepLockId() async => lockId;
 }
 
 class _FakeOperatorIdReader implements OperatorIdReader {
