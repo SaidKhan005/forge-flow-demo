@@ -22,7 +22,8 @@
 //
 // UX writing standard (`memory/project_ux_writing_standard.md`): plain
 // English. The dialog explains the four allowed covers sources and the
-// four allowed wage sources without engineering jargon.
+// hidden wage wire value stays preserved until projection uses
+// per-period wage settings.
 
 import 'package:flutter/material.dart';
 
@@ -32,7 +33,9 @@ import '../../theme/app_theme.dart';
 
 /// Pure value object the card emits when the operator submits the
 /// dialog. The screen forwards this into
-/// [OperatorWebDataAccuracyGateway.saveServicePeriodSetting].
+/// [OperatorWebDataAccuracyGateway.saveServicePeriodSetting]. The wage
+/// source is intentionally not editable in this dialog until
+/// per-period wage projection is wired.
 class KeyedServicePeriodAccuracyDraft {
   const KeyedServicePeriodAccuracyDraft({
     required this.servicePeriodKey,
@@ -190,9 +193,8 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
             )
           else if (rows.isEmpty)
             Text(
-              'No service-period overrides yet. The covers and wage cards '
-              'above still apply across every service period until you add '
-              'one here.',
+              'No service-period overrides yet. The covers card above still '
+              'applies across every service period until you add one here.',
               style: AppTextStyles.body12(color: AppColors.textMuted),
             )
           else
@@ -281,8 +283,7 @@ class _RowSummary extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   'Effective ${row.effectiveAtBusinessDate} • '
-                  'covers: ${_coversLabel(row.coversSource)} • '
-                  'wages: ${_wageLabel(row.wageSource)}',
+                  'covers: ${_coversLabel(row.coversSource)}',
                   style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
               ],
@@ -379,7 +380,7 @@ class _KeyedServicePeriodDialogState extends State<_KeyedServicePeriodDialog> {
   );
   late ServicePeriodCoversSource _covers =
       widget.existing?.coversSource ?? ServicePeriodCoversSource.vendor;
-  late ServicePeriodWageSource _wage =
+  late final ServicePeriodWageSource _wage =
       widget.existing?.wageSource ?? ServicePeriodWageSource.vendorPerEmployee;
   late String? _selectedConfiguredKey =
       widget.existing?.servicePeriodKey ??
@@ -507,26 +508,6 @@ class _KeyedServicePeriodDialogState extends State<_KeyedServicePeriodDialog> {
                   if (value != null) setState(() => _covers = value);
                 },
               ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<ServicePeriodWageSource>(
-                key: kKeyedServicePeriodAccuracyWageFieldKey,
-                initialValue: _wage,
-                decoration: const InputDecoration(
-                  labelText: 'Wage source',
-                  border: OutlineInputBorder(),
-                ),
-                items: ServicePeriodWageSource.values
-                    .map(
-                      (s) => DropdownMenuItem<ServicePeriodWageSource>(
-                        value: s,
-                        child: Text(_wageLabel(s)),
-                      ),
-                    )
-                    .toList(growable: false),
-                onChanged: (value) {
-                  if (value != null) setState(() => _wage = value);
-                },
-              ),
               if (_errorText != null) ...[
                 const SizedBox(height: 12),
                 Text(
@@ -567,18 +548,5 @@ String _coversLabel(ServicePeriodCoversSource source) {
       return 'Manual entry';
     case ServicePeriodCoversSource.reservationPlusWalkin:
       return 'Reservations + walk-ins';
-  }
-}
-
-String _wageLabel(ServicePeriodWageSource source) {
-  switch (source) {
-    case ServicePeriodWageSource.vendorPerEmployee:
-      return 'Vendor (per employee)';
-    case ServicePeriodWageSource.vendorPerPosition:
-      return 'Vendor (per position)';
-    case ServicePeriodWageSource.targetSubstitution:
-      return 'Target substitution';
-    case ServicePeriodWageSource.manualMix:
-      return 'Manual mix';
   }
 }

@@ -1000,8 +1000,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             const SizedBox(height: 14),
             const _DataAccuracyGroupLabel(
               title: 'Service-period overrides',
-              subtitle:
-                  'Add a covers/wage override for a specific service period.',
+              subtitle: 'Add a covers override for a specific service period.',
             ),
             const SizedBox(height: 10),
             KeyedServicePeriodAccuracyCard(

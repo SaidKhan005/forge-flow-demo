@@ -16,39 +16,34 @@
   - The raw server metadata still exists for audit/debug.
   - Operator Web, Admin, and mobile Covers Setup no longer render `Source: Default`.
   - Non-default sources such as `Business`, `Org unit`, and `Location setting` still render.
+- Mobile Covers Setup is intentionally simple usage, not full setup.
+  - Full covers-source setup stays in Operator Web.
+  - Mobile can keep focusing on quick/manual cover use and resolved-status display.
+- Per-service-period wage source no longer shows as an editable Operator Web control until projection uses it.
+  - Existing hidden wage values are preserved on edits.
+  - New rows still use the safe vendor-per-employee default.
+- Business Timing reset is hidden while there is no live reset route.
+  - Managers no longer see a reset action that only opens a "not connected" dialog.
+  - Full audited timing reset remains a future backend/UI slice.
 
 ## Actionable Gaps Found
 
-### 1. Mobile Covers Setup is not full coverage yet
+### 1. Per-service-period wage source projection remains future work
 
 - Current app behavior:
-  - Mobile can save and clear manual cover counts.
-  - Mobile reads the service-period covers source.
-  - Mobile cannot change the service-period covers source, so it cannot fully match Operator Web.
-- Example:
-  - Operator Web can say Breakfast uses vendor covers and Dinner uses manual covers.
-  - Mobile can show that, but cannot change Dinner from vendor to manual.
-- Fix plan:
-  - Add a mobile source selector for each service period.
-  - Write through the same proxy path Operator Web uses.
-  - Keep manual cover count entry coupled to manual covers only.
-  - Add tests for save, clear/reset, and read-after-sync.
-
-### 2. Per-service-period wage source is editable but not used by projection
-
-- Current app behavior:
-  - Operator Web lets a manager save a wage source per service period.
+  - Operator Web no longer lets a manager edit wage source per service period.
+  - Existing hidden wage values are preserved so old rows are not clobbered.
+  - New rows still carry the safe vendor-per-employee default.
   - The closed-shift projection still reads the older whole-location wage source.
   - The migration says per-period wage source was reserved for a future slice.
 - Example:
-  - Manager sets Dinner wages to manual mix.
-  - Projection can still calculate Dinner using the location-level wage source.
+  - Manager can set Dinner covers by service period.
+  - They are not shown a Dinner wage-source picker until the projection can use it.
 - Fix plan:
-  - Product-safe option: hide the per-period wage source control until projection uses it.
-  - Full option: wire per-period wage source through effective settings, projection, mobile mirror, and tests.
-  - Do not leave a visible write that does not change the calculation.
+  - Full future option: wire per-period wage source through effective settings, projection, mobile mirror, and tests.
+  - Keep the hidden value preserved until that full path is ready.
 
-### 3. Service-period Data Accuracy overrides cannot be reset
+### 2. Service-period Data Accuracy overrides cannot be reset
 
 - Current app behavior:
   - Operator Web can add or edit a service-period override.
@@ -62,7 +57,7 @@
   - Return the effective inherited value after reset.
   - Test reset, idempotency, and inherited readback.
 
-### 4. Scoped Data Accuracy overrides cannot be cleared cleanly
+### 3. Scoped Data Accuracy overrides cannot be cleared cleanly
 
 - Current app behavior:
   - Admin can set business/org-unit Data Accuracy overrides.
@@ -76,18 +71,17 @@
   - Audit the clear action.
   - Test that effective settings fall back to the next parent scope.
 
-### 5. Business Timing reset is visible but disconnected
+### 4. Business Timing reset route still needs full wiring
 
 - Current app behavior:
-  - Operator Web shows `Reset timing` when a location override exists.
-  - Pressing it opens a dialog saying the route is not connected.
+  - Operator Web hides `Reset timing` while there is no live reset route.
+  - Edit and schedule actions still use the existing safe dialog path when no live route is injected.
 - Example:
-  - Manager can see a reset action but cannot actually reset the location timing override.
+  - Manager no longer sees a reset action that cannot actually reset the location timing override.
 - Fix plan:
-  - Either wire the live reset route or hide the reset action until the route is live.
   - Preferred full fix: add audited reset, update Operator Web, and verify inherited timing after reset.
 
-### 6. Business Timing timezone is in the profile payload but not actually owned there
+### 5. Business Timing timezone is in the profile payload but not actually owned there
 
 - Current app behavior:
   - Business Timing profile create/patch includes `ianaTimezone`.
@@ -101,7 +95,7 @@
   - Hydrate it from the location/timezone authority on reads.
   - Reject or omit timezone from timing profile writes.
 
-### 7. Business Timing PATCH accepts fields it ignores
+### 6. Business Timing PATCH accepts fields it ignores
 
 - Current app behavior:
   - PATCH accepts scope fields.
@@ -115,7 +109,7 @@
   - Add an explicit `clearServicePeriods` command, or allow empty list only for update/reset.
   - Test rejected scope changes and service-period clear behavior.
 
-### 8. Admin Business Timing is read-only, but the plan says admin is the support editor
+### 7. Admin Business Timing is read-only, but the plan says admin is the support editor
 
 - Current app behavior:
   - Operator Web has the timing editor.
@@ -129,7 +123,7 @@
     - admin gets the audited timing editor.
   - If editor lands, require audit reason and keep support read-only roles blocked from mutation.
 
-### 9. Manual cover sync does not hydrate the mobile recent-list cache
+### 8. Manual cover sync does not hydrate the mobile recent-list cache
 
 - Current app behavior:
   - Manual cover writes go to the proxy first, then update only the current device's local SQLite mirror.
@@ -142,7 +136,7 @@
   - Or retire the SQLite recent-list table as the read source.
   - Test cross-device/server-to-mobile hydration.
 
-### 10. Projection retry active list can show rows that workers cannot claim
+### 9. Projection retry active list can show rows that workers cannot claim
 
 - Current app behavior:
   - Retry evidence keeps original IDs when current foreign keys are nulled.
@@ -155,7 +149,7 @@
   - Add a blocked reason for null-current-ID rows.
   - Keep original IDs visible as evidence, not as claimable routing fields.
 
-### 11. Projection retry status is admin-only by default
+### 10. Projection retry status is admin-only by default
 
 - Current app behavior:
   - Admin Observability shows projection retry counts and dead letters.
@@ -168,7 +162,7 @@
     - expose a safe operator status that hides stack/input details.
   - If exposed, render it as a compact warning in Data Accuracy or Vendor Integrations.
 
-### 12. Operator Web Data Accuracy is location-only while Admin can write broader scopes
+### 11. Operator Web Data Accuracy is location-only while Admin can write broader scopes
 
 - Current app behavior:
   - Admin can apply Data Accuracy at business/org-unit scope.
@@ -183,6 +177,7 @@
 
 ## No-Gap Findings
 
+- Mobile Covers Setup full coverage is not a gap after the product decision that full setup lives in Operator Web and mobile stays simple.
 - Old hidden benchmark override writes are intentionally fail-closed with HTTP 410.
 - Mobile Star Shift selection is still the active proxy-backed write path.
 - Polling tier/cost controls are correctly admin-owned and operator-visible only as status/request-change.
