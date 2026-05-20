@@ -3,7 +3,7 @@
 // Thin HTTP client over the operator-scoped account write route. The
 // AccountScreen (business-identity editor) calls this gateway to
 // PATCH the operator's business name, logo URL, currency, locale,
-// and week-start day. Legacy rollover values remain readable for
+// and week-start day. Business day rollover values remain readable for
 // compatibility, but Business Timing owns business-day start edits.
 //
 // Route contract (operator-scoped, NOT /v1/admin/*):
@@ -840,7 +840,7 @@ class _AdminRouteForbidden implements Exception {
 /// [WebAccountGateway.patchLocationAccountOverrides]. Every field is
 /// optional. Use the matching `clear*` flag to send `"<field>": null`
 /// (which the backend treats as "reset the override, inherit the
-/// business default"). Legacy business-day rollover fields are kept
+/// business default"). Business day rollover fields are kept
 /// readable but are no longer serialized by this payload.
 @immutable
 class LocationAccountOverridesPatchPayload {
