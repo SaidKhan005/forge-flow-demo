@@ -1,11 +1,22 @@
 # Legacy Wire Alias and Deeper Parity Plan - 2026-05-20
 
+## Supersession note
+
+- The covers-source retirement pass has now moved past staged compatibility:
+  old `covers_source_lunch`, `covers_source_dinner`, and
+  `covers_source_late_night` write keys fail closed with HTTP 410.
+- `lunch`, `dinner`, and `late_night` remain valid configured
+  service-period keys. Only the old fixed write fields are retired.
+- The broader `daypart` / `service_period_*` compatibility aliases stay
+  outside this cleanup unless a future versioned API retirement approves them.
+
 ## Operator decisions
 
 - Custom service periods stay supported. Examples: `breakfast`, `brunch`, `happy_hour`, and `supper_rush`.
 - `lunch`, `dinner`, and `late_night` are not legacy by themselves. They are still valid configured service-period keys.
 - The risky legacy pieces are old wire fields and aliases, not the period names.
-- Do not hard-reject old compatibility payloads yet. Check all affected code first, keep old clients working, and retire aliases in stages.
+- Superseded for covers-source writes: old fixed covers-source fields are now
+  hard-rejected with HTTP 410 after the affected app paths were checked.
 - Leave whole-day fallback behavior alone. A save-time warning is enough when the user leaves a configured period without selected star shifts.
 
 ## Why this exists
@@ -20,7 +31,8 @@
 - If a restaurant adds `breakfast`, the normal data-accuracy write should send:
   - `covers_source_per_service_period: { "breakfast": "manual" }`
 - It should not need a new server column called `covers_source_breakfast`.
-- If an old client still sends `covers_source_lunch`, the server may still translate that into the keyed map for now.
+- If an old client still sends `covers_source_lunch`, the server now returns
+  HTTP 410 and tells the client to use `covers_source_per_service_period`.
 - If Benchmark has no selected star shift for `happy_hour`, the app should warn at save time, then keep the existing fallback if the operator confirms.
 
 ## Execution scope for this wave

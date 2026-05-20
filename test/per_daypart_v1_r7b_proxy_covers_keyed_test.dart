@@ -11,9 +11,8 @@
 // public.data_accuracy_service_period_settings and resolved through
 // the HP #11 hierarchy by public.effective_data_accuracy_settings_v's
 // covers_source_per_service_period jsonb output (added in R7a). The
-// three legacy JSON wire keys are still accepted on writes (mapped to
-// their service_period_key) and still emitted in responses (derived
-// from the keyed data) so no mobile/admin client breaks.
+// three legacy JSON wire keys are rejected on writes and still emitted in
+// responses (derived from the keyed data) so existing read clients stay stable.
 //
 // These tests prove:
 //
@@ -23,10 +22,9 @@
 //       proxy reads the view's covers_source_per_service_period jsonb
 //       and writes the keyed table / the scoped-overrides jsonb.
 //
-//   (b) WIRE COMPAT — the three legacy JSON keys are still accepted on
-//       writes (routed to the keyed table) and still emitted in
-//       responses sourced from the keyed data; the per-period shape is
-//       emitted alongside.
+//   (b) WIRE COMPAT - the three legacy JSON keys are rejected on writes
+//       and still emitted in responses sourced from the keyed data; the
+//       per-period shape is emitted alongside.
 //
 //   (c) PER-PERIOD + HP #11 — the per-period shape works for a
 //       4-period operator including an org-unit-level admin scoped
@@ -363,9 +361,8 @@ void main() {
       expect(data['covers_source_late_night'], 'vendor');
     });
 
-    test('upsertDataAccuracySettings accepts the legacy JSON keys, routes '
-        'them to the keyed table (no legacy-column INSERT), and emits '
-        'the legacy keys back sourced from the keyed view jsonb', () async {
+    test('upsertDataAccuracySettings rejects legacy JSON write keys before '
+        'opening a transaction', () async {
       final pool = _StubPool(
         rowsByContains: <String, List<PostgresRow>>{
           'insert into public.data_accuracy_settings': <PostgresRow>[
@@ -409,97 +406,39 @@ void main() {
         tenantWrapper: TenantTransactionWrapper(pool),
       );
 
-      final result = await gateway.upsertDataAccuracySettings(
-        scope: const OperatorContext(
-          userId: _userId,
+      expect(
+        () => gateway.upsertDataAccuracySettings(
+          scope: const OperatorContext(
+            userId: _userId,
+            operatorId: _opId,
+            locationId: _locId,
+            roles: <String>['operator_owner'],
+          ),
           operatorId: _opId,
           locationId: _locId,
-          roles: <String>['operator_owner'],
-        ),
-        operatorId: _opId,
-        locationId: _locId,
-        body: <String, Object?>{
-          // Legacy wire keys still accepted (no breaking change).
-          'covers_source_lunch': 'forecast',
-          'covers_source_dinner': 'manual',
-          'covers_source_late_night': 'vendor',
-          'covers_source_per_service_period': <String, Object?>{
-            'breakfast': 'manual',
-            // Explicit keyed values win when both shapes provide
-            // the same service period.
-            'dinner': 'forecast',
+          body: <String, Object?>{
+            'covers_source_lunch': 'forecast',
+            'covers_source_dinner': 'manual',
+            'covers_source_late_night': 'vendor',
+            'covers_source_per_service_period': <String, Object?>{
+              'breakfast': 'manual',
+              'dinner': 'forecast',
+            },
+            'wage_source': 'vendor',
+            'walk_in_handling_mode': 'reservations_only',
           },
-          'wage_source': 'vendor',
-          'walk_in_handling_mode': 'reservations_only',
-        },
+        ),
+        throwsA(
+          isA<MobileOperationalSyncProxyGatewayException>()
+              .having((e) => e.statusCode, 'statusCode', 410)
+              .having(
+                (e) => e.code,
+                'code',
+                'legacy_covers_source_write_keys_disabled',
+              ),
+        ),
       );
-
-      final calls = pool.lastTx!.calls;
-      // The data_accuracy_settings INSERT must not write a legacy
-      // covers column.
-      final settingsInsert = calls
-          .map((c) => c.sql)
-          .firstWhere(
-            (s) => s.contains('insert into public.data_accuracy_settings'),
-          );
-      expect(settingsInsert.contains('covers_source_lunch'), isFalse);
-      expect(settingsInsert.contains('covers_source_dinner'), isFalse);
-      expect(settingsInsert.contains('covers_source_late_night'), isFalse);
-
-      // Four keyed-table writes: the three legacy dayparts plus a
-      // custom keyed period, all with the 1970-01-01 sentinel +
-      // idempotent ON CONFLICT.
-      final keyedWrites = calls
-          .where(
-            (c) => c.sql.contains(
-              'insert into public.data_accuracy_service_period_settings',
-            ),
-          )
-          .toList();
-      expect(keyedWrites, hasLength(4));
-      final writtenPeriods = keyedWrites
-          .map((c) => c.parameters['service_period_key'])
-          .toSet();
-      expect(
-        writtenPeriods,
-        equals(<String>{'lunch', 'dinner', 'late_night', 'breakfast'}),
-      );
-      for (final w in keyedWrites) {
-        expect(
-          w.sql.contains(
-            'on conflict (operator_id, location_id, '
-            'service_period_key, effective_at_business_date) '
-            'do update set',
-          ),
-          isTrue,
-        );
-        expect(w.sql.contains("date '1970-01-01'"), isTrue);
-      }
-      // covers param routed by daypart.
-      final byPeriod = <Object?, Object?>{
-        for (final w in keyedWrites)
-          w.parameters['service_period_key']: w.parameters['covers_source'],
-      };
-      expect(byPeriod['lunch'], 'forecast');
-      expect(byPeriod['dinner'], 'forecast');
-      expect(byPeriod['late_night'], 'vendor');
-      expect(byPeriod['breakfast'], 'manual');
-
-      // Response still carries the legacy keys, now sourced from
-      // the keyed view jsonb (no breaking wire change).
-      final data = result['data']! as Map<String, Object?>;
-      expect(data['covers_source_lunch'], 'forecast');
-      expect(data['covers_source_dinner'], 'forecast');
-      expect(data['covers_source_late_night'], 'vendor');
-      expect(
-        data['covers_source_per_service_period'],
-        equals(<String, Object?>{
-          'lunch': 'forecast',
-          'dinner': 'forecast',
-          'late_night': 'vendor',
-          'breakfast': 'manual',
-        }),
-      );
+      expect(pool.lastTx, isNull);
     });
 
     test('upsertDataAccuracySettings does not synthesize legacy dayparts '
@@ -740,8 +679,6 @@ void main() {
         operatorId: _opId,
         scopeType: 'org_unit',
         orgUnitId: '44444444-4444-4444-8444-444444444444',
-        coversSourceLunch: 'manual',
-        coversSourceDinner: 'forecast',
         coversSourcePerServicePeriod: <String, String>{
           'breakfast': 'manual',
           'lunch': 'forecast',
@@ -775,20 +712,15 @@ void main() {
       final scopedCall = calls.firstWhere(
         (c) => c.sql.contains('insert into data_accuracy_scoped_overrides'),
       );
-      // Supplied keyed dayparts are merged with legacy inputs;
-      // explicit keyed values win for duplicate periods. late_night
-      // (null) is omitted so its existing scoped value is preserved
-      // by the `existing || new` merge.
+      // Supplied keyed dayparts are the only active covers write shape.
+      // Missing periods are omitted so their existing scoped values are
+      // preserved by the `existing || new` merge.
       final coversParam =
           jsonDecode(scopedCall.parameters['covers_per_period']! as String)
               as Map<String, Object?>;
       expect(
         coversParam,
-        equals(<String, Object?>{
-          'lunch': 'forecast',
-          'dinner': 'forecast',
-          'breakfast': 'manual',
-        }),
+        equals(<String, Object?>{'lunch': 'forecast', 'breakfast': 'manual'}),
       );
 
       // The affected-rows read surfaces the per-period jsonb (the

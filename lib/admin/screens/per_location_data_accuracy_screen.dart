@@ -191,9 +191,6 @@ class _PerLocationDataAccuracyScreenState
       await widget.gateway.overrideDataAccuracy(
         operatorId: row.operatorRef.operatorId,
         locationId: row.operatorRef.locationId,
-        coversSourceLunch: result.coversSourceLunch,
-        coversSourceDinner: result.coversSourceDinner,
-        coversSourceLateNight: result.coversSourceLateNight,
         coversSourcePerServicePeriod: result.coversSourcePerServicePeriod,
         wageSource: result.wageSource,
         walkInHandlingMode: result.walkInHandlingMode,
@@ -622,18 +619,12 @@ class _ScopedDataAccuracyActionCard extends StatelessWidget {
 
 class _DataAccuracyOverrideDraft {
   const _DataAccuracyOverrideDraft({
-    required this.coversSourceLunch,
-    required this.coversSourceDinner,
-    required this.coversSourceLateNight,
     required this.coversSourcePerServicePeriod,
     required this.wageSource,
     required this.walkInHandlingMode,
     required this.reasonNote,
   });
 
-  final CoversSource? coversSourceLunch;
-  final CoversSource? coversSourceDinner;
-  final CoversSource? coversSourceLateNight;
   final Map<String, CoversSource>? coversSourcePerServicePeriod;
   final WageSource? wageSource;
   final DataAccuracyWalkInHandlingMode? walkInHandlingMode;
@@ -658,15 +649,11 @@ class _DataAccuracyOverrideDialog extends StatefulWidget {
 
 class _DataAccuracyOverrideDialogState
     extends State<_DataAccuracyOverrideDialog> {
-  late final bool _usesKeyedCovers = widget.keyedRows != null;
-  late final List<String> _servicePeriodKeys = _usesKeyedCovers
-      ? _servicePeriodKeysForRows(widget.keyedRows!)
-      : const <String>[];
+  late final List<String> _servicePeriodKeys = _servicePeriodKeysForRows(
+    widget.keyedRows ?? <DataAccuracyAdminRow>[widget.initial],
+  );
   late Map<String, CoversSource> _initialCoversSourcePerServicePeriod;
   late Map<String, CoversSource> _coversSourcePerServicePeriod;
-  late CoversSource _lunch;
-  late CoversSource _dinner;
-  late CoversSource _lateNight;
   late WageSource _wage;
   late DataAccuracyWalkInHandlingMode _walkInMode;
   final TextEditingController _reason = TextEditingController();
@@ -681,9 +668,6 @@ class _DataAccuracyOverrideDialogState
     _coversSourcePerServicePeriod = Map<String, CoversSource>.of(
       _initialCoversSourcePerServicePeriod,
     );
-    _lunch = widget.initial.settings.coversSourceFor('lunch');
-    _dinner = widget.initial.settings.coversSourceFor('dinner');
-    _lateNight = widget.initial.settings.coversSourceFor('late_night');
     _wage = widget.initial.settings.wageSource;
     _walkInMode = widget.initial.settings.walkInHandlingMode;
   }
@@ -720,7 +704,12 @@ class _DataAccuracyOverrideDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              if (_usesKeyedCovers)
+              if (_servicePeriodKeys.isEmpty)
+                Text(
+                  'No configured service periods are available for covers source edits.',
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                )
+              else
                 for (final key in _servicePeriodKeys)
                   _CoversSourceField(
                     label: 'Covers source - ${_servicePeriodKeyLabel(key)}',
@@ -733,27 +722,7 @@ class _DataAccuracyOverrideDialogState
                             key: v,
                           },
                     ),
-                  )
-              else ...[
-                _CoversSourceField(
-                  label: 'Covers source - lunch',
-                  fieldKey: const Key('admin_data_accuracy_lunch'),
-                  value: _lunch,
-                  onChanged: (v) => setState(() => _lunch = v),
-                ),
-                _CoversSourceField(
-                  label: 'Covers source - dinner',
-                  fieldKey: const Key('admin_data_accuracy_dinner'),
-                  value: _dinner,
-                  onChanged: (v) => setState(() => _dinner = v),
-                ),
-                _CoversSourceField(
-                  label: 'Covers source - late night',
-                  fieldKey: const Key('admin_data_accuracy_late_night'),
-                  value: _lateNight,
-                  onChanged: (v) => setState(() => _lateNight = v),
-                ),
-              ],
+                  ),
               const SizedBox(height: 8),
               _WageSourceField(
                 value: _wage,
@@ -800,11 +769,7 @@ class _DataAccuracyOverrideDialogState
             };
             Navigator.of(context).pop(
               _DataAccuracyOverrideDraft(
-                coversSourceLunch: _usesKeyedCovers ? null : _lunch,
-                coversSourceDinner: _usesKeyedCovers ? null : _dinner,
-                coversSourceLateNight: _usesKeyedCovers ? null : _lateNight,
-                coversSourcePerServicePeriod:
-                    _usesKeyedCovers && changedCovers.isNotEmpty
+                coversSourcePerServicePeriod: changedCovers.isNotEmpty
                     ? Map<String, CoversSource>.unmodifiable(changedCovers)
                     : null,
                 wageSource: _wage,

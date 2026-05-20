@@ -681,9 +681,11 @@ void main() {
               '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
             ),
             body: const <String, Object?>{
-              'covers_source_lunch': 'manual',
-              'covers_source_dinner': 'vendor',
-              'covers_source_late_night': 'forecast',
+              'covers_source_per_service_period': <String, Object?>{
+                'lunch': 'manual',
+                'dinner': 'vendor',
+                'late_night': 'forecast',
+              },
               'covers_manual_entries': <String, Object?>{
                 '2026-05-06': <String, Object?>{'lunch': 42},
               },
@@ -709,7 +711,7 @@ void main() {
     });
 
     test(
-      'PATCH data accuracy settings rejects missing Idempotency-Key',
+      'PATCH data accuracy settings rejects legacy covers-source keys',
       () async {
         await withRealHttp(() async {
           final ctx = await spinUp();
@@ -722,6 +724,39 @@ void main() {
               ),
               body: const <String, Object?>{
                 'covers_source_lunch': 'manual',
+                'wage_source': 'manual_mix',
+              },
+              idempotencyKey: 'data-accuracy-settings-legacy-key',
+            );
+            expect(response.statusCode, 410);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'legacy_covers_source_write_keys_disabled');
+            expect(ctx.gateway.calls, isEmpty);
+            expect(ctx.idempotencyStore.reserveCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH data accuracy settings rejects missing Idempotency-Key',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+              ),
+              body: const <String, Object?>{
+                'covers_source_per_service_period': <String, Object?>{
+                  'lunch': 'manual',
+                },
                 'wage_source': 'manual_mix',
               },
             );
@@ -746,7 +781,9 @@ void main() {
             '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
           );
           const body = <String, Object?>{
-            'covers_source_lunch': 'manual',
+            'covers_source_per_service_period': <String, Object?>{
+              'lunch': 'manual',
+            },
             'wage_source': 'manual_mix',
           };
           final first = await _httpRequest(
@@ -791,7 +828,9 @@ void main() {
               'PATCH',
               uri,
               body: const <String, Object?>{
-                'covers_source_lunch': 'manual',
+                'covers_source_per_service_period': <String, Object?>{
+                  'lunch': 'manual',
+                },
                 'wage_source': 'manual_mix',
               },
               idempotencyKey: 'data-accuracy-settings-conflict-key',
@@ -801,7 +840,9 @@ void main() {
               'PATCH',
               uri,
               body: const <String, Object?>{
-                'covers_source_lunch': 'vendor',
+                'covers_source_per_service_period': <String, Object?>{
+                  'lunch': 'vendor',
+                },
                 'wage_source': 'manual_mix',
               },
               idempotencyKey: 'data-accuracy-settings-conflict-key',
@@ -834,7 +875,9 @@ void main() {
               '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
             ),
             body: const <String, Object?>{
-              'covers_source_lunch': 'manual',
+              'covers_source_per_service_period': <String, Object?>{
+                'lunch': 'manual',
+              },
               'wage_source': 'manual_mix',
             },
             idempotencyKey: 'same-visible-key',
@@ -862,7 +905,9 @@ void main() {
               '/v1/operators/op-1/locations/loc-2/data_accuracy_settings',
             ),
             body: const <String, Object?>{
-              'covers_source_lunch': 'vendor',
+              'covers_source_per_service_period': <String, Object?>{
+                'lunch': 'vendor',
+              },
               'wage_source': 'vendor',
             },
             idempotencyKey: 'same-visible-key',
@@ -1688,19 +1733,23 @@ class _FakeMobileOperationalSyncGateway
     required String locationId,
     required Map<String, Object?> body,
   }) async {
+    final covers = Map<String, Object?>.from(
+      (body['covers_source_per_service_period'] as Map?) ??
+          const <String, Object?>{},
+    );
     calls.add(
       'data_accuracy_settings_write:$operatorId:$locationId:'
-      '${body['covers_source_lunch']}:${body['wage_source']}',
+      '${covers['lunch'] ?? 'vendor'}:${body['wage_source']}',
     );
     return <String, Object?>{
       'data': <String, Object?>{
         'setting_id': 'setting-1',
         'operator_id': operatorId,
         'location_id': locationId,
-        'covers_source_lunch': body['covers_source_lunch'] ?? 'vendor',
-        'covers_source_dinner': body['covers_source_dinner'] ?? 'vendor',
-        'covers_source_late_night':
-            body['covers_source_late_night'] ?? 'vendor',
+        'covers_source_lunch': covers['lunch'] ?? 'vendor',
+        'covers_source_dinner': covers['dinner'] ?? 'vendor',
+        'covers_source_late_night': covers['late_night'] ?? 'vendor',
+        'covers_source_per_service_period': covers,
         'covers_manual_entries':
             body['covers_manual_entries'] ?? const <String, Object?>{},
         'wage_source': body['wage_source'] ?? 'vendor',

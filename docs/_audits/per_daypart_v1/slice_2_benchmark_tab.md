@@ -89,7 +89,7 @@ citations. Lenses per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 | 5 | Design Rule 1 (per-period field naming) | PASS | `DaypartTable._targetCellsFor` reads `period.daypartTargetCPLH` / `daypartTargetSPLH` / `daypartTargetPPA` / `daypartOpzFloorCPLH` / `daypartOpzCeilingCPLH` (`lib/widgets/daypart_table.dart:64-67`) — the `daypart*`-prefixed accessors only. Whole-day fields (`p.targetCPLH`, `p.opzFloorCPLH`) are read ONLY on the explicit Gap-42 fallback branch (`daypart_table.dart:71-76`) and the Whole Day rollup row (`daypart_table.dart:137-145`), never substituted for a period row that has a child row. |
 | 6 | Design Rule 2 (null vs zero) | PASS | `daypartFor` null → fallback to the whole-day pool, never `0` (`daypart_table.dart:69-76`). No profile at all → honest em dash `_missing = '—'` (`daypart_table.dart:57-61,134-145`). New test `daypart_table_slice_2_test.dart` "no profile at all → honest dash" asserts `find.text('0.00')`/`find.text('\$0')` `findsNothing`. Read service no longer emits sentinel-`0` `DaypartRange`s for absent periods because the period set is now the resolver's defined set (`benchmark_tracker_read_service.dart:_buildDaypartRanges`). |
 | 7 | Demo-mode contract | PASS | No `kDemoMode` carve-out added/removed. Bridge-only mode (`isBridgeOnly`) is a pre-existing test seam, not a demo branch; `_OperatingStrip` uses it only for the test-only BaselineData fallback exactly as the old `_BaselineTargetsCard` did (`baseline_tracker.dart` `_OperatingStrip.build`). Same UI/reads in demo + prod. |
-| 8 | RLS-ready schema | N/A | No schema/migration change. The Postgres `benchmark_overrides` table + repository are intentionally NOT dropped (out of file scope; server-side, still consumed by proxy routes). Gap 35's "drop the table" is a sibling backend slice; the prompt scoped this slice to the operator-web *surface* cut + a Gap-35 code comment. Flagged as follow-up. |
+| 8 | RLS-ready schema | N/A | No schema/migration change. The Postgres `benchmark_overrides` table is intentionally NOT dropped; it is historical read-only compatibility while active adjustments use selected-star target cycles. |
 | 9 | Time guardrails | N/A | No timestamp handling touched. |
 | 10 | Test coverage | PASS | 5 NEW tests in `test/daypart_table_slice_2_test.dart`: (a) per-period read-back asserts each row shows its own `daypartTarget*` and the candidate-average sentinels `9.99`/`$99.99` do NOT leak; (b) OPZ single-column fold asserts `'OPZ RANGE'` `findsOneWidget`, `'OPZ FLOOR'`/`'OPZ CEILING'` `findsNothing`, combined `'2.90 – 3.40'` cells; (c) Gap-42 empty-`dayparts` fallback asserts pool `4.50` `findsNWidgets(4)` (3 rows + rollup); (d) no-profile honest-dash; (e) resolver-driven labels (relabeled defs → `'Midday'` shows, `'Lunch'` `findsNothing`). Re-pointed `target_consistency_opz_test.dart` groups E/G (23 pass) + `baseline_override_propagation_test.dart` group B (5 pass). Nearest existing `benchmark_tracker_read_service_test.dart` (3 pass). |
 | 11 | Reader-swap correctness | PASS | Per-period values flow `ActiveTargetProfileNotifier.profile` → `DaypartTable.profile` → `daypartFor(range.id)` (`baseline_tracker.dart` daypart sliver; `daypart_table.dart:64`). Whole Day rollup reads the same pool fields the CPLH Range & Target widget at the top reads (`p.targetCPLH` etc., `daypart_table.dart:137-145`) → 1:1 by construction per plan Decision 8 / line 241. De-hardcode verified: read service iterates `ServicePeriodDefinitionResolver.ordered(defs)` (`benchmark_tracker_read_service.dart:_buildDaypartRanges`), labels via `labelForId` (×2 sites), honesty copy period-agnostic. |
@@ -99,15 +99,11 @@ citations. Lenses per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 
 ## Follow-ups (out of scope, not fixed in this slice)
 
-1. **Drop the `benchmark_overrides` Postgres table + proxy
-   override-write routes (Gap 35 backend half).** Gap 35's locked
-   resolution also calls for dropping the `benchmark_overrides` table
-   and removing `_writeReplacementCycle`'s admin-replacement path that
-   read from it. Those are schema-touching + `target_cycle_service.dart`
-   touching — explicitly excluded by this slice's concurrency rules and
-   file scope. The operator-web *surface* is fully cut here; the
-   server-side resolver + repository are inert (no UI reaches them).
-   Belongs in a schema/proxy sibling slice with operator approval.
+1. **Benchmark override backend posture now supersedes this follow-up.**
+   The table stays for historical read-only compatibility. Active repository
+   write helpers are removed and legacy HTTP write routes remain HTTP 410.
+   A future cleanup may remove the route mount after old clients are proven
+   gone, but no table drop is planned in this pass.
 2. **Plan extended-list items (Gaps 27/34/36/40).** The plan's
    §"Slice 2 — Extended to include" list names `Daypart` enum
    replacement (Gap 27), Wage Mix "applies per-period" copy (Gap 34),

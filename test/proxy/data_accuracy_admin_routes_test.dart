@@ -173,7 +173,6 @@ void main() {
                 'operator_id': 'op-1',
                 'scope_type': 'org_unit',
                 'org_unit_id': 'ou-1',
-                'covers_source_lunch': 'manual',
                 'covers_source_per_service_period': <String, Object?>{
                   'breakfast': 'forecast',
                   'lunch': 'vendor',
@@ -185,7 +184,6 @@ void main() {
             expect(response.statusCode, equals(200));
             expect(gateway.scopeOverrideCalls, equals(1));
             expect(gateway.lastScopeType, equals('org_unit'));
-            expect(gateway.lastCoversSourceLunch, equals('manual'));
             expect(
               gateway.lastCoversSourcePerServicePeriod,
               equals(<String, String>{
@@ -253,7 +251,6 @@ void main() {
                 '${adminDataAccuracySettingsPrefix}op-1/loc-1',
               ),
               body: const <String, Object?>{
-                'covers_source_lunch': 'manual',
                 'covers_source_per_service_period': <String, Object?>{
                   'breakfast': 'forecast',
                   'lunch': 'vendor',
@@ -263,7 +260,6 @@ void main() {
               idempotencyKey: 'data-accuracy-settings-1',
             );
             expect(response.statusCode, equals(200));
-            expect(gateway.lastCoversSourceLunch, equals('manual'));
             expect(
               gateway.lastCoversSourcePerServicePeriod,
               equals(<String, String>{
@@ -289,7 +285,9 @@ void main() {
             'PATCH',
             ctx.baseUri.resolve('${adminDataAccuracySettingsPrefix}op-1/loc-1'),
             body: const <String, Object?>{
-              'covers_source_lunch': 'manual',
+              'covers_source_per_service_period': <String, Object?>{
+                'lunch': 'manual',
+              },
               'reason_note': 'Set lunch source for launch',
             },
           );
@@ -316,7 +314,9 @@ void main() {
               '${adminDataAccuracySettingsPrefix}op-1/loc-1',
             );
             const firstBody = <String, Object?>{
-              'covers_source_lunch': 'manual',
+              'covers_source_per_service_period': <String, Object?>{
+                'lunch': 'manual',
+              },
               'reason_note': 'Set lunch source for launch',
             };
             final first = await _httpJson(
@@ -338,7 +338,9 @@ void main() {
               'PATCH',
               uri,
               body: const <String, Object?>{
-                'covers_source_lunch': 'forecast',
+                'covers_source_per_service_period': <String, Object?>{
+                  'lunch': 'forecast',
+                },
                 'reason_note': 'Different write under same key',
               },
               idempotencyKey: 'data-accuracy-replay-key',
@@ -356,6 +358,41 @@ void main() {
             expect(ctx.idempotencyStore.reserveActorUserIds, <String?>[
               'user_admin',
             ]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH data accuracy rejects legacy covers-source write keys',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeDataAccuracyAdminGateway();
+          final ctx = await spinUp(customGateway: gateway);
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '${adminDataAccuracySettingsPrefix}op-1/loc-1',
+              ),
+              body: const <String, Object?>{
+                'covers_source_lunch': 'manual',
+                'reason_note': 'Old client write',
+              },
+              idempotencyKey: 'data-accuracy-legacy-key',
+            );
+            expect(response.statusCode, equals(410));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(
+              body['error'],
+              equals('legacy_covers_source_write_keys_disabled'),
+            );
+            expect(gateway.settingsOverrideCalls, equals(0));
+            expect(ctx.idempotencyStore.reserveCalls, equals(0));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -576,7 +613,6 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   String? lastActorUserId;
   String? lastScopeType;
   String? lastServicePeriodKey;
-  String? lastCoversSourceLunch;
   Map<String, String>? lastCoversSourcePerServicePeriod;
   List<String>? lastClearCoversSourcePerServicePeriod;
   bool lastClearWageSource = false;
@@ -614,9 +650,6 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     required String actorUserId,
     required String operatorId,
     required String locationId,
-    String? coversSourceLunch,
-    String? coversSourceDinner,
-    String? coversSourceLateNight,
     Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
@@ -624,7 +657,6 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     required String adminReason,
   }) async {
     lastActorUserId = actorUserId;
-    lastCoversSourceLunch = coversSourceLunch;
     lastCoversSourcePerServicePeriod = coversSourcePerServicePeriod;
     settingsOverrideCalls += 1;
     return const <String, Object?>{'ok': true};
@@ -637,9 +669,6 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     required String scopeType,
     String? orgUnitId,
     String? locationId,
-    String? coversSourceLunch,
-    String? coversSourceDinner,
-    String? coversSourceLateNight,
     Map<String, String>? coversSourcePerServicePeriod,
     List<String>? clearCoversSourcePerServicePeriod,
     bool clearWageSource = false,
@@ -651,7 +680,6 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   }) async {
     lastActorUserId = actorUserId;
     lastScopeType = scopeType;
-    lastCoversSourceLunch = coversSourceLunch;
     lastCoversSourcePerServicePeriod = coversSourcePerServicePeriod;
     lastClearCoversSourcePerServicePeriod = clearCoversSourcePerServicePeriod;
     lastClearWageSource = clearWageSource;

@@ -174,6 +174,13 @@ Future<void> _pumpLearnReady(WidgetTester tester) async {
     }
   }
   await tester.pump(const Duration(milliseconds: 350));
+  for (var i = 0; i < 10; i++) {
+    if (find.text('Recurring Leak').evaluate().isNotEmpty) break;
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump(const Duration(milliseconds: 50));
+  }
 }
 
 // Single-axis recurring leak fixture: covers_down recurring across 6
@@ -243,6 +250,10 @@ void main() {
         // Frame-1 caption: count = 6, coverage = 12, 'Tue Lunch' ->
         // 'Tue Lunches'.
         expect(find.text('Repeated 6 of last 12 Tue Lunches'), findsOneWidget);
+        expect(
+          find.textContaining('Tue Lunch:', findRichText: true),
+          findsWidgets,
+        );
       },
     );
 
@@ -268,6 +279,10 @@ void main() {
         await _pumpLearnReady(tester);
         expect(find.text('FRAME 3 · WHAT TO DO'), findsOneWidget);
         expect(find.text('THE PLAY'), findsOneWidget);
+        expect(
+          find.textContaining('Tue Lunch:', findRichText: true),
+          findsWidgets,
+        );
       },
     );
 
@@ -287,6 +302,10 @@ void main() {
       await _pumpLearnReady(tester);
 
       expect(find.text('In the zone 2 of last 2 Sat brunches'), findsOneWidget);
+      expect(
+        find.textContaining('Sat brunch:', findRichText: true),
+        findsWidgets,
+      );
     });
 
     testWidgets('leak caption omitted (honest fallback) when coverage is 0', (

@@ -344,11 +344,11 @@ payload.
 Business timing makes service periods restaurant-configurable. Data Accuracy
 settings therefore resolve by stable `service_period_key`, not by display label
 or by the old canonical trio. The hardcoded `covers_source_lunch` /
-`covers_source_dinner` / `covers_source_late_night` shape is now legacy
-wire compatibility only. New implementation work must use
-`covers_source_per_service_period`; compatibility routes may still accept the
-old fields until a staged retirement pass proves no active client path depends
-on them.
+`covers_source_dinner` / `covers_source_late_night` write shape is retired.
+New implementation work must use `covers_source_per_service_period`; routes
+that receive the old fields fail closed with HTTP 410. The period keys
+`lunch`, `dinner`, and `late_night` remain valid configured service-period
+keys inside the keyed map.
 
 The V1 implementation target for covers-source selection is a keyed child
 table:
