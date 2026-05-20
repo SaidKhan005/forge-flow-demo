@@ -650,6 +650,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     });
   }
 
+  void _openBusinessTimingFromAccount() {
+    setState(() {
+      _selectedNavId = kOperatorWebNavBusinessSetup;
+      _editingBusinessTiming = _webBusinessTimingGateway != null;
+      _scrollDataAccuracyWageAuthorityOnFirstBuild = false;
+      _scrollMyAccountSecurityOnFirstBuild = false;
+      _rolesSubRoute = null;
+      _rolesEditTarget = null;
+    });
+  }
+
   void _selectManagementScope(String key) {
     if (_selectedManagementScopeKey == key) return;
     setState(() {
@@ -1851,6 +1862,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         body = AccountScreen(
           session: session,
           gateway: _webAccountGateway,
+          onOpenBusinessTiming: _openBusinessTimingFromAccount,
           // Wave 2 U-FU-hp11-account — forward the shell's current
           // Managing scope so the screen can render the HP #11
           // Selected scope / Inherited from / Effective value triple

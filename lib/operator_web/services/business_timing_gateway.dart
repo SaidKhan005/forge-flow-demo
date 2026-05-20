@@ -115,7 +115,7 @@ class DemoBusinessTimingGateway implements BusinessTimingGateway {
       locationId: locationId,
       operatorName: opName,
       locationName: locName,
-      effectiveDateLabel: 'Effective now',
+      effectiveDateLabel: 'Timing active now',
       hasLocationOverride: false,
       writesAvailable: false,
       inheritanceChain: <BusinessTimingScopeSummary>[

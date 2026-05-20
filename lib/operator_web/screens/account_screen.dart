@@ -2,7 +2,7 @@
 //
 // Sibling to MyAccountScreen (sign-in identity / MFA / password / T&Cs).
 // This screen owns the business-identity surface: business name, logo,
-// currency, locale, and week-start day. Legacy rollover values remain
+// currency, locale, and week-start day. Business day rollover values remain
 // readable for compatibility, but Business Timing owns edits to
 // business-day start. Every write goes
 // through `WebAccountGateway.patchAccount` against the operator-scoped
@@ -55,6 +55,7 @@ import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
 import '../widgets/business_logo_upload_section.dart';
 import '../widgets/hierarchy_scope_notice.dart';
+import '../widgets/operator_web_section_heading.dart';
 import '../widgets/web_app_shell.dart';
 
 // G7d (spec §2.B/§3): v2 catalog constants. Phantom
@@ -76,6 +77,7 @@ class AccountScreen extends StatefulWidget {
     this.logoUploadGateway,
     this.logoFilePicker,
     this.selectedScope,
+    this.onOpenBusinessTiming,
   });
 
   final OperatorWebSession session;
@@ -96,6 +98,9 @@ class AccountScreen extends StatefulWidget {
   /// leaves null and the upload section uses the conditional-imported
   /// web picker.
   final BusinessLogoFilePickerFn? logoFilePicker;
+
+  /// Opens the Business Timing surface from read-only timing summaries.
+  final VoidCallback? onOpenBusinessTiming;
 
   /// Wave 2 U-FU-hp11-account — current management scope from the
   /// shell's top-bar Managing picker. When null (no router wiring,
@@ -180,7 +185,7 @@ class AccountScreen extends StatefulWidget {
   ///     business default value the operator is reading.
   ///
   /// [businessDefaultDisplay] is the rendered string for the cluster
-  /// (e.g. "USD / en-US" for region; "04:00 local" for legacy rollover; an
+  /// (e.g. "USD / en-US" for region; "04:00 local" for business day rollover; an
   /// "ops@example.com" line for identity contact).
   /// [overrideIsSet] is true when at least one column in the field
   /// cluster has a non-null override in the loaded envelope.
@@ -604,7 +609,7 @@ class _AccountScreenState extends State<AccountScreen> {
             overrides.override.localeCode != null);
     // `U-FU-hp11-account-demo-defaults` (2026-05-14): defend against
     // null session values so a brand-new operator (no projected
-    // currency / locale / legacy rollover yet) sees "no currency" /
+    // currency / locale / business day rollover yet) sees "no currency" /
     // "no rollover hour" instead of literal "null". The non-overrides
     // branch above already handles this via `?? "no currency"`; mirror
     // it here for the session-fallback branch.
@@ -715,6 +720,7 @@ class _AccountScreenState extends State<AccountScreen> {
             inheritedLabel: businessDayInheritedLabel,
             backendOnlyExplainer: widget
                 .backendOnlyExplainerForBusinessDefault(),
+            onOpenBusinessTiming: widget.onOpenBusinessTiming,
           ),
           const SizedBox(height: 14),
           _LocationTimezoneSection(
@@ -1043,12 +1049,8 @@ class _BusinessIdentitySection extends StatelessWidget {
         : 'Business name is ${businessNameController.text.trim()}.';
     return _Card(
       cardKey: const Key('operator_web_account_section_identity'),
-      icon: Icons.badge_outlined,
       title: 'Business identity',
-      subtitle:
-          'How your business shows up across Forge & Flow. The name '
-          'appears on every dashboard heading; the logo shows in the '
-          'console header and the mobile app header.',
+      subtitle: '',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1061,6 +1063,11 @@ class _BusinessIdentitySection extends StatelessWidget {
             backendOnlyExplainer: backendOnlyExplainer,
           ),
           const SizedBox(height: 12),
+          const _AccountSubheading(
+            title: 'How your business shows up across Forge & Flow',
+            body: 'The name appears on every dashboard heading.',
+          ),
+          const SizedBox(height: 10),
           TextField(
             key: const Key('operator_web_account_business_name'),
             controller: businessNameController,
@@ -1083,6 +1090,12 @@ class _BusinessIdentitySection extends StatelessWidget {
           // path. After a successful upload the resulting URL is
           // copied into [logoUrlController] and the regular Save
           // button persists it.
+          const _AccountSubheading(
+            title: 'Logo',
+            body:
+                'The logo shows in the console header and the mobile app header.',
+          ),
+          const SizedBox(height: 10),
           BusinessLogoUploadSection(
             gateway: logoUploadGateway,
             enabled: nameAndLogoEnabled,
@@ -1090,6 +1103,10 @@ class _BusinessIdentitySection extends StatelessWidget {
             filePicker: logoFilePicker,
           ),
           const SizedBox(height: 10),
+          const _AccountSubheading(
+            title: 'Paste a public https link to your logo',
+          ),
+          const SizedBox(height: 8),
           TextField(
             key: const Key('operator_web_account_logo_url'),
             controller: logoUrlController,
@@ -1100,9 +1117,7 @@ class _BusinessIdentitySection extends StatelessWidget {
             decoration: const InputDecoration(
               labelText: 'Logo URL (https only)',
               border: OutlineInputBorder(),
-              helperText:
-                  'Or paste a public https link to your logo. Leave '
-                  'empty to clear it.',
+              helperText: 'Leave empty to clear it.',
             ),
             onChanged: (_) => onChanged(),
           ),
@@ -1117,6 +1132,8 @@ class _BusinessIdentitySection extends StatelessWidget {
           // route accepts both; the schema's NULL columns inherit
           // the business default.
           const SizedBox(height: 14),
+          const _AccountSubheading(title: 'Contact'),
+          const SizedBox(height: 10),
           TextField(
             key: const Key('operator_web_account_contact_email'),
             controller: contactEmailController,
@@ -1127,10 +1144,6 @@ class _BusinessIdentitySection extends StatelessWidget {
             decoration: const InputDecoration(
               labelText: 'Contact email',
               border: OutlineInputBorder(),
-              helperText:
-                  'Address Forge & Flow uses for support escalations '
-                  'and account updates. Leave empty to inherit the '
-                  'business default.',
             ),
             onChanged: (_) => onChanged(),
           ),
@@ -1145,14 +1158,86 @@ class _BusinessIdentitySection extends StatelessWidget {
             decoration: const InputDecoration(
               labelText: 'Contact phone',
               border: OutlineInputBorder(),
-              helperText:
-                  'Phone Forge & Flow uses for urgent issues. Leave '
-                  'empty to inherit the business default.',
             ),
             onChanged: (_) => onChanged(),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AccountSubheading extends StatelessWidget {
+  const _AccountSubheading({required this.title, this.body});
+
+  final String title;
+  final String? body;
+
+  @override
+  Widget build(BuildContext context) {
+    final bodyText = body;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          title,
+          style: AppTextStyles.mono14(
+            color: AppColors.textPrimary,
+            weight: FontWeight.w700,
+          ),
+        ),
+        if (bodyText != null && bodyText.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 3),
+          Text(
+            bodyText,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _BusinessTimingLinkedText extends StatelessWidget {
+  const _BusinessTimingLinkedText({
+    required this.textBeforeLink,
+    required this.linkKey,
+    this.onOpenBusinessTiming,
+  });
+
+  final String textBeforeLink;
+  final Key linkKey;
+  final VoidCallback? onOpenBusinessTiming;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 4,
+      runSpacing: 0,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: <Widget>[
+        Text(
+          textBeforeLink,
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        TextButton(
+          key: linkKey,
+          onPressed: onOpenBusinessTiming,
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.sunsetDark,
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
+          child: Text(
+            'Business Timing.',
+            style: AppTextStyles.body13(
+              color: AppColors.sunsetDark,
+            ).copyWith(decoration: TextDecoration.underline),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1195,8 +1280,7 @@ class _LogoPreview extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Logo preview. Forge & Flow loads it directly from the URL '
-              'you paste; the proxy never proxies images.',
+              'Logo preview',
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ),
@@ -1248,7 +1332,6 @@ class _RegionSection extends StatelessWidget {
         'Currency is $currencyDisplay; locale is $localeDisplay.';
     return _Card(
       cardKey: const Key('operator_web_account_section_region'),
-      icon: Icons.public_outlined,
       title: 'Region and formatting',
       subtitle:
           'Currency drives every dollar amount you see. Locale drives '
@@ -1311,6 +1394,7 @@ class _BusinessDaySection extends StatelessWidget {
     required this.rolloverHour,
     required this.scopeLevel,
     required this.scopeName,
+    this.onOpenBusinessTiming,
     this.inheritedLabel,
     this.backendOnlyExplainer,
   });
@@ -1322,6 +1406,7 @@ class _BusinessDaySection extends StatelessWidget {
   /// rationale.
   final HierarchyScopeLevel scopeLevel;
   final String scopeName;
+  final VoidCallback? onOpenBusinessTiming;
   final String? inheritedLabel;
   final String? backendOnlyExplainer;
 
@@ -1334,16 +1419,14 @@ class _BusinessDaySection extends StatelessWidget {
         ? 'no rollover hour on file'
         : '${rolloverHour!.toString().padLeft(2, '0')}:00 local';
     final businessDayValueSummary =
-        'Week starts $weekStartDisplay. Legacy rollover is '
+        'Week starts $weekStartDisplay. Business day rollover is '
         '$rolloverDisplay.';
     return _Card(
       cardKey: const Key('operator_web_account_section_business_day'),
-      icon: Icons.calendar_today_outlined,
       title: 'Business week',
       subtitle:
           'Forge & Flow groups your data by business day. Business '
-          'Timing now owns the business-day start, so edit that timing '
-          'profile there when late-night service needs a different day.',
+          'Timing owns the business day start.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1375,18 +1458,21 @@ class _BusinessDaySection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'Week starts $weekStartDisplay. Edit this in Business '
-                  'Timing so week start, business-day start, and service '
-                  'periods stay together.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                _BusinessTimingLinkedText(
+                  textBeforeLink: 'Week starts $weekStartDisplay. Edit this in',
+                  linkKey: const Key(
+                    'operator_web_account_week_start_business_timing_link',
+                  ),
+                  onOpenBusinessTiming: onOpenBusinessTiming,
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
           Container(
-            key: const Key('operator_web_account_legacy_rollover_readonly'),
+            key: const Key(
+              'operator_web_account_business_day_rollover_readonly',
+            ),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.backgroundMid,
@@ -1397,17 +1483,21 @@ class _BusinessDaySection extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Legacy rollover',
+                  'Business day rollover',
                   style: AppTextStyles.mono14(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  '$rolloverDisplay. Edit business-day start in Business '
-                  'Timing.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                _BusinessTimingLinkedText(
+                  textBeforeLink:
+                      '$rolloverDisplay. Sales before that time count '
+                      'toward the prior business day. Edit this in',
+                  linkKey: const Key(
+                    'operator_web_account_rollover_business_timing_link',
+                  ),
+                  onOpenBusinessTiming: onOpenBusinessTiming,
                 ),
               ],
             ),
@@ -1483,7 +1573,6 @@ class _LocationTimezoneSection extends StatelessWidget {
     final hasEffective = effectiveValue.isNotEmpty;
     return _Card(
       cardKey: const Key('operator_web_account_section_location_timezone'),
-      icon: Icons.schedule_outlined,
       title: 'Location timezone',
       subtitle:
           'Forge & Flow groups every shift, week, and weekly plan into '
@@ -1648,14 +1737,12 @@ class _LocationTimezoneSection extends StatelessWidget {
 class _Card extends StatelessWidget {
   const _Card({
     required this.cardKey,
-    required this.icon,
     required this.title,
     required this.subtitle,
     required this.child,
   });
 
   final Key cardKey;
-  final IconData icon;
   final String title;
   final String subtitle;
   final Widget child;
@@ -1673,26 +1760,14 @@ class _Card extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: AppColors.sunsetDark),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
+          OperatorWebSectionHeading(title: title),
+          if (subtitle.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              subtitle,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ],
           const SizedBox(height: 14),
           child,
         ],

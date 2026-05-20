@@ -21,9 +21,7 @@ void main() {
     });
   }
 
-  testWidgets('renders inherited effective timing demo data for owners', (
-    tester,
-  ) async {
+  testWidgets('renders inherited timing demo data for owners', (tester) async {
     await sizeViewport(tester);
 
     await tester.pumpWidget(
@@ -95,6 +93,13 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_reset_button')),
       findsNothing,
     );
+    expect(find.text('Where this location sits'), findsOneWidget);
+    expect(find.text('Where timing comes from'), findsOneWidget);
+    expect(find.text('Timing in use'), findsOneWidget);
+    expect(find.text('Edit time settings'), findsOneWidget);
+    expect(find.text('Schedule future timing'), findsOneWidget);
+    expect(find.text('Live editor'), findsNothing);
+    expect(find.text('Read-only preview'), findsNothing);
 
     await tester.tap(
       find.byKey(const Key('operator_web_business_timing_edit_button')),
@@ -105,7 +110,7 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_safe_dialog')),
       findsOneWidget,
     );
-    expect(find.text('Timing edits are read-only here'), findsOneWidget);
+    expect(find.text('Timing changes are unavailable here'), findsOneWidget);
     expect(
       find.textContaining('disabled in this demo preview'),
       findsOneWidget,
@@ -113,9 +118,7 @@ void main() {
     expect(find.textContaining('Nothing was changed'), findsOneWidget);
   });
 
-  testWidgets('location managers get read-only effective timing', (
-    tester,
-  ) async {
+  testWidgets('location managers can view location timing', (tester) async {
     await sizeViewport(tester);
 
     await tester.pumpWidget(
@@ -140,6 +143,8 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_edit_controls')),
       findsNothing,
     );
+    expect(find.textContaining('view this location\'s timing'), findsOneWidget);
+    expect(find.textContaining('view effective timing'), findsNothing);
   });
 
   testWidgets('schedule timing uses the router callback when available', (

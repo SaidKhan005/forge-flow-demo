@@ -793,7 +793,8 @@ void main() {
         find.byKey(const Key('operator_web_business_setup_screen')),
         findsOneWidget,
       );
-      expect(find.text('Live editor'), findsOneWidget);
+      expect(find.text('Live editor'), findsNothing);
+      expect(find.text('Read-only preview'), findsNothing);
       expect(
         find.byKey(const Key('operator_web_business_timing_safe_dialog')),
         findsNothing,
