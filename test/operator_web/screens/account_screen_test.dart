@@ -212,6 +212,16 @@ Future<void> _sizeViewport(WidgetTester tester) async {
   });
 }
 
+Future<void> _openScopeDetails(WidgetTester tester) async {
+  await tester.ensureVisible(
+    find.byKey(const Key('operator_web_account_scope_details_toggle')),
+  );
+  await tester.tap(
+    find.byKey(const Key('operator_web_account_scope_details_toggle')),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('renders the three identity sections + Save', (tester) async {
     await _sizeViewport(tester);
@@ -296,9 +306,8 @@ void main() {
       find.byKey(const Key('operator_web_account_business_name')),
       'Brio Restaurants',
     );
-    // Wave 2 U-FU-hp11-account — three new HP #11 scope notices
-    // pushed the Save button below the 1600px viewport; scroll it
-    // into view before tapping.
+    // The Account screen is long enough that Save may sit below the
+    // 1600px viewport; scroll it into view before tapping.
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_account_save')),
     );
@@ -330,8 +339,8 @@ void main() {
     await tester.pumpWidget(
       wrap(AccountScreen(session: session, gateway: gateway)),
     );
-    // Wave 2 U-FU-hp11-account — scope notices pushed Save out of
-    // the default viewport; scroll first.
+    // The Account screen is long enough that Save may sit below the
+    // default viewport; scroll first.
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_account_save')),
     );
@@ -348,7 +357,7 @@ void main() {
   // Wave 2 W-6 — timezone section coverage.
 
   testWidgets(
-    'timezone section renders with HP #11 scope notice + effective value',
+    'timezone section renders with account scope summary + current value',
     (tester) async {
       await _sizeViewport(tester);
       final session = sessionWithRole('operator_owner');
@@ -360,11 +369,16 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('operator_web_account_timezone_scope')),
+        find.byKey(const Key('operator_web_account_scope_summary')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('operator_web_account_timezone_scope_scope_pill')),
+        find.byKey(const Key('operator_web_account_scope_pill')),
+        findsOneWidget,
+      );
+      await _openScopeDetails(tester);
+      expect(
+        find.byKey(const Key('operator_web_account_timezone_scope_summary')),
         findsOneWidget,
       );
       expect(
@@ -375,12 +389,11 @@ void main() {
         find.byKey(const Key('operator_web_account_timezone_save')),
         findsOneWidget,
       );
-      // HP #11 effective row carries the seeded America/Toronto value.
       expect(find.textContaining('America/Toronto'), findsWidgets);
     },
   );
 
-  testWidgets('timezone save refreshes the hierarchy source wording', (
+  testWidgets('timezone save refreshes the summary source wording', (
     tester,
   ) async {
     await _sizeViewport(tester);
@@ -396,16 +409,18 @@ void main() {
     await tester.pumpWidget(
       wrap(AccountScreen(session: session, gateway: gateway)),
     );
+    await _openScopeDetails(tester);
     expect(
       find.descendant(
-        of: find.byKey(const Key('operator_web_account_timezone_scope')),
-        matching: find.text(savedSourceLabel),
+        of: find.byKey(
+          const Key('operator_web_account_timezone_scope_summary'),
+        ),
+        matching: find.text(savedSourceLabel, findRichText: true),
       ),
       findsOneWidget,
     );
-    // Wave 2 U-FU-hp11-account — three new HP #11 notices pushed
-    // the timezone shortlist below the 1600px viewport; scroll it
-    // into view before driving the dropdown.
+    // The Account screen is long enough that the timezone shortlist
+    // may sit below the viewport; scroll it into view first.
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_account_timezone_shortlist')),
     );
@@ -420,8 +435,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.descendant(
-        of: find.byKey(const Key('operator_web_account_timezone_scope')),
-        matching: find.text(unsavedSourceLabel),
+        of: find.byKey(
+          const Key('operator_web_account_timezone_scope_summary'),
+        ),
+        matching: find.text(unsavedSourceLabel, findRichText: true),
       ),
       findsOneWidget,
     );
@@ -443,15 +460,19 @@ void main() {
     );
     expect(
       find.descendant(
-        of: find.byKey(const Key('operator_web_account_timezone_scope')),
-        matching: find.text(unsavedSourceLabel),
+        of: find.byKey(
+          const Key('operator_web_account_timezone_scope_summary'),
+        ),
+        matching: find.text(unsavedSourceLabel, findRichText: true),
       ),
       findsNothing,
     );
     expect(
       find.descendant(
-        of: find.byKey(const Key('operator_web_account_timezone_scope')),
-        matching: find.text(savedSourceLabel),
+        of: find.byKey(
+          const Key('operator_web_account_timezone_scope_summary'),
+        ),
+        matching: find.text(savedSourceLabel, findRichText: true),
       ),
       findsOneWidget,
     );
@@ -471,9 +492,8 @@ void main() {
     await tester.pumpWidget(
       wrap(AccountScreen(session: session, gateway: gateway)),
     );
-    // Wave 2 U-FU-hp11-account — three new HP #11 scope notices
-    // pushed the timezone save button below the 1600px viewport.
-    // Scroll it into view before tapping.
+    // The Account screen is long enough that the timezone save button
+    // may sit below the viewport; scroll it into view before tapping.
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_account_timezone_save')),
     );
@@ -503,6 +523,7 @@ void main() {
       await tester.pumpWidget(
         wrap(AccountScreen(session: session, gateway: _FakeAccountGateway())),
       );
+      await _openScopeDetails(tester);
       expect(
         find.text('No timezone is on file. Set one to lock daily timing.'),
         findsOneWidget,
@@ -510,11 +531,10 @@ void main() {
     },
   );
 
-  // Wave 2 U-FU-hp11-account — HP #11 (Selected scope / Inherited
-  // from / Effective value) coverage for the three operator-set
-  // sections: Business identity, Region, Business day.
+  // Wave 2 U-FU-hp11-account: HP #11 selected scope, source, and
+  // current value coverage for the Account screen summary panel.
 
-  group('HP #11 scope notices', () {
+  group('HP #11 scope summary', () {
     const businessScope = OperatorWebManagementScopeOption(
       key: 'operator:op-1',
       kind: OperatorWebManagementScopeKind.operator,
@@ -530,50 +550,57 @@ void main() {
       helper: 'Location',
     );
 
-    testWidgets(
-      'Business scope renders Selected/Inherited/Effective without inheritance',
-      (tester) async {
-        await _sizeViewport(tester);
-        final session = sessionWithRole('operator_owner');
-        await tester.pumpWidget(
-          wrap(
-            AccountScreen(
-              session: session,
-              gateway: _FakeAccountGateway(),
-              selectedScope: businessScope,
-            ),
+    testWidgets('Business scope renders summary rows without inheritance', (
+      tester,
+    ) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: _FakeAccountGateway(),
+            selectedScope: businessScope,
           ),
-        );
-        // All three operator-set cards expose the scope notice.
-        expect(
-          find.byKey(const Key('operator_web_account_identity_scope')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('operator_web_account_region_scope')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('operator_web_account_business_day_scope')),
-          findsOneWidget,
-        );
-        // "Set here" (no inheritance) is rendered for every card at
-        // Business scope (Business identity + Region + Business day),
-        // plus the pre-existing Location-scoped timezone card (Wave 2
-        // W-6) that always renders the same "Set here" copy because
-        // timezone lives on `locations.timezone` natively.
-        expect(
-          find.text('Set here. Does not inherit from a higher scope.'),
-          findsNWidgets(4),
-        );
-        // Save stays enabled at Business scope when the gateway is
-        // wired + the operator has edit permission.
-        final saveButton = tester.widget<ButtonStyleButton>(
-          find.byKey(const Key('operator_web_account_save')),
-        );
-        expect(saveButton.onPressed, isNotNull);
-      },
-    );
+        ),
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_scope_summary')),
+        findsOneWidget,
+      );
+      await _openScopeDetails(tester);
+      expect(
+        find.byKey(const Key('operator_web_account_identity_scope_summary')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_region_scope_summary')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_account_business_day_scope_summary'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_timezone_scope_summary')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Set here. Does not inherit from a higher scope.',
+          findRichText: true,
+        ),
+        findsNWidgets(4),
+      );
+      // Save stays enabled at Business scope when the gateway is
+      // wired + the operator has edit permission.
+      final saveButton = tester.widget<ButtonStyleButton>(
+        find.byKey(const Key('operator_web_account_save')),
+      );
+      expect(saveButton.onPressed, isNotNull);
+    });
 
     testWidgets(
       'Location scope with no override renders the inheritance line + '
@@ -593,10 +620,13 @@ void main() {
         );
         // Let the post-frame loadLocationOverrides round-trip settle.
         await tester.pumpAndSettle();
-        // The three operator-set cards show an inheritance copy
-        // carrying the business default value.
+        await _openScopeDetails(tester);
+        // The summary rows show inheritance copy carrying the business default.
         expect(
-          find.textContaining('Inherits the business default from Business:'),
+          find.textContaining(
+            'Inherits the business default from Business:',
+            findRichText: true,
+          ),
           findsNWidgets(3),
         );
         // The backend-only explainer is NO LONGER rendered at Location
@@ -661,18 +691,17 @@ void main() {
       await tester.tap(find.text('Euro (EUR)').last);
       await tester.pumpAndSettle();
 
+      await _openScopeDetails(tester);
       expect(
         find.text(
           'Unsaved change here. Save to set these region settings at '
           'Location: Brio Main.',
+          findRichText: true,
         ),
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: find.byKey(const Key('operator_web_account_region_scope')),
-          matching: find.text('Source'),
-        ),
+        find.byKey(const Key('operator_web_account_region_scope_summary')),
         findsOneWidget,
       );
 
@@ -686,12 +715,85 @@ void main() {
       expect(gateway.overridesPatchCalls.single.patch.currencyCode, 'EUR');
       expect(
         find.descendant(
-          of: find.byKey(const Key('operator_web_account_region_scope')),
-          matching: find.textContaining('Set here at Brio Main.'),
+          of: find.byKey(
+            const Key('operator_web_account_region_scope_summary'),
+          ),
+          matching: find.textContaining(
+            'Set here at Brio Main.',
+            findRichText: true,
+          ),
         ),
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'Location scope contact source updates while draft is unsaved',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+        final session = sessionWithRole('operator_owner');
+        final gateway = _FakeAccountGateway();
+        await tester.pumpWidget(
+          wrap(
+            AccountScreen(
+              session: session,
+              gateway: gateway,
+              selectedScope: locationScope,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _openScopeDetails(tester);
+
+        await tester.ensureVisible(
+          find.byKey(const Key('operator_web_account_contact_email')),
+        );
+        await tester.enterText(
+          find.byKey(const Key('operator_web_account_contact_email')),
+          'ops@brio-main.com',
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const Key('operator_web_account_identity_scope_summary'),
+            ),
+            matching: find.text(
+              'Unsaved change here. Save to set these contact details at '
+              'Location: Brio Main.',
+              findRichText: true,
+            ),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.ensureVisible(
+          find.byKey(const Key('operator_web_account_save')),
+        );
+        await tester.tap(find.byKey(const Key('operator_web_account_save')));
+        await tester.pumpAndSettle();
+
+        expect(gateway.overridesPatchCalls, hasLength(1));
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const Key('operator_web_account_identity_scope_summary'),
+            ),
+            matching: find.textContaining(
+              'Set here at Brio Main.',
+              findRichText: true,
+            ),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('Location scope save round-trips an override patch through the '
         'gateway', (tester) async {
@@ -788,19 +890,25 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // The region card carries the "Set here at <location>. Business
-      // default: <value>." copy because the override row is on file
-      // for currency + locale.
-      expect(find.textContaining('Set here at Brio Main.'), findsWidgets);
-      // At least one card surfaces the business default value
+      await _openScopeDetails(tester);
+      // The region summary carries the "Set here at <location>. Business
+      // default: <value>." copy because the override row is on file.
+      expect(
+        find.textContaining('Set here at Brio Main.', findRichText: true),
+        findsWidgets,
+      );
+      // At least one summary row surfaces the business default value
       // alongside the override.
       expect(
-        find.textContaining('Business default: USD / en-US'),
+        find.textContaining(
+          'Business default: USD / en-US',
+          findRichText: true,
+        ),
         findsWidgets,
       );
     });
 
-    testWidgets('Region card carries the effective value summary', (
+    testWidgets('Region scope row carries the current value summary', (
       tester,
     ) async {
       await _sizeViewport(tester);
@@ -814,11 +922,12 @@ void main() {
           ),
         ),
       );
+      await _openScopeDetails(tester);
       expect(find.textContaining('Currency is USD'), findsWidgets);
       expect(find.textContaining('locale is en-US'), findsWidgets);
     });
 
-    testWidgets('Business day card carries the effective value summary', (
+    testWidgets('Business day scope row carries the current value summary', (
       tester,
     ) async {
       await _sizeViewport(tester);
@@ -832,6 +941,7 @@ void main() {
           ),
         ),
       );
+      await _openScopeDetails(tester);
       expect(find.textContaining('Week starts Monday'), findsWidgets);
       expect(
         find.byKey(

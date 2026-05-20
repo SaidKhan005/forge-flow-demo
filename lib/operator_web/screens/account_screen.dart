@@ -18,21 +18,21 @@
 // the operator. Plain English, em-dash-free.
 //
 // Wave 2 U-FU-hp11-account — HP #11 (`CLAUDE.md` Hard Promise #11)
-// requires every settings surface to show Selected scope / Inherited
-// from / Effective value. The shell's top-bar Managing picker drives
-// the active scope; the router forwards the choice here through
+// requires every settings surface to show selected scope, source, and
+// current value. The shell's top-bar Managing picker drives the active
+// scope; the router forwards the choice here through
 // [AccountScreen.selectedScope]. Per the operator decision logged
 // 2026-05-14, business account settings are "per-location with
 // business-wide fallback":
 //
 //   * Business scope selected — the operator edits the business
-//     defaults. Each card's notice says "Set here. Does not inherit
+//     defaults. The summary panel says "Set here. Does not inherit
 //     from a higher scope." Edit affordances stay live. Saves go to
 //     PATCH /v1/operator/account (the existing operator-level write).
 //   * Location scope selected — the screen loads the per-location
 //     override row from
 //     `GET /v1/operator/location-account-overrides/<location_id>` on
-//     mount. Each card's notice surfaces:
+//     mount. The summary panel surfaces:
 //       - the override value when set ("Set here at <location>.
 //         Business default: <value>"), OR
 //       - the inheritance line when no override is set ("Inherits the
@@ -106,8 +106,8 @@ class AccountScreen extends StatefulWidget {
   /// shell's top-bar Managing picker. When null (no router wiring,
   /// older test, or isolated preview), the screen assumes Business
   /// scope so existing affordances render and edits stay live. HP #11
-  /// honours the operator's selected scope by rendering the per-card
-  /// inheritance notice + gating edits when the schema does not yet
+  /// honours the operator's selected scope by rendering the summary
+  /// source lines + gating edits when the schema does not yet
   /// support per-scope overrides.
   final OperatorWebManagementScopeOption? selectedScope;
 
@@ -613,7 +613,7 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Wave 2 U-FU-hp11-account — per-card edits enabled at Business
+    // Wave 2 U-FU-hp11-account — edits enabled at Business
     // scope (writes the operator-level row) and at Location scope
     // (writes the per-location override row). Other non-business
     // scopes (org units) stay disabled until the override surface
@@ -634,7 +634,7 @@ class _AccountScreenState extends State<AccountScreen> {
         widget.canEdit &&
         !_submitting &&
         (scopeIsLocation || !scopeBelowBusiness);
-    // Helpers for the new per-card inheritance line. At Business scope
+    // Helpers for the Account scope summary source lines. At Business scope
     // the helper returns null (no inheritance), so the notice falls
     // back to "Set here. Does not inherit from a higher scope."
     final overrides = _locationOverrides;
@@ -704,6 +704,9 @@ class _AccountScreenState extends State<AccountScreen> {
       overrideIsSet: identityOverrideSet,
       businessDefaultDisplay: identityBusinessDefault,
     );
+    final identitySourceLabel = identityDraftChanged
+        ? _unsavedSourceLabel('these contact details')
+        : identityInheritedLabel;
     final regionInheritedLabel = regionDraftChanged
         ? _unsavedSourceLabel('these region settings')
         : widget.inheritedLabelFor(
@@ -714,6 +717,37 @@ class _AccountScreenState extends State<AccountScreen> {
       overrideIsSet: businessDayOverrideSet,
       businessDefaultDisplay: businessDayBusinessDefault,
     );
+    final identityValueSummary = _businessName.text.trim().isEmpty
+        ? 'Business name is not on file yet.'
+        : 'Business name is ${_businessName.text.trim()}.';
+    final currencyDisplay = _currencyCode == null || _currencyCode!.isEmpty
+        ? 'no currency on file'
+        : _currencyCode!;
+    final localeDisplay = _localeTag == null || _localeTag!.isEmpty
+        ? 'no locale on file'
+        : _localeTag!;
+    final regionValueSummary =
+        'Currency is $currencyDisplay; locale is $localeDisplay.';
+    final weekStartDisplay = _weekStartDay == null || _weekStartDay!.isEmpty
+        ? 'no first day of week on file'
+        : _BusinessDaySection.titleCase(_weekStartDay!);
+    final rolloverDisplay = _rolloverHour == null
+        ? 'no rollover hour on file'
+        : '${_rolloverHour!.toString().padLeft(2, '0')}:00 local';
+    final businessDayValueSummary =
+        'Week starts $weekStartDisplay. Business day rollover is '
+        '$rolloverDisplay.';
+    final timezoneEffectiveValue = _effectiveTimezoneValue();
+    final timezoneInheritedLabel =
+        _draftDiffers(timezoneEffectiveValue, _savedTimezoneValue)
+        ? 'Unsaved change here. Save timezone to set it at Location: '
+              '${widget.session.primaryLocationName}.'
+        : null;
+    final timezoneValueSummary = timezoneEffectiveValue.isNotEmpty
+        ? 'This location uses $timezoneEffectiveValue.'
+        : 'No timezone is on file. Set one to lock daily timing.';
+    final backendOnlyExplainer = widget
+        .backendOnlyExplainerForBusinessDefault();
     return SingleChildScrollView(
       key: const Key('operator_web_account_screen'),
       padding: const EdgeInsets.all(28),
@@ -734,6 +768,38 @@ class _AccountScreenState extends State<AccountScreen> {
               message: _locationOverridesLoadError!,
             ),
           if (_locationOverridesLoadError != null) const SizedBox(height: 14),
+          _AccountScopeSummaryPanel(
+            scopeLevel: widget.scopeLevel,
+            scopeName: widget.scopeName,
+            backendOnlyExplainer: backendOnlyExplainer,
+            rows: <_AccountScopeSummaryRow>[
+              _AccountScopeSummaryRow(
+                keyName: 'operator_web_account_identity_scope_summary',
+                title: 'Business identity',
+                source: _sourceLabel(identitySourceLabel),
+                value: identityValueSummary,
+              ),
+              _AccountScopeSummaryRow(
+                keyName: 'operator_web_account_region_scope_summary',
+                title: 'Region and formatting',
+                source: _sourceLabel(regionInheritedLabel),
+                value: regionValueSummary,
+              ),
+              _AccountScopeSummaryRow(
+                keyName: 'operator_web_account_business_day_scope_summary',
+                title: 'Business week',
+                source: _sourceLabel(businessDayInheritedLabel),
+                value: businessDayValueSummary,
+              ),
+              _AccountScopeSummaryRow(
+                keyName: 'operator_web_account_timezone_scope_summary',
+                title: 'Location timezone',
+                source: _sourceLabel(timezoneInheritedLabel),
+                value: timezoneValueSummary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           _BusinessIdentitySection(
             businessNameController: _businessName,
             logoUrlController: _logoUrl,
@@ -757,13 +823,6 @@ class _AccountScreenState extends State<AccountScreen> {
                 _logoUrl.text = url;
               });
             },
-            scopeLevel: widget.scopeLevel,
-            scopeName: widget.scopeName,
-            inheritedLabel: identityDraftChanged
-                ? _unsavedSourceLabel('these contact details')
-                : identityInheritedLabel,
-            backendOnlyExplainer: widget
-                .backendOnlyExplainerForBusinessDefault(),
           ),
           const SizedBox(height: 14),
           _RegionSection(
@@ -774,21 +833,11 @@ class _AccountScreenState extends State<AccountScreen> {
             enabled: regionEnabled,
             onCurrencyChanged: (value) => setState(() => _currencyCode = value),
             onLocaleChanged: (value) => setState(() => _localeTag = value),
-            scopeLevel: widget.scopeLevel,
-            scopeName: widget.scopeName,
-            inheritedLabel: regionInheritedLabel,
-            backendOnlyExplainer: widget
-                .backendOnlyExplainerForBusinessDefault(),
           ),
           const SizedBox(height: 14),
           _BusinessDaySection(
             weekStartDay: _weekStartDay,
             rolloverHour: _rolloverHour,
-            scopeLevel: widget.scopeLevel,
-            scopeName: widget.scopeName,
-            inheritedLabel: businessDayInheritedLabel,
-            backendOnlyExplainer: widget
-                .backendOnlyExplainerForBusinessDefault(),
             onOpenBusinessTiming: widget.onOpenBusinessTiming,
           ),
           const SizedBox(height: 14),
@@ -802,12 +851,6 @@ class _AccountScreenState extends State<AccountScreen> {
             submitting: _timezoneSubmitting,
             errorMessage: _timezoneErrorMessage,
             successMessage: _timezoneSuccessMessage,
-            effectiveValue: _effectiveTimezoneValue(),
-            inheritedLabel:
-                _draftDiffers(_effectiveTimezoneValue(), _savedTimezoneValue)
-                ? 'Unsaved change here. Save timezone to set it at Location: '
-                      '${widget.session.primaryLocationName}.'
-                : null,
             onShortlistChanged: (value) =>
                 setState(() => _selectedTimezone = value),
             onCustomChanged: () => setState(() {}),
@@ -908,6 +951,10 @@ class _AccountScreenState extends State<AccountScreen> {
         ],
       ),
     );
+  }
+
+  static String _sourceLabel(String? inheritedLabel) {
+    return inheritedLabel ?? 'Set here. Does not inherit from a higher scope.';
   }
 }
 
@@ -1053,6 +1100,321 @@ class _ReadOnlyBanner extends StatelessWidget {
   }
 }
 
+class _AccountScopeSummaryRow {
+  const _AccountScopeSummaryRow({
+    required this.keyName,
+    required this.title,
+    required this.source,
+    required this.value,
+  });
+
+  final String keyName;
+  final String title;
+  final String source;
+  final String value;
+}
+
+class _AccountScopeSummaryPanel extends StatelessWidget {
+  const _AccountScopeSummaryPanel({
+    required this.scopeLevel,
+    required this.scopeName,
+    required this.rows,
+    this.backendOnlyExplainer,
+  });
+
+  final HierarchyScopeLevel scopeLevel;
+  final String scopeName;
+  final List<_AccountScopeSummaryRow> rows;
+  final String? backendOnlyExplainer;
+
+  @override
+  Widget build(BuildContext context) {
+    final scopeLabel = _scopeLabel(scopeLevel);
+    final backendOnly = backendOnlyExplainer;
+    return Container(
+      key: const Key('operator_web_account_scope_summary'),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          OperatorWebSectionHeading(
+            title: 'Where this applies',
+            trailing: _AccountScopePill(
+              keyName: 'operator_web_account_scope_pill',
+              label: scopeLabel,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundMid,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: _AccountScopeDetailLine(
+              keyName: 'operator_web_account_selected_scope_summary',
+              label: 'Selected scope',
+              value: '$scopeLabel: $scopeName',
+            ),
+          ),
+          const SizedBox(height: 6),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              key: const Key('operator_web_account_scope_details_toggle'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(top: 6),
+              visualDensity: VisualDensity.compact,
+              title: Text(
+                'Section details',
+                style: AppTextStyles.body13(
+                  color: AppColors.sunsetDark,
+                ).copyWith(fontWeight: FontWeight.w700),
+              ),
+              children: <Widget>[
+                for (final row in rows) _AccountScopeDetailRow(row: row),
+                if (backendOnly != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  _AccountScopeBackendLine(message: backendOnly),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _scopeLabel(HierarchyScopeLevel level) {
+    switch (level) {
+      case HierarchyScopeLevel.business:
+        return 'Business';
+      case HierarchyScopeLevel.region:
+        return 'Region';
+      case HierarchyScopeLevel.brand:
+        return 'Brand';
+      case HierarchyScopeLevel.location:
+        return 'Location';
+    }
+  }
+}
+
+class _AccountScopePill extends StatelessWidget {
+  const _AccountScopePill({required this.keyName, required this.label});
+
+  final String keyName;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key(keyName),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.sunsetDark.withValues(alpha: 0.10),
+        border: Border.all(
+          color: AppColors.sunsetDark.withValues(alpha: 0.42),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono8(color: AppColors.sunsetDark),
+      ),
+    );
+  }
+}
+
+class _AccountScopeDetailRow extends StatelessWidget {
+  const _AccountScopeDetailRow({required this.row});
+
+  final _AccountScopeSummaryRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key(row.keyName),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: AppColors.borderSubtle, width: 1),
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 560;
+          final source = _AccountScopeEmphasisText(
+            key: Key('${row.keyName}_source'),
+            text: row.source,
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          );
+          final value = Text(
+            row.value,
+            key: Key('${row.keyName}_value'),
+            style: AppTextStyles.body12(color: AppColors.textPrimary),
+          );
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  row.title,
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                source,
+                const SizedBox(height: 3),
+                value,
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SizedBox(
+                width: 160,
+                child: Text(
+                  row.title,
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: source),
+              const SizedBox(width: 12),
+              Expanded(child: value),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AccountScopeEmphasisText extends StatelessWidget {
+  const _AccountScopeEmphasisText({
+    super.key,
+    required this.text,
+    required this.style,
+  });
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final emphasized = <String>[
+      'Unsaved change here',
+      'Set here',
+      'Inherits',
+      'Business default',
+    ];
+    final children = <TextSpan>[];
+    var index = 0;
+    while (index < text.length) {
+      var nextIndex = text.length;
+      String? nextPhrase;
+      for (final phrase in emphasized) {
+        final phraseIndex = text.indexOf(phrase, index);
+        if (phraseIndex >= 0 && phraseIndex < nextIndex) {
+          nextIndex = phraseIndex;
+          nextPhrase = phrase;
+        }
+      }
+      if (nextPhrase == null) {
+        children.add(TextSpan(text: text.substring(index), style: style));
+        break;
+      }
+      if (nextIndex > index) {
+        children.add(
+          TextSpan(text: text.substring(index, nextIndex), style: style),
+        );
+      }
+      children.add(
+        TextSpan(
+          text: nextPhrase,
+          style: style.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+      index = nextIndex + nextPhrase.length;
+    }
+    return Text.rich(TextSpan(children: children), key: key);
+  }
+}
+
+class _AccountScopeDetailLine extends StatelessWidget {
+  const _AccountScopeDetailLine({
+    required this.keyName,
+    required this.label,
+    required this.value,
+  });
+
+  final String keyName;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: Key(keyName),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: 132,
+          child: Text(
+            label,
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            style: AppTextStyles.body13(color: AppColors.textPrimary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountScopeBackendLine extends StatelessWidget {
+  const _AccountScopeBackendLine({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: const Key('operator_web_account_scope_backend_only'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Icon(Icons.info_outline, size: 14, color: AppColors.textMuted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _BusinessIdentitySection extends StatelessWidget {
   const _BusinessIdentitySection({
     required this.businessNameController,
@@ -1065,12 +1427,8 @@ class _BusinessIdentitySection extends StatelessWidget {
     required this.scopeIsLocation,
     required this.onChanged,
     required this.onLogoUploaded,
-    required this.scopeLevel,
-    required this.scopeName,
     this.logoUploadGateway,
     this.logoFilePicker,
-    this.inheritedLabel,
-    this.backendOnlyExplainer,
   });
 
   final TextEditingController businessNameController;
@@ -1102,25 +1460,8 @@ class _BusinessIdentitySection extends StatelessWidget {
   final BusinessLogoUploadGateway? logoUploadGateway;
   final BusinessLogoFilePickerFn? logoFilePicker;
 
-  /// HP #11 plumbing — current management scope level + display name.
-  final HierarchyScopeLevel scopeLevel;
-  final String scopeName;
-
-  /// HP #11 "Inherited from" line. Null at Business scope; populated
-  /// when the operator picked a lower scope and the screen is reading
-  /// the business default.
-  final String? inheritedLabel;
-
-  /// HP #11 backend-only explainer surfaced below the notice when the
-  /// per-scope override path is not on file yet. Null at Business
-  /// scope.
-  final String? backendOnlyExplainer;
-
   @override
   Widget build(BuildContext context) {
-    final identityValueSummary = businessNameController.text.trim().isEmpty
-        ? 'Business name is not on file yet.'
-        : 'Business name is ${businessNameController.text.trim()}.';
     return _Card(
       cardKey: const Key('operator_web_account_section_identity'),
       title: 'Business identity',
@@ -1128,15 +1469,6 @@ class _BusinessIdentitySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          HierarchyScopeNotice(
-            keyName: 'operator_web_account_identity_scope',
-            selectedScope: scopeLevel,
-            scopeName: scopeName,
-            effectiveValueSummary: identityValueSummary,
-            inheritedFromLabel: inheritedLabel,
-            backendOnlyExplainer: backendOnlyExplainer,
-          ),
-          const SizedBox(height: 12),
           const _AccountSubheading(
             title: 'How your business shows up across Forge & Flow',
             body: 'The name appears on every dashboard heading.',
@@ -1373,10 +1705,6 @@ class _RegionSection extends StatelessWidget {
     required this.enabled,
     required this.onCurrencyChanged,
     required this.onLocaleChanged,
-    required this.scopeLevel,
-    required this.scopeName,
-    this.inheritedLabel,
-    this.backendOnlyExplainer,
   });
 
   final String? currencyCode;
@@ -1387,23 +1715,8 @@ class _RegionSection extends StatelessWidget {
   final ValueChanged<String?> onCurrencyChanged;
   final ValueChanged<String?> onLocaleChanged;
 
-  /// HP #11 plumbing — see [_BusinessIdentitySection] for the long
-  /// rationale.
-  final HierarchyScopeLevel scopeLevel;
-  final String scopeName;
-  final String? inheritedLabel;
-  final String? backendOnlyExplainer;
-
   @override
   Widget build(BuildContext context) {
-    final currencyDisplay = currencyCode == null || currencyCode!.isEmpty
-        ? 'no currency on file'
-        : currencyCode!;
-    final localeDisplay = localeTag == null || localeTag!.isEmpty
-        ? 'no locale on file'
-        : localeTag!;
-    final regionValueSummary =
-        'Currency is $currencyDisplay; locale is $localeDisplay.';
     return _Card(
       cardKey: const Key('operator_web_account_section_region'),
       title: 'Region and formatting',
@@ -1414,15 +1727,6 @@ class _RegionSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          HierarchyScopeNotice(
-            keyName: 'operator_web_account_region_scope',
-            selectedScope: scopeLevel,
-            scopeName: scopeName,
-            effectiveValueSummary: regionValueSummary,
-            inheritedFromLabel: inheritedLabel,
-            backendOnlyExplainer: backendOnlyExplainer,
-          ),
-          const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             key: const Key('operator_web_account_currency'),
             initialValue: currencyCode,
@@ -1466,35 +1770,21 @@ class _BusinessDaySection extends StatelessWidget {
   const _BusinessDaySection({
     required this.weekStartDay,
     required this.rolloverHour,
-    required this.scopeLevel,
-    required this.scopeName,
     this.onOpenBusinessTiming,
-    this.inheritedLabel,
-    this.backendOnlyExplainer,
   });
 
   final String? weekStartDay;
   final int? rolloverHour;
-
-  /// HP #11 plumbing — see [_BusinessIdentitySection] for the long
-  /// rationale.
-  final HierarchyScopeLevel scopeLevel;
-  final String scopeName;
   final VoidCallback? onOpenBusinessTiming;
-  final String? inheritedLabel;
-  final String? backendOnlyExplainer;
 
   @override
   Widget build(BuildContext context) {
     final weekStartDisplay = weekStartDay == null || weekStartDay!.isEmpty
         ? 'no first day of week on file'
-        : _titleCase(weekStartDay!);
+        : titleCase(weekStartDay!);
     final rolloverDisplay = rolloverHour == null
         ? 'no rollover hour on file'
         : '${rolloverHour!.toString().padLeft(2, '0')}:00 local';
-    final businessDayValueSummary =
-        'Week starts $weekStartDisplay. Business day rollover is '
-        '$rolloverDisplay.';
     return _Card(
       cardKey: const Key('operator_web_account_section_business_day'),
       title: 'Business week',
@@ -1504,15 +1794,6 @@ class _BusinessDaySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          HierarchyScopeNotice(
-            keyName: 'operator_web_account_business_day_scope',
-            selectedScope: scopeLevel,
-            scopeName: scopeName,
-            effectiveValueSummary: businessDayValueSummary,
-            inheritedFromLabel: inheritedLabel,
-            backendOnlyExplainer: backendOnlyExplainer,
-          ),
-          const SizedBox(height: 12),
           Container(
             key: const Key('operator_web_account_week_start'),
             padding: const EdgeInsets.all(12),
@@ -1585,7 +1866,7 @@ class _BusinessDaySection extends StatelessWidget {
   /// UX writing standard mandates Title Case in plain-English
   /// summaries. Kept local to this section so the helper does not
   /// leak.
-  static String _titleCase(String value) {
+  static String titleCase(String value) {
     if (value.isEmpty) return value;
     return value[0].toUpperCase() + value.substring(1);
   }
@@ -1593,10 +1874,9 @@ class _BusinessDaySection extends StatelessWidget {
 
 /// Wave 2 W-6 — location timezone editor.
 ///
-/// HP #11: timezone is location-scoped, so the section renders the
-/// scope/inherited-from/effective triple via [HierarchyScopeNotice].
-/// "Set here" because each location stores its own `locations.timezone`
-/// today; there is no business-level rollup yet.
+/// HP #11 scope details for timezone live in the Account screen summary
+/// panel above the editable sections. The editor below stays focused on
+/// the timezone input itself.
 ///
 /// Two input affordances:
 ///   * Shortlist dropdown of common IANA timezones.
@@ -1621,8 +1901,6 @@ class _LocationTimezoneSection extends StatelessWidget {
     required this.submitting,
     required this.errorMessage,
     required this.successMessage,
-    required this.effectiveValue,
-    this.inheritedLabel,
     required this.onShortlistChanged,
     required this.onCustomChanged,
     required this.onSave,
@@ -1637,8 +1915,6 @@ class _LocationTimezoneSection extends StatelessWidget {
   final bool submitting;
   final String? errorMessage;
   final String? successMessage;
-  final String effectiveValue;
-  final String? inheritedLabel;
   final ValueChanged<String?> onShortlistChanged;
   final VoidCallback onCustomChanged;
   final Future<void> Function() onSave;
@@ -1646,7 +1922,6 @@ class _LocationTimezoneSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCustom = selectedValue == customSentinel;
-    final hasEffective = effectiveValue.isNotEmpty;
     return _Card(
       cardKey: const Key('operator_web_account_section_location_timezone'),
       title: 'Location timezone',
@@ -1659,16 +1934,6 @@ class _LocationTimezoneSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          HierarchyScopeNotice(
-            keyName: 'operator_web_account_timezone_scope',
-            selectedScope: HierarchyScopeLevel.location,
-            scopeName: session.primaryLocationName,
-            effectiveValueSummary: hasEffective
-                ? 'This location uses $effectiveValue.'
-                : 'No timezone is on file. Set one to lock daily timing.',
-            inheritedFromLabel: inheritedLabel,
-          ),
-          const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             key: const Key('operator_web_account_timezone_shortlist'),
             initialValue: selectedValue,
