@@ -1437,6 +1437,67 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     );
   }
 
+  /// Build the effective per-location settings view by folding the
+  /// keyed `_servicePeriodSettings` list into
+  /// `settings.coversSourcePerServicePeriod`.
+  ///
+  /// PR #1079 (commit 553fc60a, "Fix data accuracy parity gaps") moved
+  /// `per_location_data_accuracy_table.dart` (lines 389, 431) from
+  /// reading the keyed row's own `coversSource` field to reading
+  /// `row.settings.coversSourceFor(key)` so the table speaks the same
+  /// hierarchy-precedence vocabulary as the rest of the screen. The
+  /// production HTTP path stays coherent because
+  /// `effective_data_accuracy_settings_v` already projects
+  /// `covers_source_per_service_period` from the keyed
+  /// `data_accuracy_service_period_settings` table (R7a migration).
+  /// The in-memory test double has to do the same fold so widget
+  /// tests see what the production read path returns.
+  ///
+  /// Effective row per key = the entry with the most-recent
+  /// effective_at_business_date that is not in the future relative to
+  /// the entries we hold. The list is pre-sorted (key asc, effective
+  /// date desc) at write time in `overrideDataAccuracyServicePeriod`,
+  /// so the first entry per key is the effective one.
+  DataAccuracySettings _effectiveSettings(
+    String operatorId,
+    String locationId,
+  ) {
+    final base = _readSettings(operatorId, locationId);
+    final keyedRows =
+        _servicePeriodSettings[_key(operatorId, locationId)] ??
+        const <DataAccuracyServicePeriodSetting>[];
+    if (keyedRows.isEmpty) return base;
+    final folded = <String, CoversSource>{
+      ...base.coversSourcePerServicePeriod,
+    };
+    final seen = <String>{};
+    for (final row in keyedRows) {
+      if (!seen.add(row.servicePeriodKey)) continue;
+      // Direct enum mapping — both enums share wire strings (vendor /
+      // forecast / manual / reservation_plus_walkin).
+      folded[row.servicePeriodKey] = CoversSource.values.byName(
+        row.coversSource.name,
+      );
+    }
+    return DataAccuracySettings(
+      settingId: base.settingId,
+      operatorId: base.operatorId,
+      locationId: base.locationId,
+      coversSourcePerServicePeriod: folded,
+      coversSourcePerServicePeriodSources:
+          base.coversSourcePerServicePeriodSources,
+      coversManualEntries: base.coversManualEntries,
+      wageSource: base.wageSource,
+      wageSourceSource: base.wageSourceSource,
+      walkInHandlingMode: base.walkInHandlingMode,
+      walkInHandlingModeSource: base.walkInHandlingModeSource,
+      walkInManualEntries: base.walkInManualEntries,
+      createdAt: base.createdAt,
+      updatedAt: base.updatedAt,
+      updatedBy: base.updatedBy,
+    );
+  }
+
   List<OperatorLocationRef> _operatorRefsForScope({
     required String operatorId,
     required AdminDataAccuracyMutationScopeType scopeType,
@@ -1469,7 +1530,14 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       for (final ref in _operatorLocations)
         DataAccuracyAdminRow(
           operatorRef: ref,
-          settings: _readSettings(ref.operatorId, ref.locationId),
+          // Fold keyed service-period rows into
+          // settings.coversSourcePerServicePeriod so the screen sees
+          // what the production HTTP path returns — PR #1079
+          // (553fc60a) moved per_location_data_accuracy_table.dart to
+          // read the keyed map via row.settings.coversSourceFor, but
+          // overrideDataAccuracyServicePeriod writes only to the
+          // keyed list and never mirrored back into _settings.
+          settings: _effectiveSettings(ref.operatorId, ref.locationId),
           servicePeriodSettings:
               List<DataAccuracyServicePeriodSetting>.unmodifiable(
                 _servicePeriodSettings[_key(ref.operatorId, ref.locationId)] ??
@@ -1576,7 +1644,12 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     }
     return DataAccuracyAdminRow(
       operatorRef: ref,
-      settings: next,
+      // Re-read through the keyed-fold helper so the returned row
+      // mirrors what listDataAccuracyRows would emit — keyed-only
+      // writes from prior overrideDataAccuracyServicePeriod calls
+      // stay visible after a parent-map override that didn't touch
+      // those keys.
+      settings: _effectiveSettings(operatorId, locationId),
       servicePeriodSettings:
           List<DataAccuracyServicePeriodSetting>.unmodifiable(
             _servicePeriodSettings[_key(operatorId, locationId)] ??
