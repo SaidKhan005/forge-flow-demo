@@ -13,10 +13,9 @@
 // resulting `EffectiveBusinessTimingProfile` — no admin-side
 // heuristic, no synthetic candidate fabrication, no resolver fork.
 //
-// READ-ONLY. Admin does not write business-timing cross-tenant
-// (operator decision Q3 — the operator owns timing via operator-web).
-// This projection only renders the resolved values; the existing
-// "read-only / no write path" admin banners and copy are unchanged.
+// READ-ONLY. This projection only renders resolved values for the
+// admin UI. Server-side super admin repair routes exist elsewhere for
+// audited profile writes.
 
 import '../../domain/models/business_timing_profile.dart';
 import '../../domain/models/restaurant_timing_config.dart';

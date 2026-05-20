@@ -28,8 +28,8 @@ class AdminTimingSetupScreen extends StatelessWidget {
   /// timing resolution gateway. Null falls back to the seeded
   /// in-memory demo gateway (mirrors the established optional-gateway
   /// admin DI pattern), so demo / share-preview / widget tests render
-  /// without the Cloud Run admin proxy. Admin NEVER writes timing
-  /// cross-tenant (operator decision Q3) — this gateway is read-only.
+  /// without the Cloud Run admin proxy. This screen reads timing only;
+  /// server-side super admin repair routes exist for profile writes.
   final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
 
   @override

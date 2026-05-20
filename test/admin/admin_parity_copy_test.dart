@@ -11,8 +11,8 @@ import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
-  const crossSurfaceCopy =
-      'Operator edits live on Operator Web; this view is for F&F support.';
+  const dataAccuracySupportCopy =
+      'Support can review effective covers, wages, and walk-ins here. Normal operator edits stay in Operator Web; override actions are hidden for this role.';
   const adminOnlyCopy =
       'This surface is for F&F admins only. Operators cannot see it.';
 
@@ -36,9 +36,12 @@ void main() {
   ];
 
   group('C-10 admin parity ownership copy', () {
-    test('route table labels read-only and admin-only tiles honestly', () {
-      expect(routeById(kAdminDataAccuracyRouteId).badge, 'Read-only view');
-      expect(routeById(kAdminDataAccuracyRouteId).subtitle, crossSurfaceCopy);
+    test('route labels support actions honestly', () {
+      expect(routeById(kAdminDataAccuracyRouteId).badge, 'Support + override');
+      expect(
+        routeById(kAdminDataAccuracyRouteId).subtitle,
+        contains('super admins can apply audited overrides'),
+      );
       expect(routeById(kAdminVendorApplicabilityRouteId).badge, 'Admin only');
       expect(
         routeById(kAdminVendorApplicabilityRouteId).path,
@@ -50,11 +53,15 @@ void main() {
       );
       expect(
         routeById(kAdminVendorIntegrationsRouteId).badge,
-        'Read-only view',
+        'Support + actions',
       );
       expect(
         routeById(kAdminVendorIntegrationsRouteId).subtitle,
-        contains('Operator edits live on Operator Web'),
+        contains('super admins can connect, test, disconnect'),
+      );
+      expect(
+        routeById(kAdminTimingSetupRouteId).subtitle,
+        contains('super admin repair routes are server-side'),
       );
 
       expect(routeById(kAdminIntegrationsRouteId).badge, 'Global health');
@@ -120,7 +127,7 @@ void main() {
         find.byKey(const Key('admin_data_accuracy_readonly_banner')),
         findsOneWidget,
       );
-      expect(find.text(crossSurfaceCopy), findsOneWidget);
+      expect(find.text(dataAccuracySupportCopy), findsOneWidget);
     });
 
     testWidgets('polling setup read-only mode names F&F-only ownership', (
@@ -167,7 +174,12 @@ void main() {
         find.textContaining('Global provider health stays here'),
         findsOneWidget,
       );
-      expect(find.textContaining(crossSurfaceCopy), findsNWidgets(2));
+      expect(
+        find.textContaining(
+          'Operator edits live on Operator Web; this view is for F&F support.',
+        ),
+        findsNWidgets(2),
+      );
     });
   });
 }

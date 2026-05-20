@@ -6,12 +6,14 @@
 // "Add or wire admin timing read/write override routes and require
 // audit_reason for support writes."
 //
-// Routes (admin-scoped — caller must hold a super_admin or ff_support
-// role; operator id is taken from the URL, not the JWT):
+// Routes (admin-scoped; operator id is taken from the URL, not the JWT):
 //
 //   GET   /v1/admin/operators/:operatorId/business-timing-profiles
+//         super_admin or ff_support
 //   POST  /v1/admin/operators/:operatorId/business-timing-profiles
+//         super_admin only
 //   PATCH /v1/admin/operators/:operatorId/business-timing-profiles/:id
+//         super_admin only
 //
 // Writes require:
 //   * Idempotency-Key header (same envelope as operator-scoped writes).
@@ -77,7 +79,7 @@ const String _kBusinessTimingResolutionSegment = 'business-timing-resolution';
 bool isAdminBusinessTimingResolutionPath(String path) =>
     adminBusinessTimingResolutionScopeOf(path) != null;
 
-/// Roles permitted to mutate timing on behalf of an operator.
+/// Roles permitted to read admin timing profiles and timing resolution.
 const Set<String> kAdminBusinessTimingRoles = <String>{
   'super_admin',
   'ff_support',

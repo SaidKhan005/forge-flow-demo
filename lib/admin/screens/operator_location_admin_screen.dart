@@ -83,8 +83,8 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   /// dialog. Production binds the HTTP-backed gateway (via
   /// `AdminConsoleServicesScope.timingResolutionGatewayOf`); demo /
   /// widget tests leave it null and the dialog falls back to a seeded
-  /// in-memory gateway. Admin NEVER writes timing cross-tenant
-  /// (operator decision Q3).
+  /// in-memory gateway. This UI reads timing only; server-side super
+  /// admin repair routes exist for profile writes.
   final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
   final String? selectedParentOrgUnitId;
   final String? selectedParentOrgUnitLabel;
@@ -3555,8 +3555,8 @@ class _AdminLocationTimingDialog extends StatelessWidget {
 
   /// Fix #4 / S4 (G42): READ-ONLY S2 admin cross-tenant business-
   /// timing resolution gateway. Null falls back to the seeded
-  /// in-memory demo gateway. Admin NEVER writes timing cross-tenant
-  /// (operator decision Q3).
+  /// in-memory demo gateway. This UI reads timing only; server-side
+  /// super admin repair routes exist for profile writes.
   final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
 
   @override
@@ -3667,9 +3667,9 @@ class _AdminLocationTimingDialog extends StatelessWidget {
 /// dialog. This is purely the banner's "operator owns timing /
 /// read-only" chrome and is independent of the (now real) resolved
 /// values — it only mirrors the selected scope, so it is preserved
-/// verbatim from the deleted synthetic resolver. Admin still NEVER
-/// writes timing cross-tenant (operator decision Q3); the only S4
-/// change is that the displayed values become real.
+/// verbatim from the deleted synthetic resolver. This UI still reads
+/// timing only; server-side super admin repair routes exist for
+/// profile writes.
 AdminHierarchyScopeIntent _timingBannerScope(AdminHierarchyScopeIntent scope) {
   switch (scope.scopeType) {
     case AdminHierarchyScopeType.business:
