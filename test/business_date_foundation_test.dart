@@ -13,6 +13,8 @@ import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/shift_record_dao.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   // ── A. ShiftRecord businessDate serialization ───────────────────────────
 
@@ -200,9 +202,7 @@ void main() {
   // ── C. SQLite seed carries business_date ────────────────────────────────
 
   group('C — SQLite seed shift_records carry business_date', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('all seeded shift_records have non-null business_date', () async {
       final db = await SqliteDatabase.instance.database;
@@ -237,9 +237,7 @@ void main() {
   // ── D. DAO date-range query ─────────────────────────────────────────────
 
   group('D — date-range query behavior', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('getClosedShiftsInDateRange is inclusive on both ends', () async {
       final db = await SqliteDatabase.instance.database;
@@ -354,9 +352,7 @@ void main() {
   });
 
   group('D2 — replaceShiftForSlot stable slot identity', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test(
       'uses business_date + service_period_key across label changes',
@@ -732,9 +728,7 @@ void main() {
   // ── G. getLatestClosedBusinessDate DAO query ───────────────────────────────
 
   group('G — getLatestClosedBusinessDate', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('returns latest non-null business_date among closed shifts', () async {
       final db = await SqliteDatabase.instance.database;

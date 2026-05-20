@@ -24,6 +24,8 @@ import 'package:forge_and_flow/models/week_data.dart';
 import 'package:forge_and_flow/models/week_record.dart';
 import 'package:forge_and_flow/services/closed_truth_eligibility.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 // â”€â”€ Shared close inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ClosedShiftInput _friDinner() => ClosedShiftInput(
@@ -182,9 +184,7 @@ Future<void> _advanceOperationalBusinessDate(String businessDate) async {
 // â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 void main() {
-  setUp(() async {
-    await DatabaseHelper.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   // â”€â”€ Test 1: projected slot is replaced cleanly â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

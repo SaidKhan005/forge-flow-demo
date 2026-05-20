@@ -22,6 +22,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_wage_authority_gateway.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 double _blend(List<Map<String, Object?>> rows, String bucket) {
   final cohort = rows.where((r) => r['labor_bucket'] == bucket).toList();
   var sum = 0.0;
@@ -42,9 +44,7 @@ void main() {
   const harbour = DemoScope.harbourRestaurantId; // inherits everything
 
   group('Demo-data Slice F — HP #11 scope overrides + notifications', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('Region scope — East Region overrides timing (week-start), '
         'Downtown stays business default, Riverside/Harbour inherit',

@@ -22,6 +22,8 @@ import 'package:forge_and_flow/domain/models/recommended_benchmark_selection.dar
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 // The R6 four-period proof restaurant (PR #929). NOT a
 // `DemoScope.locations` member — per-location operational loops iterate
 // `DemoScope.locations` and skip it — but it has its own seeded
@@ -50,9 +52,7 @@ void main() {
   final allWriterIds = <String>{...demoIds, _kDemoFourPeriodRestaurantId};
 
   group('Demo-data Slice C — per-location operational data', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('all CONNECTED demo locations are demo-complete '
         '(≥60d closed shifts + active cycle + per-period dayparts)',

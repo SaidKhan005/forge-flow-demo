@@ -25,15 +25,15 @@ import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart'
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/state/shift_dashboard_notifier.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   group('FU-mobile-cold-boot-shift-stale-state', () {
-    setUp(() async {
-      // Force a fully fresh cold-boot path: close any open db handle,
-      // wipe any prior demo state by running reseedDemo (which clears
-      // weekly_plan_snapshots), then exercise the exact runtime
-      // sequence — no manual auto-generator call.
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    // Force a fully fresh cold-boot path: close any open db handle,
+    // wipe any prior demo state by running reseedDemo (which clears
+    // weekly_plan_snapshots), then exercise the exact runtime
+    // sequence — no manual auto-generator call.
+    setUp(setUpSqliteDemo);
 
     test(
         'cold-boot ShiftDashboardNotifier renders the locked plan without '
