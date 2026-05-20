@@ -19,6 +19,46 @@ import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:provider/provider.dart';
 
+// Bounded pump loop: replaces unbounded `tester.pumpAndSettle()` to avoid
+// never-settling timer flake (the dominant flake shape in this repo per
+// docs/KNOWN_FAILING_TESTS.md). 20 frames * 50ms == 1s of virtual time,
+// which exceeds the longest legitimate animation/route transition in
+// this screen's flow. If a future expectation needs more time, prefer a
+// `pumpUntil(tester, () => find.X.evaluate().isNotEmpty)` polling form
+// rather than widening this default.
+Future<void> pumpEventually(
+  WidgetTester tester, {
+  int frames = 20,
+  Duration step = const Duration(milliseconds: 50),
+}) async {
+  for (int i = 0; i < frames; i++) {
+    await tester.pump(step);
+  }
+}
+
+// Polling form: pumps until [condition] returns true, or fails loudly
+// with the exhausted-time budget once [maxIterations] is reached. Use
+// this when the test asserts a specific condition right after the
+// settle (e.g. a dialog has mounted, a snackbar has rendered).
+Future<void> pumpUntil(
+  WidgetTester tester,
+  bool Function() condition, {
+  Duration step = const Duration(milliseconds: 50),
+  int maxIterations = 60,
+}) async {
+  for (int i = 0; i < maxIterations; i++) {
+    if (condition()) return;
+    await tester.pump(step);
+  }
+  expect(
+    condition(),
+    isTrue,
+    reason:
+        'pumpUntil exhausted ${maxIterations * step.inMilliseconds}ms '
+        'budget waiting for condition.',
+  );
+}
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 // Week 10 Mon = 2026-03-02, Week 10 Fri = 2026-03-06,
 // Week 11 Tue = 2026-03-10, Week 12 Mon = 2026-03-16.
@@ -140,14 +180,14 @@ Widget _wrap(Widget child) => ChangeNotifierProvider(
 Future<void> _tapCalendarDate(WidgetTester tester, String date) async {
   final finder = find.byKey(ValueKey<String>('cal_$date'));
   await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
   await tester.tap(finder);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
 }
 
 Future<void> _closeSheet(WidgetTester tester) async {
   await tester.tap(find.text('CLOSE'));
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
 }
 
 /// Dismiss a modal bottom sheet that has no CLOSE affordance (the
@@ -155,7 +195,7 @@ Future<void> _closeSheet(WidgetTester tester) async {
 /// only wants to move on taps the scrim/barrier instead).
 Future<void> _dismissModalBarrier(WidgetTester tester) async {
   await tester.tapAt(const Offset(10, 10));
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
 }
 
 /// R8: the screen opens populated with the default Balanced selection.
@@ -164,9 +204,9 @@ Future<void> _dismissModalBarrier(WidgetTester tester) async {
 Future<void> _clearAllDraft(WidgetTester tester) async {
   final clearAll = find.text('CLEAR ALL');
   await tester.ensureVisible(clearAll);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
   await tester.tap(clearAll);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
 }
 
 /// R9: PLAN IMPACT is a tap-to-expand dropdown that is COLLAPSED by
@@ -176,9 +216,9 @@ Future<void> _clearAllDraft(WidgetTester tester) async {
 Future<void> _expandPlanImpact(WidgetTester tester) async {
   final toggle = find.byKey(const ValueKey<String>('plan_impact_toggle'));
   await tester.ensureVisible(toggle);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
   await tester.tap(toggle);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
 }
 
 Future<void> _tapLensChip(WidgetTester tester, String lensId) async {
@@ -189,9 +229,9 @@ Future<void> _tapLensChip(WidgetTester tester, String lensId) async {
   // always lands (an off-target tap would silently leave the lens on
   // whole-day and open the wrong sheet).
   await tester.ensureVisible(chip);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
   await tester.tap(chip);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
 }
 
 /// Toggle a service inside the open WHOLE-DAY sheet via its per-service
@@ -205,9 +245,9 @@ Future<void> _toggleWholeDayService(
     matching: find.text(periodLabel),
   );
   await tester.ensureVisible(row);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
   await tester.tap(row);
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
 }
 
 /// Finds the SELECTED SHIFTS preview-cell value. The cell renders
@@ -247,14 +287,14 @@ Future<Set<String>> _commitDoneAndReadKeys(WidgetTester tester) async {
     await tester.tap(_doneButton());
     await Future<void>.delayed(const Duration(milliseconds: 100));
   });
-  await tester.pumpAndSettle();
+  await pumpEventually(tester);
   final continueButton = find.text('Continue');
   if (continueButton.evaluate().isNotEmpty) {
     await tester.runAsync(() async {
       await tester.tap(continueButton);
       await Future<void>.delayed(const Duration(milliseconds: 600));
     });
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
   } else {
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -413,9 +453,9 @@ void main() {
 
         final clearAll = find.text('CLEAR ALL');
         await tester.ensureVisible(clearAll);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(clearAll);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(find.text('0', skipOffstage: false), findsOneWidget);
         // R9: PLAN IMPACT is collapsed by default; expand it so the
@@ -608,7 +648,7 @@ void main() {
         await _closeSheet(tester);
 
         await tester.tap(_doneButton());
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(find.text('Some periods have no star shifts'), findsOneWidget);
         expect(
@@ -619,7 +659,7 @@ void main() {
         );
 
         await tester.tap(find.text('Go back'));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         final beforeContinue = await tester.runAsync(
           DatabaseHelper.instance.getBaselineSelectedRecordKeys,
         );
@@ -687,9 +727,9 @@ void main() {
       // into a scrollable band; ensure visible before tapping.
       final clearAll = find.text('CLEAR ALL');
       await tester.ensureVisible(clearAll);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(clearAll);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(find.text('0', skipOffstage: false), findsOneWidget);
 
       final stored = await _commitDoneAndReadKeys(tester);
@@ -1200,7 +1240,7 @@ void main() {
       final clearAll = find.text('CLEAR ALL');
       expect(clearAll, findsOneWidget);
       await tester.ensureVisible(clearAll);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(clearAll);
       await tester.pump();
@@ -1489,9 +1529,9 @@ void main() {
       final clearAll = find.text('CLEAR ALL');
       expect(clearAll, findsOneWidget);
       await tester.ensureVisible(clearAll);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(clearAll);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('0', skipOffstage: false), findsOneWidget);
       // R9: PLAN IMPACT is collapsed by default; expand it so all 11
@@ -1769,7 +1809,7 @@ void main() {
           matching: find.text('SELECT'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.runAsync(() async {
         await tester.tap(_doneButton());
@@ -2561,9 +2601,9 @@ void main() {
         // flows ONLY through the draft set (no persistence here yet).
         final leanChip = find.byKey(const ValueKey<String>('band_lean'));
         await tester.ensureVisible(leanChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(leanChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         _expectSelectedShiftsCount(tester, '${derivedLean.length}');
 
         // Commit: the exact same Set<String> recordKeys land via the
@@ -2680,9 +2720,9 @@ void main() {
           const ValueKey<String>('band_generous'),
         );
         await tester.ensureVisible(generousChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(generousChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // R9: FORECAST COVERS lives in the collapsed PLAN IMPACT
         // dropdown; expand it so the per-period vs whole-day covers
@@ -3121,9 +3161,9 @@ void main() {
       // Tapping again collapses it back.
       final toggle = find.byKey(const ValueKey<String>('plan_impact_toggle'));
       await tester.ensureVisible(toggle);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(toggle);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(find.text('FORECAST COVERS'), findsNothing);
       expect(find.text('PLAN IMPACT'), findsOneWidget);
     });
@@ -3412,9 +3452,9 @@ void main() {
         await _tapLensChip(tester, 'dinner');
         final leanChip = find.byKey(const ValueKey<String>('band_lean'));
         await tester.ensureVisible(leanChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(leanChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         final mixed = <String, StarBand>{
           'breakfast': StarBand.balanced,
@@ -3439,9 +3479,9 @@ void main() {
           const ValueKey<String>('band_generous'),
         );
         await tester.ensureVisible(generousChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(generousChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         const allGenerous = <String, StarBand>{
           'breakfast': StarBand.generous,
@@ -3477,14 +3517,14 @@ void main() {
         await _tapLensChip(tester, 'lunch');
         final leanChip = find.byKey(const ValueKey<String>('band_lean'));
         await tester.ensureVisible(leanChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(leanChip);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // RESET pill restores the default Balanced map and whole-day
         // lens. The draft returns to the all-Balanced union.
         await tester.tap(find.byKey(const ValueKey<String>('reset_pill')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         final expected = expectedFor(allBalanced);
         _expectSelectedShiftsCount(tester, '${expected.length}');
@@ -3519,9 +3559,9 @@ void main() {
       await _tapLensChip(tester, 'breakfast');
       final leanChip = find.byKey(const ValueKey<String>('band_lean'));
       await tester.ensureVisible(leanChip);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(leanChip);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final preDone = await tester.runAsync(
         () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
