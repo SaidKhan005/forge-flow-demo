@@ -5,8 +5,64 @@
 // production accounts. These gateways keep writes in memory for the current
 // browser session only.
 
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'business_logo_upload_gateway.dart';
 import 'web_account_gateway.dart';
 import 'web_business_timing_gateway.dart';
+
+class DemoBusinessLogoUploadGateway implements BusinessLogoUploadGateway {
+  @override
+  Future<BusinessLogoUploadOutcome> uploadLogo({
+    required Uint8List pngBytes,
+    required String filename,
+  }) async {
+    final trimmedName = filename.trim();
+    if (trimmedName.isEmpty) {
+      throw const BusinessLogoValidationException(
+        code: 'invalid_filename',
+        message: 'Pick a file before uploading.',
+      );
+    }
+    if (!trimmedName.toLowerCase().endsWith('.png')) {
+      throw const BusinessLogoValidationException(
+        code: 'invalid_filename',
+        message:
+            'Only PNG files are accepted. Rename or convert your '
+            'image and try again.',
+      );
+    }
+    if (pngBytes.length > kOperatorWebBusinessLogoMaxBytes) {
+      throw BusinessLogoValidationException(
+        code: 'payload_too_large',
+        message:
+            'That file is larger than 600 KB. Pick a smaller logo or '
+            'compress it first. (Yours: ${pngBytes.length} bytes.)',
+      );
+    }
+    if (!_hasPngMagic(pngBytes)) {
+      throw const BusinessLogoValidationException(
+        code: 'invalid_png_magic',
+        message:
+            'That file is not a valid PNG. Save it again from your '
+            'image editor and try once more.',
+      );
+    }
+    return BusinessLogoUploadOutcome(
+      logoUrl: 'data:image/png;base64,${base64Encode(pngBytes)}',
+      sizeBytes: pngBytes.length,
+    );
+  }
+
+  static bool _hasPngMagic(Uint8List bytes) {
+    if (bytes.length < kOperatorWebPngMagic.length) return false;
+    for (var i = 0; i < kOperatorWebPngMagic.length; i++) {
+      if (bytes[i] != kOperatorWebPngMagic[i]) return false;
+    }
+    return true;
+  }
+}
 
 class DemoOperatorWebBusinessTimingWriteGateway
     implements WebBusinessTimingGateway {

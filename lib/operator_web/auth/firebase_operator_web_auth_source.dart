@@ -12,6 +12,7 @@ import '../../services/auth/firebase_auth_client.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/operator_web_notification_preferences_gateway_provider.dart';
 import '../services/business_timing_gateway.dart';
+import '../services/business_logo_upload_gateway.dart';
 import '../services/http_business_timing_read_gateway.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/operator_web_team_gateway_providers.dart';
@@ -34,6 +35,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         OperatorWebVendorConnectionsGatewayProvider,
         OperatorWebVendorLifecycleRecentlyAvailableGatewayProvider,
         OperatorWebAccountGatewayProvider,
+        OperatorWebBusinessLogoUploadGatewayProvider,
         OperatorWebBusinessTimingGatewayProvider,
         OperatorWebBusinessTimingWriteGatewayProvider,
         OperatorWebDataAccuracyGatewayProvider,
@@ -83,6 +85,10 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
          idTokenProvider: authClient.currentIdToken,
        ),
        accountGateway = HttpWebAccountGateway(
+         client: proxyClient,
+         idTokenProvider: authClient.currentIdToken,
+       ),
+       businessLogoUploadGateway = HttpBusinessLogoUploadGateway(
          client: proxyClient,
          idTokenProvider: authClient.currentIdToken,
        ),
@@ -170,6 +176,9 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
 
   @override
   final WebAccountGateway accountGateway;
+
+  @override
+  final BusinessLogoUploadGateway businessLogoUploadGateway;
 
   /// Live read gateway for the Business setup screen. Wraps
   /// [businessTimingWriteGateway] so the read view and the editor see
@@ -665,8 +674,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         roles.add(PermissionKeys.roleFinanceAnalyst);
       }
       // v2 display name: 'Auditor / Compliance' → 'auditor_compliance'.
-      if (normalized.contains('auditor') ||
-          normalized.contains('compliance')) {
+      if (normalized.contains('auditor') || normalized.contains('compliance')) {
         roles.add(PermissionKeys.roleAuditorCompliance);
       }
       // v2 display name: 'Training Lead'.

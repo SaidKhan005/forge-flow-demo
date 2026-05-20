@@ -41,6 +41,7 @@ import '../services/demo_team_roles_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
 import '../services/operator_web_csv_download.dart';
+import '../services/business_logo_upload_gateway.dart';
 import '../services/operator_web_notification_preferences_gateway_provider.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/web_account_gateway.dart';
@@ -1862,6 +1863,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         body = AccountScreen(
           session: session,
           gateway: _webAccountGateway,
+          logoUploadGateway: _businessLogoUploadGateway,
           onOpenBusinessTiming: _openBusinessTimingFromAccount,
           // Wave 2 U-FU-hp11-account — forward the shell's current
           // Managing scope so the screen can render the HP #11
@@ -1932,6 +1934,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   WebAccountGateway? get _webAccountGateway =>
       widget.source is OperatorWebAccountGatewayProvider
       ? (widget.source as OperatorWebAccountGatewayProvider).accountGateway
+      : null;
+
+  BusinessLogoUploadGateway? get _businessLogoUploadGateway =>
+      widget.source is OperatorWebBusinessLogoUploadGatewayProvider
+      ? (widget.source as OperatorWebBusinessLogoUploadGatewayProvider)
+            .businessLogoUploadGateway
       : null;
 
   OperatorWebHandoffRedeemGateway? get _handoffRedeemGateway =>

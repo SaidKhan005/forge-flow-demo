@@ -55,9 +55,9 @@ class _FakeUploadGateway implements BusinessLogoUploadGateway {
 }
 
 Widget _wrap(Widget child) => MaterialApp(
-      theme: AppTheme.themeData,
-      home: Scaffold(body: SingleChildScrollView(child: child)),
-    );
+  theme: AppTheme.themeData,
+  home: Scaffold(body: SingleChildScrollView(child: child)),
+);
 
 PickedBusinessLogoFile _samplePicked() {
   return PickedBusinessLogoFile(
@@ -80,16 +80,19 @@ PickedBusinessLogoFile _samplePicked() {
 }
 
 void main() {
-  testWidgets('renders the choose + upload buttons when gateway is wired',
-      (tester) async {
+  testWidgets('renders the choose + upload buttons when gateway is wired', (
+    tester,
+  ) async {
     final gateway = _FakeUploadGateway();
-    await tester.pumpWidget(_wrap(
-      BusinessLogoUploadSection(
-        gateway: gateway,
-        enabled: true,
-        onUploaded: (_) {},
+    await tester.pumpWidget(
+      _wrap(
+        BusinessLogoUploadSection(
+          gateway: gateway,
+          enabled: true,
+          onUploaded: (_) {},
+        ),
       ),
-    ));
+    );
     expect(
       find.byKey(const Key('operator_web_account_logo_upload_section')),
       findsOneWidget,
@@ -103,20 +106,24 @@ void main() {
       findsOneWidget,
     );
     // Until the operator picks a file the Upload button is disabled.
-    final uploadButton = tester
-        .widget<FilledButton>(find.byKey(const Key('operator_web_account_logo_upload')));
+    final uploadButton = tester.widget<FilledButton>(
+      find.byKey(const Key('operator_web_account_logo_upload')),
+    );
     expect(uploadButton.onPressed, isNull);
   });
 
-  testWidgets('renders the unavailable banner when no gateway is wired',
-      (tester) async {
-    await tester.pumpWidget(_wrap(
-      BusinessLogoUploadSection(
-        gateway: null,
-        enabled: true,
-        onUploaded: (_) {},
+  testWidgets('renders the unavailable banner when no gateway is wired', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        BusinessLogoUploadSection(
+          gateway: null,
+          enabled: true,
+          onUploaded: (_) {},
+        ),
       ),
-    ));
+    );
     expect(
       find.byKey(const Key('operator_web_account_logo_upload_unavailable')),
       findsOneWidget,
@@ -127,18 +134,51 @@ void main() {
     );
   });
 
-  testWidgets('picking a file shows the preview tile + filename',
-      (tester) async {
+  testWidgets('shows a plain reason when upload is disabled by the parent', (
+    tester,
+  ) async {
+    final gateway = _FakeUploadGateway();
+    await tester.pumpWidget(
+      _wrap(
+        BusinessLogoUploadSection(
+          gateway: gateway,
+          enabled: false,
+          disabledReason:
+              'Logo changes are set at the Business level. Switch Managing '
+              'to All locations to upload a PNG.',
+          onUploaded: (_) {},
+        ),
+      ),
+    );
+    expect(
+      find.byKey(const Key('operator_web_account_logo_upload_unavailable')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('operator_web_account_logo_upload_disabled_reason')),
+      findsOneWidget,
+    );
+    final pickButton = tester.widget<OutlinedButton>(
+      find.byKey(const Key('operator_web_account_logo_pick')),
+    );
+    expect(pickButton.onPressed, isNull);
+  });
+
+  testWidgets('picking a file shows the preview tile + filename', (
+    tester,
+  ) async {
     final gateway = _FakeUploadGateway();
     final picked = _samplePicked();
-    await tester.pumpWidget(_wrap(
-      BusinessLogoUploadSection(
-        gateway: gateway,
-        enabled: true,
-        onUploaded: (_) {},
-        filePicker: () async => picked,
+    await tester.pumpWidget(
+      _wrap(
+        BusinessLogoUploadSection(
+          gateway: gateway,
+          enabled: true,
+          onUploaded: (_) {},
+          filePicker: () async => picked,
+        ),
       ),
-    ));
+    );
     await tester.tap(find.byKey(const Key('operator_web_account_logo_pick')));
     await tester.pump();
     expect(
@@ -148,18 +188,21 @@ void main() {
     expect(find.text(picked.filename), findsOneWidget);
   });
 
-  testWidgets('successful upload calls onUploaded with the resolved URL',
-      (tester) async {
+  testWidgets('successful upload calls onUploaded with the resolved URL', (
+    tester,
+  ) async {
     final gateway = _FakeUploadGateway();
     String? resolved;
-    await tester.pumpWidget(_wrap(
-      BusinessLogoUploadSection(
-        gateway: gateway,
-        enabled: true,
-        onUploaded: (url) => resolved = url,
-        filePicker: () async => _samplePicked(),
+    await tester.pumpWidget(
+      _wrap(
+        BusinessLogoUploadSection(
+          gateway: gateway,
+          enabled: true,
+          onUploaded: (url) => resolved = url,
+          filePicker: () async => _samplePicked(),
+        ),
       ),
-    ));
+    );
     await tester.tap(find.byKey(const Key('operator_web_account_logo_pick')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('operator_web_account_logo_upload')));
@@ -173,19 +216,22 @@ void main() {
     );
   });
 
-  testWidgets('client-side validation failure surfaces in the inline error',
-      (tester) async {
+  testWidgets('client-side validation failure surfaces in the inline error', (
+    tester,
+  ) async {
     final gateway = _FakeUploadGateway(
       failureMessage: 'That file is not a valid PNG.',
     );
-    await tester.pumpWidget(_wrap(
-      BusinessLogoUploadSection(
-        gateway: gateway,
-        enabled: true,
-        onUploaded: (_) {},
-        filePicker: () async => _samplePicked(),
+    await tester.pumpWidget(
+      _wrap(
+        BusinessLogoUploadSection(
+          gateway: gateway,
+          enabled: true,
+          onUploaded: (_) {},
+          filePicker: () async => _samplePicked(),
+        ),
       ),
-    ));
+    );
     await tester.tap(find.byKey(const Key('operator_web_account_logo_pick')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('operator_web_account_logo_upload')));
@@ -198,22 +244,25 @@ void main() {
     expect(find.text('That file is not a valid PNG.'), findsOneWidget);
   });
 
-  testWidgets('proxy error surfaces in the inline error banner',
-      (tester) async {
+  testWidgets('proxy error surfaces in the inline error banner', (
+    tester,
+  ) async {
     final gateway = _FakeUploadGateway(
       proxyError: const OperatorWebProxyException(
         code: 'business_logo_uploader_not_configured',
         message: 'logo upload is not available on this build.',
       ),
     );
-    await tester.pumpWidget(_wrap(
-      BusinessLogoUploadSection(
-        gateway: gateway,
-        enabled: true,
-        onUploaded: (_) {},
-        filePicker: () async => _samplePicked(),
+    await tester.pumpWidget(
+      _wrap(
+        BusinessLogoUploadSection(
+          gateway: gateway,
+          enabled: true,
+          onUploaded: (_) {},
+          filePicker: () async => _samplePicked(),
+        ),
       ),
-    ));
+    );
     await tester.tap(find.byKey(const Key('operator_web_account_logo_pick')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('operator_web_account_logo_upload')));

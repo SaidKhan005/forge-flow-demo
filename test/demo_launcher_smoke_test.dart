@@ -122,6 +122,14 @@ void main() {
         );
         expect(
           mainOperatorWeb,
+          contains('DemoBusinessLogoUploadGateway'),
+          reason:
+              'Normal operator-web -Mode demo must expose the PNG logo '
+              'upload surface so visual audits can choose and preview a '
+              'logo without live blob storage.',
+        );
+        expect(
+          mainOperatorWeb,
           contains('DemoOperatorWebBusinessTimingWriteGateway'),
           reason:
               'Normal operator-web -Mode demo must expose the timing write '

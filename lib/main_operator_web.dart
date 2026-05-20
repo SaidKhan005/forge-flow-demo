@@ -43,6 +43,7 @@ import 'operator_web/auth/operator_web_auth_source.dart';
 import 'operator_web/demo/operator_web_demo_scenario.dart';
 import 'operator_web/operator_web_app.dart';
 import 'operator_web/services/business_timing_gateway.dart';
+import 'operator_web/services/business_logo_upload_gateway.dart';
 import 'operator_web/services/demo_operator_web_write_gateways.dart';
 import 'operator_web/services/demo_security_gateway.dart';
 import 'operator_web/services/demo_team_audit_log_gateway.dart';
@@ -228,6 +229,7 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
         OperatorWebTeamAuditLogGatewayProvider,
         OperatorWebSecurityGatewayProvider,
         OperatorWebAccountGatewayProvider,
+        OperatorWebBusinessLogoUploadGatewayProvider,
         OperatorWebBusinessTimingGatewayProvider,
         OperatorWebBusinessTimingWriteGatewayProvider {
   factory _DemoOperatorWebAuthSourceWithTeamSurfaces({
@@ -258,6 +260,7 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
       accountGateway: DemoOperatorWebAccountGateway(
         logoUrl: kDemoOperatorWebPlaceholderLogoUrl,
       ),
+      businessLogoUploadGateway: DemoBusinessLogoUploadGateway(),
       businessTimingGateway: HttpBusinessTimingReadGateway(
         gateway: businessTimingWriteGateway,
       ),
@@ -275,6 +278,7 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
     required this.teamAuditLogGateway,
     required this.securityGateway,
     required this.accountGateway,
+    required this.businessLogoUploadGateway,
     required this.businessTimingGateway,
     required this.businessTimingWriteGateway,
     required OperatorWebAuthState initial,
@@ -301,6 +305,9 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
 
   @override
   final WebAccountGateway accountGateway;
+
+  @override
+  final BusinessLogoUploadGateway businessLogoUploadGateway;
 
   @override
   final BusinessTimingGateway businessTimingGateway;
