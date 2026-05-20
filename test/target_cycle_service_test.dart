@@ -32,11 +32,13 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  const restaurantId = DemoScope.restaurantId;
+  const restaurantId = demoRestaurantId;
 
   Future<void> clearCycleBackedState() async {
     final db = await SqliteDatabase.instance.database;
@@ -49,10 +51,12 @@ void main() {
   setUp(() async {
     // Reset BaselineData's process-static state so tests do not leak
     // recommendation signals / manager-override fixtures into each
-    // other.
+    // other. Partial 2-clear (no clearHistoricalContext) kept inline
+    // rather than routed through `resetBaselineTestState()` to preserve
+    // existing semantics.
     BaselineData.clearRecommendationSignals();
     BaselineData.clearManagerOverride();
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     // Also wipe cycle-backed state every test. Several groups inside
     // already do this in their own setUp, but under randomized test
     // ordering a sibling test that PERSISTED a cycle would leave it

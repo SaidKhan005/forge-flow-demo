@@ -26,6 +26,8 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 /// Maps a normalized lever id to its 8-family axis:
 /// `covers_down` → `covers`, `foh_wage_up` → `foh_wage`,
 /// `boh_hours_over` → `boh_hours`, `cplh_down` → `cplh`, …
@@ -114,9 +116,7 @@ void main() {
   });
 
   group('Slice B — §2b end-to-end per-period target unlock', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test(
         'demo active cycle per-period CPLH/SPLH/PPA are materially '

@@ -42,12 +42,13 @@ import 'package:forge_and_flow/domain/services/service_period_definition_resolve
 import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
-import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/data_alignment_audit_check.dart';
 import 'package:forge_and_flow/models/data_alignment_drift_check.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/services/data_alignment_audit_read_service.dart';
 import 'package:forge_and_flow/services/shift_service.dart';
+
+import '_test_helpers/sqlite_demo_helpers.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -62,7 +63,7 @@ void main() {
   late String weekKey;
 
   setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     final ws = WeeklyPlanSnapshotPolicy.weekStartForDate(businessDate);
     final we = WeeklyPlanSnapshotPolicy.weekEndForDate(businessDate);
     weekKey = WeeklyPlanSnapshotPolicy.weekKeyFromSpan(ws, we);

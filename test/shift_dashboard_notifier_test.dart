@@ -8,6 +8,8 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/models/current_state_freshness.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 /// Wait for the notifier to finish its constructor-initiated `_load()`.
 ///
 /// State-pollution / cold-boot resilience: under the full `flutter test`
@@ -29,7 +31,7 @@ Future<void> _waitForLoad(ShiftDashboardNotifier notifier) async {
 
 void main() {
   setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
   });
 

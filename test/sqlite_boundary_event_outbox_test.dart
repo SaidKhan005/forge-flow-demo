@@ -15,6 +15,8 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database
 import 'package:forge_and_flow/services/boundary_event_outbox.dart';
 import 'package:forge_and_flow/services/sqlite_boundary_event_outbox.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
@@ -24,7 +26,7 @@ void main() {
     // `reseedDemo` covers the operational tables; the boundary outbox
     // is additive so we clear it explicitly to avoid cross-test
     // contamination.
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     final db = await SqliteDatabase.instance.database;
     await db.delete('boundary_event_outbox');
   });

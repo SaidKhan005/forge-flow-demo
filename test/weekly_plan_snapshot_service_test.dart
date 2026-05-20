@@ -28,11 +28,13 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  const restaurantId = DemoScope.restaurantId;
+  const restaurantId = demoRestaurantId;
 
   // Default seeded business date: 2026-03-27 (Friday).
   // Monday-start week: 2026-03-23 to 2026-03-29.
@@ -44,9 +46,7 @@ void main() {
   final weekKey =
       WeeklyPlanSnapshotPolicy.weekKeyFromSpan(weekStart, weekEnd);
 
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   // ── A: Generates and persists a snapshot when missing ───────────────────
 

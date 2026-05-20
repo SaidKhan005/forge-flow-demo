@@ -24,11 +24,13 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  const restaurantId = DemoScope.restaurantId;
+  const restaurantId = demoRestaurantId;
 
   // ── Demo service-period definitions used in tests ───────────────────────
 
@@ -270,7 +272,7 @@ void main() {
   // ── F–H: Integration tests using live SQLite DB ─────────────────────────
 
   setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     // Restore Monday-default demo config.
     //
     // Per-Daypart V1 Slice 1.5: `shift_close_authority` /

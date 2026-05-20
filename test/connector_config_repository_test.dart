@@ -5,9 +5,11 @@ import 'package:forge_and_flow/domain/models/connector_config.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_connector_config_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     final db = await SqliteDatabase.instance.database;
     await db.delete('connector_configs');
   });

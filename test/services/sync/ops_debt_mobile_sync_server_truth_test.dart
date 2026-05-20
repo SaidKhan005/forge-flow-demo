@@ -32,10 +32,12 @@ import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/scope/business_scope_repository.dart';
 import 'package:forge_and_flow/services/sync/weekly_plan_sync_resources.dart';
 
+import '../../_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   group('Theme H#5 — wage_role_rows DAO server_id roundtrip', () {
     setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
+      await setUpSqliteDemo();
       final db = await SqliteDatabase.instance.database;
       await db.delete('wage_role_rows', where: '1 = 1');
     });
@@ -192,9 +194,7 @@ void main() {
   });
 
   group('Theme H#7 — DAS service-period settings persistent cache', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('replaceAll persists keyed rows for app-start rehydrate', () async {
       final db = await SqliteDatabase.instance.database;

@@ -18,6 +18,8 @@ import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart'
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   setUp(() async {
     // Several tests below mutate the demo restaurant's timing config
@@ -32,7 +34,7 @@ void main() {
     // re-inserts the canonical demo values for every test.
     final db = await SqliteDatabase.instance.database;
     await db.delete('restaurant_timing_configs');
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     SqliteRestaurantTimingConfigRepository.instance.resetDao();
   });
 
