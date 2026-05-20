@@ -99,11 +99,13 @@ botch with poor commits. Each file goes in its own PR.
 
 Top 3 highest-ROI splits (out of 10 reviewed):
 
-1. **`test/advisor_proxy_test.dart` (8,328 → 5 files)** — split pending.
-   - Split: `_config`, `_token_guard`, `_usage_accounting_and_migrations`,
-     `_auth_schema_and_jwt`, `_http_scaffold_and_admin_routes`
-   - Groups already cohesive; HttpServer fixture is per-group, no shared
-     mutable state.
+1. **`test/advisor_proxy_test.dart` (8,328 → 5 files)** — LANDED (PR #1120).
+   Split into `test/advisor_proxy_config_test.dart`,
+   `test/advisor_proxy_token_and_guard_test.dart`,
+   `test/advisor_proxy_usage_and_migrations_test.dart`,
+   `test/advisor_proxy_jwt_verifier_test.dart`,
+   `test/advisor_proxy_http_and_admin_routes_test.dart`, with shared
+   helpers in `test/advisor_proxy_test_helpers.dart`.
 
 2. **`test/baseline_manager_screen_test.dart` (3,608 → 4 files)** — LANDED.
    Split by existing A–U / R1–R10 group labels into
@@ -124,17 +126,18 @@ Top 3 highest-ROI splits (out of 10 reviewed):
    `test/services/integration/canonical_fact_test_fixtures.dart`. Pure
    const fixtures; no setUp; cleanest split of the three.
 
-Together these three reduce ~16,000 lines into 12 focused files (1 + 2
-landed; advisor_proxy still pending).
+Together these three reduce ~16,000 lines into 13 focused files
+(all 3 landed: PR #1117 baseline_manager, the canonical_fact split
+landed pre-#1117, advisor_proxy #1120).
 
 Lower-priority splits (do if Bucket 5 lands clean):
-- `test/proxy_auth_operations_route_test.dart` (3,599 → 4)
-- `test/target_cycle_service_test.dart` (2,365 → 3)
-- `test/data_alignment_audit_read_service_test.dart` (2,161 → 3)
-- `test/phase_9_0sigma_f_audit_logs_test.dart` (2,144 → 2)
-- `test/admin_operator_location_screen_test.dart` (2,129 → 3) — pairs with P1 flake-risk fix
-- `test/proxy/mobile_operational_sync_routes_test.dart` (2,067 → 3)
-- `test/phase_9_0sigma_k_rollups_test.dart` (2,012 → 2)
+- `test/proxy_auth_operations_route_test.dart` (3,599 → 4) — LANDED (PR #1122)
+- `test/target_cycle_service_test.dart` (2,365 → 3) — LANDED (PR #1123)
+- `test/data_alignment_audit_read_service_test.dart` (2,161 → 3) — LANDED (PR #1121)
+- `test/phase_9_0sigma_f_audit_logs_test.dart` (2,144 → 2) — LANDED (PR #1124)
+- `test/admin_operator_location_screen_test.dart` (2,129 → 3) — LANDED (PR #1125); pairs with P1 flake-risk fix
+- `test/proxy/mobile_operational_sync_routes_test.dart` (2,067 → 3) — LANDED (PR #1126)
+- `test/phase_9_0sigma_k_rollups_test.dart` (2,012 → 2) — split pending
 
 ## What deliberately stays
 

@@ -1165,6 +1165,19 @@ to import from.
 
 ## Section 6 — Test reorganization
 
+> **Update (post-PR-#1120 / #1122, 2026-05-20):** The two mega-files
+> below have already been split by the test-suite tightening audit's
+> Bucket 5. `test/advisor_proxy_test.dart` (was 7,693 / pre-A3 8,328 LoC)
+> is now five focused files —
+> `test/advisor_proxy_{config,token_and_guard,usage_and_migrations,jwt_verifier,http_and_admin_routes}_test.dart`
+> plus `test/advisor_proxy_test_helpers.dart` (PR #1120).
+> `test/proxy_auth_operations_route_test.dart` is now four focused files —
+> `test/proxy_auth_{account_and_permission,password_and_session,mfa,invite_and_admin}_test.dart`
+> plus `test/proxy_auth_test_helpers.dart` (PR #1122). All
+> per-step "Test impact" notes below predate the split; readers
+> implementing a Step should re-grep the post-split files for the
+> specific test groups named.
+
 Current proxy tests are flat:
 
 - `test/advisor_proxy_test.dart` — **7,693 LoC.** The big one.
