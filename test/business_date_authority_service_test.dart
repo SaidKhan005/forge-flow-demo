@@ -58,9 +58,20 @@ void main() {
       final restaurantId = await SqliteRestaurantScopeRepository.instance
           .getActiveRestaurantId();
 
-      // Clear mock replay state.
+      // Clear mock replay state AND operational open-shift state. When an
+      // open-shift snapshot is present, `resolvePlanningAnchorDate` does
+      // NOT short-circuit to `latestClosedDate` — it filters closed shifts
+      // through `ClosedTruthEligibility` (any
+      // `appLocalCutoffFallback`-authority shift whose `businessDate` is
+      // not strictly less than `operationalBusinessDate` is excluded as
+      // not-yet-finalized). That eligibility-filter path is exercised by
+      // its own dedicated tests; here we want the simple "fall back to
+      // latest closed" path (production line where
+      // `operationalBusinessDate == null` returns `latestClosedDate`
+      // directly).
       final db = await SqliteDatabase.instance.database;
       await db.delete('mock_replay_state');
+      await db.delete('open_shift_snapshots');
 
       final anchorDate = await BusinessDateAuthorityService.instance
           .resolvePlanningAnchorDate(restaurantId);

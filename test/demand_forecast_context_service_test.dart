@@ -14,6 +14,7 @@
 import 'dart:math' show max;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/services/closed_truth_eligibility.dart';
 import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
@@ -21,6 +22,7 @@ import 'package:forge_and_flow/domain/models/weekly_plan_snapshot.dart';
 import 'package:forge_and_flow/domain/services/schedule_forecast_demand_resolver.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 
@@ -108,8 +110,17 @@ void main() {
         final restaurantId = await SqliteRestaurantScopeRepository.instance
             .getActiveRestaurantId();
 
+        // Clear mock replay AND operational open-shift state so production
+        // takes the simple `operationalBusinessDate == null →
+        // latestClosedDate` short-circuit path. With an open-shift
+        // snapshot in place, the planning-anchor service runs the
+        // closed-truth eligibility filter and may legitimately return
+        // `latestClosed - 1` (today's shift not yet finalized for the
+        // appLocalCutoffFallback close-authority sources in demo data);
+        // that path is covered by its own dedicated test.
         final db = await SqliteDatabase.instance.database;
         await db.delete('mock_replay_state');
+        await db.delete('open_shift_snapshots');
 
         final ctx = await DemandForecastContextService.instance
             .getCurrentContext();
@@ -148,14 +159,29 @@ void main() {
       if (ctx.anchorBusinessDate == null) return;
 
       final startDate = _subtractDays(ctx.anchorBusinessDate!, 59);
-      final shifts = await SqliteShiftRecordRepository.instance
+      final rawShifts = await SqliteShiftRecordRepository.instance
           .getClosedShiftsInDateRange(
             restaurantId,
             startDate,
             ctx.anchorBusinessDate!,
           );
+      // Mirror production: DemandForecastContextService runs the raw
+      // window through `ClosedTruthEligibility.filter` (parameterized by
+      // the current operational business date) so that shifts which are
+      // closed-by-status but not yet finalized under the
+      // `appLocalCutoffFallback` close-authority are excluded from the
+      // baseline. The test's expected sum must apply the same filter or
+      // it will count covers production deliberately excludes.
+      final operationalBusinessDate =
+          await SqliteOpenShiftSnapshotRepository.instance
+              .getCurrentBusinessDate(restaurantId);
+      final eligibleShifts = ClosedTruthEligibility.filter(
+        rawShifts,
+        currentOperationalBusinessDate: operationalBusinessDate,
+      );
 
-      final expectedTotal = shifts.fold<int>(0, (s, r) => s + r.covers);
+      final expectedTotal =
+          eligibleShifts.fold<int>(0, (s, r) => s + r.covers);
       expect(ctx.baselineTotalCovers, equals(expectedTotal));
       expect(ctx.baselineTotalCovers, greaterThan(0));
     });
@@ -199,14 +225,26 @@ void main() {
       if (ctx.anchorBusinessDate == null) return;
 
       final startDate = _subtractDays(ctx.anchorBusinessDate!, 20);
-      final shifts = await SqliteShiftRecordRepository.instance
+      final rawShifts = await SqliteShiftRecordRepository.instance
           .getClosedShiftsInDateRange(
             restaurantId,
             startDate,
             ctx.anchorBusinessDate!,
           );
+      // Mirror production's eligibility filter (see group C — production
+      // excludes not-yet-finalized shifts even when they are
+      // status='closed'). The test's expected sum must apply the same
+      // filter to compare apples-to-apples.
+      final operationalBusinessDate =
+          await SqliteOpenShiftSnapshotRepository.instance
+              .getCurrentBusinessDate(restaurantId);
+      final eligibleShifts = ClosedTruthEligibility.filter(
+        rawShifts,
+        currentOperationalBusinessDate: operationalBusinessDate,
+      );
 
-      final expectedTotal = shifts.fold<int>(0, (s, r) => s + r.covers);
+      final expectedTotal =
+          eligibleShifts.fold<int>(0, (s, r) => s + r.covers);
       expect(ctx.recentThreeWeekTotalCovers, equals(expectedTotal));
     });
 
