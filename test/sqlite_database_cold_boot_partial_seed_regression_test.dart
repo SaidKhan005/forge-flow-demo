@@ -49,6 +49,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/cold_boot_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
@@ -72,10 +74,16 @@ void main() {
   setUp(() async {
     tmpDir = await Directory.systemTemp.createTemp('coldboot_partial_');
     SqliteDatabase.debugColdBootSeedRunCount = 0;
+    // Bucket 4d (audit 2026-05-20): reset cold-boot overrides via
+    // `addTearDown` so the override can't leak between tests
+    // (PR #1091 bug shape). The `set` happens below in `coldBoot()`
+    // and inline in the single-flight test. `debugColdBootSeedRunCount`
+    // is a separate counter (not one of the override seams) and stays
+    // reset inline.
+    addTearDown(resetColdBootOverrides);
   });
 
   tearDown(() async {
-    SqliteDatabase.debugColdBootTodayOverride = null;
     SqliteDatabase.debugColdBootSeedRunCount = 0;
     await SqliteDatabase.instance.close();
     if (await tmpDir.exists()) {

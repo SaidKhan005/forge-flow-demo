@@ -16,6 +16,8 @@ import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/domain/services/distribution_weight_builder.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/cold_boot_helpers.dart';
+
 void main() {
   // Fix A (operator decision 2026-05-16): the "none connected" demo
   // location (today Harbour) is honest-EMPTY; per-location open-shift
@@ -163,12 +165,11 @@ void main() {
     const pinnedNow = '2026-03-27T19:45:00'; // Fri, Dinner in progress
 
     setUp(() async {
-      SqliteDatabase.debugColdBootNowOverride = pinnedNow;
+      // Bucket 4d (audit 2026-05-20): set+reset via ColdBootOverrideScope
+      // so the override can't leak between tests (PR #1091 bug shape).
+      final scope = ColdBootOverrideScope(now: pinnedNow);
+      addTearDown(scope.dispose);
       await SqliteDatabase.instance.reseedDemo();
-    });
-
-    tearDown(() {
-      SqliteDatabase.debugColdBootNowOverride = null;
     });
 
     test('seeded shifts carry mock replay source system', () async {
