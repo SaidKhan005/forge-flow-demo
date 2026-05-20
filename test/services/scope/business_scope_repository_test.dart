@@ -1,15 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/business_scope.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_active_scope_repository.dart';
-import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/scope/business_scope_repository.dart';
 
+import '../../_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   group('SqliteActiveScopeRepository', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('round-trips one active scope per user', () async {
       const scope = BusinessScope(

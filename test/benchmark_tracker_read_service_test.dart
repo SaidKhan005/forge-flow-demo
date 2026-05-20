@@ -6,22 +6,19 @@ import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/services/target_cycle_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'package:forge_and_flow/domain/models/target_cycle.dart';
-import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
+
+import '_test_helpers/sqlite_demo_helpers.dart';
 
 void main() {
   setUp(() async {
     BenchmarkTrackerReadService.disableBridgeOnly();
-    BaselineData.clearManagerOverride();
-    BaselineData.clearHistoricalContext();
-    BaselineData.clearRecommendationSignals();
-    await SqliteDatabase.instance.reseedDemo();
+    resetBaselineTestState();
+    await setUpSqliteDemo();
   });
 
   tearDown(() {
     BenchmarkTrackerReadService.disableBridgeOnly();
-    BaselineData.clearManagerOverride();
-    BaselineData.clearHistoricalContext();
-    BaselineData.clearRecommendationSignals();
+    resetBaselineTestState();
   });
 
   test('canonical load reads persisted manager override, not bridge state',

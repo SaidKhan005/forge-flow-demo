@@ -21,11 +21,13 @@ import 'package:forge_and_flow/domain/services/service_period_definition_resolve
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 const _fourPeriodRestaurantId = 'demo_restaurant_four_period';
 
 void main() {
   setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     SqliteRestaurantTimingConfigRepository.instance.resetDao();
   });
 

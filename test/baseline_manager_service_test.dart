@@ -12,11 +12,16 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   setUp(() async {
+    // Single clearManagerOverride() kept inline (mirrors batch 1
+    // active_target_profile_notifier_test precedent). serverSelectionWriter
+    // reset is file-local seam, independent of the helper.
     BaselineData.clearManagerOverride();
     BaselineManagerService.instance.serverSelectionWriter = null;
-    await DatabaseHelper.instance.reseedDemo();
+    await setUpSqliteDemo();
   });
 
   tearDown(() {

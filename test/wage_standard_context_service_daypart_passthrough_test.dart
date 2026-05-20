@@ -26,10 +26,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/services/wage_standard_context_service.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   group('loadOrBootstrapProfile — per-daypart passthrough', () {
     test(

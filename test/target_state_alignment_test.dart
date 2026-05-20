@@ -26,6 +26,8 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 // â”€â”€ Shared close inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ClosedShiftInput _friDinner() => ClosedShiftInput(
@@ -146,8 +148,12 @@ void main() {
   final profileRepo = SqliteTargetProfileRepository.instance;
 
   setUp(() async {
+    // Single clearManagerOverride() kept inline rather than routed through
+    // `resetBaselineTestState()` (which would add 2 extra clears and change
+    // semantics) — mirrors the batch 1 active_target_profile_notifier_test
+    // precedent.
     BaselineData.clearManagerOverride();
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
   });
 
   // â”€â”€ A: Active target profile persists current effective baseline state â”€â”€â”€â”€

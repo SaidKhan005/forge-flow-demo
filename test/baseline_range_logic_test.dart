@@ -14,14 +14,19 @@ import 'package:forge_and_flow/domain/models/recommended_benchmark_selection.dar
 import 'package:forge_and_flow/services/baseline_authority_service.dart'
     show BaselineGraphButtonEmphasis;
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
-import 'package:forge_and_flow/infrastructure/persistence/sqlite/database_helper.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
+
+import '_test_helpers/sqlite_demo_helpers.dart';
 
 void main() {
   setUp(() async {
+    // Partial 2-clear baseline reset (no clearRecommendationSignals)
+    // kept inline rather than routed through `resetBaselineTestState()`
+    // to preserve existing semantics (mirrors batch 1
+    // active_target_profile_notifier_test precedent).
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
-    await DatabaseHelper.instance.reseedDemo();
+    await setUpSqliteDemo();
   });
 
   tearDown(() {

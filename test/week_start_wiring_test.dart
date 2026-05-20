@@ -22,16 +22,18 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  const restaurantId = DemoScope.restaurantId;
+  const restaurantId = demoRestaurantId;
   // Default seeded business date: 2026-03-27 (Friday).
   const businessDate = '2026-03-27';
 
   setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
     // reseedDemo does not reset restaurant_timing_configs (uses
     // ConflictAlgorithm.ignore). Restore the Monday-default demo config
     // explicitly so each test starts clean.

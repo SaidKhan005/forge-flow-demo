@@ -6,10 +6,10 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database
 import 'package:forge_and_flow/services/scope/business_scope_repository.dart';
 import 'package:forge_and_flow/state/restaurant_scope_notifier.dart';
 
+import '../_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   group('RestaurantScopeNotifier.loadBusinessScopes', () {
     test(
