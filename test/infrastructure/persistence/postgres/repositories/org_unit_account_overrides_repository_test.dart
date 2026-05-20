@@ -20,6 +20,8 @@ void main() {
               return <PostgresRow>[
                 <String, Object?>{
                   'org_unit_id': _orgUnitId,
+                  'selected_scope_name': 'East Region',
+                  'selected_scope_unit_type': 'region',
                   'override_operator_id': _operatorId,
                   'override_org_unit_id': _orgUnitId,
                   'override_iana_timezone': 'Europe/London',
@@ -36,8 +38,26 @@ void main() {
                   'parent_currency_code': 'CAD',
                   'parent_contact_email': 'region@example.com',
                   'parent_contact_phone': '+1 555 0100',
+                  'locale_code_source_id':
+                      '44444444-4444-4444-4444-444444444444',
+                  'locale_code_source_type': 'brand',
+                  'locale_code_source_label': 'Harbour Brand',
+                  'currency_code_source_id':
+                      '44444444-4444-4444-4444-444444444444',
+                  'currency_code_source_type': 'brand',
+                  'currency_code_source_label': 'Harbour Brand',
+                  'contact_email_source_id':
+                      '55555555-5555-5555-5555-555555555555',
+                  'contact_email_source_type': 'district',
+                  'contact_email_source_label': 'Metro District',
+                  'contact_phone_source_id':
+                      '55555555-5555-5555-5555-555555555555',
+                  'contact_phone_source_type': 'district',
+                  'contact_phone_source_label': 'Metro District',
+                  'operator_business_name': 'Demo Diner Co.',
                   'operator_locale_code': 'en-CA',
                   'operator_currency_code': 'USD',
+                  'operator_iana_timezone': 'America/Toronto',
                   'operator_updated_at': DateTime.utc(2026, 5, 20, 9),
                 },
               ];
@@ -60,6 +80,11 @@ void main() {
         expect(resolved?.effective.localeCode, equals('fr-CA'));
         expect(resolved?.effective.currencyCode, equals('CAD'));
         expect(resolved?.effective.contactEmail, equals('region@example.com'));
+        expect(resolved?.sources.ianaTimezone?.scopeType, equals('region'));
+        expect(resolved?.sources.ianaTimezone?.scopeLabel, 'East Region');
+        expect(resolved?.sources.ianaTimezone?.setHere, isTrue);
+        expect(resolved?.sources.localeCode?.scopeType, equals('brand'));
+        expect(resolved?.sources.contactEmail?.scopeType, equals('district'));
         final sql = pool.transactions.single.executedSql.last;
         expect(sql, contains('ou.path @> s.path'));
         expect(sql, contains("unit_type <> 'corp'"));

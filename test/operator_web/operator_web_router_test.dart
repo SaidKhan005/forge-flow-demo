@@ -1182,20 +1182,13 @@ void main() {
       },
     );
 
-    // BLOCKER fix (PR #857 re-audit) — the Audit-Log fail-loud guard
-    // must NOT require `OperatorWebAuditLogHierarchyGatewayProvider`.
-    // That provider is a sanctioned deferred follow-up: the production
-    // `FirebaseOperatorWebAuthSource` mixes the team audit-log + team
-    // hierarchy gateways but intentionally does NOT yet mix the
-    // hierarchy-FILTER gateway provider (router :1386-1401 +
-    // `operator_web_team_gateway_providers.dart:52-54` document the
-    // in-memory fallback). A live source shaped like production must
-    // therefore render the real Audit Log screen — not a false
-    // positive wiring error and not the demo banner.
+    // Audit Log hierarchy filtering is now required live wiring. A live
+    // source that has the audit rows and team hierarchy gateways but
+    // omits `OperatorWebAuditLogHierarchyGatewayProvider` must fail loud
+    // instead of silently falling back to demo filtering.
     testWidgets(
-      'live source with team audit-log + team hierarchy mixins but NOT '
-      'the hierarchy-filter provider: real Audit Log screen renders, '
-      'NOT the wiring-error surface, NO demo banner',
+      'live source missing the audit hierarchy filter provider shows the '
+      'wiring-error surface',
       (tester) async {
         await sizeViewport(tester);
         final source = _LiveAuditLogWiredOperatorWebSource(
@@ -1215,17 +1208,15 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // The real Audit Log screen renders (hierarchy-filter gateway
-        // falls back to InMemoryWebAuditLogHierarchyGateway — sanctioned
-        // deferred follow-up, NOT a wiring regression).
+        // The missing hierarchy-filter gateway is now a real wiring
+        // regression for live sources.
         expect(
           find.byKey(const Key('operator_web_audit_log_screen')),
-          findsOneWidget,
+          findsNothing,
         );
-        // NOT the fail-loud wiring-error surface.
         expect(
           find.byKey(const Key('operator_web_surface_wiring_error_audit_log')),
-          findsNothing,
+          findsOneWidget,
         );
         // Still no demo banner — this is a live source.
         expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
@@ -1595,14 +1586,9 @@ class _LiveWiredOperatorWebSource extends OperatorWebAuthSource
   }
 }
 
-/// BLOCKER-fix test double (PR #857) — a *live* auth source shaped
-/// like the production `FirebaseOperatorWebAuthSource`: it mixes the
-/// two genuinely-live-wired Audit-Log providers (team audit-log + team
-/// hierarchy) but intentionally does NOT mix
-/// `OperatorWebAuditLogHierarchyGatewayProvider` (the hierarchy-FILTER
-/// gateway is a sanctioned deferred follow-up that falls back to the
-/// in-memory gateway). The router must render the real Audit Log
-/// screen here — fail-loud must NOT trigger on the deferred provider.
+/// Live auth source with audit rows and team hierarchy, but missing the
+/// hierarchy-filter gateway. The router must show the Audit Log wiring
+/// error for this source instead of falling back to demo filtering.
 class _LiveAuditLogWiredOperatorWebSource extends OperatorWebAuthSource
     implements
         OperatorWebTeamAuditLogGatewayProvider,

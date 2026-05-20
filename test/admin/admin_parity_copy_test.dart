@@ -12,7 +12,7 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   const dataAccuracySupportCopy =
-      'Support can review effective covers, wages, and walk-ins here. Normal operator edits stay in Operator Web; override actions are hidden for this role.';
+      'Support can review effective covers, wages, and walk-ins by location. Normal operator edits stay in Operator Web; location repair actions are hidden for this role.';
   const adminOnlyCopy =
       'This surface is for F&F admins only. Operators cannot see it.';
 
@@ -37,10 +37,13 @@ void main() {
 
   group('C-10 admin parity ownership copy', () {
     test('route labels support actions honestly', () {
-      expect(routeById(kAdminDataAccuracyRouteId).badge, 'Support + override');
+      expect(
+        routeById(kAdminDataAccuracyRouteId).badge,
+        'Support + location repair',
+      );
       expect(
         routeById(kAdminDataAccuracyRouteId).subtitle,
-        contains('super admins can apply audited overrides'),
+        contains('super admins can apply audited location repairs'),
       );
       expect(routeById(kAdminVendorApplicabilityRouteId).badge, 'Admin only');
       expect(

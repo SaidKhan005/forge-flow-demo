@@ -1014,6 +1014,83 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     return _orgUnitScopeById(ancestors.first);
   }
 
+  List<BusinessTimingHierarchyPathEntry> _businessTimingHierarchyPath({
+    required OperatorWebSession session,
+    required OperatorWebManagementScopeOption managementScope,
+    required OperatorWebManagementScopeOption? locationScope,
+  }) {
+    final entries = <BusinessTimingHierarchyPathEntry>[
+      BusinessTimingHierarchyPathEntry(
+        scopeKind: 'operator',
+        scopeId: session.operatorId,
+        name: session.businessName,
+        helper: 'Business',
+      ),
+    ];
+    if (locationScope != null) {
+      final ancestorIds = _wageAncestorOrgUnitIdsNearestFirst(
+        locationScope,
+      ).reversed;
+      for (final orgUnitId in ancestorIds) {
+        final option = _orgUnitScopeById(orgUnitId);
+        if (option == null) continue;
+        entries.add(_businessTimingPathEntryForOrgUnit(option));
+      }
+      entries.add(
+        BusinessTimingHierarchyPathEntry(
+          scopeKind: 'location',
+          scopeId: locationScope.id,
+          name: locationScope.label,
+          helper: 'Location',
+        ),
+      );
+      return List<BusinessTimingHierarchyPathEntry>.unmodifiable(entries);
+    }
+    if (managementScope.kind == OperatorWebManagementScopeKind.orgUnit) {
+      final ancestorIds = _orgUnitAncestorIdsNearestFirst(
+        managementScope,
+      ).reversed;
+      for (final orgUnitId in ancestorIds) {
+        final option = _orgUnitScopeById(orgUnitId);
+        if (option == null) continue;
+        entries.add(_businessTimingPathEntryForOrgUnit(option));
+      }
+      entries.add(_businessTimingPathEntryForOrgUnit(managementScope));
+    }
+    return List<BusinessTimingHierarchyPathEntry>.unmodifiable(entries);
+  }
+
+  List<String> _orgUnitAncestorIdsNearestFirst(
+    OperatorWebManagementScopeOption orgUnitScope,
+  ) {
+    final ancestors = <String>[];
+    final orgUnitById = <String, OperatorWebManagementScopeOption>{
+      for (final option in _managementScopeOptions)
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit)
+          option.id: option,
+    };
+    var current = orgUnitScope.parentOrgUnitId;
+    final seen = <String>{};
+    while (current != null && current.isNotEmpty) {
+      if (!seen.add(current)) break;
+      ancestors.add(current);
+      current = orgUnitById[current]?.parentOrgUnitId;
+    }
+    return ancestors;
+  }
+
+  BusinessTimingHierarchyPathEntry _businessTimingPathEntryForOrgUnit(
+    OperatorWebManagementScopeOption option,
+  ) {
+    return BusinessTimingHierarchyPathEntry(
+      scopeKind: 'org_unit',
+      scopeId: option.id,
+      name: option.label,
+      helper: option.helper,
+      unitType: option.unitType,
+    );
+  }
+
   OperatorWebManagementScopeOption? _orgUnitScopeById(String orgUnitId) {
     for (final option in _managementScopeOptions) {
       if (option.kind == OperatorWebManagementScopeKind.orgUnit &&
@@ -1512,6 +1589,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             orgUnitHelper: managementScope.helper,
             initialScopeKind: 'org_unit',
             gateway: _webBusinessTimingGateway,
+            hierarchyPath: _businessTimingHierarchyPath(
+              session: session,
+              managementScope: managementScope,
+              locationScope: businessTimingLocationScope,
+            ),
             existingProfile: _resolvedExistingTimingProfileForScope(
               scopeKind: 'org_unit',
               scopeId: managementScope.id,
@@ -1536,6 +1618,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             orgUnitName: businessTimingOrgUnitScope?.label,
             orgUnitHelper: businessTimingOrgUnitScope?.helper,
             gateway: _webBusinessTimingGateway,
+            hierarchyPath: _businessTimingHierarchyPath(
+              session: session,
+              managementScope: managementScope,
+              locationScope: locationScope,
+            ),
             existingProfile: _resolvedExistingTimingProfile(locationScope.id),
             scheduleMode: _schedulingBusinessTiming,
             initialEffectiveAt: _schedulingBusinessTiming
@@ -1637,18 +1724,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         // source missing EITHER is a wiring regression — fail loud.
         // The third, the audit-log HIERARCHY-FILTER gateway
         // (`OperatorWebAuditLogHierarchyGatewayProvider`), is a
-        // sanctioned deferred follow-up: `_auditLogHierarchyGateway`
+        // production gateway: `_auditLogHierarchyGateway`
         // (see ~:1386-1401) and `operator_web_team_gateway_providers
         // .dart:52-54` document that demo / unmixed / live sources
-        // fall back to `InMemoryWebAuditLogHierarchyGateway` until the
-        // small live-wiring follow-up lands. It is therefore EXCLUDED
-        // from the fail-loud guard so live operators see the real
-        // Audit Log screen instead of a false-positive wiring error.
+        // use the live gateway in production; only demo sources fall
+        // back to `InMemoryWebAuditLogHierarchyGateway`.
         body =
             _liveSurfaceMissingGateway(
               hasLiveProvider:
                   widget.source is OperatorWebTeamAuditLogGatewayProvider &&
-                  widget.source is OperatorWebTeamHierarchyGatewayProvider,
+                  widget.source is OperatorWebTeamHierarchyGatewayProvider &&
+                  widget.source is OperatorWebAuditLogHierarchyGatewayProvider,
               surfaceTitle: 'Audit log',
             ) ??
             AuditLogScreen(
@@ -1709,7 +1795,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         // the screen reads both gateways, so a *live* source missing
         // either is a wiring regression — fail loud instead of silently
         // serving in-memory fixtures. The embedded Wage Authority
-        // section is deliberately EXCLUDED from this gate: it has a
+        // section is deliberately outside this gate: it has a
         // router-owned `OperatorWebDemoWageAuthorityGateway` sanctioned
         // fallback (~:1567-1576), so gating on it would repeat the #857
         // audit-log blocker (false-positive on a sanctioned fallback);

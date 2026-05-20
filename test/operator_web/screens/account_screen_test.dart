@@ -152,6 +152,12 @@ class _FakeAccountGateway implements WebAccountGateway {
     if (overridesFailWith != null) throw overridesFailWith!;
     final businessDefault =
         (initialOverrides ?? _defaultOverridesEnvelope()).businessDefault;
+    final locationSource = LocationAccountOverridesFieldSource(
+      scopeType: 'location',
+      scopeId: locationId,
+      scopeLabel: 'Brio Main',
+      setHere: true,
+    );
     return LocationAccountOverridesEnvelope(
       operatorId: 'op-1',
       locationId: locationId,
@@ -174,6 +180,16 @@ class _FakeAccountGateway implements WebAccountGateway {
         contactPhone: patch.contactPhone,
       ),
       businessDefault: businessDefault,
+      sources: LocationAccountOverridesFieldSources(
+        ianaTimezone: patch.ianaTimezone == null ? null : locationSource,
+        localeCode: patch.localeCode == null ? null : locationSource,
+        currencyCode: patch.currencyCode == null ? null : locationSource,
+        businessDayRolloverHour: patch.businessDayRolloverHour == null
+            ? null
+            : locationSource,
+        contactEmail: patch.contactEmail == null ? null : locationSource,
+        contactPhone: patch.contactPhone == null ? null : locationSource,
+      ),
       updatedAt: DateTime.utc(2026, 5, 14, 12),
     );
   }
@@ -717,7 +733,7 @@ void main() {
             'Inherits from the nearest parent:',
             findRichText: true,
           ),
-          findsNWidgets(3),
+          findsNWidgets(4),
         );
         // The backend-only explainer is NO LONGER rendered at Location
         // scope — the slice replaces the PUNT-mode copy with a real
@@ -809,7 +825,7 @@ void main() {
             const Key('operator_web_account_region_scope_summary'),
           ),
           matching: find.textContaining(
-            'Set here at Brio Main.',
+            'Set here at Location: Brio Main.',
             findRichText: true,
           ),
         ),
@@ -876,7 +892,7 @@ void main() {
               const Key('operator_web_account_identity_scope_summary'),
             ),
             matching: find.textContaining(
-              'Set here at Brio Main.',
+              'Set here at Location: Brio Main.',
               findRichText: true,
             ),
           ),

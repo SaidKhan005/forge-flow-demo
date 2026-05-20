@@ -47,6 +47,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         OperatorWebTeamHierarchyGatewayProvider,
         OperatorWebTeamSessionsGatewayProvider,
         OperatorWebTeamAuditLogGatewayProvider,
+        OperatorWebAuditLogHierarchyGatewayProvider,
         OperatorWebSecurityGatewayProvider,
         OperatorWebNotificationPreferencesGatewayProvider,
         OperatorWebWageAuthorityGatewayProvider,
@@ -123,6 +124,19 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
        teamAuditLogGateway = WebTeamAuditLogGatewayLive(
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
+       ),
+       auditLogHierarchyGateway = HttpWebAuditLogHierarchyGateway(
+         proxyBaseUri: proxyClient.baseUri,
+         tokenProvider: () async {
+           final token = await authClient.currentIdToken();
+           if (token == null || token.trim().isEmpty) {
+             throw const WebAuditLogHierarchyGatewayError(
+               'Sign in again to filter the audit log.',
+               statusCode: 401,
+             );
+           }
+           return token;
+         },
        ),
        securityGateway = WebSecurityGatewayLive(
          proxyBaseUri: proxyClient.baseUri,
@@ -218,6 +232,9 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
 
   @override
   final WebTeamAuditLogGateway teamAuditLogGateway;
+
+  @override
+  final WebAuditLogHierarchyGateway auditLogHierarchyGateway;
 
   @override
   final WebSecurityGateway securityGateway;

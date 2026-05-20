@@ -40,6 +40,23 @@ import '../widgets/service_period_editor.dart';
 const String _kBusinessTimingEditPermission =
     PermissionKeys.businessTimingConfigure;
 
+@immutable
+class BusinessTimingHierarchyPathEntry {
+  const BusinessTimingHierarchyPathEntry({
+    required this.scopeKind,
+    required this.scopeId,
+    required this.name,
+    required this.helper,
+    this.unitType,
+  });
+
+  final String scopeKind;
+  final String scopeId;
+  final String name;
+  final String helper;
+  final String? unitType;
+}
+
 class BusinessTimingEditorScreen extends StatefulWidget {
   const BusinessTimingEditorScreen({
     super.key,
@@ -53,6 +70,7 @@ class BusinessTimingEditorScreen extends StatefulWidget {
     this.gateway,
     this.existingProfile,
     this.initialEffectiveAt,
+    this.hierarchyPath = const <BusinessTimingHierarchyPathEntry>[],
     this.scheduleMode = false,
     this.onClose,
   });
@@ -67,6 +85,7 @@ class BusinessTimingEditorScreen extends StatefulWidget {
   final WebBusinessTimingGateway? gateway;
   final BusinessTimingProfileWriteResult? existingProfile;
   final DateTime? initialEffectiveAt;
+  final List<BusinessTimingHierarchyPathEntry> hierarchyPath;
   final bool scheduleMode;
   final VoidCallback? onClose;
 
@@ -262,20 +281,24 @@ class _BusinessTimingEditorScreenState
     return 'UTC';
   }
 
-  /// Wave 2 H-2 — builds the visual hierarchy tree's node list from
-  /// the session + the currently-selected scope kind. The editor does
-  /// not call `BusinessTimingGateway.loadTiming`, so we cannot read a
-  /// pre-assembled inheritance chain here — instead we render the two
-  /// anchors the session always carries (business + location) and
-  /// highlight whichever rung the operator has picked in the scope
-  /// dropdown.
-  ///
-  /// TODO(wave-N): wire full tree once hierarchy reachable — the
-  /// session does not carry region / brand identifiers today, so the
-  /// tree is best-effort with what IS available. The [dataGapExplainer]
-  /// rendered below the tree documents the gap to the operator in
-  /// plain English (HP #11 final clause).
+  /// Builds the visual hierarchy tree from the full path passed by the
+  /// router when available, then falls back to the business/location
+  /// anchors carried by older callers.
   List<HierarchyTreeNodeView> _buildEditorHierarchyNodes() {
+    final path = widget.hierarchyPath;
+    if (path.isNotEmpty) {
+      final currentIndex = path.indexWhere(_pathEntryIsCurrent);
+      return <HierarchyTreeNodeView>[
+        for (int i = 0; i < path.length; i++)
+          HierarchyTreeNodeView(
+            level: _levelForPathEntry(path[i]),
+            name: path[i].name,
+            isCurrentScope: i == currentIndex,
+            inheritsFromHere: currentIndex > 0 && i == currentIndex - 1,
+            subtitle: _subtitleForPathEntry(path[i], i == currentIndex),
+          ),
+      ];
+    }
     final operatorIsCurrent = _scopeKind == 'operator';
     final orgUnitIsCurrent = _scopeKind == 'org_unit';
     final locationIsCurrent = _scopeKind == 'location';
@@ -320,6 +343,63 @@ class _BusinessTimingEditorScreenState
       );
     }
     return nodes;
+  }
+
+  bool _pathEntryIsCurrent(BusinessTimingHierarchyPathEntry entry) {
+    switch (entry.scopeKind) {
+      case 'operator':
+        return _scopeKind == 'operator';
+      case 'org_unit':
+        return _scopeKind == 'org_unit' && entry.scopeId == _orgUnitId;
+      case 'location':
+        return _scopeKind == 'location' && entry.scopeId == _locationId;
+      default:
+        return false;
+    }
+  }
+
+  HierarchyTreeLevel _levelForPathEntry(
+    BusinessTimingHierarchyPathEntry entry,
+  ) {
+    if (entry.scopeKind == 'operator') return HierarchyTreeLevel.business;
+    if (entry.scopeKind == 'location') return HierarchyTreeLevel.location;
+    switch (entry.unitType) {
+      case 'brand':
+        return HierarchyTreeLevel.brand;
+      case 'district':
+        return HierarchyTreeLevel.district;
+      case 'location_group':
+        return HierarchyTreeLevel.locationGroup;
+      case 'region':
+      default:
+        return HierarchyTreeLevel.region;
+    }
+  }
+
+  String _subtitleForPathEntry(
+    BusinessTimingHierarchyPathEntry entry,
+    bool isCurrent,
+  ) {
+    if (isCurrent) {
+      switch (entry.scopeKind) {
+        case 'operator':
+          return 'This profile becomes the default for every location.';
+        case 'org_unit':
+          return 'Locations under this ${entry.helper.toLowerCase()} inherit this profile.';
+        case 'location':
+          return 'This profile applies to this location only.';
+      }
+    }
+    switch (entry.scopeKind) {
+      case 'operator':
+        return 'Business default for every lower scope.';
+      case 'org_unit':
+        return '${entry.helper} in the selected path.';
+      case 'location':
+        return 'Location context for this timing profile.';
+      default:
+        return 'Hierarchy scope in this path.';
+    }
   }
 
   BusinessTimingProfileWriteResult? get _existingProfileForSelectedScope {
@@ -516,12 +596,10 @@ class _BusinessTimingEditorScreenState
             keyName: 'operator_web_business_timing_editor_hierarchy_tree',
             headline: 'Where this profile will land',
             nodes: _buildEditorHierarchyNodes(),
-            dataGapExplainer: _hasOrgUnitScope
-                ? 'This tree shows the business, selected group, and location '
-                      'this profile applies to.'
-                : 'Groups will appear here once your hierarchy is connected. '
-                      'Today the tree shows the business and the location this '
-                      'profile applies to.',
+            dataGapExplainer: widget.hierarchyPath.isEmpty
+                ? 'This tree shows the business and location. Groups appear '
+                      'after the hierarchy loads.'
+                : null,
           ),
           const SizedBox(height: 14),
           if (!_hasGateway) const _UnavailableBanner(),
@@ -785,10 +863,10 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
                     'operator_web_business_timing_editor_timezone_readonly',
                   ),
                   decoration: const InputDecoration(
-                    labelText: 'Location timezone',
+                    labelText: 'Timezone used for timing',
                     border: OutlineInputBorder(),
                     helperText:
-                        'Change this in Account or the location record.',
+                        'Change this in Business account for the selected scope.',
                   ),
                   child: Text(
                     timezoneLabel,

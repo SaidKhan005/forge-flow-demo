@@ -44,17 +44,28 @@ import 'operator_web_section_heading.dart';
 /// `region` and `brand` light up as intermediate levels when the
 /// underlying data exposes them; today the timing bundle exposes an
 /// "Org unit / Region" placeholder we can render as a region rung.
-enum HierarchyTreeLevel { business, region, brand, location }
+enum HierarchyTreeLevel {
+  business,
+  brand,
+  region,
+  district,
+  locationGroup,
+  location,
+}
 
 extension on HierarchyTreeLevel {
   String get label {
     switch (this) {
       case HierarchyTreeLevel.business:
         return 'Business';
-      case HierarchyTreeLevel.region:
-        return 'Region';
       case HierarchyTreeLevel.brand:
         return 'Brand';
+      case HierarchyTreeLevel.region:
+        return 'Region';
+      case HierarchyTreeLevel.district:
+        return 'District';
+      case HierarchyTreeLevel.locationGroup:
+        return 'Location group';
       case HierarchyTreeLevel.location:
         return 'Location';
     }
@@ -64,10 +75,14 @@ extension on HierarchyTreeLevel {
     switch (this) {
       case HierarchyTreeLevel.business:
         return Icons.apartment;
-      case HierarchyTreeLevel.region:
-        return Icons.public;
       case HierarchyTreeLevel.brand:
         return Icons.local_offer_outlined;
+      case HierarchyTreeLevel.region:
+        return Icons.public;
+      case HierarchyTreeLevel.district:
+        return Icons.account_tree_outlined;
+      case HierarchyTreeLevel.locationGroup:
+        return Icons.store_mall_directory_outlined;
       case HierarchyTreeLevel.location:
         return Icons.storefront_outlined;
     }

@@ -137,6 +137,7 @@ class LocationAccountOverridesRecord {
     required this.effective,
     required this.override,
     required this.businessDefault,
+    this.sources = const LocationAccountOverridesSourcesRecord(),
     required this.updatedAt,
   });
 
@@ -145,6 +146,7 @@ class LocationAccountOverridesRecord {
   final LocationAccountOverridesFieldSet effective;
   final LocationAccountOverridesFieldSet override;
   final LocationAccountOverridesFieldSet businessDefault;
+  final LocationAccountOverridesSourcesRecord sources;
   final DateTime updatedAt;
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -153,6 +155,7 @@ class LocationAccountOverridesRecord {
     'effective': effective.toJson(),
     'override': override.toJson(),
     'businessDefault': businessDefault.toJson(),
+    'sources': sources.toJson(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
   };
 }
@@ -183,6 +186,54 @@ class LocationAccountOverridesFieldSet {
     'businessDayRolloverHour': businessDayRolloverHour,
     'contactEmail': contactEmail,
     'contactPhone': contactPhone,
+  };
+}
+
+class LocationAccountOverridesSourceRecord {
+  const LocationAccountOverridesSourceRecord({
+    required this.scopeType,
+    required this.scopeId,
+    required this.scopeLabel,
+    required this.setHere,
+  });
+
+  final String scopeType;
+  final String scopeId;
+  final String scopeLabel;
+  final bool setHere;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'scopeType': scopeType,
+    'scopeId': scopeId,
+    'scopeLabel': scopeLabel,
+    'setHere': setHere,
+  };
+}
+
+class LocationAccountOverridesSourcesRecord {
+  const LocationAccountOverridesSourcesRecord({
+    this.ianaTimezone,
+    this.localeCode,
+    this.currencyCode,
+    this.businessDayRolloverHour,
+    this.contactEmail,
+    this.contactPhone,
+  });
+
+  final LocationAccountOverridesSourceRecord? ianaTimezone;
+  final LocationAccountOverridesSourceRecord? localeCode;
+  final LocationAccountOverridesSourceRecord? currencyCode;
+  final LocationAccountOverridesSourceRecord? businessDayRolloverHour;
+  final LocationAccountOverridesSourceRecord? contactEmail;
+  final LocationAccountOverridesSourceRecord? contactPhone;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'ianaTimezone': ianaTimezone?.toJson(),
+    'localeCode': localeCode?.toJson(),
+    'currencyCode': currencyCode?.toJson(),
+    'businessDayRolloverHour': businessDayRolloverHour?.toJson(),
+    'contactEmail': contactEmail?.toJson(),
+    'contactPhone': contactPhone?.toJson(),
   };
 }
 

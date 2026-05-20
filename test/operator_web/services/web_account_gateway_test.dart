@@ -593,6 +593,20 @@ void main() {
               'contactEmail': null,
               'contactPhone': null,
             },
+            'sources': <String, Object?>{
+              'ianaTimezone': <String, Object?>{
+                'scopeType': 'location',
+                'scopeId': 'loc-1',
+                'scopeLabel': 'Toronto Yorkville',
+                'setHere': true,
+              },
+              'currencyCode': <String, Object?>{
+                'scopeType': 'business',
+                'scopeId': 'op-1',
+                'scopeLabel': 'Demo Diner Co.',
+                'setHere': false,
+              },
+            },
             'updatedAt': '2026-05-14T12:00:00.000Z',
           },
         ];
@@ -604,6 +618,9 @@ void main() {
         expect(envelope.locationId, equals('loc-1'));
         expect(envelope.effective.ianaTimezone, equals('America/Toronto'));
         expect(envelope.businessDefault.currencyCode, equals('USD'));
+        expect(envelope.sources.ianaTimezone?.scopeType, equals('location'));
+        expect(envelope.sources.ianaTimezone?.scopeLabel, 'Toronto Yorkville');
+        expect(envelope.sources.currencyCode?.scopeType, equals('business'));
         // Confirm the HTTP call shape.
         expect(capturedRequests.single.method, equals('GET'));
         expect(
@@ -711,6 +728,20 @@ void main() {
               'contactEmail': 'region@example.com',
               'contactPhone': null,
             },
+            'sources': <String, Object?>{
+              'ianaTimezone': <String, Object?>{
+                'scopeType': 'region',
+                'scopeId': 'org-1',
+                'scopeLabel': 'East Region',
+                'setHere': true,
+              },
+              'currencyCode': <String, Object?>{
+                'scopeType': 'business',
+                'scopeId': 'op-1',
+                'scopeLabel': 'Demo Diner Co.',
+                'setHere': false,
+              },
+            },
             'updatedAt': '2026-05-20T12:00:00.000Z',
           },
         ];
@@ -723,6 +754,13 @@ void main() {
         );
         expect(envelope.locationId, equals('org-1'));
         expect(envelope.effective.ianaTimezone, equals('America/Toronto'));
+        expect(envelope.sources.ianaTimezone?.scopeType, equals('region'));
+        expect(
+          envelope.sources.ianaTimezone?.scopeLabel,
+          equals('East Region'),
+        );
+        expect(envelope.sources.ianaTimezone?.setHere, isTrue);
+        expect(envelope.sources.currencyCode?.scopeType, equals('business'));
         expect(capturedRequests.single.method, equals('GET'));
         expect(
           capturedRequests.single.url.path,

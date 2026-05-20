@@ -169,6 +169,41 @@ void main() {
             locationId: 'loc-1',
             locationName: 'Downtown',
             initialScopeKind: 'org_unit',
+            hierarchyPath: const <BusinessTimingHierarchyPathEntry>[
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'operator',
+                scopeId: 'op-1',
+                name: 'Brio Restaurants',
+                helper: 'Business',
+              ),
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'org_unit',
+                scopeId: 'brand-1',
+                name: 'Harbour Brand',
+                helper: 'Brand',
+                unitType: 'brand',
+              ),
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'org_unit',
+                scopeId: 'org-east',
+                name: 'East Region',
+                helper: 'Region',
+                unitType: 'region',
+              ),
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'org_unit',
+                scopeId: 'district-1',
+                name: 'Metro District',
+                helper: 'District',
+                unitType: 'district',
+              ),
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'location',
+                scopeId: 'loc-1',
+                name: 'Downtown',
+                helper: 'Location',
+              ),
+            ],
           ),
         ),
       );
@@ -184,10 +219,13 @@ void main() {
       final create = gateway.creates.single;
       expect(create.scopeKind, 'org_unit');
       expect(create.scopeId, 'org-east');
+      expect(find.textContaining('Harbour Brand'), findsWidgets);
       expect(find.textContaining('East Region'), findsWidgets);
+      expect(find.textContaining('Metro District'), findsWidgets);
+      expect(find.textContaining('Downtown'), findsWidgets);
       expect(
-        find.textContaining('business, selected group, and location'),
-        findsOneWidget,
+        find.textContaining('Groups appear after the hierarchy loads'),
+        findsNothing,
       );
       expect(
         find.textContaining('tree shows the business and the location'),
@@ -321,7 +359,7 @@ void main() {
     );
     expect(find.text('America/Vancouver'), findsOneWidget);
     expect(
-      find.textContaining('Account or the location record'),
+      find.textContaining('Business account for the selected scope'),
       findsOneWidget,
     );
   });

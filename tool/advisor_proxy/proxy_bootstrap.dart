@@ -11689,6 +11689,7 @@ class _RepositoryLocationAccountOverridesWriteGateway
         effective: _fieldSetFrom(resolved.effective),
         override: _fieldSetFrom(resolved.override),
         businessDefault: _fieldSetFrom(resolved.businessDefault),
+        sources: _accountSourcesRecordFrom(resolved.sources),
         updatedAt: resolved.updatedAt,
       ),
     );
@@ -11786,6 +11787,7 @@ class _RepositoryAccountScopeOverridesWriteGateway
         effective: _fieldSetFrom(resolved.effective),
         override: _fieldSetFrom(resolved.override),
         businessDefault: _fieldSetFrom(resolved.businessDefault),
+        sources: _accountSourcesRecordFrom(resolved.sources),
         updatedAt: resolved.updatedAt,
       ),
     );
@@ -11803,6 +11805,33 @@ class _RepositoryAccountScopeOverridesWriteGateway
       contactPhone: defaults.contactPhone,
     );
   }
+}
+
+LocationAccountOverridesSourcesRecord _accountSourcesRecordFrom(
+  LocationAccountOverridesSources sources,
+) {
+  return LocationAccountOverridesSourcesRecord(
+    ianaTimezone: _accountSourceRecordFrom(sources.ianaTimezone),
+    localeCode: _accountSourceRecordFrom(sources.localeCode),
+    currencyCode: _accountSourceRecordFrom(sources.currencyCode),
+    businessDayRolloverHour: _accountSourceRecordFrom(
+      sources.businessDayRolloverHour,
+    ),
+    contactEmail: _accountSourceRecordFrom(sources.contactEmail),
+    contactPhone: _accountSourceRecordFrom(sources.contactPhone),
+  );
+}
+
+LocationAccountOverridesSourceRecord? _accountSourceRecordFrom(
+  LocationAccountOverridesSource? source,
+) {
+  if (source == null) return null;
+  return LocationAccountOverridesSourceRecord(
+    scopeType: source.scopeType,
+    scopeId: source.scopeId,
+    scopeLabel: source.scopeLabel,
+    setHere: source.setHere,
+  );
 }
 
 // endregion

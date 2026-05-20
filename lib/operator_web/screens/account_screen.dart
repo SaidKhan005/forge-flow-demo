@@ -551,6 +551,71 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 
+  String? _savedSourceLabelForGroup(
+    List<_AccountSourcePart> parts, {
+    String? fallback,
+  }) {
+    if (!widget.scopeBelowBusiness) return null;
+    final withSource = <_AccountSourcePart>[
+      for (final part in parts)
+        if (part.source != null) part,
+    ];
+    if (withSource.isEmpty) return fallback;
+    final first = withSource.first.source!;
+    final allSame = withSource.every(
+      (part) => _sameSource(part.source!, first),
+    );
+    if (allSame) return _sourceSentence(first);
+    final phrases = <String>[
+      for (final part in withSource)
+        '${part.label} ${_sourcePhrase(part.source!)}',
+    ];
+    return '${phrases.join('; ')}.';
+  }
+
+  bool _sameSource(
+    LocationAccountOverridesFieldSource left,
+    LocationAccountOverridesFieldSource right,
+  ) {
+    return left.scopeType == right.scopeType &&
+        left.scopeId == right.scopeId &&
+        left.scopeLabel == right.scopeLabel &&
+        left.setHere == right.setHere;
+  }
+
+  String _sourceSentence(LocationAccountOverridesFieldSource source) {
+    final owner = _sourceOwnerLabel(source);
+    return source.setHere ? 'Set here at $owner.' : 'Inherited from $owner.';
+  }
+
+  String _sourcePhrase(LocationAccountOverridesFieldSource source) {
+    final owner = _sourceOwnerLabel(source);
+    return source.setHere ? 'set here at $owner' : 'from $owner';
+  }
+
+  String _sourceOwnerLabel(LocationAccountOverridesFieldSource source) {
+    return '${_sourceTypeLabel(source.scopeType)}: ${source.scopeLabel}';
+  }
+
+  String _sourceTypeLabel(String scopeType) {
+    switch (scopeType) {
+      case 'business':
+        return 'Business';
+      case 'brand':
+        return 'Brand';
+      case 'region':
+        return 'Region';
+      case 'district':
+        return 'District';
+      case 'location_group':
+        return 'Location group';
+      case 'location':
+        return 'Location';
+      default:
+        return 'Hierarchy scope';
+    }
+  }
+
   Future<void> _handleSave() async {
     final gateway = widget.gateway;
     if (gateway == null || !widget.canEdit) return;
@@ -747,11 +812,10 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Wave 2 U-FU-hp11-account — edits enabled at Business
-    // scope (writes the operator-level row) and at Location scope
-    // (writes the per-location override row). Other non-business
-    // scopes (org units) stay disabled until the override surface
-    // extends to org-unit scope in a future slice.
+    // Edits are enabled when this screen has the write gateway for the
+    // selected scope: Business writes operator-level account fields,
+    // Location writes location overrides, and org units write scoped
+    // account overrides.
     final scopeBelowBusiness = widget.scopeBelowBusiness;
     final scopeIsLocation = widget.scopeIsLocation;
     final lowerScopeEditable =
@@ -833,22 +897,42 @@ class _AccountScreenState extends State<AccountScreen> {
         ? widget.session.businessName
         : (overrides.businessDefault.contactEmail ??
               widget.session.businessName);
-    final identityInheritedLabel = widget.inheritedLabelFor(
-      overrideIsSet: identityOverrideSet,
-      businessDefaultDisplay: identityBusinessDefault,
+    final identityInheritedLabel = _savedSourceLabelForGroup(
+      <_AccountSourcePart>[
+        _AccountSourcePart('Email', overrides?.sources.contactEmail),
+        _AccountSourcePart('Phone', overrides?.sources.contactPhone),
+      ],
+      fallback: widget.inheritedLabelFor(
+        overrideIsSet: identityOverrideSet,
+        businessDefaultDisplay: identityBusinessDefault,
+      ),
     );
     final identitySourceLabel = identityDraftChanged
         ? _unsavedSourceLabel('these contact details')
         : identityInheritedLabel;
     final regionInheritedLabel = regionDraftChanged
         ? _unsavedSourceLabel('these formatting settings')
-        : widget.inheritedLabelFor(
-            overrideIsSet: regionOverrideSet,
-            businessDefaultDisplay: regionBusinessDefault,
+        : _savedSourceLabelForGroup(
+            <_AccountSourcePart>[
+              _AccountSourcePart('Currency', overrides?.sources.currencyCode),
+              _AccountSourcePart('Locale', overrides?.sources.localeCode),
+            ],
+            fallback: widget.inheritedLabelFor(
+              overrideIsSet: regionOverrideSet,
+              businessDefaultDisplay: regionBusinessDefault,
+            ),
           );
-    final businessDayInheritedLabel = widget.inheritedLabelFor(
-      overrideIsSet: businessDayOverrideSet,
-      businessDefaultDisplay: businessDayBusinessDefault,
+    final businessDayInheritedLabel = _savedSourceLabelForGroup(
+      <_AccountSourcePart>[
+        _AccountSourcePart(
+          'Business day rollover',
+          overrides?.sources.businessDayRolloverHour,
+        ),
+      ],
+      fallback: widget.inheritedLabelFor(
+        overrideIsSet: businessDayOverrideSet,
+        businessDefaultDisplay: businessDayBusinessDefault,
+      ),
     );
     final identityValueSummary = _businessName.text.trim().isEmpty
         ? 'Business name is not on file yet.'
@@ -871,11 +955,25 @@ class _AccountScreenState extends State<AccountScreen> {
         'Week starts $weekStartDisplay. Business day rollover is '
         '$rolloverDisplay.';
     final timezoneEffectiveValue = _effectiveTimezoneValue();
+    final savedTimezoneDisplay = _savedTimezoneValue?.trim();
+    final timezoneDefaultDisplay = overrides == null
+        ? (savedTimezoneDisplay == null || savedTimezoneDisplay.isEmpty
+              ? 'no timezone'
+              : savedTimezoneDisplay)
+        : (overrides.businessDefault.ianaTimezone ?? 'no timezone');
     final timezoneInheritedLabel =
         _draftDiffers(timezoneEffectiveValue, _savedTimezoneValue)
         ? 'Unsaved change here. Save timezone to set it at '
               '${_scopeLevelLabel(widget.scopeLevel)}: ${widget.scopeName}.'
-        : null;
+        : _savedSourceLabelForGroup(
+            <_AccountSourcePart>[
+              _AccountSourcePart('Timezone', overrides?.sources.ianaTimezone),
+            ],
+            fallback: widget.inheritedLabelFor(
+              overrideIsSet: overrides?.override.ianaTimezone != null,
+              businessDefaultDisplay: timezoneDefaultDisplay,
+            ),
+          );
     final timezoneValueSummary = timezoneEffectiveValue.isNotEmpty
         ? '${widget.scopeName} uses $timezoneEffectiveValue.'
         : 'No timezone is on file. Set one to lock daily timing.';
@@ -1099,6 +1197,13 @@ class _AccountScreenState extends State<AccountScreen> {
   static String _sourceLabel(String? inheritedLabel) {
     return inheritedLabel ?? 'Set here. Does not inherit from a higher scope.';
   }
+}
+
+class _AccountSourcePart {
+  const _AccountSourcePart(this.label, this.source);
+
+  final String label;
+  final LocationAccountOverridesFieldSource? source;
 }
 
 class _Header extends StatelessWidget {

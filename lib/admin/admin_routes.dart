@@ -199,7 +199,13 @@ class AdminRoute {
   final Widget Function(BuildContext context) builder;
 }
 
-enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring, account }
+enum AdminRouteSection {
+  ai,
+  operations,
+  serviceSetup,
+  systemMonitoring,
+  account,
+}
 
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
@@ -302,8 +308,7 @@ const String kAdminMyAccountRouteId = 'my-account';
 /// admin actor (`super_admin` / `ff_support`). Wired to the SAME
 /// existing `/v1/operator/notification-preferences` route through
 /// `AdminNotificationPreferencesGateway`; no new proxy/backend route.
-const String kAdminNotificationPreferencesRouteId =
-    'notification-preferences';
+const String kAdminNotificationPreferencesRouteId = 'notification-preferences';
 
 /// The admin route table. Order is the side-nav order.
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
@@ -424,9 +429,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
-    badge: 'Support + override',
+    badge: 'Support + location repair',
     subtitle:
-        'Review effective covers, wages, and walk-ins; super admins can apply audited overrides.',
+        'Review effective covers, wages, and walk-ins by location; super admins can apply audited location repairs.',
     builder: _buildDataAccuracy,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -1275,7 +1280,8 @@ Widget _buildDefaultRoleCatalog(BuildContext context) {
       // role-tier check with `resolver.has(
       // PermissionKeys.teamRolesDefaultCatalogEdit)` and pass the
       // resolver's verdict in via `actorHasEditKeyHint`.
-      final canEdit = session != null &&
+      final canEdit =
+          session != null &&
           defaultRoleCatalogScreenCanEdit(actorRoles: session.roles);
       return buildScreen(canEdit: canEdit);
     },
@@ -2277,10 +2283,7 @@ Future<InheritanceTreeNode?> _loadAuditedSupportActionsScopeTree(
     ]);
     final orgUnits = results[0] as List<OrgUnitAdminNode>;
     final locations = results[1] as List<HierarchyLocationLeaf>;
-    return buildAuditLogAdminRootNode(
-      orgUnits: orgUnits,
-      locations: locations,
-    );
+    return buildAuditLogAdminRootNode(orgUnits: orgUnits, locations: locations);
   } on Object {
     // Hierarchy load failed — degrade gracefully to the existing
     // read-only scope banner rather than blocking the audit surface.
@@ -2611,12 +2614,15 @@ Widget _buildMyAccount(BuildContext context) {
   if (source == null) {
     return const _MyAccountUnauthenticatedFallback();
   }
-  final accountGateway =
-      AdminConsoleServicesScope.adminAccountGatewayOf(context);
-  final sessionsGateway =
-      AdminConsoleServicesScope.adminSessionsGatewayOf(context);
-  final securityGateway =
-      AdminConsoleServicesScope.adminSecurityGatewayOf(context);
+  final accountGateway = AdminConsoleServicesScope.adminAccountGatewayOf(
+    context,
+  );
+  final sessionsGateway = AdminConsoleServicesScope.adminSessionsGatewayOf(
+    context,
+  );
+  final securityGateway = AdminConsoleServicesScope.adminSecurityGatewayOf(
+    context,
+  );
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
     initialData: source.current,
@@ -2644,9 +2650,7 @@ Widget _buildMyAccount(BuildContext context) {
 /// verified bearer token server-side.
 Widget _buildAdminNotificationPreferences(BuildContext context) {
   final gateway =
-      AdminConsoleServicesScope.adminNotificationPreferencesGatewayOf(
-    context,
-  );
+      AdminConsoleServicesScope.adminNotificationPreferencesGatewayOf(context);
   return AdminNotificationPreferencesScreen(gateway: gateway);
 }
 
@@ -2845,7 +2849,8 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// and the walkthrough renders the toggle click path without a
   /// backend (parity with [adminSessionsGateway] /
   /// [adminSecurityGateway]).
-  final AdminNotificationPreferencesGateway? adminNotificationPreferencesGateway;
+  final AdminNotificationPreferencesGateway?
+  adminNotificationPreferencesGateway;
 
   /// Audit fix-first #2 (G1 + G2) — admin auth-session ledger +
   /// Active Sessions gateway. Production binds the HTTP-backed
@@ -3029,7 +3034,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// every row renders at its catalog default until the admin toggles
   /// it.
   static AdminNotificationPreferencesGateway
-      adminNotificationPreferencesGatewayOf(BuildContext context) {
+  adminNotificationPreferencesGatewayOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
     return scope?.adminNotificationPreferencesGateway ??
@@ -3092,8 +3097,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
 /// default so the timing surfaces render their honest "no timing
 /// profile yet" state instead of fabricating values when no
 /// production [HttpAdminBusinessTimingResolutionGateway] is wired.
-final AdminBusinessTimingResolutionGateway
-    _defaultTimingResolutionDemoGateway =
+final AdminBusinessTimingResolutionGateway _defaultTimingResolutionDemoGateway =
     InMemoryAdminBusinessTimingResolutionGateway();
 
 /// Demo gateway shared by walkthrough + admin shell when no
@@ -3527,8 +3531,7 @@ final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway = () {
         ),
         currentTier: PollingTierKey.standard,
         requestedTier: PollingTierKey.premium,
-        operatorNote:
-            'We need tighter mid-service awareness on dinner volume.',
+        operatorNote: 'We need tighter mid-service awareness on dinner volume.',
         submittedAt: DateTime.utc(2026, 5, 4, 14, 30),
         status: TierChangeRequestStatus.pending,
       ),
@@ -3543,10 +3546,7 @@ final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway = () {
         locationId: yorkvilleLocationId,
         diff: const <String, Object?>{
           'service_period_key': 'lunch',
-          'covers_source': <String, Object?>{
-            'from': 'vendor',
-            'to': 'manual',
-          },
+          'covers_source': <String, Object?>{'from': 'vendor', 'to': 'manual'},
           'wage_source': <String, Object?>{
             'from': 'vendor',
             'to': 'manual_mix',
@@ -3636,9 +3636,7 @@ List<VendorApplicabilityAdminRow> _seedVendorApplicabilityRows() {
       settingKey: 'default',
       vendorSlug: 'humanity',
       enabled: true,
-      metadata: const <String, Object?>{
-        'authority_basis': 'vendor_pay_rate',
-      },
+      metadata: const <String, Object?>{'authority_basis': 'vendor_pay_rate'},
     ),
     row(
       id: 'demo-va-wage-push-operations',
@@ -3646,9 +3644,7 @@ List<VendorApplicabilityAdminRow> _seedVendorApplicabilityRows() {
       settingKey: 'default',
       vendorSlug: 'push_operations',
       enabled: true,
-      metadata: const <String, Object?>{
-        'authority_basis': 'vendor_pay_rate',
-      },
+      metadata: const <String, Object?>{'authority_basis': 'vendor_pay_rate'},
     ),
     row(
       id: 'demo-va-wage-quickbooks-time',
@@ -3656,9 +3652,7 @@ List<VendorApplicabilityAdminRow> _seedVendorApplicabilityRows() {
       settingKey: 'default',
       vendorSlug: 'quickbooks_time',
       enabled: true,
-      metadata: const <String, Object?>{
-        'authority_basis': 'vendor_pay_rate',
-      },
+      metadata: const <String, Object?>{'authority_basis': 'vendor_pay_rate'},
     ),
     row(
       id: 'demo-va-wage-seven-shifts',
@@ -4071,5 +4065,5 @@ final AdminSecurityGateway _defaultAdminSecurityDemoGateway =
 /// toggles one (the walkthrough exercises the toggle + save click path
 /// without the Cloud Run admin proxy).
 final AdminNotificationPreferencesGateway
-    _defaultAdminNotificationPreferencesDemoGateway =
+_defaultAdminNotificationPreferencesDemoGateway =
     InMemoryAdminNotificationPreferencesGateway();

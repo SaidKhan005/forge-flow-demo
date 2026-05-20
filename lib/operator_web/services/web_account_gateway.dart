@@ -1030,6 +1030,7 @@ class LocationAccountOverridesEnvelope {
     required this.effective,
     required this.override,
     required this.businessDefault,
+    this.sources = const LocationAccountOverridesFieldSources(),
     required this.updatedAt,
   });
 
@@ -1038,6 +1039,7 @@ class LocationAccountOverridesEnvelope {
   final LocationAccountOverridesFieldSet effective;
   final LocationAccountOverridesFieldSet override;
   final LocationAccountOverridesFieldSet businessDefault;
+  final LocationAccountOverridesFieldSources sources;
   final DateTime updatedAt;
 
   static LocationAccountOverridesEnvelope fromJson(Map<String, Object?> json) {
@@ -1049,6 +1051,7 @@ class LocationAccountOverridesEnvelope {
     final effectiveRaw = json['effective'];
     final overrideRaw = json['override'];
     final businessDefaultRaw = json['businessDefault'];
+    final sourcesRaw = json['sources'];
     if (operatorId == null ||
         locationId == null ||
         updatedAtRaw == null ||
@@ -1073,6 +1076,11 @@ class LocationAccountOverridesEnvelope {
       businessDefault: LocationAccountOverridesFieldSet._fromJson(
         Map<String, Object?>.from(businessDefaultRaw),
       ),
+      sources: sourcesRaw is Map
+          ? LocationAccountOverridesFieldSources._fromJson(
+              Map<String, Object?>.from(sourcesRaw),
+            )
+          : const LocationAccountOverridesFieldSources(),
       updatedAt: DateTime.parse(updatedAtRaw).toUtc(),
     );
   }
@@ -1121,6 +1129,83 @@ class LocationAccountOverridesFieldSet {
       businessDayRolloverHour: rollover,
       contactEmail: AccountIdentity._readString(json['contactEmail']),
       contactPhone: AccountIdentity._readString(json['contactPhone']),
+    );
+  }
+}
+
+@immutable
+class LocationAccountOverridesFieldSource {
+  const LocationAccountOverridesFieldSource({
+    required this.scopeType,
+    required this.scopeId,
+    required this.scopeLabel,
+    required this.setHere,
+  });
+
+  final String scopeType;
+  final String scopeId;
+  final String scopeLabel;
+  final bool setHere;
+
+  static LocationAccountOverridesFieldSource? _fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final json = Map<String, Object?>.from(raw);
+    final scopeType = AccountIdentity._readString(json['scopeType']);
+    final scopeId = AccountIdentity._readString(json['scopeId']);
+    final scopeLabel = AccountIdentity._readString(json['scopeLabel']);
+    final setHereRaw = json['setHere'];
+    if (scopeType == null || scopeId == null || scopeLabel == null) {
+      return null;
+    }
+    return LocationAccountOverridesFieldSource(
+      scopeType: scopeType,
+      scopeId: scopeId,
+      scopeLabel: scopeLabel,
+      setHere: setHereRaw == true,
+    );
+  }
+}
+
+@immutable
+class LocationAccountOverridesFieldSources {
+  const LocationAccountOverridesFieldSources({
+    this.ianaTimezone,
+    this.localeCode,
+    this.currencyCode,
+    this.businessDayRolloverHour,
+    this.contactEmail,
+    this.contactPhone,
+  });
+
+  final LocationAccountOverridesFieldSource? ianaTimezone;
+  final LocationAccountOverridesFieldSource? localeCode;
+  final LocationAccountOverridesFieldSource? currencyCode;
+  final LocationAccountOverridesFieldSource? businessDayRolloverHour;
+  final LocationAccountOverridesFieldSource? contactEmail;
+  final LocationAccountOverridesFieldSource? contactPhone;
+
+  static LocationAccountOverridesFieldSources _fromJson(
+    Map<String, Object?> json,
+  ) {
+    return LocationAccountOverridesFieldSources(
+      ianaTimezone: LocationAccountOverridesFieldSource._fromJson(
+        json['ianaTimezone'],
+      ),
+      localeCode: LocationAccountOverridesFieldSource._fromJson(
+        json['localeCode'],
+      ),
+      currencyCode: LocationAccountOverridesFieldSource._fromJson(
+        json['currencyCode'],
+      ),
+      businessDayRolloverHour: LocationAccountOverridesFieldSource._fromJson(
+        json['businessDayRolloverHour'],
+      ),
+      contactEmail: LocationAccountOverridesFieldSource._fromJson(
+        json['contactEmail'],
+      ),
+      contactPhone: LocationAccountOverridesFieldSource._fromJson(
+        json['contactPhone'],
+      ),
     );
   }
 }

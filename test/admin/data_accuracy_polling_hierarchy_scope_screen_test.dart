@@ -58,22 +58,6 @@ void main() {
     );
   }
 
-  DataAccuracySettings dataAccuracySettingsWithCovers({
-    required String locationId,
-    required Map<String, CoversSource> covers,
-  }) {
-    return DataAccuracySettings(
-      settingId: 'settings-op-1-$locationId',
-      operatorId: 'op-1',
-      locationId: locationId,
-      coversSourcePerServicePeriod: covers,
-      coversManualEntries: const <String, Map<String, int>>{},
-      wageSource: WageSource.vendor,
-      createdAt: DateTime.utc(2026, 5, 19),
-      updatedAt: DateTime.utc(2026, 5, 19),
-    );
-  }
-
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized();
   });
@@ -88,7 +72,7 @@ void main() {
   }
 
   testWidgets(
-    'Covers and Wage Data Accuracy business scope exposes selected-scope edit',
+    'Covers and Wage Data Accuracy business scope reviews location rows only',
     (tester) async {
       useWideViewport(tester);
       const businessScope = AdminHierarchyScopeIntent.business(
@@ -118,9 +102,9 @@ void main() {
       );
       expect(find.text('Set at this scope'), findsOneWidget);
       expect(find.text('Effective: Business scope'), findsOneWidget);
-      expect(find.text('Edit selected scope'), findsWidgets);
+      expect(find.text('Review selected scope'), findsWidgets);
       expect(
-        find.textContaining('saves one scoped covers and wage override'),
+        find.textContaining('Pick a location row to apply'),
         findsOneWidget,
       );
       expect(find.text('Toronto Yorkville'), findsOneWidget);
@@ -128,7 +112,7 @@ void main() {
       expect(find.text('Brooklyn Williamsburg'), findsNothing);
       expect(
         find.byKey(const Key('admin_data_accuracy_scope_override')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const Key('admin_data_accuracy_edit_op-1_loc-1a')),
@@ -137,137 +121,6 @@ void main() {
       expect(find.text('Visible locations'), findsNothing);
       expect(find.text('Manual covers'), findsNothing);
       expect(find.text('Forecast covers'), findsNothing);
-    },
-  );
-
-  testWidgets('Covers and Wage scope edit writes selected hierarchy scope', (
-    tester,
-  ) async {
-    useWideViewport(tester);
-    const businessScope = AdminHierarchyScopeIntent.business(
-      operatorId: 'op-1',
-      operatorName: 'Demo Diner Co.',
-    );
-    final adminGateway = InMemoryDataAccuracyAdminGateway(
-      operatorLocations: refs,
-      initialSettings: <String, DataAccuracySettings>{
-        'op-1/loc-1a': dataAccuracySettingsWithCovers(
-          locationId: 'loc-1a',
-          covers: const <String, CoversSource>{
-            'breakfast': CoversSource.vendor,
-          },
-        ),
-        'op-1/loc-1b': dataAccuracySettingsWithCovers(
-          locationId: 'loc-1b',
-          covers: const <String, CoversSource>{
-            'breakfast': CoversSource.vendor,
-          },
-        ),
-      },
-      initialTierDefinitions: <PollingTierKey, TierDefinition>{
-        PollingTierKey.standard: kDemoStandardTierDefinition(),
-        PollingTierKey.premium: kDemoPremiumTierDefinition(),
-        PollingTierKey.custom: kDemoCustomTierDefinition(),
-      },
-    );
-
-    await tester.pumpWidget(
-      wrap(
-        PerLocationDataAccuracyScreen(
-          gateway: adminGateway,
-          actorUserId: 'demo-super-admin',
-          initialHierarchyScope: businessScope,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final scopeButton = find.byKey(
-      const Key('admin_data_accuracy_scope_override'),
-    );
-    expect(scopeButton, findsOneWidget);
-    await tester.ensureVisible(scopeButton);
-    await tester.tap(scopeButton);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Covers source - Breakfast'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const Key('admin_data_accuracy_covers_source_breakfast')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Manual entry').last);
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('admin_data_accuracy_reason_note')),
-      'Business scope lunch override',
-    );
-    await tester.tap(
-      find.byKey(const Key('admin_data_accuracy_override_submit')),
-    );
-    await tester.pumpAndSettle();
-
-    final events = adminGateway.capturedAuditEvents
-        .where(
-          (event) => event.eventType == 'admin.data_accuracy.scope_override',
-        )
-        .toList();
-    expect(events, hasLength(1));
-    expect(events.single.locationId, isNull);
-    expect(events.single.diff['scope_type'], equals('business'));
-    expect(events.single.diff['affected_location_count'], equals(2));
-    expect(
-      events.single.diff['covers_source_per_service_period'],
-      equals(<String, String>{'breakfast': CoversSource.manual.wire}),
-    );
-    expect(events.single.diff.containsKey('covers_source_lunch'), isFalse);
-  });
-
-  testWidgets(
-    'Covers and Wage scope edit uses configured periods before rows exist',
-    (tester) async {
-      useWideViewport(tester);
-      const businessScope = AdminHierarchyScopeIntent.business(
-        operatorId: 'op-1',
-        operatorName: 'Demo Diner Co.',
-      );
-      final adminGateway = InMemoryDataAccuracyAdminGateway(
-        operatorLocations: const <OperatorLocationRef>[
-          OperatorLocationRef(
-            operatorId: 'op-1',
-            businessName: 'Demo Diner Co.',
-            locationId: 'loc-1a',
-            locationName: 'Toronto Yorkville',
-          ),
-        ],
-        initialTierDefinitions: <PollingTierKey, TierDefinition>{
-          PollingTierKey.standard: kDemoStandardTierDefinition(),
-          PollingTierKey.premium: kDemoPremiumTierDefinition(),
-          PollingTierKey.custom: kDemoCustomTierDefinition(),
-        },
-      );
-
-      await tester.pumpWidget(
-        wrap(
-          PerLocationDataAccuracyScreen(
-            gateway: adminGateway,
-            actorUserId: 'demo-super-admin',
-            initialHierarchyScope: businessScope,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final scopeButton = find.byKey(
-        const Key('admin_data_accuracy_scope_override'),
-      );
-      expect(scopeButton, findsOneWidget);
-      await tester.ensureVisible(scopeButton);
-      await tester.tap(scopeButton);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Covers source - Lunch'), findsOneWidget);
-      expect(find.text('Covers source - Dinner'), findsOneWidget);
-      expect(find.text('Covers source - Late Night'), findsOneWidget);
     },
   );
 
