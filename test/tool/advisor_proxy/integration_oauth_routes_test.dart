@@ -5,10 +5,8 @@
 // stand-ins for the bindings holder so the seam can be exercised
 // without binding a real socket or a Postgres pool.
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
@@ -26,6 +24,7 @@ import '../../../tool/advisor_proxy/admin_integrations_routes.dart' show
 import '../../../tool/advisor_proxy/advisor_proxy.dart';
 import '../../../tool/advisor_proxy/integration_oauth_routes.dart';
 import '../../../tool/advisor_proxy/integration_oauth_state_store.dart';
+import '../../_test_helpers/http_stubs.dart';
 
 const String _operatorA = '11111111-1111-1111-1111-111111111111';
 const String _locationA = '22222222-2222-2222-2222-222222222222';
@@ -40,7 +39,7 @@ void main() {
       final store = InMemoryIntegrationOAuthStateStore();
       final routes = _buildRoutes(store: store);
 
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse('http://localhost/v1/integrations/oauth/toast/begin'),
         bodyJson: <String, Object?>{
@@ -78,7 +77,7 @@ void main() {
     test('invalid operator session → 401', () async {
       final routes = _buildRoutes(rejectAllJwts: true);
 
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse('http://localhost/v1/integrations/oauth/toast/begin'),
         bodyJson: <String, Object?>{
@@ -96,7 +95,7 @@ void main() {
     test('vendor with no descriptor → 503', () async {
       final routes = _buildRoutes();
 
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/oauth/unknown_vendor/begin',
@@ -143,7 +142,7 @@ void main() {
         actorUserId: _userA,
       );
 
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'GET',
         uri: Uri.parse(
           'http://localhost/v1/integrations/oauth/toast/callback'
@@ -194,7 +193,7 @@ void main() {
       // Skip ahead past the TTL.
       clock = clock.add(const Duration(minutes: 5));
 
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'GET',
         uri: Uri.parse(
           'http://localhost/v1/integrations/oauth/toast/callback'
@@ -235,7 +234,7 @@ void main() {
         vendorId: 'toast',
       );
 
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'GET',
         uri: Uri.parse(
           'http://localhost/v1/integrations/oauth/toast/callback'
@@ -271,7 +270,7 @@ void main() {
             'http://localhost/v1/integrations/oauth/toast/callback',
         ttl: const Duration(minutes: 10),
       );
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'GET',
         uri: Uri.parse(
           'http://localhost/v1/integrations/oauth/toast/callback'
@@ -308,7 +307,7 @@ void main() {
         // gated by the per-tenant RLS policy in production; we model
         // that here by flipping the vendor on the URL so the consume
         // path takes the tupleMismatch branch.
-        final request = _StubHttpRequest(
+        final request = StubHttpRequest(
           method: 'GET',
           uri: Uri.parse(
             'http://localhost/v1/integrations/oauth/square/callback'
@@ -335,7 +334,7 @@ void main() {
         apiKeyValidator: validator.validate,
       );
 
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/api-key/tock/connect',
@@ -365,7 +364,7 @@ void main() {
         integrationRoutesGateway: gateway,
         apiKeyValidator: validator.validate,
       );
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/api-key/tock/connect',
@@ -386,7 +385,7 @@ void main() {
 
     test('JWT scope mismatch → 403', () async {
       final routes = _buildRoutes();
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/api-key/tock/connect',
@@ -416,7 +415,7 @@ void main() {
         },
       );
       final routes = _buildRoutes(integrationRoutesGateway: gateway);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/toast/test-connection',
@@ -442,7 +441,7 @@ void main() {
 
     test('missing bearer → 401', () async {
       final routes = _buildRoutes();
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/toast/test-connection',
@@ -458,7 +457,7 @@ void main() {
 
     test('JWT scope mismatch → 403', () async {
       final routes = _buildRoutes();
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/toast/test-connection',
@@ -481,7 +480,7 @@ void main() {
             const _GatewayThrow(_GatewayThrowKind.notFound, 'no_row'),
       );
       final routes = _buildRoutes(integrationRoutesGateway: gateway);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/unknown_vendor/test-connection',
@@ -506,7 +505,7 @@ void main() {
         ),
       );
       final routes = _buildRoutes(integrationRoutesGateway: gateway);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/toast/test-connection',
@@ -535,7 +534,7 @@ void main() {
         },
       );
       final routes = _buildRoutes(integrationRoutesGateway: gateway);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/toast/disconnect',
@@ -562,7 +561,7 @@ void main() {
 
     test('missing bearer → 401', () async {
       final routes = _buildRoutes();
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/toast/disconnect',
@@ -578,7 +577,7 @@ void main() {
 
     test('JWT scope mismatch → 403', () async {
       final routes = _buildRoutes();
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/toast/disconnect',
@@ -601,7 +600,7 @@ void main() {
             const _GatewayThrow(_GatewayThrowKind.notFound, 'no_row'),
       );
       final routes = _buildRoutes(integrationRoutesGateway: gateway);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/unknown_vendor/disconnect',
@@ -626,7 +625,7 @@ void main() {
         ),
       );
       final routes = _buildRoutes(integrationRoutesGateway: gateway);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse(
           'http://localhost/v1/integrations/toast/disconnect',
@@ -1204,120 +1203,3 @@ class _GatewayThrow {
   }
 }
 
-// ─── Stub HttpRequest / HttpResponse ──────────────────────────────────
-
-class _StubHttpRequest extends Stream<Uint8List> implements HttpRequest {
-  _StubHttpRequest({
-    required this.method,
-    required Uri uri,
-    Map<String, Object?>? bodyJson,
-    Map<String, String> headers = const <String, String>{},
-  })  : _uri = uri,
-        _headers = _StubHttpHeaders(headers),
-        _body = bodyJson == null
-            ? Uint8List(0)
-            : Uint8List.fromList(utf8.encode(jsonEncode(bodyJson))),
-        response = _StubHttpResponse();
-
-  final Uri _uri;
-  final HttpHeaders _headers;
-  final Uint8List _body;
-
-  @override
-  final String method;
-
-  @override
-  final _StubHttpResponse response;
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  Uri get uri => _uri;
-
-  @override
-  Uri get requestedUri => _uri;
-
-  @override
-  StreamSubscription<Uint8List> listen(
-    void Function(Uint8List event)? onData, {
-    Function? onError,
-    void Function()? onDone,
-    bool? cancelOnError,
-  }) {
-    return Stream<Uint8List>.value(_body).listen(
-      onData,
-      onError: onError,
-      onDone: onDone,
-      cancelOnError: cancelOnError,
-    );
-  }
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _StubHttpHeaders implements HttpHeaders {
-  _StubHttpHeaders(this._values);
-  final Map<String, String> _values;
-
-  @override
-  String? value(String name) => _values[name.toLowerCase()];
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _StubHttpResponse implements HttpResponse {
-  @override
-  int statusCode = 200;
-  final StringBuffer _body = StringBuffer();
-  final _StubResponseHeaders _headers = _StubResponseHeaders();
-  String get bodyText => _body.toString();
-
-  @override
-  void write(Object? object) {
-    _body.write(object);
-  }
-
-  @override
-  Future<void> close() async {}
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _StubResponseHeaders implements HttpHeaders {
-  final Map<String, String> _values = <String, String>{};
-  ContentType? _contentType;
-
-  @override
-  ContentType? get contentType => _contentType;
-
-  @override
-  set contentType(ContentType? value) {
-    _contentType = value;
-  }
-
-  @override
-  void set(String name, Object value, {bool preserveHeaderCase = false}) {
-    _values[name.toLowerCase()] = value.toString();
-  }
-
-  @override
-  String? value(String name) => _values[name.toLowerCase()];
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}

@@ -14,14 +14,12 @@
 // Drives the same registry the production proxy wires through
 // `wireProductionWorkers(... heartbeatRegistry: registry)`.
 
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../tool/advisor_proxy/worker_heartbeats.dart';
+import '../../_test_helpers/http_stubs.dart';
 
 void main() {
   group('WorkerHeartbeatRegistry — counters', () {
@@ -210,7 +208,7 @@ void main() {
       registry.recordSuccess('rollups_tick');
 
       final router = WorkerHeartbeatRouter(registry: registry);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'GET',
         uri: Uri.parse('/v1/health/workers'),
       );
@@ -235,7 +233,7 @@ void main() {
       clock.advance(const Duration(minutes: 10));
 
       final router = WorkerHeartbeatRouter(registry: registry);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'GET',
         uri: Uri.parse('/v1/health/workers'),
       );
@@ -250,7 +248,7 @@ void main() {
     test('POST /v1/health/workers returns 405', () async {
       final registry = WorkerHeartbeatRegistry();
       final router = WorkerHeartbeatRouter(registry: registry);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'POST',
         uri: Uri.parse('/v1/health/workers'),
       );
@@ -266,7 +264,7 @@ void main() {
         () async {
       final registry = WorkerHeartbeatRegistry();
       final router = WorkerHeartbeatRouter(registry: registry);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'GET',
         uri: Uri.parse('/v1/other'),
       );
@@ -278,7 +276,7 @@ void main() {
         '(deferred-startup safety)', () async {
       final registry = WorkerHeartbeatRegistry();
       final router = WorkerHeartbeatRouter(registry: registry);
-      final request = _StubHttpRequest(
+      final request = StubHttpRequest(
         method: 'GET',
         uri: Uri.parse('/v1/health/workers'),
       );
@@ -306,94 +304,3 @@ class _StepClock {
   }
 }
 
-// ─── Stub HttpRequest / HttpResponse (mirrors the canonical pattern in
-// `test/tool/advisor_proxy/admin_integrations_idempotency_test.dart`)
-
-class _StubHttpRequest extends Stream<Uint8List> implements HttpRequest {
-  _StubHttpRequest({required this.method, required Uri uri})
-      : _uri = uri,
-        _headers = _StubHttpHeaders(),
-        response = _StubHttpResponse();
-
-  final Uri _uri;
-  final HttpHeaders _headers;
-
-  @override
-  final String method;
-
-  @override
-  final _StubHttpResponse response;
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  Uri get uri => _uri;
-
-  @override
-  Uri get requestedUri => _uri;
-
-  @override
-  StreamSubscription<Uint8List> listen(
-    void Function(Uint8List event)? onData, {
-    Function? onError,
-    void Function()? onDone,
-    bool? cancelOnError,
-  }) {
-    return Stream<Uint8List>.value(Uint8List(0)).listen(
-      onData,
-      onError: onError,
-      onDone: onDone,
-      cancelOnError: cancelOnError,
-    );
-  }
-
-  @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _StubHttpHeaders implements HttpHeaders {
-  @override
-  String? value(String name) => null;
-
-  @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _StubHttpResponse implements HttpResponse {
-  @override
-  int statusCode = 200;
-  final StringBuffer _body = StringBuffer();
-  final _StubResponseHeaders _headers = _StubResponseHeaders();
-
-  String get bodyText => _body.toString();
-
-  @override
-  void write(Object? object) {
-    _body.write(object);
-  }
-
-  @override
-  Future<void> close() async {}
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _StubResponseHeaders implements HttpHeaders {
-  ContentType? _contentType;
-
-  @override
-  ContentType? get contentType => _contentType;
-
-  @override
-  set contentType(ContentType? value) {
-    _contentType = value;
-  }
-
-  @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
