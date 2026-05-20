@@ -443,18 +443,24 @@ void main() {
         await tester.pump();
 
         // Before any daypart toggle the authoritative whole-day labor
-        // card renders its label, a Theoretical reference, and a pts
-        // delta pill exactly as it did pre-fix.
+        // card renders its label and a Theoretical reference.
+        //
+        // 2026-05-20 mobile-UX dial-in: the ±pts delta pill was
+        // narrowed in the dial-in so it only renders when the
+        // variance is non-trivially computed (the previous always-
+        // present "0.0 pts" phantom pill was the Metric Honesty /
+        // Design Rule 2 violation the new render shape removes).
+        // Promise 3 / Layer 9 byte-identical whole-day render still
+        // holds for the LABEL + Theoretical sub-line — the regression
+        // guard moves to those two anchors. The delta pill's
+        // conditional render is exercised by its own dedicated test
+        // (`_LaborVarianceSection` honesty unit tests).
         expect(
           find.text('LABOR %', skipOffstage: false),
           findsWidgets,
         );
         expect(
           find.textContaining('Theoretical ', skipOffstage: false),
-          findsWidgets,
-        );
-        expect(
-          find.textContaining(' pts', skipOffstage: false),
           findsWidgets,
         );
       },
