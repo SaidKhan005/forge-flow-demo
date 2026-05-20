@@ -27,6 +27,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_schedule_gateway.dart';
 import '../widgets/hierarchy_scope_notice.dart';
+import '../widgets/operator_web_section_heading.dart';
 import '../widgets/schedule_forecast_explainer_panel.dart';
 
 /// Roles admitted to read the locked weekly plan from op-web. Mirrors the
@@ -129,16 +130,16 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         _loading = false;
         _loadError = error.statusCode == 403
             ? "You don't have permission to see ${widget.locationName}'s "
-                "schedule. Ask your operator owner to grant access."
-            : "We couldn't load this week's schedule. Refresh the page or "
-                "try again in a minute.";
+                  "plan. Ask your operator owner to grant access."
+            : "We couldn't load this week's plan. Refresh the page or "
+                  "try again in a minute.";
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _loadError =
-            "We couldn't load this week's schedule. Refresh the page or "
+            "We couldn't load this week's plan. Refresh the page or "
             "try again in a minute.";
       });
     }
@@ -158,10 +159,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _Header(
-            locationName: widget.locationName,
-            snapshot: _snapshot,
-          ),
+          _Header(locationName: widget.locationName, snapshot: _snapshot),
           const SizedBox(height: 14),
           // HP #11 (`CLAUDE.md`): every settings / timing / accuracy /
           // pricing / security / support surface declares its selected
@@ -190,9 +188,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             inheritedFromLabel: null,
             effectiveValueSummary: _snapshot == null
                 ? "This location's locked weekly plan will appear here "
-                    "once the first forecast runs."
+                      "once the first forecast runs."
                 : "Showing ${widget.locationName}'s locked plan for the "
-                    "week of ${_Header._formatWeekRange(_snapshot!.weekStartDate, _snapshot!.weekEndDate)}.",
+                      "week of ${_Header._formatWeekRange(_snapshot!.weekStartDate, _snapshot!.weekEndDate)}.",
             backendOnlyExplainer:
                 "Forecasts and locked plans are set per location by "
                 "design. A forecast is built from this restaurant's "
@@ -219,7 +217,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               title: 'Setting up first connection',
               body:
                   "Connect a POS or labor vendor so Forge & Flow can build "
-                  "your locked weekly plan. The schedule lights up as soon "
+                  "your locked weekly plan. The plan lights up as soon "
                   "as the first close lands.",
             ),
           ] else if (_loadError != null) ...<Widget>[
@@ -227,7 +225,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             _Banner(
               keyName: 'schedule_screen_error',
               icon: Icons.error_outline,
-              title: 'Schedule unavailable right now',
+              title: 'Plan unavailable right now',
               body: _loadError!,
               isError: true,
             ),
@@ -245,9 +243,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             const SizedBox(height: 18),
             _DailyPlanTable(snapshot: _snapshot!),
             const SizedBox(height: 18),
-            ScheduleForecastExplainerPanel(
-              context: _snapshot!.forecastContext,
-            ),
+            ScheduleForecastExplainerPanel(context: _snapshot!.forecastContext),
           ],
         ],
       ),
@@ -256,10 +252,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({
-    required this.locationName,
-    required this.snapshot,
-  });
+  const _Header({required this.locationName, required this.snapshot});
 
   final String locationName;
   final ScheduleSnapshot? snapshot;
@@ -282,7 +275,7 @@ class _Header extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Schedule',
+                'Plan',
                 style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
             ),
@@ -292,11 +285,11 @@ class _Header extends StatelessWidget {
         Text(
           range == null
               ? 'Forge & Flow locks one weekly plan at a time per location. '
-                  "Once your forecasts run you'll see $locationName's locked "
-                  "plan here, plus a plain-English explainer for every "
-                  "number that shaped it."
+                    "Once your forecasts run you'll see $locationName's locked "
+                    "plan here, plus a plain-English explainer for every "
+                    "number that shaped it."
               : "Week of $range: $locationName's locked plan and the "
-                  "forecast inputs that built it.",
+                    "forecast inputs that built it.",
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -345,53 +338,41 @@ class _DailyPlanTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('schedule_screen_daily_table'),
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        OperatorWebSectionHeading(
+          title: 'Daily plan',
+          trailing: Text(
+            'Locked ${_formatLockedAt(snapshot.lockedAt)}',
+            key: const Key('schedule_screen_locked_at'),
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          key: const Key('schedule_screen_daily_table'),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Expanded(
-                child: Text(
-                  'Daily plan',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Text(
-                'Locked ${_formatLockedAt(snapshot.lockedAt)}',
-                key: const Key('schedule_screen_locked_at'),
-                style: AppTextStyles.body12(color: AppColors.textMuted),
-              ),
+              const _ColumnHeader(),
+              const Divider(height: 1, color: AppColors.borderSubtle),
+              for (final row in snapshot.dayRows) ...<Widget>[
+                _DailyRow(row: row),
+                const Divider(height: 1, color: AppColors.borderSubtle),
+              ],
+              const SizedBox(height: 12),
+              _TotalsRow(snapshot: snapshot),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            "Each row is the plan you committed to before the week opened. "
-            "Compare these numbers to your actuals on Shift to see where the "
-            "week is winning or slipping.",
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          const _ColumnHeader(),
-          const Divider(height: 1, color: AppColors.borderSubtle),
-          for (final row in snapshot.dayRows) ...<Widget>[
-            _DailyRow(row: row),
-            const Divider(height: 1, color: AppColors.borderSubtle),
-          ],
-          const SizedBox(height: 12),
-          _TotalsRow(snapshot: snapshot),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -509,27 +490,21 @@ class _DailyRow extends StatelessWidget {
             flex: 2,
             child: Text(
               '${row.forecastCovers}',
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTextStyles.mono14(color: AppColors.textPrimary),
             ),
           ),
           Expanded(
             flex: 2,
             child: Text(
               '${row.requiredFohHours}',
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTextStyles.mono14(color: AppColors.textPrimary),
             ),
           ),
           Expanded(
             flex: 2,
             child: Text(
               '${row.requiredBohHours}',
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTextStyles.mono14(color: AppColors.textPrimary),
             ),
           ),
           Expanded(
@@ -538,9 +513,7 @@ class _DailyRow extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: Text(
                 _money(row.forecastSales),
-                style: AppTextStyles.mono14(
-                  color: AppColors.textPrimary,
-                ),
+                style: AppTextStyles.mono14(color: AppColors.textPrimary),
               ),
             ),
           ),
@@ -552,9 +525,9 @@ class _DailyRow extends StatelessWidget {
   static String _money(num value) {
     final whole = value.round();
     final formatted = whole.toString().replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (match) => '${match.group(1)},',
-        );
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (match) => '${match.group(1)},',
+    );
     return '\$$formatted';
   }
 }
@@ -636,9 +609,9 @@ class _TotalsRow extends StatelessWidget {
   static String _money(num value) {
     final whole = value.round();
     final formatted = whole.toString().replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (match) => '${match.group(1)},',
-        );
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (match) => '${match.group(1)},',
+    );
     return '\$$formatted';
   }
 }
@@ -693,10 +666,7 @@ class _Banner extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  body,
-                  style: AppTextStyles.body12(color: accent),
-                ),
+                Text(body, style: AppTextStyles.body12(color: accent)),
               ],
             ),
           ),

@@ -182,7 +182,7 @@ class _HeaderBar extends StatelessWidget {
       builder: (context, constraints) {
         final showRole = constraints.maxWidth >= 760;
         final showIdentity = constraints.maxWidth >= 1000;
-        final pickerWidth = constraints.maxWidth >= 980 ? 260.0 : 184.0;
+        final pickerWidth = _pickerWidthFor(constraints.maxWidth);
         final showPicker =
             managementScopeOptions.isNotEmpty || managementScopeLoading;
         return Container(
@@ -243,6 +243,7 @@ class _HeaderBar extends StatelessWidget {
                     selectedKey: selectedManagementScopeKey,
                     loading: managementScopeLoading,
                     error: managementScopeError,
+                    popoverWidth: pickerWidth,
                     onChanged: onSelectManagementScope,
                   ),
                 ),
@@ -253,44 +254,28 @@ class _HeaderBar extends StatelessWidget {
               ],
               if (showIdentity) ...[
                 const SizedBox(width: 12),
-                Flexible(child: _IdentityChip(session: session)),
-              ],
-              const SizedBox(width: 8),
-              Tooltip(
-                message:
-                    'Sign out: ends this browser session and returns '
-                    'you to the welcome screen.',
-                child: TextButton.icon(
-                  key: const Key('operator_web_header_signout'),
-                  onPressed: onSignOut,
-                  icon: const Icon(
-                    Icons.logout_outlined,
-                    size: 22,
-                    color: AppColors.textSecondary,
-                  ),
-                  label: Text(
-                    'Sign out',
-                    style: AppTextStyles.body13(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    foregroundColor: AppColors.textSecondary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+                Flexible(
+                  child: _AccountControls(
+                    session: session,
+                    onSignOut: onSignOut,
                   ),
                 ),
-              ),
+              ] else ...[
+                const SizedBox(width: 8),
+                _SignOutButton(onSignOut: onSignOut),
+              ],
             ],
           ),
         );
       },
     );
+  }
+
+  static double _pickerWidthFor(double maxWidth) {
+    if (maxWidth >= 1440) return 540;
+    if (maxWidth >= 1180) return 460;
+    if (maxWidth >= 980) return 340;
+    return 220;
   }
 }
 
@@ -359,6 +344,7 @@ class _ManagementScopePicker extends StatelessWidget {
     required this.selectedKey,
     required this.loading,
     required this.error,
+    required this.popoverWidth,
     required this.onChanged,
   });
 
@@ -366,6 +352,7 @@ class _ManagementScopePicker extends StatelessWidget {
   final String? selectedKey;
   final bool loading;
   final String? error;
+  final double popoverWidth;
   final ValueChanged<String>? onChanged;
 
   @override
@@ -374,10 +361,9 @@ class _ManagementScopePicker extends StatelessWidget {
       return const _ManagementScopePlaceholder();
     }
     final nodes = _toNodes(options);
-    final resolvedSelected =
-        options.any((option) => option.key == selectedKey)
-            ? selectedKey
-            : (options.isEmpty ? null : options.first.key);
+    final resolvedSelected = options.any((option) => option.key == selectedKey)
+        ? selectedKey
+        : (options.isEmpty ? null : options.first.key);
     return HierarchyMapPicker(
       key: const Key('operator_web_management_scope_container'),
       keyPrefix: 'operator_web_management_scope',
@@ -398,6 +384,7 @@ class _ManagementScopePicker extends StatelessWidget {
       // non-location selection IS valid at the picker level. Schedule,
       // Vendor connections, etc. handle the redirect themselves.
       allowNonLocationSelection: true,
+      popoverWidth: popoverWidth,
     );
   }
 
@@ -423,8 +410,7 @@ class _ManagementScopePicker extends StatelessWidget {
     // "All locations" row so the tree stays connected.
     final orgUnitKeys = <String>{
       for (final option in options)
-        if (option.kind == OperatorWebManagementScopeKind.orgUnit)
-          option.key,
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit) option.key,
     };
     return <HierarchyMapNode>[
       for (final option in options)
@@ -592,19 +578,64 @@ class _RolePill extends StatelessWidget {
   }
 }
 
-class _IdentityChip extends StatelessWidget {
-  const _IdentityChip({required this.session});
+class _AccountControls extends StatelessWidget {
+  const _AccountControls({required this.session, required this.onSignOut});
 
   final OperatorWebSession session;
+  final VoidCallback onSignOut;
 
   @override
   Widget build(BuildContext context) {
     final label = session.email.isNotEmpty ? session.email : session.uid;
-    return Text(
-      label,
-      key: const Key('operator_web_header_identity'),
-      overflow: TextOverflow.ellipsis,
-      style: AppTextStyles.mono14(color: AppColors.textSecondary),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.start,
+      mainAxisSize: MainAxisSize.max,
+      children: <Widget>[
+        Flexible(
+          child: Text(
+            label,
+            key: const Key('operator_web_header_identity'),
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.left,
+            style: AppTextStyles.mono14(color: AppColors.textSecondary),
+          ),
+        ),
+        const SizedBox(width: 8),
+        _SignOutButton(onSignOut: onSignOut),
+      ],
+    );
+  }
+}
+
+class _SignOutButton extends StatelessWidget {
+  const _SignOutButton({required this.onSignOut});
+
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message:
+          'Sign out: ends this browser session and returns '
+          'you to the welcome screen.',
+      child: TextButton.icon(
+        key: const Key('operator_web_header_signout'),
+        onPressed: onSignOut,
+        icon: const Icon(
+          Icons.logout_outlined,
+          size: 22,
+          color: AppColors.textSecondary,
+        ),
+        label: Text(
+          'Sign out',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          foregroundColor: AppColors.textSecondary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        ),
+      ),
     );
   }
 }
@@ -755,7 +786,8 @@ class _NavItemTile extends StatelessWidget {
                 else if (item.alertCount > 0)
                   Tooltip(
                     key: Key('operator_web_nav_alert_tooltip_${item.id}'),
-                    message: item.alertTooltip ??
+                    message:
+                        item.alertTooltip ??
                         '${item.alertCount} ${item.alertCount == 1 ? "item needs" : "items need"} your attention',
                     child: Container(
                       key: Key('operator_web_nav_alert_chip_${item.id}'),
@@ -772,8 +804,9 @@ class _NavItemTile extends StatelessWidget {
                       ),
                       child: Text(
                         item.alertCount.toString(),
-                        style: AppTextStyles.mono8(color: AppColors.negative)
-                            .copyWith(fontWeight: FontWeight.w700),
+                        style: AppTextStyles.mono8(
+                          color: AppColors.negative,
+                        ).copyWith(fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),
