@@ -15,7 +15,6 @@
 //     → canonical fields match the documented field-mapping constant
 //     in the adapter.
 
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -23,11 +22,13 @@ import 'package:forge_and_flow/integrations/labor/humanity_labor_adapter.dart';
 import 'package:forge_and_flow/integrations/labor/humanity_labor_production_api_client.dart';
 import 'package:http/http.dart' as http;
 
+import '../../_test_helpers/mock_http_client.dart';
+
 void main() {
   group('exchangeUsernamePassword', () {
     test('happy path → returns access_token + expiresAt + refresh_token',
         () async {
-      final fake = _FakeHttpClient((request) async {
+      final fake = FakeHttpClient.handler((request) async {
         expect(request.method, 'POST');
         expect(request.url.path.endsWith('/oauth2/token'), true);
         expect(request.headers['content-type'],
@@ -63,7 +64,7 @@ void main() {
 
     test('schema drift → throws HumanitySchemaException when access_token '
         'missing', () async {
-      final fake = _FakeHttpClient((_) async => _ok(jsonEncode(
+      final fake = FakeHttpClient.handler((_) async => _ok(jsonEncode(
             const <String, Object?>{'expires_in': 60},
           )));
       final client = HumanityLaborProductionApiClient(
@@ -80,7 +81,7 @@ void main() {
     });
 
     test('401 → throws HumanityAuthException', () async {
-      final fake = _FakeHttpClient((_) async => http.Response(
+      final fake = FakeHttpClient.handler((_) async => http.Response(
             jsonEncode(<String, Object?>{'error': 'invalid_grant'}),
             401,
             headers: const <String, String>{
@@ -104,7 +105,7 @@ void main() {
 
   group('listShifts (single page)', () {
     test('happy path → returns parsed records + null next cursor', () async {
-      final fake = _FakeHttpClient((request) async {
+      final fake = FakeHttpClient.handler((request) async {
         expect(request.method, 'GET');
         expect(request.url.path.endsWith('/shifts'), true);
         expect(
@@ -148,7 +149,7 @@ void main() {
   group('listShifts pagination', () {
     test('two-page walk surfaces cursor between pages then null', () async {
       var calls = 0;
-      final fake = _FakeHttpClient((request) async {
+      final fake = FakeHttpClient.handler((request) async {
         calls += 1;
         final cursor = request.url.queryParameters['cursor'];
         if (calls == 1) {
@@ -186,7 +187,7 @@ void main() {
     });
 
     test('legacy `next` field on `paging` envelope is honored', () async {
-      final fake = _FakeHttpClient((_) async => _ok(jsonEncode(
+      final fake = FakeHttpClient.handler((_) async => _ok(jsonEncode(
             <String, Object?>{
               'shifts': <Map<String, Object?>>[_sampleShift('HUM-9001')],
               'paging': <String, Object?>{'next': 'paging-cursor-2'},
@@ -207,7 +208,7 @@ void main() {
   group('429 backoff', () {
     test('honors Retry-After then succeeds on the second attempt', () async {
       var calls = 0;
-      final fake = _FakeHttpClient((_) async {
+      final fake = FakeHttpClient.handler((_) async {
         calls += 1;
         if (calls == 1) {
           return http.Response(
@@ -243,7 +244,7 @@ void main() {
     });
 
     test('exhausts retries → throws HumanityRateLimitException', () async {
-      final fake = _FakeHttpClient((_) async => http.Response(
+      final fake = FakeHttpClient.handler((_) async => http.Response(
             '{"error":"rate_limited"}',
             429,
             headers: const <String, String>{
@@ -271,7 +272,7 @@ void main() {
   group('401 on listShifts', () {
     test('surfaces HumanityAuthException without retry', () async {
       var calls = 0;
-      final fake = _FakeHttpClient((_) async {
+      final fake = FakeHttpClient.handler((_) async {
         calls += 1;
         return http.Response(
           '{"error":"unauthorized"}',
@@ -299,7 +300,7 @@ void main() {
 
   group('fetchSampleShift', () {
     test('returns the first shift on the page', () async {
-      final fake = _FakeHttpClient((request) async {
+      final fake = FakeHttpClient.handler((request) async {
         expect(request.url.queryParameters['limit'], '1');
         expect(request.url.queryParameters['sort'], 'updated:desc');
         return _ok(jsonEncode(<String, Object?>{
@@ -318,7 +319,7 @@ void main() {
     });
 
     test('returns null when the page is empty', () async {
-      final fake = _FakeHttpClient((_) async => _ok(jsonEncode(
+      final fake = FakeHttpClient.handler((_) async => _ok(jsonEncode(
             const <String, Object?>{'shifts': <Map<String, Object?>>[]},
           )));
       final client = HumanityLaborProductionApiClient(
@@ -335,7 +336,7 @@ void main() {
   group('revokeCredential', () {
     test('best-effort POST swallows 401 silently', () async {
       var calls = 0;
-      final fake = _FakeHttpClient((request) async {
+      final fake = FakeHttpClient.handler((request) async {
         calls += 1;
         expect(request.method, 'POST');
         expect(request.url.path.endsWith('/oauth2/revoke'), true);
@@ -359,7 +360,7 @@ void main() {
     });
 
     test('500 from vendor does not block disconnect', () async {
-      final fake = _FakeHttpClient((_) async => http.Response(
+      final fake = FakeHttpClient.handler((_) async => http.Response(
             'down',
             500,
             headers: const <String, String>{
@@ -379,7 +380,7 @@ void main() {
   group('schema roundtrip vs documented field-mapping constant', () {
     test('vendor JSON → DTO → fields match adapter mapping constant',
         () async {
-      final fake = _FakeHttpClient((_) async => _ok(jsonEncode(
+      final fake = FakeHttpClient.handler((_) async => _ok(jsonEncode(
             <String, Object?>{
               'shifts': <Map<String, Object?>>[_sampleShift('HUM-12345')],
               'next_cursor': null,
@@ -419,7 +420,7 @@ void main() {
     test('environment HUMANITY_API_BASE_URL takes precedence over default',
         () {
       final client = HumanityLaborProductionApiClient(
-        httpClient: _FakeHttpClient((_) async => _ok('{}')),
+        httpClient: FakeHttpClient.handler((_) async => _ok('{}')),
         environment: () => const <String, String>{
           'HUMANITY_API_BASE_URL': 'https://staging.humanity.example/v1.0/',
         },
@@ -432,7 +433,7 @@ void main() {
 
     test('explicit baseUri argument overrides env', () {
       final client = HumanityLaborProductionApiClient(
-        httpClient: _FakeHttpClient((_) async => _ok('{}')),
+        httpClient: FakeHttpClient.handler((_) async => _ok('{}')),
         baseUri: Uri.parse('https://explicit.example/v1.0/'),
         environment: () => const <String, String>{
           'HUMANITY_API_BASE_URL': 'https://staging.humanity.example/v1.0/',
@@ -464,26 +465,3 @@ Map<String, Object?> _sampleShift(String id) => <String, Object?>{
       'out_time': '2026-05-04T22:30:00Z',
       'updated': '2026-05-04T11:45:00Z',
     };
-
-class _FakeHttpClient extends http.BaseClient {
-  _FakeHttpClient(this._handler);
-
-  final Future<http.Response> Function(http.Request) _handler;
-
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    if (request is! http.Request) {
-      throw StateError('only http.Request supported in tests; got '
-          '${request.runtimeType}');
-    }
-    final response = await _handler(request);
-    return http.StreamedResponse(
-      Stream<List<int>>.value(response.bodyBytes),
-      response.statusCode,
-      headers: response.headers,
-      contentLength: response.bodyBytes.length,
-      request: request,
-      reasonPhrase: response.reasonPhrase,
-    );
-  }
-}
