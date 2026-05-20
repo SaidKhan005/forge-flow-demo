@@ -48,7 +48,14 @@ void main() {
   });
 
   Future<Finder> pumpStripAtWidth(WidgetTester tester, double width) async {
-    await tester.binding.setSurfaceSize(Size(width, 1600));
+    // 2026-05-20 mobile-UX dial-in: the Benchmark screen grew enough
+    // content above the Operating Inputs strip (sticky CPLH RANGE &
+    // TARGET header, sticky DAYPART TARGET BREAKDOWNS header + the
+    // DaypartTable, the per-period rollup line) that the strip sits
+    // far below a 1600-tall surface and isn't built by the lazy
+    // CustomScrollView even with `cacheExtent: 9999`. Bump the surface
+    // tall enough that the entire screen is in the cache-built region.
+    await tester.binding.setSurfaceSize(Size(width, 4000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     // Collect framework errors during pump instead of letting the test
@@ -83,10 +90,23 @@ void main() {
               'tolerated): $msg');
     }
 
+    // Scroll the strip into view so its anchor text is in the rendered
+    // tree (lazy slivers below the cache region remain unbuilt without
+    // a scroll; the cache-extent bump above usually solves this but the
+    // explicit scrollUntilVisible is the most defensive shape).
+    final leftTitle = find.text('Operating Wage Mix');
+    if (leftTitle.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        leftTitle,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+    }
+
     // Anchor on the two unique strip titles, then resolve their shared
     // IntrinsicHeight so the row finders below cannot accidentally
     // match a like-named label elsewhere on the screen.
-    final leftTitle = find.text('Operating Wage Mix');
     final rightTitle = find.text('Theoretical Labor %: The Floor');
     expect(leftTitle, findsOneWidget);
     expect(rightTitle, findsOneWidget);
