@@ -47,6 +47,7 @@ import '../widgets/data_accuracy_explainer_card.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/keyed_service_period_accuracy_card.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_section_heading.dart';
 import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
 import '../widgets/wage_source_toggle.dart';
@@ -1325,30 +1326,72 @@ class _DataAccuracyScopeSummary extends StatelessWidget {
     return Container(
       key: const Key('operator_web_data_accuracy_scope_summary'),
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
       decoration: BoxDecoration(
-        color: AppColors.cardGlow,
+        color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 8,
-        children: [
-          _ScopeSummaryChip(
-            chipKey: const Key('operator_web_data_accuracy_selected_scope'),
-            label: 'Selected scope',
-            value: locationLabel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          const OperatorWebSectionHeading(
+            title: 'Where this applies',
+            trailing: _DataAccuracyScopePill(
+              keyName: 'operator_web_data_accuracy_scope_pill',
+              label: 'Location',
+            ),
           ),
-          _ScopeSummaryChip(
-            chipKey: const Key('operator_web_data_accuracy_inherited_source'),
-            label: 'Inherited source',
-            value: _sourceSummary(),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundMid,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: _ScopeSummaryLine(
+              lineKey: const Key('operator_web_data_accuracy_selected_scope'),
+              label: 'Selected scope',
+              value: 'Location: $locationLabel',
+            ),
           ),
-          _ScopeSummaryChip(
-            chipKey: const Key('operator_web_data_accuracy_effective_value'),
-            label: 'Effective value',
-            value: _effectiveSummary(),
+          const SizedBox(height: 6),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              key: const Key('operator_web_data_accuracy_scope_details_toggle'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(top: 6),
+              visualDensity: VisualDensity.compact,
+              title: Text(
+                'Section details',
+                style: AppTextStyles.body13(
+                  color: AppColors.sunsetDark,
+                ).copyWith(fontWeight: FontWeight.w700),
+              ),
+              children: <Widget>[
+                _ScopeSummaryDetailRow(
+                  child: _ScopeSummaryLine(
+                    lineKey: const Key(
+                      'operator_web_data_accuracy_inherited_source',
+                    ),
+                    label: 'Inherited source',
+                    value: _sourceSummary(),
+                    emphasize: true,
+                  ),
+                ),
+                _ScopeSummaryDetailRow(
+                  child: _ScopeSummaryLine(
+                    lineKey: const Key(
+                      'operator_web_data_accuracy_effective_value',
+                    ),
+                    label: 'Effective value',
+                    value: _effectiveSummary(),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1419,41 +1462,155 @@ class _DataAccuracyScopeSummary extends StatelessWidget {
   }
 }
 
-class _ScopeSummaryChip extends StatelessWidget {
-  const _ScopeSummaryChip({
-    required this.chipKey,
-    required this.label,
-    required this.value,
-  });
+class _DataAccuracyScopePill extends StatelessWidget {
+  const _DataAccuracyScopePill({required this.keyName, required this.label});
 
-  final Key chipKey;
+  final String keyName;
   final String label;
-  final String value;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: chipKey,
-      constraints: const BoxConstraints(minWidth: 180, maxWidth: 420),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      key: Key(keyName),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        color: AppColors.sunsetDark.withValues(alpha: 0.10),
+        border: Border.all(
+          color: AppColors.sunsetDark.withValues(alpha: 0.42),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(999),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            style: AppTextStyles.body12(color: AppColors.textPrimary),
-          ),
-        ],
+      child: Text(
+        label,
+        style: AppTextStyles.mono8(color: AppColors.sunsetDark),
       ),
     );
+  }
+}
+
+class _ScopeSummaryDetailRow extends StatelessWidget {
+  const _ScopeSummaryDetailRow({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: AppColors.borderSubtle, width: 1),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ScopeSummaryLine extends StatelessWidget {
+  const _ScopeSummaryLine({
+    required this.lineKey,
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  final Key lineKey;
+  final String label;
+  final String value;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 560;
+        final valueText = emphasize
+            ? _ScopeSummaryEmphasisText(
+                value,
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              )
+            : Text(
+                value,
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              );
+        if (compact) {
+          return Column(
+            key: lineKey,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 3),
+              valueText,
+            ],
+          );
+        }
+        return Row(
+          key: lineKey,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            SizedBox(
+              width: 132,
+              child: Text(
+                label,
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: valueText),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ScopeSummaryEmphasisText extends StatelessWidget {
+  const _ScopeSummaryEmphasisText(this.text, {required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final emphasized = <String>['Business', 'Location setting'];
+    final children = <TextSpan>[];
+    var index = 0;
+    while (index < text.length) {
+      var nextIndex = text.length;
+      String? nextPhrase;
+      for (final phrase in emphasized) {
+        final phraseIndex = text.indexOf(phrase, index);
+        if (phraseIndex >= 0 && phraseIndex < nextIndex) {
+          nextIndex = phraseIndex;
+          nextPhrase = phrase;
+        }
+      }
+      if (nextPhrase == null) {
+        children.add(TextSpan(text: text.substring(index), style: style));
+        break;
+      }
+      if (nextIndex > index) {
+        children.add(
+          TextSpan(text: text.substring(index, nextIndex), style: style),
+        );
+      }
+      children.add(
+        TextSpan(
+          text: nextPhrase,
+          style: style.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+      index = nextIndex + nextPhrase.length;
+    }
+    return Text.rich(TextSpan(children: children));
   }
 }
 

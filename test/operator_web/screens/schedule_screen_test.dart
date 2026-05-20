@@ -312,6 +312,12 @@ void main() {
           find.byKey(const Key('schedule_screen_hierarchy_scope_selected_row')),
           findsOneWidget,
         );
+        await tester.tap(
+          find.byKey(
+            const Key('schedule_screen_hierarchy_scope_details_toggle'),
+          ),
+        );
+        await tester.pumpAndSettle();
         expect(
           find.byKey(
             const Key('schedule_screen_hierarchy_scope_inherited_row'),
@@ -334,7 +340,7 @@ void main() {
         );
         // Plain-English copy (no engineering jargon).
         expect(
-          find.textContaining('Set here. Does not inherit'),
+          find.textContaining('Set here. Does not inherit', findRichText: true),
           findsOneWidget,
         );
         expect(find.text('Location'), findsOneWidget);

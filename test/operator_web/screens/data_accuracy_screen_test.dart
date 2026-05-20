@@ -750,12 +750,18 @@ void main() {
           ),
           findsOneWidget,
         );
+        await tester.tap(
+          find.byKey(
+            const Key('operator_web_data_accuracy_scope_details_toggle'),
+          ),
+        );
+        await tester.pumpAndSettle();
         expect(
           find.descendant(
             of: find.byKey(
               const Key('operator_web_data_accuracy_inherited_source'),
             ),
-            matching: find.textContaining('Business'),
+            matching: find.textContaining('Business', findRichText: true),
           ),
           findsOneWidget,
         );

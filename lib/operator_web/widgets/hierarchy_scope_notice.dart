@@ -146,9 +146,9 @@ class HierarchyScopeNotice extends StatelessWidget {
             : null;
         return Container(
           key: Key(keyName),
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
           decoration: BoxDecoration(
-            color: AppColors.cardGlow,
+            color: AppColors.backgroundSurface,
             border: Border.all(color: AppColors.borderSubtle, width: 1),
             borderRadius: BorderRadius.circular(8),
           ),
@@ -181,35 +181,59 @@ class HierarchyScopeNotice extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              _NoticeRow(
-                keyName: '${keyName}_selected_row',
-                label: 'Selected scope',
-                value: '${selectedScope.label}: $scopeName',
+              _SelectedScopeBox(
+                child: _NoticeLine(
+                  keyName: '${keyName}_selected_row',
+                  label: 'Selected scope',
+                  value: '${selectedScope.label}: $scopeName',
+                ),
               ),
               const SizedBox(height: 6),
-              _NoticeRow(
-                keyName: '${keyName}_inherited_row',
-                label: 'Source',
-                value:
-                    inheritedLabel ??
-                    'Set here. Does not inherit from a higher scope.',
-                muted: inheritedLabel == null,
+              Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  key: Key('${keyName}_details_toggle'),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(top: 6),
+                  visualDensity: VisualDensity.compact,
+                  title: Text(
+                    'Section details',
+                    style: AppTextStyles.body13(
+                      color: AppColors.sunsetDark,
+                    ).copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  children: <Widget>[
+                    _NoticeDetailRow(
+                      child: _NoticeLine(
+                        keyName: '${keyName}_inherited_row',
+                        label: 'Source',
+                        value:
+                            inheritedLabel ??
+                            'Set here. Does not inherit from a higher scope.',
+                        muted: inheritedLabel == null,
+                      ),
+                    ),
+                    if (showEffectiveValue)
+                      _NoticeDetailRow(
+                        child: _NoticeLine(
+                          keyName: '${keyName}_effective_row',
+                          label: 'Effective value',
+                          value: effectiveValueSummary,
+                        ),
+                      ),
+                    if (backendOnly != null &&
+                        showBackendOnlyExplainer) ...<Widget>[
+                      const SizedBox(height: 8),
+                      _BackendOnlyExplainer(
+                        keyName: '${keyName}_backend_only',
+                        message: backendOnly,
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              if (showEffectiveValue) ...<Widget>[
-                const SizedBox(height: 6),
-                _NoticeRow(
-                  keyName: '${keyName}_effective_row',
-                  label: 'Effective value',
-                  value: effectiveValueSummary,
-                ),
-              ],
-              if (backendOnly != null && showBackendOnlyExplainer) ...<Widget>[
-                const SizedBox(height: 10),
-                _BackendOnlyExplainer(
-                  keyName: '${keyName}_backend_only',
-                  message: backendOnly,
-                ),
-              ],
             ],
           ),
         );
@@ -245,8 +269,46 @@ class _ScopePill extends StatelessWidget {
   }
 }
 
-class _NoticeRow extends StatelessWidget {
-  const _NoticeRow({
+class _SelectedScopeBox extends StatelessWidget {
+  const _SelectedScopeBox({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _NoticeDetailRow extends StatelessWidget {
+  const _NoticeDetailRow({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: AppColors.borderSubtle, width: 1),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _NoticeLine extends StatelessWidget {
+  const _NoticeLine({
     required this.keyName,
     required this.label,
     required this.value,
@@ -263,7 +325,7 @@ class _NoticeRow extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 420;
-        final valueText = Text(
+        final valueText = _NoticeEmphasisText(
           value,
           style: AppTextStyles.body13(
             color: muted ? AppColors.textSecondary : AppColors.textPrimary,
@@ -300,6 +362,51 @@ class _NoticeRow extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _NoticeEmphasisText extends StatelessWidget {
+  const _NoticeEmphasisText(this.text, {required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final emphasized = <String>['Set here', 'Does not inherit', 'Inherits'];
+    final children = <TextSpan>[];
+    var index = 0;
+    while (index < text.length) {
+      var nextIndex = text.length;
+      String? nextPhrase;
+      for (final phrase in emphasized) {
+        final phraseIndex = text.indexOf(phrase, index);
+        if (phraseIndex >= 0 && phraseIndex < nextIndex) {
+          nextIndex = phraseIndex;
+          nextPhrase = phrase;
+        }
+      }
+      if (nextPhrase == null) {
+        children.add(TextSpan(text: text.substring(index), style: style));
+        break;
+      }
+      if (nextIndex > index) {
+        children.add(
+          TextSpan(text: text.substring(index, nextIndex), style: style),
+        );
+      }
+      children.add(
+        TextSpan(
+          text: nextPhrase,
+          style: style.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+      index = nextIndex + nextPhrase.length;
+    }
+    return Text.rich(TextSpan(children: children));
   }
 }
 
