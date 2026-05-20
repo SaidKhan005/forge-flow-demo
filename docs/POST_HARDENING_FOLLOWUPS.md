@@ -1170,32 +1170,60 @@ not a count mismatch — see Finding D below for the actual class.
 
 **Verify (now green):** `flutter test test/per_daypart_v1_demo_slice_a_hierarchy_test.dart test/per_daypart_v1_demo_seed_per_location_data_test.dart test/state/restaurant_scope_notifier_test.dart` → 30/30 ✅.
 
-### P2 — Audit Finding D re-diagnosed (NOT mock-replay drift)
+### ~~P2~~ RESOLVED — Audit Finding D re-diagnosed (NOT mock-replay drift)
 
-The audit's working theory was "mock-replay anchor needs to roll
-forward." Live re-check shows the 6 failures in this cluster are
-unrelated to mock-replay clock drift; they are real semantic diffs
-between the test expectations and current production behaviour:
+**Status:** RESOLVED in PR #1070 (2026-05-20).
 
-- `business_date_authority_service_test.dart` (B), and
-  `demand_forecast_context_service_test.dart` (B, C, E): the
-  planning anchor / latest-closed comparison is off by exactly one
-  day. Looks like the production resolver now returns
-  `latestClosed + 1 day` (next-business-day semantics) while the
-  test still asserts equality.
-- `history_teaching_analyzer_test.dart`: canonical seed now emits
-  `['Wed Dinner', 'Mon Dinner']` where the test expects
-  `['Wed Dinner', 'Fri Late Night']`. Seed-data weekday change,
-  intentional or otherwise.
-- `metadata_timestamp_normalization_test.dart`: expected a count
-  greater than 6, actual is exactly 6 — threshold drift.
-- `target_state_alignment_test.dart` (E) and
-  `schedule_plan_read_service_test.dart` (E): same family, also
-  expect/actual mismatch requiring domain context to resolve.
+On per-test investigation, all 6 turned out to be test-side updates
+needed to track 3 distinct production contract evolutions — no
+production code changes required.
 
-**Owner:** business-date / target / forecast lane owners — each
-test needs domain triage to decide which side is right (production
-or the test). Not safe to mass-fix without domain context.
+**Root causes (not "+1 day" as the audit guessed):**
+
+1. **`ClosedTruthEligibility` is now the authority for planning
+   math.** Production filters the latest-closed lookup AND the 60d/21d
+   baseline cover windows through this filter — `appLocalCutoffFallback`
+   shifts whose `businessDate` is not strictly less than
+   `currentOperationalBusinessDate` are excluded as not-yet-finalized.
+   Anchor lands at `latestClosed - 1` and the same exclusion drops
+   today's covers from the baseline sum. The audit's "latestClosed + 1
+   day" theory was the inverse of the real shape.
+2. **Deterministic target-profile-version ids + `ConflictAlgorithm.ignore`.**
+   `closeShift` re-targets the existing version row instead of minting
+   a new one when a cycle already exists; the version-row-count-strictly-
+   increased precondition is no longer reachable.
+3. **Locked weekly snapshot is the shift dashboard's plan source.**
+   `getShiftDashboard` reads from `getExistingCurrentLockedWeeklyPlan`
+   (snapshot frozen at week start), NOT the live recomputed plan.
+
+**Per-test fixes:**
+
+- `business_date_authority_service_test.dart` (B) and
+  `demand_forecast_context_service_test.dart` (B): clear
+  `mock_replay_state` AND `open_shift_snapshots` so the planning anchor
+  takes the simple "no operational date → latestClosed" short-circuit
+  (the eligibility-filter path is covered by dedicated tests).
+- `demand_forecast_context_service_test.dart` (C, E): mirror
+  `ClosedTruthEligibility.filter` when computing the expected baseline
+  cover total so test and production count the same set.
+- `history_teaching_analyzer_test.dart`: late-night service-period
+  applicability narrowed to Fri-Sat only (Slice 1.5); Fri Late Night
+  dropped out of the runner-up tie. Re-pinned the second
+  benchmarkDaypart to `Mon Dinner` (new alphabetical tie winner) and
+  updated the header narrative.
+- `metadata_timestamp_normalization_test.dart`: stale "row count
+  growth" assertion rewritten to verify UTC `created_at` on the
+  specific version row the closed shift locked onto (strictly stronger
+  guarantee than "some new row appeared").
+- `schedule_plan_read_service_test.dart` (E): asserts agreement with
+  the locked weekly plan, not the live one.
+- `target_state_alignment_test.dart` (E): added `_satLunch` +
+  `_sunLunch` close inputs (the 16-of-16 weekly completion gate needs
+  all 7 projected slots closed, not 5), and cleared
+  `open_shift_snapshots` so the eligibility filter passes the W13
+  closes through to the upsert.
+
+**Verify (now green):** 117/117 across the 6 files.
 
 ### ~~P2~~ RESOLVED (partial) — Audit Finding G investigated; split into 3 classes
 
@@ -1247,31 +1275,59 @@ Both now green under `flutter test --test-randomize-ordering-seed=12345`
 **Owner for the remaining real perloc failure:** per-daypart V1 /
 business-date lane (see Finding D); not test-infrastructure.
 
-### P2 — Audit Finding A residual (7 spine smoke scenarios still red)
+### ~~P2~~ RESOLVED — Audit Finding A residual (7 spine smoke scenarios)
 
-The audit-author landed the SQL-matcher infrastructure fix that
-recovered 2 of the 9 originally-red scenarios in
-`test/_execution/spine_bridge_v2_smoke_test.dart`. The remaining 7
-are real semantic divergences and should be triaged by the
-spine-bridge lane:
+**Status:** RESOLVED in PR #1076 (2026-05-20). Operator product call
+2026-05-20: "manual override wins" — confirmed already the actual
+production behaviour at Stage 1 of the 4-way wage resolver.
 
-- `7shifts post-.7S.upgrade` — expected
-  `actualBohLaborDollars = 120`, got `96`. Likely a daypart-bucketer
-  interaction with the new 3-day labor-punch window (Slice 1.5 /
-  Gaps 21, 26 in `canonical_fact_to_closed_shift_input.dart`).
-- `operator manual entry per daypart` — expected not null, got null.
-  Fixture-shape gap for the per-daypart operator-entry path.
-- `wage_source = manual_mix -> labor_dollars provenance = target_wage_substituted` —
-  expected provenance `target_wage_substituted`, got
-  `vendor_seven_shifts_per_employee_actual_dollars`. The manual_mix
-  override appears to not be honoured against the new 7shifts
-  perEmployeeWithDollars path.
+All 7 scenarios were test-side updates needed to track the same
+contract evolutions Finding D revealed, plus one SQL-matcher drift.
+No production code changes.
 
-Plus a handful of architectural-compliance audit cases (`vendorProvidedForecast`
-enum absence, `open_shift_snapshots` write absence, Oracle Simphony
-Gen2 field path, ADP `webhookSupport`, aggregator provenance string
-template) — those likely re-green once the upstream semantic ones
-are addressed; verify under
-`flutter test test/_execution/spine_bridge_v2_smoke_test.dart` after.
+**1 plumbing fix unblocks 2 scenarios:**
 
-**Owner:** spine-bridge / Per-Daypart V1 lane.
+- `_SmokeFakeTransaction.query` matcher widened from
+  `'from data_accuracy_settings'` to `'data_accuracy_settings'`.
+  Production queries `from public.effective_data_accuracy_settings_v`
+  now; the substring match split on `public.` + `effective_` and
+  never hit the seeded fixture row. Result: the aggregator fell back
+  to its default `wage_source = vendor` and the manual_mix +
+  operator-manual-entry-per-daypart scenarios both failed silently.
+
+**Per-daypart V1 Slice 1.5 production-shape re-pins (4 scenarios):**
+
+- Humanity per-position + 7shifts perEmployeeWithDollars: BOH dollars
+  pro-rate by per-period overlap. The cook's 5h shift (18:00-23:00
+  local) only overlaps dinner (17:00-22:00 local) for 4h. Expected
+  re-pinned from `5 × rate` to `4 × rate` ($96, not $120).
+- Trio chain BOH hours/dollars: same root cause — re-pinned 6 → 5h
+  and `6 × $20` → `5 × $20` = $100.
+- Trio chain invalidation count: relaxed strict `== 1` to
+  `greaterThanOrEqualTo(1)`. The bus now legitimately fires multiple
+  times per sync (shift_record writes + timing-config sync +
+  wage-role-rows + first-backfill-status per the spine-bridge.3
+  contract). Preserves the "writes cause invalidation" guarantee
+  without over-pinning the aux-pull count.
+
+**Test-side path-selection gap (2 scenarios):**
+
+- Pattern A Square + Libro + walk-in-count and Tock without seated_at:
+  a non-null `walkInOverride` parameter alone does NOT switch the
+  covers-resolver path; the operator's effective
+  `covers_source_per_service_period` setting must name Pattern A.
+  Added the `data_accuracy_settings` row that names
+  `reservation_plus_walkin` for dinner in both tests.
+
+**Test isolation hygiene:**
+
+- Added a scope-limited `db.delete('shift_records', where:
+  restaurant_id + week_id)` at the top of the trio test. The SQLite
+  DB is a process singleton (file-backed via `sqflite_common_ffi`);
+  rapid local re-runs in the same shell otherwise accumulate prior
+  2026-W18 rows that break the test's `hasLength(1)` read-back. The
+  delete is scoped to the trio's specific (restaurant, week) pair so
+  the demo seed's historical weeks are untouched.
+
+**Verify (now green):** `flutter test test/_execution/spine_bridge_v2_smoke_test.dart`
+→ 14/14 ✅. Random ordering also passes.
