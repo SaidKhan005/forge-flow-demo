@@ -31,6 +31,12 @@
         "8182"
       ],
       "port": 8182
+    },
+    {
+      "name": "closed-summary-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8791", "--directory", "C:\\Users\\saidu\\AppData\\Local\\Temp\\ffpreview"],
+      "port": 8791
     }
   ]
 }
