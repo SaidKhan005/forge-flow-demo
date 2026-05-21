@@ -12,6 +12,7 @@
 import 'operator_location_account_overrides_routes.dart'
     show
         LocationAccountOverridesFieldSet,
+        LocationAccountOverridesSourcesRecord,
         ValidatedLocationAccountOverridesPatch,
         decodeLocationAccountOverridesPatchBody,
         isLocationAccountOverridesUuid;
@@ -46,6 +47,7 @@ class AccountScopeOverridesRecord {
     required this.effective,
     required this.override,
     required this.businessDefault,
+    this.sources = const LocationAccountOverridesSourcesRecord(),
     required this.updatedAt,
   });
 
@@ -55,6 +57,7 @@ class AccountScopeOverridesRecord {
   final LocationAccountOverridesFieldSet effective;
   final LocationAccountOverridesFieldSet override;
   final LocationAccountOverridesFieldSet businessDefault;
+  final LocationAccountOverridesSourcesRecord sources;
   final DateTime updatedAt;
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -64,6 +67,7 @@ class AccountScopeOverridesRecord {
     'effective': effective.toJson(),
     'override': override.toJson(),
     'businessDefault': businessDefault.toJson(),
+    'sources': sources.toJson(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
   };
 }

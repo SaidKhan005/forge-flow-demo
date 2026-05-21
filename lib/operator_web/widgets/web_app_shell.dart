@@ -189,7 +189,7 @@ class _HeaderBar extends StatelessWidget {
             managementScopeOptions.isNotEmpty || managementScopeLoading;
         return Container(
           key: const Key('operator_web_header_bar'),
-          height: 80,
+          height: 96,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -387,6 +387,9 @@ class _ManagementScopePicker extends StatelessWidget {
       // Vendor connections, etc. handle the redirect themselves.
       allowNonLocationSelection: true,
       popoverWidth: popoverWidth,
+      popoverMaxHeight: 520,
+      popoverOffsetY: 78,
+      largeTrigger: true,
     );
   }
 
@@ -484,7 +487,7 @@ class _ManagementScopePlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: const Key('operator_web_management_scope_loading'),
-      height: 38,
+      height: 68,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface.withValues(alpha: 0.84),

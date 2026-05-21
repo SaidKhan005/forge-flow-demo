@@ -117,6 +117,8 @@ class HierarchyMapPicker extends StatefulWidget {
     this.allowNonLocationSelection = true,
     this.popoverWidth = 320,
     this.popoverMaxHeight = 420,
+    this.popoverOffsetY = 44,
+    this.largeTrigger = false,
     this.triggerKey,
     this.nodeKeyResolver,
   });
@@ -171,6 +173,15 @@ class HierarchyMapPicker extends StatefulWidget {
 
   /// Popover height cap. The tree scrolls inside this height.
   final double popoverMaxHeight;
+
+  /// Vertical offset from the trigger to the popover. The compact
+  /// header picker uses 44px; Operator Web's larger scope banner uses
+  /// a taller offset so the popover starts below the full tile.
+  final double popoverOffsetY;
+
+  /// Renders the trigger as a larger scope banner. Defaults to false
+  /// so existing compact admin/operator uses keep their footprint.
+  final bool largeTrigger;
 
   /// Optional override for the trigger-button widget key. Defaults to
   /// `<keyPrefix>_trigger`; callers pass this when an existing test
@@ -263,7 +274,8 @@ class _HierarchyMapPickerState extends State<HierarchyMapPicker> {
 
   void _handleNodeTap(HierarchyMapNode node) {
     if (node.disabled) return;
-    final closes = node.kind == HierarchyMapNodeKind.location ||
+    final closes =
+        node.kind == HierarchyMapNodeKind.location ||
         widget.allowNonLocationSelection;
     widget.onSelected(node);
     if (closes) {
@@ -306,7 +318,7 @@ class _HierarchyMapPickerState extends State<HierarchyMapPicker> {
           child: CompositedTransformFollower(
             link: _layerLink,
             showWhenUnlinked: false,
-            offset: const Offset(0, 44),
+            offset: Offset(0, widget.popoverOffsetY),
             child: Material(
               key: Key('${widget.keyPrefix}_popover'),
               color: Colors.transparent,
@@ -357,14 +369,20 @@ class _HierarchyMapPickerState extends State<HierarchyMapPicker> {
     final isOpen = _overlayEntry != null;
     final borderColor = widget.error == null
         ? (isOpen
-            ? AppColors.sunsetDark.withValues(alpha: 0.62)
-            : AppColors.borderSubtle)
+              ? AppColors.sunsetDark.withValues(alpha: 0.62)
+              : AppColors.borderSubtle)
         : AppColors.negative.withValues(alpha: 0.55);
     final tooltipMessage = widget.error == null
         ? 'Choose the business, group, or location you are managing. '
               'The picker mirrors your org hierarchy so you can navigate '
               'by structure.'
         : '${widget.error} Showing the safest available context.';
+    final triggerRadius = widget.largeTrigger ? 8.0 : 6.0;
+    final triggerPadding = widget.largeTrigger
+        ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
+        : const EdgeInsets.symmetric(horizontal: 10, vertical: 4);
+    final triggerMinHeight = widget.largeTrigger ? 68.0 : 42.0;
+    final iconSize = widget.largeTrigger ? 20.0 : 16.0;
     return CompositedTransformTarget(
       link: _layerLink,
       child: Tooltip(
@@ -372,54 +390,77 @@ class _HierarchyMapPickerState extends State<HierarchyMapPicker> {
         waitDuration: const Duration(milliseconds: 600),
         child: Material(
           key: Key('${widget.keyPrefix}_trigger_container'),
-          color: AppColors.backgroundSurface.withValues(alpha: 0.84),
-          borderRadius: BorderRadius.circular(6),
+          color: AppColors.backgroundSurface.withValues(alpha: 0.88),
+          borderRadius: BorderRadius.circular(triggerRadius),
           child: InkWell(
             key: widget.triggerKey ?? Key('${widget.keyPrefix}_trigger'),
-            borderRadius: BorderRadius.circular(6),
-            onTap: widget.loading && widget.nodes.isEmpty ? null : _toggleOverlay,
+            borderRadius: BorderRadius.circular(triggerRadius),
+            onTap: widget.loading && widget.nodes.isEmpty
+                ? null
+                : _toggleOverlay,
             child: Container(
-              constraints: const BoxConstraints(minHeight: 42),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              constraints: BoxConstraints(minHeight: triggerMinHeight),
+              padding: triggerPadding,
               decoration: BoxDecoration(
                 border: Border.all(color: borderColor, width: 1),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(triggerRadius),
               ),
               child: Row(
                 children: <Widget>[
                   Icon(
                     _iconForKind(selected?.kind),
-                    size: 16,
+                    size: iconSize,
                     color: AppColors.sunsetDark,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    widget.triggerLabelPrefix,
-                    style: AppTextStyles.mono8(color: AppColors.textMuted),
-                  ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: widget.largeTrigger ? 12 : 8),
+                  if (!widget.largeTrigger) ...<Widget>[
+                    Text(
+                      widget.triggerLabelPrefix,
+                      style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
+                        if (widget.largeTrigger) ...<Widget>[
+                          Text(
+                            widget.triggerLabelPrefix,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: AppTextStyles.mono8(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                        ],
                         Text(
                           selectedLabel,
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
-                          style: AppTextStyles.body13(
-                            color: AppColors.textPrimary,
-                          ),
+                          style: widget.largeTrigger
+                              ? AppTextStyles.display16(
+                                  color: AppColors.textPrimary,
+                                )
+                              : AppTextStyles.body13(
+                                  color: AppColors.textPrimary,
+                                ),
                         ),
                         if (selectedHelper.isNotEmpty)
                           Text(
                             selectedHelper,
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
-                            style: AppTextStyles.mono8(
-                              color: AppColors.textMuted,
-                            ),
+                            style: widget.largeTrigger
+                                ? AppTextStyles.body12(
+                                    color: AppColors.textSecondary,
+                                  )
+                                : AppTextStyles.mono8(
+                                    color: AppColors.textMuted,
+                                  ),
                           ),
                       ],
                     ),
@@ -438,9 +479,7 @@ class _HierarchyMapPickerState extends State<HierarchyMapPicker> {
                     )
                   else
                     Icon(
-                      isOpen
-                          ? Icons.arrow_drop_up
-                          : Icons.arrow_drop_down,
+                      isOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down,
                       size: 18,
                       color: AppColors.textSecondary,
                     ),
@@ -533,7 +572,8 @@ class _HierarchyMapTreeBodyState extends State<HierarchyMapTreeBody> {
         onToggleBranch: _toggleBranch,
         onNodeTap: (node) {
           if (node.disabled) return;
-          final closes = node.kind == HierarchyMapNodeKind.location ||
+          final closes =
+              node.kind == HierarchyMapNodeKind.location ||
               widget.allowNonLocationSelection;
           widget.onNodeTap(node);
           if (!closes) _toggleBranch(node.id);
@@ -616,17 +656,23 @@ class _PopoverBody extends StatelessWidget {
                 prefixIcon: const Icon(Icons.search, size: 16),
                 hintText: 'Search by name',
                 hintStyle: AppTextStyles.body13(color: AppColors.textMuted),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 10,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide:
-                      const BorderSide(color: AppColors.borderSubtle, width: 1),
+                  borderSide: const BorderSide(
+                    color: AppColors.borderSubtle,
+                    width: 1,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide:
-                      const BorderSide(color: AppColors.borderSubtle, width: 1),
+                  borderSide: const BorderSide(
+                    color: AppColors.borderSubtle,
+                    width: 1,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
@@ -648,36 +694,38 @@ class _PopoverBody extends StatelessWidget {
                         : 'No hierarchy available yet.',
                   )
                 : visibleByMatch.isEmpty
-                    ? _EmptyState(
-                        key: Key('${keyPrefix}_no_match'),
-                        label: 'No matches for "$searchQuery".',
-                      )
-                    : SingleChildScrollView(
-                        key: Key('${keyPrefix}_scroll'),
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            for (final root in roots)
-                              if (visibleByMatch.contains(root.id))
-                                _NodeRow(
-                                  keyPrefix: keyPrefix,
-                                  node: root,
-                                  depth: 0,
-                                  selectedId: selectedId,
-                                  byParent: byParent,
-                                  visible: visibleByMatch,
-                                  collapsed: collapsed,
-                                  query: query,
-                                  onToggleBranch: onToggleBranch,
-                                  onNodeTap: onNodeTap,
-                                  nodeKeyResolver: nodeKeyResolver,
-                                ),
-                          ],
-                        ),
-                      ),
+                ? _EmptyState(
+                    key: Key('${keyPrefix}_no_match'),
+                    label: 'No matches for "$searchQuery".',
+                  )
+                : SingleChildScrollView(
+                    key: Key('${keyPrefix}_scroll'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 4,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        for (final root in roots)
+                          if (visibleByMatch.contains(root.id))
+                            _NodeRow(
+                              keyPrefix: keyPrefix,
+                              node: root,
+                              depth: 0,
+                              selectedId: selectedId,
+                              byParent: byParent,
+                              visible: visibleByMatch,
+                              collapsed: collapsed,
+                              query: query,
+                              onToggleBranch: onToggleBranch,
+                              onNodeTap: onNodeTap,
+                              nodeKeyResolver: nodeKeyResolver,
+                            ),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
@@ -702,9 +750,7 @@ class _PopoverBody extends StatelessWidget {
       byId[node.id] = node;
       final parent = node.parentId;
       if (parent != null) {
-        childrenByParent
-            .putIfAbsent(parent, () => <String>[])
-            .add(node.id);
+        childrenByParent.putIfAbsent(parent, () => <String>[]).add(node.id);
       }
     }
     for (final node in nodes) {
@@ -768,7 +814,8 @@ class _NodeRow extends StatelessWidget {
     final isSelected = node.id == selectedId;
     final disabled = node.disabled;
     final indent = depth * 14.0;
-    final rowKey = nodeKeyResolver?.call(node.id) ??
+    final rowKey =
+        nodeKeyResolver?.call(node.id) ??
         Key('${keyPrefix}_node_${_nodeKeySegment(node.id)}');
     final highlightColor = isSelected
         ? AppColors.sunset.withValues(alpha: 0.12)
@@ -806,8 +853,8 @@ class _NodeRow extends StatelessWidget {
                   icon: Icon(
                     hasChildren
                         ? (isCollapsed
-                            ? Icons.chevron_right
-                            : Icons.expand_more)
+                              ? Icons.chevron_right
+                              : Icons.expand_more)
                         : Icons.remove,
                     size: 16,
                     color: hasChildren
@@ -817,9 +864,7 @@ class _NodeRow extends StatelessWidget {
                   tooltip: hasChildren
                       ? (isCollapsed ? 'Expand' : 'Collapse')
                       : 'No children',
-                  onPressed: hasChildren
-                      ? () => onToggleBranch(node.id)
-                      : null,
+                  onPressed: hasChildren ? () => onToggleBranch(node.id) : null,
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
@@ -833,8 +878,8 @@ class _NodeRow extends StatelessWidget {
                   color: isSelected
                       ? AppColors.sunsetDark
                       : (disabled
-                          ? AppColors.textMuted
-                          : AppColors.textSecondary),
+                            ? AppColors.textMuted
+                            : AppColors.textSecondary),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -847,8 +892,9 @@ class _NodeRow extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
                         style: AppTextStyles.body13(color: foreground).copyWith(
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w400,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
                         ),
                       ),
                       Text(
@@ -899,7 +945,8 @@ class _NodeRow extends StatelessWidget {
 
     final wrappedRow = disabled
         ? Tooltip(
-            message: node.disabledReason ??
+            message:
+                node.disabledReason ??
                 'You do not have access to this branch. Ask your admin '
                     'if you need it.',
             child: rowChild,

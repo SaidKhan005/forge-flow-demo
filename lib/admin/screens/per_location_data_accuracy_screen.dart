@@ -238,54 +238,6 @@ class _PerLocationDataAccuracyScreenState
     }
   }
 
-  Future<void> _onEditSelectedScope() async {
-    if (!_scopeMutationEnabled) return;
-    final rows = _visibleRows;
-    if (rows.isEmpty) return;
-    final scope = _scope!;
-    final result = await showDialog<_DataAccuracyOverrideDraft>(
-      context: context,
-      builder: (_) => _DataAccuracyOverrideDialog(
-        initial: rows.first,
-        keyedRows: rows,
-        title: 'Apply data accuracy to ${scope.displayLabel}',
-      ),
-    );
-    if (result == null) return;
-    setState(() => _actionError = null);
-    try {
-      final update = await widget.gateway.overrideDataAccuracyScope(
-        operatorId: scope.operatorId,
-        scopeType: _mutationScopeType(scope),
-        orgUnitId: scope.orgUnitId,
-        locationId: scope.locationId,
-        coversSourcePerServicePeriod: result.coversSourcePerServicePeriod,
-        wageSource: result.wageSource,
-        walkInHandlingMode: result.walkInHandlingMode,
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        reasonNote: result.reasonNote,
-      );
-      await _refresh();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Applied covers and wage settings to '
-            '${update.affectedLocationCount} location'
-            '${update.affectedLocationCount == 1 ? '' : 's'}.',
-          ),
-        ),
-      );
-    } on DataAccuracyAdminForbiddenException catch (error) {
-      if (!mounted) return;
-      setState(() => _actionError = error.message);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _actionError = 'Scope override failed: $error');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -300,8 +252,8 @@ class _PerLocationDataAccuracyScreenState
               AdminPageHeader(
                 title: 'Covers and Wage Data Accuracy',
                 subtitle: widget.editingEnabled
-                    ? 'Review effective covers, wages, walk-ins, and audit history. Super admins can apply audited overrides.'
-                    : 'Review effective covers, wages, walk-ins, and audit history. Normal operator edits stay in Operator Web; override actions are hidden for this role.',
+                    ? 'Review effective covers, wages, walk-ins, and audit history by location. Super admins can apply audited location repairs.'
+                    : 'Review effective covers, wages, walk-ins, and audit history by location. Normal operator edits stay in Operator Web; location repair actions are hidden for this role.',
                 leading: widget.onBackToBusinessAccounts == null
                     ? null
                     : AdminBusinessAccountsBackButton(
@@ -515,14 +467,6 @@ class _PerLocationDataAccuracyScreenState
                 ),
               ),
             ),
-          if (_scopeMutationEnabled) ...[
-            const SizedBox(height: 16),
-            _ScopedDataAccuracyActionCard(
-              scope: _scope!,
-              locationCount: _visibleRows.length,
-              onPressed: _onEditSelectedScope,
-            ),
-          ],
           const SizedBox(height: 16),
           PerLocationDataAccuracyTable(
             rows: _visibleRows,
@@ -543,78 +487,6 @@ class _PerLocationDataAccuracyScreenState
       editingEnabled: widget.editingEnabled,
     );
   }
-
-  bool get _scopeMutationEnabled {
-    final scope = _scope;
-    return widget.editingEnabled &&
-        scope != null &&
-        !scope.isLocationScope &&
-        _visibleRows.isNotEmpty;
-  }
-
-  AdminDataAccuracyMutationScopeType _mutationScopeType(
-    AdminHierarchyScopeIntent scope,
-  ) {
-    switch (scope.scopeType) {
-      case AdminHierarchyScopeType.business:
-        return AdminDataAccuracyMutationScopeType.business;
-      case AdminHierarchyScopeType.orgUnit:
-        return AdminDataAccuracyMutationScopeType.orgUnit;
-      case AdminHierarchyScopeType.location:
-        return AdminDataAccuracyMutationScopeType.location;
-    }
-  }
-}
-
-class _ScopedDataAccuracyActionCard extends StatelessWidget {
-  const _ScopedDataAccuracyActionCard({
-    required this.scope,
-    required this.locationCount,
-    required this.onPressed,
-  });
-
-  final AdminHierarchyScopeIntent scope;
-  final int locationCount;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return AdminCard(
-      key: const Key('admin_data_accuracy_scope_action_card'),
-      child: Row(
-        children: [
-          const Icon(Icons.account_tree_outlined, color: AppColors.peacockDark),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Apply to selected ${scope.scopeType.label.toLowerCase()}',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'This saves one scoped covers and wage override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower scope overrides it.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          FilledButton.icon(
-            key: const Key('admin_data_accuracy_scope_override'),
-            style: AdminButtonStyles.primary,
-            onPressed: onPressed,
-            icon: const Icon(Icons.edit_outlined),
-            label: const Text('Edit scope'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _DataAccuracyOverrideDraft {
@@ -632,15 +504,10 @@ class _DataAccuracyOverrideDraft {
 }
 
 class _DataAccuracyOverrideDialog extends StatefulWidget {
-  const _DataAccuracyOverrideDialog({
-    required this.initial,
-    this.keyedRows,
-    this.title,
-  });
+  const _DataAccuracyOverrideDialog({required this.initial, this.keyedRows});
 
   final DataAccuracyAdminRow initial;
   final List<DataAccuracyAdminRow>? keyedRows;
-  final String? title;
 
   @override
   State<_DataAccuracyOverrideDialog> createState() =>
@@ -692,9 +559,8 @@ class _DataAccuracyOverrideDialogState
       key: const Key('admin_data_accuracy_override_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        widget.title ??
-            'Override data accuracy: ${widget.initial.operatorRef.businessName} '
-                '/ ${widget.initial.operatorRef.locationName}',
+        'Override data accuracy: ${widget.initial.operatorRef.businessName} '
+        '/ ${widget.initial.operatorRef.locationName}',
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
@@ -1287,7 +1153,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Support can review effective covers, wages, and walk-ins here. Normal operator edits stay in Operator Web; override actions are hidden for this role.',
+              'Support can review effective covers, wages, and walk-ins by location. Normal operator edits stay in Operator Web; location repair actions are hidden for this role.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),

@@ -362,7 +362,8 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
       // the repository.
       final locationRows = await exec.query(
         'select location_id::text as location_id, '
-        'business_day_rollover_hour, timezone, deleted_at '
+        'name as location_name, business_day_rollover_hour, timezone, '
+        'deleted_at '
         'from public.locations '
         'where location_id = @location_id::uuid '
         'and operator_id = @operator_id::uuid '
@@ -386,8 +387,8 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
       // Read the business defaults from public.operators. RLS confines
       // the read to the caller's operator row.
       final operatorRows = await exec.query(
-        'select preferred_currency, locale_tag, week_start_day, '
-        'rollover_hour '
+        'select business_name, preferred_currency, locale_tag, '
+        'week_start_day, rollover_hour '
         'from public.operators '
         'where operator_id = @operator_id::uuid '
         'limit 1',
@@ -400,82 +401,77 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
       }
       final operatorRow = operatorRows.single;
       final inheritedRows = await exec.query(
-        'select '
-        '  (select o.iana_timezone '
-        '   from public.org_unit_account_overrides o '
-        '   join public.org_units ou '
-        '     on ou.operator_id = o.operator_id '
-        '    and ou.id = o.org_unit_id '
-        '   join public.locations loc '
-        '     on loc.operator_id = o.operator_id '
-        '    and loc.location_id = @location_id::uuid '
-        '   where o.operator_id = @operator_id::uuid '
-        '     and loc.deleted_at is null '
-        '     and ou.deleted_at is null '
-        '     and ou.path @> loc.org_unit_path '
-        '     and o.iana_timezone is not null '
-        '   order by nlevel(ou.path) desc '
-        '   limit 1) as iana_timezone, '
-        '  (select o.locale_code '
-        '   from public.org_unit_account_overrides o '
-        '   join public.org_units ou '
-        '     on ou.operator_id = o.operator_id '
-        '    and ou.id = o.org_unit_id '
-        '   join public.locations loc '
-        '     on loc.operator_id = o.operator_id '
-        '    and loc.location_id = @location_id::uuid '
-        '   where o.operator_id = @operator_id::uuid '
-        '     and loc.deleted_at is null '
-        '     and ou.deleted_at is null '
-        '     and ou.path @> loc.org_unit_path '
-        '     and o.locale_code is not null '
-        '   order by nlevel(ou.path) desc '
-        '   limit 1) as locale_code, '
-        '  (select o.currency_code '
-        '   from public.org_unit_account_overrides o '
-        '   join public.org_units ou '
-        '     on ou.operator_id = o.operator_id '
-        '    and ou.id = o.org_unit_id '
-        '   join public.locations loc '
-        '     on loc.operator_id = o.operator_id '
-        '    and loc.location_id = @location_id::uuid '
-        '   where o.operator_id = @operator_id::uuid '
-        '     and loc.deleted_at is null '
-        '     and ou.deleted_at is null '
-        '     and ou.path @> loc.org_unit_path '
-        '     and o.currency_code is not null '
-        '   order by nlevel(ou.path) desc '
-        '   limit 1) as currency_code, '
-        '  (select o.contact_email '
-        '   from public.org_unit_account_overrides o '
-        '   join public.org_units ou '
-        '     on ou.operator_id = o.operator_id '
-        '    and ou.id = o.org_unit_id '
-        '   join public.locations loc '
-        '     on loc.operator_id = o.operator_id '
-        '    and loc.location_id = @location_id::uuid '
-        '   where o.operator_id = @operator_id::uuid '
-        '     and loc.deleted_at is null '
-        '     and ou.deleted_at is null '
-        '     and ou.path @> loc.org_unit_path '
-        '     and o.contact_email is not null '
-        '   order by nlevel(ou.path) desc '
-        '   limit 1) as contact_email, '
-        '  (select o.contact_phone '
-        '   from public.org_unit_account_overrides o '
-        '   join public.org_units ou '
-        '     on ou.operator_id = o.operator_id '
-        '    and ou.id = o.org_unit_id '
-        '   join public.locations loc '
-        '     on loc.operator_id = o.operator_id '
-        '    and loc.location_id = @location_id::uuid '
-        '   where o.operator_id = @operator_id::uuid '
-        '     and loc.deleted_at is null '
-        '     and ou.deleted_at is null '
-        '     and ou.path @> loc.org_unit_path '
-        '     and o.contact_phone is not null '
-        '   order by nlevel(ou.path) desc '
-        '   limit 1) as contact_phone',
+        'with ancestor_overrides as ('
+        '  select ou.id::text as source_id, ou.unit_type as source_type, '
+        '         ou.name as source_label, o.iana_timezone, o.locale_code, '
+        '         o.currency_code, o.contact_email, o.contact_phone '
+        '  from public.org_unit_account_overrides o '
+        '  join public.org_units ou '
+        '    on ou.operator_id = o.operator_id '
+        '   and ou.id = o.org_unit_id '
+        '  join public.locations loc '
+        '    on loc.operator_id = o.operator_id '
+        '   and loc.location_id = @location_id::uuid '
+        '  where o.operator_id = @operator_id::uuid '
+        '    and loc.deleted_at is null '
+        '    and ou.deleted_at is null '
+        '    and ou.path @> loc.org_unit_path '
+        '  order by nlevel(ou.path) desc '
+        ') select '
+        '  (select iana_timezone from ancestor_overrides '
+        '   where iana_timezone is not null limit 1) as iana_timezone, '
+        '  (select source_id from ancestor_overrides '
+        '   where iana_timezone is not null limit 1) '
+        '   as iana_timezone_source_id, '
+        '  (select source_type from ancestor_overrides '
+        '   where iana_timezone is not null limit 1) '
+        '   as iana_timezone_source_type, '
+        '  (select source_label from ancestor_overrides '
+        '   where iana_timezone is not null limit 1) '
+        '   as iana_timezone_source_label, '
+        '  (select locale_code from ancestor_overrides '
+        '   where locale_code is not null limit 1) as locale_code, '
+        '  (select source_id from ancestor_overrides '
+        '   where locale_code is not null limit 1) as locale_code_source_id, '
+        '  (select source_type from ancestor_overrides '
+        '   where locale_code is not null limit 1) '
+        '   as locale_code_source_type, '
+        '  (select source_label from ancestor_overrides '
+        '   where locale_code is not null limit 1) '
+        '   as locale_code_source_label, '
+        '  (select currency_code from ancestor_overrides '
+        '   where currency_code is not null limit 1) as currency_code, '
+        '  (select source_id from ancestor_overrides '
+        '   where currency_code is not null limit 1) '
+        '   as currency_code_source_id, '
+        '  (select source_type from ancestor_overrides '
+        '   where currency_code is not null limit 1) '
+        '   as currency_code_source_type, '
+        '  (select source_label from ancestor_overrides '
+        '   where currency_code is not null limit 1) '
+        '   as currency_code_source_label, '
+        '  (select contact_email from ancestor_overrides '
+        '   where contact_email is not null limit 1) as contact_email, '
+        '  (select source_id from ancestor_overrides '
+        '   where contact_email is not null limit 1) '
+        '   as contact_email_source_id, '
+        '  (select source_type from ancestor_overrides '
+        '   where contact_email is not null limit 1) '
+        '   as contact_email_source_type, '
+        '  (select source_label from ancestor_overrides '
+        '   where contact_email is not null limit 1) '
+        '   as contact_email_source_label, '
+        '  (select contact_phone from ancestor_overrides '
+        '   where contact_phone is not null limit 1) as contact_phone, '
+        '  (select source_id from ancestor_overrides '
+        '   where contact_phone is not null limit 1) '
+        '   as contact_phone_source_id, '
+        '  (select source_type from ancestor_overrides '
+        '   where contact_phone is not null limit 1) '
+        '   as contact_phone_source_type, '
+        '  (select source_label from ancestor_overrides '
+        '   where contact_phone is not null limit 1) '
+        '   as contact_phone_source_label',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
@@ -531,6 +527,51 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
         contactEmail: overrideRow?.contactEmail ?? businessDefault.contactEmail,
         contactPhone: overrideRow?.contactPhone ?? businessDefault.contactPhone,
       );
+      final locationName =
+          _optionalString(locationRow, 'location_name') ?? locationId;
+      final businessName =
+          _optionalString(operatorRow, 'business_name') ?? 'Business';
+      final locationSource = LocationAccountOverridesSource(
+        scopeType: 'location',
+        scopeId: locationId,
+        scopeLabel: locationName,
+        setHere: true,
+      );
+      final businessSource = LocationAccountOverridesSource(
+        scopeType: 'business',
+        scopeId: operatorId,
+        scopeLabel: businessName,
+        setHere: false,
+      );
+      final sources = LocationAccountOverridesSources(
+        ianaTimezone: overrideRow?.ianaTimezone != null
+            ? locationSource
+            : (_sourceFromRow(inheritedRow, 'iana_timezone') ??
+                  (locationTimezone == null ? null : locationSource)),
+        localeCode: overrideRow?.localeCode != null
+            ? locationSource
+            : (_sourceFromRow(inheritedRow, 'locale_code') ??
+                  (businessDefault.localeCode == null ? null : businessSource)),
+        currencyCode: overrideRow?.currencyCode != null
+            ? locationSource
+            : (_sourceFromRow(inheritedRow, 'currency_code') ??
+                  (businessDefault.currencyCode == null
+                      ? null
+                      : businessSource)),
+        businessDayRolloverHour: overrideRow?.businessDayRolloverHour != null
+            ? locationSource
+            : (locationRollover != null
+                  ? locationSource
+                  : (businessDefault.businessDayRolloverHour == null
+                        ? null
+                        : businessSource)),
+        contactEmail: overrideRow?.contactEmail != null
+            ? locationSource
+            : _sourceFromRow(inheritedRow, 'contact_email'),
+        contactPhone: overrideRow?.contactPhone != null
+            ? locationSource
+            : _sourceFromRow(inheritedRow, 'contact_phone'),
+      );
       return LocationAccountOverridesResolved._ok(
         operatorId: operatorId,
         locationId: locationId,
@@ -544,6 +585,7 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
           contactPhone: overrideRow?.contactPhone,
         ),
         businessDefault: businessDefault,
+        sources: sources,
         updatedAt: overrideRow?.updatedAt ?? DateTime.now().toUtc(),
       );
     });
@@ -607,6 +649,35 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
     throw StateError('location_account_overrides row missing timestamptz $key');
   }
 
+  static LocationAccountOverridesSource? _sourceFromRow(
+    PostgresRow row,
+    String prefix,
+  ) {
+    final sourceId = _optionalString(row, '${prefix}_source_id');
+    final sourceLabel = _optionalString(row, '${prefix}_source_label');
+    if (sourceId == null || sourceLabel == null) return null;
+    return LocationAccountOverridesSource(
+      scopeType: _sourceScopeType(
+        _optionalString(row, '${prefix}_source_type'),
+      ),
+      scopeId: sourceId,
+      scopeLabel: sourceLabel,
+      setHere: false,
+    );
+  }
+
+  static String _sourceScopeType(String? unitType) {
+    switch (unitType) {
+      case 'brand':
+      case 'region':
+      case 'district':
+      case 'location_group':
+        return unitType!;
+      default:
+        return 'org_unit';
+    }
+  }
+
   static String? _uuidOrNull(String? value) {
     if (value == null) return null;
     return _uuidPattern.hasMatch(value) ? value : null;
@@ -638,6 +709,39 @@ class LocationAccountOverridesDefaults {
   final String? contactPhone;
 }
 
+/// Per-field source metadata for account setting resolution.
+class LocationAccountOverridesSource {
+  const LocationAccountOverridesSource({
+    required this.scopeType,
+    required this.scopeId,
+    required this.scopeLabel,
+    required this.setHere,
+  });
+
+  final String scopeType;
+  final String scopeId;
+  final String scopeLabel;
+  final bool setHere;
+}
+
+class LocationAccountOverridesSources {
+  const LocationAccountOverridesSources({
+    this.ianaTimezone,
+    this.localeCode,
+    this.currencyCode,
+    this.businessDayRolloverHour,
+    this.contactEmail,
+    this.contactPhone,
+  });
+
+  final LocationAccountOverridesSource? ianaTimezone;
+  final LocationAccountOverridesSource? localeCode;
+  final LocationAccountOverridesSource? currencyCode;
+  final LocationAccountOverridesSource? businessDayRolloverHour;
+  final LocationAccountOverridesSource? contactEmail;
+  final LocationAccountOverridesSource? contactPhone;
+}
+
 /// Wire-shape envelope the proxy route serialises. Either carries the
 /// resolved triple or signals that the location row was not found.
 class LocationAccountOverridesResolved {
@@ -648,6 +752,7 @@ class LocationAccountOverridesResolved {
     required this.effective,
     required this.override,
     required this.businessDefault,
+    required this.sources,
     required this.updatedAt,
   });
 
@@ -661,6 +766,7 @@ class LocationAccountOverridesResolved {
       effective: const LocationAccountOverridesDefaults(),
       override: const LocationAccountOverridesDefaults(),
       businessDefault: const LocationAccountOverridesDefaults(),
+      sources: const LocationAccountOverridesSources(),
       updatedAt: DateTime.now().toUtc(),
     );
   }
@@ -672,6 +778,7 @@ class LocationAccountOverridesResolved {
     required LocationAccountOverridesDefaults effective,
     required LocationAccountOverridesDefaults override,
     required LocationAccountOverridesDefaults businessDefault,
+    required LocationAccountOverridesSources sources,
     required DateTime updatedAt,
   }) {
     return LocationAccountOverridesResolved._(
@@ -681,6 +788,7 @@ class LocationAccountOverridesResolved {
       effective: effective,
       override: override,
       businessDefault: businessDefault,
+      sources: sources,
       updatedAt: updatedAt,
     );
   }
@@ -691,6 +799,7 @@ class LocationAccountOverridesResolved {
   final LocationAccountOverridesDefaults effective;
   final LocationAccountOverridesDefaults override;
   final LocationAccountOverridesDefaults businessDefault;
+  final LocationAccountOverridesSources sources;
   final DateTime updatedAt;
 }
 

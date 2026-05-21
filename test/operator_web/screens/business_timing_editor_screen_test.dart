@@ -169,6 +169,41 @@ void main() {
             locationId: 'loc-1',
             locationName: 'Downtown',
             initialScopeKind: 'org_unit',
+            hierarchyPath: const <BusinessTimingHierarchyPathEntry>[
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'operator',
+                scopeId: 'op-1',
+                name: 'Brio Restaurants',
+                helper: 'Business',
+              ),
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'org_unit',
+                scopeId: 'brand-1',
+                name: 'Harbour Brand',
+                helper: 'Brand',
+                unitType: 'brand',
+              ),
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'org_unit',
+                scopeId: 'org-east',
+                name: 'East Region',
+                helper: 'Region',
+                unitType: 'region',
+              ),
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'org_unit',
+                scopeId: 'district-1',
+                name: 'Metro District',
+                helper: 'District',
+                unitType: 'district',
+              ),
+              BusinessTimingHierarchyPathEntry(
+                scopeKind: 'location',
+                scopeId: 'loc-1',
+                name: 'Downtown',
+                helper: 'Location',
+              ),
+            ],
           ),
         ),
       );
@@ -184,10 +219,15 @@ void main() {
       final create = gateway.creates.single;
       expect(create.scopeKind, 'org_unit');
       expect(create.scopeId, 'org-east');
-      expect(find.textContaining('East Region'), findsWidgets);
       expect(
-        find.textContaining('business, selected group, and location'),
-        findsOneWidget,
+        find.byKey(
+          const Key('operator_web_business_timing_editor_hierarchy_tree'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.textContaining('Groups appear after the hierarchy loads'),
+        findsNothing,
       );
       expect(
         find.textContaining('tree shows the business and the location'),
@@ -213,16 +253,10 @@ void main() {
           orgUnitHelper: 'Region',
           locationId: 'loc-1',
           locationName: 'Downtown',
+          initialScopeKind: 'location',
         ),
       ),
     );
-
-    await tester.tap(
-      find.byKey(const Key('operator_web_business_timing_editor_scope_kind')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Just Downtown').last);
-    await tester.pumpAndSettle();
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_business_timing_editor_save')),
     );
@@ -321,7 +355,7 @@ void main() {
     );
     expect(find.text('America/Vancouver'), findsOneWidget);
     expect(
-      find.textContaining('Account or the location record'),
+      find.textContaining('Business account for the selected scope'),
       findsOneWidget,
     );
   });
@@ -346,38 +380,28 @@ void main() {
     expect(find.text('2026-05-21'), findsOneWidget);
   });
 
-  testWidgets('Wave 2 H-2: hierarchy tree mounts and highlights default scope', (
-    tester,
-  ) async {
-    await _sizeViewport(tester);
-    final session = sessionWithRole('operator_owner');
-    await tester.pumpWidget(wrap(BusinessTimingEditorScreen(session: session)));
-    // Tree itself mounts.
-    expect(
-      find.byKey(
-        const Key('operator_web_business_timing_editor_hierarchy_tree'),
-      ),
-      findsOneWidget,
-    );
-    // Default scope is operator (Across all locations), so the
-    // Business node is the current scope and gets the highlight
-    // badge.
-    expect(
-      find.byKey(
-        const Key(
-          'operator_web_business_timing_editor_hierarchy_tree_node_business_current_badge',
+  testWidgets(
+    'top banner owns hierarchy selection, editor hides tree clutter',
+    (tester) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(BusinessTimingEditorScreen(session: session)),
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_business_timing_editor_hierarchy_tree'),
         ),
-      ),
-      findsOneWidget,
-    );
-    // The location row should show an "Inherits from here" target
-    // (it inherits from the business above) — verified via the
-    // header pill copy + plain-English subtitle.
-    expect(find.textContaining('Editing Business'), findsOneWidget);
-    // No engineering jargon: no scope_kind=… leak.
-    expect(find.textContaining('scope_kind'), findsNothing);
-    expect(find.textContaining('scope_id'), findsNothing);
-  });
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('operator_web_business_timing_editor_scope_card')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('scope_kind'), findsNothing);
+      expect(find.textContaining('scope_id'), findsNothing);
+    },
+  );
 
   testWidgets('Save disabled when no gateway', (tester) async {
     await _sizeViewport(tester);

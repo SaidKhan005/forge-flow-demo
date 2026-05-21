@@ -84,9 +84,9 @@ class AdminHierarchySettingsScopePolicy {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
         if (scope.isBusinessScope) {
-          return 'Business scope edits create one override that covered locations inherit until a lower scope overrides it.';
+          return 'Business scope filters the location rows for review. Pick a location row to apply a data accuracy repair.';
         }
-        return 'Org-unit scope edits create one override that covered locations inherit until a lower scope overrides it.';
+        return 'Org-unit scope filters the location rows for review. Pick a location row to apply a data accuracy repair.';
       case AdminHierarchySettingsSurface.pollingPricing:
         if (scope.isBusinessScope) {
           return 'Business scope assignments create one polling setup that covered locations inherit until a lower scope overrides it.';
@@ -125,7 +125,7 @@ class AdminHierarchySettingsScopePolicy {
   String get _businessAllowedActionsLabel {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
-        return 'Edit selected scope';
+        return 'Review selected scope';
       case AdminHierarchySettingsSurface.pollingPricing:
         return 'Assign selected scope';
     }
@@ -134,7 +134,7 @@ class AdminHierarchySettingsScopePolicy {
   String get _orgUnitAllowedActionsLabel {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
-        return 'Edit selected scope';
+        return 'Review selected scope';
       case AdminHierarchySettingsSurface.pollingPricing:
         return 'Assign selected scope';
     }

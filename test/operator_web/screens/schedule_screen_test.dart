@@ -281,12 +281,10 @@ void main() {
     });
 
     testWidgets(
-      'renders HP #11 hierarchy scope notice (selected scope, inherited '
-      'from, effective value) on every state',
+      'uses the top management banner instead of a page hierarchy notice',
       (tester) async {
         await sizeViewport(tester);
         final session = sessionWith();
-        // Loaded state with a snapshot.
         final loadedGateway = OperatorWebDemoScheduleGateway(
           seed: makeSnapshot(),
         );
@@ -303,47 +301,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('schedule_screen_hierarchy_scope')),
-          findsOneWidget,
-        );
-        // Scope and inheritance are present. The Plan header already
-        // names the effective locked week, so this card keeps that row
-        // out of the scan path.
-        expect(
-          find.byKey(const Key('schedule_screen_hierarchy_scope_selected_row')),
-          findsOneWidget,
-        );
-        await tester.tap(
-          find.byKey(
-            const Key('schedule_screen_hierarchy_scope_details_toggle'),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(
-            const Key('schedule_screen_hierarchy_scope_inherited_row'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('schedule_screen_hierarchy_scope_effective_row'),
-          ),
           findsNothing,
         );
-        // Backend-only carve-out explainer is available from the heading
-        // help icon for forward-looking inheritance coverage.
-        expect(
-          find.byKey(
-            const Key('schedule_screen_hierarchy_scope_backend_only_help'),
-          ),
-          findsOneWidget,
-        );
-        // Plain-English copy (no engineering jargon).
-        expect(
-          find.textContaining('Set here. Does not inherit', findRichText: true),
-          findsOneWidget,
-        );
-        expect(find.text('Location'), findsOneWidget);
+        expect(find.byKey(const Key('schedule_screen')), findsOneWidget);
       },
     );
   });

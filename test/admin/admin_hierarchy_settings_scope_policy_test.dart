@@ -11,42 +11,39 @@ void main() {
       AdminHierarchySettingsSurface.pollingPricing,
     );
 
-    test(
-      'decorates business data accuracy scope for selected-scope editing',
-      () {
-        const raw = AdminHierarchyScopeIntent.business(
+    test('decorates business data accuracy scope for location-row review', () {
+      const raw = AdminHierarchyScopeIntent.business(
+        operatorId: 'op-1',
+        operatorName: 'Demo Diner Co.',
+        allowedActionsLabel: 'Editable',
+      );
+
+      final scope = dataAccuracy.decorate(raw, editingEnabled: true);
+
+      expect(scope.inheritanceLabel, 'Set at this scope');
+      expect(scope.effectiveValueLabel, 'Business scope');
+      expect(scope.allowedActionsLabel, 'Review selected scope');
+      expect(
+        dataAccuracy.allowsLocationMutation(scope, editingEnabled: true),
+        isFalse,
+      );
+      expect(
+        dataAccuracy.includesOperatorLocation(
+          scope,
           operatorId: 'op-1',
-          operatorName: 'Demo Diner Co.',
-          allowedActionsLabel: 'Editable',
-        );
-
-        final scope = dataAccuracy.decorate(raw, editingEnabled: true);
-
-        expect(scope.inheritanceLabel, 'Set at this scope');
-        expect(scope.effectiveValueLabel, 'Business scope');
-        expect(scope.allowedActionsLabel, 'Edit selected scope');
-        expect(
-          dataAccuracy.allowsLocationMutation(scope, editingEnabled: true),
-          isFalse,
-        );
-        expect(
-          dataAccuracy.includesOperatorLocation(
-            scope,
-            operatorId: 'op-1',
-            locationId: 'loc-1',
-          ),
-          isTrue,
-        );
-        expect(
-          dataAccuracy.includesOperatorLocation(
-            scope,
-            operatorId: 'op-2',
-            locationId: 'loc-1',
-          ),
-          isFalse,
-        );
-      },
-    );
+          locationId: 'loc-1',
+        ),
+        isTrue,
+      );
+      expect(
+        dataAccuracy.includesOperatorLocation(
+          scope,
+          operatorId: 'op-2',
+          locationId: 'loc-1',
+        ),
+        isFalse,
+      );
+    });
 
     test('decorates org-unit polling scope for selected-scope assignment', () {
       const raw = AdminHierarchyScopeIntent.orgUnit(

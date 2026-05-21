@@ -56,7 +56,6 @@ import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
 import '../widgets/audit_log_row.dart';
 import '../../theme/app_theme.dart';
-import 'audit_log_hierarchy_filter_pane.dart';
 
 /// Permission-key bound for the Audit Log read surface. Live source
 /// hydrates from `/v1/auth/permissions/snapshot`. Aliased to the
@@ -107,6 +106,10 @@ class AuditLogScreen extends StatefulWidget {
     this.hierarchyGateway,
     this.teamHierarchyGateway,
     this.hierarchyPaneClock,
+    this.selectedHierarchyScopeType,
+    this.selectedHierarchyOrgUnitId,
+    this.selectedHierarchyLocationId,
+    this.selectedHierarchyScopeLabel,
   });
 
   final OperatorWebSession session;
@@ -130,6 +133,15 @@ class AuditLogScreen extends StatefulWidget {
   /// Optional clock override for the hierarchy pane (tests pin it so
   /// the default time window is deterministic).
   final DateTime Function()? hierarchyPaneClock;
+
+  /// Scope selected by the Operator Web shell's top dropdown. When
+  /// this points at a region/district/location and the hierarchy
+  /// gateway is wired, the main audit list reads the scoped gateway
+  /// instead of rendering a second hierarchy picker inside the page.
+  final WebAuditLogHierarchyScopeType? selectedHierarchyScopeType;
+  final String? selectedHierarchyOrgUnitId;
+  final String? selectedHierarchyLocationId;
+  final String? selectedHierarchyScopeLabel;
 
   /// Operator Web W4.B - optional gateway driving the chain integrity
   /// badge. When null the badge falls back to the unknown state with
@@ -222,6 +234,21 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
     _loadChainAnchor();
   }
 
+  @override
+  void didUpdateWidget(covariant AuditLogScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.gateway != widget.gateway ||
+        oldWidget.hierarchyGateway != widget.hierarchyGateway ||
+        oldWidget.selectedHierarchyScopeType !=
+            widget.selectedHierarchyScopeType ||
+        oldWidget.selectedHierarchyOrgUnitId !=
+            widget.selectedHierarchyOrgUnitId ||
+        oldWidget.selectedHierarchyLocationId !=
+            widget.selectedHierarchyLocationId) {
+      unawaited(_refresh());
+    }
+  }
+
   Future<void> _loadChainAnchor() async {
     final gateway = widget.chainAnchorGateway;
     if (gateway == null) return;
@@ -256,6 +283,119 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
     return 'op-web-audit-${widget.session.uid}-$ts-$_idempotencySeq';
   }
 
+  bool get _usesSelectedHierarchyScope {
+    final type = widget.selectedHierarchyScopeType;
+    return widget.hierarchyGateway != null &&
+        type != null &&
+        type != WebAuditLogHierarchyScopeType.operatorWide;
+  }
+
+  WebAuditLogHierarchyListCommand _hierarchyCommand({
+    String? cursor,
+    int? limit,
+  }) {
+    final query = _query.copyWith(
+      actions: _selectedActions.toList(),
+      actorUserIds: _selectedActors.toList(),
+    );
+    return WebAuditLogHierarchyListCommand(
+      scopeType:
+          widget.selectedHierarchyScopeType ??
+          WebAuditLogHierarchyScopeType.operatorWide,
+      orgUnitId: widget.selectedHierarchyOrgUnitId,
+      locationFilter: widget.selectedHierarchyLocationId,
+      from: _resolveFrom(query),
+      to: _resolveTo(query),
+      actorUserId: query.actorUserIds.length == 1
+          ? query.actorUserIds.single
+          : null,
+      action: query.actions.length == 1 ? query.actions.single : null,
+      limit: limit ?? query.limit,
+      beforeId: cursor,
+    );
+  }
+
+  WebAuditLogPage _pageFromHierarchyResult(
+    WebAuditLogHierarchyListResult result,
+  ) {
+    final entries = result.rows
+        .map(_entryFromHierarchyRow)
+        .where((entry) {
+          final query = _query.copyWith(
+            actions: _selectedActions.toList(),
+            actorUserIds: _selectedActors.toList(),
+          );
+          if (query.actions.isNotEmpty &&
+              !query.actions.contains(entry.action)) {
+            return false;
+          }
+          if (query.actorUserIds.isNotEmpty &&
+              !query.actorUserIds.contains(entry.actorUserId)) {
+            return false;
+          }
+          final targetKind = query.targetKind?.trim().toLowerCase();
+          if (targetKind != null && targetKind.isNotEmpty) {
+            final value = entry.targetKind?.toLowerCase() ?? '';
+            if (!value.contains(targetKind)) return false;
+          }
+          final targetId = query.targetId?.trim().toLowerCase();
+          if (targetId != null && targetId.isNotEmpty) {
+            final value = entry.targetId?.toLowerCase() ?? '';
+            if (!value.contains(targetId)) return false;
+          }
+          return true;
+        })
+        .toList(growable: false);
+    return WebAuditLogPage(entries: entries, nextCursor: result.nextCursor);
+  }
+
+  WebAuditLogEntry _entryFromHierarchyRow(WebAuditLogHierarchyRow row) {
+    final actorKind =
+        webAuditLogActorKindFromWire(row.actorKind) ??
+        WebAuditLogActorKind.teamMember;
+    final actorLabel = row.actorPrincipalId ?? row.actorUserId;
+    return WebAuditLogEntry(
+      entryId: row.id,
+      action: row.action,
+      actorKind: actorKind,
+      createdAt: row.occurredAt,
+      actorUserId: row.actorUserId,
+      actorDisplayName: actorLabel,
+      targetKind: row.targetKind,
+      targetId: row.targetId,
+      payload: row.payload,
+      adminReason: row.adminReason,
+    );
+  }
+
+  DateTime? _resolveFrom(WebAuditLogQuery query) {
+    final now = (widget.hierarchyPaneClock ?? DateTime.now)().toUtc();
+    switch (query.timeWindow) {
+      case WebAuditLogTimeWindow.last24h:
+        return now.subtract(const Duration(hours: 24));
+      case WebAuditLogTimeWindow.last7d:
+        return now.subtract(const Duration(days: 7));
+      case WebAuditLogTimeWindow.last30d:
+        return now.subtract(const Duration(days: 30));
+      case WebAuditLogTimeWindow.last90d:
+        return now.subtract(const Duration(days: 90));
+      case WebAuditLogTimeWindow.custom:
+        return query.customFrom?.toUtc();
+    }
+  }
+
+  DateTime? _resolveTo(WebAuditLogQuery query) {
+    switch (query.timeWindow) {
+      case WebAuditLogTimeWindow.last24h:
+      case WebAuditLogTimeWindow.last7d:
+      case WebAuditLogTimeWindow.last30d:
+      case WebAuditLogTimeWindow.last90d:
+        return null;
+      case WebAuditLogTimeWindow.custom:
+        return query.customTo?.toUtc();
+    }
+  }
+
   Future<void> _refresh() async {
     final generation = ++_refreshGeneration;
     setState(() {
@@ -269,7 +409,13 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         actions: _selectedActions.toList(),
         actorUserIds: _selectedActors.toList(),
       );
-      final page = await widget.gateway.listEntries(query);
+      final page = _usesSelectedHierarchyScope
+          ? _pageFromHierarchyResult(
+              await widget.hierarchyGateway!.listByHierarchy(
+                _hierarchyCommand(limit: query.limit),
+              ),
+            )
+          : await widget.gateway.listEntries(query);
       if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _entries = page.entries;
@@ -299,7 +445,13 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         actions: _selectedActions.toList(),
         actorUserIds: _selectedActors.toList(),
       );
-      final page = await widget.gateway.listEntries(query);
+      final page = _usesSelectedHierarchyScope
+          ? _pageFromHierarchyResult(
+              await widget.hierarchyGateway!.listByHierarchy(
+                _hierarchyCommand(cursor: _nextCursor, limit: query.limit),
+              ),
+            )
+          : await widget.gateway.listEntries(query);
       if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _entries = List<WebAuditLogEntry>.unmodifiable(<WebAuditLogEntry>[
@@ -326,14 +478,16 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
       _exportMessage = null;
     });
     try {
-      final export = await widget.gateway.exportCsv(
-        _query.copyWith(
-          cursor: null,
-          actions: _selectedActions.toList(),
-          actorUserIds: _selectedActors.toList(),
-        ),
-        idempotencyKey: _nextIdempotencyKey(),
-      );
+      final export = _usesSelectedHierarchyScope
+          ? await _exportSelectedHierarchyScopeCsv()
+          : await widget.gateway.exportCsv(
+              _query.copyWith(
+                cursor: null,
+                actions: _selectedActions.toList(),
+                actorUserIds: _selectedActors.toList(),
+              ),
+              idempotencyKey: _nextIdempotencyKey(),
+            );
       final clipboard = widget.copyToClipboard ?? _defaultCopy;
       await clipboard(export.csv);
       final downloader = widget.onCsvReady;
@@ -361,6 +515,28 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         _exportMessage = _friendlyExportError(error);
       });
     }
+  }
+
+  Future<WebAuditLogCsvExport> _exportSelectedHierarchyScopeCsv() async {
+    final gateway = widget.hierarchyGateway!;
+    final entries = <WebAuditLogEntry>[];
+    String? cursor;
+    for (var page = 0; page < 50; page++) {
+      final result = await gateway.listByHierarchy(
+        _hierarchyCommand(cursor: cursor, limit: kAuditLogPageSize),
+      );
+      final converted = _pageFromHierarchyResult(result);
+      entries.addAll(converted.entries);
+      cursor = result.nextCursor;
+      if (cursor == null) break;
+    }
+    final filename = defaultAuditLogCsvFilename(
+      (widget.hierarchyPaneClock ?? DateTime.now)(),
+    );
+    return WebAuditLogCsvExport(
+      csv: renderAuditLogCsv(entries),
+      filename: filename,
+    );
   }
 
   void _refreshActorCatalog(List<WebAuditLogEntry> entries) {
@@ -487,19 +663,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             now: widget.chainAnchorClock?.call(),
           ),
           const SizedBox(height: 18),
-          if (widget.hierarchyGateway != null &&
-              widget.teamHierarchyGateway != null) ...<Widget>[
-            AuditLogHierarchyFilterPane(
-              key: const Key('operator_web_audit_log_hierarchy_filter_pane'),
-              hierarchyGateway: widget.hierarchyGateway!,
-              teamHierarchyGateway: widget.teamHierarchyGateway!,
-              actorUserId: widget.session.uid,
-              operatorId: widget.session.operatorId,
-              locationId: widget.session.primaryLocationId ?? '',
-              clock: widget.hierarchyPaneClock,
-            ),
-            const SizedBox(height: 18),
-          ],
           _AuditLogFilters(
             query: _query,
             selectedActions: _selectedActions,

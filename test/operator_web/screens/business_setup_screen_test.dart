@@ -38,47 +38,22 @@ void main() {
       find.byKey(const Key('operator_web_business_setup_screen')),
       findsOneWidget,
     );
-    // Wave 2 U-FU-hp11-account — nav title carries the active
-    // location-scope hint per HP #11.
     expect(
       find.byKey(const Key('operator_web_business_setup_nav_title')),
       findsOneWidget,
     );
-    expect(find.text('Business setup • Demo Main Street'), findsOneWidget);
-    expect(
-      find.byKey(const Key('operator_web_business_timing_inheritance_card')),
-      findsOneWidget,
-    );
+    expect(find.text('Business setup'), findsOneWidget);
     expect(
       find.byKey(const Key('operator_web_business_timing_effective_card')),
       findsOneWidget,
     );
-    // Wave 2 H-2: visual hierarchy tree mounts above the existing
-    // text inheritance card.
     expect(
       find.byKey(const Key('operator_web_business_setup_hierarchy_tree')),
-      findsOneWidget,
+      findsNothing,
     );
-    // The location is the current scope on the business setup
-    // screen, so it should be highlighted with the "You are here"
-    // badge.
     expect(
-      find.byKey(
-        const Key(
-          'operator_web_business_setup_hierarchy_tree_node_location_current_badge',
-        ),
-      ),
-      findsOneWidget,
-    );
-    // Header pill names the current scope in plain English.
-    expect(find.textContaining('Editing Location'), findsOneWidget);
-    expect(
-      find.byKey(
-        const Key(
-          'operator_web_business_setup_hierarchy_tree_currently_editing_pill',
-        ),
-      ),
-      findsOneWidget,
+      find.byKey(const Key('operator_web_business_timing_inheritance_card')),
+      findsNothing,
     );
     expect(find.text('Inherited from Operator default'), findsWidgets);
     expect(find.text('Lunch'), findsOneWidget);
@@ -93,8 +68,8 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_reset_button')),
       findsNothing,
     );
-    expect(find.text('Where this location sits'), findsOneWidget);
-    expect(find.text('Where timing comes from'), findsOneWidget);
+    expect(find.text('Where this location sits'), findsNothing);
+    expect(find.text('Where timing comes from'), findsNothing);
     expect(find.text('Timing in use'), findsOneWidget);
     expect(find.text('Edit time settings'), findsOneWidget);
     expect(find.text('Schedule future timing'), findsOneWidget);
