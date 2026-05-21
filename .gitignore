@@ -142,9 +142,11 @@ Selling.md
 # Project-scoped MCP server registration (machine-specific absolute paths)
 .mcp.json
 
-# Pressure preview v1 — per-run findings JSONL and summary artifacts.
-# These are local diagnostic outputs; PR bodies carry the human-readable
-# summary, the JSONL stays untracked.
+# Pressure harnesses — per-run findings and ephemeral output stay
+# untracked; durable harness documentation (one summary per harness,
+# checked in via `git add -f` after intentional review) lives in the
+# repo. The patterns below ignore per-run outputs by default;
+# durable docs are force-added and tracked manually.
 test/integration/pressure/*_findings.jsonl
 test/integration/pressure/*_summary.md
 test/pressure/*_findings.jsonl
