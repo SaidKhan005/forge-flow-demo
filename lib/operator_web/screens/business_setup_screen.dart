@@ -126,7 +126,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         child: Text(
           '$actionLabel is disabled in this demo preview. You can review '
           'the timezone, business day start, and service periods here, '
-          'but this demo run does not save Business setup timing changes. '
+          'but this demo run does not save Business timing changes. '
           'Use a connected preview or staging run to test real saves. '
           'Nothing was changed.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
@@ -202,7 +202,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Business setup',
+                  'Business timing setup',
                   key: const Key('operator_web_business_setup_nav_title'),
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
@@ -217,7 +217,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
                   () => _showSafeTimingDialog('Edit timing'),
               onSchedule:
                   widget.onScheduleTiming ??
-                  () => _showSafeTimingDialog('Schedule future timing'),
+                  () => _showSafeTimingDialog('Schedule timing change'),
               onReset: null,
             )
           else
@@ -266,7 +266,7 @@ class _TimingEditControls extends StatelessWidget {
             ),
             icon: const Icon(Icons.edit_outlined, size: 20),
             label: Text(
-              'Edit time settings',
+              'Edit timing',
               style: AppTextStyles.display16(color: AppColors.textPrimary),
             ),
           ),
@@ -278,7 +278,7 @@ class _TimingEditControls extends StatelessWidget {
             ),
             icon: const Icon(Icons.event_outlined, size: 20),
             label: Text(
-              'Schedule future timing',
+              'Schedule timing change',
               style: AppTextStyles.display16(color: AppColors.textPrimary),
             ),
           ),

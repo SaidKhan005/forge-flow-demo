@@ -105,6 +105,7 @@ class _BusinessTimingEditorScreenState
     extends State<BusinessTimingEditorScreen> {
   late ServicePeriodEditorController _periods;
   late TextEditingController _businessDayStartLocal;
+  late TextEditingController _ianaTimezone;
   late DateTime _effectiveAt;
 
   /// Default to operator-scope: a brand-new operator typically has no
@@ -163,6 +164,7 @@ class _BusinessTimingEditorScreenState
             ? '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00'
             : kStarterBusinessTimingDayStartLocal);
     _businessDayStartLocal = TextEditingController(text: initialDayStart);
+    _ianaTimezone = TextEditingController(text: _initialTimezone);
     _businessDayStartLocal.addListener(_handleDayStartChanged);
     // Seed the controller's day-start so the validator picks up rule
     // 13 (business_day_start_inside_period) on the first paint.
@@ -189,6 +191,7 @@ class _BusinessTimingEditorScreenState
     _periods.dispose();
     _businessDayStartLocal.removeListener(_handleDayStartChanged);
     _businessDayStartLocal.dispose();
+    _ianaTimezone.dispose();
     _successTimer?.cancel();
     super.dispose();
   }
@@ -248,7 +251,7 @@ class _BusinessTimingEditorScreenState
     return widget.session.primaryLocationId?.trim() ?? '';
   }
 
-  String get _effectiveTimezone {
+  String get _initialTimezone {
     final existing = widget.existingProfile?.ianaTimezone.trim();
     if (existing != null && existing.isNotEmpty) return existing;
     final sessionTimezone = widget.session.primaryLocationTimezone?.trim();
@@ -256,6 +259,11 @@ class _BusinessTimingEditorScreenState
       return sessionTimezone;
     }
     return 'UTC';
+  }
+
+  String get _timezoneForSave {
+    final draft = _ianaTimezone.text.trim();
+    return draft.isNotEmpty ? draft : 'UTC';
   }
 
   BusinessTimingProfileWriteResult? get _existingProfileForSelectedScope {
@@ -289,7 +297,7 @@ class _BusinessTimingEditorScreenState
             scopeKind: _scopeKind,
             scopeId: _scopeId,
             effectiveAtBusinessDate: _formatBusinessDate(_effectiveAt),
-            ianaTimezone: _effectiveTimezone,
+            ianaTimezone: _timezoneForSave,
             weekStartDay: _weekStartDay,
             businessDayStartLocal: _businessDayStartLocal.text.trim(),
             // Slice 2.5 / Gap 28: carry applicableDays / shortLabel /
@@ -317,7 +325,7 @@ class _BusinessTimingEditorScreenState
             scopeKind: _scopeKind,
             scopeId: _scopeId,
             effectiveAtBusinessDate: _formatBusinessDate(_effectiveAt),
-            ianaTimezone: _effectiveTimezone,
+            ianaTimezone: _timezoneForSave,
             weekStartDay: _weekStartDay,
             businessDayStartLocal: _businessDayStartLocal.text.trim(),
             // Slice 2.5 / Gap 28: same as createProfile above — the
@@ -413,7 +421,7 @@ class _BusinessTimingEditorScreenState
                 IconButton(
                   key: const Key('operator_web_business_timing_editor_close'),
                   onPressed: widget.onClose,
-                  tooltip: 'Back to business setup',
+                  tooltip: 'Back to business timing setup',
                   icon: const Icon(
                     Icons.arrow_back,
                     size: 20,
@@ -450,7 +458,7 @@ class _BusinessTimingEditorScreenState
           if (!widget.canEdit) const SizedBox(height: 14),
           _ScopeAndEffectiveSection(
             effectiveAt: _effectiveAt,
-            timezoneLabel: _effectiveTimezone,
+            timezoneController: _ianaTimezone,
             businessDayStartController: _businessDayStartLocal,
             weekStartDay: _weekStartDay,
             enabled: widget.canEdit && !_submitting,
@@ -579,7 +587,7 @@ class _BusinessTimingEditorScreenState
 class _ScopeAndEffectiveSection extends StatelessWidget {
   const _ScopeAndEffectiveSection({
     required this.effectiveAt,
-    required this.timezoneLabel,
+    required this.timezoneController,
     required this.businessDayStartController,
     required this.weekStartDay,
     required this.enabled,
@@ -590,7 +598,7 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
   });
 
   final DateTime effectiveAt;
-  final String timezoneLabel;
+  final TextEditingController timezoneController;
   final TextEditingController businessDayStartController;
   final String weekStartDay;
   final bool enabled;
@@ -639,20 +647,16 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: InputDecorator(
-                  key: const Key(
-                    'operator_web_business_timing_editor_timezone_readonly',
-                  ),
+                child: TextField(
+                  key: const Key('operator_web_business_timing_editor_iana'),
+                  controller: timezoneController,
+                  enabled: enabled,
                   decoration: const InputDecoration(
-                    labelText: 'Timezone used for timing',
+                    labelText: 'Timezone',
                     border: OutlineInputBorder(),
-                    helperText:
-                        'Change this in Business account for the selected scope.',
+                    helperText: 'IANA name, for example America/Toronto.',
                   ),
-                  child: Text(
-                    timezoneLabel,
-                    style: AppTextStyles.body13(color: AppColors.textPrimary),
-                  ),
+                  onChanged: (_) => onAnyTextChanged(),
                 ),
               ),
               const SizedBox(width: 12),

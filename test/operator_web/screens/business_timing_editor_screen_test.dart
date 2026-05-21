@@ -347,16 +347,16 @@ void main() {
       find.byKey(
         const Key('operator_web_business_timing_editor_timezone_readonly'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const Key('operator_web_business_timing_editor_iana')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(find.text('America/Vancouver'), findsOneWidget);
     expect(
       find.textContaining('Business account for the selected scope'),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -441,6 +441,10 @@ void main() {
     await tester.pumpWidget(
       wrap(BusinessTimingEditorScreen(session: session, gateway: gateway)),
     );
+    await tester.enterText(
+      find.byKey(const Key('operator_web_business_timing_editor_iana')),
+      'America/St_Johns',
+    );
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_business_timing_editor_save')),
     );
@@ -452,7 +456,7 @@ void main() {
     final create = gateway.creates.single;
     expect(create.scopeKind, 'operator');
     expect(create.scopeId, 'op-1');
-    expect(create.ianaTimezone, 'America/Vancouver');
+    expect(create.ianaTimezone, 'America/St_Johns');
     expect(create.weekStartDay, 'monday');
     expect(create.servicePeriods, isNotEmpty);
     expect(

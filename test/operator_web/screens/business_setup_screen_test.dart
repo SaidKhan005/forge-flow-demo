@@ -42,7 +42,7 @@ void main() {
       find.byKey(const Key('operator_web_business_setup_nav_title')),
       findsOneWidget,
     );
-    expect(find.text('Business setup'), findsOneWidget);
+    expect(find.text('Business timing setup'), findsOneWidget);
     expect(
       find.byKey(const Key('operator_web_business_timing_effective_card')),
       findsOneWidget,
@@ -71,8 +71,8 @@ void main() {
     expect(find.text('Where this location sits'), findsNothing);
     expect(find.text('Where timing comes from'), findsNothing);
     expect(find.text('Timing in use'), findsOneWidget);
-    expect(find.text('Edit time settings'), findsOneWidget);
-    expect(find.text('Schedule future timing'), findsOneWidget);
+    expect(find.text('Edit timing'), findsOneWidget);
+    expect(find.text('Schedule timing change'), findsOneWidget);
     expect(find.text('Live editor'), findsNothing);
     expect(find.text('Read-only preview'), findsNothing);
 
