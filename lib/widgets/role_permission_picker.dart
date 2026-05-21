@@ -169,7 +169,9 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
     super.dispose();
   }
 
-  bool get _filtersOrgWide => widget.roleScope == RoleScope.location;
+  bool get _filtersOrgWide =>
+      widget.roleScope == RoleScope.orgUnit ||
+      widget.roleScope == RoleScope.location;
 
   Map<String, Map<String, List<String>>> _visibleGroups() {
     final query = _searchQuery.trim().toLowerCase();
@@ -378,7 +380,7 @@ class _ScopeNotice extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  "Some permissions don't apply at the location level and "
+                  "Some permissions don't apply below the business level and "
                   'are not shown.',
                   style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),

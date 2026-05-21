@@ -573,8 +573,12 @@ void main() {
         find.byKey(const Key('operator_web_nav_item_my_account')),
       );
       await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('account_section_audit_log_link')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const Key('account_section_profile_audit_log_link')),
+        find.byKey(const Key('account_section_audit_log_link')),
       );
       await tester.pumpAndSettle();
 

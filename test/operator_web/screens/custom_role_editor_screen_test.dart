@@ -642,6 +642,44 @@ void main() {
     );
 
     testWidgets(
+      'org-unit-scoped role also hides org_wide keys',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 4000));
+        await tester.pumpWidget(
+          wrapBare(
+            CustomRoleEditorScreen(
+              session: ownerSession(),
+              gateway: DemoWebTeamRolesGateway(),
+              roleScope: RoleScope.orgUnit,
+              scopeLabel: 'East Region',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_scope_context'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Scope: East Region'), findsOneWidget);
+        expect(
+          find.byKey(const Key('operator_web_custom_role_editor_scope_notice')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_perm_billing.invoice.view',
+            ),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
       'business-scoped role exposes org_wide keys (no scope notice)',
       (tester) async {
         await sizeViewport(tester, const Size(1280, 4000));

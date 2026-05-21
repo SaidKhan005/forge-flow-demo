@@ -1027,6 +1027,19 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     }
   }
 
+  RoleScope _roleScopeForManagementScope(
+    OperatorWebManagementScopeOption managementScope,
+  ) {
+    switch (managementScope.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return RoleScope.business;
+      case OperatorWebManagementScopeKind.orgUnit:
+        return RoleScope.orgUnit;
+      case OperatorWebManagementScopeKind.location:
+        return RoleScope.location;
+    }
+  }
+
   OperatorWebManagementScopeOption? _orgUnitScopeById(String orgUnitId) {
     for (final option in _managementScopeOptions) {
       if (option.kind == OperatorWebManagementScopeKind.orgUnit &&
@@ -1956,6 +1969,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   Widget _buildRolesBody(OperatorWebSession session) {
+    final managementScope = _selectedManagementScope(session);
     switch (_rolesSubRoute) {
       case kOperatorWebRolesExplainerPath:
         return PermissionExplainerScreen(
@@ -1971,7 +1985,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           session: session,
           gateway: _teamRolesGateway,
           existing: _rolesEditTarget,
-          roleScope: RoleScope.business,
+          roleScope: _roleScopeForManagementScope(managementScope),
+          scopeLabel: managementScope.label,
           onSaved: (_) => _closeRolesSubRoute(reload: true),
           onClose: () => _closeRolesSubRoute(),
         );
@@ -1980,6 +1995,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           key: ValueKey('operator_web_roles_list_$_rolesListSeq'),
           session: session,
           gateway: _teamRolesGateway,
+          selectedScope: managementScope,
           onOpenExplainer: _openRolesExplainer,
           onOpenEditor: _openRolesEditor,
         );

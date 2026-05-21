@@ -69,6 +69,7 @@ class CustomRoleEditorScreen extends StatefulWidget {
     this.onClose,
     this.readOnly = false,
     this.roleScope = RoleScope.business,
+    this.scopeLabel = 'All locations',
     this.validator = const CustomRoleValidator(),
     RoleWarningDismissalStore? dismissalStore,
   }) : dismissalStore = dismissalStore ?? _kDefaultDismissalStore;
@@ -83,6 +84,9 @@ class CustomRoleEditorScreen extends StatefulWidget {
   /// Defaults to [RoleScope.business] so business-wide catalog keys
   /// remain visible on the Roles surface.
   final RoleScope roleScope;
+
+  /// Plain-English label for the shell's selected management scope.
+  final String scopeLabel;
 
   /// Advisory validator that produces the inline warning list. Pure
   /// Dart; the editor calls it on every selection change. Override in
@@ -424,6 +428,11 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                _ScopeContextPanel(
+                  scopeLabel: widget.scopeLabel,
+                  roleScope: widget.roleScope,
+                ),
+                const SizedBox(height: 16),
                 _MetaCard(
                   readOnly: widget.readOnly,
                   displayNameController: _displayNameController,
@@ -533,6 +542,57 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ScopeContextPanel extends StatelessWidget {
+  const _ScopeContextPanel({
+    required this.scopeLabel,
+    required this.roleScope,
+  });
+
+  final String scopeLabel;
+  final RoleScope roleScope;
+
+  @override
+  Widget build(BuildContext context) {
+    final limited = roleScope != RoleScope.business;
+    return Container(
+      key: const Key('operator_web_custom_role_editor_scope_context'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.account_tree_outlined, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Scope: $scopeLabel',
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  limited
+                      ? 'Business-wide permissions are hidden here. Assign '
+                            'this role from Team members to keep access scoped.'
+                      : 'All permissions are available here. Assign this role '
+                            'from Team members when choosing who receives it.',
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

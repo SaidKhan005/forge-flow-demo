@@ -194,7 +194,7 @@ void main() {
       );
 
       test(
-        'message uses humanLabel and contains "location level"',
+        'message uses humanLabel and names the limited scope',
         () {
           final warnings = validator.validate(
             {PermissionKeys.billingSubscriptionManage},
@@ -206,7 +206,10 @@ void main() {
           // The humanLabel for billing.subscription.manage is
           // "Manage the subscription plan" per the R-2L catalog.
           expect(rule5.message, contains('Manage the subscription plan'));
-          expect(rule5.message.toLowerCase(), contains('location level'));
+          expect(
+            rule5.message.toLowerCase(),
+            contains('below the business level'),
+          );
         },
       );
 

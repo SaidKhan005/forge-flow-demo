@@ -36,6 +36,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
+import '../widgets/web_app_shell.dart';
 import 'custom_role_editor_screen.dart';
 import 'permission_explainer_screen.dart';
 
@@ -81,10 +82,12 @@ class RolesScreen extends StatefulWidget {
     this.idempotencyKeyFactory,
     this.onOpenExplainer,
     this.onOpenEditor,
+    this.selectedScope,
   });
 
   final OperatorWebSession session;
   final WebTeamRolesGateway gateway;
+  final OperatorWebManagementScopeOption? selectedScope;
 
   /// Optional override for tests so an assertion can pin the
   /// idempotency-key value the screen forwards into the gateway.
@@ -384,6 +387,8 @@ class _RolesScreenState extends State<RolesScreen> {
             onOpenExplainer: _openExplainer,
             onCreateRole: () => _openEditor(null),
           ),
+          const SizedBox(height: 12),
+          _RolesScopeNote(selectedScope: widget.selectedScope),
           const SizedBox(height: 18),
           if (custom.isEmpty)
             _EmptyCustomRolesPanel(
@@ -412,6 +417,59 @@ class _RolesScreenState extends State<RolesScreen> {
             canWrite: false,
             onEdit: null,
             onDelete: null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RolesScopeNote extends StatelessWidget {
+  const _RolesScopeNote({required this.selectedScope});
+
+  final OperatorWebManagementScopeOption? selectedScope;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = selectedScope;
+    final label = scope?.label ?? 'All locations';
+    final helper = scope?.helper ?? 'Business-wide';
+    final limited =
+        scope != null && scope.kind != OperatorWebManagementScopeKind.operator;
+    return Container(
+      key: const Key('operator_web_roles_scope_note'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.account_tree_outlined, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Managing roles for $label',
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  limited
+                      ? '$helper scope: new role permissions are checked '
+                            'against this scope. Assign people from Team '
+                            'members to avoid whole-business access.'
+                      : 'Business-wide scope: new roles can include '
+                            'business-wide permissions. Assign people from '
+                            'Team members.',
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
           ),
         ],
       ),
