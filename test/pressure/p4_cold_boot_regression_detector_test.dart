@@ -12,12 +12,15 @@
 //
 // Why "captures, does not fail" by default
 // ----------------------------------------
-// The plumbing for `tool/perf_baseline_check.dart` +
-// `docs/PERF_BASELINES.json` is tracked separately (audit doc §2.4
-// "no docs/PERF_BASELINES.json"). This test reserves the regression-
-// detector seam so when the baseline file lands, the assertion below
-// flips from "advisory write" to "regression fail" with a one-line
-// edit at the marked `TODO(perf-baseline-handshake)` point.
+// `docs/PERF_BASELINES.json` is not present on this branch yet
+// (the perf-baseline tooling is tracked separately — see
+// POST_HARDENING_FOLLOWUPS / audit doc §2.4). The test runs and
+// asserts today regardless: it measures the proxy and writes a
+// findings entry. When the baseline file lands with a
+// `cold_boot_demo_seed_ms` field, the comparison branch below
+// activates automatically (measured < baseline × 1.2); the
+// `TODO(perf-baseline-handshake)` marks the one-line edit if a hard
+// fail is wanted even without a baseline.
 //
 // What in-process pressure proves
 // -------------------------------

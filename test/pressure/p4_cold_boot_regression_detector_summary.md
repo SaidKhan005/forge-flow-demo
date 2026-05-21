@@ -9,24 +9,24 @@ should not degrade more than 20% release-over-release. The test
 measures a synthetic cold-boot proxy and compares against
 `docs/PERF_BASELINES.json` when that file lands.
 
-**Dependency note (read this):** at this branch's fork point,
-`docs/PERF_BASELINES.json` and `tool/perf_baseline_check.dart` do
-NOT exist yet (tracked separately in audit doc §2.4). So the test
-runs in **advisory mode**: it captures a measured value, writes a
-findings JSONL, and PASSES without a regression assertion. When the
-baseline file lands with a `cold_boot_demo_seed_ms` field, the test
-automatically flips to comparison mode (measured < baseline × 1.2);
-no code change needed beyond the one-line
+**Dependency note (read this):** `docs/PERF_BASELINES.json` and
+`tool/perf_baseline_check.dart` are not present on this branch
+(tracked separately — see POST_HARDENING_FOLLOWUPS / audit doc
+§2.4). The test still runs and asserts today in **advisory mode**:
+it captures a measured value, writes a findings JSONL, and PASSES.
+When the baseline file lands with a `cold_boot_demo_seed_ms` field,
+the test automatically flips to comparison mode (measured < baseline
+× 1.2); no code change needed beyond the one-line
 `TODO(perf-baseline-handshake)` swap if a hard fail is wanted even
-without a baseline.
+without a baseline. This is NOT a reserved stub — every assertion
+runs under default `flutter test`.
 
-**Status at branch fork point:** PASS (advisory mode — no baseline
-file present).
+**Status:** PASS (advisory mode — no baseline file present).
 
 ## Inputs
 
 - Optional baseline: `docs/PERF_BASELINES.json` with a numeric
-  `cold_boot_demo_seed_ms` field. Absent at fork point.
+  `cold_boot_demo_seed_ms` field (absent here).
 - No env gate. Runs in default `flutter test`.
 
 ## What it asserts
@@ -54,9 +54,10 @@ file present).
 `docs/_audits/code_health/code_hardening_plan_2026_05_21.md` §2.3 #7
 + §2.4 (PERF_BASELINES.json gap).
 
-## Backlog
+## Deferred
 
 When `docs/PERF_BASELINES.json` + `tool/perf_baseline_check.dart`
-land (audit doc §2.4): record the real cold-boot baseline, swap the
-synthetic proxy for an instrumented seed call, and enable the
-unconditional regression assertion.
+land (see POST_HARDENING_FOLLOWUPS / audit doc §2.4): record the
+real cold-boot baseline, swap the synthetic proxy for an
+instrumented seed call, and enable the unconditional regression
+assertion.

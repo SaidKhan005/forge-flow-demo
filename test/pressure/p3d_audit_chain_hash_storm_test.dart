@@ -35,14 +35,13 @@
 //
 // External-DB pressure
 // --------------------
-// Env-gated via `FF_RUN_PRESSURE_P3D_AUDIT_CHAIN=1`. The DB-backed
-// harness would issue N=1000 concurrent INSERTs against a real
-// `audit_logs` partition and assert chain-verifier output post-storm;
-// it requires a local Postgres and is reserved for the next pressure
-// wave (audit doc §2.3 #5).
+// DB-backed concurrency pressure for this seam (N=1000 concurrent
+// INSERTs against a real `audit_logs` partition, asserting
+// chain-verifier output post-storm) needs a live Postgres and is
+// deferred to a future infra-gated slice — see
+// POST_HARDENING_FOLLOWUPS.
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -223,27 +222,6 @@ void main() {
         // a defensive sanity check.
         final terminals = chains.values.map((c) => _hex(c.last.rowHash)).toSet();
         expect(terminals.length, equals(10));
-      },
-    );
-
-    test(
-      'DB-backed concurrent-write storm is env-gated; skipped here',
-      () {
-        if (Platform.environment['FF_RUN_PRESSURE_P3D_AUDIT_CHAIN'] != '1') {
-          markTestSkipped(
-            'FF_RUN_PRESSURE_P3D_AUDIT_CHAIN not set; in-memory '
-            'pressure (1000-row chain, concurrent hashing, tamper '
-            'detection) runs above. Live-Postgres N=1000 concurrent '
-            'INSERT harness reserved here for the next pressure wave '
-            '(audit doc §2.3 #5).',
-          );
-          return;
-        }
-        fail(
-          'FF_RUN_PRESSURE_P3D_AUDIT_CHAIN=1 set but the live-Postgres '
-          'concurrent-INSERT harness is not yet implemented (audit doc '
-          '§2.3 #5).',
-        );
       },
     );
   });

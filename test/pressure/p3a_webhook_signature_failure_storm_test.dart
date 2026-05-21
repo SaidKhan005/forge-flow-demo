@@ -38,13 +38,12 @@
 //
 // External-service pressure
 // -------------------------
-// Env-gated via `FF_RUN_PRESSURE_P3A_SIG_FAILURE=1`. The
-// preview-proxy storm portion would drive sustained 1000 req/s of
-// forged-signature requests against the live SendGrid route and
-// assert response-time + memory don't degrade. Out of scope for this
-// slice (would also burn preview-proxy connection budget).
+// The live preview-proxy storm (sustained 1000 req/s of
+// forged-signature requests against the SendGrid route, asserting
+// response-time + memory don't degrade) needs live infra (preview
+// proxy + connection budget) and is deferred to a future
+// infra-gated slice — see POST_HARDENING_FOLLOWUPS.
 
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -155,25 +154,6 @@ void main() {
           ),
           isFalse,
           reason: 'empty signature must collapse to false',
-        );
-      },
-    );
-
-    test(
-      'preview-proxy signature-failure storm is env-gated; skipped here',
-      () {
-        if (Platform.environment['FF_RUN_PRESSURE_P3A_SIG_FAILURE'] != '1') {
-          markTestSkipped(
-            'FF_RUN_PRESSURE_P3A_SIG_FAILURE not set; stateless-verifier '
-            'pressure runs above. Preview-proxy 1000 req/s forged-sig '
-            'flood is reserved here for the next pressure wave (audit '
-            'doc §2.3 #6).',
-          );
-          return;
-        }
-        fail(
-          'FF_RUN_PRESSURE_P3A_SIG_FAILURE=1 set but the live preview-'
-          'proxy storm harness is not yet implemented (audit doc §2.3 #6).',
         );
       },
     );
