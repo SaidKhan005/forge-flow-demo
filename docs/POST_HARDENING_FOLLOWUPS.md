@@ -1349,3 +1349,44 @@ No production code changes.
 
 **Verify (now green):** `flutter test test/_execution/spine_bridge_v2_smoke_test.dart`
 → 14/14 ✅. Random ordering also passes.
+
+## P2 — Code-hardening pressure-coverage v2: DB-backed concurrency (2026-05-21)
+
+Spawned by `docs/_audits/code_health/code_hardening_plan_2026_05_21.md`
+§2.3 + backlog item #3. Wave 2 (PRs #1143 + #1144) landed the
+**in-memory** pressure for seven previously-unaudited seams (auth
+lockout window math, RLS wrapper migration-shape posture, idempotency
+key semantics, operator-scoped isolation posture, audit-chain hash
+tamper-evidence, webhook signature failure handling, cold-boot timing).
+
+Operator decision 2026-05-20: ship only pressure that genuinely runs
+today; the reserved `fail('not yet implemented')` DB stubs were
+stripped. The wave-2 pressure-test `_summary.md` files point here for
+the deferred portion.
+
+**Deferred to a single infra-gated slice (needs a live Postgres test
+environment — same blocker as the 64 env-gated `rls_isolation_p2`
+tests):**
+
+- `p3d_rls_multi_tenant_concurrent_reads` — the 4 RLS wrapper functions
+  (`app_current_operator()` etc.) under rapid concurrent tenant-context
+  flips against real rows (today: migration-shape posture only).
+- `p3d_idempotency_store_concurrent_retry` — `proxy_requests`,
+  `handoff_codes`, `auth_step_up_challenges`, `mobile_push_outbox`
+  UNIQUE-constraint behaviour under N=100 concurrent same-key retries.
+- `p3d_operator_scoped_isolation_under_concurrency` —
+  `OperatorScopedRepository.withTenant` isolation under 50+ concurrent
+  operators writing the same table.
+- `p3d_audit_chain_hash_storm` — N=1000 concurrent `audit_logs` INSERTs
+  against a real partition, asserting `verifyChain` output post-storm
+  (today: in-memory hasher tamper-evidence is fully proven).
+
+**Lock until then:** the env-gate hooks in each test file (e.g.
+`FF_RUN_PRESSURE_P3D_RLS`) are removed for now; the future slice
+re-introduces them wired to a live Postgres harness. Until that
+environment exists, the DB-concurrency invariants are covered only by
+the existing single-threaded repository + `rls_isolation_p2` suites,
+not under pressure.
+
+**Authority:** `docs/_audits/code_health/code_hardening_plan_2026_05_21.md`
+§2.3 + §2.4 (tooling gaps) + this entry.
