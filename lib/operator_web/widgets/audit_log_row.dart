@@ -188,7 +188,8 @@ class AuditLogRow extends StatelessWidget {
   }
 
   static String _actorLine(WebAuditLogEntry entry) {
-    final name = entry.actorDisplayName ?? entry.actorEmail ?? 'Unknown actor';
+    final name =
+        entry.actorDisplayName ?? entry.actorEmail ?? 'Unknown team member';
     final email = entry.actorEmail;
     if (email == null || email == name) return name;
     return '$name • $email';
