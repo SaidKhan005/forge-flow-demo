@@ -542,6 +542,34 @@ void main() {
         find.byKey(const Key('service_period_editor_add')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const ValueKey('service_period_editor_key_0')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('auto-fills generated key from label edits', (tester) async {
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'period_1',
+            label: '',
+            startLocal: '11:00',
+            endLocal: '15:00',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(ServicePeriodEditor(controller: controller)),
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('service_period_editor_label_0')),
+        'Late Night',
+      );
+      await tester.pump();
+
+      expect(controller.periods.single.key, 'late_night');
     });
 
     testWidgets('Add button disabled at four periods', (tester) async {

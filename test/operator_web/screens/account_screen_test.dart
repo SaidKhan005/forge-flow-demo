@@ -19,14 +19,9 @@ import 'package:forge_and_flow/operator_web/widgets/web_app_shell.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 class _FakeAccountGateway implements WebAccountGateway {
-  _FakeAccountGateway({
-    this.failWith,
-    this.timezoneFailWith,
-    this.initialOverrides,
-  });
+  _FakeAccountGateway({this.failWith, this.initialOverrides});
 
   final OperatorWebProxyException? failWith;
-  final OperatorWebProxyException? timezoneFailWith;
   OperatorWebProxyException? overridesFailWith;
 
   /// Wave 2 U-FU-hp11-account — when non-null, `getLocationAccountOverrides`
@@ -81,7 +76,6 @@ class _FakeAccountGateway implements WebAccountGateway {
     AccountLocationTimezonePatch patch,
   ) async {
     timezoneCalls.add(patch);
-    if (timezoneFailWith != null) throw timezoneFailWith!;
     return AccountLocationTimezone(
       operatorId: 'op-1',
       locationId: 'loc-1',
@@ -440,36 +434,57 @@ void main() {
 
   // Wave 2 W-6 — timezone section coverage.
 
-  testWidgets(
-    'timezone section renders with compact source status and controls',
-    (tester) async {
-      await _sizeViewport(tester);
-      final session = sessionWithRole('operator_owner');
-      await tester.pumpWidget(
-        wrap(AccountScreen(session: session, gateway: _FakeAccountGateway())),
-      );
-      expect(
-        find.byKey(const Key('operator_web_account_section_location_timezone')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_account_scope_summary')),
-        findsNothing,
-      );
-      expect(find.text('Set here'), findsWidgets);
-      expect(
-        find.byKey(const Key('operator_web_account_timezone_shortlist')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_account_timezone_save')),
-        findsOneWidget,
-      );
-      expect(find.text('Set here'), findsWidgets);
-    },
-  );
+  testWidgets('timezone section renders read-only handoff to Business Timing', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    var openedBusinessTiming = false;
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(
+        AccountScreen(
+          session: session,
+          gateway: _FakeAccountGateway(),
+          onOpenBusinessTiming: () => openedBusinessTiming = true,
+        ),
+      ),
+    );
+    expect(
+      find.byKey(const Key('operator_web_account_section_location_timezone')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('operator_web_account_scope_summary')),
+      findsNothing,
+    );
+    expect(find.text('Set here'), findsWidgets);
+    expect(
+      find.byKey(const Key('operator_web_account_timezone_readonly')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key('operator_web_account_timezone_business_timing_link'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('operator_web_account_timezone_shortlist')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('operator_web_account_timezone_save')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(
+        const Key('operator_web_account_timezone_business_timing_link'),
+      ),
+    );
+    expect(openedBusinessTiming, isTrue);
+  });
 
-  testWidgets('timezone save refreshes the compact source status', (
+  testWidgets('timezone handoff does not write from Business account', (
     tester,
   ) async {
     await _sizeViewport(tester);
@@ -486,39 +501,15 @@ void main() {
       find.byKey(const Key('operator_web_account_source_status_set here')),
       findsWidgets,
     );
-    // The Account screen is long enough that the timezone shortlist
-    // may sit below the viewport; scroll it into view first.
     await tester.ensureVisible(
-      find.byKey(const Key('operator_web_account_timezone_shortlist')),
+      find.byKey(const Key('operator_web_account_timezone_readonly')),
     );
     await tester.pumpAndSettle();
 
-    // Open the dropdown and pick a different shortlist option.
-    await tester.tap(
-      find.byKey(const Key('operator_web_account_timezone_shortlist')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('London / Dublin').last);
-    await tester.pumpAndSettle();
+    expect(gateway.timezoneCalls, isEmpty);
     expect(
-      find.byKey(const Key('operator_web_account_source_status_unsaved')),
-      findsOneWidget,
-    );
-
-    await tester.ensureVisible(
       find.byKey(const Key('operator_web_account_timezone_save')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('operator_web_account_timezone_save')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(gateway.timezoneCalls, hasLength(1));
-    expect(gateway.timezoneCalls.single.ianaTimezone, 'Europe/London');
-    expect(
-      find.byKey(const Key('operator_web_account_timezone_success')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const Key('operator_web_account_source_status_unsaved')),
@@ -530,42 +521,8 @@ void main() {
     );
   });
 
-  testWidgets('timezone gateway error surfaces in the inline timezone banner', (
-    tester,
-  ) async {
-    await _sizeViewport(tester);
-    final gateway = _FakeAccountGateway(
-      timezoneFailWith: const OperatorWebProxyException(
-        code: 'invalid_iana_timezone',
-        message: 'That timezone is not in the IANA database.',
-      ),
-    );
-    final session = sessionWithRole('operator_owner');
-    await tester.pumpWidget(
-      wrap(AccountScreen(session: session, gateway: gateway)),
-    );
-    // The Account screen is long enough that the timezone save button
-    // may sit below the viewport; scroll it into view before tapping.
-    await tester.ensureVisible(
-      find.byKey(const Key('operator_web_account_timezone_save')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('operator_web_account_timezone_save')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('operator_web_account_timezone_error')),
-      findsOneWidget,
-    );
-    expect(
-      find.text('That timezone is not in the IANA database.'),
-      findsOneWidget,
-    );
-  });
-
   testWidgets(
-    'session with no primary location timezone still shows the editor',
+    'session with no primary location timezone still shows the handoff',
     (tester) async {
       await _sizeViewport(tester);
       final session = sessionWithRole(
@@ -581,9 +538,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('operator_web_account_timezone_shortlist')),
+        find.byKey(const Key('operator_web_account_timezone_readonly')),
         findsOneWidget,
       );
+      expect(find.textContaining('Timezone is not set'), findsOneWidget);
     },
   );
 

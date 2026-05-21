@@ -1048,6 +1048,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 setState(() => _selectedTimezone = value),
             onCustomChanged: () => setState(() {}),
             onSave: _handleSaveTimezone,
+            onOpenBusinessTiming: widget.onOpenBusinessTiming,
             sourceStatus: _compactSourceStatus(
               _sourceLabel(timezoneInheritedLabel),
             ),
@@ -1793,24 +1794,9 @@ class _BusinessDaySection extends StatelessWidget {
   }
 }
 
-/// Wave 2 W-6 — location timezone editor.
-///
-/// HP #11 scope details for timezone live in the Account screen summary
-/// panel above the editable sections. The editor below stays focused on
-/// the timezone input itself.
-///
-/// Two input affordances:
-///   * Shortlist dropdown of common IANA timezones.
-///   * Custom text field for any other IANA tz name.
-/// The dropdown owns the choice unless the operator selects the
-/// "Custom IANA timezone" sentinel, in which case the text field's
-/// trimmed value is canonical. Saves go through
-/// [WebAccountGateway.patchLocationTimezone].
-///
-/// Time guardrails (`CLAUDE.md`): the location timezone drives every
-/// business-date computation for shifts, weeks, and weekly plans.
-/// Storage stays UTC; this editor only changes the local-display
-/// reference frame, never the stored timestamps.
+/// Read-only timezone handoff. Timezone changes live with Business
+/// Timing so week start, business-day rollover, timezone, and service
+/// periods move through one location-focused workflow.
 class _LocationTimezoneSection extends StatelessWidget {
   const _LocationTimezoneSection({
     required this.scopeLabel,
@@ -1826,6 +1812,7 @@ class _LocationTimezoneSection extends StatelessWidget {
     required this.onShortlistChanged,
     required this.onCustomChanged,
     required this.onSave,
+    this.onOpenBusinessTiming,
     required this.sourceStatus,
   });
 
@@ -1842,67 +1829,52 @@ class _LocationTimezoneSection extends StatelessWidget {
   final ValueChanged<String?> onShortlistChanged;
   final VoidCallback onCustomChanged;
   final Future<void> Function() onSave;
+  final VoidCallback? onOpenBusinessTiming;
   final String sourceStatus;
 
   @override
   Widget build(BuildContext context) {
-    final isCustom = selectedValue == customSentinel;
+    final display = _displayTimezone();
     return _Card(
       cardKey: const Key('operator_web_account_section_location_timezone'),
       title: '$scopeLabel timezone',
       subtitle:
           'Forge & Flow groups every shift, week, and weekly plan into '
-          'this scope\'s local day. Changing the timezone changes how '
-          'business dates land for $scopeName from '
-          'this point forward; past data keeps the timezone it was '
-          'recorded against.',
+          'this scope\'s local day. Timezone edits live in Business '
+          'Timing so timing changes stay together for $scopeName.',
       sourceStatus: sourceStatus,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          DropdownButtonFormField<String>(
-            key: const Key('operator_web_account_timezone_shortlist'),
-            initialValue: selectedValue,
-            decoration: const InputDecoration(
-              labelText: 'Timezone',
-              border: OutlineInputBorder(),
-              helperText:
-                  'Pick the closest match, or choose "Custom" to type '
-                  'any IANA timezone name.',
+          Container(
+            key: const Key('operator_web_account_timezone_readonly'),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundMid,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(6),
             ),
-            items: <DropdownMenuItem<String>>[
-              for (final option in shortlist)
-                DropdownMenuItem<String>(
-                  value: option.value,
-                  child: Text(option.label),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Timezone',
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
                 ),
-              DropdownMenuItem<String>(
-                value: customSentinel,
-                child: const Text('Custom IANA timezone…'),
-              ),
-            ],
-            onChanged: enabled ? onShortlistChanged : null,
-          ),
-          if (isCustom) ...<Widget>[
-            const SizedBox(height: 10),
-            TextField(
-              key: const Key('operator_web_account_timezone_custom'),
-              controller: customController,
-              enabled: enabled,
-              inputFormatters: <TextInputFormatter>[
-                LengthLimitingTextInputFormatter(64),
+                const SizedBox(height: 4),
+                _BusinessTimingLinkedText(
+                  textBeforeLink: 'Timezone is $display. Edit this in',
+                  linkKey: const Key(
+                    'operator_web_account_timezone_business_timing_link',
+                  ),
+                  onOpenBusinessTiming: onOpenBusinessTiming,
+                ),
               ],
-              decoration: const InputDecoration(
-                labelText: 'IANA timezone name',
-                hintText: 'e.g. America/Toronto',
-                border: OutlineInputBorder(),
-                helperText:
-                    'Use the IANA tz database name. We validate the '
-                    'value when you save.',
-              ),
-              onChanged: (_) => onCustomChanged(),
             ),
-          ],
+          ),
           if (errorMessage != null) ...<Widget>[
             const SizedBox(height: 12),
             Container(
@@ -1963,42 +1935,19 @@ class _LocationTimezoneSection extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              height: 38,
-              child: OutlinedButton(
-                key: const Key('operator_web_account_timezone_save'),
-                onPressed: enabled && !submitting
-                    ? () {
-                        onSave();
-                      }
-                    : null,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.sunsetDark,
-                  side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: submitting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.sunsetDark,
-                        ),
-                      )
-                    : const Text('Save timezone'),
-              ),
-            ),
-          ),
         ],
       ),
     );
+  }
+
+  String _displayTimezone() {
+    if (selectedValue == customSentinel) {
+      final custom = customController.text.trim();
+      return custom.isEmpty ? 'not set' : custom;
+    }
+    final selected = selectedValue?.trim();
+    if (selected == null || selected.isEmpty) return 'not set';
+    return selected;
   }
 }
 
