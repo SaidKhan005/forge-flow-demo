@@ -125,6 +125,19 @@ dev_dependencies:
   flutter_native_splash: ^2.4.4
   yaml: ^3.1.3
 
+  # Wave-2 lane G — engineering-bar metrics tooling.
+  # `dart_code_linter` is the maintained successor to the discontinued
+  # `dart_code_metrics` package (the upstream was discontinued ~2 years
+  # ago in favor of the commercial DCM tool; Bancolombia forked the
+  # last open-source release and maintain it as `dart_code_linter`,
+  # latest 4.0.3 as of 2026-05). Backs the §5.2 engineering bars from
+  # `docs/_audits/code_health/code_hardening_plan_2026_05_21.md`:
+  # source-lines-of-code ≤ 80, cyclomatic-complexity ≤ 12,
+  # maximum-nesting-level ≤ 5, number-of-parameters ≤ 7. Configured
+  # advisory-only in `analysis_options.yaml` — does NOT fail `dart
+  # analyze`. Runbook: `runbooks/dart_code_metrics_runbook.md`.
+  dart_code_linter: ^4.0.3
+
 flutter_launcher_icons:
   android: true
   ios: true
