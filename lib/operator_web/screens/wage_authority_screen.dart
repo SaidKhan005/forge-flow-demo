@@ -42,6 +42,7 @@ import '../services/operator_web_wage_authority_gateway.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
 import 'wage_authority/blended_wage_calculator.dart';
 import 'wage_authority/blended_wage_summary_card.dart';
@@ -224,14 +225,6 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   bool _loading = true;
   String? _loadError;
 
-  /// Set of row ids currently expanded into in-line edit mode.
-  final Set<String> _editingIds = <String>{};
-
-  /// Set of bucket wire values whose add-row form is currently
-  /// visible. The form is rendered alongside the bucket section so
-  /// the operator can fill one bucket without losing scroll position.
-  final Set<String> _addingForBuckets = <String>{};
-
   /// In-flight per-row edits, keyed by `wage_role_row_id`. Updated
   /// every time the operator types in the edit form so the blended-
   /// wage summary card recomputes without waiting for a save round-
@@ -352,13 +345,13 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
     return list;
   }
 
-  Future<void> _saveRow({
+  Future<bool> _saveRow({
     required String laborBucket,
     required _WageRowFormResult form,
     String? existingRowId,
   }) async {
     final gateway = widget.gateway;
-    if (gateway == null) return;
+    if (gateway == null) return false;
     final restaurantId = form.restaurantId.isNotEmpty
         ? form.restaurantId
         // Fallback for the V1 1:1 location-to-restaurant model: use the
@@ -388,28 +381,91 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
         request: request,
         idempotencyKey: _newIdempotencyKey(),
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         // Drop any previous row keyed by the same role_name +
         // restaurant_id (server upsert may have collided onto a
         // different uuid in the demo gateway path).
         if (existingRowId != null) _rowsById.remove(existingRowId);
         _rowsById[saved.wageRoleRowId] = saved;
-        _editingIds.remove(existingRowId);
-        _addingForBuckets.remove(laborBucket);
         if (existingRowId != null) _draftEdits.remove(existingRowId);
         _draftAdds.remove(laborBucket);
         _recomputeEffective();
       });
       _showSnackBar('Saved just now', isError: false);
+      return true;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) return false;
       _showSnackBar(
         "Couldn't save - try again",
         isError: true,
         keyName: 'wage_authority_save_error_snackbar',
       );
+      return false;
     }
+  }
+
+  Future<void> _openAddDialog(_BucketSpec bucket) async {
+    await showOperatorWebDialog<void>(
+      context: context,
+      title: 'Add a ${bucket.label.toLowerCase()} role',
+      icon: Icons.payments_outlined,
+      maxWidth: 720,
+      actions: const <Widget>[],
+      child: _WageRowForm(
+        key: Key('wage_authority_row_add_${bucket.wire}'),
+        initial: null,
+        onCancel: () {
+          setState(() => _draftAdds.remove(bucket.wire));
+          Navigator.of(context).pop();
+        },
+        onSave: (form) async {
+          final saved = await _saveRow(laborBucket: bucket.wire, form: form);
+          if (saved && mounted) Navigator.of(context).pop();
+        },
+        onDraftChanged: (draft) {
+          setState(() {
+            _draftAdds[bucket.wire] = draft;
+          });
+        },
+      ),
+    );
+    if (mounted) setState(() => _draftAdds.remove(bucket.wire));
+  }
+
+  Future<void> _openEditDialog(
+    _BucketSpec bucket,
+    WageRoleRowRecord row,
+  ) async {
+    await showOperatorWebDialog<void>(
+      context: context,
+      title: 'Edit ${row.roleName}',
+      icon: Icons.edit_outlined,
+      maxWidth: 720,
+      actions: const <Widget>[],
+      child: _WageRowForm(
+        key: Key('wage_authority_row_edit_${row.wageRoleRowId}'),
+        initial: row,
+        onCancel: () {
+          setState(() => _draftEdits.remove(row.wageRoleRowId));
+          Navigator.of(context).pop();
+        },
+        onSave: (form) async {
+          final saved = await _saveRow(
+            laborBucket: bucket.wire,
+            form: form,
+            existingRowId: row.wageRoleRowId,
+          );
+          if (saved && mounted) Navigator.of(context).pop();
+        },
+        onDraftChanged: (draft) {
+          setState(() {
+            _draftEdits[row.wageRoleRowId] = draft;
+          });
+        },
+      ),
+    );
+    if (mounted) setState(() => _draftEdits.remove(row.wageRoleRowId));
   }
 
   Future<void> _confirmAndDelete(WageRoleRowRecord row) async {
@@ -577,6 +633,10 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
                 'a live operator account to edit wage rows.',
           ),
         ],
+        if (widget.showHeader && widget.hierarchyNodes.isEmpty) ...<Widget>[
+          const SizedBox(height: 12),
+          _LocationOnlyScopeNotice(locationName: widget.locationName),
+        ],
         const SizedBox(height: 14),
         // Live blended-wage preview. Wave 2 S-1 — computes Σ(hours ×
         // rate) / Σ(hours) across saved rows plus any open in-flight
@@ -595,49 +655,9 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
             rows: _rowsForBucket(bucket.wire),
             canWrite: _canWrite,
             resolvedFor: _resolvedFor,
-            isEditing: (id) => _editingIds.contains(id),
-            isAdding: _addingForBuckets.contains(bucket.wire),
             connectedLaborVendorIds: _effectiveLaborVendorIds(),
-            onStartEdit: (id) {
-              setState(() {
-                _editingIds.add(id);
-                _addingForBuckets.remove(bucket.wire);
-                _draftAdds.remove(bucket.wire);
-              });
-            },
-            onCancelEdit: (id) {
-              setState(() {
-                _editingIds.remove(id);
-                _draftEdits.remove(id);
-              });
-            },
-            onStartAdd: () {
-              setState(() {
-                _addingForBuckets.add(bucket.wire);
-              });
-            },
-            onCancelAdd: () {
-              setState(() {
-                _addingForBuckets.remove(bucket.wire);
-                _draftAdds.remove(bucket.wire);
-              });
-            },
-            onEditDraftChanged: (id, draft) {
-              setState(() {
-                _draftEdits[id] = draft;
-              });
-            },
-            onAddDraftChanged: (draft) {
-              setState(() {
-                _draftAdds[bucket.wire] = draft;
-              });
-            },
-            onSaveEdit: (row, form) => _saveRow(
-              laborBucket: bucket.wire,
-              form: form,
-              existingRowId: row.wageRoleRowId,
-            ),
-            onSaveAdd: (form) => _saveRow(laborBucket: bucket.wire, form: form),
+            onStartEdit: (row) => _openEditDialog(bucket, row),
+            onStartAdd: () => _openAddDialog(bucket),
             onDelete: _confirmAndDelete,
           ),
           const SizedBox(height: 14),
@@ -740,23 +760,50 @@ class _ReadOnlyBanner extends StatelessWidget {
   }
 }
 
+class _LocationOnlyScopeNotice extends StatelessWidget {
+  const _LocationOnlyScopeNotice({required this.locationName});
+
+  final String locationName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('wage_authority_scope_editor_location_only'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(
+            Icons.place_outlined,
+            size: 16,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Editing wage rows for $locationName.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BucketSection extends StatelessWidget {
   const _BucketSection({
     required this.bucket,
     required this.rows,
     required this.canWrite,
     required this.resolvedFor,
-    required this.isEditing,
-    required this.isAdding,
     required this.connectedLaborVendorIds,
     required this.onStartEdit,
-    required this.onCancelEdit,
     required this.onStartAdd,
-    required this.onCancelAdd,
-    required this.onEditDraftChanged,
-    required this.onAddDraftChanged,
-    required this.onSaveEdit,
-    required this.onSaveAdd,
     required this.onDelete,
   });
 
@@ -769,17 +816,9 @@ class _BucketSection extends StatelessWidget {
   /// badge. Returns null when the row is not the effective source.
   final WageRoleRowResolvedValue? Function(WageRoleRowRecord) resolvedFor;
 
-  final bool Function(String) isEditing;
-  final bool isAdding;
   final Set<String> connectedLaborVendorIds;
-  final void Function(String) onStartEdit;
-  final void Function(String) onCancelEdit;
+  final void Function(WageRoleRowRecord) onStartEdit;
   final VoidCallback onStartAdd;
-  final VoidCallback onCancelAdd;
-  final void Function(String rowId, _DraftRowValues draft) onEditDraftChanged;
-  final void Function(_DraftRowValues draft) onAddDraftChanged;
-  final Future<void> Function(WageRoleRowRecord, _WageRowFormResult) onSaveEdit;
-  final Future<void> Function(_WageRowFormResult) onSaveAdd;
   final Future<void> Function(WageRoleRowRecord) onDelete;
 
   @override
@@ -808,7 +847,7 @@ class _BucketSection extends StatelessWidget {
                     style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                 ),
-                if (canWrite && !isAdding) ...[
+                if (canWrite) ...[
                   const SizedBox(width: 8),
                   TextButton.icon(
                     key: Key('wage_authority_add_button_${bucket.wire}'),
@@ -821,7 +860,7 @@ class _BucketSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          if (rows.isEmpty && !isAdding)
+          if (rows.isEmpty)
             Padding(
               key: Key('wage_authority_empty_${bucket.wire}'),
               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -836,44 +875,19 @@ class _BucketSection extends StatelessWidget {
               ),
             ),
           for (var i = 0; i < rows.length; i++) ...<Widget>[
-            isEditing(rows[i].wageRoleRowId)
-                ? _WageRowForm(
-                    key: Key(
-                      'wage_authority_row_edit_${rows[i].wageRoleRowId}',
-                    ),
-                    initial: rows[i],
-                    onCancel: () => onCancelEdit(rows[i].wageRoleRowId),
-                    onSave: (form) => onSaveEdit(rows[i], form),
-                    onDraftChanged: (draft) =>
-                        onEditDraftChanged(rows[i].wageRoleRowId, draft),
-                  )
-                : _WageRowDisplay(
-                    row: rows[i],
-                    canWrite: canWrite,
-                    resolved: resolvedFor(rows[i]),
-                    connectedLaborVendorIds: connectedLaborVendorIds,
-                    onEdit: () => onStartEdit(rows[i].wageRoleRowId),
-                    onDelete: () => onDelete(rows[i]),
-                  ),
+            _WageRowDisplay(
+              row: rows[i],
+              canWrite: canWrite,
+              resolved: resolvedFor(rows[i]),
+              connectedLaborVendorIds: connectedLaborVendorIds,
+              onEdit: () => onStartEdit(rows[i]),
+              onDelete: () => onDelete(rows[i]),
+            ),
             if (i != rows.length - 1)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 10),
                 child: Divider(height: 1, color: AppColors.borderSubtle),
               ),
-          ],
-          if (isAdding) ...<Widget>[
-            if (rows.isNotEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 10),
-                child: Divider(height: 1, color: AppColors.borderSubtle),
-              ),
-            _WageRowForm(
-              key: Key('wage_authority_row_add_${bucket.wire}'),
-              initial: null,
-              onCancel: onCancelAdd,
-              onSave: onSaveAdd,
-              onDraftChanged: onAddDraftChanged,
-            ),
           ],
         ],
       ),
