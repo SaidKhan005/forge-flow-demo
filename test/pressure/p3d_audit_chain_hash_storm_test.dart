@@ -24,9 +24,12 @@
 //    returns zero violations.
 // 2. 1000 concurrent `recomputeRowHash` calls on the SAME row return
 //    byte-identical output (no shared state in the hasher).
-// 3. Single-byte payload tamper at a known offset is detected (the
-//    verifier flags both that row AND every downstream prev_row_hash
-//    link).
+// 3. Single-byte payload tamper at a known offset is detected. A
+//    naive tamper (payload changed, stored row_hash untouched)
+//    surfaces only at the tampered row — tamper-evidence is per-row,
+//    not a cascade. A sophisticated tamper that also recomputes the
+//    row's hash breaks the NEXT row's prev_row_hash link, so the
+//    chain stays tamper-evident either way (see the two tamper tests).
 // 4. Cross-chain isolation: 10 chains × 100 rows each don't share a
 //    prev_row_hash — the first row of each chain has null prev hash.
 // 5. The hasher is contract-pure: hashing the same row produces the
