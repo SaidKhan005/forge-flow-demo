@@ -744,7 +744,13 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('Currently managing: All locations'), findsOneWidget);
+      expect(
+        find.byKey(
+          const Key('operator_web_scoped_location_row_demo-loc-downtown'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Open'), findsWidgets);
     });
 
     testWidgets('side nav switches body to business setup screen', (

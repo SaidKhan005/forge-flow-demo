@@ -32,7 +32,6 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_business_timing_gateway.dart';
-import '../widgets/hierarchy_tree_visualization.dart';
 import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/service_period_editor.dart';
@@ -218,22 +217,6 @@ class _BusinessTimingEditorScreenState
     return null;
   }
 
-  String get _orgUnitLabel {
-    final label = widget.orgUnitName?.trim();
-    if (label != null && label.isNotEmpty) return label;
-    final existing = widget.existingProfile;
-    if (existing != null && existing.scopeKind == 'org_unit') {
-      return 'Selected group';
-    }
-    return 'Selected group';
-  }
-
-  String get _orgUnitHelper {
-    final helper = widget.orgUnitHelper?.trim();
-    if (helper != null && helper.isNotEmpty) return helper;
-    return 'Group';
-  }
-
   String _normalizedScopeKind(String value) {
     if (value == 'org_unit' && _hasOrgUnitScope) return value;
     if (value == 'location' && _locationId.isNotEmpty) return value;
@@ -265,12 +248,6 @@ class _BusinessTimingEditorScreenState
     return widget.session.primaryLocationId?.trim() ?? '';
   }
 
-  String get _locationLabel {
-    final label = widget.locationName?.trim();
-    if (label != null && label.isNotEmpty) return label;
-    return widget.session.primaryLocationName;
-  }
-
   String get _effectiveTimezone {
     final existing = widget.existingProfile?.ianaTimezone.trim();
     if (existing != null && existing.isNotEmpty) return existing;
@@ -279,127 +256,6 @@ class _BusinessTimingEditorScreenState
       return sessionTimezone;
     }
     return 'UTC';
-  }
-
-  /// Builds the visual hierarchy tree from the full path passed by the
-  /// router when available, then falls back to the business/location
-  /// anchors carried by older callers.
-  List<HierarchyTreeNodeView> _buildEditorHierarchyNodes() {
-    final path = widget.hierarchyPath;
-    if (path.isNotEmpty) {
-      final currentIndex = path.indexWhere(_pathEntryIsCurrent);
-      return <HierarchyTreeNodeView>[
-        for (int i = 0; i < path.length; i++)
-          HierarchyTreeNodeView(
-            level: _levelForPathEntry(path[i]),
-            name: path[i].name,
-            isCurrentScope: i == currentIndex,
-            inheritsFromHere: currentIndex > 0 && i == currentIndex - 1,
-            subtitle: _subtitleForPathEntry(path[i], i == currentIndex),
-          ),
-      ];
-    }
-    final operatorIsCurrent = _scopeKind == 'operator';
-    final orgUnitIsCurrent = _scopeKind == 'org_unit';
-    final locationIsCurrent = _scopeKind == 'location';
-    final nodes = <HierarchyTreeNodeView>[
-      HierarchyTreeNodeView(
-        level: HierarchyTreeLevel.business,
-        name: widget.session.businessName,
-        isCurrentScope: operatorIsCurrent,
-        subtitle: operatorIsCurrent
-            ? 'This profile becomes the default for every location.'
-            : 'Default settings every location inherits from.',
-        // When the operator is writing a location override, the
-        // deeper row "inherits from" the business row above it.
-        inheritsFromHere: !_hasOrgUnitScope && locationIsCurrent,
-      ),
-    ];
-    if (_hasOrgUnitScope) {
-      nodes.add(
-        HierarchyTreeNodeView(
-          level: HierarchyTreeLevel.region,
-          name: _orgUnitLabel,
-          isCurrentScope: orgUnitIsCurrent,
-          subtitle: orgUnitIsCurrent
-              ? 'Locations in this group inherit this profile.'
-              : 'Group settings between the business and location.',
-          inheritsFromHere: locationIsCurrent,
-        ),
-      );
-    }
-    if (_locationId.isNotEmpty) {
-      nodes.add(
-        HierarchyTreeNodeView(
-          level: HierarchyTreeLevel.location,
-          name: _locationLabel,
-          isCurrentScope: locationIsCurrent,
-          subtitle: locationIsCurrent
-              ? 'This profile overrides the business default here only.'
-              : _hasOrgUnitScope
-              ? 'Location context for this timing profile.'
-              : 'Inherits the business default. No local override yet.',
-        ),
-      );
-    }
-    return nodes;
-  }
-
-  bool _pathEntryIsCurrent(BusinessTimingHierarchyPathEntry entry) {
-    switch (entry.scopeKind) {
-      case 'operator':
-        return _scopeKind == 'operator';
-      case 'org_unit':
-        return _scopeKind == 'org_unit' && entry.scopeId == _orgUnitId;
-      case 'location':
-        return _scopeKind == 'location' && entry.scopeId == _locationId;
-      default:
-        return false;
-    }
-  }
-
-  HierarchyTreeLevel _levelForPathEntry(
-    BusinessTimingHierarchyPathEntry entry,
-  ) {
-    if (entry.scopeKind == 'operator') return HierarchyTreeLevel.business;
-    if (entry.scopeKind == 'location') return HierarchyTreeLevel.location;
-    switch (entry.unitType) {
-      case 'brand':
-        return HierarchyTreeLevel.brand;
-      case 'district':
-        return HierarchyTreeLevel.district;
-      case 'location_group':
-        return HierarchyTreeLevel.locationGroup;
-      case 'region':
-      default:
-        return HierarchyTreeLevel.region;
-    }
-  }
-
-  String _subtitleForPathEntry(
-    BusinessTimingHierarchyPathEntry entry,
-    bool isCurrent,
-  ) {
-    if (isCurrent) {
-      switch (entry.scopeKind) {
-        case 'operator':
-          return 'This profile becomes the default for every location.';
-        case 'org_unit':
-          return 'Locations under this ${entry.helper.toLowerCase()} inherit this profile.';
-        case 'location':
-          return 'This profile applies to this location only.';
-      }
-    }
-    switch (entry.scopeKind) {
-      case 'operator':
-        return 'Business default for every lower scope.';
-      case 'org_unit':
-        return '${entry.helper} in the selected path.';
-      case 'location':
-        return 'Location context for this timing profile.';
-      default:
-        return 'Hierarchy scope in this path.';
-    }
   }
 
   BusinessTimingProfileWriteResult? get _existingProfileForSelectedScope {
@@ -588,39 +444,16 @@ class _BusinessTimingEditorScreenState
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 18),
-          // Wave 2 H-2: visual hierarchy tree so the operator can see
-          // where the profile being edited will land before they
-          // commit. The scope dropdown below still owns the choice;
-          // this is a read-only visualization of the same selection.
-          HierarchyTreeVisualization(
-            keyName: 'operator_web_business_timing_editor_hierarchy_tree',
-            headline: 'Where this profile will land',
-            nodes: _buildEditorHierarchyNodes(),
-            dataGapExplainer: widget.hierarchyPath.isEmpty
-                ? 'This tree shows the business and location. Groups appear '
-                      'after the hierarchy loads.'
-                : null,
-          ),
-          const SizedBox(height: 14),
           if (!_hasGateway) const _UnavailableBanner(),
           if (!_hasGateway) const SizedBox(height: 14),
           if (!widget.canEdit) const _ReadOnlyBanner(),
           if (!widget.canEdit) const SizedBox(height: 14),
           _ScopeAndEffectiveSection(
-            scopeKind: _scopeKind,
-            hasOrgUnitScope: _hasOrgUnitScope,
-            orgUnitLabel: _orgUnitLabel,
-            orgUnitHelper: _orgUnitHelper,
-            locationLabel: _locationLabel,
-            hasLocationScope: _locationId.isNotEmpty,
             effectiveAt: _effectiveAt,
             timezoneLabel: _effectiveTimezone,
             businessDayStartController: _businessDayStartLocal,
             weekStartDay: _weekStartDay,
             enabled: widget.canEdit && !_submitting,
-            onScopeChanged: (next) => setState(
-              () => _scopeKind = _normalizedScopeKind(next ?? _scopeKind),
-            ),
             onPickEffectiveDate: _pickEffectiveDate,
             onWeekStartChanged: (next) =>
                 setState(() => _weekStartDay = next ?? _weekStartDay),
@@ -745,36 +578,22 @@ class _BusinessTimingEditorScreenState
 
 class _ScopeAndEffectiveSection extends StatelessWidget {
   const _ScopeAndEffectiveSection({
-    required this.scopeKind,
-    required this.hasOrgUnitScope,
-    required this.orgUnitLabel,
-    required this.orgUnitHelper,
-    required this.locationLabel,
-    required this.hasLocationScope,
     required this.effectiveAt,
     required this.timezoneLabel,
     required this.businessDayStartController,
     required this.weekStartDay,
     required this.enabled,
-    required this.onScopeChanged,
     required this.onPickEffectiveDate,
     required this.onWeekStartChanged,
     required this.onAnyTextChanged,
     required this.formatter,
   });
 
-  final String scopeKind;
-  final bool hasOrgUnitScope;
-  final String orgUnitLabel;
-  final String orgUnitHelper;
-  final String locationLabel;
-  final bool hasLocationScope;
   final DateTime effectiveAt;
   final String timezoneLabel;
   final TextEditingController businessDayStartController;
   final String weekStartDay;
   final bool enabled;
-  final ValueChanged<String?> onScopeChanged;
   final VoidCallback onPickEffectiveDate;
   final ValueChanged<String?> onWeekStartChanged;
   final VoidCallback onAnyTextChanged;
@@ -782,27 +601,6 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scopeItems = <DropdownMenuItem<String>>[
-      const DropdownMenuItem<String>(
-        value: 'operator',
-        child: Text('Across all locations (business default)'),
-      ),
-      if (hasOrgUnitScope)
-        DropdownMenuItem<String>(
-          value: 'org_unit',
-          child: Text('$orgUnitLabel ($orgUnitHelper defaults)'),
-        ),
-      if (hasLocationScope)
-        DropdownMenuItem<String>(
-          value: 'location',
-          child: Text('Just $locationLabel (location override)'),
-        ),
-    ];
-    final selectedItems = <Widget>[
-      const Text('Across all locations (business default)'),
-      if (hasOrgUnitScope) Text('$orgUnitLabel ($orgUnitHelper defaults)'),
-      if (hasLocationScope) Text('Just $locationLabel (location override)'),
-    ];
     return Container(
       key: const Key('operator_web_business_timing_editor_scope_card'),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -817,23 +615,6 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: DropdownButtonFormField<String>(
-                  key: const Key(
-                    'operator_web_business_timing_editor_scope_kind',
-                  ),
-                  initialValue: scopeKind,
-                  decoration: const InputDecoration(
-                    labelText: 'Where does this profile apply?',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: scopeItems,
-                  selectedItemBuilder: (context) => selectedItems,
-                  onChanged: enabled ? onScopeChanged : null,
-                ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 220,
                 child: InkWell(
                   key: const Key(
                     'operator_web_business_timing_editor_effective_pick',

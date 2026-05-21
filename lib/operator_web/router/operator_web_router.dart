@@ -1014,81 +1014,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     return _orgUnitScopeById(ancestors.first);
   }
 
-  List<BusinessTimingHierarchyPathEntry> _businessTimingHierarchyPath({
-    required OperatorWebSession session,
-    required OperatorWebManagementScopeOption managementScope,
-    required OperatorWebManagementScopeOption? locationScope,
-  }) {
-    final entries = <BusinessTimingHierarchyPathEntry>[
-      BusinessTimingHierarchyPathEntry(
-        scopeKind: 'operator',
-        scopeId: session.operatorId,
-        name: session.businessName,
-        helper: 'Business',
-      ),
-    ];
-    if (locationScope != null) {
-      final ancestorIds = _wageAncestorOrgUnitIdsNearestFirst(
-        locationScope,
-      ).reversed;
-      for (final orgUnitId in ancestorIds) {
-        final option = _orgUnitScopeById(orgUnitId);
-        if (option == null) continue;
-        entries.add(_businessTimingPathEntryForOrgUnit(option));
-      }
-      entries.add(
-        BusinessTimingHierarchyPathEntry(
-          scopeKind: 'location',
-          scopeId: locationScope.id,
-          name: locationScope.label,
-          helper: 'Location',
-        ),
-      );
-      return List<BusinessTimingHierarchyPathEntry>.unmodifiable(entries);
-    }
-    if (managementScope.kind == OperatorWebManagementScopeKind.orgUnit) {
-      final ancestorIds = _orgUnitAncestorIdsNearestFirst(
-        managementScope,
-      ).reversed;
-      for (final orgUnitId in ancestorIds) {
-        final option = _orgUnitScopeById(orgUnitId);
-        if (option == null) continue;
-        entries.add(_businessTimingPathEntryForOrgUnit(option));
-      }
-      entries.add(_businessTimingPathEntryForOrgUnit(managementScope));
-    }
-    return List<BusinessTimingHierarchyPathEntry>.unmodifiable(entries);
-  }
-
-  List<String> _orgUnitAncestorIdsNearestFirst(
-    OperatorWebManagementScopeOption orgUnitScope,
+  WebAuditLogHierarchyScopeType _auditScopeType(
+    OperatorWebManagementScopeOption managementScope,
   ) {
-    final ancestors = <String>[];
-    final orgUnitById = <String, OperatorWebManagementScopeOption>{
-      for (final option in _managementScopeOptions)
-        if (option.kind == OperatorWebManagementScopeKind.orgUnit)
-          option.id: option,
-    };
-    var current = orgUnitScope.parentOrgUnitId;
-    final seen = <String>{};
-    while (current != null && current.isNotEmpty) {
-      if (!seen.add(current)) break;
-      ancestors.add(current);
-      current = orgUnitById[current]?.parentOrgUnitId;
+    switch (managementScope.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return WebAuditLogHierarchyScopeType.operatorWide;
+      case OperatorWebManagementScopeKind.orgUnit:
+        return WebAuditLogHierarchyScopeType.orgUnit;
+      case OperatorWebManagementScopeKind.location:
+        return WebAuditLogHierarchyScopeType.location;
     }
-    return ancestors;
-  }
-
-  BusinessTimingHierarchyPathEntry _businessTimingPathEntryForOrgUnit(
-    OperatorWebManagementScopeOption option,
-  ) {
-    return BusinessTimingHierarchyPathEntry(
-      scopeKind: 'org_unit',
-      scopeId: option.id,
-      name: option.label,
-      helper: option.helper,
-      unitType: option.unitType,
-    );
   }
 
   OperatorWebManagementScopeOption? _orgUnitScopeById(String orgUnitId) {
@@ -1118,6 +1054,29 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       current = orgUnitById[current]?.parentOrgUnitId;
     }
     return false;
+  }
+
+  List<OperatorWebManagementScopeOption> _locationsForManagementScope(
+    OperatorWebManagementScopeOption managementScope,
+  ) {
+    final locations = _managementScopeOptions
+        .where(
+          (option) => option.kind == OperatorWebManagementScopeKind.location,
+        )
+        .toList(growable: false);
+    switch (managementScope.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return locations;
+      case OperatorWebManagementScopeKind.orgUnit:
+        return locations
+            .where(
+              (location) =>
+                  _locationHasOrgUnitAncestor(location, managementScope.id),
+            )
+            .toList(growable: false);
+      case OperatorWebManagementScopeKind.location:
+        return <OperatorWebManagementScopeOption>[managementScope];
+    }
   }
 
   List<DemoTeamLocationFixture> _locationFixturesForMembers(
@@ -1578,6 +1537,18 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         if (businessSetupWiringError != null) {
           body = businessSetupWiringError;
         } else if (managementScope.kind ==
+                OperatorWebManagementScopeKind.operator &&
+            _webBusinessTimingGateway != null) {
+          body = BusinessTimingEditorScreen(
+            session: session,
+            initialScopeKind: 'operator',
+            gateway: _webBusinessTimingGateway,
+            existingProfile: _resolvedExistingTimingProfileForScope(
+              scopeKind: 'operator',
+              scopeId: session.operatorId,
+            ),
+          );
+        } else if (managementScope.kind ==
                 OperatorWebManagementScopeKind.orgUnit &&
             _webBusinessTimingGateway != null) {
           body = BusinessTimingEditorScreen(
@@ -1589,11 +1560,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             orgUnitHelper: managementScope.helper,
             initialScopeKind: 'org_unit',
             gateway: _webBusinessTimingGateway,
-            hierarchyPath: _businessTimingHierarchyPath(
-              session: session,
-              managementScope: managementScope,
-              locationScope: businessTimingLocationScope,
-            ),
             existingProfile: _resolvedExistingTimingProfileForScope(
               scopeKind: 'org_unit',
               scopeId: managementScope.id,
@@ -1607,7 +1573,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             body:
                 'Business setup reviews timing rules for one location at a '
                 'time. Use Managing to pick a location before editing timing.',
-            selectedScopeLabel: managementScope.label,
           );
         } else if (_editingBusinessTiming) {
           body = BusinessTimingEditorScreen(
@@ -1618,11 +1583,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             orgUnitName: businessTimingOrgUnitScope?.label,
             orgUnitHelper: businessTimingOrgUnitScope?.helper,
             gateway: _webBusinessTimingGateway,
-            hierarchyPath: _businessTimingHierarchyPath(
-              session: session,
-              managementScope: managementScope,
-              locationScope: locationScope,
-            ),
             existingProfile: _resolvedExistingTimingProfile(locationScope.id),
             scheduleMode: _schedulingBusinessTiming,
             initialEffectiveAt: _schedulingBusinessTiming
@@ -1693,7 +1653,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                       'The Locations page edits your business-wide '
                       'hierarchy. Use Managing to pick All locations or a '
                       'region to add, rename, or move locations.',
-                  selectedScopeLabel: managementScope.label,
                 )
               : HierarchyScreen(
                   session: session,
@@ -1742,6 +1701,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
               gateway: _teamAuditLogGateway,
               hierarchyGateway: _auditLogHierarchyGateway,
               teamHierarchyGateway: _teamHierarchyGateway,
+              selectedHierarchyScopeType: _auditScopeType(managementScope),
+              selectedHierarchyOrgUnitId:
+                  managementScope.kind == OperatorWebManagementScopeKind.orgUnit
+                  ? managementScope.id
+                  : null,
+              selectedHierarchyLocationId:
+                  managementScope.kind ==
+                      OperatorWebManagementScopeKind.location
+                  ? managementScope.id
+                  : null,
+              selectedHierarchyScopeLabel: managementScope.label,
               onCsvReady: downloadOperatorWebCsv,
             );
         break;
@@ -1767,15 +1737,16 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         if (vendorConnectionsWiringError != null) {
           body = vendorConnectionsWiringError;
         } else if (locationScope == null) {
-          body = _RequiresLocationScopeSurface(
+          body = _ScopedLocationListSurface(
             key: const Key('operator_web_vendor_connections_requires_location'),
             icon: Icons.cable_outlined,
-            title: 'Choose a location',
+            title: 'Vendor integrations',
             body:
-                'Vendor integrations are set up per location. Use '
-                'Managing to pick the location whose integrations you '
-                'want to manage.',
-            selectedScopeLabel: managementScope.label,
+                'Vendor integrations are set up per location. Pick a '
+                'location inside ${managementScope.label} to manage its '
+                'connections.',
+            locations: _locationsForManagementScope(managementScope),
+            onOpenLocation: (location) => _selectManagementScope(location.key),
           );
         } else {
           body = VendorConnectionsScreen(
@@ -1812,15 +1783,15 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         if (dataAccuracyWiringError != null) {
           body = dataAccuracyWiringError;
         } else if (locationScope == null) {
-          body = _RequiresLocationScopeSurface(
+          body = _ScopedLocationListSurface(
             key: const Key('operator_web_data_accuracy_requires_location'),
             icon: Icons.tune_outlined,
-            title: 'Choose a location',
+            title: 'Data accuracy',
             body:
-                'Data accuracy rules are saved per location. Use '
-                'Managing to pick the location whose numbers you want '
-                'to configure.',
-            selectedScopeLabel: managementScope.label,
+                'Data accuracy is saved per location. Pick a location '
+                'inside ${managementScope.label} to configure its numbers.',
+            locations: _locationsForManagementScope(managementScope),
+            onOpenLocation: (location) => _selectManagementScope(location.key),
           );
         } else {
           final instantUtc = (widget.nowUtc ?? DateTime.now)().toUtc();
@@ -1919,15 +1890,15 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         if (scheduleWiringError != null) {
           body = scheduleWiringError;
         } else if (locationScope == null) {
-          body = _RequiresLocationScopeSurface(
+          body = _ScopedLocationListSurface(
             key: const Key('operator_web_schedule_requires_location'),
             icon: Icons.calendar_today_outlined,
-            title: 'Choose a location',
+            title: 'Plan',
             body:
-                'Forge & Flow locks one weekly plan per location. Use '
-                'Managing to pick the location whose plan you want '
-                'to see.',
-            selectedScopeLabel: managementScope.label,
+                'Forge & Flow locks one weekly plan per location. Pick a '
+                'location inside ${managementScope.label} to see its plan.',
+            locations: _locationsForManagementScope(managementScope),
+            onOpenLocation: (location) => _selectManagementScope(location.key),
           );
         } else {
           body = ScheduleScreen(
@@ -2291,13 +2262,11 @@ class _RequiresLocationScopeSurface extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.body,
-    required this.selectedScopeLabel,
   });
 
   final IconData icon;
   final String title;
   final String body;
-  final String selectedScopeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -2328,33 +2297,6 @@ class _RequiresLocationScopeSurface extends StatelessWidget {
               Text(
                 body,
                 style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                decoration: BoxDecoration(
-                  color: AppColors.cardGlow,
-                  border: Border.all(color: AppColors.borderSubtle, width: 1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.account_tree_outlined,
-                      size: 16,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Currently managing: $selectedScopeLabel',
-                        style: AppTextStyles.body13(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ],
           ),
@@ -2370,19 +2312,135 @@ class _RequiresLocationScopeSurface extends StatelessWidget {
 /// picker rather than narrow it. Currently used by the Locations
 /// route, which the side nav hides at location scope but which deep
 /// links can still resolve.
+class _ScopedLocationListSurface extends StatelessWidget {
+  const _ScopedLocationListSurface({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.locations,
+    required this.onOpenLocation,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final List<OperatorWebManagementScopeOption> locations;
+  final ValueChanged<OperatorWebManagementScopeOption> onOpenLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(28),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(icon, size: 22, color: AppColors.sunsetDark),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: AppTextStyles.display20(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              body,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 16),
+            if (locations.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundSurface,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'No locations were found inside this scope.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              )
+            else
+              Column(
+                children: <Widget>[
+                  for (final location in locations) ...<Widget>[
+                    _ScopedLocationRow(
+                      location: location,
+                      onOpen: () => onOpenLocation(location),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScopedLocationRow extends StatelessWidget {
+  const _ScopedLocationRow({required this.location, required this.onOpen});
+
+  final OperatorWebManagementScopeOption location;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key('operator_web_scoped_location_row_${location.id}'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(
+            Icons.place_outlined,
+            size: 18,
+            color: AppColors.sunsetDark,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              location.label,
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            ),
+          ),
+          OutlinedButton(
+            key: Key('operator_web_scoped_location_open_${location.id}'),
+            onPressed: onOpen,
+            child: const Text('Open'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RequiresBusinessScopeSurface extends StatelessWidget {
   const _RequiresBusinessScopeSurface({
     super.key,
     required this.icon,
     required this.title,
     required this.body,
-    required this.selectedScopeLabel,
   });
 
   final IconData icon;
   final String title;
   final String body;
-  final String selectedScopeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -2413,33 +2471,6 @@ class _RequiresBusinessScopeSurface extends StatelessWidget {
               Text(
                 body,
                 style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                decoration: BoxDecoration(
-                  color: AppColors.cardGlow,
-                  border: Border.all(color: AppColors.borderSubtle, width: 1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.account_tree_outlined,
-                      size: 16,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Currently managing: $selectedScopeLabel',
-                        style: AppTextStyles.body13(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ],
           ),

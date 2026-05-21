@@ -934,26 +934,6 @@ class _AccountScreenState extends State<AccountScreen> {
         businessDefaultDisplay: businessDayBusinessDefault,
       ),
     );
-    final identityValueSummary = _businessName.text.trim().isEmpty
-        ? 'Business name is not on file yet.'
-        : 'Business name is ${_businessName.text.trim()}.';
-    final currencyDisplay = _currencyCode == null || _currencyCode!.isEmpty
-        ? 'no currency on file'
-        : _currencyCode!;
-    final localeDisplay = _localeTag == null || _localeTag!.isEmpty
-        ? 'no locale on file'
-        : _localeTag!;
-    final regionValueSummary =
-        'Currency is $currencyDisplay; locale is $localeDisplay.';
-    final weekStartDisplay = _weekStartDay == null || _weekStartDay!.isEmpty
-        ? 'no first day of week on file'
-        : _BusinessDaySection.titleCase(_weekStartDay!);
-    final rolloverDisplay = _rolloverHour == null
-        ? 'no rollover hour on file'
-        : '${_rolloverHour!.toString().padLeft(2, '0')}:00 local';
-    final businessDayValueSummary =
-        'Week starts $weekStartDisplay. Business day rollover is '
-        '$rolloverDisplay.';
     final timezoneEffectiveValue = _effectiveTimezoneValue();
     final savedTimezoneDisplay = _savedTimezoneValue?.trim();
     final timezoneDefaultDisplay = overrides == null
@@ -974,11 +954,6 @@ class _AccountScreenState extends State<AccountScreen> {
               businessDefaultDisplay: timezoneDefaultDisplay,
             ),
           );
-    final timezoneValueSummary = timezoneEffectiveValue.isNotEmpty
-        ? '${widget.scopeName} uses $timezoneEffectiveValue.'
-        : 'No timezone is on file. Set one to lock daily timing.';
-    final backendOnlyExplainer = widget
-        .backendOnlyExplainerForBusinessDefault();
     return SingleChildScrollView(
       key: const Key('operator_web_account_screen'),
       padding: const EdgeInsets.all(28),
@@ -999,38 +974,6 @@ class _AccountScreenState extends State<AccountScreen> {
               message: _locationOverridesLoadError!,
             ),
           if (_locationOverridesLoadError != null) const SizedBox(height: 14),
-          _AccountScopeSummaryPanel(
-            scopeLevel: widget.scopeLevel,
-            scopeName: widget.scopeName,
-            backendOnlyExplainer: backendOnlyExplainer,
-            rows: <_AccountScopeSummaryRow>[
-              _AccountScopeSummaryRow(
-                keyName: 'operator_web_account_identity_scope_summary',
-                title: 'Business identity',
-                source: _sourceLabel(identitySourceLabel),
-                value: identityValueSummary,
-              ),
-              _AccountScopeSummaryRow(
-                keyName: 'operator_web_account_region_scope_summary',
-                title: 'Currency and locale',
-                source: _sourceLabel(regionInheritedLabel),
-                value: regionValueSummary,
-              ),
-              _AccountScopeSummaryRow(
-                keyName: 'operator_web_account_business_day_scope_summary',
-                title: 'Business week',
-                source: _sourceLabel(businessDayInheritedLabel),
-                value: businessDayValueSummary,
-              ),
-              _AccountScopeSummaryRow(
-                keyName: 'operator_web_account_timezone_scope_summary',
-                title: '${_scopeLevelLabel(widget.scopeLevel)} timezone',
-                source: _sourceLabel(timezoneInheritedLabel),
-                value: timezoneValueSummary,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           _BusinessIdentitySection(
             businessNameController: _businessName,
             logoUrlController: _logoUrl,
@@ -1043,6 +986,9 @@ class _AccountScreenState extends State<AccountScreen> {
             contactEnabled: identityContactEnabled,
             scopeBelowBusiness: scopeBelowBusiness,
             scopeLabel: _scopeLevelLabel(widget.scopeLevel),
+            sourceStatus: _compactSourceStatus(
+              _sourceLabel(identitySourceLabel),
+            ),
             onChanged: () => setState(() {}),
             logoUploadGateway: widget.logoUploadGateway,
             logoFilePicker: widget.logoFilePicker,
@@ -1069,12 +1015,18 @@ class _AccountScreenState extends State<AccountScreen> {
             enabled: regionEnabled,
             onCurrencyChanged: (value) => setState(() => _currencyCode = value),
             onLocaleChanged: (value) => setState(() => _localeTag = value),
+            sourceStatus: _compactSourceStatus(
+              _sourceLabel(regionInheritedLabel),
+            ),
           ),
           const SizedBox(height: 14),
           _BusinessDaySection(
             weekStartDay: _weekStartDay,
             rolloverHour: _rolloverHour,
             onOpenBusinessTiming: widget.onOpenBusinessTiming,
+            sourceStatus: _compactSourceStatus(
+              _sourceLabel(businessDayInheritedLabel),
+            ),
           ),
           const SizedBox(height: 14),
           _LocationTimezoneSection(
@@ -1096,6 +1048,9 @@ class _AccountScreenState extends State<AccountScreen> {
                 setState(() => _selectedTimezone = value),
             onCustomChanged: () => setState(() {}),
             onSave: _handleSaveTimezone,
+            sourceStatus: _compactSourceStatus(
+              _sourceLabel(timezoneInheritedLabel),
+            ),
           ),
           const SizedBox(height: 18),
           if (_errorMessage != null)
@@ -1196,6 +1151,20 @@ class _AccountScreenState extends State<AccountScreen> {
 
   static String _sourceLabel(String? inheritedLabel) {
     return inheritedLabel ?? 'Set here. Does not inherit from a higher scope.';
+  }
+
+  static String _compactSourceStatus(String sourceLabel) {
+    final lower = sourceLabel.toLowerCase();
+    if (lower.startsWith('unsaved')) return 'Unsaved';
+    if (lower.startsWith('set here') || lower.contains('set here at')) {
+      return 'Set here';
+    }
+    if (lower.contains('inherit') ||
+        lower.contains('business default') ||
+        lower.contains(' from ')) {
+      return 'Inherited';
+    }
+    return 'Source';
   }
 }
 
@@ -1348,326 +1317,6 @@ class _ReadOnlyBanner extends StatelessWidget {
   }
 }
 
-class _AccountScopeSummaryRow {
-  const _AccountScopeSummaryRow({
-    required this.keyName,
-    required this.title,
-    required this.source,
-    required this.value,
-  });
-
-  final String keyName;
-  final String title;
-  final String source;
-  final String value;
-}
-
-class _AccountScopeSummaryPanel extends StatelessWidget {
-  const _AccountScopeSummaryPanel({
-    required this.scopeLevel,
-    required this.scopeName,
-    required this.rows,
-    this.backendOnlyExplainer,
-  });
-
-  final HierarchyScopeLevel scopeLevel;
-  final String scopeName;
-  final List<_AccountScopeSummaryRow> rows;
-  final String? backendOnlyExplainer;
-
-  @override
-  Widget build(BuildContext context) {
-    final scopeLabel = _scopeLabel(scopeLevel);
-    final backendOnly = backendOnlyExplainer;
-    return Container(
-      key: const Key('operator_web_account_scope_summary'),
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          OperatorWebSectionHeading(
-            title: 'Where this applies',
-            trailing: _AccountScopePill(
-              keyName: 'operator_web_account_scope_pill',
-              label: scopeLabel,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundMid,
-              border: Border.all(color: AppColors.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: _AccountScopeDetailLine(
-              keyName: 'operator_web_account_selected_scope_summary',
-              label: 'Selected scope',
-              value: '$scopeLabel: $scopeName',
-            ),
-          ),
-          const SizedBox(height: 6),
-          Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              key: const Key('operator_web_account_scope_details_toggle'),
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: const EdgeInsets.only(top: 6),
-              visualDensity: VisualDensity.compact,
-              title: Text(
-                'Section details',
-                style: AppTextStyles.body13(
-                  color: AppColors.sunsetDark,
-                ).copyWith(fontWeight: FontWeight.w700),
-              ),
-              children: <Widget>[
-                for (final row in rows) _AccountScopeDetailRow(row: row),
-                if (backendOnly != null) ...<Widget>[
-                  const SizedBox(height: 8),
-                  _AccountScopeBackendLine(message: backendOnly),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _scopeLabel(HierarchyScopeLevel level) {
-    switch (level) {
-      case HierarchyScopeLevel.business:
-        return 'Business';
-      case HierarchyScopeLevel.brand:
-        return 'Brand';
-      case HierarchyScopeLevel.region:
-        return 'Region';
-      case HierarchyScopeLevel.district:
-        return 'District';
-      case HierarchyScopeLevel.group:
-        return 'Location group';
-      case HierarchyScopeLevel.location:
-        return 'Location';
-    }
-  }
-}
-
-class _AccountScopePill extends StatelessWidget {
-  const _AccountScopePill({required this.keyName, required this.label});
-
-  final String keyName;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: Key(keyName),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.sunsetDark.withValues(alpha: 0.10),
-        border: Border.all(
-          color: AppColors.sunsetDark.withValues(alpha: 0.42),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: AppTextStyles.mono8(color: AppColors.sunsetDark),
-      ),
-    );
-  }
-}
-
-class _AccountScopeDetailRow extends StatelessWidget {
-  const _AccountScopeDetailRow({required this.row});
-
-  final _AccountScopeSummaryRow row;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: Key(row.keyName),
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 560;
-          final source = _AccountScopeEmphasisText(
-            key: Key('${row.keyName}_source'),
-            text: row.source,
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
-          );
-          final value = Text(
-            row.value,
-            key: Key('${row.keyName}_value'),
-            style: AppTextStyles.body12(color: AppColors.textPrimary),
-          );
-          if (compact) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  row.title,
-                  style: AppTextStyles.body13(
-                    color: AppColors.textPrimary,
-                  ).copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 4),
-                source,
-                const SizedBox(height: 3),
-                value,
-              ],
-            );
-          }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              SizedBox(
-                width: 160,
-                child: Text(
-                  row.title,
-                  style: AppTextStyles.body13(
-                    color: AppColors.textPrimary,
-                  ).copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: source),
-              const SizedBox(width: 12),
-              Expanded(child: value),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _AccountScopeEmphasisText extends StatelessWidget {
-  const _AccountScopeEmphasisText({
-    super.key,
-    required this.text,
-    required this.style,
-  });
-
-  final String text;
-  final TextStyle style;
-
-  @override
-  Widget build(BuildContext context) {
-    final emphasized = <String>[
-      'Unsaved change here',
-      'Set here',
-      'Inherits',
-      'Business default',
-      'Inherited value',
-    ];
-    final children = <TextSpan>[];
-    var index = 0;
-    while (index < text.length) {
-      var nextIndex = text.length;
-      String? nextPhrase;
-      for (final phrase in emphasized) {
-        final phraseIndex = text.indexOf(phrase, index);
-        if (phraseIndex >= 0 && phraseIndex < nextIndex) {
-          nextIndex = phraseIndex;
-          nextPhrase = phrase;
-        }
-      }
-      if (nextPhrase == null) {
-        children.add(TextSpan(text: text.substring(index), style: style));
-        break;
-      }
-      if (nextIndex > index) {
-        children.add(
-          TextSpan(text: text.substring(index, nextIndex), style: style),
-        );
-      }
-      children.add(
-        TextSpan(
-          text: nextPhrase,
-          style: style.copyWith(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      );
-      index = nextIndex + nextPhrase.length;
-    }
-    return Text.rich(TextSpan(children: children), key: key);
-  }
-}
-
-class _AccountScopeDetailLine extends StatelessWidget {
-  const _AccountScopeDetailLine({
-    required this.keyName,
-    required this.label,
-    required this.value,
-  });
-
-  final String keyName;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      key: Key(keyName),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        SizedBox(
-          width: 132,
-          child: Text(
-            label,
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
-            style: AppTextStyles.body13(color: AppColors.textPrimary),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AccountScopeBackendLine extends StatelessWidget {
-  const _AccountScopeBackendLine({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      key: const Key('operator_web_account_scope_backend_only'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        const Icon(Icons.info_outline, size: 14, color: AppColors.textMuted),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            message,
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _BusinessIdentitySection extends StatelessWidget {
   const _BusinessIdentitySection({
     required this.businessNameController,
@@ -1679,6 +1328,7 @@ class _BusinessIdentitySection extends StatelessWidget {
     required this.contactEnabled,
     required this.scopeBelowBusiness,
     required this.scopeLabel,
+    required this.sourceStatus,
     required this.onChanged,
     required this.onLogoUploaded,
     this.logoUploadGateway,
@@ -1710,6 +1360,7 @@ class _BusinessIdentitySection extends StatelessWidget {
   /// whether the business-name carve-out explainer is rendered.
   final bool scopeBelowBusiness;
   final String scopeLabel;
+  final String sourceStatus;
 
   final VoidCallback onChanged;
   final ValueChanged<String> onLogoUploaded;
@@ -1723,6 +1374,7 @@ class _BusinessIdentitySection extends StatelessWidget {
       cardKey: const Key('operator_web_account_section_identity'),
       title: 'Business identity',
       subtitle: '',
+      sourceStatus: sourceStatus,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1968,6 +1620,7 @@ class _RegionSection extends StatelessWidget {
     required this.enabled,
     required this.onCurrencyChanged,
     required this.onLocaleChanged,
+    required this.sourceStatus,
   });
 
   final String? currencyCode;
@@ -1977,6 +1630,7 @@ class _RegionSection extends StatelessWidget {
   final bool enabled;
   final ValueChanged<String?> onCurrencyChanged;
   final ValueChanged<String?> onLocaleChanged;
+  final String sourceStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -1987,6 +1641,7 @@ class _RegionSection extends StatelessWidget {
           'Currency drives every dollar amount you see. Locale drives '
           'date formats and number separators (1,234.56 versus '
           '1.234,56, for example).',
+      sourceStatus: sourceStatus,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2033,11 +1688,13 @@ class _BusinessDaySection extends StatelessWidget {
   const _BusinessDaySection({
     required this.weekStartDay,
     required this.rolloverHour,
+    required this.sourceStatus,
     this.onOpenBusinessTiming,
   });
 
   final String? weekStartDay;
   final int? rolloverHour;
+  final String sourceStatus;
   final VoidCallback? onOpenBusinessTiming;
 
   @override
@@ -2054,6 +1711,7 @@ class _BusinessDaySection extends StatelessWidget {
       subtitle:
           'Forge & Flow groups your data by business day. You can edit '
           'the business day start in Business Timing.',
+      sourceStatus: sourceStatus,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2168,6 +1826,7 @@ class _LocationTimezoneSection extends StatelessWidget {
     required this.onShortlistChanged,
     required this.onCustomChanged,
     required this.onSave,
+    required this.sourceStatus,
   });
 
   final String scopeLabel;
@@ -2183,6 +1842,7 @@ class _LocationTimezoneSection extends StatelessWidget {
   final ValueChanged<String?> onShortlistChanged;
   final VoidCallback onCustomChanged;
   final Future<void> Function() onSave;
+  final String sourceStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -2196,6 +1856,7 @@ class _LocationTimezoneSection extends StatelessWidget {
           'business dates land for $scopeName from '
           'this point forward; past data keeps the timezone it was '
           'recorded against.',
+      sourceStatus: sourceStatus,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -2347,15 +2008,20 @@ class _Card extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
+    this.sourceStatus,
   });
 
   final Key cardKey;
   final String title;
   final String subtitle;
   final Widget child;
+  final String? sourceStatus;
 
   @override
   Widget build(BuildContext context) {
+    final hasTrailing =
+        (sourceStatus != null && sourceStatus!.isNotEmpty) ||
+        subtitle.isNotEmpty;
     return Container(
       key: cardKey,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -2369,23 +2035,82 @@ class _Card extends StatelessWidget {
         children: [
           OperatorWebSectionHeading(
             title: title,
-            trailing: subtitle.isEmpty
-                ? null
-                : OperatorWebInfoButton(
+            trailing: hasTrailing
+                ? _CardHeaderTrailing(
                     title: title,
-                    tooltip: title,
-                    body: Text(
-                      subtitle,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
+                    subtitle: subtitle,
+                    sourceStatus: sourceStatus,
+                  )
+                : null,
           ),
           const SizedBox(height: 14),
           child,
         ],
       ),
+    );
+  }
+}
+
+class _CardHeaderTrailing extends StatelessWidget {
+  const _CardHeaderTrailing({
+    required this.title,
+    required this.subtitle,
+    required this.sourceStatus,
+  });
+
+  final String title;
+  final String subtitle;
+  final String? sourceStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = sourceStatus;
+    final hasStatus = status != null && status.isNotEmpty;
+    final hasInfo = subtitle.isNotEmpty;
+    if (!hasStatus && !hasInfo) return const SizedBox.shrink();
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: <Widget>[
+        if (hasStatus) _SourceStatusPill(label: status),
+        if (hasInfo)
+          OperatorWebInfoButton(
+            title: title,
+            tooltip: title,
+            body: Text(
+              subtitle,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SourceStatusPill extends StatelessWidget {
+  const _SourceStatusPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSetHere = label == 'Set here';
+    final isUnsaved = label == 'Unsaved';
+    final color = isUnsaved
+        ? AppColors.warning
+        : isSetHere
+        ? AppColors.peacockDark
+        : AppColors.textMuted;
+    return Container(
+      key: Key('operator_web_account_source_status_${label.toLowerCase()}'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.36), width: 1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(label, style: AppTextStyles.mono8(color: color)),
     );
   }
 }

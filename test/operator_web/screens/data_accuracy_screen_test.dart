@@ -739,40 +739,7 @@ void main() {
 
         expect(
           find.byKey(const Key('operator_web_data_accuracy_scope_summary')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: find.byKey(
-              const Key('operator_web_data_accuracy_selected_scope'),
-            ),
-            matching: find.textContaining('Brio - Chicago Loop'),
-          ),
-          findsOneWidget,
-        );
-        await tester.tap(
-          find.byKey(
-            const Key('operator_web_data_accuracy_scope_details_toggle'),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.descendant(
-            of: find.byKey(
-              const Key('operator_web_data_accuracy_inherited_source'),
-            ),
-            matching: find.textContaining('Business', findRichText: true),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: find.byKey(
-              const Key('operator_web_data_accuracy_effective_value'),
-            ),
-            matching: find.textContaining('Lunch Manual'),
-          ),
-          findsOneWidget,
+          findsNothing,
         );
         expect(
           find.byKey(const Key('covers_source_source_breakfast')),
@@ -1852,12 +1819,9 @@ void main() {
         find.byKey(const Key('wage_authority_row_display_row-mgr')),
         findsOneWidget,
       );
-      // HP #11 scope editor renders at the top of the embedded section.
-      // With no hierarchy nodes supplied, it honestly degrades to the
-      // location-only state.
       expect(
         find.byKey(const Key('wage_authority_scope_editor_location_only')),
-        findsOneWidget,
+        findsNothing,
       );
     });
 

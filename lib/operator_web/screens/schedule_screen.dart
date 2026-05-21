@@ -26,7 +26,6 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_schedule_gateway.dart';
-import '../widgets/hierarchy_scope_notice.dart';
 import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/schedule_forecast_explainer_panel.dart';
@@ -166,46 +165,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         children: <Widget>[
           _Header(locationName: widget.locationName, snapshot: _snapshot),
           const SizedBox(height: 14),
-          // HP #11 (`CLAUDE.md`): every settings / timing / accuracy /
-          // pricing / security / support surface declares its selected
-          // scope, inherited source, and effective value. Schedule is a
-          // per-(operator, location) view of the locked weekly plan,
-          // so the scope is Location with no higher-level inheritance.
-          //
-          // The weekly plan + forecast context tables that feed this
-          // screen do not yet carry per-field inheritance metadata
-          // (`weekly_plan_snapshot` / `forecast_context` are flat fact
-          // tables keyed on operator + location). When per-scope
-          // forecasts land (planned for a future hierarchy-aware wave)
-          // each daily row will gain its own inheritance badge using
-          // the same pattern Business setup's `_EffectiveFieldRow`
-          // already follows. Until then the surface renders the scope
-          // triple at the top of the screen and the daily table stays
-          // value-only.
-          // TODO(wave-3+ hierarchy forecasts): replace the screen-level
-          // notice with per-day inheritance badges once
-          // `weekly_plan_snapshot` carries `scope_kind` + `inherited_
-          // from_scope_id` columns.
-          HierarchyScopeNotice(
-            keyName: 'schedule_screen_hierarchy_scope',
-            selectedScope: HierarchyScopeLevel.location,
-            scopeName: widget.locationName,
-            inheritedFromLabel: null,
-            effectiveValueSummary: _snapshot == null
-                ? "This location's locked weekly plan will appear here "
-                      "once the first forecast runs."
-                : "Showing ${widget.locationName}'s locked plan for the "
-                      "week of ${_Header._formatWeekRange(_snapshot!.weekStartDate, _snapshot!.weekEndDate)}.",
-            backendOnlyExplainer:
-                "Forecasts and locked plans are set per location by "
-                "design. A forecast is built from this restaurant's "
-                "own history and traffic, so it does not inherit from "
-                "a region or brand. Each location's plan stands on its "
-                "own.",
-            backendOnlyHelpTitle: 'Forecasts and locked plans',
-            showBackendOnlyExplainer: false,
-            showEffectiveValue: false,
-          ),
           if (!_hasReadRole) ...<Widget>[
             const SizedBox(height: 14),
             const _Banner(
