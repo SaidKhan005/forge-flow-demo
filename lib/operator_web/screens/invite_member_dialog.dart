@@ -26,6 +26,7 @@ import '../services/web_team_users_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/hierarchy_tree_picker.dart';
+import '../widgets/operator_web_surface.dart';
 
 /// Locked validation copy. Tests assert against these strings to pin
 /// the parity contract against the rendered dialog copy.
@@ -317,124 +318,110 @@ class _InviteMemberDialogState extends State<InviteMemberDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('invite_member_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Invite a team member',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
+      title: 'Invite a team member',
+      icon: Icons.person_add_alt_1_outlined,
+      maxWidth: 500,
+      actions: [
+        TextButton(
+          key: const Key('invite_member_dialog_cancel'),
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('invite_member_dialog_submit'),
+          onPressed: _submitting ? null : _submit,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.sunset,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          child: _submitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Send invite'),
+        ),
+      ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Send an email invite. The new teammate will set their own '
+              'password and turn on two-factor sign-in before they get to '
+              'your dashboard.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              key: const Key('invite_member_dialog_email_field'),
+              controller: _emailController,
+              autofocus: true,
+              enabled: !_submitting,
+              keyboardType: TextInputType.emailAddress,
+              onChanged: _form.setEmail,
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                hintText: 'jordan.lee@example.com',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Send an email invite. The new teammate will set their own '
-                'password and turn on two-factor sign-in before they get to '
-                'your dashboard.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('invite_member_dialog_role_field'),
+              initialValue: _form.roleId,
+              onChanged: _submitting
+                  ? null
+                  : (value) {
+                      _form.setRoleId(value);
+                    },
+              decoration: const InputDecoration(
+                labelText: 'Role',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 14),
-              TextField(
-                key: const Key('invite_member_dialog_email_field'),
-                controller: _emailController,
-                autofocus: true,
-                enabled: !_submitting,
-                keyboardType: TextInputType.emailAddress,
-                onChanged: _form.setEmail,
-                decoration: const InputDecoration(
-                  labelText: 'Email address',
-                  hintText: 'jordan.lee@example.com',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                key: const Key('invite_member_dialog_role_field'),
-                initialValue: _form.roleId,
-                onChanged: _submitting
-                    ? null
-                    : (value) {
-                        _form.setRoleId(value);
-                      },
-                decoration: const InputDecoration(
-                  labelText: 'Role',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<String>>[
-                  for (final role in widget.roleOptions)
-                    DropdownMenuItem<String>(
-                      value: role.roleId,
-                      child: Text(role.displayName),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              IgnorePointer(
-                ignoring: _submitting,
-                child: HierarchyTreePicker(
-                  key: const Key('invite_member_dialog_location_field'),
-                  keyPrefix: 'invite_member_dialog_hierarchy',
-                  nodes: _hierarchyNodes,
-                  selectedId: _selectedHierarchyNodeId,
-                  onSelected: (node) {
-                    setState(() {
-                      _applyHierarchySelection(node);
-                      // Clear the inline error once the operator picks
-                      // a scope so they do not see a stale "Choose a
-                      // primary location" hint after the fix.
-                      if (_errorMessage ==
-                          InviteMemberDialogCopy.locationMissing) {
-                        _errorMessage = null;
-                      }
-                    });
-                  },
-                ),
-              ),
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 10),
-                Text(
-                  _errorMessage!,
-                  key: const Key('invite_member_dialog_error_text'),
-                  style: AppTextStyles.body13(color: AppColors.negative),
-                ),
+              items: <DropdownMenuItem<String>>[
+                for (final role in widget.roleOptions)
+                  DropdownMenuItem<String>(
+                    value: role.roleId,
+                    child: Text(role.displayName),
+                  ),
               ],
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    key: const Key('invite_member_dialog_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('invite_member_dialog_submit'),
-                    onPressed: _submitting ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.sunset,
-                      foregroundColor: AppColors.backgroundSurface,
-                    ),
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Send invite'),
-                  ),
-                ],
+            ),
+            const SizedBox(height: 12),
+            IgnorePointer(
+              ignoring: _submitting,
+              child: HierarchyTreePicker(
+                key: const Key('invite_member_dialog_location_field'),
+                keyPrefix: 'invite_member_dialog_hierarchy',
+                nodes: _hierarchyNodes,
+                selectedId: _selectedHierarchyNodeId,
+                onSelected: (node) {
+                  setState(() {
+                    _applyHierarchySelection(node);
+                    // Clear the inline error once the operator picks
+                    // a scope so they do not see a stale "Choose a
+                    // primary location" hint after the fix.
+                    if (_errorMessage ==
+                        InviteMemberDialogCopy.locationMissing) {
+                      _errorMessage = null;
+                    }
+                  });
+                },
+              ),
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _errorMessage!,
+                key: const Key('invite_member_dialog_error_text'),
+                style: AppTextStyles.body13(color: AppColors.negative),
               ),
             ],
-          ),
+          ],
         ),
       ),
     );

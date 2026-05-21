@@ -59,7 +59,7 @@ import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_security_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
-import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 import 'edit_self_profile_dialog.dart';
 
 /// V1 My account screen. The router renders this at
@@ -616,6 +616,52 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     widget.onOpenAuditLog?.call();
   }
 
+  bool get _canSignOutOtherSessions {
+    final currentId = widget.actions?.currentAccountSessionId;
+    if (currentId == null ||
+        _activeSessionsLoading ||
+        _signingOutOtherSessions) {
+      return false;
+    }
+    return _activeSessions.any((session) => session.sessionId != currentId);
+  }
+
+  Future<void> _handleManageActiveSessions() {
+    return showOperatorWebDialog<void>(
+      context: context,
+      title: 'Active sessions',
+      icon: Icons.devices_other_outlined,
+      maxWidth: 560,
+      child: _ActiveSessionsDetailList(
+        sessions: _activeSessions,
+        currentSessionId: widget.actions?.currentAccountSessionId,
+        loading: _activeSessionsLoading,
+        errorMessage: _activeSessionsError,
+        onRetry: _loadActiveSessions,
+      ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('account_active_sessions_dialog_close'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+        OutlinedButton.icon(
+          key: const Key('account_active_sessions_dialog_sign_out_others'),
+          onPressed: _canSignOutOtherSessions
+              ? () {
+                  Navigator.of(context).pop();
+                  _handleSignOutOtherSessions();
+                }
+              : null,
+          icon: const Icon(Icons.logout, size: 16),
+          label: Text(
+            _signingOutOtherSessions ? 'Signing out...' : 'Sign out others',
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -633,7 +679,6 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
               _ProfileSection(
                 session: widget.session,
                 twoColumn: twoColumnProfile,
-                onAuditLog: _handleOpenAuditLog,
                 onEditProfile: widget.actions == null
                     ? null
                     : _handleEditProfile,
@@ -653,7 +698,6 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                     setState(() => _historyWindow = next),
                 onRetryLoginHistory: _loadLoginHistory,
                 onChangePassword: _handleChangePassword,
-                onAuditLog: _handleOpenAuditLog,
               ),
               const SizedBox(height: 14),
               _MfaSection(
@@ -661,7 +705,6 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                 canWrite: _canWriteAccount,
                 readOnlyTooltip: _readOnlyTooltipMfa,
                 onPrimaryAction: _handleMfaPrimaryAction,
-                onAuditLog: _handleOpenAuditLog,
               ),
               const SizedBox(height: 14),
               _ActiveSessionsSection(
@@ -671,9 +714,10 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                 errorMessage: _activeSessionsError,
                 signingOutOthers: _signingOutOtherSessions,
                 onRetry: _loadActiveSessions,
-                onSignOutOthers: _handleSignOutOtherSessions,
-                onAuditLog: _handleOpenAuditLog,
+                onManageSessions: _handleManageActiveSessions,
               ),
+              const SizedBox(height: 14),
+              _AuditLogSection(onAuditLog: _handleOpenAuditLog),
             ],
           ),
         );
@@ -713,8 +757,6 @@ class _SectionCard extends StatelessWidget {
     required this.title,
     this.headerExplainer,
     required this.child,
-    required this.auditLinkKey,
-    required this.onAuditLog,
     this.statusBadge,
   });
 
@@ -722,8 +764,6 @@ class _SectionCard extends StatelessWidget {
   final String title;
   final String? headerExplainer;
   final Widget child;
-  final Key auditLinkKey;
-  final VoidCallback onAuditLog;
   final Widget? statusBadge;
 
   @override
@@ -736,47 +776,12 @@ class _SectionCard extends StatelessWidget {
             explainer: explainer,
             statusBadge: statusBadge,
           );
-    return Container(
+    return OperatorWebPanel(
       key: cardKey,
+      title: title,
+      trailing: trailing,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: OperatorWebSectionHeading(
-                  title: title,
-                  trailing: trailing,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          child,
-          const SizedBox(height: 14),
-          const Divider(height: 1, color: AppColors.borderSubtle),
-          const SizedBox(height: 10),
-          TextButton.icon(
-            key: auditLinkKey,
-            onPressed: onAuditLog,
-            icon: const Icon(Icons.history, size: 16),
-            label: const Text('View audit log'),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.sunsetDark,
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 32),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
-            ),
-          ),
-        ],
-      ),
+      child: child,
     );
   }
 }
@@ -817,14 +822,12 @@ class _ProfileSection extends StatelessWidget {
   const _ProfileSection({
     required this.session,
     required this.twoColumn,
-    required this.onAuditLog,
     this.onEditProfile,
     this.editToastMessage,
   });
 
   final OperatorWebSession session;
   final bool twoColumn;
-  final VoidCallback onAuditLog;
 
   /// Wave 2 W-3 — when non-null, renders an "Edit profile" button
   /// below the profile fields. Null means the actions seam is not
@@ -838,7 +841,6 @@ class _ProfileSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final phone = session.phone;
     final fields = <Widget>[
       _ProfileField(
         label: 'Display name',
@@ -851,13 +853,6 @@ class _ProfileSection extends StatelessWidget {
         value: session.email.isEmpty ? 'Not on file' : session.email,
       ),
       _ProfileField(
-        label: 'Phone',
-        value: (phone == null || phone.isEmpty) ? 'Not on file' : phone,
-        helper:
-            'Phone changes happen in the operator mobile app under '
-            'Settings, Account.',
-      ),
-      _ProfileField(
         label: 'Business',
         value: session.businessName.isEmpty
             ? 'Not on file'
@@ -867,8 +862,6 @@ class _ProfileSection extends StatelessWidget {
     return _SectionCard(
       cardKey: const Key('account_section_profile'),
       title: 'Profile',
-      auditLinkKey: const Key('account_section_profile_audit_log_link'),
-      onAuditLog: onAuditLog,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -957,11 +950,10 @@ class _ProfileSection extends StatelessWidget {
 }
 
 class _ProfileField extends StatelessWidget {
-  const _ProfileField({required this.label, required this.value, this.helper});
+  const _ProfileField({required this.label, required this.value});
 
   final String label;
   final String value;
-  final String? helper;
 
   @override
   Widget build(BuildContext context) {
@@ -971,13 +963,6 @@ class _ProfileField extends StatelessWidget {
         Text(label, style: AppTextStyles.mono11(color: AppColors.textMuted)),
         const SizedBox(height: 4),
         Text(value, style: AppTextStyles.body13(color: AppColors.textPrimary)),
-        if (helper != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            helper!,
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
-        ],
       ],
     );
   }
@@ -989,14 +974,12 @@ class _MfaSection extends StatelessWidget {
     required this.canWrite,
     required this.readOnlyTooltip,
     required this.onPrimaryAction,
-    required this.onAuditLog,
   });
 
   final MfaCardState state;
   final bool canWrite;
   final String readOnlyTooltip;
   final VoidCallback onPrimaryAction;
-  final VoidCallback onAuditLog;
 
   @override
   Widget build(BuildContext context) {
@@ -1014,8 +997,6 @@ class _MfaSection extends StatelessWidget {
           'sign-in, in addition to your password. We strongly recommend '
           'keeping it on for every operator user.',
       statusBadge: badge,
-      auditLinkKey: const Key('account_section_mfa_audit_log_link'),
-      onAuditLog: onAuditLog,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1084,7 +1065,6 @@ class _SecuritySection extends StatelessWidget {
     required this.onHistoryWindowChanged,
     required this.onRetryLoginHistory,
     required this.onChangePassword,
-    required this.onAuditLog,
   });
 
   final Key scrollAnchorKey;
@@ -1098,7 +1078,6 @@ class _SecuritySection extends StatelessWidget {
   final ValueChanged<_SecurityHistoryWindow> onHistoryWindowChanged;
   final VoidCallback onRetryLoginHistory;
   final VoidCallback onChangePassword;
-  final VoidCallback onAuditLog;
 
   @override
   Widget build(BuildContext context) {
@@ -1108,8 +1087,6 @@ class _SecuritySection extends StatelessWidget {
       headerExplainer:
           'A strong password and recent sign-in history help protect your '
           'operator account. Password changes may ask you to sign in again.',
-      auditLinkKey: const Key('account_section_security_audit_log_link'),
-      onAuditLog: onAuditLog,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1400,8 +1377,7 @@ class _ActiveSessionsSection extends StatelessWidget {
     required this.errorMessage,
     required this.signingOutOthers,
     required this.onRetry,
-    required this.onSignOutOthers,
-    required this.onAuditLog,
+    required this.onManageSessions,
   });
 
   final List<AccountActiveSessionEntry> sessions;
@@ -1410,8 +1386,7 @@ class _ActiveSessionsSection extends StatelessWidget {
   final String? errorMessage;
   final bool signingOutOthers;
   final VoidCallback onRetry;
-  final VoidCallback onSignOutOthers;
-  final VoidCallback onAuditLog;
+  final VoidCallback onManageSessions;
 
   @override
   Widget build(BuildContext context) {
@@ -1419,40 +1394,15 @@ class _ActiveSessionsSection extends StatelessWidget {
     final otherSessionCount = currentId == null
         ? 0
         : sessions.where((session) => session.sessionId != currentId).length;
-    final canSignOutOthers =
-        currentId != null &&
-        otherSessionCount > 0 &&
-        !loading &&
-        !signingOutOthers;
-    final signOutButton = OutlinedButton.icon(
-      key: const Key('account_active_sessions_sign_out_others'),
-      onPressed: canSignOutOthers ? onSignOutOthers : null,
-      icon: signingOutOthers
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.logout, size: 16),
-      label: Text(
-        signingOutOthers ? 'Signing out...' : 'Sign out all other sessions',
-      ),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.sunsetDark,
-        disabledForegroundColor: AppColors.textMuted,
-        side: BorderSide(
-          color: canSignOutOthers
-              ? AppColors.sunsetDark
-              : AppColors.borderSubtle,
-          width: 1,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-      ),
-    );
+    final summary = sessions.isEmpty
+        ? 'No active sessions are available for this account.'
+        : otherSessionCount == 0
+        ? 'This is the only active session we can see right now.'
+        : '$otherSessionCount other session${otherSessionCount == 1 ? '' : 's'} '
+              'can be reviewed or signed out.';
     return _SectionCard(
       cardKey: const Key('account_section_active_sessions'),
-      title: 'Active Sessions',
+      title: 'Active sessions',
       headerExplainer:
           'Review browsers and devices signed in to your operator account. '
           'This device stays signed in when you sign out the others.',
@@ -1461,8 +1411,6 @@ class _ActiveSessionsSection extends StatelessWidget {
         label: '${sessions.length} active',
         color: AppColors.textMuted,
       ),
-      auditLinkKey: const Key('account_section_active_sessions_audit_log_link'),
-      onAuditLog: onAuditLog,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1481,30 +1429,103 @@ class _ActiveSessionsSection extends StatelessWidget {
               message: 'No active sessions are available for this account.',
             )
           else ...[
-            for (var i = 0; i < sessions.length; i++) ...[
-              _ActiveSessionRow(
-                session: sessions[i],
-                isCurrent: sessions[i].sessionId == currentSessionId,
-              ),
-              if (i != sessions.length - 1) const SizedBox(height: 10),
-            ],
+            Text(
+              summary,
+              key: const Key('account_active_sessions_summary'),
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
-              child: canSignOutOthers
-                  ? signOutButton
-                  : Tooltip(
-                      message: currentId == null
-                          ? 'Refresh this page before signing out other sessions.'
-                          : otherSessionCount == 0
-                          ? 'Only other sessions can be signed out from here.'
-                          : 'Finish the current session action first.',
-                      child: signOutButton,
-                    ),
+              child: OutlinedButton.icon(
+                key: const Key('account_active_sessions_manage'),
+                onPressed: onManageSessions,
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Manage sessions'),
+              ),
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _AuditLogSection extends StatelessWidget {
+  const _AuditLogSection({required this.onAuditLog});
+
+  final VoidCallback onAuditLog;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      cardKey: const Key('account_section_audit_log'),
+      title: 'Audit log',
+      headerExplainer:
+          'The audit log shows profile, password, two-factor sign-in, and '
+          'session events for this account.',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          key: const Key('account_section_audit_log_link'),
+          onPressed: onAuditLog,
+          icon: const Icon(Icons.history, size: 16),
+          label: const Text('View audit log'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.sunsetDark,
+            side: const BorderSide(color: AppColors.sunsetDark),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveSessionsDetailList extends StatelessWidget {
+  const _ActiveSessionsDetailList({
+    required this.sessions,
+    required this.currentSessionId,
+    required this.loading,
+    required this.errorMessage,
+    required this.onRetry,
+  });
+
+  final List<AccountActiveSessionEntry> sessions;
+  final String? currentSessionId;
+  final bool loading;
+  final String? errorMessage;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const _AccountInlineState(
+        stateKey: Key('account_active_sessions_dialog_loading'),
+        icon: Icons.sync,
+        message: 'Loading active sessions...',
+      );
+    }
+    if (errorMessage != null) {
+      return _AccountInlineError(message: errorMessage!, onRetry: onRetry);
+    }
+    if (sessions.isEmpty) {
+      return const _AccountInlineState(
+        stateKey: Key('account_active_sessions_dialog_empty'),
+        icon: Icons.devices_other_outlined,
+        message: 'No active sessions are available for this account.',
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        for (var i = 0; i < sessions.length; i++) ...<Widget>[
+          _ActiveSessionRow(
+            session: sessions[i],
+            isCurrent: sessions[i].sessionId == currentSessionId,
+          ),
+          if (i != sessions.length - 1) const SizedBox(height: 10),
+        ],
+      ],
     );
   }
 }

@@ -150,32 +150,26 @@ void main() {
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 768));
-      final session = sessionWithRole(
-        'operator_owner',
-        phone: '+1 (555) 010-2580',
-      );
+      final session = sessionWithRole('operator_owner');
 
       await pumpAccount(tester, session);
 
       expect(find.text('Alex Morrison'), findsOneWidget);
       expect(find.text('alex@brio-restaurants.com'), findsOneWidget);
       expect(find.text('Brio Restaurants'), findsOneWidget);
-      expect(find.text('+1 (555) 010-2580'), findsOneWidget);
+      expect(find.text('Phone'), findsNothing);
     });
 
-    testWidgets(
-      'Profile section falls back to "Not on file" when phone absent',
-      (tester) async {
-        await sizeViewport(tester, const Size(1024, 768));
-        final session = sessionWithRole('operator_owner');
+    testWidgets('Profile section omits phone when absent', (tester) async {
+      await sizeViewport(tester, const Size(1024, 768));
+      final session = sessionWithRole('operator_owner');
 
-        await pumpAccount(tester, session);
+      await pumpAccount(tester, session);
 
-        expect(find.text('Not on file'), findsOneWidget);
-      },
-    );
+      expect(find.text('Phone'), findsNothing);
+    });
 
-    testWidgets('Profile section is read-only and every card links audit log', (
+    testWidgets('Profile section is read-only and one audit log card is kept', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 768));
@@ -191,21 +185,10 @@ void main() {
         findsNothing,
       );
       expect(
-        find.byKey(const Key('account_section_profile_audit_log_link')),
+        find.byKey(const Key('account_section_audit_log')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const Key('account_section_security_audit_log_link')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('account_section_mfa_audit_log_link')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('account_section_active_sessions_audit_log_link')),
-        findsOneWidget,
-      );
+      expect(find.text('View audit log'), findsOneWidget);
     });
   });
 
@@ -422,7 +405,10 @@ void main() {
       await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
 
-      expect(find.text('Two-factor sign-in: Ready to turn off'), findsOneWidget);
+      expect(
+        find.text('Two-factor sign-in: Ready to turn off'),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('account_section_mfa_turn_off_final')),
         findsOneWidget,
@@ -435,10 +421,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Two-factor sign-in: Off'), findsOneWidget);
-      expect(
-        actions.stepUpLabels,
-        contains('turning off two-factor sign-in'),
-      );
+      expect(actions.stepUpLabels, contains('turning off two-factor sign-in'));
     });
   });
 
@@ -576,12 +559,31 @@ void main() {
   });
 
   group('MyAccountScreen Active Sessions section', () {
-    testWidgets('marks the current session as This device', (tester) async {
+    testWidgets('summarizes sessions and opens details on demand', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRole('operator_owner');
       final actions = _FakeAccountActions();
 
       await pumpAccount(tester, session, actions: actions);
+
+      expect(
+        find.text('2 other sessions can be reviewed or signed out.'),
+        findsOneWidget,
+      );
+      expect(find.text('This device'), findsNothing);
+      expect(
+        find.byKey(const Key('account_active_sessions_manage')),
+        findsOneWidget,
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('account_active_sessions_manage')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account_active_sessions_manage')));
+      await tester.pumpAndSettle();
 
       expect(find.text('This device'), findsOneWidget);
       expect(
@@ -595,7 +597,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('account_active_sessions_sign_out_others')),
+        find.byKey(const Key('account_active_sessions_dialog_sign_out_others')),
         findsOneWidget,
       );
     });
@@ -610,11 +612,17 @@ void main() {
       await pumpAccount(tester, session, actions: actions);
 
       await tester.ensureVisible(
-        find.byKey(const Key('account_active_sessions_sign_out_others')),
+        find.byKey(const Key('account_active_sessions_manage')),
       );
       await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('account_active_sessions_manage')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account_active_sessions_manage')));
+      await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const Key('account_active_sessions_sign_out_others')),
+        find.byKey(const Key('account_active_sessions_dialog_sign_out_others')),
       );
       await tester.pumpAndSettle();
       await tester.tap(
@@ -629,7 +637,7 @@ void main() {
       );
       expect(
         find.byKey(const Key('account_active_sessions_row_session-current')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const Key('account_active_sessions_row_session-ipad')),
@@ -654,8 +662,14 @@ void main() {
 
       await pumpAccount(tester, session, actions: actions);
 
+      await tester.ensureVisible(
+        find.byKey(const Key('account_active_sessions_manage')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account_active_sessions_manage')));
+      await tester.pumpAndSettle();
       final button = tester.widget<OutlinedButton>(
-        find.byKey(const Key('account_active_sessions_sign_out_others')),
+        find.byKey(const Key('account_active_sessions_dialog_sign_out_others')),
       );
       expect(button.onPressed, isNull);
       expect(find.text('This device'), findsOneWidget);
@@ -707,7 +721,7 @@ void main() {
           find.byKey(const Key('account_section_password_change')),
         );
         final sessions = tester.widget<OutlinedButton>(
-          find.byKey(const Key('account_active_sessions_sign_out_others')),
+          find.byKey(const Key('account_active_sessions_manage')),
         );
         expect(enroll.onPressed, isNull);
         expect(pwd.onPressed, isNull);
