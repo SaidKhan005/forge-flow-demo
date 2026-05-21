@@ -26,3 +26,49 @@ linter:
     - prefer_final_locals
     - sized_box_for_whitespace
     - use_key_in_widget_constructors
+
+# -----------------------------------------------------------------------------
+# dart_code_linter — Wave-2 lane G engineering-bar metrics (ADVISORY ONLY)
+# -----------------------------------------------------------------------------
+#
+# Codifies the §5.2 engineering bars from
+# `docs/_audits/code_health/code_hardening_plan_2026_05_21.md` into
+# machine-checkable thresholds:
+#
+#   - source-lines-of-code  ≤ 80   (audit bar #3 "Function length ≤ 80")
+#   - cyclomatic-complexity ≤ 12   (audit bar #4)
+#   - maximum-nesting-level ≤ 5    (audit bar #5)
+#   - number-of-parameters  ≤ 7    (audit bar #6)
+#
+# Note: the audit uses the label "function-lines" — `dart_code_linter`'s
+# matching metric is named `source-lines-of-code` (SLOC; blank/comment
+# lines excluded). The §5.2 paragraph defenses still apply.
+#
+# ADVISORY POSTURE — the `analyzer.plugins` entry for `dart_code_linter`
+# is intentionally NOT enabled. This means:
+#   - `dart analyze` is unaffected (no new errors/warnings/info from this
+#     block; same posture as before this PR).
+#   - The metrics surface only when explicitly invoked via
+#     `dart run dart_code_linter:metrics analyze lib/`
+#     (see `runbooks/dart_code_metrics_runbook.md`).
+#   - Promotion to a blocking lint (analyzer plugin or CI) is a separate,
+#     gated slice held under the operator's "surfaces happy" decision
+#     2026-05-20 (CLAUDE.md Ceiling-Raise Rule R-2 spirit).
+#
+# Exemptions (`metrics-exclude`):
+#   - `lib/l10n/**`             — generated localization (Flutter intl)
+#   - `**/*.g.dart`             — codegen output
+#   - `**/*.freezed.dart`       — codegen output
+#   - `test/**`                 — different bars per audit §5.2 #2;
+#                                 revisit in a future ratchet slice
+dart_code_linter:
+  metrics:
+    source-lines-of-code: 80
+    cyclomatic-complexity: 12
+    maximum-nesting-level: 5
+    number-of-parameters: 7
+  metrics-exclude:
+    - lib/l10n/**
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - test/**
