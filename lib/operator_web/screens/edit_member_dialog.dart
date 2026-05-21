@@ -45,6 +45,7 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
+import '../widgets/operator_web_surface.dart';
 import 'invite_member_dialog.dart' show InviteMemberDialogCopy;
 
 /// Locked validation copy for the Edit member dialog. Reuses the
@@ -187,10 +188,14 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
   void initState() {
     super.initState();
     _emailController = TextEditingController(text: widget.user.email);
-    _displayNameController = TextEditingController(text: widget.user.displayName);
+    _displayNameController = TextEditingController(
+      text: widget.user.displayName,
+    );
     _reasonController = TextEditingController();
     _selectedRoleId = widget.user.roleId;
-    final firstGrant = widget.user.grants.isEmpty ? null : widget.user.grants.first;
+    final firstGrant = widget.user.grants.isEmpty
+        ? null
+        : widget.user.grants.first;
     final initialScopeRaw = firstGrant?.scopeType ?? 'location';
     _selectedScope = _EditMemberScope.fromWire(initialScopeRaw);
     _selectedLocationId = firstGrant?.locationId ?? widget.user.locationId;
@@ -357,8 +362,7 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
       if (!mounted) return;
       Navigator.of(context).pop(
         EditMemberDialogResult(
-          patched: patched ??
-              TeamUserProfilePatched(user: widget.user),
+          patched: patched ?? TeamUserProfilePatched(user: widget.user),
         ),
       );
     } catch (error) {
@@ -395,207 +399,190 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('edit_member_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text(
-                  'Edit member',
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
+      title: 'Edit member',
+      icon: Icons.manage_accounts_outlined,
+      maxWidth: 540,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('edit_member_dialog_cancel'),
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('edit_member_dialog_submit'),
+          onPressed: _submitting ? null : _submit,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.sunset,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          child: _submitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Save'),
+        ),
+      ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              'Change this teammate’s email, name, role, or '
+              'hierarchy scope. The change writes to Firebase + audit '
+              'log; the operator will see the change in their audit log.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              key: const Key('edit_member_dialog_email_field'),
+              controller: _emailController,
+              enabled: !_submitting,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            if (_emailChanged) ...<Widget>[
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                key: const Key('edit_member_dialog_confirm_email'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                title: Text(
+                  EditMemberDialogCopy.confirmEmailRequired,
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Change this teammate’s email, name, role, or '
-                  'hierarchy scope. The change writes to Firebase + audit '
-                  'log; the operator will see the change in their audit log.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                value: _confirmEmail,
+                onChanged: _submitting
+                    ? null
+                    : (v) => setState(() => _confirmEmail = v ?? false),
+              ),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('edit_member_dialog_display_name_field'),
+              controller: _displayNameController,
+              enabled: !_submitting,
+              decoration: const InputDecoration(
+                labelText: 'Display name',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            // W-1-FU — role + hierarchy scope dropdowns are now
+            // editable. `onChanged` writes back into local state so
+            // `_anythingChanged` lights up Save the same way the
+            // email / display-name fields do. On submit the dialog
+            // dispatches `createRoleGrant` + `revokeRoleGrant` to
+            // rotate the grant atomically. The proxy still gates
+            // both writes on `team.roles.assign` /
+            // `team.roles.revoke`.
+            DropdownButtonFormField<String>(
+              key: const Key('edit_member_dialog_role_field'),
+              initialValue: _selectedRoleId,
+              decoration: const InputDecoration(
+                labelText: 'Role',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: _submitting
+                  ? null
+                  : (value) => setState(() => _selectedRoleId = value),
+              items: <DropdownMenuItem<String>>[
+                for (final role in widget.roleOptions)
+                  DropdownMenuItem<String>(
+                    value: role.roleId,
+                    child: Text(role.displayName),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<_EditMemberScope>(
+              key: const Key('edit_member_dialog_scope_field'),
+              initialValue: _selectedScope,
+              decoration: const InputDecoration(
+                labelText: 'Where this applies',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: _submitting
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      setState(() => _selectedScope = value);
+                    },
+              items: const <DropdownMenuItem<_EditMemberScope>>[
+                DropdownMenuItem<_EditMemberScope>(
+                  value: _EditMemberScope.operatorWide,
+                  child: Text('Business-wide'),
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  key: const Key('edit_member_dialog_email_field'),
-                  controller: _emailController,
-                  enabled: !_submitting,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email address',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (_) => setState(() {}),
+                DropdownMenuItem<_EditMemberScope>(
+                  value: _EditMemberScope.orgUnit,
+                  child: Text('Org unit'),
                 ),
-                if (_emailChanged) ...<Widget>[
-                  const SizedBox(height: 8),
-                  CheckboxListTile(
-                    key: const Key('edit_member_dialog_confirm_email'),
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                    title: Text(
-                      EditMemberDialogCopy.confirmEmailRequired,
-                      style: AppTextStyles.body13(color: AppColors.textPrimary),
-                    ),
-                    value: _confirmEmail,
-                    onChanged: _submitting
-                        ? null
-                        : (v) => setState(() => _confirmEmail = v ?? false),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                TextField(
-                  key: const Key('edit_member_dialog_display_name_field'),
-                  controller: _displayNameController,
-                  enabled: !_submitting,
-                  decoration: const InputDecoration(
-                    labelText: 'Display name',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                // W-1-FU — role + hierarchy scope dropdowns are now
-                // editable. `onChanged` writes back into local state so
-                // `_anythingChanged` lights up Save the same way the
-                // email / display-name fields do. On submit the dialog
-                // dispatches `createRoleGrant` + `revokeRoleGrant` to
-                // rotate the grant atomically. The proxy still gates
-                // both writes on `team.roles.assign` /
-                // `team.roles.revoke`.
-                DropdownButtonFormField<String>(
-                  key: const Key('edit_member_dialog_role_field'),
-                  initialValue: _selectedRoleId,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: _submitting
-                      ? null
-                      : (value) => setState(() => _selectedRoleId = value),
-                  items: <DropdownMenuItem<String>>[
-                    for (final role in widget.roleOptions)
-                      DropdownMenuItem<String>(
-                        value: role.roleId,
-                        child: Text(role.displayName),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<_EditMemberScope>(
-                  key: const Key('edit_member_dialog_scope_field'),
-                  initialValue: _selectedScope,
-                  decoration: const InputDecoration(
-                    labelText: 'Where this applies',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: _submitting
-                      ? null
-                      : (value) {
-                          if (value == null) return;
-                          setState(() => _selectedScope = value);
-                        },
-                  items: const <DropdownMenuItem<_EditMemberScope>>[
-                    DropdownMenuItem<_EditMemberScope>(
-                      value: _EditMemberScope.operatorWide,
-                      child: Text('Business-wide'),
-                    ),
-                    DropdownMenuItem<_EditMemberScope>(
-                      value: _EditMemberScope.orgUnit,
-                      child: Text('Org unit'),
-                    ),
-                    DropdownMenuItem<_EditMemberScope>(
-                      value: _EditMemberScope.location,
-                      child: Text('Single location'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _scopeHelper(_selectedScope),
-                  key: const Key('edit_member_dialog_scope_helper'),
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
-                ),
-                if (_selectedScope == _EditMemberScope.location) ...<Widget>[
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    key: const Key('edit_member_dialog_location_field'),
-                    initialValue: _selectedLocationId,
-                    decoration: const InputDecoration(
-                      labelText: 'Primary location',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: _submitting
-                        ? null
-                        : (value) =>
-                            setState(() => _selectedLocationId = value),
-                    items: <DropdownMenuItem<String>>[
-                      for (final location in widget.locationOptions)
-                        DropdownMenuItem<String>(
-                          value: location.locationId,
-                          child: Text(location.name),
-                        ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 12),
-                TextField(
-                  key: const Key('edit_member_dialog_reason_field'),
-                  controller: _reasonController,
-                  enabled: !_submitting,
-                  minLines: 1,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Reason',
-                    hintText: 'Why are you making this change?',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                if (_errorMessage != null) ...<Widget>[
-                  const SizedBox(height: 10),
-                  Text(
-                    _errorMessage!,
-                    key: const Key('edit_member_dialog_error_text'),
-                    style: AppTextStyles.body13(color: AppColors.negative),
-                  ),
-                ],
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: <Widget>[
-                    TextButton(
-                      key: const Key('edit_member_dialog_cancel'),
-                      onPressed: _submitting
-                          ? null
-                          : () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      key: const Key('edit_member_dialog_submit'),
-                      onPressed: _submitting ? null : _submit,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.sunset,
-                        foregroundColor: AppColors.backgroundSurface,
-                      ),
-                      child: _submitting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Save'),
-                    ),
-                  ],
+                DropdownMenuItem<_EditMemberScope>(
+                  value: _EditMemberScope.location,
+                  child: Text('Single location'),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 6),
+            Text(
+              _scopeHelper(_selectedScope),
+              key: const Key('edit_member_dialog_scope_helper'),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+            if (_selectedScope == _EditMemberScope.location) ...<Widget>[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: const Key('edit_member_dialog_location_field'),
+                initialValue: _selectedLocationId,
+                decoration: const InputDecoration(
+                  labelText: 'Primary location',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: _submitting
+                    ? null
+                    : (value) => setState(() => _selectedLocationId = value),
+                items: <DropdownMenuItem<String>>[
+                  for (final location in widget.locationOptions)
+                    DropdownMenuItem<String>(
+                      value: location.locationId,
+                      child: Text(location.name),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('edit_member_dialog_reason_field'),
+              controller: _reasonController,
+              enabled: !_submitting,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Reason',
+                hintText: 'Why are you making this change?',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            if (_errorMessage != null) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                _errorMessage!,
+                key: const Key('edit_member_dialog_error_text'),
+                style: AppTextStyles.body13(color: AppColors.negative),
+              ),
+            ],
+          ],
         ),
       ),
     );

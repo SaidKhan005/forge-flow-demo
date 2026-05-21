@@ -55,6 +55,7 @@ import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 import 'edit_member_dialog.dart';
 import 'invite_member_dialog.dart';
 
@@ -581,25 +582,27 @@ class _MembersScreenState extends State<MembersScreen> {
     required String body,
     required String cta,
   }) async {
-    final result = await showDialog<bool>(
+    final result = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      title: title,
+      icon: Icons.warning_amber_outlined,
+      child: Text(
+        body,
         key: const Key('members_confirm_dialog'),
-        title: Text(title),
-        content: Text(body),
-        actions: <Widget>[
-          TextButton(
-            key: const Key('members_confirm_dialog_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('members_confirm_dialog_confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(cta),
-          ),
-        ],
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('members_confirm_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('members_confirm_dialog_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(cta),
+        ),
+      ],
     );
     return result == true;
   }
@@ -1382,7 +1385,7 @@ class _MembersRowActionsButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (busy) {
       return const SizedBox(
-        width: 40,
+        width: 112,
         child: Center(
           child: SizedBox(
             width: 18,
@@ -1396,7 +1399,7 @@ class _MembersRowActionsButton extends StatelessWidget {
       );
     }
     if (!canWrite || user.status == 'soft_deleted') {
-      return const SizedBox.shrink();
+      return const SizedBox(width: 112);
     }
     // OW-6d — Row trailing affordance: inline "Edit" text button (the
     // primary edit-user write path per the operator decision) +

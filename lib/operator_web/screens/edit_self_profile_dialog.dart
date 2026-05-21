@@ -21,6 +21,7 @@ import '../../theme/app_theme.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
+import '../widgets/operator_web_surface.dart';
 
 /// Locked validation copy.
 class EditSelfProfileDialogCopy {
@@ -198,153 +199,135 @@ class _EditSelfProfileDialogState extends State<EditSelfProfileDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('edit_self_profile_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Edit your profile',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
+      title: 'Edit your profile',
+      icon: Icons.person_outline,
+      maxWidth: 500,
+      actions: [
+        TextButton(
+          key: const Key('edit_self_profile_cancel'),
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('edit_self_profile_save'),
+          onPressed: _canSave ? _handleSave : null,
+          child: Text(_submitting ? 'Saving...' : 'Save changes'),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Your display name shows up on every shift, schedule, and '
+            'audit row. Your email is what you sign in with.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          _LabelledField(
+            label: 'Display name',
+            child: TextField(
+              key: const Key('edit_self_profile_display_name_field'),
+              controller: _displayNameController,
+              enabled: !_submitting,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Your display name shows up on every shift, schedule, and '
-                'audit row. Your email is what you sign in with.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              _LabelledField(
-                label: 'Display name',
-                child: TextField(
-                  key: const Key('edit_self_profile_display_name_field'),
-                  controller: _displayNameController,
-                  enabled: !_submitting,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _LabelledField(
-                label: 'Email',
-                child: TextField(
-                  key: const Key('edit_self_profile_email_field'),
-                  controller: _emailController,
-                  enabled: !_submitting,
-                  keyboardType: TextInputType.emailAddress,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.deny(RegExp(r'\s')),
-                  ],
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-              ),
-              if (_emailChanged) ...[
-                const SizedBox(height: 10),
-                Container(
-                  key: const Key('edit_self_profile_email_confirm_box'),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.sunset.withValues(alpha: 0.08),
-                    border: Border.all(
-                      color: AppColors.sunset.withValues(alpha: 0.40),
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        EditSelfProfileDialogCopy.emailChangeNote,
-                        style: AppTextStyles.body13(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      InkWell(
-                        onTap: _submitting
-                            ? null
-                            : () => setState(
-                                () => _confirmEmailChange = !_confirmEmailChange,
-                              ),
-                        child: Row(
-                          children: [
-                            Checkbox(
-                              key: const Key(
-                                'edit_self_profile_email_confirm_checkbox',
-                              ),
-                              value: _confirmEmailChange,
-                              onChanged: _submitting
-                                  ? null
-                                  : (v) => setState(
-                                      () => _confirmEmailChange = v ?? false,
-                                    ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                EditSelfProfileDialogCopy.confirmEmailRequired,
-                                style: AppTextStyles.body13(
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _LabelledField(
+            label: 'Email',
+            child: TextField(
+              key: const Key('edit_self_profile_email_field'),
+              controller: _emailController,
+              enabled: !_submitting,
+              keyboardType: TextInputType.emailAddress,
+              inputFormatters: [
+                FilteringTextInputFormatter.deny(RegExp(r'\s')),
               ],
-              if (_topLevelError != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  key: const Key('edit_self_profile_error'),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.negative.withValues(alpha: 0.08),
-                    border: Border.all(
-                      color: AppColors.negative.withValues(alpha: 0.30),
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    _topLevelError!,
-                    style: AppTextStyles.body13(color: AppColors.negative),
-                  ),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ),
+          if (_emailChanged) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const Key('edit_self_profile_email_confirm_box'),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.sunset.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: AppColors.sunset.withValues(alpha: 0.40),
                 ),
-              ],
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextButton(
-                    key: const Key('edit_self_profile_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                  Text(
+                    EditSelfProfileDialogCopy.emailChangeNote,
+                    style: AppTextStyles.body13(color: AppColors.textPrimary),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('edit_self_profile_save'),
-                    onPressed: _canSave ? _handleSave : null,
-                    child: Text(_submitting ? 'Saving...' : 'Save changes'),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: _submitting
+                        ? null
+                        : () => setState(
+                            () => _confirmEmailChange = !_confirmEmailChange,
+                          ),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          key: const Key(
+                            'edit_self_profile_email_confirm_checkbox',
+                          ),
+                          value: _confirmEmailChange,
+                          onChanged: _submitting
+                              ? null
+                              : (v) => setState(
+                                  () => _confirmEmailChange = v ?? false,
+                                ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            EditSelfProfileDialogCopy.confirmEmailRequired,
+                            style: AppTextStyles.body13(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
+            ),
+          ],
+          if (_topLevelError != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const Key('edit_self_profile_error'),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.negative.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: AppColors.negative.withValues(alpha: 0.30),
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                _topLevelError!,
+                style: AppTextStyles.body13(color: AppColors.negative),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -361,10 +344,7 @@ class _LabelledField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-        ),
+        Text(label, style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
         const SizedBox(height: 4),
         child,
       ],
