@@ -1511,6 +1511,9 @@ class ShiftService {
     final distributionWeights =
         await SchedulePlanReadService.loadDistributionWeights(restaurantId);
     for (final dayRow in snapshot.dayRows) {
+      // Empty-dayDayparts legacy/Gap-42 fallback (see block comment
+      // above); the DaypartPlanAllocator deprecation explicitly
+      // preserves this path.
       // ignore: deprecated_member_use_from_same_package
       final allocations = DaypartPlanAllocator.allocate(
         day: dayRow.day,

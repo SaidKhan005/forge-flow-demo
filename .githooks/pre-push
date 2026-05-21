@@ -122,6 +122,12 @@ if has_changed '^lib/screens/|^lib/widgets/|^lib/operator_web/|^lib/admin/screen
   run_lint dart run tool/ux_em_dash_lint.dart
 fi
 
+# Ignore-justification bar: every `// ignore:` carries rationale, not
+# just the diagnostic name. Scoped to lib/** + tool/** Dart sources.
+if has_changed '^lib/.*\.dart$|^tool/.*\.dart$'; then
+  run_lint dart run tool/ignore_justification_lint.dart
+fi
+
 if [ "$ran" -eq 0 ]; then
   echo "[forge-flow pre-push] Pushed files do not require scoped repo lints."
   exit 0
