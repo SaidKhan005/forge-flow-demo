@@ -1,5 +1,8 @@
 // Slice C-4 - Settings master Demo -> Live switch.
 //
+// kDemoMode carve-out #4: master Demo->Live switch UI; uses runtime
+// demo_mode_state, not compile-time kDemoMode (no reader fork).
+//
 // HP #2: this reads runtime demo_mode_state through DemoModeStateNotifier and
 // calls the proxy. It does not branch on kDemoMode and does not create a
 // separate demo read path.
