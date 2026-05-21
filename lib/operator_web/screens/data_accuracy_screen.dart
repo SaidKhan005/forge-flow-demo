@@ -1128,7 +1128,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
             const SizedBox(height: 14),
           ],
-          const _DataAccuracySectionHeading(title: 'Sources'),
+          const _DataAccuracySectionHeading(title: 'Labor'),
           const SizedBox(height: 12),
           WageSourceToggle(
             value: _wageSource,
@@ -1143,6 +1143,36 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
                 .toList(growable: false),
           ),
           const SizedBox(height: 14),
+          KeyedSubtree(
+            key: _wageAuthoritySectionKey,
+            child: Container(
+              key: const Key(
+                'operator_web_data_accuracy_wage_authority_section',
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSurface,
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: WageAuthoritySection(
+                session: widget.session,
+                locationId: widget.locationId,
+                locationName: locationLabel,
+                gateway: widget.wageAuthorityGateway,
+                idempotencyKeyFactory:
+                    widget.wageAuthorityIdempotencyKeyFactory,
+                hierarchyNodes: widget.hierarchyNodes,
+                ancestorOrgUnitIdsNearestFirst:
+                    widget.ancestorOrgUnitIdsNearestFirst,
+                businessName: widget.businessName,
+                showHeader: false,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          const _DataAccuracySectionHeading(title: 'Covers'),
+          const SizedBox(height: 12),
           CoversSourceToggle(
             settings: settings,
             servicePeriods: _servicePeriods,
@@ -1222,43 +1252,6 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             status: tier,
             bundle: _bundle,
             onRequestTierChange: _handleRequestTierChange,
-          ),
-          const SizedBox(height: 18),
-          // Wave 2 S-2 (`debug.md:220`, OW-13c) — Wage Authority folds
-          // under the Data Accuracy page so the operator stops bouncing
-          // between two nav items. The embedded section keeps every
-          // S-1 affordance (blended-wage summary card, FOH/BOH/Mgmt
-          // bands, vendor-applicability labels, hierarchy-aware empty
-          // state) and saves through the same gateway the standalone
-          // screen used.
-          const _DataAccuracySectionHeading(title: 'Wage authority'),
-          const SizedBox(height: 12),
-          KeyedSubtree(
-            key: _wageAuthoritySectionKey,
-            child: Container(
-              key: const Key(
-                'operator_web_data_accuracy_wage_authority_section',
-              ),
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundSurface,
-                border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: WageAuthoritySection(
-                session: widget.session,
-                locationId: widget.locationId,
-                locationName: locationLabel,
-                gateway: widget.wageAuthorityGateway,
-                idempotencyKeyFactory:
-                    widget.wageAuthorityIdempotencyKeyFactory,
-                hierarchyNodes: widget.hierarchyNodes,
-                ancestorOrgUnitIdsNearestFirst:
-                    widget.ancestorOrgUnitIdsNearestFirst,
-                businessName: widget.businessName,
-                showHeader: false,
-              ),
-            ),
           ),
           const SizedBox(height: 14),
           DataAccuracyExplainerCard(servicePeriods: _servicePeriods),
@@ -1392,7 +1385,7 @@ class _DataAccuracyGroupLabel extends StatelessWidget {
 }
 
 /// Section heading for the Data Accuracy screen used for the main
-/// vertical groupings ("Sources", "Data Freshness"). Larger than
+/// vertical groupings ("Labor", "Covers", "Data Freshness"). Larger than
 /// [_DataAccuracyGroupLabel] so the operator's eye jumps to the
 /// section boundary. The screen-level "Data accuracy" title still
 /// uses `display20`; section headings use `display16` so they sit
