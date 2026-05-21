@@ -386,9 +386,23 @@ day, M ≤ 2 days, L ≤ 1 week). "What breaks if not done" names the
 concrete failure mode if we ship without it. "Phase" names the most
 natural tracker home.
 
+### Sequencing decision (operator, 2026-05-20)
+
+- **Item 1 (resume advisor proxy decomposition) is HELD.** The proxy's
+  bounded contexts are not yet "happy" — feature work is still landing
+  on them, so a split now would be re-conflicted on every following
+  lane. Item 1 unblocks once the operator marks the proxy surfaces
+  feature-stable.
+- **Items 2 through 10 proceed independently of item 1.** None of them
+  depend on the decomposition landing first; they were originally
+  ordered by impact, not by dependency on #1.
+- The "what breaks if not done" notes below still apply, but the
+  blocking dependency is "surface happiness" for #1, not for the
+  others.
+
 | # | Title | Effort | Impact | Dependency | What breaks if not done | Phase |
 |---|---|---|---|---|---|---|
-| 1 | **Resume advisor_proxy decomposition (extract 3 bounded contexts)** | L | HIGH | None — plan exists in `a3_proxy_monolith_decomposition.md` | Proxy ceiling raise becomes inevitable; serializes every proxy lane on one file | 11A.refactor or 8.refactor (any open proxy lane) |
+| 1 | **Resume advisor_proxy decomposition (extract 3 bounded contexts)** — **HELD** pending operator sign-off that proxy surfaces are feature-stable | L | HIGH | Plan exists in `a3_proxy_monolith_decomposition.md`; release gate is operator-marked "surfaces happy" | Proxy ceiling raise becomes inevitable; serializes every proxy lane on one file | 11A.refactor or 8.refactor (any open proxy lane, after surface freeze) |
 | 2 | **Land `dart_code_metrics` with function-length + cyclomatic-complexity + nesting + parameter-count lints** | M | HIGH | None | New code adds god-objects without resistance | 9.code-health-bar |
 | 3 | **Write 7 proposed pressure tests (§2.3) — sequence: idempotency → tenant isolation → audit chain → auth lockout → webhook signature → RLS wrappers → cold-boot baseline** | L (in batches) | HIGH | #2 lint optional but helps | Load-bearing seams have no concurrent-storm coverage; storm regressions surface in prod | 9.pressure-coverage-v2 |
 | 4 | **Decompose top-3 admin/operator-web screens (operator_location_admin, admin_routes, roles_hierarchy_sessions_admin)** | M each (3 PRs) | MEDIUM | None | Each screen merge-conflicts on every concurrent lane; perf cost on cold load grows linearly | Per-screen slices |
@@ -433,8 +447,10 @@ What I'd refactor first, if it were my call, in plain bullets:
 - **The advisor proxy is one big PR away from hitting its size ceiling.** It's
   19,716 lines; the ceiling is 19,900; raising the ceiling is gated. The
   fix is to keep splitting bounded contexts out of it, and the map for
-  doing that already exists. **One-line action:** schedule one more proxy
-  decomposition slice this wave.
+  doing that already exists. **HELD per operator decision 2026-05-20:**
+  surfaces still moving; resume after the operator marks them
+  feature-stable. Everything else below can proceed in parallel and does
+  NOT wait on this.
 - **Five admin and operator-web screens are over 3,000 lines each.** They
   are merge-conflict magnets and slow to read. Splitting them is
   mechanical, not risky. **One-line action:** pick the top 2 (operator
