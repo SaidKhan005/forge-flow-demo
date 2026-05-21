@@ -30,6 +30,7 @@ import 'package:forge_and_flow/operator_web/screens/audit_log_screen.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_audit_log_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_audit_log_gateway.dart';
+import 'package:forge_and_flow/operator_web/widgets/operator_web_surface.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -367,6 +368,37 @@ void main() {
       );
       expect(
         find.byKey(const Key('operator_web_audit_log_time_window_custom')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('custom range opens the compact Operator Web date popup', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_audit_log_time_window_custom')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OperatorWebDateRangeDialog), findsOneWidget);
+      expect(find.text('Choose audit log dates'), findsOneWidget);
+    });
+  });
+
+  group('Team member wording', () {
+    testWidgets('uses Team member instead of Actor in visible filters', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      expect(find.text('Team member'), findsOneWidget);
+      expect(find.text('Actor'), findsNothing);
+      expect(
+        find.textContaining('specific action or team member'),
         findsOneWidget,
       );
     });

@@ -55,6 +55,7 @@ import '../services/web_audit_log_hierarchy_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
 import '../widgets/audit_log_row.dart';
+import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
 
 /// Permission-key bound for the Audit Log read surface. Live source
@@ -620,11 +621,12 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             start: DateTime.now().subtract(const Duration(days: 30)),
             end: DateTime.now(),
           );
-    final picked = await showDateRangePicker(
+    final picked = await showOperatorWebDateRangeDialog(
       context: context,
       firstDate: DateTime(2024),
       lastDate: DateTime.now().add(const Duration(days: 1)),
-      initialDateRange: initialRange,
+      initialRange: initialRange,
+      title: 'Choose audit log dates',
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -769,8 +771,8 @@ class _AuditLogHeader extends StatelessWidget {
               Text(
                 'Every change someone made to your team, your roles, your '
                 'org tree, and your sign-in security shows up here. Use the '
-                'filters to narrow down to a specific action or actor, then '
-                'export the result to a CSV when you need a paper trail.',
+                'filters to narrow down to a specific action or team member, '
+                'then export the result to a CSV when you need a paper trail.',
                 key: const Key('operator_web_audit_log_subtitle'),
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
@@ -1028,7 +1030,7 @@ class _ActorPicker extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'Actor',
+          'Team member',
           style: AppTextStyles.mono11(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 6),
