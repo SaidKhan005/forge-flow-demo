@@ -435,6 +435,27 @@ List<_Window> _toWindows(ServicePeriodDraft p) {
 
 final RegExp _hhmmPattern = RegExp(r'^(\d{2}):(\d{2})$');
 final RegExp _keyPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+final RegExp _servicePeriodKeyInvalidChars = RegExp(r'[^a-z0-9]+');
+final RegExp _servicePeriodKeyTrimUnderscores = RegExp(r'^_+|_+$');
+
+String _servicePeriodKeyFromLabel(String label, int index) {
+  final normalized = label
+      .trim()
+      .toLowerCase()
+      .replaceAll(_servicePeriodKeyInvalidChars, '_')
+      .replaceAll(_servicePeriodKeyTrimUnderscores, '');
+  if (normalized.isEmpty || !RegExp(r'^[a-z]').hasMatch(normalized)) {
+    return 'period_${index + 1}';
+  }
+  return normalized.length <= 64 ? normalized : normalized.substring(0, 64);
+}
+
+bool _shouldRefreshServicePeriodKey(ServicePeriodDraft period, int index) {
+  final key = period.key.trim();
+  if (key.isEmpty) return true;
+  if (key == 'period_${index + 1}') return true;
+  return key == _servicePeriodKeyFromLabel(period.label, index);
+}
 
 /// Editor widget. Hosts a list of [ServicePeriodDraft] rows, an
 /// "Add period" button (disabled when at the four-period cap), and a
@@ -536,7 +557,6 @@ class _ServicePeriodRow extends StatefulWidget {
 
 class _ServicePeriodRowState extends State<_ServicePeriodRow> {
   late final TextEditingController _label;
-  late final TextEditingController _key;
   late final TextEditingController _start;
   late final TextEditingController _end;
   late final TextEditingController _shortLabel;
@@ -546,7 +566,6 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
   void initState() {
     super.initState();
     _label = TextEditingController(text: widget.period.label);
-    _key = TextEditingController(text: widget.period.key);
     _start = TextEditingController(text: widget.period.startLocal);
     _end = TextEditingController(text: widget.period.endLocal);
     _shortLabel = TextEditingController(text: widget.period.shortLabel);
@@ -560,9 +579,6 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.period.label != widget.period.label) {
       _label.text = widget.period.label;
-    }
-    if (oldWidget.period.key != widget.period.key) {
-      _key.text = widget.period.key;
     }
     if (oldWidget.period.startLocal != widget.period.startLocal) {
       _start.text = widget.period.startLocal;
@@ -581,7 +597,6 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
   @override
   void dispose() {
     _label.dispose();
-    _key.dispose();
     _start.dispose();
     _end.dispose();
     _shortLabel.dispose();
@@ -647,36 +662,27 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: ValueKey('service_period_editor_label_${widget.index}'),
-                  controller: _label,
-                  decoration: const InputDecoration(
-                    labelText: 'Label your team sees',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (value) =>
-                      widget.onChanged(widget.period.copyWith(label: value)),
+          TextField(
+            key: ValueKey('service_period_editor_label_${widget.index}'),
+            controller: _label,
+            decoration: const InputDecoration(
+              labelText: 'Label your team sees',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (value) {
+              final shouldRefreshKey = _shouldRefreshServicePeriodKey(
+                widget.period,
+                widget.index,
+              );
+              widget.onChanged(
+                widget.period.copyWith(
+                  label: value,
+                  key: shouldRefreshKey
+                      ? _servicePeriodKeyFromLabel(value, widget.index)
+                      : widget.period.key,
                 ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 160,
-                child: TextField(
-                  key: ValueKey('service_period_editor_key_${widget.index}'),
-                  controller: _key,
-                  decoration: const InputDecoration(
-                    labelText: 'Stable key',
-                    border: OutlineInputBorder(),
-                    helperText: 'lower_snake_case',
-                  ),
-                  onChanged: (value) =>
-                      widget.onChanged(widget.period.copyWith(key: value)),
-                ),
-              ),
-            ],
+              );
+            },
           ),
           const SizedBox(height: 10),
           Row(
