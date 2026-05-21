@@ -99,6 +99,17 @@ void main() {
         find.byKey(const Key('operator_web_hierarchy_subtitle')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('operator_web_hierarchy_summary')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_hierarchy_tree_panel')),
+        findsOneWidget,
+      );
+      expect(find.text('Groups'), findsOneWidget);
+      expect(find.text('Locations'), findsNWidgets(2));
+      expect(find.text('Editable'), findsOneWidget);
     });
 
     testWidgets('renders one node per fixture org unit + one card per '
@@ -150,6 +161,8 @@ void main() {
         find.byKey(const Key('operator_web_hierarchy_readonly_notice')),
         findsOneWidget,
       );
+      expect(find.text('View-only access'), findsOneWidget);
+      expect(find.text('View-only'), findsOneWidget);
       expect(
         find.byKey(const Key('operator_web_org_unit_add_child_demo-org-east')),
         findsNothing,

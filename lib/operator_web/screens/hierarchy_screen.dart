@@ -41,6 +41,7 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_hierarchy_gateway.dart';
+import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
 
 /// Roles admitted to the Hierarchy surface when the proxy permission
@@ -486,27 +487,43 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
         children: <Widget>[
           const _HierarchyHeader(),
           const SizedBox(height: 18),
+          _HierarchySummaryRow(
+            orgUnitCount: _orgUnits.length,
+            locationCount: _locations.length,
+            canMutate: widget._canMutate,
+          ),
+          const SizedBox(height: 14),
           if (!widget._canMutate)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                'Read-only view. Your operator owner or admin can edit the '
-                'hierarchy.',
+              padding: const EdgeInsets.only(bottom: 14),
+              child: OperatorWebBanner(
                 key: const Key('operator_web_hierarchy_readonly_notice'),
-                style: AppTextStyles.body12(color: AppColors.textMuted),
+                title: 'View-only access',
+                message:
+                    'Read-only view. Your operator owner or admin can edit '
+                    'the hierarchy.',
+                icon: Icons.visibility_outlined,
               ),
             ),
-          _OperatorWebHierarchyInheritanceTree(
-            orgUnits: _orgUnits,
-            locations: _locations,
-            canMutate: widget._canMutate,
-            busyOrgUnitIds: _busyOrgUnitIds,
-            busyLocationIds: _busyLocationIds,
-            collapsedScopeIds: _legacyCollapsedScopeIds,
-            onToggleCollapsed: _toggleLegacyCollapsed,
-            onAddChildOrgUnit: _onAddChildOrgUnit,
-            onRenameOrgUnit: _onRenameOrgUnit,
-            onMoveLocation: _onMoveLocation,
+          OperatorWebPanel(
+            key: const Key('operator_web_hierarchy_tree_panel'),
+            title: 'Location hierarchy',
+            subtitle:
+                'Regions, districts, and location groups control where each '
+                'location sits. Use the actions on each row to rename, add, '
+                'or move within this tree.',
+            child: _OperatorWebHierarchyInheritanceTree(
+              orgUnits: _orgUnits,
+              locations: _locations,
+              canMutate: widget._canMutate,
+              busyOrgUnitIds: _busyOrgUnitIds,
+              busyLocationIds: _busyLocationIds,
+              collapsedScopeIds: _legacyCollapsedScopeIds,
+              onToggleCollapsed: _toggleLegacyCollapsed,
+              onAddChildOrgUnit: _onAddChildOrgUnit,
+              onRenameOrgUnit: _onRenameOrgUnit,
+              onMoveLocation: _onMoveLocation,
+            ),
           ),
         ],
       ),
@@ -519,6 +536,97 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
         _legacyCollapsedScopeIds.remove(scopeId);
       }
     });
+  }
+}
+
+class _HierarchySummaryRow extends StatelessWidget {
+  const _HierarchySummaryRow({
+    required this.orgUnitCount,
+    required this.locationCount,
+    required this.canMutate,
+  });
+
+  final int orgUnitCount;
+  final int locationCount;
+  final bool canMutate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      key: const Key('operator_web_hierarchy_summary'),
+      spacing: 10,
+      runSpacing: 10,
+      children: <Widget>[
+        _HierarchySummaryMetric(
+          keyName: 'operator_web_hierarchy_summary_units',
+          icon: Icons.account_tree_outlined,
+          label: 'Groups',
+          value: orgUnitCount.toString(),
+        ),
+        _HierarchySummaryMetric(
+          keyName: 'operator_web_hierarchy_summary_locations',
+          icon: Icons.storefront_outlined,
+          label: 'Locations',
+          value: locationCount.toString(),
+        ),
+        _HierarchySummaryMetric(
+          keyName: 'operator_web_hierarchy_summary_access',
+          icon: canMutate ? Icons.edit_outlined : Icons.visibility_outlined,
+          label: 'Access',
+          value: canMutate ? 'Editable' : 'View-only',
+        ),
+      ],
+    );
+  }
+}
+
+class _HierarchySummaryMetric extends StatelessWidget {
+  const _HierarchySummaryMetric({
+    required this.keyName,
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final String keyName;
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key(keyName),
+      constraints: const BoxConstraints(minWidth: 150),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 18, color: AppColors.sunsetDark),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                label,
+                style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: AppTextStyles.body14(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -550,18 +658,11 @@ class _OperatorWebHierarchyInheritanceTree extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (orgUnits.isEmpty) {
-      return Container(
+      return OperatorWebBanner(
         key: const Key('operator_web_org_unit_tree_empty'),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          'No hierarchy yet. Setup needs a root unit first.',
-          style: AppTextStyles.body13(color: AppColors.textMuted),
-        ),
+        title: 'No hierarchy yet',
+        message: 'Setup needs a root unit before locations can be grouped.',
+        icon: Icons.account_tree_outlined,
       );
     }
 
@@ -816,43 +917,62 @@ class _LocationNodeAnnotation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ConstrainedBox(
       key: Key('operator_web_location_card_${location.locationId}'),
-      constraints: const BoxConstraints(maxWidth: 260),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Flexible(
-            child: Text(
-              location.orgUnitPath,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body12(color: AppColors.textMuted),
-            ),
-          ),
-          if (canMutate) ...<Widget>[
-            const SizedBox(width: 8),
-            TextButton(
-              key: Key(
-                'operator_web_location_card_move_${location.locationId}',
-              ),
-              onPressed: busy ? null : () => onMoveLocation(location),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.sunsetDark,
-              ),
-              child: const Text('Move'),
-            ),
-          ] else if (busy) ...<Widget>[
-            const SizedBox(width: 8),
-            const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.cardGlow,
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(
+                Icons.storefront_outlined,
+                size: 16,
                 color: AppColors.sunsetDark,
               ),
-            ),
-          ],
-        ],
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  location.orgUnitPath,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                ),
+              ),
+              if (canMutate) ...<Widget>[
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  key: Key(
+                    'operator_web_location_card_move_${location.locationId}',
+                  ),
+                  onPressed: busy ? null : () => onMoveLocation(location),
+                  icon: const Icon(Icons.swap_vert_outlined, size: 16),
+                  label: const Text('Move'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.sunsetDark,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ] else if (busy) ...<Widget>[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.sunsetDark,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1037,10 +1157,24 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('operator_web_org_unit_add_dialog'),
-      title: const Text('Add child unit'),
-      content: SizedBox(
+      title: 'Add child unit',
+      icon: Icons.add_circle_outline,
+      maxWidth: 430,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('operator_web_org_unit_add_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('operator_web_org_unit_add_dialog_submit'),
+          onPressed: _submit,
+          child: const Text('Add'),
+        ),
+      ],
+      child: SizedBox(
         width: 380,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1104,18 +1238,6 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('operator_web_org_unit_add_dialog_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('operator_web_org_unit_add_dialog_submit'),
-          onPressed: _submit,
-          child: const Text('Add'),
-        ),
-      ],
     );
   }
 }
@@ -1178,10 +1300,24 @@ class _RenameOrgUnitDialogState extends State<_RenameOrgUnitDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('operator_web_org_unit_rename_dialog'),
-      title: const Text('Rename org unit'),
-      content: SizedBox(
+      title: 'Rename org unit',
+      icon: Icons.drive_file_rename_outline,
+      maxWidth: 430,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('operator_web_org_unit_rename_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('operator_web_org_unit_rename_dialog_submit'),
+          onPressed: _submit,
+          child: const Text('Save'),
+        ),
+      ],
+      child: SizedBox(
         width: 380,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1215,18 +1351,6 @@ class _RenameOrgUnitDialogState extends State<_RenameOrgUnitDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('operator_web_org_unit_rename_dialog_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('operator_web_org_unit_rename_dialog_submit'),
-          onPressed: _submit,
-          child: const Text('Save'),
-        ),
-      ],
     );
   }
 }
@@ -1248,10 +1372,31 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
   Widget build(BuildContext context) {
     final sortedTargets = <TeamOrgUnitEntry>[...widget.targets]
       ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('operator_web_location_move_dialog'),
-      title: const Text('Move location'),
-      content: SizedBox(
+      title: 'Move location',
+      icon: Icons.swap_vert_outlined,
+      maxWidth: 430,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('operator_web_location_move_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('operator_web_location_move_dialog_submit'),
+          onPressed: _selectedOrgUnitId == null
+              ? null
+              : () {
+                  final picked = sortedTargets.firstWhere(
+                    (target) => target.orgUnitId == _selectedOrgUnitId,
+                  );
+                  Navigator.of(context).pop(picked);
+                },
+          child: const Text('Move'),
+        ),
+      ],
+      child: SizedBox(
         width: 380,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1283,25 +1428,6 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('operator_web_location_move_dialog_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('operator_web_location_move_dialog_submit'),
-          onPressed: _selectedOrgUnitId == null
-              ? null
-              : () {
-                  final picked = sortedTargets.firstWhere(
-                    (target) => target.orgUnitId == _selectedOrgUnitId,
-                  );
-                  Navigator.of(context).pop(picked);
-                },
-          child: const Text('Move'),
-        ),
-      ],
     );
   }
 }
