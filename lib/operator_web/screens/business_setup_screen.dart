@@ -5,7 +5,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
-import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 
 // G7d (spec §2.B/§3): v2 catalog constants. Phantom
 // `'operator_admin'` dropped (folded into `operator_owner`).
@@ -116,34 +116,29 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   }
 
   Future<void> _showSafeTimingDialog(String actionLabel) {
-    return showDialog<void>(
+    return showOperatorWebDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      title: 'Timing changes are unavailable here',
+      icon: Icons.lock_outline,
+      maxWidth: 460,
+      child: SizedBox(
         key: const Key('operator_web_business_timing_safe_dialog'),
-        backgroundColor: AppColors.backgroundSurface,
-        title: Text(
-          'Timing changes are unavailable here',
-          style: AppTextStyles.display20(color: AppColors.textPrimary),
+        child: Text(
+          '$actionLabel is disabled in this demo preview. You can review '
+          'the timezone, business day start, and service periods here, '
+          'but this demo run does not save Business setup timing changes. '
+          'Use a connected preview or staging run to test real saves. '
+          'Nothing was changed.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
-        content: SizedBox(
-          width: 420,
-          child: Text(
-            '$actionLabel is disabled in this demo preview. You can review '
-            'the timezone, business day start, and service periods here, '
-            'but this demo run does not save Business setup timing changes. '
-            'Use a connected preview or staging run to test real saves. '
-            'Nothing was changed.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-        ),
-        actions: [
-          TextButton(
-            key: const Key('operator_web_business_timing_safe_close'),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
       ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('operator_web_business_timing_safe_close'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 
@@ -305,27 +300,12 @@ class _ReadOnlyTimingBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebBanner(
       key: const Key('operator_web_business_timing_readonly_banner'),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.lock_outline, size: 18, color: AppColors.textMuted),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'You can view this location\'s timing. Operator owners and admins '
-              'manage timing changes.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
+      icon: Icons.lock_outline,
+      message:
+          'You can view this location\'s timing. Operator owners and '
+          'admins manage timing changes.',
     );
   }
 }
@@ -400,22 +380,11 @@ class _TimingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebPanel(
       key: Key(keyName),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          OperatorWebSectionHeading(title: title, trailing: trailing),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
+      title: title,
+      trailing: trailing,
+      child: child,
     );
   }
 }
