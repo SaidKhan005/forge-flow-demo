@@ -132,140 +132,147 @@ void main() {
   group(
     'doc1.keyed-data-accuracy-write — Tab 1 service-period override audit',
     () {
-      testWidgets('Service period button -> dialog submit captures '
-          'admin.data_accuracy.service_period_override', (tester) async {
-        tester.view.physicalSize = const Size(1600, 1400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() {
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-        });
-        const ref = OperatorLocationRef(
-          operatorId: 'op-1',
-          businessName: 'Demo Diner Co.',
-          locationId: 'loc-1a',
-          locationName: 'Toronto Yorkville',
-        );
-        final gateway = InMemoryDataAccuracyAdminGateway(
-          operatorLocations: const <OperatorLocationRef>[ref],
-        );
+      testWidgets(
+        'Service period button -> dialog submit captures '
+        'admin.data_accuracy.service_period_override',
+        (tester) async {
+          tester.view.physicalSize = const Size(1600, 1400);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(() {
+            tester.view.resetPhysicalSize();
+            tester.view.resetDevicePixelRatio();
+          });
+          const ref = OperatorLocationRef(
+            operatorId: 'op-1',
+            businessName: 'Demo Diner Co.',
+            locationId: 'loc-1a',
+            locationName: 'Toronto Yorkville',
+          );
+          final gateway = InMemoryDataAccuracyAdminGateway(
+            operatorLocations: const <OperatorLocationRef>[ref],
+          );
 
-        const actorUid = 'demo-super-admin';
+          const actorUid = 'demo-super-admin';
 
-        await tester.pumpWidget(
-          wrap(
-            PerLocationDataAccuracyScreen(
-              gateway: gateway,
-              actorUserId: actorUid,
-              editingEnabled: true,
+          await tester.pumpWidget(
+            wrap(
+              PerLocationDataAccuracyScreen(
+                gateway: gateway,
+                actorUserId: actorUid,
+                editingEnabled: true,
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
+          );
+          await tester.pumpAndSettle();
 
-        final servicePeriodButton = find.byKey(
-          const Key('admin_data_accuracy_service_period_op-1_loc-1a'),
-        );
-        expect(servicePeriodButton, findsOneWidget);
-        await tester.ensureVisible(servicePeriodButton);
-        await tester.pumpAndSettle();
-        await tester.tap(servicePeriodButton, warnIfMissed: false);
-        await tester.pumpAndSettle();
+          final servicePeriodButton = find.byKey(
+            const Key('admin_data_accuracy_service_period_op-1_loc-1a'),
+          );
+          expect(servicePeriodButton, findsOneWidget);
+          await tester.ensureVisible(servicePeriodButton);
+          await tester.pumpAndSettle();
+          await tester.tap(servicePeriodButton, warnIfMissed: false);
+          await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('admin_data_accuracy_service_period_dialog')),
-          findsOneWidget,
-        );
+          expect(
+            find.byKey(const Key('admin_data_accuracy_service_period_dialog')),
+            findsOneWidget,
+          );
 
-        await tester.enterText(
-          find.byKey(const Key('admin_data_accuracy_service_period_key')),
-          'breakfast',
-        );
-        await tester.enterText(
-          find.byKey(
-            const Key('admin_data_accuracy_service_period_effective_date'),
-          ),
-          '2026-06-01',
-        );
+          await tester.enterText(
+            find.byKey(const Key('admin_data_accuracy_service_period_key')),
+            'breakfast',
+          );
+          await tester.enterText(
+            find.byKey(
+              const Key(
+                'admin_data_accuracy_service_period_effective_date',
+              ),
+            ),
+            '2026-06-01',
+          );
 
-        // Pick covers source = reservation_plus_walkin.
-        await tester.tap(
-          find.byKey(
-            const Key('admin_data_accuracy_service_period_covers_source'),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Reservations + walk-ins').last);
-        await tester.pumpAndSettle();
+          // Pick covers source = reservation_plus_walkin.
+          await tester.tap(
+            find.byKey(
+              const Key('admin_data_accuracy_service_period_covers_source'),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Reservations + walk-ins').last);
+          await tester.pumpAndSettle();
 
-        // Pick wage source = target_substitution.
-        await tester.tap(
-          find.byKey(
-            const Key('admin_data_accuracy_service_period_wage_source'),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Target substitution').last);
-        await tester.pumpAndSettle();
+          // Pick wage source = target_substitution.
+          await tester.tap(
+            find.byKey(
+              const Key('admin_data_accuracy_service_period_wage_source'),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Target substitution').last);
+          await tester.pumpAndSettle();
 
-        await tester.enterText(
-          find.byKey(
-            const Key('admin_data_accuracy_service_period_reason_note'),
-          ),
-          'Operator added breakfast service for summer hours',
-        );
-        await tester.pump();
+          await tester.enterText(
+            find.byKey(
+              const Key('admin_data_accuracy_service_period_reason_note'),
+            ),
+            'Operator added breakfast service for summer hours',
+          );
+          await tester.pump();
 
-        await tester.tap(
-          find.byKey(const Key('admin_data_accuracy_service_period_submit')),
-        );
-        await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(
+              const Key('admin_data_accuracy_service_period_submit'),
+            ),
+          );
+          await tester.pumpAndSettle();
 
-        expect(gateway.capturedAuditEvents, hasLength(1));
-        final event = gateway.capturedAuditEvents.single;
-        expect(
-          event.eventType,
-          equals('admin.data_accuracy.service_period_override'),
-        );
-        expect(event.actorUserId, equals(actorUid));
-        expect(event.actorKind, equals('forge_admin'));
-        expect(event.operatorId, equals('op-1'));
-        expect(event.locationId, equals('loc-1a'));
-        expect(event.diff['service_period_key'], equals('breakfast'));
-        expect(event.diff['effective_at_business_date'], equals('2026-06-01'));
-        final coversDiff = event.diff['covers_source']! as Map;
-        expect(
-          coversDiff['to'],
-          equals(ServicePeriodCoversSource.reservationPlusWalkin.wire),
-        );
-        final wageDiff = event.diff['wage_source']! as Map;
-        expect(
-          wageDiff['to'],
-          equals(ServicePeriodWageSource.targetSubstitution.wire),
-        );
-        expect(event.reasonNote, isNotNull);
-        expect(event.reasonNote!.isNotEmpty, isTrue);
+          expect(gateway.capturedAuditEvents, hasLength(1));
+          final event = gateway.capturedAuditEvents.single;
+          expect(
+            event.eventType,
+            equals('admin.data_accuracy.service_period_override'),
+          );
+          expect(event.actorUserId, equals(actorUid));
+          expect(event.actorKind, equals('forge_admin'));
+          expect(event.operatorId, equals('op-1'));
+          expect(event.locationId, equals('loc-1a'));
+          expect(event.diff['service_period_key'], equals('breakfast'));
+          expect(event.diff['effective_at_business_date'], equals('2026-06-01'));
+          final coversDiff = event.diff['covers_source']! as Map;
+          expect(
+            coversDiff['to'],
+            equals(ServicePeriodCoversSource.reservationPlusWalkin.wire),
+          );
+          final wageDiff = event.diff['wage_source']! as Map;
+          expect(
+            wageDiff['to'],
+            equals(ServicePeriodWageSource.targetSubstitution.wire),
+          );
+          expect(event.reasonNote, isNotNull);
+          expect(event.reasonNote!.isNotEmpty, isTrue);
 
-        // Listing the service-period rows back returns the row we
-        // just wrote, sorted by (service_period_key,
-        // effective_at_business_date desc).
-        final rows = await gateway.listDataAccuracyServicePeriodRows(
-          operatorId: 'op-1',
-          locationId: 'loc-1a',
-        );
-        expect(rows, hasLength(1));
-        expect(rows.single.servicePeriodKey, equals('breakfast'));
-        expect(
-          rows.single.coversSource,
-          equals(ServicePeriodCoversSource.reservationPlusWalkin),
-        );
-        expect(
-          rows.single.wageSource,
-          equals(ServicePeriodWageSource.targetSubstitution),
-        );
-        expect(rows.single.effectiveAtBusinessDate, equals('2026-06-01'));
-        expect(rows.single.updatedBy, equals(actorUid));
-      });
+          // Listing the service-period rows back returns the row we
+          // just wrote, sorted by (service_period_key,
+          // effective_at_business_date desc).
+          final rows = await gateway.listDataAccuracyServicePeriodRows(
+            operatorId: 'op-1',
+            locationId: 'loc-1a',
+          );
+          expect(rows, hasLength(1));
+          expect(rows.single.servicePeriodKey, equals('breakfast'));
+          expect(
+            rows.single.coversSource,
+            equals(ServicePeriodCoversSource.reservationPlusWalkin),
+          );
+          expect(
+            rows.single.wageSource,
+            equals(ServicePeriodWageSource.targetSubstitution),
+          );
+          expect(rows.single.effectiveAtBusinessDate, equals('2026-06-01'));
+          expect(rows.single.updatedBy, equals(actorUid));
+        },
+      );
 
       test(
         'gateway rejects service-period override missing reason note',
