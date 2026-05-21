@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-05-21",
+  "captured_by": "wave2-lane-e",
+  "regression_factor": 1.2,
+  "notes": "Initial structure-only baseline. Populate numbers via tool/perf_baseline_check.dart --capture <metric> <value>. Compare via --check. Values are null until a measurement is intentionally promoted to a baseline; see runbooks/perf_baseline_capture_runbook.md.",
+  "baselines": {
+    "cold_boot_demo_seed_ms": null,
+    "soak_p50_request_ms": null,
+    "soak_p95_request_ms": null,
+    "soak_p99_request_ms": null,
+    "p3a_webhook_flood_throughput_rps": null,
+    "p3b_backfill_flood_complete_ms": null
+  }
+}
