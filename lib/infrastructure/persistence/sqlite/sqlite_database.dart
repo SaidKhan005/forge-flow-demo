@@ -41,6 +41,21 @@ import 'dao/target_cycle_dao.dart';
 
 part 'sqlite_database_schema.dart';
 part 'sqlite_database_seed.dart';
+// Demo + mock-replay seed helpers, split out of sqlite_database_seed.dart by
+// table family (code_hardening_plan 2026-05-21 §4.4 #3). All are `part of`
+// this library, so private members + imports resolve library-wide unchanged.
+part 'seed/seed_locked_targets.dart';
+part 'seed/seed_open_shift_snapshots.dart';
+part 'seed/seed_weekly_plan_snapshots.dart';
+part 'seed/seed_reservation_book.dart';
+part 'seed/seed_restaurant_and_timing.dart';
+part 'seed/seed_target_profile_and_cycle.dart';
+part 'seed/seed_additional_locations.dart';
+part 'seed/seed_replay_entry.dart';
+part 'seed/seed_scope_overrides.dart';
+part 'seed/seed_four_period.dart';
+part 'seed/seed_notifications.dart';
+part 'seed/seed_operational_envelope.dart';
 part 'sqlite_database_migrations.dart';
 
 /// One location in the demo §2c org hierarchy.
