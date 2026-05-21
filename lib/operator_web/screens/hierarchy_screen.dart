@@ -939,7 +939,7 @@ class _LocationNodeAnnotation extends StatelessWidget {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  location.orgUnitPath,
+                  'Location',
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
@@ -1420,7 +1420,10 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
                 for (final target in sortedTargets)
                   DropdownMenuItem<String>(
                     value: target.orgUnitId,
-                    child: Text('${target.label} (${target.path})'),
+                    child: Text(
+                      '${HierarchyCopy.unitTypeLabel(target.unitType)}: '
+                      '${target.label}',
+                    ),
                   ),
               ],
               onChanged: (value) => setState(() => _selectedOrgUnitId = value),

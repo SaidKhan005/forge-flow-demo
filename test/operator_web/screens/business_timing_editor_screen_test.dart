@@ -350,7 +350,9 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const Key('operator_web_business_timing_editor_iana')),
+      find.byKey(
+        const Key('operator_web_business_timing_editor_timezone_dropdown'),
+      ),
       findsOneWidget,
     );
     expect(find.text('America/Vancouver'), findsOneWidget);
@@ -441,10 +443,14 @@ void main() {
     await tester.pumpWidget(
       wrap(BusinessTimingEditorScreen(session: session, gateway: gateway)),
     );
-    await tester.enterText(
-      find.byKey(const Key('operator_web_business_timing_editor_iana')),
-      'America/St_Johns',
+    await tester.tap(
+      find.byKey(
+        const Key('operator_web_business_timing_editor_timezone_dropdown'),
+      ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('America/St_Johns').last);
+    await tester.pumpAndSettle();
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_business_timing_editor_save')),
     );

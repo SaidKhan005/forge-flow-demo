@@ -27,6 +27,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../services/business_timing/business_timing_profile_validator.dart';
 import '../../services/business_timing/business_timing_starter_profile.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
@@ -584,6 +585,54 @@ class _BusinessTimingEditorScreenState
   }
 }
 
+class _TimezoneDropdown extends StatelessWidget {
+  const _TimezoneDropdown({
+    required this.controller,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final bool enabled;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = controller.text.trim().isEmpty
+        ? 'UTC'
+        : controller.text.trim();
+    final options = <String>[
+      if (!kBusinessTimingAllowedIanaTimezones.contains(selected)) selected,
+      ...kBusinessTimingAllowedIanaTimezones,
+    ];
+
+    return DropdownButtonFormField<String>(
+      key: const Key('operator_web_business_timing_editor_timezone_dropdown'),
+      initialValue: selected,
+      decoration: const InputDecoration(
+        labelText: 'Timezone',
+        border: OutlineInputBorder(),
+        helperText: 'Choose the location timezone.',
+      ),
+      items: options
+          .map(
+            (timezone) => DropdownMenuItem<String>(
+              value: timezone,
+              child: Text(timezone),
+            ),
+          )
+          .toList(growable: false),
+      onChanged: enabled
+          ? (timezone) {
+              if (timezone == null) return;
+              controller.text = timezone;
+              onChanged();
+            }
+          : null,
+    );
+  }
+}
+
 class _ScopeAndEffectiveSection extends StatelessWidget {
   const _ScopeAndEffectiveSection({
     required this.effectiveAt,
@@ -647,16 +696,10 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  key: const Key('operator_web_business_timing_editor_iana'),
+                child: _TimezoneDropdown(
                   controller: timezoneController,
                   enabled: enabled,
-                  decoration: const InputDecoration(
-                    labelText: 'Timezone',
-                    border: OutlineInputBorder(),
-                    helperText: 'IANA name, for example America/Toronto.',
-                  ),
-                  onChanged: (_) => onAnyTextChanged(),
+                  onChanged: onAnyTextChanged,
                 ),
               ),
               const SizedBox(width: 12),

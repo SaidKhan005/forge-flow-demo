@@ -475,12 +475,15 @@ void main() {
         find.byKey(const Key('operator_web_location_move_dialog')),
         findsOneWidget,
       );
+      expect(find.textContaining('demo_bistro'), findsNothing);
 
       await tester.tap(
         find.byKey(const Key('operator_web_location_move_dialog_target')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('East Region (demo_bistro.east_region)').last);
+      expect(find.textContaining('demo_bistro'), findsNothing);
+      expect(find.text('Region: East Region'), findsOneWidget);
+      await tester.tap(find.text('Region: East Region').last);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('operator_web_location_move_dialog_submit')),
@@ -565,7 +568,7 @@ void main() {
         find.byKey(const Key('operator_web_location_move_dialog_target')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('East Region (demo_bistro.east_region)').last);
+      await tester.tap(find.text('Region: East Region').last);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('operator_web_location_move_dialog_submit')),
@@ -605,7 +608,7 @@ void main() {
         find.byKey(const Key('operator_web_location_move_dialog_target')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('East Region (demo_bistro.east_region)').last);
+      await tester.tap(find.text('Region: East Region').last);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('operator_web_location_move_dialog_submit')),
