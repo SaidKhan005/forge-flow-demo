@@ -1710,6 +1710,9 @@ Widget _buildMembers(BuildContext context) {
   );
 }
 
+// Legacy shell retained for backwards-compatible deep-link handoff while
+// the primary IA moves members admin into scoped setup tiles; mirrors
+// the same pattern as _buildSupportOperatorView above.
 // ignore: unused_element
 class _MembersAdminRouteShell extends StatefulWidget {
   const _MembersAdminRouteShell({
@@ -1938,6 +1941,9 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
   );
 }
 
+// Legacy roles/hierarchy/sessions builder retained for backwards-compatible
+// deep-link handoff while the primary IA folds these capabilities into
+// scoped setup tiles.
 // ignore: unused_element
 Widget _buildRolesHierarchySessionsLegacy(BuildContext context) {
   final gateway =
@@ -2291,6 +2297,9 @@ Future<InheritanceTreeNode?> _loadAuditedSupportActionsScopeTree(
   }
 }
 
+// Legacy audited-support-actions builder retained for backwards-compatible
+// deep-link handoff while the primary IA folds the audit surface into
+// scoped setup tiles.
 // ignore: unused_element
 Widget _buildAuditedSupportActionsLegacy(BuildContext context) {
   final gateway = AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(

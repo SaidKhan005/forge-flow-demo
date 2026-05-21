@@ -58,6 +58,9 @@ class ForgeFlowPollingTierRepository extends OperatorScopedRepository {
     int? monthlyPriceCents,
     int? vendorApiCostEstimateCentsMonthly,
     String? adminUserId,
+    // reasonNote is accepted for downstream audit-log emission by the
+    // F&F Ops Console caller; the tier table itself has no reason_note
+    // column per data_accuracy_settings_contract.md.
     // ignore: unused_element
     String? reasonNote,
   }) {
