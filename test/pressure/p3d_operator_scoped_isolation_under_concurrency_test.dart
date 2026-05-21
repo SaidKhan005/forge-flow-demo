@@ -34,12 +34,11 @@
 //
 // External-DB pressure
 // --------------------
-// Env-gated via `FF_RUN_PRESSURE_P3D_TENANT_ISO=1`. The DB-backed
-// harness would drive 50 concurrent operators against a real
-// Postgres pool with RLS enabled and assert via `SELECT count(*)`
-// per tenant. Reserved here for the next pressure wave.
-
-import 'dart:io';
+// DB-backed concurrency pressure for this seam (50 concurrent
+// operators against a real Postgres pool with RLS enabled, asserting
+// via per-tenant `SELECT count(*)`) is deferred to a future
+// infra-gated slice (needs live Postgres) — see
+// POST_HARDENING_FOLLOWUPS.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
@@ -171,26 +170,6 @@ void main() {
         }
         expect(caught, isA<ArgumentError>(),
             reason: 'blank reason on withSystem must be rejected');
-      },
-    );
-
-    test(
-      'DB-backed concurrent-writer pressure is env-gated; skipped here',
-      () {
-        if (Platform.environment['FF_RUN_PRESSURE_P3D_TENANT_ISO'] != '1') {
-          markTestSkipped(
-            'FF_RUN_PRESSURE_P3D_TENANT_ISO not set; in-memory '
-            'pressure runs above. Live-Postgres 50-operator concurrent '
-            'writer harness is reserved here for the next pressure '
-            'wave (audit doc §2.3 #4).',
-          );
-          return;
-        }
-        fail(
-          'FF_RUN_PRESSURE_P3D_TENANT_ISO=1 set but the live-Postgres '
-          'concurrent-writer harness is not yet implemented (audit doc '
-          '§2.3 #4).',
-        );
       },
     );
   });

@@ -30,15 +30,11 @@
 //
 // External-DB pressure
 // --------------------
-// Env-gated via `FF_RUN_PRESSURE_P3D_AUTH_LOCKOUT=1`. Without the env
-// var, the in-process portion above runs and the DB portion skips
-// with a clear reason. The DB-backed portion would exercise the
-// Postgres `auth_login_attempts` table under N=100 concurrent
-// requests to the same email; it is not in this slice's scope (the
-// Postgres path is fully tested under `auth_login_attempts_repository`
-// + the rls_isolation_p2 suite).
-
-import 'dart:io';
+// DB-backed concurrency pressure for this seam is deferred to a
+// future infra-gated slice (needs live Postgres) — see
+// POST_HARDENING_FOLLOWUPS. The Postgres `auth_login_attempts` path
+// is already covered by `auth_login_attempts_repository_test` + the
+// rls_isolation_p2 suite.
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -212,32 +208,6 @@ void main() {
         expect(eval.locked, isFalse);
         expect(eval.failureCount, equals(0),
             reason: 'success in window resets failure count to 0');
-      },
-    );
-
-    test(
-      'Postgres-backed lockout pressure is env-gated; skipped here',
-      () {
-        // Env-gate keeps default `flutter test` from requiring a local
-        // Postgres or staging connection budget. Operators run this
-        // portion against the live Postgres-backed AuthLockoutEnforcer
-        // when verifying the row-level table contract directly.
-        if (Platform.environment['FF_RUN_PRESSURE_P3D_AUTH_LOCKOUT'] != '1') {
-          markTestSkipped(
-            'FF_RUN_PRESSURE_P3D_AUTH_LOCKOUT not set; in-memory enforcer '
-            'covers the rolling-window math, Postgres path covered by '
-            'auth_login_attempts_repository_test + rls_isolation_p2_repos_test',
-          );
-          return;
-        }
-        // Intentional dead code — DB-backed pressure is out of scope
-        // for this slice (see test docstring). The env-gate path
-        // exists so a future slice can wire it in without changing the
-        // test signature.
-        fail(
-          'FF_RUN_PRESSURE_P3D_AUTH_LOCKOUT=1 set but the DB-backed '
-          'cascade harness is not yet implemented; see audit doc §2.3 #1.',
-        );
       },
     );
   });

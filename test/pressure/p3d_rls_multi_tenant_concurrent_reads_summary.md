@@ -1,26 +1,22 @@
 # p3d_rls_multi_tenant_concurrent_reads — Phase 3D RLS wrappers under concurrency
 
 **Runner:** `test/pressure/p3d_rls_multi_tenant_concurrent_reads_test.dart`
-(structural posture check + env-gated DB harness reservation).
+(structural posture check against the migration file).
 
 **What it pressures:** the four RLS UUID wrapper functions in
 `db/migrations/202604280000_phase_9_0sigma_b_rls_wrappers.sql` —
 `app_current_operator`, `app_current_location`,
 `app_current_actor_user`, `app_acting_as_operator`. The contract:
-each wrapper returns the correct UUID from its GUC under rapid
-tenant-context flips, with the `STABLE LEAKPROOF PARALLEL SAFE`
-posture intact.
+all four wrappers are declared with the `STABLE LEAKPROOF PARALLEL
+SAFE` posture and the null-safe GUC cast, so a rename or
+posture-downgrade regression is caught.
 
-**Status at branch fork point:** PASS. The migration-shape contract
-runs under default `flutter test`; the live-Postgres concurrent
-flip portion skips (no in-memory analogue — RLS lives only in PG).
+**Status:** PASS. The migration-shape contract runs under default
+`flutter test` (no env gate, no skips). RLS lives only in Postgres,
+so the runnable portion is the structural posture check.
 
 ## Inputs
 
-- Env gate (DB portion): `FF_RUN_PRESSURE_P3D_RLS=1` AND a local
-  Postgres connection with the 202604280000 series migrations
-  applied. Without these, the env-gate test skips with a clear
-  reason.
 - Migration file: read-only inspection of
   `db/migrations/202604280000_phase_9_0sigma_b_rls_wrappers.sql`.
 
@@ -36,8 +32,7 @@ flip portion skips (no in-memory analogue — RLS lives only in PG).
 
 ## How to read the output
 
-- Healthy run: 3 structural-posture tests pass; the env-gate test
-  skips with the documented message.
+- Healthy run: 3 structural-posture tests pass.
 - Regression: a posture-downgrade in the migration file (e.g.
   someone dropped LEAKPROOF) is caught immediately and surfaces in
   the failing assertion message.
@@ -46,10 +41,11 @@ flip portion skips (no in-memory analogue — RLS lives only in PG).
 
 `docs/_audits/code_health/code_hardening_plan_2026_05_21.md` §2.3 #2.
 
-## Backlog
+## Deferred
 
-DB-backed concurrent-flip harness — N concurrent operators
-flipping (operator_id, location_id) on a shared pool, asserting
-zero cross-tenant row visibility. The existing
-`rls_isolation_p2_repos_test.dart` covers single-tenant; concurrency
-fan-out lives here once the DB harness is written.
+DB-backed concurrency pressure (N concurrent operators flipping
+(operator_id, location_id) on a shared pool, asserting zero
+cross-tenant row visibility) needs a live Postgres and is deferred
+to a future infra-gated slice — see POST_HARDENING_FOLLOWUPS.
+Single-tenant isolation is already covered by
+`rls_isolation_p2_repos_test.dart`.

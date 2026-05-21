@@ -1,7 +1,7 @@
 # p3d_operator_scoped_isolation_under_concurrency — Phase 3D tenant-isolation pressure
 
 **Runner:** `test/pressure/p3d_operator_scoped_isolation_under_concurrency_test.dart`
-(in-process tenant-scoped store model; DB harness env-gated).
+(in-process tenant-scoped store model).
 
 **What it pressures:** the
 `OperatorScopedRepository.withTenant(context, body)` contract in
@@ -11,14 +11,11 @@ no row leaks across tenant boundaries. The in-memory model
 faithfully mirrors the SET LOCAL GUC + transactional commit/rollback
 semantics that the production `TenantTransactionWrapper` provides.
 
-**Status at branch fork point:** PASS. In-memory pressure runs
-under default `flutter test`; live-Postgres harness skips behind
-its env gate.
+**Status:** PASS. In-memory pressure runs under default
+`flutter test` (no env gate, no skips).
 
 ## Inputs
 
-- Env gate (DB portion): `FF_RUN_PRESSURE_P3D_TENANT_ISO=1` plus a
-  local Postgres.
 - In-memory inputs: 50 distinct TenantContexts built from
   deterministic UUIDs that pass the strict 8-4-4-4-12 lowercase
   validation.
@@ -36,7 +33,7 @@ its env gate.
 
 ## How to read the output
 
-- Healthy run: 4 in-memory test cases pass; the env-gate test skips.
+- Healthy run: 4 in-memory test cases pass.
 - Regression: a failure means the tenant-context propagation model
   is broken — under concurrency, one body could observe another
   body's GUC. This is RLS-critical; escalate per CLAUDE.md
@@ -46,8 +43,10 @@ its env gate.
 
 `docs/_audits/code_health/code_hardening_plan_2026_05_21.md` §2.3 #4.
 
-## Backlog
+## Deferred
 
-Live-Postgres harness — 50 concurrent operators writing the same
-fact table with RLS enabled; assert via per-tenant `SELECT count(*)`
-that no rows leak across boundaries.
+DB-backed concurrency pressure (50 concurrent operators writing the
+same fact table with RLS enabled, asserting via per-tenant `SELECT
+count(*)` that no rows leak across boundaries) needs a live Postgres
+and is deferred to a future infra-gated slice — see
+POST_HARDENING_FOLLOWUPS.

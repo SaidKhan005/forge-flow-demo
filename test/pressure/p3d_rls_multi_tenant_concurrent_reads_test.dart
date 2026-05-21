@@ -20,28 +20,24 @@
 // transaction, even when transactions interleave on the same
 // connection pool and the wrappers run in parallel.
 //
-// Why this test is env-gated by default
-// --------------------------------------
+// What runs in-memory by default
+// -------------------------------
 // RLS lives entirely in Postgres. The four wrapper functions and
-// `SET LOCAL`-based context injection have no in-memory analogue —
-// any honest test must run against a live Postgres with the
-// migration set applied. Default `flutter test` cannot bring up
-// Postgres; the in-memory portion below verifies the wrapper-naming
-// contract (the migration file declares all four wrappers exactly
-// once with the locked SQL posture) so a rename / posture-downgrade
-// regression is still caught.
+// `SET LOCAL`-based context injection have no in-memory analogue, so
+// the runnable portion verifies the wrapper-naming + SQL-posture
+// contract by reading the migration file: all four wrappers are
+// declared exactly once with the locked `STABLE LEAKPROOF PARALLEL
+// SAFE` posture, so a rename / posture-downgrade regression is
+// caught under default `flutter test`.
 //
 // External-DB pressure
 // --------------------
-// Env-gate: `FF_RUN_PRESSURE_P3D_RLS=1` AND a local Postgres
-// connection with the 202604280000 series migrations applied. The
-// existing `test/infrastructure/persistence/postgres/repositories/`
-// `rls_isolation_p2_repos_test.dart` already covers SINGLE-tenant
-// row visibility; this slice's planned DB harness would extend it
-// with N concurrent operators flipping context on the same pool.
-// Codifying that harness is tracked in the audit doc §2.3 #2; this
-// test reserves the env gate so the harness has a stable test
-// location to drop into.
+// DB-backed concurrency pressure for this seam (N concurrent
+// operators flipping context on the same pool) is deferred to a
+// future infra-gated slice (needs live Postgres with the
+// 202604280000 series applied) — see POST_HARDENING_FOLLOWUPS.
+// Single-tenant row visibility is already covered by
+// `rls_isolation_p2_repos_test.dart`.
 
 import 'dart:io';
 
@@ -135,27 +131,6 @@ void main() {
         expect(src.contains(RegExp(r'\bimmutable\b')), isFalse,
             reason: 'GUC-reading wrappers must NOT be IMMUTABLE; the GUC '
                 'value changes per transaction, which violates immutability');
-      },
-    );
-
-    test(
-      'multi-tenant concurrent-read pressure is env-gated; skipped here',
-      () {
-        if (Platform.environment['FF_RUN_PRESSURE_P3D_RLS'] != '1') {
-          markTestSkipped(
-            'FF_RUN_PRESSURE_P3D_RLS not set; structural posture is '
-            'asserted above. Live-Postgres concurrent-flip harness '
-            'reserved here (audit doc §2.3 #2); single-tenant '
-            'isolation is covered by rls_isolation_p2_repos_test.dart',
-          );
-          return;
-        }
-        fail(
-          'FF_RUN_PRESSURE_P3D_RLS=1 set but the live-Postgres concurrent '
-          'tenant-flip harness is not yet implemented. This slice ships '
-          'the env-gate + structural posture asserts; the DB harness '
-          'belongs in the next pressure wave (audit doc §2.3 #2).',
-        );
       },
     );
   });

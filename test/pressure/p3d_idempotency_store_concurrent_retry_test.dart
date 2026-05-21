@@ -32,13 +32,12 @@
 //
 // External-DB pressure
 // --------------------
-// Env-gated via `FF_RUN_PRESSURE_P3D_IDEMPOTENCY=1`. The DB-backed
-// harness would issue N=100 raw concurrent INSERTs against the four
-// real tables and assert UNIQUE-constraint defense holds; it requires
-// a local Postgres and is reserved for the next pressure wave.
+// DB-backed concurrency pressure for this seam (N=100 raw concurrent
+// INSERTs against the four real tables, asserting UNIQUE-constraint
+// defense) is deferred to a future infra-gated slice (needs live
+// Postgres) — see POST_HARDENING_FOLLOWUPS.
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -203,27 +202,6 @@ void main() {
             );
           }
         }
-      },
-    );
-
-    test(
-      'DB-backed concurrent-retry pressure is env-gated; skipped here',
-      () {
-        if (Platform.environment['FF_RUN_PRESSURE_P3D_IDEMPOTENCY'] != '1') {
-          markTestSkipped(
-            'FF_RUN_PRESSURE_P3D_IDEMPOTENCY not set; in-memory '
-            'UNIQUE-key model pressure runs above. Live-Postgres harness '
-            '(proxy_requests + handoff_codes + auth_step_up_challenges + '
-            'mobile_push_outbox UNIQUE-constraint storm) is reserved here '
-            'for the next pressure wave (audit doc §2.3 #3).',
-          );
-          return;
-        }
-        fail(
-          'FF_RUN_PRESSURE_P3D_IDEMPOTENCY=1 set but the live-Postgres '
-          'concurrent-retry harness is not yet implemented (audit doc '
-          '§2.3 #3).',
-        );
       },
     );
   });
