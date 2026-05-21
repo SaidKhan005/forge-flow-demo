@@ -86,14 +86,16 @@ import '../../auth/permission_key_metadata.dart';
 import '../../auth/permission_keys.dart';
 
 /// Hierarchy scope at which a custom role is being authored. Mirrors
-/// the operator-web session's working scope (Business or Location).
-/// Region / Brand collapse into [RoleScope.business] for the org-wide
-/// warning category - any non-Location scope can carry org-wide
-/// permissions.
+/// the operator-web shell's selected management scope.
 enum RoleScope {
   /// The role is being authored at the Business (org-wide) scope.
   /// Org-wide permissions are coherent here.
   business,
+
+  /// The role is being authored at a Region, District, Brand, or
+  /// other org-unit scope. Business-wide permissions are hidden in the
+  /// picker and warned about if already present on an edited role.
+  orgUnit,
 
   /// The role is being authored at a single Location. Org-wide
   /// permissions trigger the [RoleWarningCode.locationScopeOrgWideKey]
@@ -246,13 +248,13 @@ class CustomRoleValidator {
     _checkSessionForceLogoutChain(known, warnings);
     _checkHierarchyAuditChain(known, warnings);
     _checkOrphanViewDependency(known, warnings);
-    if (scope == RoleScope.location) {
+    if (_limitsBusinessWidePermissions(scope)) {
       _checkOrgWideKeysAtLocationScope(known, warnings);
     }
 
     // Wave 2 Q-4 follow-up - metadata-driven rules.
     _checkOrphanImpliedDependency(known, warnings);
-    if (scope == RoleScope.location) {
+    if (_limitsBusinessWidePermissions(scope)) {
       _checkPerKeyOrgWideAtLocationScope(known, warnings);
     }
     _checkProductAccessGates(known, warnings);
@@ -260,6 +262,9 @@ class CustomRoleValidator {
 
     return List<RoleWarning>.unmodifiable(warnings);
   }
+
+  bool _limitsBusinessWidePermissions(RoleScope scope) =>
+      scope == RoleScope.orgUnit || scope == RoleScope.location;
 
   void _checkMemberManagementChain(
     Set<String> known,
@@ -388,11 +393,11 @@ class CustomRoleValidator {
         code: RoleWarningCode.locationScopeOrgWideKey,
         affectedKeys: triggered,
         message:
-            'This role is set up for a single location but includes '
-            'permissions that only work business-wide. Admins with '
-            'this role will see the option in the UI but will not be '
-            'allowed to use it. Either move this role to the '
-            'business scope, or remove the business-wide permissions.',
+            'This role is set up below the business level but includes '
+            'permissions that only work business-wide. Admins with this '
+            'role will see the option in the UI but will not be allowed '
+            'to use it. Either move this role to All locations, or '
+            'remove the business-wide permissions.',
       ),
     );
   }
@@ -494,7 +499,7 @@ class CustomRoleValidator {
           code: RoleWarningCode.perKeyOrgWideAtLocationScope,
           affectedKeys: <String>[key],
           message:
-              '"$label" doesn\'t apply at the location level. Users '
+              '"$label" doesn\'t apply below the business level. Users '
               "with this role won't be able to use it.",
         ),
       );

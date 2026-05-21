@@ -27,6 +27,7 @@ import 'package:forge_and_flow/operator_web/screens/roles_screen.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_roles_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_roles_gateway.dart';
+import 'package:forge_and_flow/operator_web/widgets/web_app_shell.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/custom_role_validator.dart'
     show RoleScope;
@@ -79,6 +80,7 @@ void main() {
     DemoWebTeamRolesGateway? gateway,
     ValueChanged<TeamRoleCatalogEntry?>? onOpenEditor,
     VoidCallback? onOpenExplainer,
+    OperatorWebManagementScopeOption? selectedScope,
   }) async {
     await tester.pumpWidget(
       wrap(
@@ -87,6 +89,7 @@ void main() {
           gateway: gateway ?? DemoWebTeamRolesGateway(),
           onOpenEditor: onOpenEditor,
           onOpenExplainer: onOpenExplainer,
+          selectedScope: selectedScope,
         ),
       ),
     );
@@ -120,11 +123,35 @@ void main() {
         find.byKey(const Key('operator_web_roles_custom_group')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('operator_web_roles_scope_note')),
+        findsOneWidget,
+      );
       // Floor Captain custom row from the demo fixture set.
       expect(
         find.byKey(const Key('operator_web_role_tile_role-floor-captain')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('scope note names org-unit scope without hierarchy clutter', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 800));
+      await pumpScreen(
+        tester,
+        session: sessionWithRole('operator_owner'),
+        selectedScope: const OperatorWebManagementScopeOption(
+          key: 'orgUnit:demo-org-east',
+          kind: OperatorWebManagementScopeKind.orgUnit,
+          id: 'demo-org-east',
+          label: 'East Region',
+          helper: 'Region',
+        ),
+      );
+
+      expect(find.text('Managing roles for East Region'), findsOneWidget);
+      expect(find.textContaining('avoid whole-business access'), findsOneWidget);
     });
 
     testWidgets('narrow header keeps title readable', (
