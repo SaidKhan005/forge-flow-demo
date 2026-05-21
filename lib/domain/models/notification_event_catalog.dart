@@ -211,7 +211,7 @@ const List<String> kNotificationChannelOrder = <String>[
 
 /// Plain-English labels for the channel column headers.
 const Map<String, String> kNotificationChannelLabels = <String, String>{
-  'push': 'Phone',
+  'push': 'Mobile',
   'email': 'Email',
   'inbox': 'Inbox',
 };

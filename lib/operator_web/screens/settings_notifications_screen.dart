@@ -49,7 +49,8 @@ import 'package:flutter/material.dart';
 import '../../domain/models/notification_event_catalog.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_notification_preferences_gateway_provider.dart';
-import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
 
 /// Wiring-readiness state for one catalog entry, as surfaced on the
@@ -124,11 +125,23 @@ const Map<_NotifEventState, String> _kStateLabel = <_NotifEventState, String>{
 const Map<_NotifEventState, String> _kStateSubcopy = <_NotifEventState, String>{
   _NotifEventState.available: '',
   _NotifEventState.comingSoon:
-      "We'll turn this on once the team launches it. "
-      "You can come back later to set how you'd like to be notified.",
+      'Not ready yet. We will enable choices here when the alert ships.',
   _NotifEventState.backendOnly:
-      "Forge & Flow sends this no matter what - it's part of how we "
-      "keep your data safe. Open the audit log to see recent activity.",
+      'Required safety alert. Check audit log for recent activity.',
+};
+
+const Map<_NotifEventState, String> _kStateDetails = <_NotifEventState, String>{
+  _NotifEventState.available:
+      'These alerts are wired now. Your switches decide how Forge & Flow '
+      'contacts you.',
+  _NotifEventState.comingSoon:
+      'The alert is in the catalog, but the sending hook is not live yet. '
+      'We show it here so you can see what is planned without pretending '
+      'the switch can save a real preference today.',
+  _NotifEventState.backendOnly:
+      'Forge & Flow sends this required alert even when personal '
+      'preferences are off. Security and integrity alerts protect your '
+      'account and business records.',
 };
 
 /// Operator Web Notifications screen. Pure render +
@@ -297,8 +310,22 @@ class _SettingsNotificationsScreenState
           _Header(),
           if (_loadError != null) ...[
             const SizedBox(height: 12),
-            _ErrorBanner(message: _loadError!),
+            OperatorWebBanner(
+              key: const Key('settings_notifications_error_banner'),
+              tone: OperatorWebBannerTone.error,
+              message: _loadError!,
+            ),
           ],
+          const SizedBox(height: 12),
+          const OperatorWebBanner(
+            key: Key('settings_notifications_personal_scope_banner'),
+            title: 'Personal preferences',
+            message:
+                'These choices apply to your signed-in account. They do not '
+                'change notification settings for the whole business or for '
+                'a location.',
+            icon: Icons.person_outline,
+          ),
           const SizedBox(height: 18),
           for (final category in NotificationCategory.values)
             if (visibleEvents.containsKey(category)) ...[
@@ -365,40 +392,6 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('settings_notifications_error_banner'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.negative.withValues(alpha: 0.10),
-        border: Border.all(
-          color: AppColors.negative.withValues(alpha: 0.45),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.body13(color: AppColors.negative),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _CategorySection extends StatelessWidget {
   const _CategorySection({
     required this.category,
@@ -422,21 +415,12 @@ class _CategorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebPanel(
       key: Key('settings_notifications_category_${category.name}'),
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      title: kNotificationCategoryLabels[category] ?? category.name,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OperatorWebSectionHeading(
-            title: kNotificationCategoryLabels[category] ?? category.name,
-          ),
-          const SizedBox(height: 12),
           for (var i = 0; i < events.length; i++) ...[
             _EventRow(
               event: events[i],
@@ -498,6 +482,20 @@ class _EventRow extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   _StateBadge(eventKey: event.eventKey, state: state),
+                  const SizedBox(width: 4),
+                  OperatorWebInfoButton(
+                    key: Key(
+                      'settings_notifications_state_info_${event.eventKey}',
+                    ),
+                    title: _kStateLabel[state] ?? 'Notification status',
+                    tooltip: 'Notification status',
+                    body: Text(
+                      _kStateDetails[state] ?? '',
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 4),

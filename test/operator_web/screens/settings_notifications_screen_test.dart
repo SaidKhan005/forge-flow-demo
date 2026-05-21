@@ -68,6 +68,13 @@ void main() {
         find.byKey(const Key('settings_notifications_screen')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('settings_notifications_personal_scope_banner')),
+        findsOneWidget,
+      );
+      expect(find.text('Mobile'), findsWidgets);
+      expect(find.text('Email'), findsWidgets);
+      expect(find.text('Inbox'), findsWidgets);
       // Every catalog event for an owner (managerOnly + adminOnly + any).
       for (final event in kNotificationCatalog) {
         expect(
