@@ -577,9 +577,7 @@ void main() {
         find.byKey(const Key('account_section_audit_log_link')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('account_section_audit_log_link')),
-      );
+      await tester.tap(find.byKey(const Key('account_section_audit_log_link')));
       await tester.pumpAndSettle();
 
       expect(
@@ -827,19 +825,18 @@ void main() {
       );
     });
 
-    testWidgets('standard demo Business setup edit opens the timing editor', (
+    testWidgets('direct /business-timing route opens business setup', (
       tester,
     ) async {
       await sizeViewport(tester);
-      final writeGateway = DemoOperatorWebBusinessTimingWriteGateway();
-      final source = _BusinessTimingHierarchyOperatorWebSource(writeGateway);
+      final source = DemoOperatorWebAuthSource.completed();
       addTearDown(source.dispose);
 
       await tester.pumpWidget(
         wrap(
           OperatorWebRouter(
             source: source,
-            initialNavId: kOperatorWebNavBusinessSetup,
+            initialUri: Uri(path: '/business-timing'),
           ),
         ),
       );
@@ -849,30 +846,67 @@ void main() {
         find.byKey(const Key('operator_web_business_setup_screen')),
         findsOneWidget,
       );
-      expect(find.text('Live editor'), findsNothing);
-      expect(find.text('Read-only preview'), findsNothing);
       expect(
-        find.byKey(const Key('operator_web_business_timing_safe_dialog')),
-        findsNothing,
-      );
-
-      await tester.ensureVisible(
-        find.byKey(const Key('operator_web_business_timing_edit_button')),
-      );
-      await tester.tap(
-        find.byKey(const Key('operator_web_business_timing_edit_button')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const Key('operator_web_business_timing_editor_screen')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_business_timing_safe_dialog')),
+        find.byKey(const Key('operator_web_account_screen')),
         findsNothing,
       );
     });
+
+    testWidgets(
+      'standard demo Business setup edit opens the timing editor dialog',
+      (tester) async {
+        await sizeViewport(tester);
+        final writeGateway = DemoOperatorWebBusinessTimingWriteGateway();
+        final source = _BusinessTimingHierarchyOperatorWebSource(writeGateway);
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavBusinessSetup,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_business_setup_screen')),
+          findsOneWidget,
+        );
+        expect(find.text('Live editor'), findsNothing);
+        expect(find.text('Read-only preview'), findsNothing);
+        expect(
+          find.byKey(const Key('operator_web_business_timing_safe_dialog')),
+          findsNothing,
+        );
+
+        await tester.ensureVisible(
+          find.byKey(const Key('operator_web_business_timing_edit_button')),
+        );
+        await tester.tap(
+          find.byKey(const Key('operator_web_business_timing_edit_button')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_business_setup_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_business_timing_editor_dialog')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_business_timing_editor_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_business_timing_safe_dialog')),
+          findsNothing,
+        );
+      },
+    );
 
     testWidgets('standard demo Schedule timing opens schedule mode editor', (
       tester,
@@ -901,10 +935,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
+        find.byKey(const Key('operator_web_business_setup_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_business_timing_editor_dialog')),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(const Key('operator_web_business_timing_editor_screen')),
         findsOneWidget,
       );
-      expect(find.text('Schedule timing change'), findsNWidgets(2));
+      expect(find.text('Schedule timing change'), findsWidgets);
       expect(
         find.byKey(const Key('operator_web_business_timing_safe_dialog')),
         findsNothing,

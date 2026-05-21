@@ -262,6 +262,7 @@ String? _navIdFromRaw(String? raw) {
     'account' => kOperatorWebNavAccount,
     'my_account' => kOperatorWebNavMyAccount,
     'business_setup' => kOperatorWebNavBusinessSetup,
+    'business_timing' => kOperatorWebNavBusinessSetup,
     'business_timing_editor' => kOperatorWebNavBusinessSetup,
     // 'benchmarks' route dropped — operator-web override surface cut
     // (Per-Daypart Targets V1 / Slice 2, Gap 35).
@@ -626,6 +627,60 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   void _openBusinessTimingEditor({required bool scheduleMode}) {
+    final authState = _state;
+    final gateway = _webBusinessTimingGateway;
+    if (authState is OperatorWebCompleted && gateway != null) {
+      final session = authState.session;
+      final managementScope = _selectedManagementScope(session);
+      final locationScope =
+          managementScope.kind == OperatorWebManagementScopeKind.location
+          ? managementScope
+          : null;
+      final businessTimingLocationScope = _businessTimingLocationContext(
+        session,
+        managementScope,
+      );
+      final businessTimingOrgUnitScope = _businessTimingOrgUnitContext(
+        managementScope,
+        businessTimingLocationScope,
+      );
+      if (locationScope != null) {
+        unawaited(
+          showDialog<void>(
+            context: context,
+            builder: (dialogContext) => Dialog(
+              key: const Key('operator_web_business_timing_editor_dialog'),
+              insetPadding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 1080,
+                  maxHeight: 820,
+                ),
+                child: BusinessTimingEditorScreen(
+                  session: session,
+                  locationId: locationScope.id,
+                  locationName: locationScope.label,
+                  orgUnitId: businessTimingOrgUnitScope?.id,
+                  orgUnitName: businessTimingOrgUnitScope?.label,
+                  orgUnitHelper: businessTimingOrgUnitScope?.helper,
+                  gateway: gateway,
+                  existingProfile: _resolvedExistingTimingProfile(
+                    locationScope.id,
+                  ),
+                  scheduleMode: scheduleMode,
+                  initialEffectiveAt: scheduleMode
+                      ? DateTime.now().add(const Duration(days: 1))
+                      : null,
+                  onClose: () => Navigator.of(dialogContext).pop(),
+                ),
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() {
       _editingBusinessTiming = true;
       _schedulingBusinessTiming = scheduleMode;
