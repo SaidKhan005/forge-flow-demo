@@ -255,7 +255,9 @@ class RecoveryCodeAttemptLimiter {
         try {
           await previous;
         } catch (_) {
-          // ignore: prior caller's failure does not poison this one.
+          // Intentional swallow: the prior caller's failure does not
+          // poison this one. The lock contract is "release the slot
+          // regardless of outcome" (see method-level comment above).
         }
       }
       return await body();

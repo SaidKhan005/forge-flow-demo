@@ -703,6 +703,10 @@ class CanonicalFactToClosedShiftInputAggregator
     final resolvedWeekly = forecastContext?.resolvedWeeklyForecastCovers;
     if (resolvedWeekly != null && resolvedWeekly > 0) {
       final dailyShare = (resolvedWeekly / 7).round();
+      // Legacy/Gap-42 empty-dayDayparts fallback path is the one
+      // carve-out the DaypartPlanAllocator deprecation explicitly
+      // preserves (per Per-Daypart V1 Slice 3/5 deprecation note on
+      // the class).
       // ignore: deprecated_member_use_from_same_package
       final allocations = DaypartPlanAllocator.allocate(
         day: dayLabel,

@@ -216,6 +216,8 @@ class TockReservationProductionApiClient implements TockApiClient {
   final Duration _backoffBase;
   final int _rateLimitMaxRetries;
   final String Function() _idempotencyKeyFactory;
+  // Injectable clock retained for upcoming request-timing audit +
+  // replay determinism (Phase 8 vendor parity).
   // ignore: unused_field
   final DateTime Function() _clock;
   final Future<void> Function(Duration) _sleep;
@@ -540,6 +542,8 @@ class _TockHttpResponse {
 
   final int statusCode;
   final String body;
+  // Response headers captured for upcoming rate-limit + idempotency
+  // diagnostics (Phase 8 vendor parity).
   // ignore: unused_field
   final Map<String, String> headers;
 }

@@ -285,6 +285,8 @@ class AlohaNcrVoyixPosProductionApiClient implements AlohaNcrVoyixApiClient {
   final Uri _baseUri;
   final Duration _timeout;
   final int _maxRateLimitRetries;
+  // Injectable clock retained for upcoming request-timing audit +
+  // replay determinism (Phase 8 vendor parity).
   // ignore: unused_field
   final DateTime Function() _now;
   final Future<void> Function(Duration) _sleep;

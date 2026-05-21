@@ -1077,6 +1077,9 @@ class BackfillWorkerLoop {
   final WorkerRuntimeConfig config;
   final IntegrationSyncWorkerBackfillDispatch _dispatcher;
   final CanonicalFactProjectionCommitDrainer? _projectionCommitDrainer;
+  // _out is held alongside _err for symmetric stdout/stderr plumbing
+  // the soak harness already relies on; close_sinks is wrong here
+  // because stdout/stderr are owned by dart:io, not by this worker.
   // ignore: unused_field, close_sinks
   final IOSink _out;
   final IOSink _err;
@@ -1543,6 +1546,9 @@ Future<int> runCli(
       ? _buildFanoutBackedBackfillTerminalHook(
           productionNotificationEventFanout,
         )
+      // Degraded-boot / test-path fallback when no fanout is available;
+      // preserved for one release cycle per the EN-3 mitigation note
+      // above this expression.
       // ignore: deprecated_member_use_from_same_package
       : buildBackfillTerminalTelemetryHook();
   final productionDispatcher = IntegrationSyncWorkerBackfillDispatch(

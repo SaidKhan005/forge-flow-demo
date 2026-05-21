@@ -1126,6 +1126,9 @@ class IntegrationSyncWorkerLoop {
   final AdapterFactoryResolver resolveAdapterFactory;
   final WorkerRuntimeConfig config;
   final IntegrationSyncWorkerDispatch _dispatcher;
+  // _out is held alongside _err for symmetric stdout/stderr plumbing
+  // the soak harness already relies on; close_sinks is wrong here
+  // because stdout/stderr are owned by dart:io, not by this worker.
   // ignore: unused_field, close_sinks
   final IOSink _out;
   final IOSink _err;
