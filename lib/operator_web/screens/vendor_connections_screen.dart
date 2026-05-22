@@ -67,9 +67,9 @@ import '../widgets/vendor_connections_recently_available_panel.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../theme/app_theme.dart';
-import '../widgets/operator_web_info_button.dart';
-import '../widgets/operator_web_screen_body.dart';
-import '../widgets/operator_web_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 
 /// Roles permitted to configure inbound vendor connections from the
 /// operator-web console. Mirrors the `integrations.configure` row

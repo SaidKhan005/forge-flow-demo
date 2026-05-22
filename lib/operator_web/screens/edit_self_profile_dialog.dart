@@ -21,7 +21,7 @@ import '../../theme/app_theme.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
-import '../widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 /// Locked validation copy.
 class EditSelfProfileDialogCopy {

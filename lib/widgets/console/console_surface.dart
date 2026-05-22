@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
-import 'operator_web_section_heading.dart';
+import 'console_section_heading.dart';
 
 enum OperatorWebPanelTone { surface, highlight }
 

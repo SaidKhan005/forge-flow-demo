@@ -36,9 +36,9 @@ import '../../theme/app_theme.dart';
 import '../../widgets/role_permission_picker.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
-import '../widgets/operator_web_info_button.dart';
-import '../widgets/operator_web_screen_body.dart';
-import '../widgets/operator_web_section_heading.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 
 /// Permission key validation rule. Mirrors the proxy-side
 /// `validation_failed/permission_key_unknown` error code so the

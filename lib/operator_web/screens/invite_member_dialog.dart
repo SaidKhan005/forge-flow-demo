@@ -26,7 +26,7 @@ import '../services/web_team_users_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/hierarchy_tree_picker.dart';
-import '../widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 /// Locked validation copy. Tests assert against these strings to pin
 /// the parity contract against the rendered dialog copy.

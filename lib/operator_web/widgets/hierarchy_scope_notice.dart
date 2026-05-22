@@ -42,8 +42,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
-import 'operator_web_info_button.dart';
-import 'operator_web_section_heading.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 
 /// Hierarchy level at which the screen's values are currently scoped.
 /// Maps to the operator's `hierarchy_path` ltree depth on the proxy

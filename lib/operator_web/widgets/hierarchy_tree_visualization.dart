@@ -34,7 +34,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
-import 'operator_web_section_heading.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 
 /// Hierarchy level a node represents in the tree visualization. Mirrors
 /// the `HierarchyScopeLevel` enum used by `HierarchyScopeNotice` so the

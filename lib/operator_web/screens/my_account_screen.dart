@@ -59,9 +59,9 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_security_gateway.dart';
-import '../widgets/operator_web_info_button.dart';
-import '../widgets/operator_web_screen_body.dart';
-import '../widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import 'edit_self_profile_dialog.dart';
 
 part 'my_account_security_dialogs.dart';

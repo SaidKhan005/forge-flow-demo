@@ -4,10 +4,10 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
-import '../widgets/operator_web_info_button.dart';
-import '../widgets/operator_web_screen_body.dart';
-import '../widgets/operator_web_screen_header.dart';
-import '../widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 // G7d (spec §2.B/§3): v2 catalog constants. Phantom
 // `'operator_admin'` dropped (folded into `operator_owner`).

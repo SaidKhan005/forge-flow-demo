@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/operator_web/widgets/operator_web_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 
 void main() {
   Future<void> pumpHeader(
