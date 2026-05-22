@@ -127,7 +127,7 @@ const List<NotificationCatalogEntry> kNotificationCatalog =
             "Each night Forge & Flow seals your audit log so its "
             "history can't be changed without us noticing. Today's seal "
             "didn't go through. Your audit log itself is still being "
-            "recorded — for example, every team invite, role change, "
+            "recorded. For example, every team invite, role change, "
             "password reset, and sign-in is still captured. This is rare "
             "and never blocks operations, but you should know.",
         category: NotificationCategory.audit,
