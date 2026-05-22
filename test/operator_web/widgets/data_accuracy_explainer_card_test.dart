@@ -148,9 +148,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining(
-          'Only applies to vendors that need scheduled checks.',
-        ),
+        find.textContaining('Webhook vendors update when they happen.'),
         findsOneWidget,
       );
       expect(find.text('Toast'), findsWidgets);
@@ -174,17 +172,15 @@ void main() {
         findsNothing,
       );
       expect(
-        find.textContaining(
-          'Only applies to vendors that need scheduled checks.',
-        ),
+        find.textContaining('Webhook vendors update when they happen.'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('Manual wage rows stay available'),
+        find.textContaining('Manual wage mix is available now'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('Pick the guest-count source'),
+        find.textContaining('Manual and forecast covers are available now'),
         findsOneWidget,
       );
     });

@@ -252,7 +252,7 @@ void main() {
         find.byKey(const Key('operator_web_data_accuracy_subtitle')),
         findsNothing,
       );
-      await tester.tap(find.byTooltip('What this page is for'));
+      await tester.tap(find.byTooltip('How Forge & Flow reads this location'));
       await tester.pumpAndSettle();
       expect(
         find.textContaining('Brio - Chicago Loop'),

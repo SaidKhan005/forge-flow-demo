@@ -49,25 +49,25 @@ class DataAccuracyExplainerCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           OperatorWebSectionHeading(
-            title: 'What this page is for',
+            title: 'How Forge & Flow reads this location',
             trailing: OperatorWebInfoButton(
-              title: 'What this page is for',
-              tooltip: 'What this page is for',
+              title: 'How Forge & Flow reads this location',
+              tooltip: 'How Forge & Flow reads this location',
               body: Text(
-                'This page tells Forge & Flow which source to trust for '
-                'labor dollars, guest counts, and update timing at '
+                'These settings decide which source Forge & Flow uses when '
+                'vendor data is incomplete or arrives on a schedule at '
                 '$locationLabel.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
-            'A quick map of the numbers behind the dashboard.',
+            'Labor, covers, and freshness feed the dashboard. Each setting is available only when the connected vendors make that choice useful.',
             key: const Key('data_accuracy_map_intro'),
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           _MapNode(
             slug: 'labor',
             icon: Icons.payments_outlined,
@@ -95,7 +95,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
             heading: 'Data freshness',
             body: dataFreshnessApplies
                 ? _freshnessMapLine(bundle)
-                : 'Only applies to vendors that need scheduled checks.',
+                : 'Applies only to vendors that need scheduled checks. Webhook vendors update when they happen.',
             vendors: dataAccuracyConnectedPollOnlyVendors(bundle),
             disabled: !dataFreshnessApplies,
           ),
@@ -107,25 +107,20 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   static String _laborMapLine(VendorConnectionsBundle? bundle) {
     final labor = bundle?.laborConnection;
     if (labor == null) {
-      return 'Manual wage rows stay available until a labor vendor is connected.';
+      return 'Manual wage mix is available now. Vendor wages appear when a labor integration can supply them.';
     }
     final wageClass = laborWageSourceClassFor(labor.vendorId);
     return switch (wageClass) {
       LaborWageSourceClass.perEmployeeWithDollars =>
-        '${labor.displayName} reports labor dollars directly. Manual mix '
-            'stays available when you want to override it.',
+        '${labor.displayName} reports labor dollars directly. Manual mix stays available as a fallback.',
       LaborWageSourceClass.perEmployeeWithRates =>
-        '${labor.displayName} reports employee rates. Forge & Flow turns '
-            'rate and time into labor dollars.',
+        '${labor.displayName} reports employee rates. Forge & Flow calculates labor dollars from rates and time.',
       LaborWageSourceClass.perPositionWithRates =>
-        '${labor.displayName} reports position rates. Forge & Flow turns '
-            'role rates and hours into labor dollars.',
+        '${labor.displayName} reports role rates. Forge & Flow calculates labor dollars from rates and hours.',
       LaborWageSourceClass.hoursOnly =>
-        '${labor.displayName} reports hours only. Manual mix stays available '
-            'when target wage fallback is not the right fit.',
+        '${labor.displayName} reports hours only. Vendor mode uses target wage x hours; manual mix remains the fallback.',
       null =>
-        '${labor.displayName} is connected. Manual mix stays available if '
-            'vendor labor dollars are not usable.',
+        '${labor.displayName} is connected. Manual mix stays available if vendor labor dollars are not usable.',
     };
   }
 
@@ -135,17 +130,15 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   ) {
     final pos = bundle?.posConnection;
     if (pos == null) {
-      return 'Pick the guest-count source for each service period.';
+      return 'Manual and forecast covers are available now. Vendor covers appear when a POS exposes guest counts.';
     }
     if (posVendorExposesCovers(pos.vendorId)) {
-      return '${pos.displayName} exposes covers. You can still override a '
-          'service period when the floor count needs a different source.';
+      return '${pos.displayName} exposes covers, so Vendor is available. Manual and forecast stay available by service period.';
     }
     final periods = servicePeriodLabels.isEmpty
         ? 'each service period'
         : servicePeriodLabels.take(3).join(', ');
-    return '${pos.displayName} does not expose covers. Pick the source for '
-        '$periods so per-cover metrics stay honest.';
+    return '${pos.displayName} does not expose covers, so Vendor is locked. Pick the source for $periods.';
   }
 
   static String _freshnessMapLine(VendorConnectionsBundle? bundle) {
@@ -154,8 +147,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
       return 'Applies only when Oracle MICROS Simphony, QuickBooks Time, '
           'Humanity, Agendrix, or Push Operations is connected.';
     }
-    return 'Applies to ${vendors.join(' and ')} because those vendors need '
-        'scheduled checks.';
+    return 'Applies to ${vendors.join(' and ')} because those vendors need scheduled checks.';
   }
 
   static List<VendorConnectionRow> _vendorList(
@@ -330,26 +322,24 @@ class DataAccuracyCoversModeInfo extends StatelessWidget {
       children: [
         _ModeLine(
           title: 'Vendor',
-          body:
-              'Use the POS count. Best when the POS exposes covers and the count is trusted.',
+          body: 'Use POS guest counts when the connected POS exposes covers.',
         ),
         SizedBox(height: 8),
         _ModeLine(
           title: 'Forecast',
           body:
-              'Use the Forge & Flow forecast. Best when the vendor count is missing or noisy.',
+              'Use the Forge & Flow forecast, built from closed shifts and demand signals.',
         ),
         SizedBox(height: 8),
         _ModeLine(
           title: 'Manual',
           body:
-              'Type the count yourself. Best when the floor manager closes covers by hand.',
+              'Type the guest count for that business date and service period.',
         ),
         SizedBox(height: 8),
         _ModeLine(
           title: 'Reservations + walk-ins',
-          body:
-              'Start with the reservation book and add walk-ins. Best when the POS does not count covers.',
+          body: 'Use reservation-book covers plus the walk-in count you enter.',
         ),
       ],
     );
