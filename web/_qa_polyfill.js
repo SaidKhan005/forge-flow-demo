@@ -2,8 +2,29 @@
 // where document.visibilityState === 'hidden' would otherwise pause
 // requestAnimationFrame. NOT shipped to production — only present in
 // the local build/web directory served by dhttpd for in-browser QA.
+//
+// SELF-GATING: this file ships in every local build (it survives
+// rebuilds), so it can also load in a real browser. Its overrides pin
+// Flutter to a fake 1440x900 viewport and replace rAF; in a real browser
+// that stops the app resizing to the window and leaves a blank gap on
+// wide screens. It therefore no-ops unless it detects the headless
+// harness (a 0x0 viewport, an automation flag, or an Electron/Headless
+// user agent).
 (function () {
   'use strict';
+
+  // Gate: only engage inside the headless QA harness. A real browser
+  // reports a non-zero viewport and is not under automation, so bail out
+  // and let Flutter use the real window size and native rAF.
+  var _ua = navigator.userAgent || '';
+  var _underHarness =
+      !(window.innerWidth > 0 && window.innerHeight > 0) ||
+      navigator.webdriver === true ||
+      /\bElectron\b/i.test(_ua) ||
+      /Headless/i.test(_ua);
+  if (!_underHarness) {
+    return;
+  }
 
   // 1) Lie about visibility — some Flutter / engine paths look at
   // document.hidden or document.visibilityState directly.
