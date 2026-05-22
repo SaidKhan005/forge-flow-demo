@@ -35,10 +35,11 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 import '../widgets/web_app_shell.dart';
 import 'custom_role_editor_screen.dart';
-import 'permission_explainer_screen.dart';
 
 /// Roles admitted to the Roles surface when the proxy permission
 /// snapshot is not yet hydrated (demo flavor + bootstrap). Mirrors the
@@ -240,45 +241,32 @@ class _RolesScreenState extends State<RolesScreen> {
     required String body,
     required String cta,
   }) async {
-    final result = await showDialog<bool>(
+    final result = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        key: const Key('roles_confirm_dialog'),
-        title: Text(title),
-        content: Text(body),
-        actions: <Widget>[
-          TextButton(
-            key: const Key('roles_confirm_dialog_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('roles_confirm_dialog_confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.negative,
-              foregroundColor: AppColors.backgroundSurface,
-            ),
-            child: Text(cta),
-          ),
-        ],
+      title: title,
+      icon: Icons.delete_outline,
+      child: Text(
+        body,
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('roles_confirm_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('roles_confirm_dialog_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.negative,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          child: Text(cta),
+        ),
+      ],
     );
     return result == true;
-  }
-
-  void _openExplainer() {
-    final hook = widget.onOpenExplainer;
-    if (hook != null) {
-      hook();
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        settings: const RouteSettings(name: '/roles/explainer'),
-        builder: (_) => const PermissionExplainerScreen(),
-      ),
-    );
   }
 
   Future<void> _openEditor(TeamRoleCatalogEntry? role) async {
@@ -382,10 +370,26 @@ class _RolesScreenState extends State<RolesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _RolesHeader(
-            canWrite: widget._canWrite,
-            onOpenExplainer: _openExplainer,
-            onCreateRole: () => _openEditor(null),
+          OperatorWebScreenHeader(
+            icon: Icons.shield_outlined,
+            title: 'Roles & permissions',
+            actions: <Widget>[
+              SizedBox(
+                height: 38,
+                child: FilledButton.icon(
+                  key: const Key('operator_web_roles_new_role'),
+                  onPressed: widget._canWrite ? () => _openEditor(null) : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.sunset,
+                    foregroundColor: AppColors.backgroundSurface,
+                    disabledBackgroundColor: AppColors.borderSubtle,
+                    disabledForegroundColor: AppColors.textMuted,
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('New role'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           if (custom.isEmpty)
@@ -418,82 +422,6 @@ class _RolesScreenState extends State<RolesScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _RolesHeader extends StatelessWidget {
-  const _RolesHeader({
-    required this.canWrite,
-    required this.onOpenExplainer,
-    required this.onCreateRole,
-  });
-
-  final bool canWrite;
-  final VoidCallback onOpenExplainer;
-  final VoidCallback onCreateRole;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = Row(
-      children: <Widget>[
-        const Icon(
-          Icons.shield_outlined,
-          size: 22,
-          color: AppColors.sunsetDark,
-        ),
-        const SizedBox(width: 10),
-        Flexible(
-          child: Text(
-            'Roles & permissions',
-            maxLines: 2,
-            softWrap: true,
-            style: AppTextStyles.display20(color: AppColors.textPrimary),
-          ),
-        ),
-      ],
-    );
-
-    final actions = Wrap(
-      spacing: 10,
-      runSpacing: 8,
-      alignment: WrapAlignment.end,
-      children: <Widget>[
-        SizedBox(
-          height: 38,
-          child: FilledButton.icon(
-            key: const Key('operator_web_roles_new_role'),
-            onPressed: canWrite ? onCreateRole : null,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.sunset,
-              foregroundColor: AppColors.backgroundSurface,
-              disabledBackgroundColor: AppColors.borderSubtle,
-              disabledForegroundColor: AppColors.textMuted,
-            ),
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('New role'),
-          ),
-        ),
-      ],
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 560) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[title, const SizedBox(height: 12), actions],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(child: title),
-            const SizedBox(width: 16),
-            actions,
-          ],
-        );
-      },
     );
   }
 }

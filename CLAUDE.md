@@ -332,6 +332,8 @@ re-audited after every rebase, lost and redone. These rules cut that:
 - This file (`CLAUDE.md`) is the SINGLE SOURCE OF TRUTH for authority order, workflow, gates, and rules. The Codex `~/.codex/skills/forge-flow` skill MUST defer to it and MUST NOT restate those rules (restating creates silent drift — the failure mode this prevents). Because Codex does not auto-load `CLAUDE.md`, the Codex skill's first action is to locate the repo and read `CLAUDE.md` + `PROJECT_TRACKER.md`.
 - `.mcp.json` registers `forgeflow_docs` (read-only docs/contracts/runbooks search), `forgeflow_sqlite_schema` (read-only local SQLite schema), `graphify` (manually refreshed local code/docs graph).
 - `rg` first when symbol/filename/import path/literal text is known. Graphify usage is governed by the "Knowledge Graph" section.
+- **In-browser QA — operator web console.** Any session asked to run, pressure-test, or QA the operator web console MUST read `runbooks/operator_web_qa_runbook.md` before doing anything else. The build command, dhttpd serve config (`operator-web-static`, port 8185), polyfill boot-verify snippet, semantics-enable snippet, 11-route checklist, known baseline defects, and troubleshooting table are all there. No re-discovery.
+- **In-browser QA — admin console.** Any session asked to run, pressure-test, or QA the admin console MUST read `runbooks/admin_console_browser_qa_runbook.md` before doing anything else. Same polyfill methodology; `--dart-define=ADMIN_SHARE_PREVIEW_AS_SUPER_ADMIN=true` build; dhttpd serve config (`admin-web-static`, port 8186); 13-route checklist covering both primary nav and Business accounts hidden routes. No re-discovery.
 
 ## Knowledge Graph
 

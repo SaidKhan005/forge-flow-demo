@@ -48,7 +48,9 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_sessions_gateway.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 
 /// Permission-key bound for the Team sessions section. Aliased to the
 /// frozen catalog constant in `lib/auth/permission_keys.dart`.
@@ -305,25 +307,26 @@ class _SessionsScreenState extends State<SessionsScreen> {
     required String body,
     required String cta,
   }) async {
-    final result = await showDialog<bool>(
+    final result = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        key: const Key('sessions_confirm_dialog'),
-        title: Text(title),
-        content: Text(body),
-        actions: <Widget>[
-          TextButton(
-            key: const Key('sessions_confirm_dialog_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('sessions_confirm_dialog_confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(cta),
-          ),
-        ],
+      title: title,
+      icon: Icons.logout_outlined,
+      child: Text(
+        body,
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('sessions_confirm_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('sessions_confirm_dialog_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(cta),
+        ),
+      ],
     );
     return result == true;
   }
@@ -433,41 +436,11 @@ class _SessionsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.devices_outlined,
-                    size: 22,
-                    color: AppColors.sunsetDark,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Active sessions',
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'See where Forge and Flow is signed in, then sign out '
-                'devices that no longer need access. Mobile and web sessions '
-                'appear together here.',
-                key: const Key('operator_web_sessions_subtitle'),
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      ],
+    return const OperatorWebScreenHeader(
+      icon: Icons.devices_outlined,
+      title: 'Active sessions',
+      subtitle: 'Manage signed-in devices for your account.',
+      subtitleKey: Key('operator_web_sessions_subtitle'),
     );
   }
 }

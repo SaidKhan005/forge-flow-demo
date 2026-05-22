@@ -6,8 +6,7 @@
 //   * "Use vendor"        — labor vendor's reported wages and dollars
 //                           when available. Default.
 //   * "Use my manual mix" — operator's manual wage mix from the wage
-//                           editor (the same rates the wage generator
-//                           uses).
+//                           Settings.
 //
 // Authority: docs/contracts/data_accuracy_settings_contract.md
 // "Wage source card" + "Wage source resolution" sections.
@@ -23,6 +22,7 @@ import 'package:flutter/material.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'data_accuracy_applicability.dart';
 import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
@@ -52,24 +52,32 @@ class WageSourceToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sourceLabel = source?.operatorFacingLabel;
-    final vendorSelectable =
-        !vendorApplicabilityBound || applicableWageVendorSlugs.isNotEmpty;
+    final vendorSelectable = wageVendorOptionSelectable(
+      bundle: bundle,
+      vendorApplicabilityBound: vendorApplicabilityBound,
+      applicableWageVendorSlugs: applicableWageVendorSlugs,
+    );
+    final effectiveValue = effectiveWageSource(
+      configured: value,
+      bundle: bundle,
+      vendorApplicabilityBound: vendorApplicabilityBound,
+      applicableWageVendorSlugs: applicableWageVendorSlugs,
+    );
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_wage_source_card'),
       title: 'How labor dollars are calculated',
       headerExplainer:
-          'Labor dollars on your dashboard are calculated one of two ways. '
-          'Either Forge & Flow reads them straight from your scheduling '
-          'system, or it multiplies the wage rates you set in Settings by '
-          'the hours your staff actually worked. Pick the path that '
-          'matches the system you trust today. You can switch back '
-          'any time without losing past numbers.',
+          'Labor dollars come from either the labor integration or the '
+          'manual wage mix. If a vendor sends dollars, Forge & Flow uses '
+          'them. If it sends rates, Forge & Flow calculates dollars from '
+          'rates and time. Manual mix uses the wage-role rows you maintain '
+          'in Settings.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _RadioRow(
             rowKey: const Key('wage_source_radio_vendor'),
-            selected: value == WageSource.vendor,
+            selected: effectiveValue == WageSource.vendor,
             enabled: vendorSelectable,
             label:
                 'Use labor vendor\'s reported wages and dollars when available',
@@ -79,15 +87,13 @@ class WageSourceToggle extends StatelessWidget {
           const SizedBox(height: 10),
           _RadioRow(
             rowKey: const Key('wage_source_radio_manual_mix'),
-            selected: value == WageSource.manualMix,
-            label:
-                'Use my manual wage mix from Settings (the same rates the wage generator uses)',
+            selected: effectiveValue == WageSource.manualMix,
+            label: 'Use my manual wage mix from Settings below',
             body:
-                'Always use the wage editor mix you set up in Forge & Flow. '
-                'Forge & Flow multiplies your role-by-role rates by actual '
-                'hours, ignoring whatever the scheduling system reports. '
-                'Pick this if your scheduling system\'s rates are out of date '
-                'or if you have not yet built confidence in them.',
+                'Use the wage-role rows you maintain in Forge & Flow. This '
+                'is the manual fallback when the vendor does not provide '
+                'usable labor dollars, or when you want one operator-owned '
+                'wage model across the location.',
             onTap: () => onChanged(WageSource.manualMix),
           ),
           if (sourceLabel != null) ...[
@@ -117,15 +123,18 @@ class WageSourceToggle extends StatelessWidget {
   }
 
   String _vendorCopy(bool vendorSelectable) {
+    if (!wageVendorOptionApplies(bundle)) {
+      return 'Connect a labor vendor before using vendor-reported wages.';
+    }
     if (vendorApplicabilityBound && !vendorSelectable) {
-      return 'No current wage vendor is enabled for this location yet. Use the manual mix until F&F enables one.';
+      return 'No current wage vendor is enabled for this location yet.';
     }
     final suffix = vendorApplicabilityBound
         ? ' Current wage vendors: ${_slugList(applicableWageVendorSlugs)}.'
         : '';
-    return 'Read labor dollars from your scheduling system when it reports them. '
-        'Forge & Flow falls back to target wage x hours when the system does not '
-        'expose dollars (we will tell you when that happens on the dashboard).'
+    return 'Use the labor integration when it can supply the wage path. '
+        'Forge & Flow uses vendor dollars directly, calculates from vendor '
+        'rates when needed, or uses target wage x hours for hours-only vendors.'
         '$suffix';
   }
 }
@@ -294,7 +303,7 @@ class _VendorApplicabilityStatus extends StatelessWidget {
         : isError
         ? error!
         : slugs.isEmpty
-        ? 'No enabled wage vendor is current. Manual mix stays available.'
+        ? 'No enabled wage vendor is current.'
         : 'Enabled wage vendors: ${_slugList(slugs)}';
     return Container(
       key: const Key('wage_source_vendor_applicability_status'),

@@ -29,11 +29,10 @@ import '../../integrations/labor/seven_shifts_labor_adapter.dart';
 
 /// The four wage source classes a labor vendor can fall into.
 ///
-/// Per 2026-05-05 corrections, no Wave B vendor presently qualifies as
-/// [perEmployeeWithDollars]. 7shifts qualifies IFF the adapter consumes
-/// `/reports/hours_and_wages` (deferred to the
-/// `8.7S.upgrade.hours_and_wages` follow-up); until then it sits in
-/// [perEmployeeWithRates].
+/// 7shifts now qualifies as [perEmployeeWithDollars] because the
+/// adapter consumes `/reports/hours_and_wages` and projects the
+/// per-shift `total_pay` value. Other Wave B labor vendors remain in
+/// the rate-based or hours-only classes below.
 enum LaborWageSourceClass {
   /// Vendor exposes per-shift dollar totals directly. Aggregator sums
   /// to FOH/BOH dollars.
@@ -83,16 +82,16 @@ LaborWageSourceClass? laborWageSourceClassFor(String vendorId) {
 ///     docs inaccessible (developer-portal landing page only).
 const Map<String, LaborWageSourceClass> _laborWageSourceClassByVendorId =
     <String, LaborWageSourceClass>{
-  // perEmployeeWithDollars — 7shifts joined here when the
-  // `8.spine-bridge.7S.upgrade` lane wired the
-  // `/reports/hours_and_wages` endpoint (per-shift `total_pay`).
-  kSevenShiftsVendorId: LaborWageSourceClass.perEmployeeWithDollars,
+      // perEmployeeWithDollars — 7shifts joined here when the
+      // `8.spine-bridge.7S.upgrade` lane wired the
+      // `/reports/hours_and_wages` endpoint (per-shift `total_pay`).
+      kSevenShiftsVendorId: LaborWageSourceClass.perEmployeeWithDollars,
 
-  kQuickBooksTimeVendorId: LaborWageSourceClass.perEmployeeWithRates,
+      kQuickBooksTimeVendorId: LaborWageSourceClass.perEmployeeWithRates,
 
-  kHumanityVendorId: LaborWageSourceClass.perPositionWithRates,
-  agendrixVendorId: LaborWageSourceClass.perPositionWithRates,
+      kHumanityVendorId: LaborWageSourceClass.perPositionWithRates,
+      agendrixVendorId: LaborWageSourceClass.perPositionWithRates,
 
-  kAdpVendorId: LaborWageSourceClass.hoursOnly,
-  pushOperationsVendorId: LaborWageSourceClass.hoursOnly,
-};
+      kAdpVendorId: LaborWageSourceClass.hoursOnly,
+      pushOperationsVendorId: LaborWageSourceClass.hoursOnly,
+    };

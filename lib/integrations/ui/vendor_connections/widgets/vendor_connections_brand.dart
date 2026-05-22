@@ -36,6 +36,13 @@ class _VendorLogo extends StatelessWidget {
                   brand.iconUrl!,
                   fit: BoxFit.cover,
                   webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                  frameBuilder:
+                      (context, child, frame, wasSynchronouslyLoaded) {
+                        if (wasSynchronouslyLoaded || frame != null) {
+                          return child;
+                        }
+                        return fallback;
+                      },
                   errorBuilder: (_, __, ___) => fallback,
                 ),
               ),
@@ -148,8 +155,6 @@ _VendorBrand _vendorBrand(String vendorId, String displayName) {
         displayName: 'Libro Reserve',
         initials: 'Li',
         color: const Color(0xFF006C5B),
-        iconUrl: _brandIconUrl('librorez.com'),
-        sourceHost: 'librorez.com',
       );
     case 'opentable':
       return _VendorBrand(

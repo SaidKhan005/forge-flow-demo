@@ -63,6 +63,8 @@ import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_surface.dart';
 import 'edit_self_profile_dialog.dart';
 
+part 'my_account_security_dialogs.dart';
+
 /// V1 My account screen. The router renders this at
 /// `kOperatorWebNavMyAccount` once onboarding completes.
 class MyAccountScreen extends StatefulWidget {
@@ -72,6 +74,7 @@ class MyAccountScreen extends StatefulWidget {
     this.actions,
     this.securityGateway,
     this.onOpenAuditLog,
+    this.onOpenActiveSessions,
     this.scrollToSecurityOnFirstBuild = false,
     this.now,
   });
@@ -80,6 +83,7 @@ class MyAccountScreen extends StatefulWidget {
   final OperatorWebAccountActions? actions;
   final WebSecurityGateway? securityGateway;
   final VoidCallback? onOpenAuditLog;
+  final VoidCallback? onOpenActiveSessions;
   final bool scrollToSecurityOnFirstBuild;
 
   /// Test seam for the time-relative login-history filter.
@@ -319,34 +323,33 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
 
   Future<void> _handleRequestMfaRemoval() async {
     if (!_canRequestMfaRemoval) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        key: const Key('account_section_mfa_request_removal_dialog'),
-        title: const Text('Turn off two-factor sign-in?'),
-        content: const Text(
-          'We wait 24 hours before turning off two-factor sign-in so that '
-          'if someone got into your account, you have time to stop them. '
-          'You may be asked to sign in again before the request is '
-          'accepted.',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('account_section_mfa_request_removal_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep two-factor sign-in on'),
-          ),
-          FilledButton(
-            key: const Key('account_section_mfa_request_removal_confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.negative,
-              foregroundColor: AppColors.backgroundSurface,
-            ),
-            child: const Text('Request removal'),
-          ),
-        ],
+      title: 'Turn off two-factor sign-in?',
+      icon: Icons.security_outlined,
+      child: Text(
+        'We wait 24 hours before turning off two-factor sign-in so that '
+        'if someone got into your account, you have time to stop them. '
+        'You may be asked to sign in again before the request is '
+        'accepted.',
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
+      actions: [
+        TextButton(
+          key: const Key('account_section_mfa_request_removal_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Keep two-factor sign-in on'),
+        ),
+        FilledButton(
+          key: const Key('account_section_mfa_request_removal_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.negative,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          child: const Text('Request removal'),
+        ),
+      ],
     );
     if (confirmed != true || !mounted) return;
     await _mfaController.requestRemoval();
@@ -541,29 +544,28 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       );
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        key: const Key('account_active_sessions_confirm_dialog'),
-        title: const Text('Sign out all other sessions?'),
-        content: const Text(
-          'This keeps this device signed in and signs out every other browser '
-          'or device listed here. You may be asked to sign in again before '
-          'the change goes through.',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('account_active_sessions_confirm_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('account_active_sessions_confirm_submit'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Sign out all other sessions'),
-          ),
-        ],
+      title: 'Sign out all other sessions?',
+      icon: Icons.logout_outlined,
+      child: Text(
+        'This keeps this device signed in and signs out every other browser '
+        'or device listed here. You may be asked to sign in again before '
+        'the change goes through.',
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
+      actions: [
+        TextButton(
+          key: const Key('account_active_sessions_confirm_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('account_active_sessions_confirm_submit'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Sign out all other sessions'),
+        ),
+      ],
     );
     if (confirmed != true || !mounted) return;
     setState(() {
@@ -627,7 +629,12 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     return _activeSessions.any((session) => session.sessionId != currentId);
   }
 
-  Future<void> _handleManageActiveSessions() {
+  Future<void> _handleManageActiveSessions() async {
+    final openActiveSessions = widget.onOpenActiveSessions;
+    if (openActiveSessions != null) {
+      openActiveSessions();
+      return;
+    }
     return showOperatorWebDialog<void>(
       context: context,
       title: 'Active sessions',
@@ -1391,7 +1398,6 @@ class _ActiveSessionsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const summary = 'Manage active sessions here.';
     return _SectionCard(
       cardKey: const Key('account_section_active_sessions'),
       title: 'Active sessions',
@@ -1411,29 +1417,42 @@ class _ActiveSessionsSection extends StatelessWidget {
           else if (errorMessage != null)
             _AccountInlineError(message: errorMessage!, onRetry: onRetry)
           else if (sessions.isEmpty)
-            const _AccountInlineState(
-              stateKey: Key('account_active_sessions_empty'),
-              icon: Icons.devices_other_outlined,
-              message: 'Manage active sessions here.',
+            _ActiveSessionsManageButton(
+              key: const Key('account_active_sessions_empty'),
+              onPressed: onManageSessions,
             )
           else ...[
-            Text(
-              summary,
+            _ActiveSessionsManageButton(
               key: const Key('account_active_sessions_summary'),
-              style: AppTextStyles.body13(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const Key('account_active_sessions_manage'),
-                onPressed: onManageSessions,
-                icon: const Icon(Icons.open_in_new, size: 16),
-                label: const Text('Manage active sessions here'),
-              ),
+              onPressed: onManageSessions,
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ActiveSessionsManageButton extends StatelessWidget {
+  const _ActiveSessionsManageButton({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        key: const Key('account_active_sessions_manage'),
+        onPressed: onPressed,
+        icon: const Icon(Icons.devices_other_outlined, size: 16),
+        label: const Text('Manage active sessions here'),
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.sunsetDark,
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          alignment: Alignment.centerLeft,
+        ),
       ),
     );
   }
@@ -2081,275 +2100,6 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BackupCodesDialog extends StatelessWidget {
-  const _BackupCodesDialog();
-
-  // Demo backup codes — the proxy returns 10 single-use codes on
-  // enrollment confirm; we surface the same shape so the walkthrough
-  // copy is stable across the demo + live flows.
-  static const List<String> _codes = <String>[
-    '4QF8-7VPC',
-    'KX2J-MN9R',
-    'TR5Y-LQ8B',
-    'WC3D-PE6H',
-    'BG7N-SV4A',
-    'ZH9F-DM1U',
-    'YJ6X-CT2L',
-    'NK4P-OW8E',
-    'QS3R-IB7G',
-    'AL5K-VU9X',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      key: const Key('mfa_backup_codes_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Backup codes',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Save these somewhere safe. If you lose your phone, any one '
-                'of these codes lets you sign in once.',
-                style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                key: const Key('mfa_backup_codes_dialog_list'),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.cardGlow,
-                  border: Border.all(color: AppColors.borderSubtle, width: 1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final code in _codes)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: SelectableText(
-                          code,
-                          style: AppTextStyles.mono14(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton(
-                  key: const Key('mfa_backup_codes_dialog_close'),
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                  ),
-                  child: const Text('Done'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ChangePasswordDialog extends StatefulWidget {
-  const _ChangePasswordDialog({this.onSubmit});
-
-  final Future<void> Function({
-    required String currentPassword,
-    required String newPassword,
-  })?
-  onSubmit;
-
-  @override
-  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
-}
-
-class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
-  final _currentController = TextEditingController();
-  final _newController = TextEditingController();
-  final _confirmController = TextEditingController();
-  String? _error;
-  bool _submitting = false;
-
-  @override
-  void dispose() {
-    _currentController.dispose();
-    _newController.dispose();
-    _confirmController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (_submitting) return;
-    if (_currentController.text.isEmpty) {
-      setState(
-        () => _error =
-            'Type your current password first so we can confirm it\'s you.',
-      );
-      return;
-    }
-    if (_newController.text.length < 12) {
-      setState(
-        () => _error =
-            'Use at least 12 characters for your new password. A short '
-            'phrase from a song or book is easier to remember than a string '
-            'of random characters.',
-      );
-      return;
-    }
-    if (_newController.text != _confirmController.text) {
-      setState(
-        () => _error =
-            'The two new passwords didn\'t match. Type the same password in '
-            'both fields and try again.',
-      );
-      return;
-    }
-    final submit = widget.onSubmit;
-    if (submit != null) {
-      setState(() {
-        _submitting = true;
-        _error = null;
-      });
-      try {
-        await submit(
-          currentPassword: _currentController.text,
-          newPassword: _newController.text,
-        );
-      } catch (error) {
-        if (!mounted) return;
-        setState(() {
-          _submitting = false;
-          _error = 'Could not update the password: $error';
-        });
-        return;
-      }
-      if (!mounted) return;
-    }
-    Navigator.of(context).pop(true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      key: const Key('change_password_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Change password',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'A strong password is one of the simplest things you can do '
-                'to keep your business data safe. Mix letters, numbers, and '
-                'a symbol, and don\'t reuse it from another site.',
-                style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                key: const Key('change_password_dialog_current'),
-                controller: _currentController,
-                obscureText: true,
-                autofocus: true,
-                enabled: !_submitting,
-                decoration: const InputDecoration(
-                  labelText: 'Current password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                key: const Key('change_password_dialog_new'),
-                controller: _newController,
-                obscureText: true,
-                enabled: !_submitting,
-                decoration: const InputDecoration(
-                  labelText: 'New password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                key: const Key('change_password_dialog_confirm'),
-                controller: _confirmController,
-                obscureText: true,
-                enabled: !_submitting,
-                onSubmitted: (_) => _submit(),
-                decoration: const InputDecoration(
-                  labelText: 'Confirm new password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _error!,
-                  style: AppTextStyles.body13(color: AppColors.negative),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    key: const Key('change_password_dialog_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('change_password_dialog_submit'),
-                    onPressed: _submitting ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.sunset,
-                      foregroundColor: AppColors.backgroundSurface,
-                    ),
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Update password'),
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
       ),
     );

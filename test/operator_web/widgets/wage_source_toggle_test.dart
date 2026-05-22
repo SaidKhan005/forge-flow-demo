@@ -47,6 +47,18 @@ void main() {
     );
   }
 
+  VendorConnectionsBundle noVendorBundle() {
+    return const VendorConnectionsBundle(
+      operatorId: 'brio-operator',
+      locationId: 'brio-chicago-loop',
+      locationName: 'Brio - Chicago Loop',
+      posConnection: null,
+      laborConnection: null,
+      reservationConnection: null,
+      demoFlags: <VendorCategory, bool>{},
+    );
+  }
+
   bool anyTextContains(String needle) {
     final elements = find.byType(Text).evaluate();
     for (final element in elements) {
@@ -58,6 +70,16 @@ void main() {
     return false;
   }
 
+  bool rowHasCheckedRadio(Key rowKey) {
+    return find
+        .descendant(
+          of: find.byKey(rowKey),
+          matching: find.byIcon(Icons.radio_button_checked),
+        )
+        .evaluate()
+        .isNotEmpty;
+  }
+
   testWidgets('WageSourceToggle renders both radios', (tester) async {
     await sizeViewport(tester, const Size(1024, 800));
 
@@ -66,7 +88,7 @@ void main() {
         WageSourceToggle(
           value: WageSource.vendor,
           onChanged: (_) {},
-          bundle: null,
+          bundle: noVendorBundle(),
         ),
       ),
     );
@@ -97,7 +119,7 @@ void main() {
         WageSourceToggle(
           value: WageSource.vendor,
           onChanged: (_) {},
-          bundle: null,
+          bundle: noVendorBundle(),
           source: const DataAccuracySettingSource(
             scopeType: 'org_unit',
             sourceKind: 'scoped_override',
@@ -123,7 +145,7 @@ void main() {
         WageSourceToggle(
           value: WageSource.vendor,
           onChanged: (value) => captured = value,
-          bundle: null,
+          bundle: noVendorBundle(),
         ),
       ),
     );
@@ -146,7 +168,7 @@ void main() {
             return WageSourceToggle(
               value: current,
               onChanged: (value) => setState(() => current = value),
-              bundle: null,
+              bundle: bundleWithLabor('quickbooks_time', 'QuickBooks Time'),
             );
           },
         ),
@@ -163,6 +185,64 @@ void main() {
     await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
     await tester.pumpAndSettle();
     expect(current, equals(WageSource.vendor));
+  });
+
+  testWidgets('vendor wage option is disabled with no labor vendor', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1024, 800));
+    WageSource? captured;
+
+    await tester.pumpWidget(
+      wrap(
+        WageSourceToggle(
+          value: WageSource.vendor,
+          onChanged: (value) => captured = value,
+          bundle: noVendorBundle(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+    await tester.pumpAndSettle();
+
+    expect(captured, isNull);
+    expect(rowHasCheckedRadio(const Key('wage_source_radio_vendor')), isFalse);
+    expect(
+      rowHasCheckedRadio(const Key('wage_source_radio_manual_mix')),
+      isTrue,
+    );
+  });
+
+  testWidgets('vendor wage option follows the connected labor vendor slug', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1024, 800));
+    WageSource? captured;
+
+    await tester.pumpWidget(
+      wrap(
+        WageSourceToggle(
+          value: WageSource.manualMix,
+          onChanged: (value) => captured = value,
+          bundle: bundleWithLabor('quickbooks_time', 'QuickBooks Time'),
+          vendorApplicabilityBound: true,
+          applicableWageVendorSlugs: const <String>['toast'],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+    await tester.pumpAndSettle();
+
+    expect(captured, isNull);
+    expect(rowHasCheckedRadio(const Key('wage_source_radio_vendor')), isFalse);
+    expect(
+      rowHasCheckedRadio(const Key('wage_source_radio_manual_mix')),
+      isTrue,
+    );
   });
 
   testWidgets('wage class label updates with connected labor vendor', (
@@ -184,9 +264,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(anyTextContains('QuickBooks Time'), isTrue);
-    expect(anyTextContains('per-employee hourly rates'), isTrue);
+    expect(anyTextContains('employee rates'), isTrue);
 
-    // Humanity → per-position pay rates.
+    // Humanity → role rates.
     await tester.pumpWidget(
       wrap(
         WageSourceToggle(
@@ -199,6 +279,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(anyTextContains('Humanity'), isTrue);
-    expect(anyTextContains('per-position pay rates'), isTrue);
+    expect(anyTextContains('role rates'), isTrue);
   });
 }

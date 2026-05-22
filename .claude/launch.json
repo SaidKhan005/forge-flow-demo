@@ -47,6 +47,17 @@
       "port": 8183
     },
     {
+      "name": "admin-web-static",
+      "runtimeExecutable": "C:\\Users\\blund\\AppData\\Local\\Pub\\Cache\\bin\\dhttpd.bat",
+      "runtimeArgs": [
+        "--path",
+        "build/web",
+        "--port",
+        "8186"
+      ],
+      "port": 8186
+    },
+    {
       "name": "admin-console-demo",
       "runtimeExecutable": "powershell",
       "runtimeArgs": [

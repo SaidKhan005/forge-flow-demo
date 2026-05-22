@@ -3,7 +3,7 @@
 // Operator-facing "What this page is for" card. It sits at the top of
 // the Data Accuracy screen and shows how labor, covers, and data
 // freshness flow from the operator's connected vendors into the
-// dashboard.
+// app dashboard.
 
 import 'package:flutter/material.dart';
 
@@ -11,6 +11,7 @@ import '../../domain/models/service_period_definition.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../services/integration/labor_wage_source_class.dart';
 import '../../theme/app_theme.dart';
+import 'data_accuracy_applicability.dart';
 import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
@@ -48,25 +49,25 @@ class DataAccuracyExplainerCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           OperatorWebSectionHeading(
-            title: 'What this page is for',
+            title: 'How Forge & Flow reads this location',
             trailing: OperatorWebInfoButton(
-              title: 'What this page is for',
-              tooltip: 'What this page is for',
+              title: 'How Forge & Flow reads this location',
+              tooltip: 'How Forge & Flow reads this location',
               body: Text(
-                'This page tells Forge & Flow which source to trust for '
-                'labor dollars, guest counts, and update timing at '
+                'These settings decide which source Forge & Flow uses when '
+                'vendor data is incomplete or arrives on a schedule at '
                 '$locationLabel.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
-            'A quick map of the numbers behind the dashboard.',
+            'Labor, covers, and freshness feed the app dashboard. Each setting is available only when the connected vendors make that choice useful.',
             key: const Key('data_accuracy_map_intro'),
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           _MapNode(
             slug: 'labor',
             icon: Icons.payments_outlined,
@@ -94,9 +95,8 @@ class DataAccuracyExplainerCard extends StatelessWidget {
             heading: 'Data freshness',
             body: dataFreshnessApplies
                 ? _freshnessMapLine(bundle)
-                : 'Does not apply to your integrations. Your connected '
-                      'vendors push updates when they happen.',
-            vendors: _pollOnlyVendorNames(bundle),
+                : 'Shows whether Forge & Flow checks vendors on a schedule or receives updates when vendors push them.',
+            vendors: dataAccuracyConnectedPollOnlyVendors(bundle),
             disabled: !dataFreshnessApplies,
           ),
         ],
@@ -107,26 +107,20 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   static String _laborMapLine(VendorConnectionsBundle? bundle) {
     final labor = bundle?.laborConnection;
     if (labor == null) {
-      return 'Use a labor vendor when one is connected, or keep manual '
-          'wage rows as the fallback.';
+      return 'Controls how Forge & Flow turns labor hours into labor dollars for the app dashboard.';
     }
     final wageClass = laborWageSourceClassFor(labor.vendorId);
     return switch (wageClass) {
       LaborWageSourceClass.perEmployeeWithDollars =>
-        '${labor.displayName} reports labor dollars directly. Manual mix '
-            'stays available when you want to override it.',
+        '${labor.displayName} can supply labor dollars. This setting chooses the labor-dollar source for the app dashboard.',
       LaborWageSourceClass.perEmployeeWithRates =>
-        '${labor.displayName} reports employee rates. Forge & Flow turns '
-            'rate and time into labor dollars.',
+        '${labor.displayName} supplies employee rates and time. This setting chooses how labor dollars are calculated.',
       LaborWageSourceClass.perPositionWithRates =>
-        '${labor.displayName} reports position rates. Forge & Flow turns '
-            'role rates and hours into labor dollars.',
+        '${labor.displayName} supplies role rates and hours. This setting chooses how labor dollars are calculated.',
       LaborWageSourceClass.hoursOnly =>
-        '${labor.displayName} reports hours only. Manual mix stays available '
-            'when target wage fallback is not the right fit.',
+        '${labor.displayName} supplies hours. This setting chooses which wage source turns those hours into dollars.',
       null =>
-        '${labor.displayName} is connected. Manual mix stays available if '
-            'vendor labor dollars are not usable.',
+        '${labor.displayName} is connected. This setting chooses the labor-dollar source for the app dashboard.',
     };
   }
 
@@ -136,55 +130,35 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   ) {
     final pos = bundle?.posConnection;
     if (pos == null) {
-      return 'Choose vendor, forecast, manual, or reservations plus walk-ins '
-          'for each service period.';
+      return 'Controls the guest-count source for each service period. Covers drive per-cover metrics.';
     }
     if (posVendorExposesCovers(pos.vendorId)) {
-      return '${pos.displayName} exposes covers. You can still override a '
-          'service period when the floor count needs a different source.';
+      return '${pos.displayName} can supply POS guest counts. This setting chooses the cover source by service period.';
     }
     final periods = servicePeriodLabels.isEmpty
         ? 'each service period'
         : servicePeriodLabels.take(3).join(', ');
-    return '${pos.displayName} does not expose covers. Pick the source for '
-        '$periods so per-cover metrics stay honest.';
+    return '${pos.displayName} does not supply POS guest counts. This setting chooses the fallback cover source for $periods.';
   }
 
   static String _freshnessMapLine(VendorConnectionsBundle? bundle) {
     final vendors = _pollOnlyVendorNames(bundle);
     if (vendors.isEmpty) {
-      return 'Applies only when Oracle MICROS Simphony, QuickBooks Time, '
-          'Humanity, Agendrix, or Push Operations is connected.';
+      return 'Controls how often Forge & Flow checks scheduled integrations for new data.';
     }
-    return 'Applies to ${vendors.join(' and ')} because those vendors need '
-        'scheduled checks.';
+    return 'Controls how often Forge & Flow checks ${vendors.join(' and ')} for new data.';
   }
 
-  static List<String> _vendorList(List<VendorConnectionRow?> rows) {
-    return rows
-        .whereType<VendorConnectionRow>()
-        .map((row) => row.displayName)
-        .toList(growable: false);
+  static List<VendorConnectionRow> _vendorList(
+    List<VendorConnectionRow?> rows,
+  ) {
+    return rows.whereType<VendorConnectionRow>().toList(growable: false);
   }
 
   static List<String> _pollOnlyVendorNames(VendorConnectionsBundle? bundle) {
-    const pollOnlyVendorIds = <String>{
-      'oracle_micros_simphony',
-      'quickbooks_time',
-      'humanity',
-      'agendrix',
-      'push_operations',
-    };
-    return <VendorConnectionRow?>[
-          bundle?.posConnection,
-          bundle?.laborConnection,
-        ]
-        .whereType<VendorConnectionRow>()
-        .where((row) {
-          return pollOnlyVendorIds.contains(row.vendorId);
-        })
-        .map((row) => row.displayName)
-        .toList(growable: false);
+    return dataAccuracyConnectedPollOnlyVendors(
+      bundle,
+    ).map((row) => row.displayName).toList(growable: false);
   }
 }
 
@@ -202,7 +176,7 @@ class _MapNode extends StatelessWidget {
   final IconData icon;
   final String heading;
   final String body;
-  final List<String> vendors;
+  final List<VendorConnectionRow> vendors;
   final bool disabled;
 
   @override
@@ -252,7 +226,7 @@ class _MapNode extends StatelessWidget {
                     runSpacing: 6,
                     children: [
                       for (final vendor in vendors)
-                        _VendorChip(label: vendor, disabled: disabled),
+                        _VendorChip(vendor: vendor, disabled: disabled),
                     ],
                   ),
                 ],
@@ -266,9 +240,9 @@ class _MapNode extends StatelessWidget {
 }
 
 class _VendorChip extends StatelessWidget {
-  const _VendorChip({required this.label, required this.disabled});
+  const _VendorChip({required this.vendor, required this.disabled});
 
-  final String label;
+  final VendorConnectionRow vendor;
   final bool disabled;
 
   @override
@@ -280,10 +254,55 @@ class _VendorChip extends StatelessWidget {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _VendorChipMark(vendor: vendor, disabled: disabled),
+          const SizedBox(width: 6),
+          Text(
+            vendor.displayName,
+            style: AppTextStyles.chipLabel(
+              color: disabled ? AppColors.textMuted : AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VendorChipMark extends StatelessWidget {
+  const _VendorChipMark({required this.vendor, required this.disabled});
+
+  final VendorConnectionRow vendor;
+  final bool disabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = vendor.displayName
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .take(2)
+        .map((word) => word.substring(0, 1))
+        .join();
+    return Container(
+      width: 18,
+      height: 18,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: disabled
+            ? AppColors.shimmer
+            : AppColors.sunset.withValues(alpha: 0.12),
+        border: Border.all(
+          color: disabled ? AppColors.borderSubtle : AppColors.sunsetDark,
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(5),
+      ),
       child: Text(
-        label,
-        style: AppTextStyles.chipLabel(
-          color: disabled ? AppColors.textMuted : AppColors.textSecondary,
+        initials.isEmpty ? '?' : initials,
+        style: AppTextStyles.mono11(
+          color: disabled ? AppColors.textMuted : AppColors.sunsetDark,
         ),
       ),
     );
@@ -302,26 +321,24 @@ class DataAccuracyCoversModeInfo extends StatelessWidget {
       children: [
         _ModeLine(
           title: 'Vendor',
-          body:
-              'Use the POS count. Best when the POS exposes covers and the count is trusted.',
+          body: 'Use POS guest counts when the connected POS exposes covers.',
         ),
         SizedBox(height: 8),
         _ModeLine(
           title: 'Forecast',
           body:
-              'Use the Forge & Flow forecast. Best when the vendor count is missing or noisy.',
+              'Use the Forge & Flow forecast, built from closed shifts and demand signals.',
         ),
         SizedBox(height: 8),
         _ModeLine(
           title: 'Manual',
           body:
-              'Type the count yourself. Best when the floor manager closes covers by hand.',
+              'Type the guest count for that business date and service period.',
         ),
         SizedBox(height: 8),
         _ModeLine(
           title: 'Reservations + walk-ins',
-          body:
-              'Start with the reservation book and add walk-ins. Best when the POS does not count covers.',
+          body: 'Use reservation-book covers plus the walk-in count you enter.',
         ),
       ],
     );

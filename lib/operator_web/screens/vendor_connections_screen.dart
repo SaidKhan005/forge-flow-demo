@@ -68,6 +68,7 @@ import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart
 import '../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 
 /// Roles permitted to configure inbound vendor connections from the
 /// operator-web console. Mirrors the `integrations.configure` row
@@ -168,20 +169,13 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.cable_outlined,
-                size: 22,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Vendor integrations',
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-              ),
+          OperatorWebScreenHeader(
+            icon: Icons.cable_outlined,
+            title: 'Vendor integrations',
+            subtitle: 'Manage the services connected to $locationLabel.',
+            subtitleKey: const Key('operator_web_vendor_connections_subtitle'),
+            collapseBelowWidth: 0,
+            actions: <Widget>[
               OperatorWebInfoButton(
                 title: 'Vendor integrations',
                 tooltip: 'Vendor integrations',
@@ -191,12 +185,6 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Manage the services connected to $locationLabel.',
-            key: const Key('operator_web_vendor_connections_subtitle'),
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
           VendorConnectionsRecentlyAvailablePanel(
@@ -221,6 +209,7 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
                 locationId: widget.locationId,
                 locationNameOverride: locationLabel,
                 gateway: widget.gateway,
+                showHeader: false,
                 onConnectFlowStarted: widget.gateway == null
                     ? null
                     : (flow) => openOperatorWebRedirect(flow.redirectUrl),

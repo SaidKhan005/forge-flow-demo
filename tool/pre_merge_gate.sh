@@ -8,6 +8,8 @@
 #   - the PR branch actually merges cleanly onto current origin/master
 #   - `dart analyze` is clean for the changed Dart files
 #   - every changed/added *_test.dart file passes
+#   - the code-health metrics ratchet does not grow (only when lib/ changed;
+#     ~2-3 min, too slow for pre-push so it lives here — refactor-phase gate)
 #
 # Usage:
 #   tool/pre_merge_gate.sh <PR_NUMBER>
@@ -43,11 +45,11 @@ git fetch origin --quiet "$HEADREF" 2>/dev/null
 # 1. merges cleanly onto current master?
 if ! git merge --no-commit --no-ff FETCH_HEAD >/dev/null 2>&1; then
   git merge --abort >/dev/null 2>&1
-  echo "[1/3] merge onto current origin/master: CONFLICTS  ✗"
+  echo "[1/4] merge onto current origin/master: CONFLICTS  ✗"
   echo "RESULT: NO-GO — rebase the PR onto current master first."
   exit 1
 fi
-echo "[1/3] merges cleanly onto current origin/master  ✓"
+echo "[1/4] merges cleanly onto current origin/master  ✓"
 
 # changed files (PR head vs merge-base with master)
 MB=$(git merge-base origin/master FETCH_HEAD)
@@ -66,16 +68,16 @@ if [ "${#DARTS[@]}" -gt 0 ]; then
   dart analyze "${DARTS[@]}" 2>&1 | tee /tmp/_pmg_an.txt
   ANALYZE_STATUS=${PIPESTATUS[0]}
   if grep -qE '^\s*error ' /tmp/_pmg_an.txt; then
-    echo "[2/3] dart analyze: ERRORS  ✗"; grep -E '^\s*error ' /tmp/_pmg_an.txt | head -10
+    echo "[2/4] dart analyze: ERRORS  ✗"; grep -E '^\s*error ' /tmp/_pmg_an.txt | head -10
     echo "RESULT: NO-GO — analyzer errors in changed files."; exit 1
   fi
   if [ "$ANALYZE_STATUS" -ne 0 ]; then
-    echo "[2/3] dart analyze: FAILED  ✗"
+    echo "[2/4] dart analyze: FAILED  ✗"
     echo "RESULT: NO-GO — analyzer exited with status $ANALYZE_STATUS."; exit 1
   fi
-  echo "[2/3] dart analyze on changed files: clean  ✓"
+  echo "[2/4] dart analyze on changed files: clean  ✓"
 else
-  echo "[2/3] no changed Dart files — analyze skipped"
+  echo "[2/4] no changed Dart files — analyze skipped"
 fi
 
 # 3. run changed test files
@@ -84,13 +86,30 @@ if [ "${#TESTS[@]}" -gt 0 ]; then
   TEST_STATUS=${PIPESTATUS[0]}
   tail -3 /tmp/_pmg_t.txt
   if [ "$TEST_STATUS" -eq 0 ]; then
-    echo "[3/3] changed test files: PASS  ✓"
+    echo "[3/4] changed test files: PASS  ✓"
   else
-    echo "[3/3] changed test files: FAIL  ✗"
+    echo "[3/4] changed test files: FAIL  ✗"
     echo "RESULT: NO-GO — changed tests failing."; exit 1
   fi
 else
-  echo "[3/3] no changed test files — test run skipped"
+  echo "[3/4] no changed test files — test run skipped"
+fi
+
+# 4. metrics ratchet — refactor-phase anti-regression gate. Only when lib/
+# changed (the metrics scan covers lib/, ~2-3 min). Runs inside the merged
+# worktree, so it measures post-merge debt against the committed baseline.
+LIBCHANGED=0
+for f in "${CHANGED[@]}"; do case "$f" in lib/*) LIBCHANGED=1;; esac; done
+if [ "$LIBCHANGED" -eq 1 ]; then
+  flutter pub get >/dev/null 2>&1
+  if dart run tool/metrics_ratchet_check.dart; then
+    echo "[4/4] metrics ratchet: no metric grew past baseline  ✓"
+  else
+    echo "[4/4] metrics ratchet: a metric GREW past baseline  ✗"
+    echo "RESULT: NO-GO — code-health debt increased (see tool/metrics_ratchet_baseline.json)."; exit 1
+  fi
+else
+  echo "[4/4] no lib/ changes — metrics ratchet skipped"
 fi
 
 echo "----"

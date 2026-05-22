@@ -163,9 +163,7 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_service_period_key',
           message:
-              'The key for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-              'must start with a letter and use only lowercase letters, numbers, '
-              'or underscores.',
+              'Rename "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" so its saved key can be created.',
           periodIndex: i,
         ),
       );
@@ -227,8 +225,7 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_applicable_days',
           message: days.isEmpty
-              ? 'Pick at least one day for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}". '
-                    'A service period needs to apply on at least one weekday.'
+              ? 'Pick at least one active day for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}".'
               : 'The days for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
                     'must be Monday through Sunday (1-7).',
           periodIndex: i,
@@ -241,8 +238,7 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_quarter_hour_boundary',
           message:
-              'Start time for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-              'must land on a quarter hour (00, 15, 30, or 45 minutes past).',
+              'Start time for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" must use 00, 15, 30, or 45.',
           periodIndex: i,
         ),
       );
@@ -252,8 +248,7 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_quarter_hour_boundary',
           message:
-              'End time for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-              'must land on a quarter hour (00, 15, 30, or 45 minutes past).',
+              'End time for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" must use 00, 15, 30, or 45.',
           periodIndex: i,
         ),
       );
@@ -266,9 +261,7 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_service_period_range',
           message:
-              'The start and end times for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-              'cannot be the same. A service period needs to last at least '
-              '15 minutes.',
+              '"${period.label.isEmpty ? "Service period ${i + 1}" : period.label}" needs different start and end times.',
           periodIndex: i,
         ),
       );
@@ -322,9 +315,7 @@ ServicePeriodValidation validateServicePeriods(
             code: 'service_period_overlap',
             message:
                 '"${a.label.isEmpty ? "service period ${i + 1}" : a.label}" and '
-                '"${b.label.isEmpty ? "service period ${j + 1}" : b.label}" '
-                'overlap. Service periods cannot share any minutes on the same '
-                'business date.',
+                '"${b.label.isEmpty ? "service period ${j + 1}" : b.label}" overlap.',
             periodIndex: j,
           ),
         );
@@ -362,9 +353,7 @@ ServicePeriodValidation validateServicePeriods(
           ServicePeriodValidationError(
             code: 'business_day_start_inside_period',
             message:
-                'The business day start ($businessDayStartLocal) lands '
-                'inside "${p.label.isEmpty ? "service period ${i + 1}" : p.label}". '
-                'Move the day start outside that window or trim the period.',
+                'Business day start ($businessDayStartLocal) sits inside "${p.label.isEmpty ? "service period ${i + 1}" : p.label}".',
             periodIndex: i,
           ),
         );
@@ -440,6 +429,8 @@ String normalizeBusinessTimingTimeInput(String raw) {
   if (_hhmmPattern.hasMatch(value)) return value;
   final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
   if (digits.length == 3) {
+    final hour = int.tryParse(digits.substring(0, 1));
+    if (hour != null && hour <= 2) return value;
     return '0${digits.substring(0, 1)}:${digits.substring(1)}';
   }
   if (digits.length == 4) {
@@ -455,6 +446,15 @@ void _normalizeTimeController(TextEditingController controller, String raw) {
     text: formatted,
     selection: TextSelection.collapsed(offset: formatted.length),
   );
+}
+
+void _commitTimeController(
+  TextEditingController controller,
+  ValueChanged<String> onCommitted,
+) {
+  final formatted = normalizeBusinessTimingTimeInput(controller.text);
+  _setControllerText(controller, formatted);
+  onCommitted(formatted);
 }
 
 void _setControllerText(TextEditingController controller, String value) {
@@ -644,7 +644,7 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -692,7 +692,7 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
               ],
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           TextField(
             key: ValueKey('service_period_editor_label_${widget.index}'),
             controller: _label,
@@ -715,62 +715,86 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
               );
             },
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              SizedBox(
-                width: 130,
-                child: TextField(
-                  key: ValueKey('service_period_editor_start_${widget.index}'),
-                  controller: _start,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
-                    LengthLimitingTextInputFormatter(5),
-                  ],
-                  decoration: const InputDecoration(
-                    labelText: 'Starts (HH:MM)',
-                    border: OutlineInputBorder(),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 560;
+              final fields = <Widget>[
+                SizedBox(
+                  width: compact ? double.infinity : 130,
+                  child: TextField(
+                    key: ValueKey(
+                      'service_period_editor_start_${widget.index}',
+                    ),
+                    controller: _start,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                      LengthLimitingTextInputFormatter(5),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'Starts (HH:MM)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      _normalizeTimeController(_start, value);
+                      widget.onChanged(
+                        widget.period.copyWith(startLocal: _start.text),
+                      );
+                    },
+                    onEditingComplete: () => _commitTimeController(
+                      _start,
+                      (value) => widget.onChanged(
+                        widget.period.copyWith(startLocal: value),
+                      ),
+                    ),
                   ),
-                  onChanged: (value) {
-                    _normalizeTimeController(_start, value);
-                    widget.onChanged(
-                      widget.period.copyWith(startLocal: _start.text),
-                    );
-                  },
                 ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 130,
-                child: TextField(
-                  key: ValueKey('service_period_editor_end_${widget.index}'),
-                  controller: _end,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
-                    LengthLimitingTextInputFormatter(5),
-                  ],
-                  decoration: const InputDecoration(
-                    labelText: 'Ends (HH:MM)',
-                    border: OutlineInputBorder(),
+                SizedBox(width: compact ? 0 : 10, height: compact ? 10 : 0),
+                SizedBox(
+                  width: compact ? double.infinity : 130,
+                  child: TextField(
+                    key: ValueKey('service_period_editor_end_${widget.index}'),
+                    controller: _end,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                      LengthLimitingTextInputFormatter(5),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'Ends (HH:MM)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      _normalizeTimeController(_end, value);
+                      widget.onChanged(
+                        widget.period.copyWith(endLocal: _end.text),
+                      );
+                    },
+                    onEditingComplete: () => _commitTimeController(
+                      _end,
+                      (value) => widget.onChanged(
+                        widget.period.copyWith(endLocal: value),
+                      ),
+                    ),
                   ),
-                  onChanged: (value) {
-                    _normalizeTimeController(_end, value);
-                    widget.onChanged(
-                      widget.period.copyWith(endLocal: _end.text),
-                    );
-                  },
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Use 15-minute increments (00, 15, 30, or 45).',
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                if (!compact) const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '15-minute times only: 00, 15, 30, or 45.',
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
+                  ),
                 ),
-              ),
-            ],
+              ];
+              if (compact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: fields,
+                );
+              }
+              return Row(children: fields);
+            },
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           // Slice 2.5 / Gap 28: day-restriction chip row. Operator can
           // toggle which ISO weekdays this period applies to. Default
           // is all 7 (matches pre-2.5 implicit behavior). Empty list
@@ -781,56 +805,70 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
             onChanged: (next) =>
                 widget.onChanged(widget.period.copyWith(applicableDays: next)),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              SizedBox(
-                width: 160,
-                child: TextField(
-                  key: ValueKey(
-                    'service_period_editor_short_label_${widget.index}',
-                  ),
-                  controller: _shortLabel,
-                  decoration: const InputDecoration(
-                    labelText: 'Short label (e.g. L, D, B)',
-                    border: OutlineInputBorder(),
-                    helperText: 'For tight spaces.',
-                  ),
-                  onChanged: (value) => widget.onChanged(
-                    widget.period.copyWith(shortLabel: value),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 560;
+              final fields = <Widget>[
+                SizedBox(
+                  width: compact ? double.infinity : 170,
+                  child: TextField(
+                    key: ValueKey(
+                      'service_period_editor_short_label_${widget.index}',
+                    ),
+                    controller: _shortLabel,
+                    decoration: const InputDecoration(
+                      labelText: 'Short label',
+                      border: OutlineInputBorder(),
+                      helperText: 'Optional.',
+                    ),
+                    onChanged: (value) => widget.onChanged(
+                      widget.period.copyWith(shortLabel: value),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 130,
-                child: TextField(
-                  key: ValueKey(
-                    'service_period_editor_sort_order_${widget.index}',
+                SizedBox(width: compact ? 0 : 10, height: compact ? 10 : 0),
+                SizedBox(
+                  width: compact ? double.infinity : 130,
+                  child: TextField(
+                    key: ValueKey(
+                      'service_period_editor_sort_order_${widget.index}',
+                    ),
+                    controller: _sortOrder,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(1),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'Sort order',
+                      border: OutlineInputBorder(),
+                      helperText: '1 to 4.',
+                    ),
+                    onChanged: (value) {
+                      final parsed = int.tryParse(value.trim());
+                      widget.onChanged(
+                        widget.period.copyWith(sortOrder: parsed ?? 0),
+                      );
+                    },
                   ),
-                  controller: _sortOrder,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Sort order',
-                    border: OutlineInputBorder(),
-                    helperText: 'Lower sorts first.',
+                ),
+                if (!compact) const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Blank short label uses the full label.',
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
                   ),
-                  onChanged: (value) {
-                    final parsed = int.tryParse(value.trim());
-                    widget.onChanged(
-                      widget.period.copyWith(sortOrder: parsed ?? 0),
-                    );
-                  },
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Pick active days. Leave short label blank to use the long label.',
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
-                ),
-              ),
-            ],
+              ];
+              if (compact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: fields,
+                );
+              }
+              return Row(children: fields);
+            },
           ),
           if (widget.errors.isNotEmpty) ...[
             const SizedBox(height: 8),

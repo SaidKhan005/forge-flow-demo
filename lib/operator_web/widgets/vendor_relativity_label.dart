@@ -14,17 +14,16 @@
 // "Square does not expose covers directly..."
 //
 // Wage class lookup goes through Lane .2's
-// `lib/services/integration/labor_wage_source_class.dart` — the
-// 2026-05-05-binding sidecar — so this widget never disagrees with
-// the aggregator on what wage path a connected labor vendor takes.
-// Per the 2026-05-05 corrections, no Wave B vendor currently
-// qualifies as `perEmployeeWithDollars`; QBT/7shifts run at
-// `perEmployeeWithRates` (rate × duration), Humanity/Agendrix at
+// `lib/services/integration/labor_wage_source_class.dart`, so this
+// widget never disagrees with the aggregator on what wage path a
+// connected labor vendor takes. 7shifts now reports direct dollars;
+// QBT runs at `perEmployeeWithRates` (rate x duration),
+// Humanity/Agendrix at
 // `perPositionWithRates`, ADP/Push at `hoursOnly`.
 //
 // Covers exposure + poll-only-ness live as small const sets in this
-// file because there is no central capability registry yet. Keep them
-// in sync with each vendor's `api_consumed.md` reference doc.
+// file for Flutter-web availability. Keep them in sync with each
+// vendor's `api_consumed.md` reference doc.
 
 import 'package:flutter/material.dart';
 
@@ -65,10 +64,10 @@ class VendorRelativityLabel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Note:',
+            'Vendor fit',
             style: AppTextStyles.mono11(color: AppColors.sunsetDark),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           for (var i = 0; i < lines.length; i++) ...[
             Text(
               lines[i],
@@ -120,21 +119,14 @@ bool posVendorExposesCovers(String vendorId) =>
 List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
   final pos = bundle?.posConnection;
   if (pos == null) {
-    return <String>[
-      'This setting applies when your POS does not expose covers as a first-class field.',
-      'POS systems that do not expose covers at V1: Square, Clover.',
-    ];
+    return <String>['Vendor covers need a POS that exposes guest counts.'];
   }
   final coversNotExposed = kPosVendorsWithoutCovers.contains(pos.vendorId);
   if (!coversNotExposed) {
-    return <String>[
-      '${pos.displayName} exposes covers directly. This setting only kicks in if you switch to a POS that does not (Square, Clover).',
-      'You can still pick "manual" for a service period to type your own numbers; F&F will use those instead of what ${pos.displayName} reports.',
-    ];
+    return <String>['${pos.displayName} exposes covers for the Vendor option.'];
   }
   return <String>[
-    '${pos.displayName} does not expose covers as a first-class field. Pick a covers source per service period so F&F knows where to read covers from.',
-    'POS systems that do not expose covers at V1: Square, Clover.',
+    '${pos.displayName} does not expose covers. Use forecast, manual, or reservations plus walk-ins.',
   ];
 }
 
@@ -143,38 +135,28 @@ List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
 List<String> _composeWageLines(VendorConnectionsBundle? bundle) {
   final labor = bundle?.laborConnection;
   if (labor == null) {
-    return <String>[
-      'This setting applies when your labor vendor does not expose per-shift dollars.',
-      'Scheduling systems that do not expose dollars at V1: QuickBooks Time, 7shifts, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
-    ];
+    return <String>['Vendor wages need a labor integration.'];
   }
   final wageClass = laborWageSourceClassFor(labor.vendorId);
   if (wageClass == null) {
     return <String>[
-      'Your labor vendor (${labor.displayName}) is connected. This setting controls how F&F resolves labor dollars when the vendor does not expose them directly.',
-      'Scheduling systems that do not expose dollars at V1: QuickBooks Time, 7shifts, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
+      '${labor.displayName} is connected, but its wage path is not mapped yet.',
     ];
   }
   switch (wageClass) {
     case LaborWageSourceClass.perEmployeeWithDollars:
-      return <String>[
-        '${labor.displayName} reports per-employee labor dollars. F&F uses those directly when you choose "Use vendor".',
-        'Switch to "Use my manual wage mix" if you want F&F to ignore vendor dollars and use the wage editor mix instead.',
-      ];
+      return <String>['${labor.displayName} reports labor dollars directly.'];
     case LaborWageSourceClass.perEmployeeWithRates:
       return <String>[
-        '${labor.displayName} reports per-employee hourly rates, not per-shift dollars. When you choose "Use vendor", F&F multiplies each punch\'s duration by the employee\'s rate.',
-        'Switch to "Use my manual wage mix" if your vendor rates are out of date and you would rather F&F use your wage editor mix.',
+        '${labor.displayName} reports employee rates. Forge & Flow calculates labor dollars from rates and time.',
       ];
     case LaborWageSourceClass.perPositionWithRates:
       return <String>[
-        '${labor.displayName} reports per-position pay rates, not per-employee dollars. F&F multiplies those by scheduled hours when you choose "Use vendor".',
-        'This is what the wage model needs. Your wage editor\'s role rows reflect what your scheduler reports.',
+        '${labor.displayName} reports role rates. Forge & Flow calculates labor dollars from rates and hours.',
       ];
     case LaborWageSourceClass.hoursOnly:
       return <String>[
-        '${labor.displayName} does not expose dollars or rates. F&F substitutes target wage × hours from your TargetCycle when you choose "Use vendor".',
-        'Switch to "Use my manual wage mix" to use your wage editor mix instead. Usually more accurate when you have not set targets yet.',
+        '${labor.displayName} reports hours only. Forge & Flow uses target wage x hours when vendor is selected.',
       ];
   }
 }
@@ -214,23 +196,19 @@ List<String> _composePollingLines(VendorConnectionsBundle? bundle) {
 
   if (pollOnlyConnected.isEmpty && webhookConnected.isEmpty) {
     return <String>[
-      'Some vendors push new data to Forge & Flow the moment it happens. Others only respond when we ask. Your tier controls how often we ask the ones that do not push.',
-      'Vendors that need to be asked: Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations.',
+      'Data freshness applies once a vendor that needs scheduled checks is connected.',
     ];
   }
   final lines = <String>[];
   if (pollOnlyConnected.isNotEmpty) {
     lines.add(
-      'Forge & Flow checks ${pollOnlyConnected.join(' and ')} for new data on a regular schedule. Your tier sets how often.',
+      'Forge & Flow checks ${pollOnlyConnected.join(' and ')} on a schedule. Your tier sets how often.',
     );
   }
   if (webhookConnected.isNotEmpty) {
     lines.add(
-      '${webhookConnected.join(' and ')} push updates to Forge & Flow in real time, so your tier does not change how fast they refresh.',
+      '${webhookConnected.join(' and ')} push updates when they happen.',
     );
   }
-  lines.add(
-    'Forge & Flow manages the schedule at the tier level. Tap "Request faster data freshness" below if you need a different cadence.',
-  );
   return lines;
 }

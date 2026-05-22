@@ -27,6 +27,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_schedule_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/schedule_forecast_explainer_panel.dart';
 
@@ -232,34 +233,14 @@ class _Header extends StatelessWidget {
     final range = snapshot == null
         ? null
         : _formatWeekRange(snapshot!.weekStartDate, snapshot!.weekEndDate);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            const Icon(
-              Icons.calendar_today_outlined,
-              size: 22,
-              color: AppColors.sunsetDark,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Plan',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (range == null)
-          Text(
-            'Forge & Flow locks one weekly plan at a time per location. '
-            "Once your forecasts run you'll see the locked plan here, "
-            'plus a plain-English explainer for every number that shaped it.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-      ],
+    return OperatorWebScreenHeader(
+      icon: Icons.calendar_today_outlined,
+      title: 'Plan',
+      subtitle: range == null
+          ? 'Forge & Flow locks one weekly plan at a time per location. '
+                "Once your forecasts run you'll see the locked plan here, "
+                'plus a plain-English explainer for every number that shaped it.'
+          : null,
     );
   }
 

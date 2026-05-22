@@ -21,7 +21,9 @@ void main() {
     });
   }
 
-  testWidgets('renders inherited timing demo data for owners', (tester) async {
+  testWidgets('owner sees the Service periods read view with demo timing', (
+    tester,
+  ) async {
     await sizeViewport(tester);
 
     await tester.pumpWidget(
@@ -38,15 +40,24 @@ void main() {
       find.byKey(const Key('operator_web_business_setup_screen')),
       findsOneWidget,
     );
-    expect(
+    // Page heading, the nav label, the edit button, and the periods card
+    // title all read "Service periods" now (one consistent label).
+    final navTitle = tester.widget<Text>(
       find.byKey(const Key('operator_web_business_setup_nav_title')),
-      findsOneWidget,
     );
-    expect(find.text('Business timing setup'), findsOneWidget);
+    expect(navTitle.data, 'Service periods');
+
     expect(
       find.byKey(const Key('operator_web_business_timing_effective_card')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('operator_web_business_timing_periods_card')),
+      findsOneWidget,
+    );
+    expect(find.text('Timing defaults'), findsOneWidget);
+
+    // The page-level hierarchy clutter stays gone (top scope picker owns it).
     expect(
       find.byKey(const Key('operator_web_business_setup_hierarchy_tree')),
       findsNothing,
@@ -55,27 +66,30 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_inheritance_card')),
       findsNothing,
     );
-    expect(find.text('Inherited from Operator default'), findsWidgets);
+
+    // Inheritance now shows a single "Inherited" pill, not the old verbose
+    // "Source: ..." / "Inherited from ..." copy.
+    expect(find.text('Inherited'), findsWidgets);
+    expect(find.text('Inherited from Operator default'), findsNothing);
+    expect(find.text('Source: Operator default'), findsNothing);
+
     expect(find.text('Lunch'), findsOneWidget);
     expect(find.text('Late night'), findsOneWidget);
-    expect(find.text('Source: Operator default'), findsWidgets);
-    expect(find.text('Shift close authority'), findsNothing);
+
+    // Edit control is present, sized, and labelled "Edit service periods".
+    // No reset button on the demo read view (router wires reset semantics).
     expect(
       find.byKey(const Key('operator_web_business_timing_edit_controls')),
       findsOneWidget,
     );
+    expect(find.text('Edit service periods'), findsOneWidget);
     expect(
       find.byKey(const Key('operator_web_business_timing_reset_button')),
       findsNothing,
     );
-    expect(find.text('Where this location sits'), findsNothing);
-    expect(find.text('Where timing comes from'), findsNothing);
-    expect(find.text('Timing in use'), findsOneWidget);
-    expect(find.text('Edit timing'), findsOneWidget);
-    expect(find.text('Schedule timing change'), findsOneWidget);
-    expect(find.text('Live editor'), findsNothing);
-    expect(find.text('Read-only preview'), findsNothing);
 
+    // With no live write gateway wired, Edit opens the safe (non-mutating)
+    // demo dialog.
     await tester.tap(
       find.byKey(const Key('operator_web_business_timing_edit_button')),
     );
@@ -93,7 +107,7 @@ void main() {
     expect(find.textContaining('Nothing was changed'), findsOneWidget);
   });
 
-  testWidgets('location managers can view location timing', (tester) async {
+  testWidgets('location managers see a read-only timing view', (tester) async {
     await sizeViewport(tester);
 
     await tester.pumpWidget(
@@ -119,32 +133,33 @@ void main() {
       findsNothing,
     );
     expect(find.textContaining('view this location\'s timing'), findsOneWidget);
-    expect(find.textContaining('view effective timing'), findsNothing);
   });
 
-  testWidgets('schedule timing uses the router callback when available', (
+  testWidgets('Edit uses the router callback when a live editor is wired', (
     tester,
   ) async {
     await sizeViewport(tester);
-    var openedScheduleTiming = false;
+    var openedEditor = false;
 
     await tester.pumpWidget(
       wrap(
         BusinessSetupScreen(
           session: kDemoOperatorWebSession,
           locationId: 'demo-location',
-          onScheduleTiming: () => openedScheduleTiming = true,
+          onEditTiming: () => openedEditor = true,
         ),
       ),
     );
     await tester.pumpAndSettle();
 
     await tester.tap(
-      find.byKey(const Key('operator_web_business_timing_schedule_button')),
+      find.byKey(const Key('operator_web_business_timing_edit_button')),
     );
     await tester.pumpAndSettle();
 
-    expect(openedScheduleTiming, isTrue);
+    // The callback fires and the safe demo dialog does NOT appear, because a
+    // real editor is now responsible for the edit.
+    expect(openedEditor, isTrue);
     expect(
       find.byKey(const Key('operator_web_business_timing_safe_dialog')),
       findsNothing,

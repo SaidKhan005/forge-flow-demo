@@ -572,6 +572,38 @@ void main() {
       expect(controller.periods.single.key, 'late_night');
     });
 
+    testWidgets('time fields let four digits finish before auto-formatting', (
+      tester,
+    ) async {
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+          ),
+        ],
+      );
+      await tester.pumpWidget(wrap(ServicePeriodEditor(controller: controller)));
+
+      await tester.enterText(
+        find.byKey(const ValueKey('service_period_editor_start_0')),
+        '1230',
+      );
+      await tester.pump();
+
+      expect(controller.periods.single.startLocal, '12:30');
+
+      await tester.enterText(
+        find.byKey(const ValueKey('service_period_editor_end_0')),
+        '330',
+      );
+      await tester.pump();
+
+      expect(controller.periods.single.endLocal, '03:30');
+    });
+
     testWidgets('Add button disabled at four periods', (tester) async {
       tester.view.physicalSize = const Size(1200, 2400);
       tester.view.devicePixelRatio = 1.0;

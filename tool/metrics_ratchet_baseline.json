@@ -1,0 +1,7 @@
+{
+  "_comment": "Anti-regrowth ratchet baseline for tool/metrics_ratchet_check.dart. Counts = number of functions whose dart_code_linter metric level is 'warning' or 'alarm', per metric, over lib/ after the analysis_options.yaml metrics-exclude. Captured 2026-05-22 against origin/master by running `dart run dart_code_linter:metrics analyze lib/ --reporter=json`. The ratchet only tightens: LOWER these as the refactor phase reduces violations; raising any value needs explicit operator approval (CLAUDE.md 'Ceiling-raise rule R-2'). See runbooks/dart_code_metrics_runbook.md.",
+  "source-lines-of-code": 338,
+  "cyclomatic-complexity": 261,
+  "maximum-nesting-level": 4,
+  "number-of-parameters": 122
+}

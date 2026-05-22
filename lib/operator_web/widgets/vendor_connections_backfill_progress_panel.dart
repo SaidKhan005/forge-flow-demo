@@ -346,10 +346,17 @@ class _BackfillProgressRow extends StatelessWidget {
               message:
                   'Retry is not wired yet. Contact Forge & Flow support to '
                   'requeue this connection.',
-              child: ElevatedButton(
+              child: FilledButton(
                 key: ValueKey<String>(
                   'vendor_connections_backfill_progress_retry_'
                   '${job.connectionId}',
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.sunset,
+                  foregroundColor: AppColors.backgroundSurface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
                 ),
                 onPressed: null,
                 child: const Text('Retry backfill'),

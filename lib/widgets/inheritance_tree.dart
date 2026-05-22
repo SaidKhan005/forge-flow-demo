@@ -60,6 +60,8 @@ class InheritanceTree extends StatefulWidget {
     this.onNodeTap,
     this.initiallyCollapsedScopeIds = const <String>{},
     this.emptyMessage,
+    this.indentWidth = 18,
+    this.rowGap = 6,
   });
 
   /// Top of the tree. When `rootNode.children.isEmpty` the widget
@@ -83,6 +85,12 @@ class InheritanceTree extends StatefulWidget {
   /// Override copy for the empty-state notice. Defaults to plain
   /// English per `project_ux_writing_standard.md`.
   final String? emptyMessage;
+
+  /// Horizontal offset per tree depth level.
+  final double indentWidth;
+
+  /// Vertical space between tree rows.
+  final double rowGap;
 
   @override
   State<InheritanceTree> createState() => _InheritanceTreeState();
@@ -110,6 +118,8 @@ class _InheritanceTreeState extends State<InheritanceTree> {
           onToggleCollapsed: _toggleCollapsed,
           annotationBuilder: widget.annotationBuilder,
           onNodeTap: widget.onNodeTap,
+          indentWidth: widget.indentWidth,
+          rowGap: widget.rowGap,
         ),
       ],
     );
@@ -149,6 +159,8 @@ class _InheritanceTreeNodeRow extends StatelessWidget {
     required this.onToggleCollapsed,
     required this.annotationBuilder,
     required this.onNodeTap,
+    required this.indentWidth,
+    required this.rowGap,
   });
 
   final InheritanceTreeNode node;
@@ -156,14 +168,16 @@ class _InheritanceTreeNodeRow extends StatelessWidget {
   final ValueChanged<String> onToggleCollapsed;
   final InheritanceTreeAnnotationBuilder annotationBuilder;
   final InheritanceTreeNodeTapped? onNodeTap;
+  final double indentWidth;
+  final double rowGap;
 
   @override
   Widget build(BuildContext context) {
     final isCollapsed = collapsed.contains(node.scopeId);
-    final indent = node.depth * 18.0;
+    final indent = node.depth * indentWidth;
     final tap = onNodeTap;
     final row = Padding(
-      padding: EdgeInsets.only(left: indent, top: node.depth == 0 ? 0 : 6),
+      padding: EdgeInsets.only(left: indent, top: node.depth == 0 ? 0 : rowGap),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
@@ -225,6 +239,8 @@ class _InheritanceTreeNodeRow extends StatelessWidget {
               onToggleCollapsed: onToggleCollapsed,
               annotationBuilder: annotationBuilder,
               onNodeTap: onNodeTap,
+              indentWidth: indentWidth,
+              rowGap: rowGap,
             ),
           ),
       ],

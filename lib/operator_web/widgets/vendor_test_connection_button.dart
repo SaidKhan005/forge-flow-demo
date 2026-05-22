@@ -8,6 +8,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../theme/app_theme.dart';
+
 /// State machine for test-connection flow.
 enum VendorTestConnectionState { idle, testing, success, failure }
 
@@ -66,8 +68,13 @@ class _VendorTestConnectionButtonState extends State<VendorTestConnectionButton>
   Widget build(BuildContext context) {
     final isEnabled = _state == VendorTestConnectionState.idle;
 
-    return ElevatedButton.icon(
+    return FilledButton.icon(
       onPressed: isEnabled ? _handleTestConnection : null,
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.sunset,
+        foregroundColor: AppColors.backgroundSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
       icon: _buildIcon(),
       label: Text(_buildLabel()),
     );

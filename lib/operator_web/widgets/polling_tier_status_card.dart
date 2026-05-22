@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'data_accuracy_applicability.dart';
 import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
@@ -96,11 +97,10 @@ class PollingTierStatusCard extends StatelessWidget {
       cardKey: const Key('data_accuracy_polling_tier_status_card'),
       title: 'Your data freshness tier',
       headerExplainer:
-          'Your plan tier sets how often Forge & Flow asks your vendors '
-          'for fresh data. Standard checks every few minutes, Premium '
-          'checks more often. If you need fresher numbers than your tier '
-          'allows, request a tier change below and the F&F team will '
-          'reach out.',
+          'This applies only to vendors that do not push live updates. '
+          'Forge & Flow asks those vendors for new data on the schedule '
+          'set by this location\'s tier. Webhook vendors update when they '
+          'send data, so this tier does not change them.',
       child: !appliesToConnectedVendors
           ? _FreshnessDoesNotApplyBlock(bundle: bundle)
           : status == null
@@ -136,9 +136,8 @@ class PollingTierStatusCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Tap the button and tell us what you need. The F&F team '
-                  'emails you back within one business day to discuss '
-                  'options and walk you through the change.',
+                  'Request a change when poll-only vendors need fresher '
+                  'data than this tier provides.',
                   style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 14),
@@ -181,8 +180,7 @@ class _FreshnessDoesNotApplyBlock extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Does not apply to your integrations. Your connected '
-                  'vendors push updates to Forge & Flow when they happen.',
+                  dataFreshnessNotApplicableCopy(bundle),
                   style: AppTextStyles.body13(color: AppColors.textMuted),
                 ),
               ),
@@ -198,11 +196,6 @@ class _FreshnessDoesNotApplyBlock extends StatelessWidget {
             icon: const Icon(Icons.bolt_outlined, size: 16),
             label: const Text('Request faster data freshness'),
           ),
-        ),
-        const SizedBox(height: 14),
-        VendorRelativityLabel(
-          setting: VendorRelativitySetting.polling,
-          bundle: bundle,
         ),
       ],
     );
@@ -275,7 +268,7 @@ class _PerVendorCadenceList extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
           'Every vendor you have connected pushes updates to Forge & Flow '
-          'in real time, so your dashboard is always current.',
+          'when they happen, so there is no polling schedule to edit here.',
           style: AppTextStyles.body13(color: AppColors.textMuted),
         ),
       );

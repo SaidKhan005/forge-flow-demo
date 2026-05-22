@@ -115,14 +115,17 @@ void main() {
       expect(find.text('Square'), findsWidgets);
       expect(find.text('OpenTable'), findsWidgets);
       expect(
-        find.textContaining('Square does not expose covers'),
+        find.textContaining('Square does not supply POS guest counts'),
         findsOneWidget,
       );
       expect(find.textContaining('Breakfast service'), findsOneWidget);
-      expect(find.textContaining('scheduled checks'), findsOneWidget);
+      expect(
+        find.textContaining('checks QuickBooks Time for new data'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('shows does-not-apply copy for real-time integrations', (
+    testWidgets('keeps real-time integrations compact on freshness', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -148,11 +151,41 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('Does not apply to your integrations'),
+        find.textContaining('receives updates when vendors push them'),
         findsOneWidget,
       );
       expect(find.text('Toast'), findsWidgets);
       expect(find.text('7shifts'), findsWidgets);
+    });
+
+    testWidgets('keeps the no-vendor map compact', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyExplainerCard(
+            locationLabel: '95 Water Street',
+            bundle: bundle(),
+            dataFreshnessApplies: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('data_accuracy_no_vendors_notice')),
+        findsNothing,
+      );
+      expect(
+        find.textContaining('receives updates when vendors push them'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('turns labor hours into labor dollars'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('guest-count source for each service period'),
+        findsOneWidget,
+      );
     });
   });
 }
