@@ -168,7 +168,17 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               businessDateIso: testBusinessDateIso,
-              gateway: InMemoryVendorConnectionsGateway(),
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'toast',
+                    displayName: 'Toast',
+                    category: VendorCategory.pos,
+                  ),
+                ),
+              ),
               servicePeriodsLoader: () async =>
                   ServicePeriodDefinitionResolver.demoDefinitions,
             ),
@@ -480,6 +490,51 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'default vendor covers fall back to manual when POS cannot provide covers',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1600));
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'square',
+                    displayName: 'Square',
+                    category: VendorCategory.pos,
+                  ),
+                ),
+              ),
+              servicePeriodsLoader: () async => <ServicePeriodDefinition>[
+                servicePeriodDefinition(
+                  id: 'dinner',
+                  label: 'Dinner',
+                  sortOrder: 1,
+                ),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('covers_source_disabled_reason_dinner')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('switching dinner to manual reveals manual entry sub-card', (
       tester,
@@ -1329,6 +1384,96 @@ void main() {
 
   group('DataAccuracyScreen wage vendor applicability binding', () {
     testWidgets(
+      'saved vendor wage source falls back to manual when no labor vendor is usable',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1600));
+        final wageGateway = _FakeWageAuthorityGateway();
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(session: ownerSession),
+              ),
+              initialSettings: _settingsWithWage(WageSource.vendor),
+              wageAuthorityGateway: wageGateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('wage_authority_add_button_foh')),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('wage_authority_add_button_foh')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('vendor wage source locks the manual blended wage editor', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final wageGateway = _FakeWageAuthorityGateway()
+        ..seed(<WageRoleRowRecord>[
+          _wageRowFor(id: 'row-foh', roleName: 'Server', laborBucket: 'foh'),
+        ]);
+      final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+        ..rows = <WebVendorApplicabilityRow>[
+          _vendorApplicabilityRow(
+            id: 'qbt-current',
+            vendorSlug: 'quickbooks_time',
+            enabled: true,
+          ),
+        ];
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: gatewayWithBundle(
+              ownerSession,
+              bundleFor(
+                session: ownerSession,
+                labor: row(
+                  vendorId: 'quickbooks_time',
+                  displayName: 'QuickBooks Time',
+                  category: VendorCategory.labor,
+                ),
+              ),
+            ),
+            initialSettings: _settingsWithWage(WageSource.vendor),
+            vendorApplicabilityGateway: applicabilityGateway,
+            wageAuthorityGateway: wageGateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Manual wage mix is locked'), findsOneWidget);
+      expect(
+        find.byKey(const Key('wage_authority_add_button_foh')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('wage_authority_row_edit_btn_row-foh')),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
       'enabled current wage rows make vendor selectable and persist through save',
       (tester) async {
         await sizeViewport(tester, const Size(1280, 1200));
@@ -1410,7 +1555,17 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               businessDateIso: testBusinessDateIso,
-              gateway: InMemoryVendorConnectionsGateway(),
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'toast',
+                    displayName: 'Toast',
+                    category: VendorCategory.pos,
+                  ),
+                ),
+              ),
               initialSettings: _settingsWithWage(WageSource.manualMix),
               vendorApplicabilityGateway: applicabilityGateway,
               onSaveSettings: saves.add,
@@ -1582,7 +1737,17 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               businessDateIso: testBusinessDateIso,
-              gateway: InMemoryVendorConnectionsGateway(),
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'toast',
+                    displayName: 'Toast',
+                    category: VendorCategory.pos,
+                  ),
+                ),
+              ),
               dataAccuracyGateway: gateway,
             ),
           ),
@@ -1619,7 +1784,17 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
-              gateway: InMemoryVendorConnectionsGateway(),
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'toast',
+                    displayName: 'Toast',
+                    category: VendorCategory.pos,
+                  ),
+                ),
+              ),
               dataAccuracyGateway: gateway,
               businessDateIso: '2026-05-08',
               servicePeriodsLoader: () async => configuredPeriods,
@@ -1695,7 +1870,17 @@ void main() {
             DataAccuracyScreen(
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
-              gateway: InMemoryVendorConnectionsGateway(),
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'toast',
+                    displayName: 'Toast',
+                    category: VendorCategory.pos,
+                  ),
+                ),
+              ),
               dataAccuracyGateway: gateway,
               businessDateIso: '2026-05-08',
               servicePeriodsLoader: () async => configuredPeriods,
