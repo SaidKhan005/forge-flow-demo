@@ -42,7 +42,7 @@ const List<String> _laneFiles = <String>[
   'lib/operator_web/widgets/polling_tier_status_card.dart',
   'lib/operator_web/widgets/vendor_relativity_label.dart',
   'lib/operator_web/widgets/data_accuracy_explainer_card.dart',
-  'docs/_walkthroughs/8.spine-bridge.B.md',
+  'docs/archive/_walkthroughs/8.spine-bridge.B.md',
 ];
 
 class _BannedToken {

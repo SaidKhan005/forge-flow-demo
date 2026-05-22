@@ -1010,16 +1010,8 @@ when it opens. Operator gate on the phase opening.
 ## Closeout — Phase 8 plug-and-play V1 onboarding (2026-05-07)
 
 End-to-end V1 plug-and-play onboarding for all 17 vendors landed via
-9 PRs this session. Detail + per-PR resolution notes archived to
+9 PRs (#280 to #301). Full per-PR resolution notes archived to
 `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-07_phase_8_plug_and_play.md`.
-
-PRs (chronological): #280 MFA test signature drift; #281 OAuth refresh
-worker closure registry wire-in; #282 backfill worker adapter factory
-wire-in (binder split); #283 per-vendor OAuth descriptors + api-key
-validators; #286 operator-web route alignment + test-connection +
-disconnect endpoints; #288 master analyzer sweep; #297 test-connection
-executor wire-in; #298 api-key paste UX; #301 location integrations
-list real projection.
 
 Operations work remaining (P0 above, plus Cloud Run env + partner
 portal redirect URI registration) gates each vendor's `*.live.sandbox`
