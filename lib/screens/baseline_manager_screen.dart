@@ -602,8 +602,6 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                           selectedBand: _activeLensBand(),
                           onBandSelected: _applyBand,
                         ),
-                        if (_draftKeys.isNotEmpty)
-                          ClearAllBar(onClearAll: _clearAll),
                         // R9: calendar renders at its full natural
                         // height inside the single page scroll (it is
                         // NOT its own scrollable and NOT in
@@ -621,6 +619,10 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                     ),
                   ),
                 ),
+                // Pinned outside the scroll view so it is always reachable
+                // regardless of how far the calendar has been scrolled.
+                if (_draftKeys.isNotEmpty)
+                  ClearAllBar(onClearAll: _clearAll),
                 BottomBar(
                   onCancel: _cancel,
                   onDone: _done,
