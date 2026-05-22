@@ -96,6 +96,14 @@ A future operator-led ratchet slice would:
 4. Repeat per metric. Split "reduce the count" work from "lock the bar"
    work — never refactor and promote in the same PR.
 
+**Ratchet enforcer (active):** `tool/metrics_ratchet_check.dart` automates
+step 1. It runs the JSON reporter, counts `warning`/`alarm` functions per
+metric, and fails if any count grows past the committed baseline
+`tool/metrics_ratchet_baseline.json`. When a count drops it prints a note
+that the baseline can be lowered (a deliberate ratchet step) but never
+auto-rewrites it. Raising a baseline needs operator approval (Ceiling-raise
+rule R-2). Run: `dart run tool/metrics_ratchet_check.dart`.
+
 ## Exemptions
 
 `metrics-exclude` in `analysis_options.yaml` skips:
