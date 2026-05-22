@@ -54,6 +54,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/operator_web_surface.dart';
 import 'edit_member_dialog.dart';
@@ -676,9 +677,32 @@ class _MembersScreenState extends State<MembersScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _MembersHeader(
-            canInvite: widget._canManageInvites,
-            onInvite: _openInviteDialog,
+          OperatorWebScreenHeader(
+            icon: Icons.group_outlined,
+            title: 'Team members',
+            actions: <Widget>[
+              SizedBox(
+                height: 48,
+                child: FilledButton.icon(
+                  key: const Key('operator_web_members_invite_button'),
+                  onPressed: widget._canManageInvites
+                      ? _openInviteDialog
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.sunset,
+                    foregroundColor: AppColors.backgroundSurface,
+                    disabledBackgroundColor: AppColors.borderSubtle,
+                    disabledForegroundColor: AppColors.textMuted,
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    textStyle: AppTextStyles.display16(
+                      color: AppColors.backgroundSurface,
+                    ),
+                  ),
+                  icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
+                  label: const Text('Invite member'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 18),
           _MembersFilterRail(
@@ -745,65 +769,6 @@ class _MembersScreenState extends State<MembersScreen> {
           ],
         ],
       ),
-    );
-  }
-}
-
-class _MembersHeader extends StatelessWidget {
-  const _MembersHeader({required this.canInvite, required this.onInvite});
-
-  final bool canInvite;
-  final VoidCallback onInvite;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.group_outlined,
-                    size: 22,
-                    color: AppColors.sunsetDark,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Team members',
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        SizedBox(
-          height: 48,
-          child: FilledButton.icon(
-            key: const Key('operator_web_members_invite_button'),
-            onPressed: canInvite ? onInvite : null,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.sunset,
-              foregroundColor: AppColors.backgroundSurface,
-              disabledBackgroundColor: AppColors.borderSubtle,
-              disabledForegroundColor: AppColors.textMuted,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              textStyle: AppTextStyles.display16(
-                color: AppColors.backgroundSurface,
-              ),
-            ),
-            icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
-            label: const Text('Invite member'),
-          ),
-        ),
-      ],
     );
   }
 }

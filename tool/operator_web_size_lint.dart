@@ -62,8 +62,8 @@ const Map<String, int> kOperatorWebSizeCeilings = <String, int>{
   'lib/admin/screens/members_admin_screen.dart': 2532,
   'lib/operator_web/router/operator_web_router.dart': 2941,
   'lib/operator_web/screens/my_account_screen.dart': 2107,
-  'lib/operator_web/screens/account_screen.dart': 2071,
-  'lib/operator_web/screens/members_screen.dart': 1736,
+  'lib/operator_web/screens/account_screen.dart': 2053,
+  'lib/operator_web/screens/members_screen.dart': 1701,
 };
 
 /// Outcome category for a single file.
