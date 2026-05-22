@@ -58,6 +58,7 @@ import '../widgets/hierarchy_scope_notice.dart';
 import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 import '../widgets/web_app_shell.dart';
 
 // G7d (spec §2.B/§3): v2 catalog constants. Phantom
@@ -456,31 +457,7 @@ class _AccountScreenState extends State<AccountScreen> {
         // Seed the form controllers with the current override values
         // (fall back to business defaults so the operator can edit
         // from the inherited starting point).
-        _currencyCode =
-            envelope.override.currencyCode ??
-            envelope.businessDefault.currencyCode ??
-            _currencyCode;
-        _localeTag =
-            envelope.override.localeCode ??
-            envelope.businessDefault.localeCode ??
-            _localeTag;
-        _rolloverHour =
-            envelope.override.businessDayRolloverHour ??
-            envelope.businessDefault.businessDayRolloverHour ??
-            _rolloverHour;
-        _contactEmail.text =
-            envelope.override.contactEmail ??
-            envelope.businessDefault.contactEmail ??
-            '';
-        _contactPhone.text =
-            envelope.override.contactPhone ??
-            envelope.businessDefault.contactPhone ??
-            '';
-        _savedTimezoneValue =
-            envelope.override.ianaTimezone ??
-            envelope.businessDefault.ianaTimezone ??
-            _savedTimezoneValue;
-        _seedTimezoneDraft(_savedTimezoneValue);
+        _seedAccountFormFromEnvelope(envelope);
       });
     } on OperatorWebProxyException catch (error) {
       if (!mounted) return;
@@ -508,6 +485,143 @@ class _AccountScreenState extends State<AccountScreen> {
         ? trimmed
         : (trimmed == null || trimmed.isEmpty ? null : _timezoneCustomSentinel);
     _timezoneCustomController.text = hasInShortlist ? '' : (trimmed ?? '');
+  }
+
+  /// Seeds the editable form controllers from [envelope], preferring the
+  /// scope's own override and falling back to the inherited business
+  /// default. Shared by the initial load and the reset-to-inherited path.
+  void _seedAccountFormFromEnvelope(LocationAccountOverridesEnvelope envelope) {
+    _currencyCode =
+        envelope.override.currencyCode ??
+        envelope.businessDefault.currencyCode ??
+        _currencyCode;
+    _localeTag =
+        envelope.override.localeCode ??
+        envelope.businessDefault.localeCode ??
+        _localeTag;
+    _rolloverHour =
+        envelope.override.businessDayRolloverHour ??
+        envelope.businessDefault.businessDayRolloverHour ??
+        _rolloverHour;
+    _contactEmail.text =
+        envelope.override.contactEmail ??
+        envelope.businessDefault.contactEmail ??
+        '';
+    _contactPhone.text =
+        envelope.override.contactPhone ??
+        envelope.businessDefault.contactPhone ??
+        '';
+    _savedTimezoneValue =
+        envelope.override.ianaTimezone ??
+        envelope.businessDefault.ianaTimezone ??
+        _savedTimezoneValue;
+    _seedTimezoneDraft(_savedTimezoneValue);
+  }
+
+  /// True when the current below-business scope has at least one account
+  /// value set locally, so reverting to the inherited value is meaningful.
+  bool get _scopeHasOverride {
+    final override = _locationOverrides?.override;
+    if (override == null) return false;
+    return override.currencyCode != null ||
+        override.localeCode != null ||
+        override.businessDayRolloverHour != null ||
+        override.contactEmail != null ||
+        override.contactPhone != null ||
+        override.ianaTimezone != null;
+  }
+
+  /// Clears every account override at the current scope so the values
+  /// fall back to the ones inherited from the higher scope. Only valid
+  /// below Business scope (Business has no parent to inherit from).
+  Future<void> _handleResetToInherited() async {
+    final gateway = widget.gateway;
+    final scope = widget.accountOverrideScope;
+    if (gateway == null || !widget.canEdit || scope == null) return;
+    if (!widget.scopeBelowBusiness) return;
+    final scopeGateway = _scopeOverridesGateway;
+    final locationId = widget.locationIdForOverride;
+    if (scopeGateway == null && locationId == null) return;
+
+    final confirmed = await showOperatorWebDialog<bool>(
+      context: context,
+      title: 'Use inherited values?',
+      icon: Icons.undo_outlined,
+      child: Text(
+        'This clears the custom account values set for ${widget.scopeName} '
+        'and goes back to the values inherited from the higher scope. You '
+        'can set custom values again whenever you need to.',
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
+      ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('operator_web_account_reset_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('operator_web_account_reset_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.sunset,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          child: const Text('Use inherited values'),
+        ),
+      ],
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+    try {
+      final patch = LocationAccountOverridesPatchPayload(
+        clearCurrencyCode: true,
+        clearLocaleCode: true,
+        clearIanaTimezone: true,
+        clearBusinessDayRolloverHour: true,
+        clearContactEmail: true,
+        clearContactPhone: true,
+      );
+      final useScopeGateway = scopeGateway != null && !widget.scopeIsLocation;
+      final envelope = useScopeGateway
+          ? await scopeGateway.patchAccountScopeOverrides(
+              scope: scope,
+              patch: patch,
+            )
+          : await gateway.patchLocationAccountOverrides(
+              locationId: locationId!,
+              patch: patch,
+            );
+      if (!mounted) return;
+      _successTimer?.cancel();
+      setState(() {
+        _locationOverrides = envelope;
+        _seedAccountFormFromEnvelope(envelope);
+        _submitting = false;
+        _successMessage =
+            'Done. ${widget.scopeName} now uses the inherited values.';
+      });
+      _successTimer = Timer(const Duration(seconds: 4), () {
+        if (!mounted) return;
+        setState(() => _successMessage = null);
+      });
+    } on OperatorWebProxyException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _errorMessage = error.message;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _errorMessage = 'Could not reset to the inherited values: $error';
+      });
+    }
   }
 
   @override
@@ -1117,36 +1231,68 @@ class _AccountScreenState extends State<AccountScreen> {
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,
-            child: SizedBox(
-              height: 42,
-              child: FilledButton(
-                key: const Key('operator_web_account_save'),
-                onPressed:
-                    widget.canEdit &&
-                        _hasGateway &&
-                        !_submitting &&
-                        lowerScopeEditable
-                    ? _handleSave
-                    : null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                  padding: const EdgeInsets.symmetric(horizontal: 22),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  height: 42,
+                  child: FilledButton(
+                    key: const Key('operator_web_account_save'),
+                    onPressed:
+                        widget.canEdit &&
+                            _hasGateway &&
+                            !_submitting &&
+                            lowerScopeEditable
+                        ? _handleSave
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sunset,
+                      foregroundColor: AppColors.backgroundSurface,
+                      padding: const EdgeInsets.symmetric(horizontal: 22),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.backgroundSurface,
+                            ),
+                          )
+                        : const Text('Save business account'),
                   ),
                 ),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.backgroundSurface,
+                if (widget.scopeBelowBusiness)
+                  SizedBox(
+                    height: 42,
+                    child: OutlinedButton.icon(
+                      key: const Key('operator_web_account_reset_to_inherited'),
+                      onPressed:
+                          widget.canEdit &&
+                              _hasGateway &&
+                              !_submitting &&
+                              lowerScopeEditable &&
+                              _scopeHasOverride
+                          ? _handleResetToInherited
+                          : null,
+                      icon: const Icon(Icons.undo_outlined, size: 16),
+                      label: const Text('Use inherited values'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.sunsetDark,
+                        side: const BorderSide(
+                          color: AppColors.sunsetDark,
+                          width: 1,
                         ),
-                      )
-                    : const Text('Save business account'),
-              ),
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

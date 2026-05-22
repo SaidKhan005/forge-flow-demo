@@ -843,6 +843,83 @@ void main() {
       );
     });
 
+    testWidgets('Location scope reset-to-inherited clears every override '
+        'through the gateway', (tester) async {
+      tester.view.physicalSize = const Size(1280, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final session = sessionWithRole('operator_owner');
+      final gateway = _FakeAccountGateway(
+        initialOverrides: LocationAccountOverridesEnvelope(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          effective: const LocationAccountOverridesFieldSet(
+            ianaTimezone: 'Europe/London',
+            localeCode: 'en-GB',
+            currencyCode: 'GBP',
+            businessDayRolloverHour: 4,
+            contactEmail: 'ops@example.com',
+          ),
+          override: const LocationAccountOverridesFieldSet(
+            currencyCode: 'GBP',
+            localeCode: 'en-GB',
+            contactEmail: 'ops@example.com',
+          ),
+          businessDefault: const LocationAccountOverridesFieldSet(
+            ianaTimezone: 'America/Toronto',
+            localeCode: 'en-US',
+            currencyCode: 'USD',
+            businessDayRolloverHour: 4,
+          ),
+          updatedAt: DateTime.utc(2026, 5, 14, 12),
+        ),
+      );
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: gateway,
+            selectedScope: locationScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final resetButton = find.byKey(
+        const Key('operator_web_account_reset_to_inherited'),
+      );
+      await tester.ensureVisible(resetButton);
+      await tester.pumpAndSettle();
+      await tester.tap(resetButton);
+      await tester.pumpAndSettle();
+
+      // Confirm the dialog.
+      await tester.tap(
+        find.byKey(const Key('operator_web_account_reset_confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      // The override gateway received one patch clearing every field.
+      expect(gateway.overridesPatchCalls.length, equals(1));
+      final patch = gateway.overridesPatchCalls.single.patch;
+      expect(patch.clearCurrencyCode, isTrue);
+      expect(patch.clearLocaleCode, isTrue);
+      expect(patch.clearIanaTimezone, isTrue);
+      expect(patch.clearBusinessDayRolloverHour, isTrue);
+      expect(patch.clearContactEmail, isTrue);
+      expect(patch.clearContactPhone, isTrue);
+      // The operator-level patchAccount path must NOT be touched.
+      expect(gateway.calls, isEmpty);
+      // Success banner renders.
+      expect(
+        find.byKey(const Key('operator_web_account_success')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('Location scope with an existing override renders the '
         '"Set here" inheritance line carrying the business default', (
       tester,
