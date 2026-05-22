@@ -18,7 +18,7 @@ Handoff between:
 - `tool/advisor_proxy/advisor_proxy.dart` — the five historical
   per-route admin CORS preflight sites were centralized into the
   single `respondAdminCorsPreflight` helper (now at
-  `advisor_proxy.dart:19041`), invoked from `routeRequest`. (The
+  `advisor_proxy.dart:19662`), invoked from `routeRequest`. (The
   original handoff cited lines ~9997/10013/10031/10048/10065; the
   proxy has grown ~9k lines since and those anchors are obsolete.)
 - `tool/advisor_proxy/proxy_bootstrap.dart` — config plumbing for

@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-18. Routing map only: shows **only what is left**.
+Updated: 2026-05-22. Routing map only: shows **only what is left**.
 Completed phases/slices: `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 Stale sprint-execution docs: `docs/archive/_execution/`. `docs/archive/**`
 is history; ignore unless explicitly named.
@@ -122,7 +122,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 
 | Slice | Status | Plan |
 |---|---|---|
-| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active implementation; Slices 0 to 5 landed (covers-source per-period schema + bottom-up locked weekly-plan snapshot + per-period verdict carry); later slices + benchmark-rework follow-ups in flight** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`**: 9 slices (0 to 1 to 1.5 to 2 to 2.5 to 3 to 4 to 5 to 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. Landed covers-source de-hardcode R5/R7a to R7d (#943/#972/#975 to #977; **#977 schema-destructive: drops legacy whole-day columns + trims view scalars**); run `migration_drift_scanner` + `migration_cutoff_lint` after any further `db/migrations` change. |
+| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active implementation; Slices 0 to 6 landed, completing the full numbered sequence (covers-source per-period schema + bottom-up locked weekly-plan snapshot + per-period verdict carry + Slice 6 audit-scorer per-period & pool-consistency checks, #917/#948); benchmark-rework follow-ups in flight** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`**: 9 slices (0 to 1 to 1.5 to 2 to 2.5 to 3 to 4 to 5 to 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. Landed covers-source de-hardcode R5/R7a to R7d (#943/#972/#975 to #977; **#977 schema-destructive: drops legacy whole-day columns + trims view scalars**); run `migration_drift_scanner` + `migration_cutoff_lint` after any further `db/migrations` change. |
 | `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
 | `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
@@ -246,7 +246,9 @@ arrive.
 
 Themed digest of what landed since the last tracker refresh (commit
 `54dbd2f5`). None of this changes the V1 launch path above; it is
-feature build-out, doc alignment, and repo hygiene.
+feature build-out, doc alignment, and repo hygiene. Commits landed
+after 2026-05-18 (through 2026-05-22) are not yet folded into this
+digest.
 
 - **Covers-source per-period schema (Per-Daypart V1 Slice 0 to 5):**
   R5 covers-source de-hardcode + keyed-table backfill (#943); R7a

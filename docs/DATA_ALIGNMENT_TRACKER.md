@@ -1,6 +1,6 @@
 # Data Alignment Tracker
 
-Updated: 2026-05-07 (trim — closed status notes removed; durable
+Updated: 2026-05-22 (trim — closed status notes removed; durable
 alignment rules retained.)
 Owner: You
 Purpose: durable rules that keep live POS, labor, reservation, Plan,

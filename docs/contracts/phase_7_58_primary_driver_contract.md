@@ -31,7 +31,7 @@ this doc and Layer 10 conflict, Layer 10 wins; when this doc and a
 
 ## Single Source of Truth
 
-`LaborModel.determineLever(...)` in `lib/services/labor_model.dart:99`
+`LaborModel.determineLever(...)` in `lib/services/labor_model.dart:120`
 is the only function allowed to compute a primary driver id. No
 surface, widget, or read service may rederive a lever from a different
 formula or from rounded UI numbers. Any new surface that needs a

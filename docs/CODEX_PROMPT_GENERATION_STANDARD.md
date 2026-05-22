@@ -1,7 +1,7 @@
 # Codex Prompt And Review Standard
 
 Status: Active
-Updated: 2026-05-03
+Updated: 2026-05-22
 
 This file defines the shared prompt style and review loop. Keep it lean.
 

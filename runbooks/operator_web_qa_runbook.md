@@ -150,9 +150,10 @@ Navigate to every route via the left nav. Expected nav button text values:
 
 | Nav label | What to verify |
 |---|---|
-| `Operations Plan` | Weekly plan table (7 days), "Why these numbers?" section with 7 metric cards |
+| `Operations\nPlan` | Weekly plan table (7 days), "Why these numbers?" section with 7 metric cards |
 | `Business\nBusiness account` | Currency/locale pickers open menus; Save shows "Saved. Your changes are live."; scope-locked fields (business name, logo) disabled at location scope |
-| `Business timing setup` | Service periods list; Edit service periods dialog opens; Add caps at 4 periods; Close restores |
+| `Business\nService periods` | Service periods list; Edit service periods dialog opens; Add caps at 4 periods; Close restores |
+| `Business\nLocations` (business/org scope only) | Location list / org hierarchy; hidden when managing a single-location scope |
 | `People\nMy account` | Profile shown; Change password dialog opens; 2FA setup dialog shows QR + shared secret; sign-in activity with time filters |
 | `Team members` | Member list with all 4 statuses (Active/Suspended/Dormant/Removed); Invite dialog with org tree; Edit dialog with reason field; More actions context-aware (Suspend vs Reactivate) |
 | `Access\nRoles & permissions` | Custom role with Edit/Delete; 8 default roles; New role editor with permission tree |
