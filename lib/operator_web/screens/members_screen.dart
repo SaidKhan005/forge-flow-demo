@@ -54,6 +54,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/operator_web_surface.dart';
@@ -671,8 +672,8 @@ class _MembersScreenState extends State<MembersScreen> {
       );
     }
     final filteredCount = _filteredUsers.length;
-    return SingleChildScrollView(
-      key: const Key('operator_web_members_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('operator_web_members_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

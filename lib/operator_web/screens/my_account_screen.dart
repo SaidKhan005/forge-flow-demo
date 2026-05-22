@@ -60,6 +60,7 @@ import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_security_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_surface.dart';
 import 'edit_self_profile_dialog.dart';
 
@@ -676,8 +677,8 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       builder: (context, constraints) {
         final twoColumnProfile =
             constraints.maxWidth >= _kProfileTwoColumnBreakpoint;
-        return SingleChildScrollView(
-          key: const Key('operator_web_account_screen'),
+        return OperatorWebScreenBody(
+          scrollKey: const Key('operator_web_account_screen'),
           padding: const EdgeInsets.all(28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -49,6 +49,7 @@ import '../../domain/models/notification_event_catalog.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_notification_preferences_gateway_provider.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
@@ -297,8 +298,8 @@ class _SettingsNotificationsScreenState
       );
       visibleEvents[entry.category]!.add(entry);
     }
-    return SingleChildScrollView(
-      key: const Key('settings_notifications_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('settings_notifications_screen'),
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

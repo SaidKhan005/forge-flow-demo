@@ -37,6 +37,7 @@ import '../../widgets/role_permission_picker.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_section_heading.dart';
 
 /// Permission key validation rule. Mirrors the proxy-side
@@ -429,125 +430,123 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
       ),
       body: Form(
         key: _formKey,
-        child: SingleChildScrollView(
+        child: OperatorWebScreenBody(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 880),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                _ScopeContextPanel(
-                  scopeLabel: widget.scopeLabel,
-                  roleScope: widget.roleScope,
-                ),
-                const SizedBox(height: 16),
-                _MetaCard(
-                  readOnly: widget.readOnly,
-                  displayNameController: _displayNameController,
-                  descriptionController: _descriptionController,
-                ),
-                const SizedBox(height: 16),
-                RolePermissionPickerCard(
-                  key: const Key('operator_web_custom_role_editor_permissions'),
-                  header: const OperatorWebSectionHeading(title: 'Permissions'),
-                  selected: _selectedPermissions,
-                  explicit: _explicitPermissions,
-                  readOnly: widget.readOnly,
-                  barrioPlanIncluded: _barrioPlanIncluded,
-                  roleScope: widget.roleScope,
-                  onToggle: _togglePermission,
-                  keyPrefix: 'operator_web_custom_role_editor',
-                ),
-                Builder(
-                  builder: (context) {
-                    final warnings = widget.validator.validate(
-                      _selectedPermissions,
-                      scope: widget.roleScope,
-                      roleDisplayName: _displayNameController.text,
-                    );
-                    final roleId = widget.existing?.roleId;
-                    final visibleWarnings = warnings
-                        .where(
-                          (w) => !widget.dismissalStore.isDismissed(
-                            roleId: roleId,
-                            warning: w,
-                          ),
-                        )
-                        .toList(growable: false);
-                    if (visibleWarnings.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 14),
-                      child: _RoleWarningPanel(
-                        warnings: visibleWarnings,
-                        onDismiss: (warning) async {
-                          await widget.dismissalStore.dismiss(
-                            roleId: roleId,
-                            warning: warning,
-                          );
-                          if (!mounted) return;
-                          setState(() {});
-                        },
-                      ),
-                    );
-                  },
-                ),
-                if (_saveError != null) ...<Widget>[
-                  const SizedBox(height: 14),
-                  _SaveErrorPanel(message: _saveError!),
-                ],
-                const SizedBox(height: 18),
-                Row(
-                  children: <Widget>[
-                    OutlinedButton(
-                      key: const Key('operator_web_custom_role_editor_cancel'),
-                      onPressed: _saving
-                          ? null
-                          : (widget.onClose ??
-                                () => Navigator.of(context).maybePop()),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.sunsetDark,
-                        side: const BorderSide(
-                          color: AppColors.sunsetDark,
-                          width: 1,
+          maxContentWidth: 880,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _ScopeContextPanel(
+                scopeLabel: widget.scopeLabel,
+                roleScope: widget.roleScope,
+              ),
+              const SizedBox(height: 16),
+              _MetaCard(
+                readOnly: widget.readOnly,
+                displayNameController: _displayNameController,
+                descriptionController: _descriptionController,
+              ),
+              const SizedBox(height: 16),
+              RolePermissionPickerCard(
+                key: const Key('operator_web_custom_role_editor_permissions'),
+                header: const OperatorWebSectionHeading(title: 'Permissions'),
+                selected: _selectedPermissions,
+                explicit: _explicitPermissions,
+                readOnly: widget.readOnly,
+                barrioPlanIncluded: _barrioPlanIncluded,
+                roleScope: widget.roleScope,
+                onToggle: _togglePermission,
+                keyPrefix: 'operator_web_custom_role_editor',
+              ),
+              Builder(
+                builder: (context) {
+                  final warnings = widget.validator.validate(
+                    _selectedPermissions,
+                    scope: widget.roleScope,
+                    roleDisplayName: _displayNameController.text,
+                  );
+                  final roleId = widget.existing?.roleId;
+                  final visibleWarnings = warnings
+                      .where(
+                        (w) => !widget.dismissalStore.isDismissed(
+                          roleId: roleId,
+                          warning: w,
                         ),
-                      ),
-                      child: const Text('Cancel'),
+                      )
+                      .toList(growable: false);
+                  if (visibleWarnings.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: _RoleWarningPanel(
+                      warnings: visibleWarnings,
+                      onDismiss: (warning) async {
+                        await widget.dismissalStore.dismiss(
+                          roleId: roleId,
+                          warning: warning,
+                        );
+                        if (!mounted) return;
+                        setState(() {});
+                      },
                     ),
-                    const SizedBox(width: 12),
-                    FilledButton(
-                      key: const Key('operator_web_custom_role_editor_save'),
-                      onPressed: _canSave && !_saving ? _save : null,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.sunset,
-                        foregroundColor: AppColors.backgroundSurface,
-                        disabledBackgroundColor: AppColors.borderSubtle,
-                        disabledForegroundColor: AppColors.textMuted,
-                      ),
-                      child: _saving
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.backgroundSurface,
-                              ),
-                            )
-                          : Text(_isCreate ? 'Create role' : 'Save changes'),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${_selectedPermissions.length} '
-                      '${_selectedPermissions.length == 1 ? 'permission' : 'permissions'} '
-                      'selected',
-                      key: const Key('operator_web_custom_role_editor_count'),
-                      style: AppTextStyles.mono10(color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
+                  );
+                },
+              ),
+              if (_saveError != null) ...<Widget>[
+                const SizedBox(height: 14),
+                _SaveErrorPanel(message: _saveError!),
               ],
-            ),
+              const SizedBox(height: 18),
+              Row(
+                children: <Widget>[
+                  OutlinedButton(
+                    key: const Key('operator_web_custom_role_editor_cancel'),
+                    onPressed: _saving
+                        ? null
+                        : (widget.onClose ??
+                              () => Navigator.of(context).maybePop()),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.sunsetDark,
+                      side: const BorderSide(
+                        color: AppColors.sunsetDark,
+                        width: 1,
+                      ),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton(
+                    key: const Key('operator_web_custom_role_editor_save'),
+                    onPressed: _canSave && !_saving ? _save : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sunset,
+                      foregroundColor: AppColors.backgroundSurface,
+                      disabledBackgroundColor: AppColors.borderSubtle,
+                      disabledForegroundColor: AppColors.textMuted,
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.backgroundSurface,
+                            ),
+                          )
+                        : Text(_isCreate ? 'Create role' : 'Save changes'),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${_selectedPermissions.length} '
+                    '${_selectedPermissions.length == 1 ? 'permission' : 'permissions'} '
+                    'selected',
+                    key: const Key('operator_web_custom_role_editor_count'),
+                    style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

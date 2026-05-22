@@ -27,6 +27,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_schedule_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/schedule_forecast_explainer_panel.dart';
@@ -158,8 +159,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         child: CircularProgressIndicator(),
       );
     }
-    return SingleChildScrollView(
-      key: const Key('schedule_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('schedule_screen'),
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

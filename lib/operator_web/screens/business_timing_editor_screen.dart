@@ -35,6 +35,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_business_timing_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/service_period_editor.dart';
@@ -452,8 +453,8 @@ class _BusinessTimingEditorScreenState
   @override
   Widget build(BuildContext context) {
     final showInlineHeading = widget.onClose == null;
-    return SingleChildScrollView(
-      key: const Key('operator_web_business_timing_editor_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('operator_web_business_timing_editor_screen'),
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

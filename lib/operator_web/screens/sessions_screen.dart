@@ -48,6 +48,7 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_sessions_gateway.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/operator_web_surface.dart';
@@ -393,8 +394,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
         ),
       );
     }
-    return SingleChildScrollView(
-      key: const Key('operator_web_sessions_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('operator_web_sessions_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

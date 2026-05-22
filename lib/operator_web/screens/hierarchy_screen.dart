@@ -41,6 +41,7 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_hierarchy_gateway.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
 
@@ -479,8 +480,8 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
         ),
       );
     }
-    return SingleChildScrollView(
-      key: const Key('operator_web_hierarchy_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('operator_web_hierarchy_screen'),
       padding: const EdgeInsets.fromLTRB(32, 28, 32, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

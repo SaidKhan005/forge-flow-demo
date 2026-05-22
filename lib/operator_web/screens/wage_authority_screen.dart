@@ -41,6 +41,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/operator_web_surface.dart';
@@ -147,8 +148,8 @@ class WageAuthorityScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      key: const Key('wage_authority_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('wage_authority_screen'),
       padding: const EdgeInsets.all(28),
       child: WageAuthoritySection(
         session: session,

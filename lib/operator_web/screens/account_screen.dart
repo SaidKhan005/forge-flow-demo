@@ -56,6 +56,7 @@ import '../services/web_account_gateway.dart';
 import '../widgets/business_logo_upload_section.dart';
 import '../widgets/hierarchy_scope_notice.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/operator_web_surface.dart';
@@ -1097,8 +1098,8 @@ class _AccountScreenState extends State<AccountScreen> {
               businessDefaultDisplay: timezoneDefaultDisplay,
             ),
           );
-    return SingleChildScrollView(
-      key: const Key('operator_web_account_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('operator_web_account_screen'),
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
