@@ -255,7 +255,9 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
       teamRolesGateway: DemoWebTeamRolesGateway(),
       teamHierarchyGateway: DemoWebTeamHierarchyGateway(),
       teamSessionsGateway: DemoWebTeamSessionsGateway(),
-      teamAuditLogGateway: DemoWebTeamAuditLogGateway(),
+      teamAuditLogGateway: DemoWebTeamAuditLogGateway(
+        clock: DateTime.utc(2026, 5, 6),
+      ),
       securityGateway: securityGateway,
       accountGateway: DemoOperatorWebAccountGateway(
         logoUrl: kDemoOperatorWebPlaceholderLogoUrl,

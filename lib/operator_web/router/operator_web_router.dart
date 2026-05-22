@@ -2122,7 +2122,30 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           .auditLogHierarchyGateway;
     }
     return _routerOwnedDemoAuditLogHierarchyGateway ??=
-        InMemoryWebAuditLogHierarchyGateway();
+        InMemoryWebAuditLogHierarchyGateway(
+          rows: kDemoAuditLogEntriesFixture
+              .map(
+                (f) => WebAuditLogHierarchyRow(
+                  id: f.entryId,
+                  operatorId: kDemoOperatorIdFixture,
+                  // Seed every fixture row under the demo primary location so
+                  // a location-scoped selection (the default demo scope for
+                  // `kDemoOperatorWebSession`) returns the same entries the
+                  // base gateway serves. operator_wide and org_unit scopes
+                  // receive all rows regardless of locationId.
+                  locationId: 'demo-location',
+                  occurredAt: DateTime.parse(f.createdAtIso).toUtc(),
+                  actorKind: f.actorKind,
+                  actorUserId: f.actorUserId,
+                  targetKind: f.targetKind,
+                  targetId: f.targetId,
+                  action: f.action,
+                  payload: Map<String, Object?>.from(f.payload),
+                  adminReason: f.adminReason,
+                ),
+              )
+              .toList(growable: false),
+        );
   }
 
   /// Resolver for the Vendor connections screen gateway. Lifts

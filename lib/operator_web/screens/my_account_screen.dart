@@ -2209,7 +2209,9 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   final _currentController = TextEditingController();
   final _newController = TextEditingController();
   final _confirmController = TextEditingController();
-  String? _error;
+  String? _currentError;
+  String? _newError;
+  String? _confirmError;
   bool _submitting = false;
 
   @override
@@ -2222,16 +2224,22 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
 
   Future<void> _submit() async {
     if (_submitting) return;
+    // Clear all field errors before re-validating so stale errors disappear.
+    setState(() {
+      _currentError = null;
+      _newError = null;
+      _confirmError = null;
+    });
     if (_currentController.text.isEmpty) {
       setState(
-        () => _error =
+        () => _currentError =
             'Type your current password first so we can confirm it\'s you.',
       );
       return;
     }
     if (_newController.text.length < 12) {
       setState(
-        () => _error =
+        () => _newError =
             'Use at least 12 characters for your new password. A short '
             'phrase from a song or book is easier to remember than a string '
             'of random characters.',
@@ -2240,7 +2248,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     }
     if (_newController.text != _confirmController.text) {
       setState(
-        () => _error =
+        () => _confirmError =
             'The two new passwords didn\'t match. Type the same password in '
             'both fields and try again.',
       );
@@ -2250,7 +2258,9 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     if (submit != null) {
       setState(() {
         _submitting = true;
-        _error = null;
+        _currentError = null;
+        _newError = null;
+        _confirmError = null;
       });
       try {
         await submit(
@@ -2261,7 +2271,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
         if (!mounted) return;
         setState(() {
           _submitting = false;
-          _error = 'Could not update the password: $error';
+          _currentError = 'Could not update the password: $error';
         });
         return;
       }
@@ -2301,9 +2311,10 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 obscureText: true,
                 autofocus: true,
                 enabled: !_submitting,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Current password',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  errorText: _currentError,
                 ),
               ),
               const SizedBox(height: 10),
@@ -2312,9 +2323,10 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 controller: _newController,
                 obscureText: true,
                 enabled: !_submitting,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'New password',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  errorText: _newError,
                 ),
               ),
               const SizedBox(height: 10),
@@ -2324,18 +2336,12 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 obscureText: true,
                 enabled: !_submitting,
                 onSubmitted: (_) => _submit(),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Confirm new password',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  errorText: _confirmError,
                 ),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _error!,
-                  style: AppTextStyles.body13(color: AppColors.negative),
-                ),
-              ],
               const SizedBox(height: 14),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
