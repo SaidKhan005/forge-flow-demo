@@ -8,6 +8,7 @@ import '../services/demand_forecast_context_service.dart';
 /// Audit consumers read [context] instead of `BaselineData.historicalWeeklyAvgCovers`.
 class DemandForecastContextNotifier extends ChangeNotifier {
   DemandForecastContext _context = DemandForecastContext.unavailable;
+  bool _disposed = false;
 
   DemandForecastContext get context => _context;
 
@@ -23,10 +24,17 @@ class DemandForecastContextNotifier extends ChangeNotifier {
     load();
   }
 
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   /// Loads or reloads the demand context from the repository.
   Future<void> load() async {
     _context =
         await DemandForecastContextService.instance.getCurrentContext();
+    if (_disposed) return;
     notifyListeners();
   }
 }

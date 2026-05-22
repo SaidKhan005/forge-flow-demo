@@ -26,6 +26,7 @@ class ShiftDashboardNotifier extends ChangeNotifier {
   AppDataStatus? _status;
   bool _isLoading = true;
   bool _lockedPlanUnavailable = false;
+  bool _disposed = false;
 
   /// Per-surface freshness truth for the Shift current-state surface.
   ///
@@ -113,7 +114,14 @@ class ShiftDashboardNotifier extends ChangeNotifier {
         _activeRestaurantIdReader =
             SqliteRestaurantScopeRepository.instance.getActiveRestaurantId;
 
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   Future<void> refresh() async {
+    if (_disposed) return;
     // Do NOT set _isLoading = true — during pull-to-refresh the
     // RefreshIndicator provides its own progress feedback and the
     // current data should stay visible. _isLoading is only for the
@@ -124,6 +132,7 @@ class ShiftDashboardNotifier extends ChangeNotifier {
             evaluatedAt: DateTime.now().toUtc(),
           )
         : null;
+    if (_disposed) return;
     notifyListeners();
     await _load();
   }
@@ -221,6 +230,7 @@ class ShiftDashboardNotifier extends ChangeNotifier {
       return;
     }
 
+    if (_disposed) return;
     _status = loadedStatus;
     _lockedPlanUnavailable = lockedPlanUnavailable;
     _readModel = loadedReadModel;

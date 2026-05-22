@@ -86,10 +86,10 @@ void main() {
         );
       }
 
-      // Navigate back.
-      await tester.pageBack();
-      await tester.pump();
-      await pumpUntil(tester, budget: kTabBudget);
+      // Navigate back. NotificationsScreen uses Icons.close as its leading
+      // action (not a standard BackButton), so tester.pageBack() fails.
+      // navigateBack() taps Icons.close first.
+      await navigateBack(tester);
 
       // NotificationsScreen must be gone after back.
       expect(

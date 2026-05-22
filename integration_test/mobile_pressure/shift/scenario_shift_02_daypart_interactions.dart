@@ -31,6 +31,8 @@ void main() {
       await launchDemoApp(tester);
       await expectAppShellMounted(tester);
       await tapTab(tester, 0);
+      // Wait for ShiftDashboardNotifier._load() to settle before inspecting.
+      await pumpUntilShiftSettled(tester);
 
       expect(
         find.byType(ShiftDashboard),
@@ -86,20 +88,28 @@ void main() {
       }
 
       // ── Scroll to bottom then back to top ────────────────────────────────
-      final scrollViews = find.byType(CustomScrollView);
-      if (scrollViews.evaluate().isNotEmpty) {
+      // Target the CustomScrollView that is a DESCENDANT of ShiftDashboard
+      // to avoid accidentally dragging the business-scope drawer's
+      // ListView which sits in an IgnorePointer overlay above the dashboard.
+      final shiftScrollViews = find.descendant(
+        of: find.byType(ShiftDashboard),
+        matching: find.byType(CustomScrollView),
+      );
+      if (shiftScrollViews.evaluate().isNotEmpty) {
         // Drag from center of screen upward to simulate scroll-to-bottom.
         await tester.drag(
-          scrollViews.first,
+          shiftScrollViews.first,
           const Offset(0, -3000),
+          warnIfMissed: false,
         );
         await tester.pump();
         await pumpUntil(tester, budget: kTabBudget);
 
         // Drag back to top.
         await tester.drag(
-          scrollViews.first,
+          shiftScrollViews.first,
           const Offset(0, 3000),
+          warnIfMissed: false,
         );
         await tester.pump();
         await pumpUntil(tester, budget: kTabBudget);
