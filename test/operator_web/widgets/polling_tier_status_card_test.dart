@@ -19,7 +19,8 @@ PollingTierStatus standardStatus({Map<String, int>? cadences}) =>
       tier: PollingTierLabel.standard,
       tierDisplayLabel: 'Standard',
       monthlyPriceLabel: 'Bundled with subscription',
-      perVendorCadenceSeconds: cadences ??
+      perVendorCadenceSeconds:
+          cadences ??
           const <String, int>{
             'oracle_micros_simphony': 300,
             'quickbooks_time': 300,
@@ -34,8 +35,9 @@ Widget _wrap(Widget child) {
 
 void main() {
   group('PollingTierStatusCard — acceptance item G', () {
-    testWidgets('card renders title + status pill + monthly price',
-        (tester) async {
+    testWidgets('card renders title + status pill + monthly price', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _wrap(
           PollingTierStatusCard(
@@ -51,54 +53,47 @@ void main() {
         find.byKey(const Key('data_accuracy_polling_tier_status_card')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const Key('polling_tier_status_pill')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('polling_tier_status_pill')), findsOneWidget);
       expect(find.text('Standard'), findsWidgets);
       expect(find.text('Bundled with subscription'), findsOneWidget);
     });
 
     testWidgets(
-        'per-vendor cadence list renders one row per poll-only vendor',
-        (tester) async {
-      await tester.pumpWidget(
-        _wrap(
-          PollingTierStatusCard(
-            status: standardStatus(
-              cadences: const <String, int>{
-                'oracle_micros_simphony': 300,
-                'quickbooks_time': 60,
-              },
+      'per-vendor cadence list renders one row per poll-only vendor',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            PollingTierStatusCard(
+              status: standardStatus(
+                cadences: const <String, int>{
+                  'oracle_micros_simphony': 300,
+                  'quickbooks_time': 60,
+                },
+              ),
+              bundle: null,
+              onRequestTierChange: () {},
             ),
-            bundle: null,
-            onRequestTierChange: () {},
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('polling_tier_vendor_row_oracle_micros_simphony')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('polling_tier_vendor_row_quickbooks_time')),
-        findsOneWidget,
-      );
-      // 300 seconds → "5 minutes"; 60 seconds → "1 minute".
-      expect(
-        find.textContaining('5 minute'),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('1 minute'),
-        findsOneWidget,
-      );
-    });
+        expect(
+          find.byKey(
+            const Key('polling_tier_vendor_row_oracle_micros_simphony'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('polling_tier_vendor_row_quickbooks_time')),
+          findsOneWidget,
+        );
+        // 300 seconds → "5 minutes"; 60 seconds → "1 minute".
+        expect(find.textContaining('5 minute'), findsOneWidget);
+        expect(find.textContaining('1 minute'), findsOneWidget);
+      },
+    );
 
-    testWidgets('webhook vendors are NOT in the cadence list',
-        (tester) async {
+    testWidgets('webhook vendors are NOT in the cadence list', (tester) async {
       await tester.pumpWidget(
         _wrap(
           PollingTierStatusCard(
@@ -129,8 +124,9 @@ void main() {
       );
     });
 
-    testWidgets('no cadence picker / dropdown / slider in widget tree',
-        (tester) async {
+    testWidgets('no cadence picker / dropdown / slider in widget tree', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _wrap(
           PollingTierStatusCard(
@@ -143,19 +139,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(Slider), findsNothing);
-      expect(
-        find.byWidgetPredicate((w) => w is DropdownButton),
-        findsNothing,
-      );
-      expect(
-        find.byWidgetPredicate((w) => w is DropdownMenu),
-        findsNothing,
-      );
+      expect(find.byWidgetPredicate((w) => w is DropdownButton), findsNothing);
+      expect(find.byWidgetPredicate((w) => w is DropdownMenu), findsNothing);
       expect(find.text('Confirm and apply'), findsNothing);
     });
 
-    testWidgets('request tier change button is present and enabled',
-        (tester) async {
+    testWidgets('request tier change button is present and enabled', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _wrap(
           PollingTierStatusCard(
@@ -167,16 +158,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final buttonFinder =
-          find.byKey(const Key('polling_tier_request_change_button'));
+      final buttonFinder = find.byKey(
+        const Key('polling_tier_request_change_button'),
+      );
       expect(buttonFinder, findsOneWidget);
 
       final FilledButton button = tester.widget<FilledButton>(buttonFinder);
       expect(button.onPressed, isNotNull);
     });
 
-    testWidgets('request tier change button calls onRequestTierChange',
-        (tester) async {
+    testWidgets('request tier change button calls onRequestTierChange', (
+      tester,
+    ) async {
       var taps = 0;
       await tester.pumpWidget(
         _wrap(
@@ -199,13 +192,35 @@ void main() {
     });
 
     testWidgets(
-        'empty cadences map renders a plain-English real-time confirmation line',
-        (tester) async {
+      'empty cadences map renders a plain-English real-time confirmation line',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            PollingTierStatusCard(
+              status: standardStatus(cadences: const <String, int>{}),
+              bundle: null,
+              onRequestTierChange: () {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('pushes updates to Forge & Flow'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('not-applicable state disables tier change action', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _wrap(
           PollingTierStatusCard(
             status: standardStatus(cadences: const <String, int>{}),
             bundle: null,
+            appliesToConnectedVendors: false,
             onRequestTierChange: () {},
           ),
         ),
@@ -213,115 +228,129 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('pushes updates to Forge & Flow'),
+        find.byKey(const Key('polling_tier_not_applicable_notice')),
         findsOneWidget,
       );
+      expect(
+        find.textContaining('Does not apply to your integrations'),
+        findsOneWidget,
+      );
+      final button = tester.widget<FilledButton>(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      expect(button.onPressed, isNull);
     });
   });
 
   group(
-      'showPollingTierChangeRequestDialog — dialog flow (acceptance item G)',
-      () {
-    Future<void> openDialog(
-      WidgetTester tester, {
-      required void Function(Future<String?> future) onResult,
-    }) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (BuildContext ctx) {
-                return ElevatedButton(
-                  onPressed: () {
-                    onResult(showPollingTierChangeRequestDialog(ctx));
-                  },
-                  child: const Text('Open'),
-                );
-              },
+    'showPollingTierChangeRequestDialog — dialog flow (acceptance item G)',
+    () {
+      Future<void> openDialog(
+        WidgetTester tester, {
+        required void Function(Future<String?> future) onResult,
+      }) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (BuildContext ctx) {
+                  return ElevatedButton(
+                    onPressed: () {
+                      onResult(showPollingTierChangeRequestDialog(ctx));
+                    },
+                    child: const Text('Open'),
+                  );
+                },
+              ),
             ),
           ),
-        ),
-      );
-      await tester.tap(find.text('Open'));
-      await tester.pumpAndSettle();
-    }
+        );
+        await tester.tap(find.text('Open'));
+        await tester.pumpAndSettle();
+      }
 
-    testWidgets(
+      testWidgets(
         'showPollingTierChangeRequestDialog opens with reason field + '
-        'submit + cancel', (tester) async {
-      await openDialog(tester, onResult: (_) {});
+        'submit + cancel',
+        (tester) async {
+          await openDialog(tester, onResult: (_) {});
 
-      expect(
-        find.byKey(const Key('polling_tier_change_request_dialog')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('polling_tier_change_request_reason_field')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('polling_tier_change_request_submit')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('polling_tier_change_request_cancel')),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('dialog submit returns trimmed text', (tester) async {
-      Future<String?>? captured;
-      await openDialog(
-        tester,
-        onResult: (Future<String?> future) {
-          captured = future;
+          expect(
+            find.byKey(const Key('polling_tier_change_request_dialog')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('polling_tier_change_request_reason_field')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('polling_tier_change_request_submit')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('polling_tier_change_request_cancel')),
+            findsOneWidget,
+          );
         },
       );
 
-      await tester.enterText(
-        find.byKey(const Key('polling_tier_change_request_reason_field')),
-        '  please switch to premium  ',
-      );
-      await tester.pumpAndSettle();
+      testWidgets('dialog submit returns trimmed text', (tester) async {
+        Future<String?>? captured;
+        await openDialog(
+          tester,
+          onResult: (Future<String?> future) {
+            captured = future;
+          },
+        );
 
-      final submitFinder =
-          find.byKey(const Key('polling_tier_change_request_submit'));
-      final FilledButton submit = tester.widget<FilledButton>(submitFinder);
-      expect(submit.onPressed, isNotNull);
+        await tester.enterText(
+          find.byKey(const Key('polling_tier_change_request_reason_field')),
+          '  please switch to premium  ',
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(submitFinder);
-      await tester.pumpAndSettle();
+        final submitFinder = find.byKey(
+          const Key('polling_tier_change_request_submit'),
+        );
+        final FilledButton submit = tester.widget<FilledButton>(submitFinder);
+        expect(submit.onPressed, isNotNull);
 
-      expect(captured, isNotNull);
-      final result = await captured!;
-      expect(result, 'please switch to premium');
-    });
+        await tester.tap(submitFinder);
+        await tester.pumpAndSettle();
 
-    testWidgets('dialog submit disabled when reason empty', (tester) async {
-      await openDialog(tester, onResult: (_) {});
+        expect(captured, isNotNull);
+        final result = await captured!;
+        expect(result, 'please switch to premium');
+      });
 
-      final submitFinder =
-          find.byKey(const Key('polling_tier_change_request_submit'));
-      final FilledButton submit = tester.widget<FilledButton>(submitFinder);
-      expect(submit.onPressed, isNull);
-    });
+      testWidgets('dialog submit disabled when reason empty', (tester) async {
+        await openDialog(tester, onResult: (_) {});
 
-    testWidgets('dialog cancel returns null', (tester) async {
-      Future<String?>? captured;
-      await openDialog(
-        tester,
-        onResult: (Future<String?> future) {
-          captured = future;
-        },
-      );
+        final submitFinder = find.byKey(
+          const Key('polling_tier_change_request_submit'),
+        );
+        final FilledButton submit = tester.widget<FilledButton>(submitFinder);
+        expect(submit.onPressed, isNull);
+      });
 
-      await tester
-          .tap(find.byKey(const Key('polling_tier_change_request_cancel')));
-      await tester.pumpAndSettle();
+      testWidgets('dialog cancel returns null', (tester) async {
+        Future<String?>? captured;
+        await openDialog(
+          tester,
+          onResult: (Future<String?> future) {
+            captured = future;
+          },
+        );
 
-      expect(captured, isNotNull);
-      final result = await captured!;
-      expect(result, isNull);
-    });
-  });
+        await tester.tap(
+          find.byKey(const Key('polling_tier_change_request_cancel')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(captured, isNotNull);
+        final result = await captured!;
+        expect(result, isNull);
+      });
+    },
+  );
 }

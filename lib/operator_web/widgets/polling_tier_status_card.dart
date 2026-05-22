@@ -74,6 +74,7 @@ class PollingTierStatusCard extends StatelessWidget {
     required this.status,
     required this.bundle,
     required this.onRequestTierChange,
+    this.appliesToConnectedVendors = true,
   });
 
   /// Current tier status. Null while loading — renders a placeholder.
@@ -84,6 +85,10 @@ class PollingTierStatusCard extends StatelessWidget {
 
   /// Tapped on "Request tier change". Wired by the screen.
   final VoidCallback onRequestTierChange;
+
+  /// False when the selected location has no poll-only vendors. In that
+  /// state there is nothing for an operator to change on this surface.
+  final bool appliesToConnectedVendors;
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +101,9 @@ class PollingTierStatusCard extends StatelessWidget {
           'checks more often. If you need fresher numbers than your tier '
           'allows, request a tier change below and the F&F team will '
           'reach out.',
-      child: status == null
+      child: !appliesToConnectedVendors
+          ? _FreshnessDoesNotApplyBlock(bundle: bundle)
+          : status == null
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Center(child: Text('Loading your tier...')),
@@ -141,6 +148,63 @@ class PollingTierStatusCard extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _FreshnessDoesNotApplyBlock extends StatelessWidget {
+  const _FreshnessDoesNotApplyBlock({required this.bundle});
+
+  final VendorConnectionsBundle? bundle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          key: const Key('polling_tier_not_applicable_notice'),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: AppColors.shimmer,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.lock_clock_outlined,
+                size: 18,
+                color: AppColors.textMuted,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Does not apply to your integrations. Your connected '
+                  'vendors push updates to Forge & Flow when they happen.',
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            key: const Key('polling_tier_request_change_button'),
+            onPressed: null,
+            icon: const Icon(Icons.bolt_outlined, size: 16),
+            label: const Text('Request faster data freshness'),
+          ),
+        ),
+        const SizedBox(height: 14),
+        VendorRelativityLabel(
+          setting: VendorRelativitySetting.polling,
+          bundle: bundle,
+        ),
+      ],
     );
   }
 }

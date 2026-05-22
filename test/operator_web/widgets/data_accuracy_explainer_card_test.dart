@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/widgets/data_accuracy_explainer_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -12,15 +13,32 @@ void main() {
     home: Scaffold(body: SingleChildScrollView(child: child)),
   );
 
-  Future<void> openHelp(WidgetTester tester, String tooltip) async {
-    await tester.tap(find.byTooltip(tooltip));
-    await tester.pumpAndSettle();
-  }
+  VendorConnectionRow row({
+    required String vendorId,
+    required String displayName,
+    required VendorCategory category,
+  }) => VendorConnectionRow(
+    connectionId: '$vendorId-conn',
+    vendorId: vendorId,
+    displayName: displayName,
+    category: category,
+    status: VendorConnectionStatus.connected,
+    metadata: const <String, Object?>{},
+  );
 
-  Future<void> closeHelp(WidgetTester tester) async {
-    await tester.tapAt(Offset.zero);
-    await tester.pumpAndSettle();
-  }
+  VendorConnectionsBundle bundle({
+    VendorConnectionRow? pos,
+    VendorConnectionRow? labor,
+    VendorConnectionRow? reservation,
+  }) => VendorConnectionsBundle(
+    operatorId: 'op-1',
+    locationId: 'loc-1',
+    locationName: '95 Water Street',
+    posConnection: pos,
+    laborConnection: labor,
+    reservationConnection: reservation,
+    demoFlags: const <VendorCategory, bool>{},
+  );
 
   const customPeriods = <ServicePeriodDefinition>[
     ServicePeriodDefinition(
@@ -43,95 +61,98 @@ void main() {
       rollsPastMidnight: false,
       applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
     ),
-    ServicePeriodDefinition(
-      id: 'late_service',
-      label: 'Late service',
-      shortLabel: 'L',
-      sortOrder: 3,
-      startLocalTime: '21:00',
-      endLocalTime: '01:00',
-      rollsPastMidnight: true,
-      applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-    ),
   ];
 
   group('DataAccuracyExplainerCard', () {
-    testWidgets('uses configured service-period labels in examples', (
+    testWidgets('renders a visual map from the connected vendors', (
       tester,
     ) async {
       await tester.pumpWidget(
-        wrap(const DataAccuracyExplainerCard(servicePeriods: customPeriods)),
+        wrap(
+          DataAccuracyExplainerCard(
+            locationLabel: '95 Water Street',
+            bundle: bundle(
+              pos: row(
+                vendorId: 'square',
+                displayName: 'Square',
+                category: VendorCategory.pos,
+              ),
+              labor: row(
+                vendorId: 'quickbooks_time',
+                displayName: 'QuickBooks Time',
+                category: VendorCategory.labor,
+              ),
+              reservation: row(
+                vendorId: 'opentable',
+                displayName: 'OpenTable',
+                category: VendorCategory.reservation,
+              ),
+            ),
+            dataFreshnessApplies: true,
+            servicePeriods: customPeriods,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
-      await openHelp(tester, 'Where covers come from');
       expect(
-        find.text(
-          'Example: Square does not track covers. Set Breakfast service and '
-          'Supper to Manual, type your numbers nightly, and CPLH stays '
-          'trustworthy.',
-        ),
+        find.byKey(const Key('data_accuracy_explainer_card')),
         findsOneWidget,
       );
-      await closeHelp(tester);
-
-      await openHelp(tester, '60-day backfill');
       expect(
-        find.text(
-          'Example: Paste a CSV with date, Breakfast service, Supper, '
-          'Late service columns. F&F uses it to forecast next week. You can '
-          'edit any cell later.',
-        ),
+        find.byKey(const Key('data_accuracy_explainer_labor')),
         findsOneWidget,
       );
-      expect(find.textContaining('date, lunch, dinner'), findsNothing);
-      expect(find.textContaining('late_night'), findsNothing);
+      expect(
+        find.byKey(const Key('data_accuracy_explainer_covers')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('data_accuracy_explainer_freshness')),
+        findsOneWidget,
+      );
+      expect(find.text('QuickBooks Time'), findsWidgets);
+      expect(find.text('Square'), findsWidgets);
+      expect(find.text('OpenTable'), findsWidgets);
+      expect(
+        find.textContaining('Square does not expose covers'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Breakfast service'), findsOneWidget);
+      expect(find.textContaining('scheduled checks'), findsOneWidget);
     });
 
-    testWidgets('uses generic examples when labels are unavailable', (
+    testWidgets('shows does-not-apply copy for real-time integrations', (
       tester,
     ) async {
-      await tester.pumpWidget(wrap(const DataAccuracyExplainerCard()));
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyExplainerCard(
+            locationLabel: '95 Water Street',
+            bundle: bundle(
+              pos: row(
+                vendorId: 'toast',
+                displayName: 'Toast',
+                category: VendorCategory.pos,
+              ),
+              labor: row(
+                vendorId: 'seven_shifts',
+                displayName: '7shifts',
+                category: VendorCategory.labor,
+              ),
+            ),
+            dataFreshnessApplies: false,
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
-      await openHelp(tester, 'Where covers come from');
       expect(
-        find.text(
-          'Example: Square does not track covers. Set any service period '
-          'that needs a hand-entered count to Manual, type your numbers '
-          'nightly, and CPLH stays trustworthy.',
-        ),
+        find.textContaining('Does not apply to your integrations'),
         findsOneWidget,
       );
-      await closeHelp(tester);
-
-      await openHelp(tester, '60-day backfill');
-      expect(
-        find.text(
-          'Example: Paste a CSV with one date column and one column for each '
-          'service period. F&F uses it to forecast next week. You can edit '
-          'any cell later.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.textContaining('Set lunch and dinner'), findsNothing);
-      expect(find.textContaining('late_night'), findsNothing);
-    });
-
-    testWidgets('describes QuickBooks Time wages as configured rates', (
-      tester,
-    ) async {
-      await tester.pumpWidget(wrap(const DataAccuracyExplainerCard()));
-      await tester.pumpAndSettle();
-
-      await openHelp(tester, 'How labor dollars are calculated');
-      expect(
-        find.textContaining(
-          'QuickBooks Time reports hours and configured rates',
-        ),
-        findsOneWidget,
-      );
-      expect(find.textContaining('per-employee dollars'), findsNothing);
+      expect(find.text('Toast'), findsWidgets);
+      expect(find.text('7shifts'), findsWidgets);
     });
   });
 }

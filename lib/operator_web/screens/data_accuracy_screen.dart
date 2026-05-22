@@ -1017,6 +1017,15 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   bool get _showAnyFallbackCard =>
       _anyDaypartManual || _showWalkInCard || _showHistoricalSeedCard;
 
+  bool get _dataFreshnessApplies {
+    final tier = widget.tierStatus ?? _loadedTierStatus;
+    if (tier != null && tier.perVendorCadenceSeconds.isNotEmpty) return true;
+    final pos = _bundle?.posConnection;
+    final labor = _bundle?.laborConnection;
+    return (pos != null && kStandardTierPresets.containsKey(pos.vendorId)) ||
+        (labor != null && kStandardTierPresets.containsKey(labor.vendorId));
+  }
+
   // ── Build ───────────────────────────────────────────────────────
 
   @override
@@ -1112,13 +1121,12 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Choose where Forge & Flow reads numbers for $locationLabel. '
-            'These settings keep your dashboard honest when a vendor '
-            'does not expose every field directly.',
-            key: const Key('operator_web_data_accuracy_subtitle'),
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          const SizedBox(height: 20),
+          DataAccuracyExplainerCard(
+            locationLabel: locationLabel,
+            bundle: _bundle,
+            dataFreshnessApplies: _dataFreshnessApplies,
+            servicePeriods: _servicePeriods,
           ),
           const SizedBox(height: 20),
           if (_savingSettings || _settingsSaveError != null) ...[
@@ -1251,10 +1259,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           PollingTierStatusCard(
             status: tier,
             bundle: _bundle,
+            appliesToConnectedVendors: _dataFreshnessApplies,
             onRequestTierChange: _handleRequestTierChange,
           ),
-          const SizedBox(height: 14),
-          DataAccuracyExplainerCard(servicePeriods: _servicePeriods),
         ],
       ),
     );
