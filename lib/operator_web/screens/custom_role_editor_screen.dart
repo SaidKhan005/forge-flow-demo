@@ -408,16 +408,24 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
         backgroundColor: AppColors.backgroundSurface,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
-        leading: IconButton(
-          key: const Key('operator_web_custom_role_editor_back'),
-          icon: const Icon(Icons.arrow_back, size: 18),
-          onPressed: widget.onClose ?? () => Navigator.of(context).maybePop(),
-          tooltip: 'Back to Roles & permissions',
-        ),
+        automaticallyImplyLeading: false,
         title: Text(
           _isCreate ? 'New custom role' : 'Edit role',
           style: AppTextStyles.display20(color: AppColors.textPrimary),
         ),
+        actions: <Widget>[
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: IconButton(
+              key: const Key('operator_web_custom_role_editor_close'),
+              icon: const Icon(Icons.close, size: 24),
+              onPressed:
+                  widget.onClose ?? () => Navigator.of(context).maybePop(),
+              tooltip: 'Close',
+            ),
+          ),
+        ],
       ),
       body: Form(
         key: _formKey,
@@ -548,10 +556,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
 }
 
 class _ScopeContextPanel extends StatelessWidget {
-  const _ScopeContextPanel({
-    required this.scopeLabel,
-    required this.roleScope,
-  });
+  const _ScopeContextPanel({required this.scopeLabel, required this.roleScope});
 
   final String scopeLabel;
   final RoleScope roleScope;

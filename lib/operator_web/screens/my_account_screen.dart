@@ -319,34 +319,33 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
 
   Future<void> _handleRequestMfaRemoval() async {
     if (!_canRequestMfaRemoval) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        key: const Key('account_section_mfa_request_removal_dialog'),
-        title: const Text('Turn off two-factor sign-in?'),
-        content: const Text(
-          'We wait 24 hours before turning off two-factor sign-in so that '
-          'if someone got into your account, you have time to stop them. '
-          'You may be asked to sign in again before the request is '
-          'accepted.',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('account_section_mfa_request_removal_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep two-factor sign-in on'),
-          ),
-          FilledButton(
-            key: const Key('account_section_mfa_request_removal_confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.negative,
-              foregroundColor: AppColors.backgroundSurface,
-            ),
-            child: const Text('Request removal'),
-          ),
-        ],
+      title: 'Turn off two-factor sign-in?',
+      icon: Icons.security_outlined,
+      child: Text(
+        'We wait 24 hours before turning off two-factor sign-in so that '
+        'if someone got into your account, you have time to stop them. '
+        'You may be asked to sign in again before the request is '
+        'accepted.',
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
+      actions: [
+        TextButton(
+          key: const Key('account_section_mfa_request_removal_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Keep two-factor sign-in on'),
+        ),
+        FilledButton(
+          key: const Key('account_section_mfa_request_removal_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.negative,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          child: const Text('Request removal'),
+        ),
+      ],
     );
     if (confirmed != true || !mounted) return;
     await _mfaController.requestRemoval();
@@ -541,29 +540,28 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       );
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        key: const Key('account_active_sessions_confirm_dialog'),
-        title: const Text('Sign out all other sessions?'),
-        content: const Text(
-          'This keeps this device signed in and signs out every other browser '
-          'or device listed here. You may be asked to sign in again before '
-          'the change goes through.',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('account_active_sessions_confirm_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('account_active_sessions_confirm_submit'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Sign out all other sessions'),
-          ),
-        ],
+      title: 'Sign out all other sessions?',
+      icon: Icons.logout_outlined,
+      child: Text(
+        'This keeps this device signed in and signs out every other browser '
+        'or device listed here. You may be asked to sign in again before '
+        'the change goes through.',
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
+      actions: [
+        TextButton(
+          key: const Key('account_active_sessions_confirm_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('account_active_sessions_confirm_submit'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Sign out all other sessions'),
+        ),
+      ],
     );
     if (confirmed != true || !mounted) return;
     setState(() {
