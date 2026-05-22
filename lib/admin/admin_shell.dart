@@ -18,6 +18,9 @@ import 'admin_auth_gate.dart';
 import 'admin_button_styles.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
+import 'services/operator_location_admin_gateway.dart';
+import 'widgets/admin_demo_banner.dart';
+import 'widgets/admin_scope_picker.dart';
 
 const double _kCompactShellBreakpoint = 720;
 
@@ -121,8 +124,21 @@ class _AdminShellState extends State<AdminShell> {
     );
   }
 
+  /// Routes a scope chosen in the top-bar picker through the SAME
+  /// `_selectIntent` path the Business accounts drill-in uses, so the
+  /// six scope-aware screens react identically. Keeps the current route
+  /// selected — the picker changes scope, not destination.
+  void _selectScope(AdminHierarchyScopeIntent scope) {
+    _selectIntent(
+      AdminRouteIntent(routeId: _selectedRouteId, hierarchyScope: scope),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scopeGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+      context,
+    );
     return Scaffold(
       key: const Key('admin_shell_scaffold'),
       backgroundColor: AppColors.backgroundDeep,
@@ -136,7 +152,11 @@ class _AdminShellState extends State<AdminShell> {
                   session: widget.session,
                   onSignOut: () => widget.authSource.signOut(),
                   sharePreviewMode: widget.sharePreviewMode,
+                  scopeGateway: scopeGateway,
+                  selectedScope: _hierarchyScope,
+                  onSelectScope: _selectScope,
                 ),
+                AdminDemoBanner(sharePreviewMode: widget.sharePreviewMode),
                 Expanded(
                   child: compact
                       ? Column(
@@ -306,11 +326,17 @@ class _AdminHeaderBar extends StatelessWidget {
     required this.session,
     required this.onSignOut,
     required this.sharePreviewMode,
+    required this.scopeGateway,
+    required this.selectedScope,
+    required this.onSelectScope,
   });
 
   final AdminAuthSession session;
   final VoidCallback onSignOut;
   final bool sharePreviewMode;
+  final OperatorLocationAdminGateway scopeGateway;
+  final AdminHierarchyScopeIntent? selectedScope;
+  final ValueChanged<AdminHierarchyScopeIntent> onSelectScope;
 
   @override
   Widget build(BuildContext context) {
@@ -319,7 +345,9 @@ class _AdminHeaderBar extends StatelessWidget {
         final compact = constraints.maxWidth < 520;
         return Container(
           key: const Key('admin_header_bar'),
-          height: 64,
+          // UX-parity Slice B (V3): grown 64 to 96 to match operator-web
+          // proportions and give the top-bar scope picker room.
+          height: 96,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -374,6 +402,20 @@ class _AdminHeaderBar extends StatelessWidget {
                 ),
               ],
               const Spacer(),
+              // The top-bar scope picker is a wide-layout affordance. On
+              // the compact header (narrow widths use the horizontal
+              // compact nav) it is hidden — there is no room beside the
+              // brand, role pill, and sign out.
+              if (!compact) ...[
+                Flexible(
+                  child: AdminScopePicker(
+                    gateway: scopeGateway,
+                    selectedScope: selectedScope,
+                    onSelectScope: onSelectScope,
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
               if (sharePreviewMode) ...[
                 const _SharePreviewPill(),
                 SizedBox(width: compact ? 6 : 10),
