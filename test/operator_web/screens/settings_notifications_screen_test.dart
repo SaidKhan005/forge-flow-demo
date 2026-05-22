@@ -11,10 +11,10 @@
 //
 // Slice C-8 (catalog completeness):
 //   * every catalog entry renders for an operator-owner actor
-//   * "Coming soon" rows render disabled switches + the plain-English
-//     subcopy and never call the gateway when tapped
+//   * "Coming soon" rows render disabled switches + info affordances
+//     and never call the gateway when tapped
 //   * "Backend-only" rows (audit-chain integrity) render disabled
-//     switches with audit-log subcopy
+//     switches with info affordances
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,7 +69,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('settings_notifications_personal_scope_banner')),
+        find.byKey(const Key('settings_notifications_header_info')),
         findsOneWidget,
       );
       expect(find.text('Mobile'), findsWidgets);
@@ -313,81 +313,80 @@ void main() {
       },
     );
 
-    testWidgets(
-      'C-8: "Coming soon" rows render disabled switches + subcopy and '
-      'never call the gateway when tapped',
-      (tester) async {
-        await sizeViewport(tester, const Size(1024, 1600));
-        final session = sessionWithRoles(<String>['operator_owner']);
-        final gateway = _FakeGateway();
-        await tester.pumpWidget(
-          wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
-        );
-        await tester.pumpAndSettle();
+    testWidgets('C-8: "Coming soon" rows render disabled switches + info and '
+        'never call the gateway when tapped', (tester) async {
+      await sizeViewport(tester, const Size(1024, 1600));
+      final session = sessionWithRoles(<String>['operator_owner']);
+      final gateway = _FakeGateway();
+      await tester.pumpWidget(
+        wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
 
-        // The 3 "Coming soon" entries per the audit matrix E4:
-        //   notif.shift.stale, notif.star.override, notif.plan.updated.
-        const comingSoon = <String>{
-          'notif.shift.stale',
-          'notif.star.override',
-          'notif.plan.updated',
-        };
-        for (final key in comingSoon) {
-          // Badge text "Coming soon" is present in the row.
-          final badgeFinder = find.byKey(
-            Key('settings_notifications_state_badge_$key'),
-          );
-          expect(badgeFinder, findsOneWidget);
-          expect(
-            find.descendant(
-              of: badgeFinder,
-              matching: find.text('Coming soon'),
-            ),
-            findsOneWidget,
-            reason: '$key badge reads "Coming soon"',
-          );
-          // Plain-English subcopy present.
-          expect(
-            find.byKey(Key('settings_notifications_subcopy_$key')),
-            findsOneWidget,
-            reason: '$key has plain-English subcopy',
-          );
-          // Every channel toggle for this row is disabled (Switch.onChanged
-          // == null when the row is coming-soon).
-          for (final channel in kNotificationChannelOrder) {
-            final toggle = tester.widget<Switch>(
-              find.byKey(Key('settings_notifications_toggle_${key}_$channel')),
-            );
-            expect(
-              toggle.onChanged,
-              isNull,
-              reason: '$key channel $channel toggle must be disabled',
-            );
-          }
-        }
-
-        // Tapping a coming-soon switch must NOT call the gateway. We tap
-        // the underlying Switch widget regardless of disabled state to
-        // prove the guard short-circuits.
-        gateway.upsertCalls.clear();
-        // ignore: lines_longer_than_80_chars
-        final switchFinder = find.byKey(
-          const Key('settings_notifications_toggle_notif.shift.stale_push'),
+      // The 3 "Coming soon" entries per the audit matrix E4:
+      //   notif.shift.stale, notif.star.override, notif.plan.updated.
+      const comingSoon = <String>{
+        'notif.shift.stale',
+        'notif.star.override',
+        'notif.plan.updated',
+      };
+      for (final key in comingSoon) {
+        // Badge text "Coming soon" is present in the row.
+        final badgeFinder = find.byKey(
+          Key('settings_notifications_state_badge_$key'),
         );
-        // Disabled switches ignore taps; this acts as a regression guard
-        // in case the disabled-state regresses later.
-        await tester.tap(switchFinder, warnIfMissed: false);
-        await tester.pump();
+        expect(badgeFinder, findsOneWidget);
         expect(
-          gateway.upsertCalls,
-          isEmpty,
-          reason: 'coming-soon toggle must not call the gateway',
+          find.descendant(of: badgeFinder, matching: find.text('Coming soon')),
+          findsOneWidget,
+          reason: '$key badge reads "Coming soon"',
         );
-      },
-    );
+        expect(
+          find.byKey(Key('settings_notifications_state_info_$key')),
+          findsOneWidget,
+          reason: '$key has an info button for details',
+        );
+        expect(
+          find.byKey(Key('settings_notifications_subcopy_$key')),
+          findsNothing,
+          reason: '$key should not show row explanation text',
+        );
+        // Every channel toggle for this row is disabled (Switch.onChanged
+        // == null when the row is coming-soon).
+        for (final channel in kNotificationChannelOrder) {
+          final toggle = tester.widget<Switch>(
+            find.byKey(Key('settings_notifications_toggle_${key}_$channel')),
+          );
+          expect(
+            toggle.onChanged,
+            isNull,
+            reason: '$key channel $channel toggle must be disabled',
+          );
+        }
+      }
 
-    testWidgets('C-8: "Backend-only" rows render disabled switches + audit-log '
-        'subcopy', (tester) async {
+      // Tapping a coming-soon switch must NOT call the gateway. We tap
+      // the underlying Switch widget regardless of disabled state to
+      // prove the guard short-circuits.
+      gateway.upsertCalls.clear();
+      // ignore: lines_longer_than_80_chars
+      final switchFinder = find.byKey(
+        const Key('settings_notifications_toggle_notif.shift.stale_push'),
+      );
+      // Disabled switches ignore taps; this acts as a regression guard
+      // in case the disabled-state regresses later.
+      await tester.tap(switchFinder, warnIfMissed: false);
+      await tester.pump();
+      expect(
+        gateway.upsertCalls,
+        isEmpty,
+        reason: 'coming-soon toggle must not call the gateway',
+      );
+    });
+
+    testWidgets('C-8: "Backend-only" rows render disabled switches + info', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 1600));
       final session = sessionWithRoles(<String>['operator_owner']);
       final gateway = _FakeGateway();
@@ -405,12 +404,14 @@ void main() {
         ),
         findsOneWidget,
       );
-      // Subcopy mentions the audit log so the operator knows where to
-      // look for activity.
-      final subcopy = tester.widget<Text>(
-        find.byKey(Key('settings_notifications_subcopy_$auditKey')),
+      expect(
+        find.byKey(Key('settings_notifications_state_info_$auditKey')),
+        findsOneWidget,
       );
-      expect(subcopy.data, contains('audit log'));
+      expect(
+        find.byKey(Key('settings_notifications_subcopy_$auditKey')),
+        findsNothing,
+      );
       // All channel toggles disabled.
       for (final channel in kNotificationChannelOrder) {
         final toggle = tester.widget<Switch>(
@@ -424,7 +425,7 @@ void main() {
       }
     });
 
-    testWidgets('C-8: "Available" rows have no subcopy and stay interactive', (
+    testWidgets('C-8: "Available" rows stay uncluttered and interactive', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(1024, 1600));

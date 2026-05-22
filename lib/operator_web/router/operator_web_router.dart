@@ -74,6 +74,7 @@ import '../screens/sign_in_screen.dart';
 import '../screens/vendor_connections_screen.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/web_app_shell.dart';
+import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
 
 /// Stable nav ids for the post-onboarding shell. Tests and deep
@@ -648,14 +649,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         unawaited(
           showDialog<void>(
             context: context,
-            builder: (dialogContext) => Dialog(
+            builder: (dialogContext) => OperatorWebDialog(
               key: const Key('operator_web_business_timing_editor_dialog'),
-              insetPadding: const EdgeInsets.all(24),
+              title: scheduleMode
+                  ? 'Schedule service periods'
+                  : 'Edit service periods',
+              icon: Icons.schedule_outlined,
+              maxWidth: 1080,
+              actions: const <Widget>[],
+              onClose: () => Navigator.of(dialogContext).pop(),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 1080,
-                  maxHeight: 820,
-                ),
+                constraints: const BoxConstraints(maxHeight: 720),
                 child: BusinessTimingEditorScreen(
                   session: session,
                   locationId: locationScope.id,
@@ -671,11 +675,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                   initialEffectiveAt: scheduleMode
                       ? DateTime.now().add(const Duration(days: 1))
                       : null,
-                  onClose: () => Navigator.of(dialogContext).pop(),
                 ),
               ),
             ),
-          ),
+          ).then((_) {
+            if (mounted) setState(() {});
+          }),
         );
         return;
       }

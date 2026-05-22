@@ -29,17 +29,16 @@
 //                      `docs/archive/_execution/lane_c_parity/02_plumbing_audit_matrix.md`
 //                      section E4 and the FOLLOW-UP block at
 //                      `tool/advisor_proxy/email_dispatch/notification_event_fanout.dart:737-757`).
-//                      Toggles are disabled; subcopy explains why.
+//                      Toggles are disabled; the info button explains why.
 //   * "Backend-only" - emit is wired and Forge & Flow sends regardless
 //                      of operator preference (system-mandated; e.g.
-//                      audit-chain integrity alerts). Toggles disabled;
-//                      subcopy points to the audit log.
+//                      audit-chain integrity alerts). Toggles are disabled.
 //
 // Hierarchy carve-out (CLAUDE.md HP #11): notification preferences are
 // per-(operator, user, event, channel), not hierarchy-scoped. This is
-// the same carve-out the My Account screen relies on - it's a personal
+// the same carve-out the My Account screen relies on. It is a personal
 // preference surface, not an org-config surface. Documented inline so
-// future audit passes don't flag it as missing inheritance.
+// future audit passes do not flag it as missing inheritance.
 
 import 'dart:async';
 import 'dart:math';
@@ -55,7 +54,7 @@ import '../../theme/app_theme.dart';
 
 /// Wiring-readiness state for one catalog entry, as surfaced on the
 /// operator-web Notifications screen. Plain-English labels live in
-/// [_kStateLabel] / [_kStateSubcopy].
+/// [_kStateLabel].
 ///
 /// State assignment lives in [_kEventState] below (not in the catalog
 /// itself - the catalog is the durable contract for the fanout worker
@@ -71,8 +70,8 @@ enum _NotifEventState {
   comingSoon,
 
   /// Emit is wired and Forge & Flow sends regardless of operator
-  /// preference (system-mandated). Toggle disabled; subcopy points to
-  /// the audit log so the operator knows where to look.
+  /// preference (system-mandated). Toggles are disabled and the info
+  /// button explains why.
   backendOnly,
 }
 
@@ -95,11 +94,11 @@ const Map<String, _NotifEventState> _kEventState = <String, _NotifEventState>{
   'notif.shift.stale': _NotifEventState.comingSoon,
   'notif.star.override': _NotifEventState.comingSoon,
   'notif.plan.updated': _NotifEventState.comingSoon,
-  // C-2-C wire — MFA factor removal email + inbox emit. The fanout
+  // C-2-C wire: MFA factor removal email + inbox emit. The fanout
   // worker does not drive this event (single-recipient); the MFA
   // removal worker dispatches a direct email + audit row. Marked
   // `backendOnly` (label: "Always on") because the email goes to
-  // the affected user regardless of preference toggles — a security
+  // the affected user regardless of preference toggles. A security
   // notification should not be opt-out-able from the operator-web
   // preferences screen.
   'notif.mfa.factor_changed': _NotifEventState.backendOnly,
@@ -120,16 +119,6 @@ const Map<_NotifEventState, String> _kStateLabel = <_NotifEventState, String>{
   _NotifEventState.backendOnly: 'Always on',
 };
 
-/// Plain-English subcopy per state. Explains what the operator can or
-/// cannot do, and why.
-const Map<_NotifEventState, String> _kStateSubcopy = <_NotifEventState, String>{
-  _NotifEventState.available: '',
-  _NotifEventState.comingSoon:
-      'Not ready yet. We will enable choices here when the alert ships.',
-  _NotifEventState.backendOnly:
-      'Required safety alert. Check audit log for recent activity.',
-};
-
 const Map<_NotifEventState, String> _kStateDetails = <_NotifEventState, String>{
   _NotifEventState.available:
       'These alerts are wired now. Your switches decide how Forge & Flow '
@@ -143,6 +132,12 @@ const Map<_NotifEventState, String> _kStateDetails = <_NotifEventState, String>{
       'preferences are off. Security and integrity alerts protect your '
       'account and business records.',
 };
+
+String _infoBodyFor(NotificationCatalogEntry event, _NotifEventState state) {
+  final status = _kStateDetails[state] ?? '';
+  if (status.isEmpty) return event.description;
+  return '${event.description}\n\n$status';
+}
 
 /// Operator Web Notifications screen. Pure render +
 /// optimistic-toggle widget; all I/O flows through [gateway].
@@ -268,7 +263,7 @@ class _SettingsNotificationsScreenState
         idempotencyKey: _newIdempotencyKey(),
       );
       if (!mounted) return;
-      // No banner on success - toggle reflects the new state and the
+      // No banner on success. The toggle reflects the new state and the
       // operator already sees it. Plain-English banner only on error.
     } catch (_) {
       if (!mounted) return;
@@ -277,7 +272,7 @@ class _SettingsNotificationsScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           key: Key('settings_notifications_error_snackbar'),
-          content: Text("Couldn't save - try again"),
+          content: Text("Couldn't save. Try again."),
         ),
       );
     }
@@ -307,7 +302,7 @@ class _SettingsNotificationsScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(),
+          const _Header(),
           if (_loadError != null) ...[
             const SizedBox(height: 12),
             OperatorWebBanner(
@@ -316,17 +311,7 @@ class _SettingsNotificationsScreenState
               message: _loadError!,
             ),
           ],
-          const SizedBox(height: 12),
-          const OperatorWebBanner(
-            key: Key('settings_notifications_personal_scope_banner'),
-            title: 'Personal preferences',
-            message:
-                'These choices apply to your signed-in account. They do not '
-                'change notification settings for the whole business or for '
-                'a location.',
-            icon: Icons.person_outline,
-          ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           for (final category in NotificationCategory.values)
             if (visibleEvents.containsKey(category)) ...[
               _CategorySection(
@@ -360,32 +345,36 @@ class _PrefKey {
 }
 
 class _Header extends StatelessWidget {
+  const _Header();
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.notifications_outlined,
-              size: 22,
-              color: AppColors.sunsetDark,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Notifications',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
+        const Icon(
+          Icons.notifications_outlined,
+          size: 22,
+          color: AppColors.sunsetDark,
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Pick how Forge & Flow lets you know about important events. '
-          'You can change any of these any time.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Notifications',
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
+          ),
+        ),
+        OperatorWebInfoButton(
+          key: const Key('settings_notifications_header_info'),
+          title: 'Notifications',
+          tooltip: 'About notifications',
+          width: 360,
+          body: Text(
+            'Pick how Forge & Flow contacts your signed-in account. These '
+            'choices do not change settings for the whole business or for a '
+            'location.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
         ),
       ],
     );
@@ -459,7 +448,6 @@ class _EventRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = _stateFor(event);
     final isAvailable = state == _NotifEventState.available;
-    final subcopy = _kStateSubcopy[state] ?? '';
     return Row(
       key: Key('settings_notifications_event_${event.eventKey}'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -490,7 +478,7 @@ class _EventRow extends StatelessWidget {
                     title: _kStateLabel[state] ?? 'Notification status',
                     tooltip: 'Notification status',
                     body: Text(
-                      _kStateDetails[state] ?? '',
+                      _infoBodyFor(event, state),
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -498,19 +486,6 @@ class _EventRow extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                event.description,
-                style: AppTextStyles.body12(color: AppColors.textMuted),
-              ),
-              if (subcopy.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subcopy,
-                  key: Key('settings_notifications_subcopy_${event.eventKey}'),
-                  style: AppTextStyles.body12(color: AppColors.textSecondary),
-                ),
-              ],
             ],
           ),
         ),

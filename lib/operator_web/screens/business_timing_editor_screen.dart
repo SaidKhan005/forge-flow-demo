@@ -25,6 +25,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../services/business_timing/business_timing_profile_validator.dart';
@@ -275,6 +276,36 @@ class _BusinessTimingEditorScreenState
         : null;
   }
 
+  void _resetToExistingProfile() {
+    final existing = widget.existingProfile;
+    if (existing == null || _submitting) return;
+    setState(() {
+      _scopeKind = _normalizedScopeKind(existing.scopeKind);
+      _effectiveAt =
+          DateTime.tryParse(existing.effectiveAtBusinessDate) ?? _effectiveAt;
+      _ianaTimezone.text = existing.ianaTimezone;
+      _weekStartDay = existing.weekStartDay;
+      _businessDayStartLocal.text = existing.businessDayStartLocal;
+      _periods.replaceAll(
+        existing.servicePeriods
+            .map(
+              (p) => ServicePeriodDraft(
+                key: p.key,
+                label: p.label,
+                startLocal: p.startLocal,
+                endLocal: p.endLocal,
+                applicableDays: List<int>.from(p.applicableDays),
+                shortLabel: p.shortLabel,
+                sortOrder: p.sortOrder,
+              ),
+            )
+            .toList(),
+      );
+      _error = null;
+      _success = null;
+    });
+  }
+
   Future<void> _save() async {
     final gateway = widget.gateway;
     if (gateway == null || !widget.canEdit) return;
@@ -300,7 +331,9 @@ class _BusinessTimingEditorScreenState
             effectiveAtBusinessDate: _formatBusinessDate(_effectiveAt),
             ianaTimezone: _timezoneForSave,
             weekStartDay: _weekStartDay,
-            businessDayStartLocal: _businessDayStartLocal.text.trim(),
+            businessDayStartLocal: normalizeBusinessTimingTimeInput(
+              _businessDayStartLocal.text,
+            ).trim(),
             // Slice 2.5 / Gap 28: carry applicableDays / shortLabel /
             // sortOrder through to the wire so day-restricted periods
             // (e.g. "Weekend Brunch" Sat/Sun) round-trip end-to-end.
@@ -328,7 +361,9 @@ class _BusinessTimingEditorScreenState
             effectiveAtBusinessDate: _formatBusinessDate(_effectiveAt),
             ianaTimezone: _timezoneForSave,
             weekStartDay: _weekStartDay,
-            businessDayStartLocal: _businessDayStartLocal.text.trim(),
+            businessDayStartLocal: normalizeBusinessTimingTimeInput(
+              _businessDayStartLocal.text,
+            ).trim(),
             // Slice 2.5 / Gap 28: same as createProfile above — the
             // patch's whole-set semantics REPLACE the server's period
             // list, so we must supply the new fields each save.
@@ -383,17 +418,15 @@ class _BusinessTimingEditorScreenState
       '${dt.day.toString().padLeft(2, '0')}';
 
   String get _headingText {
-    if (widget.scheduleMode) return 'Schedule timing change';
-    return widget.existingProfile == null
-        ? 'New business timing profile'
-        : 'Edit business timing profile';
+    if (widget.scheduleMode) return 'Schedule service periods';
+    return 'Edit service periods';
   }
 
   String get _saveButtonText {
-    if (widget.scheduleMode) return 'Schedule timing change';
+    if (widget.scheduleMode) return 'Schedule service periods';
     return widget.existingProfile == null
-        ? 'Save new timing profile'
-        : 'Save timing changes';
+        ? 'Save service periods'
+        : 'Save service periods';
   }
 
   Future<void> _pickEffectiveDate() async {
@@ -418,17 +451,6 @@ class _BusinessTimingEditorScreenState
         children: [
           Row(
             children: [
-              if (widget.onClose != null)
-                IconButton(
-                  key: const Key('operator_web_business_timing_editor_close'),
-                  onPressed: widget.onClose,
-                  tooltip: 'Back to business timing setup',
-                  icon: const Icon(
-                    Icons.arrow_back,
-                    size: 20,
-                    color: AppColors.sunsetDark,
-                  ),
-                ),
               const Icon(
                 Icons.schedule_outlined,
                 size: 22,
@@ -447,9 +469,8 @@ class _BusinessTimingEditorScreenState
           Text(
             'Service periods break the business day into the chunks your '
             'team works in: lunch, dinner, late night, and so on. You '
-            'can have one to four. Pick a future date for the change to '
-            'take effect; closed days keep the timing they were closed '
-            'with.',
+            'can have one to four. Already closed days keep the timing '
+            'they were closed with.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 18),
@@ -545,45 +566,105 @@ class _BusinessTimingEditorScreenState
               ),
             ),
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              height: 42,
-              child: FilledButton(
-                key: const Key('operator_web_business_timing_editor_save'),
-                onPressed:
-                    widget.canEdit &&
-                        _hasGateway &&
-                        !_submitting &&
-                        _periods.validation.isValid
-                    ? _save
-                    : null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                  padding: const EdgeInsets.symmetric(horizontal: 22),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              SizedBox(
+                height: 46,
+                child: FilledButton(
+                  key: const Key('operator_web_business_timing_editor_save'),
+                  onPressed:
+                      widget.canEdit &&
+                          _hasGateway &&
+                          !_submitting &&
+                          _periods.validation.isValid
+                      ? _save
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.sunset,
+                    foregroundColor: AppColors.backgroundSurface,
+                    padding: const EdgeInsets.symmetric(horizontal: 22),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.backgroundSurface,
+                          ),
+                        )
+                      : Text(_saveButtonText),
+                ),
+              ),
+              if (widget.existingProfile != null)
+                SizedBox(
+                  height: 46,
+                  child: OutlinedButton.icon(
+                    key: const Key('operator_web_business_timing_editor_reset'),
+                    onPressed: _submitting ? null : _resetToExistingProfile,
+                    icon: const Icon(Icons.undo_outlined, size: 16),
+                    label: const Text('Reset to inherited'),
                   ),
                 ),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.backgroundSurface,
-                        ),
-                      )
-                    : Text(_saveButtonText),
-              ),
-            ),
+            ],
           ),
         ],
       ),
     );
   }
 }
+
+String _timezoneLabel(String timezone) {
+  final gmt = _kTimezoneGmtLabels[timezone];
+  return gmt == null ? timezone : '$timezone ($gmt)';
+}
+
+const Map<String, String> _kTimezoneGmtLabels = <String, String>{
+  'America/Toronto': 'GMT-05:00 / -04:00',
+  'America/New_York': 'GMT-05:00 / -04:00',
+  'America/Chicago': 'GMT-06:00 / -05:00',
+  'America/Denver': 'GMT-07:00 / -06:00',
+  'America/Phoenix': 'GMT-07:00',
+  'America/Los_Angeles': 'GMT-08:00 / -07:00',
+  'America/Anchorage': 'GMT-09:00 / -08:00',
+  'America/Halifax': 'GMT-04:00 / -03:00',
+  'America/St_Johns': 'GMT-03:30 / -02:30',
+  'America/Vancouver': 'GMT-08:00 / -07:00',
+  'America/Edmonton': 'GMT-07:00 / -06:00',
+  'America/Winnipeg': 'GMT-06:00 / -05:00',
+  'America/Mexico_City': 'GMT-06:00',
+  'America/Sao_Paulo': 'GMT-03:00',
+  'Europe/London': 'GMT+00:00 / +01:00',
+  'Europe/Dublin': 'GMT+00:00 / +01:00',
+  'Europe/Paris': 'GMT+01:00 / +02:00',
+  'Europe/Berlin': 'GMT+01:00 / +02:00',
+  'Europe/Madrid': 'GMT+01:00 / +02:00',
+  'Europe/Rome': 'GMT+01:00 / +02:00',
+  'Europe/Amsterdam': 'GMT+01:00 / +02:00',
+  'Europe/Stockholm': 'GMT+01:00 / +02:00',
+  'Europe/Helsinki': 'GMT+02:00 / +03:00',
+  'Europe/Athens': 'GMT+02:00 / +03:00',
+  'Europe/Istanbul': 'GMT+03:00',
+  'Europe/Moscow': 'GMT+03:00',
+  'Africa/Johannesburg': 'GMT+02:00',
+  'Asia/Dubai': 'GMT+04:00',
+  'Asia/Kolkata': 'GMT+05:30',
+  'Asia/Singapore': 'GMT+08:00',
+  'Asia/Hong_Kong': 'GMT+08:00',
+  'Asia/Shanghai': 'GMT+08:00',
+  'Asia/Tokyo': 'GMT+09:00',
+  'Asia/Seoul': 'GMT+09:00',
+  'Australia/Sydney': 'GMT+10:00 / +11:00',
+  'Australia/Melbourne': 'GMT+10:00 / +11:00',
+  'Australia/Perth': 'GMT+08:00',
+  'Pacific/Auckland': 'GMT+12:00 / +13:00',
+  'UTC': 'GMT+00:00',
+};
 
 class _TimezoneDropdown extends StatelessWidget {
   const _TimezoneDropdown({
@@ -618,7 +699,7 @@ class _TimezoneDropdown extends StatelessWidget {
           .map(
             (timezone) => DropdownMenuItem<String>(
               value: timezone,
-              child: Text(timezone),
+              child: Text(_timezoneLabel(timezone)),
             ),
           )
           .toList(growable: false),
@@ -631,6 +712,18 @@ class _TimezoneDropdown extends StatelessWidget {
           : null,
     );
   }
+}
+
+void _normalizeBusinessTimingTimeController(
+  TextEditingController controller,
+  String raw,
+) {
+  final formatted = normalizeBusinessTimingTimeInput(raw);
+  if (formatted == controller.text || formatted == raw) return;
+  controller.value = TextEditingValue(
+    text: formatted,
+    selection: TextSelection.collapsed(offset: formatted.length),
+  );
 }
 
 class _ScopeAndEffectiveSection extends StatelessWidget {
@@ -711,12 +804,21 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
                   ),
                   controller: businessDayStartController,
                   enabled: enabled,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                    LengthLimitingTextInputFormatter(5),
+                  ],
                   decoration: const InputDecoration(
                     labelText: 'Business day starts (HH:MM)',
                     border: OutlineInputBorder(),
-                    helperText: 'Quarter-hour boundary.',
                   ),
-                  onChanged: (_) => onAnyTextChanged(),
+                  onChanged: (value) {
+                    _normalizeBusinessTimingTimeController(
+                      businessDayStartController,
+                      value,
+                    );
+                    onAnyTextChanged();
+                  },
                 ),
               ),
             ],
