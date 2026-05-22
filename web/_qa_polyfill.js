@@ -34,27 +34,51 @@
     document.dispatchEvent(new Event('visibilitychange'));
   } catch (_) {}
 
-  // 3) Replace requestAnimationFrame with a setInterval-driven tick.
-  // Chrome suspends real rAF when the page is hidden; setInterval keeps
-  // firing regardless. 60fps target → 16ms.
-  var nativeRAF = window.requestAnimationFrame;
-  var nativeCAF = window.cancelAnimationFrame;
+  // 3) Replace requestAnimationFrame with a Worker-driven tick.
+  // Chromium throttles setInterval/setTimeout to ~1 Hz when the page is
+  // hidden (background tab / headless). Web Worker timers run in a separate
+  // thread and are NOT subject to that throttling — they keep firing at
+  // the full 16ms cadence regardless of page visibility.
+  // Falls back to unthrottled postMessage loop if Worker fails.
   var nextId = 1;
   var queue = new Map();
-  var ticking = false;
+  var tickerStarted = false;
+
+  function drainQueue() {
+    if (queue.size === 0) return;
+    var t = performance.now();
+    var pending = Array.from(queue.entries());
+    queue.clear();
+    for (var i = 0; i < pending.length; i++) {
+      try { pending[i][1](t); } catch (e) { console.error('[qa-polyfill] rAF cb threw:', e); }
+    }
+  }
 
   function startTicker() {
-    if (ticking) return;
-    ticking = true;
-    setInterval(function () {
-      if (queue.size === 0) return;
-      var t = performance.now();
-      var pending = Array.from(queue.entries());
-      queue.clear();
-      for (var i = 0; i < pending.length; i++) {
-        try { pending[i][1](t); } catch (e) { console.error('[qa-polyfill] rAF cb threw:', e); }
-      }
-    }, 16);
+    if (tickerStarted) return;
+    tickerStarted = true;
+    try {
+      // Worker ticker — immune to Chromium hidden-page throttling.
+      // Use a served script path (same-origin, allowed by 'self' CSP) rather
+      // than a blob: URL, which CSP 'script-src self' blocks in most browsers.
+      var worker = new Worker('/_qa_rAF_worker.js');
+      worker.onmessage = drainQueue;
+    } catch (e) {
+      // Worker unavailable (strict CSP / no Blob) — fall back to postMessage loop
+      console.warn('[qa-polyfill] Worker failed, using postMessage loop:', e);
+      window.addEventListener('message', function (ev) {
+        if (ev.data !== '__rAF_tick__') return;
+        drainQueue();
+        if (queue.size > 0) window.postMessage('__rAF_tick__', '*');
+      });
+      // Kick off the loop at 16ms minimum interval via setTimeout
+      (function tick() {
+        setTimeout(function () {
+          window.postMessage('__rAF_tick__', '*');
+          tick();
+        }, 16);
+      }());
+    }
   }
 
   window.requestAnimationFrame = function (cb) {
@@ -90,6 +114,24 @@
     Object.defineProperty(window.screen, 'height', { configurable: true, get: function () { return 900;  } });
   } catch (e) {
     console.warn('[qa-polyfill] screen override failed:', e);
+  }
+  // VisualViewport — Flutter Web reads window.visualViewport.width/height
+  // (not window.innerWidth) to determine its logical viewport size and set
+  // flutter-view's CSS width/height.  In headless Electron both are 0, so
+  // Flutter initialises a 0×0 view and never schedules a render frame.
+  try {
+    if (window.visualViewport) {
+      Object.defineProperty(window.visualViewport, 'width',  { configurable: true, get: function () { return 1440; } });
+      Object.defineProperty(window.visualViewport, 'height', { configurable: true, get: function () { return 900;  } });
+    }
+  } catch (e) {
+    // Instance define failed — try the prototype (some browsers define on prototype)
+    try {
+      Object.defineProperty(VisualViewport.prototype, 'width',  { configurable: true, get: function () { return 1440; } });
+      Object.defineProperty(VisualViewport.prototype, 'height', { configurable: true, get: function () { return 900;  } });
+    } catch (e2) {
+      console.warn('[qa-polyfill] visualViewport override failed:', e2);
+    }
   }
 
   // 6) getBoundingClientRect override — headless Electron CSS layout produces
@@ -133,4 +175,5 @@
     console.warn('[qa-polyfill] BCR override failed:', e);
   }
 
-  console.log('[qa-polyfill] visibility forced visible; rAF replaced; viewport 1440×900; BCR patched.');
+  console.log('[qa-polyfill] visibility forced visible; rAF Worker started; viewport 1440×900 (innerWidth + visualViewport + BCR patched).');
+})();
