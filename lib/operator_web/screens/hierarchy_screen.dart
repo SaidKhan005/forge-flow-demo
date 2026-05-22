@@ -481,18 +481,17 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
     }
     return SingleChildScrollView(
       key: const Key('operator_web_hierarchy_screen'),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      padding: const EdgeInsets.fromLTRB(32, 28, 32, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           const _HierarchyHeader(),
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
           _HierarchySummaryRow(
             orgUnitCount: _orgUnits.length,
             locationCount: _locations.length,
-            canMutate: widget._canMutate,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
           if (!widget._canMutate)
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
@@ -508,21 +507,39 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
           OperatorWebPanel(
             key: const Key('operator_web_hierarchy_tree_panel'),
             title: 'Location hierarchy',
-            subtitle:
-                'Regions, districts, and location groups control where each '
-                'location sits. Use the actions on each row to rename, add, '
-                'or move within this tree.',
-            child: _OperatorWebHierarchyInheritanceTree(
-              orgUnits: _orgUnits,
-              locations: _locations,
-              canMutate: widget._canMutate,
-              busyOrgUnitIds: _busyOrgUnitIds,
-              busyLocationIds: _busyLocationIds,
-              collapsedScopeIds: _legacyCollapsedScopeIds,
-              onToggleCollapsed: _toggleLegacyCollapsed,
-              onAddChildOrgUnit: _onAddChildOrgUnit,
-              onRenameOrgUnit: _onRenameOrgUnit,
-              onMoveLocation: _onMoveLocation,
+            tone: OperatorWebPanelTone.highlight,
+            padding: const EdgeInsets.fromLTRB(28, 24, 24, 28),
+            child: LayoutBuilder(
+              key: const Key('operator_web_hierarchy_tree_frame'),
+              builder: (context, constraints) {
+                final treeWidth = constraints.maxWidth < 720
+                    ? 720.0
+                    : constraints.maxWidth;
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: treeWidth,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 430),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                        child: _OperatorWebHierarchyInheritanceTree(
+                          orgUnits: _orgUnits,
+                          locations: _locations,
+                          canMutate: widget._canMutate,
+                          busyOrgUnitIds: _busyOrgUnitIds,
+                          busyLocationIds: _busyLocationIds,
+                          collapsedScopeIds: _legacyCollapsedScopeIds,
+                          onToggleCollapsed: _toggleLegacyCollapsed,
+                          onAddChildOrgUnit: _onAddChildOrgUnit,
+                          onRenameOrgUnit: _onRenameOrgUnit,
+                          onMoveLocation: _onMoveLocation,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -543,12 +560,10 @@ class _HierarchySummaryRow extends StatelessWidget {
   const _HierarchySummaryRow({
     required this.orgUnitCount,
     required this.locationCount,
-    required this.canMutate,
   });
 
   final int orgUnitCount;
   final int locationCount;
-  final bool canMutate;
 
   @override
   Widget build(BuildContext context) {
@@ -568,12 +583,6 @@ class _HierarchySummaryRow extends StatelessWidget {
           icon: Icons.storefront_outlined,
           label: 'Locations',
           value: locationCount.toString(),
-        ),
-        _HierarchySummaryMetric(
-          keyName: 'operator_web_hierarchy_summary_access',
-          icon: canMutate ? Icons.edit_outlined : Icons.visibility_outlined,
-          label: 'Access',
-          value: canMutate ? 'Editable' : 'View-only',
         ),
       ],
     );
@@ -597,8 +606,8 @@ class _HierarchySummaryMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: Key(keyName),
-      constraints: const BoxConstraints(minWidth: 150),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      constraints: const BoxConstraints(minWidth: 190, minHeight: 72),
+      padding: const EdgeInsets.fromLTRB(16, 14, 18, 14),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
@@ -607,8 +616,18 @@ class _HierarchySummaryMetric extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(icon, size: 18, color: AppColors.sunsetDark),
-          const SizedBox(width: 10),
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.cardGlow,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 18, color: AppColors.sunsetDark),
+          ),
+          const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -620,7 +639,7 @@ class _HierarchySummaryMetric extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 value,
-                style: AppTextStyles.body14(color: AppColors.textPrimary),
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
             ],
           ),
@@ -682,6 +701,8 @@ class _OperatorWebHierarchyInheritanceTree extends StatelessWidget {
         rootNode: rootNode,
         initiallyCollapsedScopeIds: collapsedScopeIds,
         emptyMessage: 'No hierarchy yet. Setup needs a root unit first.',
+        indentWidth: 22,
+        rowGap: 10,
         annotationBuilder: (context, node) {
           if (node.scopeKind == InheritanceTreeScopeKind.location) {
             final location = locationsById[node.scopeId];
@@ -922,12 +943,12 @@ class _LocationNodeAnnotation extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 320),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: AppColors.cardGlow,
+          color: AppColors.backgroundSurface,
           border: Border.all(color: AppColors.borderSubtle, width: 1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
@@ -945,7 +966,7 @@ class _LocationNodeAnnotation extends StatelessWidget {
                 ),
               ),
               if (canMutate) ...<Widget>[
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 TextButton.icon(
                   key: Key(
                     'operator_web_location_card_move_${location.locationId}',
@@ -999,14 +1020,6 @@ class _HierarchyHeader extends StatelessWidget {
               style: AppTextStyles.display20(color: AppColors.textPrimary),
             ),
           ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Group your locations under regions and districts so the right '
-          'people see the right business in Forge & Flow. Changes apply '
-          'across every device the team uses.',
-          key: const Key('operator_web_hierarchy_subtitle'),
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
     );
