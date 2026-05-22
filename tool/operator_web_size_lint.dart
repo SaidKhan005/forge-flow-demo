@@ -62,7 +62,13 @@ const Map<String, int> kOperatorWebSizeCeilings = <String, int>{
   'lib/admin/screens/members_admin_screen.dart': 2532,
   'lib/operator_web/router/operator_web_router.dart': 2941,
   'lib/operator_web/screens/my_account_screen.dart': 2107,
-  'lib/operator_web/screens/account_screen.dart': 2053,
+  // 2222: operator-approved R-2 raise (2026-05-22) for the #7
+  // reset-to-inherited control (clears a scope's account overrides so it
+  // falls back to the inherited values). The control + its in-file
+  // decomposition (kept under the dart_code_linter complexity/length bars)
+  // land together here. One-time feature-driven raise; the ratchet resumes
+  // tightening from here.
+  'lib/operator_web/screens/account_screen.dart': 2222,
   'lib/operator_web/screens/members_screen.dart': 1701,
 };
 
