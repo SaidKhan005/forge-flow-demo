@@ -48,6 +48,7 @@ import '../widgets/data_accuracy_explainer_card.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/keyed_service_period_accuracy_card.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
 import '../widgets/wage_source_toggle.dart';
@@ -1139,23 +1140,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.tune_outlined,
-                    size: 22,
-                    color: AppColors.sunsetDark,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Data accuracy',
-                      style: AppTextStyles.display20(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
+              const OperatorWebScreenHeader(
+                icon: Icons.tune_outlined,
+                title: 'Data accuracy',
               ),
               const SizedBox(height: 22),
               DataAccuracyExplainerCard(
