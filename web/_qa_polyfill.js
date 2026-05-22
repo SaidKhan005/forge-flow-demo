@@ -71,5 +71,26 @@
   var origHasFocus = document.hasFocus;
   document.hasFocus = function () { return true; };
 
-  console.log('[qa-polyfill] visibility forced visible; rAF replaced with setInterval(16ms).');
+  // 5) Viewport dimensions — headless Electron reports window.innerWidth /
+  // innerHeight = 0, which causes Flutter's layout engine to produce a 0×0
+  // viewport and never emit a frame.  Override to a standard desktop size
+  // BEFORE Flutter's bootstrap reads them.  Also covers devicePixelRatio
+  // (must be ≥ 1) and screen dimensions used by some engine paths.
+  try {
+    Object.defineProperty(window, 'innerWidth',  { configurable: true, get: function () { return 1440; } });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, get: function () { return 900;  } });
+    Object.defineProperty(window, 'outerWidth',  { configurable: true, get: function () { return 1440; } });
+    Object.defineProperty(window, 'outerHeight', { configurable: true, get: function () { return 900;  } });
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: function () { return 1; } });
+  } catch (e) {
+    console.warn('[qa-polyfill] viewport override failed:', e);
+  }
+  try {
+    Object.defineProperty(window.screen, 'width',  { configurable: true, get: function () { return 1440; } });
+    Object.defineProperty(window.screen, 'height', { configurable: true, get: function () { return 900;  } });
+  } catch (e) {
+    console.warn('[qa-polyfill] screen override failed:', e);
+  }
+
+  console.log('[qa-polyfill] visibility forced visible; rAF replaced with setInterval(16ms); viewport 1440×900.');
 })();
