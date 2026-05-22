@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forge & Flow Admin Console — aligned sample</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#F8EDE6; --bg-mid:#EFE8E0; --surface:#FFFFFF; --glow:#F2ECE4;
+    --sunset:#CC7A3E; --sunset-dark:#9A5C2A;
+    --peacock:#0E8080; --peacock-dark:#0A6060; --ocean:#14B4AC;
+    --text:#2C2C2C; --text-2:#5A524A; --muted:#5E564E;
+    --border:#DDD6CC; --positive:#256B29; --negative:#C62828; --warning:#997000;
+    --r-card:10px; --r-small:6px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--bg-deep);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px;display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Consolas,monospace}
+  svg{display:block}
+  mark{background:rgba(204,122,62,.28);color:inherit;border-radius:2px;padding:0 1px}
+
+  .ribbon{background:rgba(14,128,128,.10);border-bottom:1px solid rgba(14,128,128,.30);color:var(--peacock-dark);font-size:12px;padding:6px 20px;display:flex;gap:8px;align-items:center;}
+  .ribbon b{color:var(--peacock-dark)} .ribbon .dot{width:6px;height:6px;border-radius:999px;background:var(--ocean);flex:0 0 auto}
+
+  header.bar{height:92px;flex:0 0 auto;background:linear-gradient(180deg,var(--bg-deep),rgba(248,237,230,.85));border-bottom:1px solid rgba(221,214,204,.7);display:flex;align-items:center;gap:14px;padding:0 20px;position:relative;z-index:30;}
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brand .mark{width:40px;height:40px;border-radius:999px;flex:0 0 auto;background:radial-gradient(circle at 30% 30%,#E8A87C,var(--sunset) 55%,var(--sunset-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;letter-spacing:.5px;box-shadow:0 2px 6px rgba(154,92,42,.35);}
+  .brand .titles{line-height:1.15;min-width:0}
+  .brand .titles .t1{font-size:19px;font-weight:700;color:var(--text)}
+  .brand .titles .t2{font-size:11px;font-weight:600;color:var(--sunset-dark);letter-spacing:.4px}
+  .spacer{flex:1 1 auto}
+
+  .scope{position:relative}
+  .scope-btn{display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:300px;max-width:440px;transition:border-color .15s,box-shadow .15s;}
+  .scope-btn:hover{border-color:var(--sunset);box-shadow:0 1px 8px rgba(204,122,62,.18)}
+  .scope-btn .ic{color:var(--sunset-dark);flex:0 0 auto}
+  .scope-btn .lbl{min-width:0;flex:1 1 auto}
+  .scope-btn .lbl-k{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .scope-btn .lbl-v{font-size:14px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .scope-btn .lbl-v .sep{color:var(--muted);font-weight:500;padding:0 6px}
+  .chev{color:var(--muted);transition:transform .18s}
+  .scope.open .chev{transform:rotate(180deg)}
+  .pop{position:absolute;top:calc(100% + 10px);right:0;width:380px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:0 16px 40px rgba(44,44,44,.18);display:none;flex-direction:column;max-height:560px;}
+  .scope.open .pop{display:flex}
+  .pop-search{display:flex;align-items:center;gap:9px;padding:12px 12px 10px;border-bottom:1px solid var(--border)}
+  .pop-search .ic{color:var(--muted);flex:0 0 auto}
+  .pop-search input{flex:1;border:none;outline:none;font-family:inherit;font-size:14px;color:var(--text);background:transparent}
+  .pop-search input::placeholder{color:var(--muted)}
+  .pop-results{overflow:auto;padding:6px;flex:1 1 auto}
+  .pop-foot{padding:8px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);display:flex;justify-content:space-between;background:var(--glow);border-radius:0 0 var(--r-card) var(--r-card)}
+  .reslabel{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 8px 4px}
+  .node{display:flex;align-items:center;gap:9px;padding:9px 8px;border-radius:var(--r-small);cursor:pointer;border-left:3px solid transparent;}
+  .node:hover{background:var(--glow)} .node.sel{background:rgba(204,122,62,.10);border-left-color:var(--sunset-dark)}
+  .node .exp{width:18px;height:18px;display:flex;align-items:center;justify-content:center;color:var(--muted);flex:0 0 auto;border-radius:4px;transition:transform .15s}
+  .node .exp:hover{background:rgba(0,0,0,.06)} .node .exp.open{transform:rotate(90deg)} .node .exp.spacer{visibility:hidden}
+  .node .nic{color:var(--muted);flex:0 0 auto} .node.sel .nic{color:var(--sunset-dark)}
+  .node .ntx{min-width:0;flex:1}
+  .node .nt1{font-size:14px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .node.sel .nt1{color:var(--text);font-weight:600}
+  .node .nt2{font-size:11px;color:var(--muted)}
+  .node .nck{color:var(--sunset-dark);opacity:0;flex:0 0 auto} .node.sel .nck{opacity:1}
+  .moren{font-size:12px;color:var(--peacock-dark);padding:8px 10px} .emptyn{padding:18px 10px;color:var(--muted);font-size:13px;text-align:center}
+
+  .pill{font-size:11px;font-weight:600;border-radius:999px;padding:4px 10px;white-space:nowrap;background:rgba(14,128,128,.12);border:1px solid rgba(14,128,128,.45);color:var(--peacock-dark);}
+  .ident{font-size:12px;color:var(--text-2)}
+  .signout{display:flex;align-items:center;gap:7px;color:var(--text-2);font-size:13px;cursor:pointer;padding:8px 12px;border-radius:var(--r-small)} .signout:hover{background:var(--glow)}
+  .demo{flex:0 0 auto;display:flex;align-items:center;gap:10px;background:rgba(20,180,172,.10);border-bottom:1px solid rgba(20,180,172,.32);color:var(--peacock-dark);font-size:12.5px;padding:7px 20px;}
+  .demo .ic{color:var(--ocean)}
+
+  .shell{flex:1 1 auto;display:flex;min-height:0}
+  nav.side{width:230px;flex:0 0 auto;background:var(--bg-mid);border-right:1px solid rgba(221,214,204,.7);padding:12px 8px;overflow:auto;}
+  .grp{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:14px 10px 5px;display:flex;align-items:center;gap:7px}
+  .grp:first-child{padding-top:2px}
+  .grp .biz{color:var(--sunset-dark)}
+  .grp .wip{font-size:8.5px;font-weight:700;letter-spacing:.3px;color:var(--peacock-dark);background:rgba(14,128,128,.12);border:1px solid rgba(14,128,128,.32);border-radius:999px;padding:1px 6px;text-transform:none}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-small);cursor:pointer;border:1px solid transparent;color:var(--text-2);margin:2px 0;}
+  .nav-item:hover{background:rgba(204,122,62,.06)}
+  .nav-item.sel{background:rgba(204,122,62,.10);border-color:rgba(204,122,62,.55);color:var(--text);font-weight:600}
+  .nav-item .nic{color:var(--text-2);flex:0 0 auto} .nav-item.sel .nic{color:var(--sunset-dark)}
+  .nav-item .lab{font-size:13.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav-item .cnt{font-size:11px;color:var(--muted);font-weight:600}
+
+  main.content{flex:1 1 auto;overflow:auto;background:var(--bg-deep)}
+  .frame{max-width:1120px;margin:0 auto;padding:24px 28px 60px}
+  .crumb{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
+  .crumb .cic{color:var(--sunset-dark)} .crumb b{color:var(--peacock-dark);font-weight:600} .crumb .sep{color:var(--border)}
+  .page-h{margin-bottom:18px}
+  .page-h .ttlrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .page-h h1{margin:0;font-size:23px;font-weight:700;color:var(--text)}
+  .page-h p{margin:6px 0 0;font-size:13.5px;color:var(--text-2);max-width:760px}
+  .badge{font-size:10.5px;font-weight:700;border-radius:999px;padding:3px 10px;letter-spacing:.2px;white-space:nowrap}
+  .badge.full{background:rgba(37,107,41,.13);color:var(--positive)}
+  .badge.support{background:rgba(14,128,128,.12);color:var(--peacock-dark)}
+  .badge.repair{background:rgba(153,112,0,.15);color:var(--warning)}
+  .badge.view{background:var(--glow);color:var(--muted);border:1px solid var(--border)}
+  .badge.admin{background:rgba(204,122,62,.13);color:var(--sunset-dark)}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+  .stat{min-width:148px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-small);padding:12px 14px;display:flex;flex-direction:column;gap:3px;}
+  .stat .v{font-size:20px;font-weight:700;color:var(--text)} .stat .l{font-size:11px;color:var(--muted)}
+  .stat.accent{border-color:rgba(204,122,62,.4);background:rgba(204,122,62,.06)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:0 3px 10px rgba(44,44,44,.035);overflow:hidden;margin-bottom:16px}
+  .card-h{display:flex;align-items:center;justify-content:space-between;padding:15px 18px 12px;border-bottom:1px solid var(--border);gap:12px}
+  .card-h .ttl{font-size:15px;font-weight:700;color:var(--text)} .card-h .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .btn{border:none;border-radius:8px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;background:var(--sunset);color:#fff;display:inline-flex;align-items:center;gap:7px;font-family:inherit;}
+  .btn:hover{background:var(--sunset-dark)}
+  .btn.sec{background:transparent;color:var(--sunset-dark);border:1px solid var(--sunset)} .btn.sec:hover{background:rgba(204,122,62,.08)}
+  .btn.sm{padding:6px 11px;font-size:12px}
+  .rowbtns{display:flex;gap:8px;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);font-weight:600;padding:11px 18px;background:var(--glow)}
+  td{padding:13px 18px;border-top:1px solid var(--border);font-size:13.5px;color:var(--text-2);vertical-align:middle}
+  tr:hover td{background:rgba(242,236,228,.5)}
+  .who{display:flex;align-items:center;gap:11px}
+  .av{width:32px;height:32px;border-radius:999px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600}
+  .who .nm{color:var(--text);font-weight:600;font-size:13.5px} .who .em{color:var(--muted);font-size:11.5px}
+  .tag{font-size:11px;font-weight:600;border-radius:999px;padding:3px 9px;display:inline-block}
+  .tag.act{background:rgba(37,107,41,.12);color:var(--positive)} .tag.sus{background:rgba(198,40,40,.12);color:var(--negative)} .tag.dor{background:rgba(153,112,0,.14);color:var(--warning)}
+  .mfa-on{color:var(--positive);font-weight:600} .mfa-off{color:var(--warning);font-weight:600}
+  .toggle{font-size:11px;font-weight:700;border-radius:999px;padding:3px 13px;background:var(--glow);color:var(--muted);border:1px solid var(--border);white-space:nowrap}
+  .toggle.on{background:rgba(37,107,41,.14);color:var(--positive);border-color:transparent}
+  .kv{display:flex;justify-content:space-between;gap:16px;padding:12px 18px;border-top:1px solid var(--border);font-size:13.5px}
+  .kv:first-child{border-top:none} .kv .k{color:var(--muted)} .kv .v{color:var(--text);font-weight:600;text-align:right}
+  .tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+  .tab{padding:7px 14px;border-radius:var(--r-small);font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);color:var(--text-2);background:var(--surface)}
+  .tab.on{background:rgba(204,122,62,.10);border-color:var(--sunset);color:var(--sunset-dark)}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+  .ptile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 3px 10px rgba(44,44,44,.035)}
+  .ptile .pn{font-size:13.5px;font-weight:600;color:var(--text)} .ptile .ps{font-size:12px;color:var(--muted)}
+  .dotx{width:8px;height:8px;border-radius:999px;display:inline-block;margin-right:7px}
+  .yes{color:var(--positive);font-weight:700} .no{color:var(--muted)}
+  .empty{padding:30px 18px;color:var(--muted);font-size:13.5px;text-align:center}
+  .note{padding:12px 16px;background:var(--glow);border:1px solid var(--border);border-radius:var(--r-card);font-size:12.5px;color:var(--text-2);margin-bottom:16px;display:flex;gap:9px;align-items:flex-start}
+  .note .ic{color:var(--peacock-dark);flex:0 0 auto}
+</style>
+</head>
+<body>
+  <div class="ribbon"><span class="dot"></span><span><b>Aligned sample</b> — today's Admin console with the new scope picker. Per-business screens now sit directly in the menu (operator names); admin-only tools keep their own sections.</span></div>
+
+  <header class="bar">
+    <div class="brand"><div class="mark">F&amp;F</div><div class="titles"><div class="t1">Forge &amp; Flow</div><div class="t2">ADMIN CONSOLE</div></div></div>
+    <div class="spacer"></div>
+    <div class="scope" id="scope">
+      <div class="scope-btn" id="scopeBtn"><span class="ic" data-ic="pin"></span><span class="lbl"><div class="lbl-k">Managing</div><div class="lbl-v" id="scopeLabel"></div></span><span class="chev" data-ic="chev"></span></div>
+      <div class="pop" id="scopePop">
+        <div class="pop-search"><span class="ic" data-ic="search"></span><input id="pickerSearch" placeholder="Search businesses or locations…" autocomplete="off" spellcheck="false"></div>
+        <div class="pop-results" id="pickerResults"></div>
+        <div class="pop-foot" id="pickerFoot"></div>
+      </div>
+    </div>
+    <span class="pill">Ecosystem admin</span>
+    <span class="ident mono">super-admin@forgeflow.app</span>
+    <span class="signout"><span data-ic="logout"></span>Sign out</span>
+  </header>
+
+  <div class="demo"><span class="ic" data-ic="info"></span>Demo data — this preview is served from in-memory fixtures, not a live business.</div>
+
+  <div class="shell">
+    <nav class="side" id="side"></nav>
+    <main class="content"><div class="frame" id="frame"></div></main>
+  </div>
+
+<script>
+/* ---------- icons ---------- */
+const P=(d,e='')=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ${e}/>`;
+const SVG=(i,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24">${i}</svg>`;
+const C=(cx,cy,r)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="1.7"/>`;
+const ICONS={
+  chev:SVG(P("M6 9l6 6 6-6"),16), chevR:SVG(P("M9 6l6 6-6 6"),14),
+  search:SVG(C(11,11,6.5)+P("M16 16l4 4"),16),
+  logout:SVG(P("M15 4h4v16h-4")+P("M10 12h9")+P("M13 8l-4 4 4 4"),18),
+  info:SVG(C(12,12,9)+P("M12 11v5")+`<circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/>`,16),
+  pin:SVG(P("M12 21s-6-5-6-10a6 6 0 0 1 12 0c0 5-6 10-6 10z")+C(12,11,2.2)),
+  building:SVG(P("M4 21V4h9v17")+P("M13 9h7v12h-7")+P("M7 8h2M7 12h2M7 16h2M16 13h1M16 17h1")),
+  org:SVG(P("M12 4v5")+P("M6 20v-4")+P("M18 20v-4")+P("M6 16h12")+P("M12 9v7")+`<rect x="10" y="2" width="4" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.7"/>`),
+  people:SVG(C(9,8,3)+P("M3.5 20c0-3 2.6-5 5.5-5s5.5 2 5.5 5")+C(17.5,8.5,2.2)+P("M16 15.2c2.5.2 4.5 1.9 4.5 4.3")),
+  shield:SVG(P("M12 3l7 3v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6z")+P("M9 12l2 2 4-4")),
+  history:SVG(C(13,12.5,7.5)+P("M13 8.5V13l3 1.8")+P("M3.5 7.5l2.2 2.6 2.6-2.2")),
+  plug:SVG(P("M9 3v4")+P("M15 3v4")+`<rect x="6.5" y="7" width="11" height="6" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M12 13v4a3 3 0 0 1-3 3H7")),
+  check:SVG(C(12,12,8.2)+P("M8.4 12.2l2.6 2.6 4.6-5")),
+  clock:SVG(C(12,12,8.2)+P("M12 7.5V12l3.2 2")),
+  funnel:SVG(P("M4 5h16l-6 7v6l-4 2v-8z")),
+  refresh:SVG(P("M20 11a8 8 0 0 0-14-4L4 9")+P("M4 13a8 8 0 0 0 14 4l2-2")+P("M4 5v4h4M20 19v-4h-4")),
+  tune:SVG(P("M4 7h9")+P("M17 7h3")+C(15,7,2.1)+P("M4 17h3")+P("M11 17h9")+C(9,17,2.1)),
+  book:SVG(P("M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z")+P("M5 19.5A1.5 1.5 0 0 1 6.5 18H19v3H6.5A1.5 1.5 0 0 1 5 19.5z")),
+  insights:SVG(P("M4 20V11")+P("M10 20V5")+P("M16 20v-6")+P("M3 20h18")),
+  health:SVG(`<rect x="3" y="4.5" width="18" height="12" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8 20.5h8M12 16.5v4")+P("M6 10.5h2.5l1.3-3 2 5 1.4-2.5H17")),
+  bug:SVG(`<rect x="8" y="8" width="8" height="11" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8 12H4M16 12h4M8 16.5H4.5M16 16.5h3.5M9 8.2 7.6 5.6M15 8.2 16.4 5.6M12 4.5V8")),
+  link:SVG(P("M9 15l6-6")+P("M10.5 6.5l1.4-1.4a4 4 0 0 1 5.6 5.6L16 12.2")+P("M13.5 17.5 12 19a4 4 0 0 1-5.6-5.6L8 11.8")),
+  flag:SVG(P("M5.5 21V4")+P("M5.5 4.5h11l-2 3 2 3h-11")),
+  star:SVG(P("M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z")),
+  person:SVG(C(12,8,3.4)+P("M5 20.5c0-4 3.5-6.2 7-6.2s7 2.2 7 6.2")),
+  bell:SVG(P("M6 9.5a6 6 0 0 1 12 0c0 4.5 1.8 5.5 1.8 5.5H4.2S6 14 6 9.5")+P("M10 19a2 2 0 0 0 4 0")),
+  store:SVG(P("M4 9l1.3-4.5h13.4L20 9")+P("M5 9v10h14V9")+P("M4 9h16")+P("M9.5 19v-5h5v5")),
+  devices:SVG(`<rect x="2.5" y="4.5" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M2.5 18h13")+`<rect x="17.5" y="8" width="4.5" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.7"/>`),
+};
+function paintIcons(root=document){root.querySelectorAll('[data-ic]').forEach(el=>{if(el.dataset.done)return;el.innerHTML=ICONS[el.dataset.ic]||'';el.dataset.done='1';});}
+
+/* ---------- seeded RNG ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rnd=mulberry32(20260522); const pick=a=>a[Math.floor(rnd()*a.length)]; const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const AV=['#CC7A3E','#0E8080','#9A5C2A','#14B4AC','#5A524A','#256B29']; const avColor=n=>AV[[...n].reduce((a,c)=>a+c.charCodeAt(0),0)%AV.length]; const initials=n=>n.split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+/* ---------- two real businesses + 46 generated ---------- */
+const REAL=[
+  {id:'diner',name:'Demo Diner Co.',regions:[{id:'east',name:'East region',locs:[{id:'tor',name:'Toronto Yorkville',city:'Toronto, ON'}]},{id:'west',name:'West region',locs:[{id:'van',name:'Vancouver Robson',city:'Vancouver, BC'}]}],
+    members:{tor:[{n:'Dana Owner',e:'owner@demo-diner.test',r:'Owner',s:'Active',mfa:true},{n:'Marco Lee',e:'marco@demo-diner.test',r:'General manager',s:'Active',mfa:true},{n:'Priya Shah',e:'priya@demo-diner.test',r:'Supervisor',s:'Active',mfa:false},{n:'Tom Reyes',e:'tom@demo-diner.test',r:'Team member',s:'Dormant',mfa:false}],van:[{n:'Dana Owner',e:'owner@demo-diner.test',r:'Owner',s:'Active',mfa:true},{n:'Jen Park',e:'jen@demo-diner.test',r:'General manager',s:'Active',mfa:true},{n:'Alex Wu',e:'alex@demo-diner.test',r:'Supervisor',s:'Suspended',mfa:false}]},
+    audit:[{who:'Dana Owner',act:'Updated service periods',loc:'Toronto Yorkville',when:'15 min ago'},{who:'Marco Lee',act:'Invited team member',loc:'Toronto Yorkville',when:'2 hours ago'},{who:'Jen Park',act:'Connected POS vendor',loc:'Vancouver Robson',when:'Yesterday'},{who:'F&F Support',act:'Reset two-factor',loc:'Vancouver Robson',when:'3 days ago'}]},
+  {id:'sunset',name:'Sunset Cafe Group',regions:[{id:'_root',name:null,locs:[{id:'bk',name:'Brooklyn Williamsburg',city:'Brooklyn, NY'}]}],
+    members:{bk:[{n:'Sam Rivera',e:'sam@sunset-cafe.test',r:'Owner',s:'Active',mfa:true},{n:'Nadia Cole',e:'nadia@sunset-cafe.test',r:'General manager',s:'Active',mfa:true},{n:'Luis Ortiz',e:'luis@sunset-cafe.test',r:'Team member',s:'Active',mfa:false}]},
+    audit:[{who:'Sam Rivera',act:'Changed wage source',loc:'Brooklyn Williamsburg',when:'40 min ago'},{who:'Nadia Cole',act:'Edited roles & permissions',loc:'Brooklyn Williamsburg',when:'5 hours ago'}]},
+];
+const ADJ=['Harbor','Maple','Urban','Coastal','Golden','Iron','Wild','Copper','Crimson','Sage','Oak','Willow','Brass','Ember','Slate','Cardinal','Juniper','Cedar','Lantern','Hearth','Northwind','Marble','Silver','Hollow','Birch','Amber'];
+const NOUN=['Grill','Kitchen','Table','Spoon','Tavern','Bistro','Cafe Group','Eats','Diner Co.','Hospitality','Provisions','Pizzeria','Smokehouse','Noodle Bar','Taqueria','Brewhouse','Roastery','Supper Club'];
+const CITIES=['Toronto, ON','Vancouver, BC','Montreal, QC','Calgary, AB','Ottawa, ON','Brooklyn, NY','Austin, TX','Seattle, WA','Chicago, IL','Miami, FL','Denver, CO','Portland, OR','Boston, MA','Nashville, TN','Phoenix, AZ','San Diego, CA'];
+const REGIONS=['East region','West region','North region','South region','Central region'];
+const FN=['Ava','Liam','Maya','Omar','Grace','Noah','Lina','Caleb','Ravi','Zoe','Hugo','Mei','Ana','Eli','Nora','Theo','Iris','Jonah','Leah','Marco','Priya','Sam','Nadia','Luis','Dana'];
+const LN=['Lee','Shah','Reyes','Park','Wu','Rivera','Cole','Ortiz','Khan','Diaz','Nguyen','Brooks','Flores','Hassan','Stone','Patel','Romano','Walsh','Mercer','Osei','Tran','Webb'];
+const ROLES=['General manager','Supervisor','Team member','Team member','Supervisor']; const STAT=['Active','Active','Active','Active','Active','Dormant','Suspended'];
+let _idc=0;
+function genMembers(sg){const c=2+Math.floor(rnd()*4);const out=[];const used=new Set();for(let i=0;i<c;i++){let nm;do{nm=pick(FN)+' '+pick(LN);}while(used.has(nm));used.add(nm);const r=i===0?'Owner':pick(ROLES);const s=i===0?'Active':pick(STAT);const mfa=(r==='Owner'||r==='General manager')?rnd()>0.15:rnd()>0.55;out.push({n:nm,e:slug(nm.split(' ')[0])+'@'+sg+'.test',r,s,mfa});}return out;}
+function genBiz(){const name=pick(ADJ)+' '+pick(NOUN);const id='b'+(++_idc);const sg=slug(name);const multi=rnd()>0.45;const members={};const allLoc=[];let regions;
+  if(multi){const rc=2+Math.floor(rnd()*2);regions=[];const rn=[...REGIONS];for(let i=0;i<rc;i++){const nm=rn.splice(Math.floor(rnd()*rn.length),1)[0];const lc=1+Math.floor(rnd()*2);const locs=[];for(let j=0;j<lc;j++){const lid=id+'l'+allLoc.length;const city=pick(CITIES);const ln=city.split(',')[0]+' '+pick(['Downtown','Midtown','Uptown','Riverside','Old Town','Market','Harbourfront']);locs.push({id:lid,name:ln,city});allLoc.push(lid);members[lid]=genMembers(sg);}regions.push({id:id+'r'+i,name:nm,locs});}}
+  else{const lc=1+Math.floor(rnd()*2);const locs=[];for(let j=0;j<lc;j++){const lid=id+'l'+j;const city=pick(CITIES);const ln=city.split(',')[0]+' '+pick(['Downtown','Midtown','Market','Harbourfront','Old Town']);locs.push({id:lid,name:ln,city});members[lid]=genMembers(sg);}regions=[{id:'_root',name:null,locs}];}
+  const aud=[{who:'Owner',act:pick(['Updated service periods','Connected POS vendor','Edited roles','Changed wage source','Invited team member']),loc:regions[0].locs[0].name,when:pick(['12 min ago','1 hour ago','Today','Yesterday','2 days ago'])}];
+  return {id,name,regions,members,audit:aud};}
+const GEN=[];for(let i=0;i<46;i++)GEN.push(genBiz());
+const BUSINESSES=[...REAL,...GEN].sort((a,b)=>a.name.localeCompare(b.name));
+
+/* ---------- nav: per-business cluster + current admin sections ---------- */
+const PERBIZ=[
+  {id:'team',label:'Team members',ic:'people'},
+  {id:'roles',label:'Roles & permissions',ic:'shield'},
+  {id:'audit',label:'Audit log',ic:'history'},
+  {id:'vendors',label:'Vendor integrations',ic:'plug'},
+  {id:'data',label:'Data accuracy',ic:'check'},
+  {id:'timing',label:'Timing',ic:'clock'},
+];
+const SECTIONS=[
+  {grp:'Operations', items:[{id:'accounts',label:'Business accounts',ic:'building'},{id:'vendorapp',label:'Vendor applicability',ic:'funnel'},{id:'polling',label:'Polling setup',ic:'refresh'}]},
+  {grp:'AI', wip:true, items:[{id:'plans',label:'Plans & limits',ic:'tune'},{id:'kb',label:'Knowledge base',ic:'book'},{id:'metrics',label:'AI Metrics',ic:'insights'}]},
+  {grp:'System monitoring', items:[{id:'health',label:'System health',ic:'health'},{id:'logs',label:'Support logs',ic:'bug'}]},
+  {grp:'Service setup', items:[{id:'connected',label:'Connected services',ic:'link'},{id:'launch',label:'Launch controls',ic:'flag'},{id:'defroles',label:'Default roles',ic:'star'}]},
+  {grp:'Your account', items:[{id:'me',label:'My account',ic:'person'},{id:'notif',label:'Notifications',ic:'bell'}]},
+];
+const PERBIZ_IDS=new Set(PERBIZ.map(i=>i.id));
+
+/* ---------- state + picker ---------- */
+let state={bizId:'diner',scopeType:'location',locId:'tor',regionId:'east',screen:'team'};
+let pickerSearch=''; let expandedBiz=new Set(); let recents=[{bizId:'sunset',scopeType:'business'}];
+const biz=()=>BUSINESSES.find(b=>b.id===state.bizId);
+const allLocs=b=>b.regions.flatMap(r=>r.locs.map(l=>({...l,region:r.name})));
+const locCount=b=>b.regions.reduce((n,r)=>n+r.locs.length,0);
+const findLoc=(b,id)=>allLocs(b).find(l=>l.id===id);
+function locsInScope(){const b=biz();if(state.scopeType==='location')return allLocs(b).filter(l=>l.id===state.locId);if(state.scopeType==='orgUnit'){const r=b.regions.find(r=>r.id===state.regionId);return r?r.locs.map(l=>({...l,region:r.name})):[];}return allLocs(b);}
+function membersInScope(){const b=biz();const rows=[];locsInScope().forEach(l=>(b.members[l.id]||[]).forEach(m=>rows.push({...m,locName:l.name})));return rows;}
+function scopeLabelHtml(){const b=biz();if(!b)return '';if(state.scopeType==='business')return `${b.name}<span class="sep">›</span>All locations`;if(state.scopeType==='orgUnit'){const r=b.regions.find(r=>r.id===state.regionId);return `${b.name}<span class="sep">›</span>${r?r.name:''}`;}const l=findLoc(b,state.locId);return `${b.name}<span class="sep">›</span>${l?l.name:''}`;}
+const scopeKind=()=>state.scopeType==='business'?'Business-wide':state.scopeType==='orgUnit'?'Region':'Location';
+const cacheKey=s=>`${s.bizId}:${s.scopeType}:${s.regionId||''}:${s.locId||''}`;
+function applyScope(s){state={...state,bizId:s.bizId,scopeType:s.scopeType,regionId:s.regionId??state.regionId,locId:s.locId??state.locId};recents=[s,...recents.filter(r=>cacheKey(r)!==cacheKey(s))].slice(0,4);document.getElementById('scope').classList.remove('open');render();}
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function hi(t,q){if(!q)return esc(t);const i=t.toLowerCase().indexOf(q);if(i<0)return esc(t);return esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+q.length))+'</mark>'+esc(t.slice(i+q.length));}
+function bizRow(b,q){const sel=state.bizId===b.id&&state.scopeType==='business';const open=expandedBiz.has(b.id);let h=`<div class="node ${sel?'sel':''}" data-pick='${JSON.stringify({bizId:b.id,scopeType:'business'})}'><span class="exp ${open?'open':''}" data-exp="${b.id}" data-ic="chevR"></span><span class="nic" data-ic="building"></span><span class="ntx"><div class="nt1">${hi(b.name,q)}</div><div class="nt2">${locCount(b)} location${locCount(b)===1?'':'s'}</div></span><span class="nck" data-ic="check"></span></div>`;
+  if(open){b.regions.forEach(r=>{if(r.name){const selR=state.bizId===b.id&&state.scopeType==='orgUnit'&&state.regionId===r.id;h+=`<div class="node ${selR?'sel':''}" style="padding-left:30px" data-pick='${JSON.stringify({bizId:b.id,scopeType:'orgUnit',regionId:r.id})}'><span class="exp spacer"></span><span class="nic" data-ic="org"></span><span class="ntx"><div class="nt1">${r.name}</div><div class="nt2">Region</div></span><span class="nck" data-ic="check"></span></div>`;}r.locs.forEach(l=>{const selL=state.bizId===b.id&&state.scopeType==='location'&&state.locId===l.id;const pad=r.name?48:30;h+=`<div class="node ${selL?'sel':''}" style="padding-left:${pad}px" data-pick='${JSON.stringify({bizId:b.id,scopeType:'location',regionId:r.id,locId:l.id})}'><span class="exp spacer"></span><span class="nic" data-ic="pin"></span><span class="ntx"><div class="nt1">${hi(l.name,q)}</div><div class="nt2">${l.city}</div></span><span class="nck" data-ic="check"></span></div>`;});});}
+  return h;}
+function recentRow(s){const b=BUSINESSES.find(x=>x.id===s.bizId);if(!b)return '';let title=b.name,sub='Business · all locations',ic='building';if(s.scopeType==='orgUnit'){const r=b.regions.find(r=>r.id===s.regionId);title=b.name+' › '+(r?r.name:'');sub='Region';ic='org';}if(s.scopeType==='location'){const l=findLoc(b,s.locId);title=b.name+' › '+(l?l.name:'');sub=l?l.city:'Location';ic='pin';}const sel=cacheKey(s)===cacheKey(state);return `<div class="node ${sel?'sel':''}" data-pick='${JSON.stringify(s)}'><span class="exp spacer"></span><span class="nic" data-ic="${ic}"></span><span class="ntx"><div class="nt1">${esc(title)}</div><div class="nt2">${esc(sub)}</div></span><span class="nck" data-ic="check"></span></div>`;}
+function renderPickerResults(){const q=pickerSearch.trim().toLowerCase();const res=document.getElementById('pickerResults');const foot=document.getElementById('pickerFoot');let h='';
+  if(!q){if(recents.length){h+=`<div class="reslabel">Recent</div>`;recents.forEach(s=>h+=recentRow(s));}h+=`<div class="reslabel">All businesses (${BUSINESSES.length})</div>`;BUSINESSES.forEach(b=>h+=bizRow(b,''));foot.innerHTML=`<span>${BUSINESSES.length} businesses</span><span>Type to jump to any business or location</span>`;}
+  else{const mb=BUSINESSES.filter(b=>b.name.toLowerCase().includes(q));const ml=[];BUSINESSES.forEach(b=>b.regions.forEach(r=>r.locs.forEach(l=>{if(l.name.toLowerCase().includes(q)||l.city.toLowerCase().includes(q))ml.push({b,r,l});})));
+    if(!mb.length&&!ml.length)h=`<div class="emptyn">No businesses or locations match “${esc(pickerSearch.trim())}”.</div>`;
+    if(mb.length){h+=`<div class="reslabel">Businesses (${mb.length})</div>`;mb.slice(0,8).forEach(b=>h+=bizRow(b,q));if(mb.length>8)h+=`<div class="moren">+${mb.length-8} more — keep typing to narrow</div>`;}
+    if(ml.length){h+=`<div class="reslabel">Locations (${ml.length})</div>`;ml.slice(0,10).forEach(({b,r,l})=>{const sel=state.bizId===b.id&&state.scopeType==='location'&&state.locId===l.id;h+=`<div class="node ${sel?'sel':''}" data-pick='${JSON.stringify({bizId:b.id,scopeType:'location',regionId:r.id,locId:l.id})}'><span class="exp spacer"></span><span class="nic" data-ic="pin"></span><span class="ntx"><div class="nt1">${hi(l.name,q)}</div><div class="nt2">${esc(b.name)} · ${esc(l.city)}</div></span><span class="nck" data-ic="check"></span></div>`;});if(ml.length>10)h+=`<div class="moren">+${ml.length-10} more — keep typing to narrow</div>`;}
+    foot.innerHTML=`<span>${mb.length+ml.length} matches</span><span>of ${BUSINESSES.length} businesses</span>`;}
+  res.innerHTML=h;paintIcons(res);
+  res.querySelectorAll('[data-pick]').forEach(el=>el.onclick=ev=>{if(ev.target.closest('[data-exp]'))return;applyScope(JSON.parse(el.dataset.pick));});
+  res.querySelectorAll('[data-exp]').forEach(el=>el.onclick=ev=>{ev.stopPropagation();const id=el.dataset.exp;if(!expandedBiz.delete(id))expandedBiz.add(id);renderPickerResults();});}
+function openPicker(){pickerSearch='';const inp=document.getElementById('pickerSearch');inp.value='';document.getElementById('scope').classList.add('open');renderPickerResults();setTimeout(()=>inp.focus(),0);}
+
+/* ---------- nav ---------- */
+function renderNav(){const s=document.getElementById('side');let h='';
+  h+=`<div class="grp"><span class="biz" data-ic="building" style="display:inline-flex"></span><span style="color:var(--sunset-dark)">${esc(biz().name)}</span></div>`;
+  PERBIZ.forEach(it=>{let cnt='';if(it.id==='team')cnt=`<span class="cnt">${membersInScope().length}</span>`;h+=`<div class="nav-item ${state.screen===it.id?'sel':''}" data-screen="${it.id}"><span class="nic" data-ic="${it.ic}"></span><span class="lab">${it.label}</span>${cnt}</div>`;});
+  SECTIONS.forEach(g=>{h+=`<div class="grp">${g.grp}${g.wip?'<span class="wip">work in progress</span>':''}</div>`;g.items.forEach(it=>{h+=`<div class="nav-item ${state.screen===it.id?'sel':''}" data-screen="${it.id}"><span class="nic" data-ic="${it.ic}"></span><span class="lab">${it.label}</span></div>`;});});
+  s.innerHTML=h;paintIcons(s);
+  s.querySelectorAll('[data-screen]').forEach(el=>el.onclick=()=>{state.screen=el.dataset.screen;render();});}
+
+/* ---------- shared body helpers (operator frame) ---------- */
+const BADGE={full:['full','Full edit'],support:['support','View + support actions'],repair:['repair','View · super-admin repair'],view:['view','Read-only'],admin:['admin','F&F admin only']};
+const badge=k=>`<span class="badge ${BADGE[k][0]}">${BADGE[k][1]}</span>`;
+function pageHead(title,bk,desc){return `<div class="page-h"><div class="ttlrow"><h1>${title}</h1>${bk?badge(bk):''}</div><p>${desc}</p></div>`;}
+function crumb(){const b=biz();return `<div class="crumb"><span class="cic" data-ic="pin"></span><b>${esc(b.name)}</b>`+(state.scopeType==='business'?`<span class="sep">›</span>All locations`:state.scopeType==='orgUnit'?`<span class="sep">›</span>${b.regions.find(r=>r.id===state.regionId)?.name||''}`:`<span class="sep">›</span>${findLoc(b,state.locId)?.name||''}`)+`<span class="sep">·</span>${scopeKind()} scope</div>`;}
+const adminCrumb=`<div class="crumb"><span class="cic" data-ic="building"></span><b>F&F admin</b><span class="sep">·</span>Across all ${BUSINESSES.length} businesses</div>`;
+const stat=(v,l,a)=>`<div class="stat ${a?'accent':''}"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+const tag=s=>`<span class="tag ${s==='Active'||s==='Connected'||s==='Healthy'||s==='Published'?'act':s==='Suspended'||s==='Down'?'sus':'dor'}">${s}</span>`;
+const toggle=on=>`<span class="toggle ${on?'on':''}">${on?'On':'Off'}</span>`;
+const yn=v=>v?'<span class="yes" data-ic="check" style="display:inline-flex;width:16px;height:16px"></span>':'<span class="no">—</span>';
+function dot(c){return `<span class="dotx" style="background:${c}"></span>`;}
+
+/* ---------- per-business screens ---------- */
+function scTeam(){const rows=membersInScope();const showLoc=state.scopeType!=='location';const active=rows.filter(m=>m.s==='Active').length;const needMfa=rows.filter(m=>!m.mfa).length;
+  const body=rows.length?`<table><thead><tr><th>Name</th><th>Role</th>${showLoc?'<th>Location</th>':''}<th>Status</th><th>Two-factor</th></tr></thead><tbody>`+rows.map(m=>`<tr><td><div class="who"><div class="av" style="background:${avColor(m.n)}">${initials(m.n)}</div><div><div class="nm">${m.n}</div><div class="em mono">${m.e}</div></div></div></td><td>${m.r}</td>${showLoc?`<td>${m.locName}</td>`:''}<td>${tag(m.s)}</td><td>${m.mfa?'<span class="mfa-on">On</span>':'<span class="mfa-off">Off</span>'}</td></tr>`).join('')+`</tbody></table>`:`<div class="empty">No team members in this scope.</div>`;
+  return crumb()+pageHead('Team members','support',`People with access to ${esc(biz().name)}. F&F staff can invite, suspend, reactivate, or remove with an audit reason.`)+`<div class="stats">${stat(rows.length,'Members',true)}${stat(active,'Active')}${stat(needMfa,'No two-factor')}${stat(locsInScope().length,'Locations in scope')}</div><div class="card"><div class="card-h"><div><div class="ttl">People</div><div class="sub">${scopeKind()} scope</div></div><button class="btn"><span data-ic="people"></span>Invite member</button></div>${body}</div>`;}
+function scRoles(){const roles=[['Owner','Business','All permissions','Seeded'],['General manager','Location','42 permissions','Seeded'],['Location manager','Location','31 permissions','Seeded'],['Supervisor','Location','18 permissions','Seeded'],['Team member','Location','6 permissions','Seeded'],['Bookkeeper','Business','9 permissions','Custom']];
+  const tabsHtml=`<div class="tabs"><div class="tab on">Roles</div><div class="tab">Hierarchy</div><div class="tab">Active sessions</div></div>`;
+  const body=`<table><thead><tr><th>Role</th><th>Scope</th><th>Permissions</th><th>Type</th><th></th></tr></thead><tbody>`+roles.map(r=>`<tr><td><div class="nm">${r[0]}</div></td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]==='Custom'?'<span class="tag dor">Custom</span>':'<span class="tag act">Seeded</span>'}</td><td style="text-align:right"><button class="btn sec sm">Edit</button></td></tr>`).join('')+`</tbody></table>`;
+  return crumb()+pageHead('Roles & permissions','repair',`Roles, org hierarchy, and active sessions for ${esc(biz().name)}. Editing seeded roles needs a fresh two-factor super-admin.`)+tabsHtml+`<div class="card"><div class="card-h"><div class="ttl">Roles</div><button class="btn sec"><span data-ic="shield"></span>New role</button></div>${body}</div>`;}
+function scAudit(){const rows=biz().audit.filter(a=>state.scopeType==='business'?true:locsInScope().map(l=>l.name).includes(a.loc));const body=rows.length?`<table><thead><tr><th>Who</th><th>Action</th><th>Location</th><th>When</th></tr></thead><tbody>`+rows.map(a=>`<tr><td><div class="nm">${a.who}</div></td><td>${a.act}</td><td>${a.loc}</td><td class="mono" style="color:var(--muted)">${a.when}</td></tr>`).join('')+`</tbody></table>`:`<div class="empty">No activity recorded in this scope.</div>`;
+  return crumb()+pageHead('Audit log','support',`Activity history and gated support actions (reset two-factor, password reset, paired-approval erasure) for the selected scope.`)+`<div class="card"><div class="card-h"><div class="ttl">Activity</div><div class="rowbtns"><button class="btn sec sm">Last 7 days</button><button class="btn sec sm"><span data-ic="history"></span>Export CSV</button></div></div>${body}</div>`;}
+function scVendors(){const loc=locsInScope()[0];const rows=[['POS','Toast','Connected','12 min ago'],['Labor','7shifts','Connected','1 hour ago'],['Reservations','OpenTable','Needs attention','2 days ago']];
+  const body=`<table><thead><tr><th>Category</th><th>Vendor</th><th>Status</th><th>Last sync</th><th></th></tr></thead><tbody>`+rows.map(r=>`<tr><td>${r[0]}</td><td><div class="nm">${r[1]}</div></td><td>${tag(r[2])}</td><td class="mono" style="color:var(--muted)">${r[3]}</td><td style="text-align:right"><div class="rowbtns" style="justify-content:flex-end"><button class="btn sec sm">Test</button><button class="btn sec sm">Logs</button></div></td></tr>`).join('')+`</tbody></table>`;
+  return crumb()+pageHead('Vendor integrations','support',`POS, labor, and reservation connections for ${loc?esc(loc.name):'this scope'}. The same shared widget the operator console uses.`)+`<div class="card"><div class="card-h"><div><div class="ttl">Connections</div><div class="sub">${loc?esc(loc.name):'Pick a location'}</div></div><button class="btn"><span data-ic="plug"></span>Connect vendor</button></div>${body}</div>`;}
+function scData(){const ls=locsInScope();const src=['POS','Manual','POS'];const wsrc=['Vendor','Blended','Vendor'];const acc=['98%','94%','aprox. 90%'];
+  const body=ls.length?`<table><thead><tr><th>Location</th><th>Covers source</th><th>Wage source</th><th>Accuracy</th><th></th></tr></thead><tbody>`+ls.map((l,i)=>`<tr><td><div class="nm">${l.name}</div></td><td>${src[i%3]}</td><td>${wsrc[i%3]}</td><td>${acc[i%3]}</td><td style="text-align:right"><button class="btn sec sm">Repair</button></td></tr>`).join('')+`</tbody></table>`:`<div class="empty">No locations in scope.</div>`;
+  return crumb()+pageHead('Data accuracy','repair',`Effective covers and wage data by location, with audited super-admin repairs. Wage authority is folded in here, same as the operator console.`)+`<div class="card"><div class="card-h"><div class="ttl">Covers & wage data</div></div>${body}</div>`;}
+function scTiming(){return crumb()+pageHead('Timing','repair',`Effective timezone, business day, week start, and service periods. Normal edits stay in the operator console; super-admin repair routes are server-side.`)+`<div class="card"><div class="card-h"><div class="ttl">Effective timing</div></div><div class="kv"><span class="k">Timezone</span><span class="v">America/Toronto</span></div><div class="kv"><span class="k">Business day starts</span><span class="v">4:00 AM</span></div><div class="kv"><span class="k">Week starts</span><span class="v">Monday</span></div></div><div class="card"><div class="card-h"><div class="ttl">Service periods</div></div><div class="kv"><span class="k">Breakfast</span><span class="v">6:00 AM to 11:00 AM</span></div><div class="kv"><span class="k">Lunch</span><span class="v">11:00 AM to 4:00 PM</span></div><div class="kv"><span class="k">Dinner</span><span class="v">4:00 PM to 10:00 PM</span></div><div class="kv"><span class="k">Late night</span><span class="v">10:00 PM to 2:00 AM</span></div></div>`;}
+
+/* ---------- admin-only screens ---------- */
+function scAccounts(){const list=BUSINESSES.slice(0,14);const body=`<table><thead><tr><th>Business</th><th>Locations</th><th>Members</th><th></th></tr></thead><tbody>`+list.map(b=>{const mc=Object.values(b.members).reduce((n,a)=>n+a.length,0);return `<tr><td><div class="who"><span style="color:var(--sunset-dark)" data-ic="building"></span><div class="nm" style="margin-left:2px">${esc(b.name)}</div></div></td><td>${locCount(b)}</td><td>${mc}</td><td style="text-align:right"><button class="btn sec sm" data-open="${b.id}">Open</button></td></tr>`;}).join('')+`</tbody></table>`;
+  return adminCrumb+pageHead('Business accounts','admin',`The full directory of every business on Forge & Flow. Find one and open it — that selects it in the top-bar picker and the per-business menu lights up.`)+`<div class="note"><span class="ic" data-ic="info"></span><span>This is the one place the picker is replaced by a full searchable directory. Opening a business is the same as picking it up top.</span></div><div class="card"><div class="card-h"><div class="ttl">All businesses (${BUSINESSES.length})</div><button class="btn sec sm"><span data-ic="search"></span>Search</button></div>${body}<div style="padding:12px 18px;color:var(--muted);font-size:12px">Showing 14 of ${BUSINESSES.length} · search to find any business</div></div>`;}
+function scVendorApp(){const v=[['Toast',1,1,1],['Square',1,1,0],['7shifts',1,0,1],['OpenTable',0,1,0],['Clover',1,1,1],['Lightspeed',1,1,0]];
+  const body=`<table><thead><tr><th>Vendor</th><th>Wage</th><th>Covers</th><th>Polling</th><th></th></tr></thead><tbody>`+v.map(r=>`<tr><td><div class="nm">${r[0]}</div></td><td>${yn(r[1])}</td><td>${yn(r[2])}</td><td>${yn(r[3])}</td><td style="text-align:right"><button class="btn sec sm">Edit</button></td></tr>`).join('')+`</tbody></table>`;
+  return adminCrumb+pageHead('Vendor applicability','admin',`Which vendors are allowed to power wage, covers, and polling settings ecosystem-wide. Operators never see this.`)+`<div class="card"><div class="card-h"><div class="ttl">Vendor capabilities</div></div>${body}</div>`;}
+function scPolling(){const v=[['Toast','Every 15 min'],['Square','Every 30 min'],['7shifts','Every 30 min'],['Clover','Every 15 min'],['Lightspeed','Hourly']];
+  const body=`<table><thead><tr><th>Vendor</th><th>Polling cadence</th><th></th></tr></thead><tbody>`+v.map(r=>`<tr><td><div class="nm">${r[0]}</div></td><td>${r[1]}</td><td style="text-align:right"><button class="btn sec sm">Edit</button></td></tr>`).join('')+`</tbody></table>`;
+  return adminCrumb+pageHead('Polling setup','admin',`Default polling cadence and tier per vendor. Operator Web reads the published status.`)+`<div class="card"><div class="card-h"><div class="ttl">Cadence</div></div>${body}</div>`;}
+function scPlans(){const t=[['Starter','$25 / mo','19','Active'],['Growth','$120 / mo','21','Active'],['Scale','$400 / mo','8','Active']];
+  const body=`<table><thead><tr><th>Tier</th><th>AI cap</th><th>Businesses</th><th>Status</th></tr></thead><tbody>`+t.map(r=>`<tr><td><div class="nm">${r[0]}</div></td><td>${r[1]}</td><td>${r[2]}</td><td>${tag(r[3])}</td></tr>`).join('')+`</tbody></table>`;
+  return adminCrumb+pageHead('Plans & limits','admin',`AI plan tiers and usage limits. Scope-aware — the top-bar picker can filter this to one business or location.`)+`<div class="card"><div class="card-h"><div class="ttl">Plan tiers</div></div>${body}</div>`;}
+function scKb(){return adminCrumb+pageHead('Knowledge base','admin',`Advisor knowledge content and relationship review. Scope-aware via the top-bar picker.`)+`<div class="stats">${stat('1,284','Articles',true)}${stat('38,902','Embeddings')}${stat('17','Graph candidates pending')}</div><div class="note"><span class="ic" data-ic="book"></span><span>Commit is disabled until a live tenant is selected, matching today's behaviour.</span></div>`;}
+function scMetrics(){return adminCrumb+pageHead('AI Metrics','admin',`Cost, usage, dormancy, and margin telemetry. Read-only. Scope-aware via the top-bar picker.`)+`<div class="stats">${stat('$3,412','Spend this month',true)}${stat('41.2M','Tokens')}${stat('82%','Margin')}${stat('6','Cap events')}</div><div class="card"><div class="card-h"><div class="ttl">Usage by model</div></div><div class="kv"><span class="k">Opus 4.7</span><span class="v">$2,140</span></div><div class="kv"><span class="k">Sonnet 4.6</span><span class="v">$980</span></div><div class="kv"><span class="k">Embeddings</span><span class="v">$292</span></div></div>`;}
+function scHealth(){const c=[['Advisor data','Healthy','#256B29'],['App services','Healthy','#256B29'],['Ecosystem dependencies','Degraded','#997000']];
+  const body=c.map(r=>`<div class="kv"><span class="k">${dot(r[2])}${r[0]}</span><span class="v">${r[1]}</span></div>`).join('');
+  return adminCrumb+pageHead('System health','admin',`Read-only health checks for advisor data, app services, and ecosystem dependencies.`)+`<div class="card"><div class="card-h"><div class="ttl">Checks</div><button class="btn"><span data-ic="refresh"></span>Run check</button></div>${body}</div>`;}
+function scLogs(){const r=[['12:04:51','POST /v1/schedule/plan','200','Demo Diner Co. · Toronto'],['12:03:18','GET /v1/team/members','200','Sunset Cafe Group'],['11:58:02','POST /v1/auth/mfa/verify','403','Iron Table · Toronto'],['11:55:44','GET /v1/data-accuracy','200','Maple Brewhouse']];
+  const body=`<table><thead><tr><th>Time</th><th>Route</th><th>Status</th><th>Scope</th></tr></thead><tbody>`+r.map(x=>`<tr><td class="mono" style="color:var(--muted)">${x[0]}</td><td class="mono">${x[1]}</td><td>${x[2]==='200'?'<span class="tag act">200</span>':'<span class="tag sus">'+x[2]+'</span>'}</td><td>${x[3]}</td></tr>`).join('')+`</tbody></table>`;
+  return adminCrumb+pageHead('Support logs','admin',`Support-safe request inspection. Filter by operator or location scope.`)+`<div class="card"><div class="card-h"><div class="ttl">Recent requests</div><button class="btn sec sm"><span data-ic="funnel"></span>Filter scope</button></div>${body}</div>`;}
+function scConnected(){const tiles=[['LLM provider','OpenAI','Healthy','#256B29'],['Embeddings','Azure','Healthy','#256B29'],['Rerank','Cohere','Healthy','#256B29'],['Vendor APIs','Mixed','Degraded','#997000']];
+  return adminCrumb+pageHead('Connected services','admin',`Global provider health and platform service keys. Operator edits live in the operator console; this is the ecosystem view.`)+`<div class="tiles">`+tiles.map(t=>`<div class="ptile"><div class="pn">${t[0]}</div><div class="ps">${t[1]}</div><div style="font-size:12px;font-weight:600">${dot(t[3])}${t[2]}</div></div>`).join('')+`</div><div class="card"><div class="card-h"><div class="ttl">Platform service keys</div></div><div class="kv"><span class="k">Keys configured</span><span class="v">7 of 7</span></div><div class="kv"><span class="k">Rotation</span><span class="v">Last 14 days ago</span></div></div>`;}
+function scLaunch(){const f=[['Advisor v2',true],['Per-daypart targets',true],['New onboarding flow',false],['Graph traversal',false]];
+  const body=f.map(x=>`<div class="kv"><span class="k">${x[0]}</span><span>${toggle(x[1])}</span></div>`).join('');
+  return adminCrumb+pageHead('Launch controls','admin',`Staged feature flags with audit-backed confirmation. Toggling asks for confirmation; undo restores.`)+`<div class="card"><div class="card-h"><div class="ttl">Feature flags</div></div>${body}</div>`;}
+function scDefRoles(){const v=[['v3','Published · current','2026-04-30'],['v4','Draft','—']];
+  const body=`<table><thead><tr><th>Version</th><th>Status</th><th>Published</th><th></th></tr></thead><tbody>`+v.map(r=>`<tr><td><div class="nm">${r[0]}</div></td><td>${r[1].includes('Published')?'<span class="tag act">'+r[1]+'</span>':'<span class="tag dor">'+r[1]+'</span>'}</td><td class="mono" style="color:var(--muted)">${r[2]}</td><td style="text-align:right"><div class="rowbtns" style="justify-content:flex-end"><button class="btn sec sm">Edit draft</button><button class="btn sm">Publish</button></div></td></tr>`).join('')+`</tbody></table>`;
+  return adminCrumb+pageHead('Default roles','admin',`The starter role catalog every new business begins with. Publishing a version requires an audit reason.`)+`<div class="card"><div class="card-h"><div class="ttl">Catalog versions</div></div>${body}</div>`;}
+function scMe(){return `<div class="crumb"><span class="cic" data-ic="person"></span><b>Your account</b></div>`+pageHead('My account',null,`Your own admin sign-in details, two-factor status, and current sessions.`)+`<div class="card"><div class="card-h"><div class="ttl">Sign-in</div></div><div class="kv"><span class="k">Email</span><span class="v mono">super-admin@forgeflow.app</span></div><div class="kv"><span class="k">Role</span><span class="v">Ecosystem admin</span></div><div class="kv"><span class="k">Two-factor</span><span class="v"><span class="mfa-on">On</span></span></div><div class="kv"><span class="k">Last sign-in</span><span class="v">Today, 9:14 AM</span></div></div><div class="card"><div class="card-h"><div class="ttl">Active sessions</div><button class="btn sec sm">Sign out everywhere</button></div><div class="kv"><span class="k">Chrome on macOS <span style="color:var(--muted)">(this session)</span></span><span class="v">Now</span></div><div class="kv"><span class="k">Safari on iPhone</span><span class="v">2 hours ago</span></div></div>`;}
+function scNotif(){const cats=[['Security alerts',true,true,true],['Billing & plan',true,false,false],['Product updates',true,false,false],['Support escalations',true,true,false]];
+  const body=`<table><thead><tr><th>What</th><th>Email</th><th>SMS</th><th>Push</th></tr></thead><tbody>`+cats.map(c=>`<tr><td><div class="nm">${c[0]}</div></td><td>${toggle(c[1])}</td><td>${toggle(c[2])}</td><td>${toggle(c[3])}</td></tr>`).join('')+`</tbody></table>`;
+  return `<div class="crumb"><span class="cic" data-ic="bell"></span><b>Your account</b></div>`+pageHead('Notifications',null,`How Forge & Flow lets you know about events for your admin sign-in.`)+`<div class="card"><div class="card-h"><div class="ttl">Channels</div></div>${body}</div>`;}
+
+const SCREENS={team:scTeam,roles:scRoles,audit:scAudit,vendors:scVendors,data:scData,timing:scTiming,accounts:scAccounts,vendorapp:scVendorApp,polling:scPolling,plans:scPlans,kb:scKb,metrics:scMetrics,health:scHealth,logs:scLogs,connected:scConnected,launch:scLaunch,defroles:scDefRoles,me:scMe,notif:scNotif};
+
+function render(){document.getElementById('scopeLabel').innerHTML=scopeLabelHtml();renderNav();const f=document.getElementById('frame');f.innerHTML=(SCREENS[state.screen]||scTeam)();paintIcons(f);f.scrollTop=0;document.querySelector('main.content').scrollTop=0;f.querySelectorAll('[data-open]').forEach(el=>el.onclick=()=>{applyScope({bizId:el.dataset.open,scopeType:'business'});state.screen='team';render();});}
+
+/* ---------- wire up ---------- */
+document.getElementById('scopeBtn').onclick=e=>{e.stopPropagation();const s=document.getElementById('scope');if(s.classList.contains('open'))s.classList.remove('open');else openPicker();};
+document.getElementById('pickerSearch').addEventListener('input',e=>{pickerSearch=e.target.value;renderPickerResults();});
+document.getElementById('pickerSearch').addEventListener('click',e=>e.stopPropagation());
+document.addEventListener('click',e=>{const s=document.getElementById('scope');if(!s.contains(e.target))s.classList.remove('open');});
+paintIcons(document); render();
+</script>
+</body>
+</html>

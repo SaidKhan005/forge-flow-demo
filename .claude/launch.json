@@ -90,6 +90,18 @@
         "--profile"
       ],
       "port": 8184
+    },
+    {
+      "name": "mockup-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8190",
+        "--directory",
+        "docs/_mockups"
+      ],
+      "port": 8190
     }
   ]
 }
