@@ -180,7 +180,7 @@ Repo closeout evidence:
 Authority:
 
 - `docs/phases/phase_9_8/phase_9_8_email_provider_slice.md`
-- `docs/archive/_walkthroughs/9.8.email.md`
+- `docs/_walkthroughs/9.8.email.md`
 - `scripts/deploy_operator_web.ps1`
 
 `app.forgeflow.app`:
