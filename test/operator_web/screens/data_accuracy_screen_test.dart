@@ -897,7 +897,7 @@ void main() {
         find.byKey(const Key('polling_tier_not_applicable_notice')),
         findsOneWidget,
       );
-      expect(find.textContaining('No vendor is connected'), findsWidgets);
+      expect(find.textContaining('needs scheduled checks'), findsWidgets);
       expect(
         find.byKey(const Key('polling_tier_vendor_row_quickbooks_time')),
         findsNothing,

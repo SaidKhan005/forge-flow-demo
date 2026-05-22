@@ -67,10 +67,6 @@ class DataAccuracyExplainerCard extends StatelessWidget {
             key: const Key('data_accuracy_map_intro'),
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
-          if (!dataAccuracyHasAnyConnectedVendor(bundle)) ...[
-            const SizedBox(height: 10),
-            const _NoVendorsNotice(),
-          ],
           const SizedBox(height: 14),
           _MapNode(
             slug: 'labor',
@@ -99,7 +95,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
             heading: 'Data freshness',
             body: dataFreshnessApplies
                 ? _freshnessMapLine(bundle)
-                : dataFreshnessNotApplicableCopy(bundle),
+                : 'Only applies to vendors that need scheduled checks.',
             vendors: dataAccuracyConnectedPollOnlyVendors(bundle),
             disabled: !dataFreshnessApplies,
           ),
@@ -111,8 +107,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   static String _laborMapLine(VendorConnectionsBundle? bundle) {
     final labor = bundle?.laborConnection;
     if (labor == null) {
-      return 'Use a labor vendor when one is connected, or keep manual '
-          'wage rows as the fallback.';
+      return 'Manual wage rows stay available until a labor vendor is connected.';
     }
     final wageClass = laborWageSourceClassFor(labor.vendorId);
     return switch (wageClass) {
@@ -140,8 +135,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   ) {
     final pos = bundle?.posConnection;
     if (pos == null) {
-      return 'Choose vendor, forecast, manual, or reservations plus walk-ins '
-          'for each service period.';
+      return 'Pick the guest-count source for each service period.';
     }
     if (posVendorExposesCovers(pos.vendorId)) {
       return '${pos.displayName} exposes covers. You can still override a '
@@ -174,40 +168,6 @@ class DataAccuracyExplainerCard extends StatelessWidget {
     return dataAccuracyConnectedPollOnlyVendors(
       bundle,
     ).map((row) => row.displayName).toList(growable: false);
-  }
-}
-
-class _NoVendorsNotice extends StatelessWidget {
-  const _NoVendorsNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('data_accuracy_no_vendors_notice'),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: AppColors.shimmer,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.link_off_outlined,
-            size: 18,
-            color: AppColors.textMuted,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'No vendor is connected for this location yet. Manual labor and manual covers stay available while vendor-only choices wait for an integration.',
-              style: AppTextStyles.body13(color: AppColors.textMuted),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 

@@ -199,11 +199,6 @@ class _FreshnessDoesNotApplyBlock extends StatelessWidget {
             label: const Text('Request faster data freshness'),
           ),
         ),
-        const SizedBox(height: 14),
-        VendorRelativityLabel(
-          setting: VendorRelativitySetting.polling,
-          bundle: bundle,
-        ),
       ],
     );
   }
