@@ -276,7 +276,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('No vendor is connected'), findsOneWidget);
+      expect(find.textContaining('needs scheduled checks'), findsOneWidget);
     });
   });
 

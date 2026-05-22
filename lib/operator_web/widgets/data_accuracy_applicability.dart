@@ -47,7 +47,7 @@ Map<String, int> defaultConnectedPollingCadences(
 
 String dataFreshnessNotApplicableCopy(VendorConnectionsBundle? bundle) {
   if (!dataAccuracyHasAnyConnectedVendor(bundle)) {
-    return 'No vendor is connected for this location yet. Data freshness unlocks when Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, or Push Operations is connected.';
+    return 'Does not apply until a vendor that needs scheduled checks is connected.';
   }
   return 'Does not apply to your integrations. Your connected vendors push updates to Forge & Flow when they happen.';
 }

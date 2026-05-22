@@ -122,7 +122,7 @@ void main() {
       expect(find.textContaining('scheduled checks'), findsOneWidget);
     });
 
-    testWidgets('shows does-not-apply copy for real-time integrations', (
+    testWidgets('keeps real-time integrations compact on freshness', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -148,16 +148,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('Does not apply to your integrations'),
+        find.textContaining(
+          'Only applies to vendors that need scheduled checks.',
+        ),
         findsOneWidget,
       );
       expect(find.text('Toast'), findsWidgets);
       expect(find.text('7shifts'), findsWidgets);
     });
 
-    testWidgets('shows a no-vendor notice when location has no integrations', (
-      tester,
-    ) async {
+    testWidgets('keeps the no-vendor map compact', (tester) async {
       await tester.pumpWidget(
         wrap(
           DataAccuracyExplainerCard(
@@ -171,11 +171,20 @@ void main() {
 
       expect(
         find.byKey(const Key('data_accuracy_no_vendors_notice')),
+        findsNothing,
+      );
+      expect(
+        find.textContaining(
+          'Only applies to vendors that need scheduled checks.',
+        ),
         findsOneWidget,
       );
-      expect(find.textContaining('No vendor is connected'), findsWidgets);
       expect(
-        find.textContaining('Manual labor and manual covers'),
+        find.textContaining('Manual wage rows stay available'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Pick the guest-count source'),
         findsOneWidget,
       );
     });

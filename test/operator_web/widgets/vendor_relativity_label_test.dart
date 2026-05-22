@@ -36,39 +36,38 @@ VendorConnectionRow _row(
   String vendorId,
   String displayName,
   VendorCategory category,
-) =>
-    VendorConnectionRow(
-      connectionId: '$vendorId-conn',
-      vendorId: vendorId,
-      displayName: displayName,
-      category: category,
-      status: VendorConnectionStatus.connected,
-      metadata: const <String, Object?>{},
-    );
+) => VendorConnectionRow(
+  connectionId: '$vendorId-conn',
+  vendorId: vendorId,
+  displayName: displayName,
+  category: category,
+  status: VendorConnectionStatus.connected,
+  metadata: const <String, Object?>{},
+);
 
 VendorConnectionsBundle _bundle({
   String? pos,
   String? labor,
   String? reservation,
-}) =>
-    VendorConnectionsBundle(
-      operatorId: 'op',
-      locationId: 'loc',
-      locationName: 'Test',
-      posConnection:
-          pos == null ? null : _row(pos, _displayName(pos), VendorCategory.pos),
-      laborConnection: labor == null
-          ? null
-          : _row(labor, _displayName(labor), VendorCategory.labor),
-      reservationConnection: reservation == null
-          ? null
-          : _row(
-              reservation,
-              _displayName(reservation),
-              VendorCategory.reservation,
-            ),
-      demoFlags: const <VendorCategory, bool>{},
-    );
+}) => VendorConnectionsBundle(
+  operatorId: 'op',
+  locationId: 'loc',
+  locationName: 'Test',
+  posConnection: pos == null
+      ? null
+      : _row(pos, _displayName(pos), VendorCategory.pos),
+  laborConnection: labor == null
+      ? null
+      : _row(labor, _displayName(labor), VendorCategory.labor),
+  reservationConnection: reservation == null
+      ? null
+      : _row(
+          reservation,
+          _displayName(reservation),
+          VendorCategory.reservation,
+        ),
+  demoFlags: const <VendorCategory, bool>{},
+);
 
 bool _anyLineContains(List<String> lines, String needle) {
   for (final line in lines) {
@@ -80,18 +79,26 @@ bool _anyLineContains(List<String> lines, String needle) {
 void main() {
   group('composeVendorRelativityLines — covers (acceptance item H)', () {
     test(
-        'Toast (covers exposed) — copy mentions Toast and that this only '
-        'kicks in for Square/Clover', () {
-      final lines = composeVendorRelativityLines(
-        VendorRelativitySetting.covers,
-        _bundle(pos: 'toast'),
-      );
-      expect(_anyLineContains(lines, 'Toast exposes covers'), isTrue,
-          reason: 'expected a line mentioning Toast exposes covers, got '
-              '$lines');
-      expect(_anyLineContains(lines, 'Square, Clover'), isTrue,
-          reason: 'expected a line naming Square, Clover; got $lines');
-    });
+      'Toast (covers exposed) — copy mentions Toast and manual fallback',
+      () {
+        final lines = composeVendorRelativityLines(
+          VendorRelativitySetting.covers,
+          _bundle(pos: 'toast'),
+        );
+        expect(
+          _anyLineContains(lines, 'Toast exposes covers'),
+          isTrue,
+          reason:
+              'expected a line mentioning Toast exposes covers, got '
+              '$lines',
+        );
+        expect(
+          _anyLineContains(lines, 'Manual stays available'),
+          isTrue,
+          reason: 'expected manual fallback copy; got $lines',
+        );
+      },
+    );
 
     test('Square (covers NOT exposed) — copy says Square does not expose '
         'covers', () {
@@ -99,8 +106,11 @@ void main() {
         VendorRelativitySetting.covers,
         _bundle(pos: 'square'),
       );
-      expect(_anyLineContains(lines, 'Square does not expose covers'), isTrue,
-          reason: 'expected Square does-not-expose copy, got $lines');
+      expect(
+        _anyLineContains(lines, 'Square does not expose covers'),
+        isTrue,
+        reason: 'expected Square does-not-expose copy, got $lines',
+      );
     });
 
     test('null bundle — generic fallback copy', () {
@@ -108,8 +118,11 @@ void main() {
         VendorRelativitySetting.covers,
         null,
       );
-      expect(_anyLineContains(lines, 'POS does not expose covers'), isTrue,
-          reason: 'expected fallback copy, got $lines');
+      expect(
+        _anyLineContains(lines, 'POS that exposes guest counts'),
+        isTrue,
+        reason: 'expected compact fallback copy, got $lines',
+      );
     });
   });
 
@@ -122,55 +135,59 @@ void main() {
     //   * ADP + Push Operations -> hoursOnly.
     // No Wave B vendor currently qualifies as perEmployeeWithDollars.
 
-    test(
-        'QuickBooks Time (perEmployeeWithRates) — copy mentions '
-        'per-employee hourly rates and rate × duration', () {
+    test('QuickBooks Time (perEmployeeWithRates) — copy mentions '
+        'employee rates and rates and time', () {
       final lines = composeVendorRelativityLines(
         VendorRelativitySetting.wage,
         _bundle(labor: 'quickbooks_time'),
       );
-      expect(_anyLineContains(lines, 'QuickBooks Time'), isTrue,
-          reason: 'expected QuickBooks Time mentioned, got $lines');
       expect(
-        _anyLineContains(lines, 'per-employee hourly rates'),
+        _anyLineContains(lines, 'QuickBooks Time'),
         isTrue,
-        reason: 'expected per-employee hourly rates copy, got $lines',
+        reason: 'expected QuickBooks Time mentioned, got $lines',
+      );
+      expect(
+        _anyLineContains(lines, 'employee rates'),
+        isTrue,
+        reason: 'expected employee rates copy, got $lines',
+      );
+      expect(
+        _anyLineContains(lines, 'rates and time'),
+        isTrue,
+        reason: 'expected rates and time copy, got $lines',
       );
     });
 
-    test('Humanity (perPositionWithRates) — copy mentions per-position pay '
-        'rates', () {
+    test('Humanity (perPositionWithRates) — copy mentions role rates', () {
       final lines = composeVendorRelativityLines(
         VendorRelativitySetting.wage,
         _bundle(labor: 'humanity'),
       );
       expect(
-        _anyLineContains(lines, 'per-position pay rates'),
+        _anyLineContains(lines, 'role rates'),
         isTrue,
-        reason: 'expected per-position pay rates copy, got $lines',
+        reason: 'expected role rates copy, got $lines',
       );
     });
 
-    test(
-        'ADP (hoursOnly) — copy mentions target wage substitution from '
-        'TargetCycle', () {
+    test('ADP (hoursOnly) — copy mentions hours only and target wage', () {
       final lines = composeVendorRelativityLines(
         VendorRelativitySetting.wage,
         _bundle(labor: 'adp'),
       );
       final hasTargetWage = _anyLineContains(lines, 'target wage');
-      final hasTargetCycle = _anyLineContains(lines, 'TargetCycle');
+      final hasHoursOnly = _anyLineContains(lines, 'hours only');
       expect(
-        hasTargetWage || hasTargetCycle,
+        hasTargetWage && hasHoursOnly,
         isTrue,
-        reason: 'expected hoursOnly branch to mention target wage or '
-            'TargetCycle; got $lines',
+        reason:
+            'expected hoursOnly branch to mention hours only and '
+            'target wage; got $lines',
       );
     });
 
-    test(
-        'Unknown labor vendor (toast as synthetic labor) — copy falls back '
-        'to generic, names the V1 roster, no specific class branch', () {
+    test('Unknown labor vendor (toast as synthetic labor) — copy falls back '
+        'to generic manual-wage guidance', () {
       // Toast is not in the LaborWageSourceClass sidecar (it is a POS
       // adapter). Wiring it as the labor row exercises the
       // null-wage-class fallback branch.
@@ -178,12 +195,16 @@ void main() {
         VendorRelativitySetting.wage,
         _bundle(labor: 'toast'),
       );
-      expect(_anyLineContains(lines, 'Toast'), isTrue,
-          reason: 'expected Toast display name in fallback copy, got $lines');
       expect(
-        _anyLineContains(lines, 'QuickBooks Time'),
+        _anyLineContains(lines, 'Toast'),
         isTrue,
-        reason: 'expected fallback copy to name the V1 roster, got $lines',
+        reason: 'expected Toast display name in fallback copy, got $lines',
+      );
+      expect(
+        _anyLineContains(lines, 'Manual wage mix stays available'),
+        isTrue,
+        reason:
+            'expected fallback copy to keep manual wage guidance, got $lines',
       );
     });
   });
@@ -195,8 +216,11 @@ void main() {
         VendorRelativitySetting.polling,
         _bundle(labor: 'quickbooks_time'),
       );
-      expect(_anyLineContains(lines, 'QuickBooks Time'), isTrue,
-          reason: 'expected QuickBooks Time mentioned, got $lines');
+      expect(
+        _anyLineContains(lines, 'QuickBooks Time'),
+        isTrue,
+        reason: 'expected QuickBooks Time mentioned, got $lines',
+      );
       // Tier-control copy was rewritten to plain English per the UX
       // writing standard. The line that used to say "F&F controls
       // cadence" now reads "Your tier sets how often." — same intent.
@@ -207,33 +231,36 @@ void main() {
       );
     });
 
-    test('Toast connected (webhook) — copy mentions real time and Toast',
-        () {
-      final lines = composeVendorRelativityLines(
-        VendorRelativitySetting.polling,
-        _bundle(pos: 'toast'),
-      );
-      expect(_anyLineContains(lines, 'real time'), isTrue,
-          reason: 'expected real-time copy, got $lines');
-      expect(_anyLineContains(lines, 'Toast'), isTrue,
-          reason: 'expected Toast mentioned, got $lines');
-    });
+    test(
+      'Toast connected (webhook) — copy mentions push updates and Toast',
+      () {
+        final lines = composeVendorRelativityLines(
+          VendorRelativitySetting.polling,
+          _bundle(pos: 'toast'),
+        );
+        expect(
+          _anyLineContains(lines, 'push updates'),
+          isTrue,
+          reason: 'expected push-update copy, got $lines',
+        );
+        expect(
+          _anyLineContains(lines, 'Toast'),
+          isTrue,
+          reason: 'expected Toast mentioned, got $lines',
+        );
+      },
+    );
 
-    test('null bundle — fallback names the poll-only roster', () {
+    test('null bundle — fallback explains when freshness applies', () {
       final lines = composeVendorRelativityLines(
         VendorRelativitySetting.polling,
         null,
       );
-      expect(_anyLineContains(lines, 'Oracle MICROS'), isTrue,
-          reason: 'expected Oracle MICROS in roster, got $lines');
-      expect(_anyLineContains(lines, 'QuickBooks Time'), isTrue,
-          reason: 'expected QuickBooks Time in roster, got $lines');
-      expect(_anyLineContains(lines, 'Humanity'), isTrue,
-          reason: 'expected Humanity in roster, got $lines');
-      expect(_anyLineContains(lines, 'Agendrix'), isTrue,
-          reason: 'expected Agendrix in roster, got $lines');
-      expect(_anyLineContains(lines, 'Push Operations'), isTrue,
-          reason: 'expected Push Operations in roster, got $lines');
+      expect(
+        _anyLineContains(lines, 'needs scheduled checks'),
+        isTrue,
+        reason: 'expected compact freshness fallback, got $lines',
+      );
     });
   });
 
@@ -271,7 +298,8 @@ void main() {
       expect(
         hasSquareCopy,
         isTrue,
-        reason: 'expected at least one Text descendant containing the '
+        reason:
+            'expected at least one Text descendant containing the '
             'dynamic Square copy under the label widget',
       );
     });

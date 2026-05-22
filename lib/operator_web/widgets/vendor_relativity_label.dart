@@ -64,10 +64,10 @@ class VendorRelativityLabel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Note:',
+            'Vendor fit',
             style: AppTextStyles.mono11(color: AppColors.sunsetDark),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           for (var i = 0; i < lines.length; i++) ...[
             Text(
               lines[i],
@@ -120,20 +120,17 @@ List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
   final pos = bundle?.posConnection;
   if (pos == null) {
     return <String>[
-      'This setting applies when your POS does not expose covers as a first-class field.',
-      'POS systems that do not expose covers at V1: Square, Clover.',
+      'Vendor covers need a POS that exposes guest counts. Forecast and manual stay available.',
     ];
   }
   final coversNotExposed = kPosVendorsWithoutCovers.contains(pos.vendorId);
   if (!coversNotExposed) {
     return <String>[
-      '${pos.displayName} exposes covers directly. This setting only kicks in if you switch to a POS that does not (Square, Clover).',
-      'You can still pick "manual" for a service period to type your own numbers; F&F will use those instead of what ${pos.displayName} reports.',
+      '${pos.displayName} exposes covers. Manual stays available when a service period needs an override.',
     ];
   }
   return <String>[
-    '${pos.displayName} does not expose covers as a first-class field. Pick a covers source per service period so F&F knows where to read covers from.',
-    'POS systems that do not expose covers at V1: Square, Clover.',
+    '${pos.displayName} does not expose covers. Use forecast, manual, or reservations plus walk-ins.',
   ];
 }
 
@@ -143,37 +140,31 @@ List<String> _composeWageLines(VendorConnectionsBundle? bundle) {
   final labor = bundle?.laborConnection;
   if (labor == null) {
     return <String>[
-      'Connect a labor vendor before using vendor-reported wages. Manual wage mix stays available.',
-      'Vendors that need fallback math at V1: QuickBooks Time, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
+      'Vendor wages need a labor integration. Manual wage mix stays available.',
     ];
   }
   final wageClass = laborWageSourceClassFor(labor.vendorId);
   if (wageClass == null) {
     return <String>[
-      'Your labor vendor (${labor.displayName}) is connected. This setting controls how F&F resolves labor dollars when the vendor does not expose them directly.',
-      'Vendors that need fallback math at V1: QuickBooks Time, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
+      '${labor.displayName} is connected. Manual wage mix stays available if vendor labor dollars are not usable.',
     ];
   }
   switch (wageClass) {
     case LaborWageSourceClass.perEmployeeWithDollars:
       return <String>[
-        '${labor.displayName} reports per-employee labor dollars. F&F uses those directly when you choose "Use vendor".',
-        'Switch to "Use my manual wage mix" if you want F&F to ignore vendor dollars and use the wage editor mix instead.',
+        '${labor.displayName} reports labor dollars directly. Manual mix stays available as an override.',
       ];
     case LaborWageSourceClass.perEmployeeWithRates:
       return <String>[
-        '${labor.displayName} reports per-employee hourly rates, not per-shift dollars. When you choose "Use vendor", F&F multiplies each punch\'s duration by the employee\'s rate.',
-        'Switch to "Use my manual wage mix" if your vendor rates are out of date and you would rather F&F use your wage editor mix.',
+        '${labor.displayName} reports employee rates. Forge & Flow calculates labor dollars from rates and time.',
       ];
     case LaborWageSourceClass.perPositionWithRates:
       return <String>[
-        '${labor.displayName} reports per-position pay rates, not per-employee dollars. F&F multiplies those by scheduled hours when you choose "Use vendor".',
-        'This is what the wage model needs. Your wage editor\'s role rows reflect what your scheduler reports.',
+        '${labor.displayName} reports role rates. Forge & Flow calculates labor dollars from rates and hours.',
       ];
     case LaborWageSourceClass.hoursOnly:
       return <String>[
-        '${labor.displayName} does not expose dollars or rates. F&F substitutes target wage × hours from your TargetCycle when you choose "Use vendor".',
-        'Switch to "Use my manual wage mix" to use your wage editor mix instead. Usually more accurate when you have not set targets yet.',
+        '${labor.displayName} reports hours only. Forge & Flow uses target wage x hours when vendor is selected.',
       ];
   }
 }
@@ -213,23 +204,19 @@ List<String> _composePollingLines(VendorConnectionsBundle? bundle) {
 
   if (pollOnlyConnected.isEmpty && webhookConnected.isEmpty) {
     return <String>[
-      'Connect a vendor before data freshness has anything to control. Some vendors push new data right away; others only respond when we ask.',
-      'Vendors that need to be asked: Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations.',
+      'Data freshness applies once a vendor that needs scheduled checks is connected.',
     ];
   }
   final lines = <String>[];
   if (pollOnlyConnected.isNotEmpty) {
     lines.add(
-      'Forge & Flow checks ${pollOnlyConnected.join(' and ')} for new data on a regular schedule. Your tier sets how often.',
+      'Forge & Flow checks ${pollOnlyConnected.join(' and ')} on a schedule. Your tier sets how often.',
     );
   }
   if (webhookConnected.isNotEmpty) {
     lines.add(
-      '${webhookConnected.join(' and ')} push updates to Forge & Flow in real time, so your tier does not change how fast they refresh.',
+      '${webhookConnected.join(' and ')} push updates when they happen.',
     );
   }
-  lines.add(
-    'Forge & Flow manages the schedule at the tier level. Tap "Request faster data freshness" below if you need a different cadence.',
-  );
   return lines;
 }
