@@ -1510,10 +1510,10 @@ class _ForbiddenSurface extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Where your dashboard reads labor dollars and '
+                      'Where your app dashboard reads labor dollars and '
                       'covers from is a business-wide decision. Only '
                       'operator owners can change it. '
-                      'Location managers can keep reading dashboards '
+                      'Location managers can keep reading app dashboards '
                       'and shift views in the mobile app. Most '
                       'day-to-day actions live there.',
                       style: AppTextStyles.body13(color: AppColors.textPrimary),
