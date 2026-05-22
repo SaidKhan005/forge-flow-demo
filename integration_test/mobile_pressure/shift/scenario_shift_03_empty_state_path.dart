@@ -11,7 +11,11 @@
 // No RenderFlex overflows and no stuck spinner.
 //
 // Empty-state strings from shift_dashboard.dart:
-//   headline: 'NO LIVE SHIFT' | 'LOCKED PLAN UNAVAILABLE'
+//   headline: AppDataStatus.label ?? 'NO LIVE SHIFT' (null-status fallback)
+//             or 'LOCKED PLAN UNAVAILABLE'
+//   All AppDataStatus.label values: 'NO DATA', 'FIRST SYNC PENDING',
+//   'BACKFILL PENDING', 'BACKFILL FAILED', 'BACKFILL DEAD-LETTERED',
+//   'HISTORICAL ONLY', 'IMPORT FAILED', 'STALE', 'CURRENT', 'DEMO'.
 //   body:     'No open or projected shift is available.'
 //           | 'No locked weekly plan is available for the current week.'
 
@@ -49,9 +53,25 @@ void main() {
       final hasDataState =
           hasOutputsHeader && hasInputsHeader && hasFohHeader;
 
-      final hasEmptyHeadline =
-          find.text('NO LIVE SHIFT').evaluate().isNotEmpty ||
-          find.text('LOCKED PLAN UNAVAILABLE').evaluate().isNotEmpty;
+      // All valid headline values: AppDataStatus.label constants plus the
+      // null-status fallback and the locked-plan override.
+      const kEmptyHeadlines = <String>[
+        'NO LIVE SHIFT', // null-status fallback
+        'LOCKED PLAN UNAVAILABLE',
+        'NO DATA',
+        'FIRST SYNC PENDING',
+        'BACKFILL PENDING',
+        'BACKFILL FAILED',
+        'BACKFILL DEAD-LETTERED',
+        'HISTORICAL ONLY',
+        'IMPORT FAILED',
+        'STALE',
+        'CURRENT',
+        'DEMO',
+      ];
+      final hasEmptyHeadline = kEmptyHeadlines.any(
+        (h) => find.text(h).evaluate().isNotEmpty,
+      );
       final hasEmptyBody =
           find
               .text('No open or projected shift is available.')

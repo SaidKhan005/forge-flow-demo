@@ -46,13 +46,28 @@ void main() {
       final hasFohHeader = find.text('FOH PRODUCTIVITY').evaluate().isNotEmpty;
       final hasData = hasOutputsHeader && hasInputsHeader && hasFohHeader;
 
-      // Known empty-state strings from _ShiftEmptyState:
-      //   'NO LIVE SHIFT', 'LOCKED PLAN UNAVAILABLE',
-      //   'No open or projected shift is available.',
-      //   'No locked weekly plan is available for the current week.'
-      final hasEmptyHeadline =
-          find.text('NO LIVE SHIFT').evaluate().isNotEmpty ||
-          find.text('LOCKED PLAN UNAVAILABLE').evaluate().isNotEmpty;
+      // All valid empty-state headline strings from _ShiftEmptyState:
+      //   headline = AppDataStatus.label ?? 'NO LIVE SHIFT' (null-status
+      //              fallback) or 'LOCKED PLAN UNAVAILABLE'.
+      //   All AppDataStatus.label values are enumerated below so that any
+      //   valid status causes the test to pass.
+      const kEmptyHeadlines = <String>[
+        'NO LIVE SHIFT', // null-status fallback
+        'LOCKED PLAN UNAVAILABLE',
+        'NO DATA',
+        'FIRST SYNC PENDING',
+        'BACKFILL PENDING',
+        'BACKFILL FAILED',
+        'BACKFILL DEAD-LETTERED',
+        'HISTORICAL ONLY',
+        'IMPORT FAILED',
+        'STALE',
+        'CURRENT',
+        'DEMO',
+      ];
+      final hasEmptyHeadline = kEmptyHeadlines.any(
+        (h) => find.text(h).evaluate().isNotEmpty,
+      );
       final hasEmptyBody =
           find
               .text('No open or projected shift is available.')
