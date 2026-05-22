@@ -202,7 +202,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Business timing',
+                  'Service periods',
                   key: const Key('operator_web_business_setup_nav_title'),
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),

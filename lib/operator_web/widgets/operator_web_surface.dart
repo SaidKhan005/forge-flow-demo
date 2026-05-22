@@ -219,6 +219,52 @@ class OperatorWebDialog extends StatelessWidget {
   }
 }
 
+/// Title row for a popup body with a persistent, comfortably-sized
+/// top-right close affordance. Use inside bare [Dialog] bodies that are
+/// not yet migrated to [OperatorWebDialog] so every operator-facing
+/// popup still offers one consistent close control, without re-inlining
+/// the row (and inflating the host build method) at each call site.
+class OperatorWebDialogHeader extends StatelessWidget {
+  const OperatorWebDialogHeader({
+    super.key,
+    required this.title,
+    this.onClose,
+    this.closeKey,
+  });
+
+  final String title;
+  final VoidCallback? onClose;
+  final Key? closeKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            title,
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
+          ),
+        ),
+        SizedBox(
+          width: 42,
+          height: 42,
+          child: IconButton(
+            key: closeKey,
+            tooltip: 'Close',
+            onPressed: onClose,
+            icon: const Icon(
+              Icons.close,
+              size: 22,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 Future<T?> showOperatorWebDialog<T>({
   required BuildContext context,
   required String title,

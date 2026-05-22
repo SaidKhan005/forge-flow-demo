@@ -311,8 +311,15 @@ class _AuditLogHierarchyFilterPaneState
           const SizedBox(height: 12),
           Row(
             children: <Widget>[
-              ElevatedButton(
+              FilledButton(
                 key: const Key('operator_web_audit_log_hierarchy_run'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.sunset,
+                  foregroundColor: AppColors.backgroundSurface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
                 onPressed: _rowsLoading ? null : () => _runFilter(),
                 child: Text(_rowsLoading ? 'Loading…' : 'Run filter'),
               ),

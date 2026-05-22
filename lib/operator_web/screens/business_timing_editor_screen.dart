@@ -122,6 +122,13 @@ class _BusinessTimingEditorScreenState
   String? _success;
   Timer? _successTimer;
 
+  /// The profile returned by the most recent successful save in this
+  /// editor session. Once set it supersedes [BusinessTimingEditorScreen.existingProfile]
+  /// as the baseline so a second save in the same session patches the
+  /// just-created profile instead of creating a duplicate, and so the
+  /// editor reflects what is actually persisted.
+  BusinessTimingProfileWriteResult? _savedProfile;
+
   @override
   void initState() {
     super.initState();
@@ -269,7 +276,7 @@ class _BusinessTimingEditorScreenState
   }
 
   BusinessTimingProfileWriteResult? get _existingProfileForSelectedScope {
-    final existing = widget.existingProfile;
+    final existing = _savedProfile ?? widget.existingProfile;
     if (existing == null) return null;
     return existing.scopeKind == _scopeKind && existing.scopeId == _scopeId
         ? existing
@@ -324,7 +331,7 @@ class _BusinessTimingEditorScreenState
     try {
       final existingForScope = _existingProfileForSelectedScope;
       if (existingForScope == null) {
-        await gateway.createProfile(
+        _savedProfile = await gateway.createProfile(
           BusinessTimingProfileCreate(
             scopeKind: _scopeKind,
             scopeId: _scopeId,
@@ -353,7 +360,7 @@ class _BusinessTimingEditorScreenState
           ),
         );
       } else {
-        await gateway.updateProfile(
+        _savedProfile = await gateway.updateProfile(
           profileId: existingForScope.profileId,
           patch: BusinessTimingProfilePatch(
             scopeKind: _scopeKind,
@@ -474,8 +481,12 @@ class _BusinessTimingEditorScreenState
           Text(
             'Service periods break the business day into the chunks your '
             'team works in: lunch, dinner, late night, and so on. You '
-            'can have one to four. Already closed days keep the timing '
-            'they were closed with.',
+            'can have one to four.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Already closed days keep the timing they were closed with.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 18),

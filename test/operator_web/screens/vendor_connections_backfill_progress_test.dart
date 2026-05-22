@@ -233,8 +233,8 @@ void main() {
       );
 
       // Retry button is disabled (no onPressed) — onPressed: null
-      // surfaces as a disabled ElevatedButton.
-      final retryButton = tester.widget<ElevatedButton>(
+      // surfaces as a disabled FilledButton (operator-web button style).
+      final retryButton = tester.widget<FilledButton>(
         find.byKey(
           const ValueKey<String>(
             'vendor_connections_backfill_progress_retry_conn-failed',
