@@ -212,7 +212,7 @@ Future<ProxyHealthMetric> notifyQueueUsageRatioProducer(
 // tile — F&F engineers triage via log search +
 // `SELECT * FROM public.event_outbox_dead_letter ORDER BY
 // dead_lettered_at DESC LIMIT N` and decide whether to manually
-// reissue or accept the loss. See `docs/archive/_walkthroughs/10a.2.md`
+// reissue or accept the loss. See `docs/_walkthroughs/10a.2.md`
 // for the click-path.
 //
 // The producer aggregates platform-wide (no operator filter) so the
