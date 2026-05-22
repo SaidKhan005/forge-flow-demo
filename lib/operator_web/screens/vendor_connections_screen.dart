@@ -221,6 +221,7 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
                 locationId: widget.locationId,
                 locationNameOverride: locationLabel,
                 gateway: widget.gateway,
+                showHeader: false,
                 onConnectFlowStarted: widget.gateway == null
                     ? null
                     : (flow) => openOperatorWebRedirect(flow.redirectUrl),
