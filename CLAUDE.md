@@ -321,6 +321,30 @@ re-audited after every rebase, lost and redone. These rules cut that:
 - `dart analyze` whenever the prompt requires verification.
 - "No rerun" prompts → do a code review instead.
 
+### Mobile Pressure Suite (integration tests on device)
+
+Runner files: `integration_test/mobile_pressure/lane_[a–h]_runner.dart`
+
+**Canonical run command (one lane at a time):**
+```
+flutter test integration_test/mobile_pressure/lane_X_runner.dart \
+  --device-id emulator-5554 \
+  --flavor forgeflow \
+  --dart-define=kDemoMode=true \
+  --timeout 120s
+```
+
+**Non-negotiable rules — learned the hard way:**
+- `--dart-define=kDemoMode=true` is MANDATORY. Omitting it causes every test to throw `StateError: Mobile pressure suite requires --dart-define=kDemoMode=true` at startup and 0 tests pass.
+- Run lanes **one at a time**, never in parallel. Parallel runs share `build/app/` Gradle output and produce file-copy conflicts mid-build.
+- `--timeout 120s` prevents the 12-minute default from hanging the runner on slow emulator boot.
+- If a lane times out on first run (APK install race), re-run once before diagnosing.
+
+**Unit + widget tests (no device needed):**
+```
+flutter test test/
+```
+
 ## Phase Doc Hygiene
 
 - Slice < 1 week AND < 5 files → inline in tracker.
