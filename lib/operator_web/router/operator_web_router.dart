@@ -1506,7 +1506,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       ),
       const OperatorWebNavItem(
         id: kOperatorWebNavBusinessSetup,
-        title: 'Business timing setup',
+        title: 'Service periods',
         icon: Icons.storefront_outlined,
         group: 'Business',
       ),
@@ -1606,7 +1606,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         final businessSetupWiringError = _liveSurfaceMissingGateway(
           hasLiveProvider:
               widget.source is OperatorWebBusinessTimingGatewayProvider,
-          surfaceTitle: 'Business timing setup',
+          surfaceTitle: 'Service periods',
         );
         if (businessSetupWiringError != null) {
           body = businessSetupWiringError;
@@ -1645,8 +1645,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             icon: Icons.storefront_outlined,
             title: 'Choose a location',
             body:
-                'Business timing setup reviews timing rules for one location at a '
-                'time. Use Managing to pick a location before editing timing.',
+                'Service periods are reviewed for one location at a time. Use '
+                'Managing to pick a location before editing timing.',
           );
         } else if (_editingBusinessTiming) {
           body = BusinessTimingEditorScreen(
