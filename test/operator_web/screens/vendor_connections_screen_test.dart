@@ -532,6 +532,40 @@ void main() {
       );
     });
 
+    testWidgets('Libro Reserve uses checked initials mark, not a favicon', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 800));
+      await tester.pumpWidget(
+        wrap(
+          VendorConnectionsScreen(
+            session: adminSession,
+            locationId: adminSession.primaryLocationId ?? '',
+            gateway: InMemoryVendorConnectionsGateway(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final reservationButton = find.byKey(
+        const Key('vendor_connections_connect_reservation'),
+      );
+      await tester.ensureVisible(reservationButton);
+      await tester.pumpAndSettle();
+      await tester.tap(reservationButton);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('vendor_connections_picker_choice_libro')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Libro Reserve logo'), findsOneWidget);
+      expect(
+        find.byTooltip('Official Libro Reserve icon from libroreserve.com'),
+        findsNothing,
+      );
+    });
+
     testWidgets('vendor picker card grid renders cleanly at tablet width', (
       tester,
     ) async {

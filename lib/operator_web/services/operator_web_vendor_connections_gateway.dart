@@ -332,21 +332,9 @@ class OperatorWebHttpVendorConnectionsGateway
     required String operatorId,
     required String locationId,
   }) {
-    final connections = <VendorConnectionRow>[];
-    final rawConnections = body['connections'] ?? body['connector_connections'];
-    if (rawConnections is List) {
-      for (final value in rawConnections) {
-        if (value is Map<Object?, Object?>) {
-          connections.add(_connectionFromJson(value));
-        }
-      }
-    }
-    VendorConnectionRow? byCategory(VendorCategory category) {
-      for (final row in connections) {
-        if (row.category == category) return row;
-      }
-      return null;
-    }
+    final connections = _connectionsFromJson(
+      body['connections'] ?? body['connector_connections'],
+    );
 
     return VendorConnectionsBundle(
       operatorId: _readString(body['operator_id']) ?? operatorId,
@@ -357,15 +345,33 @@ class OperatorWebHttpVendorConnectionsGateway
           'Location $locationId',
       posConnection:
           _connectionFromTopLevel(body['pos_connection']) ??
-          byCategory(VendorCategory.pos),
+          _connectionByCategory(connections, VendorCategory.pos),
       laborConnection:
           _connectionFromTopLevel(body['labor_connection']) ??
-          byCategory(VendorCategory.labor),
+          _connectionByCategory(connections, VendorCategory.labor),
       reservationConnection:
           _connectionFromTopLevel(body['reservation_connection']) ??
-          byCategory(VendorCategory.reservation),
+          _connectionByCategory(connections, VendorCategory.reservation),
       demoFlags: _demoFlagsFromJson(body['demo_flags']),
     );
+  }
+
+  static List<VendorConnectionRow> _connectionsFromJson(Object? raw) {
+    if (raw is! List) return const <VendorConnectionRow>[];
+    return raw
+        .whereType<Map<Object?, Object?>>()
+        .map(_connectionFromJson)
+        .toList(growable: false);
+  }
+
+  static VendorConnectionRow? _connectionByCategory(
+    List<VendorConnectionRow> connections,
+    VendorCategory category,
+  ) {
+    for (final row in connections) {
+      if (row.category == category) return row;
+    }
+    return null;
   }
 
   static VendorConnectionRow? _connectionFromTopLevel(Object? value) {
