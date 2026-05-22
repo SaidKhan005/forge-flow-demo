@@ -227,10 +227,9 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_applicable_days',
           message: days.isEmpty
-              ? 'Pick at least one day for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}". '
-                    'A service period needs to apply on at least one weekday.'
+              ? 'Pick at least one day for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}".'
               : 'The days for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-                    'must be Monday through Sunday (1-7).',
+                    'must be Monday to Sunday (1-7).',
           periodIndex: i,
         ),
       );
@@ -241,8 +240,8 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_quarter_hour_boundary',
           message:
-              'Start time for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-              'must land on a quarter hour (00, 15, 30, or 45 minutes past).',
+              '"${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
+              'start must be on a quarter hour (00, 15, 30, 45).',
           periodIndex: i,
         ),
       );
@@ -252,8 +251,8 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_quarter_hour_boundary',
           message:
-              'End time for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-              'must land on a quarter hour (00, 15, 30, or 45 minutes past).',
+              '"${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
+              'end must be on a quarter hour (00, 15, 30, 45).',
           periodIndex: i,
         ),
       );
@@ -266,9 +265,8 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_service_period_range',
           message:
-              'The start and end times for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-              'cannot be the same. A service period needs to last at least '
-              '15 minutes.',
+              '"${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
+              'needs end after start (at least 15 minutes).',
           periodIndex: i,
         ),
       );
@@ -323,8 +321,7 @@ ServicePeriodValidation validateServicePeriods(
             message:
                 '"${a.label.isEmpty ? "service period ${i + 1}" : a.label}" and '
                 '"${b.label.isEmpty ? "service period ${j + 1}" : b.label}" '
-                'overlap. Service periods cannot share any minutes on the same '
-                'business date.',
+                'overlap. Periods can\'t share minutes on the same day.',
             periodIndex: j,
           ),
         );
@@ -362,9 +359,9 @@ ServicePeriodValidation validateServicePeriods(
           ServicePeriodValidationError(
             code: 'business_day_start_inside_period',
             message:
-                'The business day start ($businessDayStartLocal) lands '
-                'inside "${p.label.isEmpty ? "service period ${i + 1}" : p.label}". '
-                'Move the day start outside that window or trim the period.',
+                'Day start ($businessDayStartLocal) falls inside '
+                '"${p.label.isEmpty ? "service period ${i + 1}" : p.label}". '
+                'Move it outside the period.',
             periodIndex: i,
           ),
         );

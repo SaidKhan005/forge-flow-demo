@@ -72,6 +72,7 @@ class MyAccountScreen extends StatefulWidget {
     this.actions,
     this.securityGateway,
     this.onOpenAuditLog,
+    this.onOpenSessions,
     this.scrollToSecurityOnFirstBuild = false,
     this.now,
   });
@@ -80,6 +81,12 @@ class MyAccountScreen extends StatefulWidget {
   final OperatorWebAccountActions? actions;
   final WebSecurityGateway? securityGateway;
   final VoidCallback? onOpenAuditLog;
+
+  /// Navigates to the dedicated Active sessions tab. When wired (the
+  /// router supplies it), the account "Manage active sessions" control
+  /// jumps to that tab; when null (standalone/tests) it falls back to
+  /// the in-place management dialog.
+  final VoidCallback? onOpenSessions;
   final bool scrollToSecurityOnFirstBuild;
 
   /// Test seam for the time-relative login-history filter.
@@ -617,6 +624,10 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     widget.onOpenAuditLog?.call();
   }
 
+  void _handleOpenSessions() {
+    widget.onOpenSessions?.call();
+  }
+
   bool get _canSignOutOtherSessions {
     final currentId = widget.actions?.currentAccountSessionId;
     if (currentId == null ||
@@ -715,7 +726,9 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                 errorMessage: _activeSessionsError,
                 signingOutOthers: _signingOutOtherSessions,
                 onRetry: _loadActiveSessions,
-                onManageSessions: _handleManageActiveSessions,
+                onManageSessions: widget.onOpenSessions != null
+                    ? _handleOpenSessions
+                    : _handleManageActiveSessions,
               ),
               const SizedBox(height: 14),
               _AuditLogSection(onAuditLog: _handleOpenAuditLog),
@@ -2119,9 +2132,31 @@ class _BackupCodesDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Backup codes',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Backup codes',
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: IconButton(
+                      key: const Key('mfa_backup_codes_dialog_x'),
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close,
+                        size: 22,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Text(
@@ -2266,9 +2301,33 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Change password',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Change password',
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: IconButton(
+                      key: const Key('change_password_dialog_close'),
+                      tooltip: 'Close',
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.of(context).pop(false),
+                      icon: const Icon(
+                        Icons.close,
+                        size: 22,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Text(
