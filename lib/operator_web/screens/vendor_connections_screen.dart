@@ -68,6 +68,7 @@ import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart
 import '../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 
 /// Roles permitted to configure inbound vendor connections from the
@@ -163,8 +164,8 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
       );
     }
     final locationLabel = _locationLabel();
-    return SingleChildScrollView(
-      key: const Key('operator_web_vendor_connections_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('operator_web_vendor_connections_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -35,6 +35,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_body.dart';
 import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/operator_web_surface.dart';
@@ -364,8 +365,8 @@ class _RolesScreenState extends State<RolesScreen> {
     }
     seeded.sort((a, b) => a.displayName.compareTo(b.displayName));
     custom.sort((a, b) => a.displayName.compareTo(b.displayName));
-    return SingleChildScrollView(
-      key: const Key('operator_web_roles_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('operator_web_roles_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
