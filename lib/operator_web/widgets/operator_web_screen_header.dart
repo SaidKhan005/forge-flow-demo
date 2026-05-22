@@ -30,6 +30,7 @@ class OperatorWebScreenHeader extends StatelessWidget {
     required this.title,
     this.titleKey,
     this.subtitle,
+    this.subtitleKey,
     this.actions = const <Widget>[],
     this.collapseBelowWidth = 560,
   });
@@ -45,6 +46,9 @@ class OperatorWebScreenHeader extends StatelessWidget {
 
   /// Optional one-line orientation copy under the title.
   final String? subtitle;
+
+  /// Optional key pinned on the subtitle `Text` for tests that assert it.
+  final Key? subtitleKey;
 
   /// Trailing action buttons (e.g. "Invite member", "New role").
   final List<Widget> actions;
@@ -75,6 +79,7 @@ class OperatorWebScreenHeader extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   subtitle!,
+                  key: subtitleKey,
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],

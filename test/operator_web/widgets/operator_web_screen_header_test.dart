@@ -9,6 +9,7 @@ void main() {
     String? subtitle,
     List<Widget> actions = const <Widget>[],
     Key? titleKey,
+    Key? subtitleKey,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -21,6 +22,7 @@ void main() {
                 title: 'Business account',
                 titleKey: titleKey,
                 subtitle: subtitle,
+                subtitleKey: subtitleKey,
                 actions: actions,
               ),
             ),
@@ -51,6 +53,19 @@ void main() {
 
     await pumpHeader(tester, width: 800, subtitle: 'Manage your details');
     expect(find.text('Manage your details'), findsOneWidget);
+  });
+
+  testWidgets('applies the supplied subtitleKey to the subtitle text', (
+    tester,
+  ) async {
+    await pumpHeader(
+      tester,
+      width: 800,
+      subtitle: 'Manage your details',
+      subtitleKey: const Key('header_subtitle'),
+    );
+
+    expect(find.byKey(const Key('header_subtitle')), findsOneWidget);
   });
 
   testWidgets('wide layout places actions beside the title (Row)', (

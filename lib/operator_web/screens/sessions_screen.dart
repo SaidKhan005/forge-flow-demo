@@ -48,6 +48,7 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_sessions_gateway.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/operator_web_surface.dart';
 
@@ -435,39 +436,11 @@ class _SessionsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.devices_outlined,
-                    size: 22,
-                    color: AppColors.sunsetDark,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Active sessions',
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Manage signed-in devices for your account.',
-                key: const Key('operator_web_sessions_subtitle'),
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      ],
+    return const OperatorWebScreenHeader(
+      icon: Icons.devices_outlined,
+      title: 'Active sessions',
+      subtitle: 'Manage signed-in devices for your account.',
+      subtitleKey: Key('operator_web_sessions_subtitle'),
     );
   }
 }

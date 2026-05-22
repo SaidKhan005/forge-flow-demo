@@ -55,6 +55,7 @@ import '../services/web_audit_log_hierarchy_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
 import '../widgets/audit_log_row.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
 
@@ -750,59 +751,42 @@ class _AuditLogHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        const Icon(
-          Icons.fact_check_outlined,
-          size: 22,
-          color: AppColors.sunsetDark,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Audit log',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
+    return OperatorWebScreenHeader(
+      icon: Icons.fact_check_outlined,
+      title: 'Audit log',
+      subtitle:
+          'Every change someone made to your team, your roles, your '
+          'org tree, and your sign-in security shows up here. Use the '
+          'filters to narrow down to a specific action or team member, '
+          'then export the result to a CSV when you need a paper trail.',
+      subtitleKey: const Key('operator_web_audit_log_subtitle'),
+      actions: canExport
+          ? <Widget>[
+              OutlinedButton.icon(
+                key: const Key('operator_web_audit_log_export_button'),
+                onPressed: exporting ? null : () => onExport(),
+                icon: exporting
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.sunsetDark,
+                        ),
+                      )
+                    : const Icon(Icons.file_download_outlined, size: 16),
+                label: Text(exporting ? 'Exporting' : 'Export CSV'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.sunsetDark,
+                  side: const BorderSide(color: AppColors.sunsetDark, width: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Every change someone made to your team, your roles, your '
-                'org tree, and your sign-in security shows up here. Use the '
-                'filters to narrow down to a specific action or team member, '
-                'then export the result to a CSV when you need a paper trail.',
-                key: const Key('operator_web_audit_log_subtitle'),
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-        if (canExport) ...[
-          const SizedBox(width: 16),
-          OutlinedButton.icon(
-            key: const Key('operator_web_audit_log_export_button'),
-            onPressed: exporting ? null : () => onExport(),
-            icon: exporting
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.sunsetDark,
-                    ),
-                  )
-                : const Icon(Icons.file_download_outlined, size: 16),
-            label: Text(exporting ? 'Exporting' : 'Export CSV'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.sunsetDark,
-              side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            ),
-          ),
-        ],
-      ],
+            ]
+          : const <Widget>[],
     );
   }
 }
