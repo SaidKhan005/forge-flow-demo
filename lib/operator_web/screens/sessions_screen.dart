@@ -49,6 +49,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_sessions_gateway.dart';
 import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 
 /// Permission-key bound for the Team sessions section. Aliased to the
 /// frozen catalog constant in `lib/auth/permission_keys.dart`.
@@ -305,25 +306,26 @@ class _SessionsScreenState extends State<SessionsScreen> {
     required String body,
     required String cta,
   }) async {
-    final result = await showDialog<bool>(
+    final result = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        key: const Key('sessions_confirm_dialog'),
-        title: Text(title),
-        content: Text(body),
-        actions: <Widget>[
-          TextButton(
-            key: const Key('sessions_confirm_dialog_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('sessions_confirm_dialog_confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(cta),
-          ),
-        ],
+      title: title,
+      icon: Icons.logout_outlined,
+      child: Text(
+        body,
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('sessions_confirm_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('sessions_confirm_dialog_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(cta),
+        ),
+      ],
     );
     return result == true;
   }
@@ -458,9 +460,7 @@ class _SessionsHeader extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'See where Forge and Flow is signed in, then sign out '
-                'devices that no longer need access. Mobile and web sessions '
-                'appear together here.',
+                'Manage signed-in devices for your account.',
                 key: const Key('operator_web_sessions_subtitle'),
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),

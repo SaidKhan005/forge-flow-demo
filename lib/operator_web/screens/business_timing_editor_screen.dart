@@ -443,29 +443,34 @@ class _BusinessTimingEditorScreenState
 
   @override
   Widget build(BuildContext context) {
+    final showInlineHeading = widget.onClose == null;
     return SingleChildScrollView(
       key: const Key('operator_web_business_timing_editor_screen'),
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.schedule_outlined,
-                size: 22,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  _headingText,
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
+          if (showInlineHeading) ...[
+            Row(
+              children: [
+                const Icon(
+                  Icons.schedule_outlined,
+                  size: 22,
+                  color: AppColors.sunsetDark,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _headingText,
+                    style: AppTextStyles.display20(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
           Text(
             'Service periods break the business day into the chunks your '
             'team works in: lunch, dinner, late night, and so on. You '
@@ -816,6 +821,13 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
                     _normalizeBusinessTimingTimeController(
                       businessDayStartController,
                       value,
+                    );
+                    onAnyTextChanged();
+                  },
+                  onEditingComplete: () {
+                    _normalizeBusinessTimingTimeController(
+                      businessDayStartController,
+                      businessDayStartController.text,
                     );
                     onAnyTextChanged();
                   },

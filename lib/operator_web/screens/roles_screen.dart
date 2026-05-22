@@ -36,6 +36,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
+import '../widgets/operator_web_surface.dart';
 import '../widgets/web_app_shell.dart';
 import 'custom_role_editor_screen.dart';
 import 'permission_explainer_screen.dart';
@@ -240,29 +241,30 @@ class _RolesScreenState extends State<RolesScreen> {
     required String body,
     required String cta,
   }) async {
-    final result = await showDialog<bool>(
+    final result = await showOperatorWebDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        key: const Key('roles_confirm_dialog'),
-        title: Text(title),
-        content: Text(body),
-        actions: <Widget>[
-          TextButton(
-            key: const Key('roles_confirm_dialog_cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('roles_confirm_dialog_confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.negative,
-              foregroundColor: AppColors.backgroundSurface,
-            ),
-            child: Text(cta),
-          ),
-        ],
+      title: title,
+      icon: Icons.delete_outline,
+      child: Text(
+        body,
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('roles_confirm_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('roles_confirm_dialog_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.negative,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          child: Text(cta),
+        ),
+      ],
     );
     return result == true;
   }
