@@ -128,6 +128,19 @@ if has_changed '^lib/.*\.dart$|^tool/.*\.dart$'; then
   run_lint dart run tool/ignore_justification_lint.dart
 fi
 
+# Refactor-phase anti-regrowth: the tracked operator-web / admin
+# god-screens must not grow past their frozen ceilings (lowered as they
+# decompose, never raised without operator approval). Fast: line counts.
+if has_changed '^lib/admin/screens/|^lib/admin/admin_routes\.dart$|^lib/operator_web/|^tool/operator_web_size_lint\.dart$'; then
+  run_lint dart run tool/operator_web_size_lint.dart
+fi
+
+# Skip-quarantine bar: every skipped test is self-documenting (env gate)
+# or has a docs/KNOWN_FAILING_TESTS.md row. Fast: scans test/ skip sites.
+if has_changed '^test/.*\.dart$|^docs/KNOWN_FAILING_TESTS\.md$|^tool/skip_quarantine_lint\.dart$'; then
+  run_lint dart run tool/skip_quarantine_lint.dart
+fi
+
 if [ "$ran" -eq 0 ]; then
   echo "[forge-flow pre-push] Pushed files do not require scoped repo lints."
   exit 0
