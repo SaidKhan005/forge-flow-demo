@@ -1133,7 +1133,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _scheduleWageAuthorityScrollIfNeeded();
     return SingleChildScrollView(
       key: const Key('operator_web_data_accuracy_screen'),
-      padding: const EdgeInsets.fromLTRB(28, 26, 28, 40),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 40),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1120),
