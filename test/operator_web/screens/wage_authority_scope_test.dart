@@ -128,10 +128,16 @@ void main() {
       find.byKey(const Key('wage_authority_hierarchy_scope')),
       findsNothing,
     );
-    // The scope selector is present (multi-node hierarchy).
+    // Operator scope UX was simplified (commit 25d6415b "simplify
+    // operator scope UX"): scope selection moved to the Operator Web
+    // shell's top dropdown, and the per-row provenance badge asserted
+    // above carries the inherited-vs-set-at-scope signal (HP #11). The
+    // in-screen location-only notice renders ONLY when no hierarchy is
+    // supplied (see WageAuthorityScreen, `hierarchyNodes.isEmpty`
+    // guard), so with this multi-node hierarchy it must be absent.
     expect(
-      find.byKey(const Key('wage_authority_scope_editor')),
-      findsOneWidget,
+      find.byKey(const Key('wage_authority_scope_editor_location_only')),
+      findsNothing,
     );
   });
 
