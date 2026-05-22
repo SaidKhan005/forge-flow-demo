@@ -121,6 +121,10 @@ void main() {
         find.text('Manage the services connected to Brio - Chicago Loop.'),
         findsOneWidget,
       );
+      expect(
+        find.textContaining('does not push changes back to vendor systems'),
+        findsNothing,
+      );
     });
 
     testWidgets('operator_owner renders the screen body', (tester) async {

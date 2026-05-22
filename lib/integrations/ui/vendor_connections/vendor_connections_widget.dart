@@ -77,6 +77,7 @@ class VendorConnectionsWidget extends StatefulWidget {
     this.gateway,
     this.canMutate = true,
     this.headerLeading,
+    this.showHeader = true,
     this.onConnectFlowStarted,
   });
 
@@ -92,6 +93,7 @@ class VendorConnectionsWidget extends StatefulWidget {
   /// connect / test / disconnect buttons but still renders status.
   final bool canMutate;
   final Widget? headerLeading;
+  final bool showHeader;
 
   /// Optional host hook for OAuth/key-paste redirects. Web hosts can
   /// navigate the browser; test/demo hosts can leave it null and keep
@@ -183,12 +185,14 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Header(
-                  locationName:
-                      widget.locationNameOverride ?? bundle.locationName,
-                  leading: widget.headerLeading,
-                ),
-                const SizedBox(height: 16),
+                if (widget.showHeader) ...[
+                  _Header(
+                    locationName:
+                        widget.locationNameOverride ?? bundle.locationName,
+                    leading: widget.headerLeading,
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 _CategorySection(
                   key: const Key('vendor_connections_section_pos'),
                   label: 'Point-of-sale',
