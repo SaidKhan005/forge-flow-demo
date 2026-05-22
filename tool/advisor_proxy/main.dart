@@ -1289,13 +1289,18 @@ Future<void> _runProxy(List<String> args) async {
     },
   );
 
-  // Lane C — legacy operator benchmark override router. Mounted as a
-  // pre-check below so `routeRequest` never sees the
+  // Lane B B6 — operator benchmark override hierarchy router. Mounted
+  // as a pre-check below so `routeRequest` never sees the
   // `/v1/operator/benchmarks/overrides[/{id}]` URLs (advisor_proxy.dart
-  // is UNTOUCHED, preserving the bleed-stop ceiling). GET/cap-status
-  // remain read-only behind the existing auth + permission bridge;
-  // POST/PATCH/DELETE/admin-undo are claimed and returned as gone
-  // before body parsing, gateway calls, or mutation audit events.
+  // is UNTOUCHED, preserving the bleed-stop ceiling). The router takes
+  // the inbound bearer token through the existing `authGuard` so we
+  // do not duplicate JWT verification; the `forgeflow.baseline.override`
+  // permission gate closes over the same
+  // `ProxyPermissionSnapshotResolver` the rest of routeRequest uses.
+  // The gateway is constructed in `proxy_bootstrap.dart` (over the
+  // tenant pool) so this file does not import `package:postgres`.
+  // Mirrors the C-1 SendGrid + B8 audit-log-hierarchy sibling-file
+  // decompose precedents.
   final operatorBenchmarkOverridesRouter = OperatorBenchmarkOverridesRouter(
     gateway: productionBindings.operatorBenchmarkOverridesGateway,
     auditSink: productionBindings.operatorBenchmarkOverridesAuditSink,
@@ -1339,35 +1344,34 @@ Future<void> _runProxy(List<String> args) async {
         return OperatorBenchmarkOverridesPermissionEffect.unavailable;
       }
     },
-    unhandledErrorLogger:
-        ({
-          required String method,
-          required String path,
-          required Object error,
-          required StackTrace stackTrace,
-        }) {
-          final errorText = error.toString().replaceAll(RegExp(r'\s+'), ' ');
-          final clipped = errorText.length > 500
-              ? '${errorText.substring(0, 500)}...'
-              : errorText;
-          final stackText = stackTrace.toString();
-          final firstNewline = stackText.indexOf('\n');
-          final firstFrame = firstNewline == -1
-              ? stackText
-              : stackText.substring(0, firstNewline);
-          log(
-            LogSeverity.error,
-            'proxy.unhandled_error',
-            fields: <String, Object?>{
-              'surface': 'operator_benchmark_overrides',
-              'method': method,
-              'path': path,
-              'error_type': error.runtimeType.toString(),
-              'error_message': clipped,
-              'stack_first_frame': firstFrame,
-            },
-          );
+    unhandledErrorLogger: ({
+      required String method,
+      required String path,
+      required Object error,
+      required StackTrace stackTrace,
+    }) {
+      final errorText = error.toString().replaceAll(RegExp(r'\s+'), ' ');
+      final clipped = errorText.length > 500
+          ? '${errorText.substring(0, 500)}...'
+          : errorText;
+      final stackText = stackTrace.toString();
+      final firstNewline = stackText.indexOf('\n');
+      final firstFrame = firstNewline == -1
+          ? stackText
+          : stackText.substring(0, firstNewline);
+      log(
+        LogSeverity.error,
+        'proxy.unhandled_error',
+        fields: <String, Object?>{
+          'surface': 'operator_benchmark_overrides',
+          'method': method,
+          'path': path,
+          'error_type': error.runtimeType.toString(),
+          'error_message': clipped,
+          'stack_first_frame': firstFrame,
         },
+      );
+    },
   );
 
   // Lane B B8.b — operator-web parity router. Mounts the
@@ -1380,7 +1384,8 @@ Future<void> _runProxy(List<String> args) async {
   // resolver pick the right HTTP status (401 on missing JWT, 403 on
   // missing permission, 503 on snapshot read failure) without
   // leaking those concerns into the route handler.
-  final operatorWebAuditLogHierarchyRouter = OperatorWebAuditLogHierarchyRouter(
+  final operatorWebAuditLogHierarchyRouter =
+      OperatorWebAuditLogHierarchyRouter(
     gateway: productionBindings.operatorWebAuditLogHierarchyGateway,
     authResolver: (request) async {
       OperatorContext scope;
@@ -1403,9 +1408,8 @@ Future<void> _runProxy(List<String> args) async {
       }
       ProxyPermissionSnapshot snapshot;
       try {
-        snapshot = await productionBindings.permissionSnapshotResolver.load(
-          scope,
-        );
+        snapshot =
+            await productionBindings.permissionSnapshotResolver.load(scope);
       } on Exception catch (_) {
         return const OperatorWebAuditLogHierarchyAuthResult.unavailable();
       }
@@ -1442,27 +1446,27 @@ Future<void> _runProxy(List<String> args) async {
   // top of this region.
   final operatorTierEmailHttpClient = http.Client();
   final operatorTierEmailSendGridProvider = SendGridEmailProvider(
-    httpGateway:
-        ({
-          required String method,
-          required Uri uri,
-          required Map<String, String> headers,
-          String? body,
-        }) async {
-          final request = http.Request(method, uri);
-          request.headers.addAll(headers);
-          if (body != null) request.body = body;
-          final streamed = await operatorTierEmailHttpClient
-              .send(request)
-              .timeout(const Duration(seconds: 15));
-          final response = await http.Response.fromStream(streamed);
-          return SendGridHttpResponse(
-            statusCode: response.statusCode,
-            headers: response.headers,
-            body: response.body,
-          );
-        },
-    apiKeyProvider: () async => Platform.environment['SENDGRID_API_KEY'] ?? '',
+    httpGateway: ({
+      required String method,
+      required Uri uri,
+      required Map<String, String> headers,
+      String? body,
+    }) async {
+      final request = http.Request(method, uri);
+      request.headers.addAll(headers);
+      if (body != null) request.body = body;
+      final streamed = await operatorTierEmailHttpClient
+          .send(request)
+          .timeout(const Duration(seconds: 15));
+      final response = await http.Response.fromStream(streamed);
+      return SendGridHttpResponse(
+        statusCode: response.statusCode,
+        headers: response.headers,
+        body: response.body,
+      );
+    },
+    apiKeyProvider: () async =>
+        Platform.environment['SENDGRID_API_KEY'] ?? '',
     sandboxMode:
         (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
             .trim()
@@ -1499,54 +1503,52 @@ Future<void> _runProxy(List<String> args) async {
         return null;
       }
     },
-    unhandledErrorLogger:
-        ({
-          required String method,
-          required String path,
-          required Object error,
-          required StackTrace stackTrace,
-        }) {
-          final errorText = error.toString().replaceAll(RegExp(r'\s+'), ' ');
-          final clipped = errorText.length > 500
-              ? '${errorText.substring(0, 500)}...'
-              : errorText;
-          final stackText = stackTrace.toString();
-          final firstNewline = stackText.indexOf('\n');
-          final firstFrame = firstNewline == -1
-              ? stackText
-              : stackText.substring(0, firstNewline);
-          log(
-            LogSeverity.error,
-            'proxy.unhandled_error',
-            fields: <String, Object?>{
-              'surface': 'operator_tier_email',
-              'method': method,
-              'path': path,
-              'error_type': error.runtimeType.toString(),
-              'error_message': clipped,
-              'stack_first_frame': firstFrame,
-            },
-          );
+    unhandledErrorLogger: ({
+      required String method,
+      required String path,
+      required Object error,
+      required StackTrace stackTrace,
+    }) {
+      final errorText = error.toString().replaceAll(RegExp(r'\s+'), ' ');
+      final clipped = errorText.length > 500
+          ? '${errorText.substring(0, 500)}...'
+          : errorText;
+      final stackText = stackTrace.toString();
+      final firstNewline = stackText.indexOf('\n');
+      final firstFrame = firstNewline == -1
+          ? stackText
+          : stackText.substring(0, firstNewline);
+      log(
+        LogSeverity.error,
+        'proxy.unhandled_error',
+        fields: <String, Object?>{
+          'surface': 'operator_tier_email',
+          'method': method,
+          'path': path,
+          'error_type': error.runtimeType.toString(),
+          'error_message': clipped,
+          'stack_first_frame': firstFrame,
         },
-    sendErrorLogger:
-        ({
-          required String operatorId,
-          required String actorUserId,
-          required String auditRowId,
-          required Object error,
-        }) {
-          log(
-            LogSeverity.error,
-            'operator_tier_email.send_failed',
-            fields: <String, Object?>{
-              'operator_id': operatorId,
-              'actor_user_id': actorUserId,
-              'audit_row_id': auditRowId,
-              'error_type': error.runtimeType.toString(),
-              'error_message': error.toString(),
-            },
-          );
+      );
+    },
+    sendErrorLogger: ({
+      required String operatorId,
+      required String actorUserId,
+      required String auditRowId,
+      required Object error,
+    }) {
+      log(
+        LogSeverity.error,
+        'operator_tier_email.send_failed',
+        fields: <String, Object?>{
+          'operator_id': operatorId,
+          'actor_user_id': actorUserId,
+          'audit_row_id': auditRowId,
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
         },
+      );
+    },
   );
   log(
     LogSeverity.info,
@@ -1986,9 +1988,9 @@ Future<void> _runProxy(List<String> args) async {
           // The router writes its own JSON response and closes the
           // HTTP response; we early-return so `routeRequest` (which
           // would 401 on missing Authorization) does not fire.
-          if (await productionBindings.sendGridEventsWebhookRouter.tryHandle(
-            request,
-          )) {
+          if (await productionBindings
+              .sendGridEventsWebhookRouter
+              .tryHandle(request)) {
             return;
           }
           // endregion
@@ -2015,9 +2017,8 @@ Future<void> _runProxy(List<String> args) async {
           // writes its own JSON response and closes the HTTP response;
           // we early-return so `routeRequest` (which would 401 on the
           // lack of a Firebase JWT) does not fire.
-          if (await productionBindings.firebaseTestLabWebhookRouter.tryHandle(
-            request,
-          )) {
+          if (await productionBindings.firebaseTestLabWebhookRouter
+              .tryHandle(request)) {
             return;
           }
           // endregion
@@ -2035,13 +2036,19 @@ Future<void> _runProxy(List<String> args) async {
           }
           // endregion
           // region: lane_b_b6_benchmark_overrides
-          // Lane C — legacy operator benchmark override routes.
-          // GET /v1/operator/benchmarks/overrides and cap-status remain
-          // read-only; POST/PATCH/DELETE/admin-undo are claimed here and
-          // returned as gone before Idempotency-Key parsing, gateway
-          // calls, or mutation audit events. Non-matching paths fall
-          // through to the existing dispatcher. advisor_proxy.dart is
-          // intentionally NOT touched (bleed-stop ceiling discipline).
+          // Lane B B6 — operator benchmark override hierarchy. Handles
+          // GET/POST /v1/operator/benchmarks/overrides and
+          // PATCH/DELETE /v1/operator/benchmarks/overrides/{id}. The
+          // router does its own JWT + role + permission + Idempotency-
+          // Key verification via the injected resolvers (closures over
+          // `authGuard` and `productionBindings.permissionSnapshotResolver`);
+          // returns false on non-matching paths so the existing
+          // dispatcher continues. advisor_proxy.dart is intentionally
+          // NOT touched (bleed-stop ceiling discipline) — the only
+          // mounting site is this pre-check. Mirrors the B8
+          // audit-log-hierarchy mount pattern (sibling file +
+          // `tryHandle` short-circuit) so reviewers see one idiom for
+          // every operator/admin sibling router.
           if (await operatorBenchmarkOverridesRouter.tryHandle(request)) {
             return;
           }
@@ -2090,7 +2097,8 @@ Future<void> _runProxy(List<String> args) async {
           // continues. advisor_proxy.dart is intentionally NOT
           // touched (bleed-stop ceiling discipline) — the only
           // mounting site is this pre-check.
-          if (await operatorWebAuditLogHierarchyRouter.tryHandle(request)) {
+          if (await operatorWebAuditLogHierarchyRouter
+              .tryHandle(request)) {
             return;
           }
           // endregion
