@@ -1390,3 +1390,40 @@ not under pressure.
 
 **Authority:** `docs/_audits/code_health/code_hardening_plan_2026_05_21.md`
 §2.3 + §2.4 (tooling gaps) + this entry.
+
+## P3 — Remove orphaned `AuditLogHierarchyFilterPane` widget (operator-web, 2026-05-22)
+
+Surfaced by the full-suite test-health audit (2026-05-22). The
+operator-web audit-log scope UX was reworked so the screen reads the
+selected scope from the **Operator Web shell's top dropdown** "instead
+of rendering a second hierarchy picker inside the page"
+(`lib/operator_web/screens/audit_log_screen.dart:138-141`). That rework
+(commits `2a4a6254` "Operator Web Wave 5 audit log UX consistency" /
+`25d6415b` "simplify operator scope UX") **unwired** the standalone
+in-page picker but left the widget file behind.
+
+**Dead code to remove (operator-web — Codex lane):**
+
+- `lib/operator_web/screens/audit_log_hierarchy_filter_pane.dart`
+  (~693 lines). `AuditLogHierarchyFilterPane` is imported and
+  instantiated **nowhere** in `lib/` — confirmed via
+  `rg "AuditLogHierarchyFilterPane" lib` (only its own definition + a
+  now-stale doc comment at `audit_log_screen.dart:124`).
+- Stale doc comment at `audit_log_screen.dart:123-124` that still says
+  the screen "renders the `AuditLogHierarchyFilterPane` sibling" — update
+  or drop it when the widget is removed.
+
+**Already done (this audit, test-only, PR `claude/fix-stale-operator-web-tests`):**
+The widget's only test, `test/operator_web/screens/
+audit_log_hierarchy_filter_pane_test.dart` (5 cases that pinned the
+unwired pane), was **deleted** — it could never pass again without
+resurrecting dead code. The live screen keeps coverage via
+`audit_log_screen_test.dart` + `audit_log_integrity_badge_test.dart`.
+
+**Residual risk (low):** the shell dropdown + main list (filters, actor
+labels, run) appear to fully replace the pane's capabilities, but this
+audit did not exhaustively prove every pane affordance migrated. Confirm
+during widget removal. If a capability is missing, this becomes a
+re-wire (regression) rather than a delete.
+
+**Authority:** test-health audit 2026-05-22 + this entry.
