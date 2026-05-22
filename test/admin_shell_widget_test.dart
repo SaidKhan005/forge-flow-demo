@@ -404,6 +404,16 @@ void main() {
     testWidgets('${scenario.title} uses the shared hierarchy workspace', (
       tester,
     ) async {
+      // Desktop admin window. The shell header is 96px (UX-parity Slice
+      // B) so the body needs a realistic height for the taller-content
+      // workspace panes (Knowledge Base / Connected services).
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
       final source = DemoAdminAuthSource.signedInAsSuperAdmin();
       addTearDown(source.dispose);
 
@@ -467,7 +477,10 @@ void main() {
   testWidgets('operator support action opens logs with exact filters', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1440, 1024);
+    // Taller window so the 96px shell header (UX-parity Slice B) does
+    // not push the asserted debug-console row out of the lazy list's
+    // built range.
+    tester.view.physicalSize = const Size(1440, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
       tester.view.resetPhysicalSize();
