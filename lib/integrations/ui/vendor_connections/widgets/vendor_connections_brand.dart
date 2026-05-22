@@ -155,8 +155,6 @@ _VendorBrand _vendorBrand(String vendorId, String displayName) {
         displayName: 'Libro Reserve',
         initials: 'Li',
         color: const Color(0xFF006C5B),
-        iconUrl: _brandIconUrl('libroreserve.com'),
-        sourceHost: 'libroreserve.com',
       );
     case 'opentable':
       return _VendorBrand(
