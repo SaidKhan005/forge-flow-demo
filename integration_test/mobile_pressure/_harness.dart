@@ -88,11 +88,78 @@ Future<void> tapTab(WidgetTester tester, int index) async {
   await pumpUntil(tester, budget: kTabBudget);
 }
 
+/// Pumps until the Shift dashboard has resolved out of its loading state —
+/// either section headers are visible (data), one of the recognised
+/// empty-state headline strings is present, or the body text appears.
+///
+/// Use this after [tapTab](0) in shift-specific scenarios.
+/// Rationale: `_navigateTo(0)` short-circuits when tab 0 is already
+/// selected (no `setState` → no Flutter frame), so `pumpUntil` exits
+/// after one 100 ms pump — before [ShiftDashboardNotifier._load()]'s
+/// async SQLite chain completes.  This helper pumps until the notifier
+/// has actually finished regardless of frame scheduling.
+Future<void> pumpUntilShiftSettled(
+  WidgetTester tester, {
+  Duration budget = const Duration(seconds: 20),
+}) async {
+  const kEmptyHeadlines = <String>[
+    'NO LIVE SHIFT',
+    'LOCKED PLAN UNAVAILABLE',
+    'NO DATA',
+    'FIRST SYNC PENDING',
+    'BACKFILL PENDING',
+    'BACKFILL FAILED',
+    'BACKFILL DEAD-LETTERED',
+    'HISTORICAL ONLY',
+    'IMPORT FAILED',
+    'STALE',
+    'CURRENT',
+    'DEMO',
+  ];
+  const kBodyStrings = <String>[
+    'No open or projected shift is available.',
+    'No locked weekly plan is available for the current week.',
+  ];
+
+  final sw = Stopwatch()..start();
+  while (sw.elapsed < budget) {
+    if (find.text('SHIFT OUTPUTS').evaluate().isNotEmpty) return;
+    if (kEmptyHeadlines.any((h) => find.text(h).evaluate().isNotEmpty)) return;
+    if (kBodyStrings.any((b) => find.text(b).evaluate().isNotEmpty)) return;
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+}
+
 Future<void> tapSettingsTab(WidgetTester tester, int index) async {
   final bars = find.byType(BottomNavigationBar);
   expect(bars, findsAtLeast(1));
   final bar = tester.widget<BottomNavigationBar>(bars.last);
   bar.onTap?.call(index);
+  await tester.pump();
+  await pumpUntil(tester, budget: kTabBudget);
+}
+
+/// Navigates back from a pushed screen.
+///
+/// Forge & Flow screens use [Icons.close] (not a standard [BackButton]) as
+/// their [AppBar.leading] widget, so [WidgetTester.pageBack] (which looks
+/// for [BackButton] / [CupertinoNavigationBarBackButton]) always fails.
+/// This helper taps [Icons.close] first, then falls back to [Icons.arrow_back],
+/// then calls [Navigator.pop] programmatically.
+Future<void> navigateBack(WidgetTester tester) async {
+  final closeBtn = find.byIcon(Icons.close);
+  if (closeBtn.evaluate().isNotEmpty) {
+    await tester.tap(closeBtn.first, warnIfMissed: false);
+  } else {
+    final backBtn = find.byIcon(Icons.arrow_back);
+    if (backBtn.evaluate().isNotEmpty) {
+      await tester.tap(backBtn.first, warnIfMissed: false);
+    } else {
+      // Last resort: programmatic pop.
+      final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+      nav.pop();
+    }
+  }
   await tester.pump();
   await pumpUntil(tester, budget: kTabBudget);
 }

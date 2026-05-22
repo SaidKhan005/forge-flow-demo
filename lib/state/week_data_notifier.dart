@@ -30,6 +30,7 @@ class WeekDataNotifier extends ChangeNotifier {
   WeekData? _weekData;
   bool _isLoading = true;
   StreamSubscription<RealtimeEvent>? _realtimeSubscription;
+  bool _disposed = false;
 
   WeekDataNotifier(this._source) {
     _load();
@@ -39,9 +40,11 @@ class WeekDataNotifier extends ChangeNotifier {
   bool       get isLoading => _isLoading;
 
   Future<void> refresh() async {
+    if (_disposed) return;
     _isLoading = true;
     notifyListeners();
     _weekData = await _source.getWeekToDate();
+    if (_disposed) return;
     _isLoading = false;
     notifyListeners();
   }
@@ -62,6 +65,7 @@ class WeekDataNotifier extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _realtimeSubscription?.cancel();
     _realtimeSubscription = null;
     super.dispose();
@@ -69,6 +73,7 @@ class WeekDataNotifier extends ChangeNotifier {
 
   Future<void> _load() async {
     _weekData = await _source.getWeekToDate();
+    if (_disposed) return;
     _isLoading = false;
     notifyListeners();
   }

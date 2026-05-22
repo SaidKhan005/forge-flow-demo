@@ -16,6 +16,7 @@ class ActiveTargetProfileNotifier extends ChangeNotifier {
   ActiveTargetProfile? _profile;
   int _revision = 0;
   bool _isLoading = true;
+  bool _disposed = false;
 
   ActiveTargetProfile? get profile => _profile;
   int get revision => _revision;
@@ -34,7 +35,9 @@ class ActiveTargetProfileNotifier extends ChangeNotifier {
         _isLoading = false;
 
   Future<void> refresh() async {
+    if (_disposed) return;
     await _load();
+    if (_disposed) return;
     _revision++;
     notifyListeners();
   }
@@ -44,12 +47,14 @@ class ActiveTargetProfileNotifier extends ChangeNotifier {
         await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
     _profile = await WageStandardContextService.instance
         .loadOrBootstrapProfile(restaurantId);
+    if (_disposed) return;
     _isLoading = false;
     notifyListeners();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     if (BaselineManagerService.instance.onActiveTargetChanged == refresh) {
       BaselineManagerService.instance.onActiveTargetChanged = null;
     }

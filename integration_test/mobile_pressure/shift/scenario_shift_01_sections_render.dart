@@ -28,7 +28,13 @@ void main() {
       await expectAppShellMounted(tester);
 
       // Index 0 is the Shift tab — already the default; ensure we are on it.
+      // NOTE: _navigateTo(0) short-circuits when tab 0 is already selected
+      // (no setState → no Flutter frame).  pumpUntil would exit after one
+      // 100 ms pump, before ShiftDashboardNotifier._load()'s SQLite chain
+      // completes.  pumpUntilShiftSettled keeps pumping until the notifier
+      // publishes its first result regardless of frame scheduling.
       await tapTab(tester, 0);
+      await pumpUntilShiftSettled(tester);
 
       // ShiftDashboard must be mounted.
       expect(
@@ -44,7 +50,11 @@ void main() {
           find.text('SHIFT OUTPUTS').evaluate().isNotEmpty;
       final hasInputsHeader = find.text('SHIFT INPUTS').evaluate().isNotEmpty;
       final hasFohHeader = find.text('FOH PRODUCTIVITY').evaluate().isNotEmpty;
-      final hasData = hasOutputsHeader && hasInputsHeader && hasFohHeader;
+      // OR not AND: all three section headers may not be on-screen
+      // simultaneously.  FOH PRODUCTIVITY is the third section in a lazy
+      // SliverList and is often below the fold on a real device.
+      // Any one header being visible proves the dashboard is in data state.
+      final hasData = hasOutputsHeader || hasInputsHeader || hasFohHeader;
 
       // All valid empty-state headline strings from _ShiftEmptyState:
       //   headline = AppDataStatus.label ?? 'NO LIVE SHIFT' (null-status

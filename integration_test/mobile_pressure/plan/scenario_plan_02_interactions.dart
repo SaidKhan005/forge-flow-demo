@@ -41,8 +41,12 @@ void main() {
       // is true, and the trailing icon is Icons.expand_more.
       final expandMoreFinder = find.byIcon(Icons.expand_more);
       if (expandMoreFinder.evaluate().isNotEmpty) {
+        // The first expand icon may be below the fold (y > screen height).
+        // Scroll it into the viewport before tapping.
+        await tester.ensureVisible(expandMoreFinder.first);
+        await tester.pump();
         // Tap the first expandable row.
-        await tester.tap(expandMoreFinder.first);
+        await tester.tap(expandMoreFinder.first, warnIfMissed: false);
         await tester.pump();
         await pumpUntil(tester, budget: const Duration(seconds: 3));
 
@@ -62,7 +66,9 @@ void main() {
         );
 
         // Collapse by tapping expand_less.
-        await tester.tap(expandLessFinder.first);
+        await tester.ensureVisible(expandLessFinder.first);
+        await tester.pump();
+        await tester.tap(expandLessFinder.first, warnIfMissed: false);
         await tester.pump();
         await pumpUntil(tester, budget: const Duration(seconds: 3));
 

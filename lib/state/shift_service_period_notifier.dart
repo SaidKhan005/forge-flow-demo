@@ -166,6 +166,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
   String? _iana;
   bool _isLoading = true;
   bool _missingTimezone = false;
+  bool _disposed = false;
 
   /// Per-service-period accumulators keyed by `ServicePeriodId`. Null
   /// while loading; an empty map (or one with empty accumulators) when
@@ -269,6 +270,12 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
         _isLoading = false,
         _missingTimezone = iana == null || iana.trim().isEmpty;
 
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   Future<void> refresh() async {
     await _load();
   }
@@ -298,6 +305,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       _primaryLeverIds = const {};
       _businessDate = null;
       _isLoading = false;
+      if (_disposed) return;
       notifyListeners();
       return;
     }
@@ -313,6 +321,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       };
       _primaryLeverIds = const {};
       _isLoading = false;
+      if (_disposed) return;
       notifyListeners();
       return;
     }
@@ -348,6 +357,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       };
       _primaryLeverIds = const {};
       _isLoading = false;
+      if (_disposed) return;
       notifyListeners();
       return;
     }
@@ -375,6 +385,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
     );
 
     _isLoading = false;
+    if (_disposed) return;
     notifyListeners();
   }
 

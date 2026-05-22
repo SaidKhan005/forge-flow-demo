@@ -48,6 +48,7 @@ class ScheduleDistributionWeightsNotifier extends ChangeNotifier {
   ScheduleDistributionWeights? _weights;
   bool _isLoading = false;
   bool _hasLoaded = false;
+  bool _disposed = false;
 
   /// Current distribution weights. Null before first load or when unavailable.
   ScheduleDistributionWeights? get weights => _weights;
@@ -116,6 +117,7 @@ class ScheduleDistributionWeightsNotifier extends ChangeNotifier {
         _weights = null;
         _isLoading = false;
         _hasLoaded = true;
+        if (_disposed) return;
         notifyListeners();
         return;
       }
@@ -159,6 +161,13 @@ class ScheduleDistributionWeightsNotifier extends ChangeNotifier {
 
     _isLoading = false;
     _hasLoaded = true;
+    if (_disposed) return;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

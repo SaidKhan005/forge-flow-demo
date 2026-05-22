@@ -52,10 +52,10 @@ void main() {
       // SettingsScreen must be in the tree.
       expectSettings();
 
-      // Navigate back using the Flutter navigator (matches real back-button).
-      await tester.pageBack();
-      await tester.pump();
-      await pumpUntil(tester, budget: kTabBudget);
+      // Navigate back. SettingsScreen uses Icons.close as its leading action
+      // (not a standard BackButton), so tester.pageBack() fails.
+      // navigateBack() taps Icons.close first.
+      await navigateBack(tester);
 
       // SettingsScreen must be gone after back navigation.
       expect(

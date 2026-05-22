@@ -43,28 +43,38 @@ void main() {
       await tapSettingsTab(tester, 2);
       await pumpUntil(tester, budget: kTabBudget);
 
+      // Scroll to bottom so all SliverMainAxisGroup sections are built.
+      // "Demo date" is a kDemoMode-only section that may be below the fold.
+      final scrollViews = find.byType(CustomScrollView);
+      if (scrollViews.evaluate().isNotEmpty) {
+        await tester.drag(scrollViews.first, const Offset(0, -4000));
+        await tester.pump();
+        await pumpUntil(tester, budget: kTabBudget);
+      }
+
       // Required section headers.
+      // skipOffstage: false handles headers scrolled out of the viewport.
       expect(
-        find.text('Sync status'),
+        find.text('Sync status', skipOffstage: false),
         findsAtLeast(1),
         reason: 'Sync status section not found on Data tab.',
       );
       expect(
-        find.text('Latest updates'),
+        find.text('Latest updates', skipOffstage: false),
         findsAtLeast(1),
         reason: 'Latest updates section not found on Data tab.',
       );
 
       // kDemoMode carve-out #3 — both demo-only sections must render.
       expect(
-        find.text('Data reset'),
+        find.text('Data reset', skipOffstage: false),
         findsAtLeast(1),
         reason:
             'Demo carve-out #3 violated: "Data reset" section not rendered '
             'in a kDemoMode=true build.',
       );
       expect(
-        find.text('Demo date'),
+        find.text('Demo date', skipOffstage: false),
         findsAtLeast(1),
         reason:
             'Demo carve-out #3 violated: "Demo date" section not rendered '

@@ -47,26 +47,38 @@ void main() {
       await tapSettingsTab(tester, 0);
       await pumpUntil(tester, budget: kTabBudget);
 
+      // Scroll to the bottom so all SliverMainAxisGroup sections
+      // (Covers setup → Business timing → Wage setup) are built.
+      // "Wage setup" is the third section and is often below the fold.
+      final scrollViews = find.byType(CustomScrollView);
+      if (scrollViews.evaluate().isNotEmpty) {
+        await tester.drag(scrollViews.first, const Offset(0, -4000));
+        await tester.pump();
+        await pumpUntil(tester, budget: kTabBudget);
+      }
+
       // Section headers rendered by StickySectionDelegate.
+      // skipOffstage: false finds headers that are in the tree but
+      // currently scrolled out of the viewport.
       expect(
-        find.text('Wage setup'),
+        find.text('Wage setup', skipOffstage: false),
         findsAtLeast(1),
         reason: 'Wage setup section header not rendered on Setup tab.',
       );
       expect(
-        find.text('Business timing'),
+        find.text('Business timing', skipOffstage: false),
         findsAtLeast(1),
         reason: 'Business timing section header not rendered on Setup tab.',
       );
       expect(
-        find.text('Covers setup'),
+        find.text('Covers setup', skipOffstage: false),
         findsAtLeast(1),
         reason: 'Covers setup section header not rendered on Setup tab.',
       );
 
       // WageAuthoritySection: the section widget itself has a key.
       expect(
-        find.byKey(const Key('settings_wage_setup_section')),
+        find.byKey(const Key('settings_wage_setup_section'), skipOffstage: false),
         findsOneWidget,
         reason: 'WageAuthoritySection container key not found.',
       );
@@ -74,19 +86,19 @@ void main() {
       // Covers setup section header text
       // (settings_covers_setup_section.dart _Header title).
       expect(
-        find.text('Record cover counts'),
+        find.text('Record cover counts', skipOffstage: false),
         findsAtLeast(1),
         reason: 'Covers setup header text not rendered.',
       );
 
       // Pointer rows for ops-web navigation.
       expect(
-        find.text('Manage Wage on Ops Web'),
+        find.text('Manage Wage on Ops Web', skipOffstage: false),
         findsAtLeast(1),
         reason: 'Manage Wage pointer row label not found.',
       );
       expect(
-        find.text('Manage Timing on Ops Web'),
+        find.text('Manage Timing on Ops Web', skipOffstage: false),
         findsAtLeast(1),
         reason: 'Manage Timing pointer row label not found.',
       );

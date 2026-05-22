@@ -62,18 +62,20 @@ void main() {
       await tester.pump();
       await pumpUntil(tester, budget: kTabBudget);
 
+      // When SettingsScreen is pushed, AppShell is in an offstage route.
+      // skipOffstage: false is required to find the banner in the
+      // deactivated (offstage) route below the settings overlay.
       expect(
-        find.byType(DemoModeBanner),
+        find.byType(DemoModeBanner, skipOffstage: false),
         findsWidgets,
         reason:
             'DemoModeBanner must still be in tree while SettingsScreen is open. '
-            'The banner is mounted in AppShell which remains in the Navigator stack.',
+            'The banner is mounted in AppShell which remains in the Navigator stack '
+            '(offstage while Settings overlay is active).',
       );
 
-      // Return from settings — banner must still be present.
-      await tester.pageBack();
-      await tester.pump();
-      await pumpUntil(tester, budget: kTabBudget);
+      // Return from settings. SettingsScreen uses Icons.close (not BackButton).
+      await navigateBack(tester);
 
       expect(
         find.byType(DemoModeBanner),
