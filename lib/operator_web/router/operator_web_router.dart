@@ -1892,6 +1892,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 session: session,
                 locationId: locationScope.id,
                 locationName: locationScope.label,
+                gateway: _vendorConnectionsGateway,
                 dataAccuracyGateway: _dataAccuracyGateway,
                 vendorApplicabilityGateway: _vendorApplicabilityGateway,
                 businessDateIso: businessDateIso,

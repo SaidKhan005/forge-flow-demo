@@ -755,6 +755,55 @@ void main() {
       expect(find.text('Open'), findsWidgets);
     });
 
+    testWidgets(
+      'management picker drives location-scoped Data accuracy vendor context',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.completed();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavDataAccuracy,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Vendor wages need a labor integration.'),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.byKey(const Key('operator_web_management_scope_picker')),
+        );
+        await tester.pump();
+        await tester.tap(find.text('Downtown').last);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Toast'), findsWidgets);
+        expect(find.text('Humanity'), findsWidgets);
+        expect(find.text('OpenTable'), findsWidgets);
+        expect(
+          find.textContaining('Humanity supplies role rates and hours.'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Toast can supply POS guest counts.'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Vendor wages need a labor integration.'),
+          findsNothing,
+        );
+      },
+    );
+
     testWidgets('side nav switches body to business setup screen', (
       tester,
     ) async {
