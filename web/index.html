@@ -14,6 +14,12 @@
   -->
   <base href="$FLUTTER_BASE_HREF">
 
+  <!-- QA harness only — see _qa_polyfill.js. Forces visibility=visible
+       and replaces requestAnimationFrame so Flutter Web paints inside a
+       headless Electron Chromium that would otherwise pause rAF. Not
+       shipped to production. -->
+  <script src="_qa_polyfill.js"></script>
+
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';

@@ -17,6 +17,17 @@
       "port": 8181
     },
     {
+      "name": "operator-web-static",
+      "runtimeExecutable": "C:\\Users\\blund\\AppData\\Local\\Pub\\Cache\\bin\\dhttpd.bat",
+      "runtimeArgs": [
+        "--path",
+        "build/web",
+        "--port",
+        "8185"
+      ],
+      "port": 8185
+    },
+    {
       "name": "operator-web-demo-profile",
       "runtimeExecutable": "powershell",
       "runtimeArgs": [
