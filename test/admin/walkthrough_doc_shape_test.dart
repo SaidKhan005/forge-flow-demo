@@ -1,7 +1,7 @@
 // Phase 8 spine-bridge Lane .C — acceptance item J.
 //
 // Walkthrough doc shape pinned against the 7.58.UX.5 template. Reads
-// docs/_walkthroughs/8.spine-bridge.C.md from disk and asserts the
+// docs/archive/_walkthroughs/8.spine-bridge.C.md from disk and asserts the
 // canonical sections + route IDs + audit-row obligation are documented.
 //
 // NB: the walkthrough doc may not exist when this test runs locally;
@@ -17,13 +17,13 @@ import 'package:forge_and_flow/admin/widgets/plain_english_explainer_card.dart';
 
 void main() {
   group('8.spine-bridge.C — walkthrough doc matches 7.58.UX.5 shape', () {
-    test('docs/_walkthroughs/8.spine-bridge.C.md exists and carries the '
+    test('docs/archive/_walkthroughs/8.spine-bridge.C.md exists and carries the '
         'expected sections + route IDs', () {
-      final file = File('docs/_walkthroughs/8.spine-bridge.C.md');
+      final file = File('docs/archive/_walkthroughs/8.spine-bridge.C.md');
       expect(
         file.existsSync(),
         isTrue,
-        reason: 'walkthrough file docs/_walkthroughs/8.spine-bridge.C.md '
+        reason: 'walkthrough file docs/archive/_walkthroughs/8.spine-bridge.C.md '
             'must exist',
       );
 
