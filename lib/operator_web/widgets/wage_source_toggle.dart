@@ -6,8 +6,7 @@
 //   * "Use vendor"        — labor vendor's reported wages and dollars
 //                           when available. Default.
 //   * "Use my manual mix" — operator's manual wage mix from the wage
-//                           editor (the same rates the wage generator
-//                           uses).
+//                           Settings.
 //
 // Authority: docs/contracts/data_accuracy_settings_contract.md
 // "Wage source card" + "Wage source resolution" sections.
@@ -89,8 +88,7 @@ class WageSourceToggle extends StatelessWidget {
           _RadioRow(
             rowKey: const Key('wage_source_radio_manual_mix'),
             selected: effectiveValue == WageSource.manualMix,
-            label:
-                'Use my manual wage mix from Settings (the same rates the wage generator uses)',
+            label: 'Use my manual wage mix from Settings below',
             body:
                 'Use the wage-role rows you maintain in Forge & Flow. This '
                 'is the manual fallback when the vendor does not provide '

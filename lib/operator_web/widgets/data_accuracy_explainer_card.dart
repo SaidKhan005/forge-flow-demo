@@ -95,7 +95,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
             heading: 'Data freshness',
             body: dataFreshnessApplies
                 ? _freshnessMapLine(bundle)
-                : 'Applies only to vendors that need scheduled checks. Webhook vendors update when they happen.',
+                : 'Shows whether Forge & Flow checks vendors on a schedule or receives updates when vendors push them.',
             vendors: dataAccuracyConnectedPollOnlyVendors(bundle),
             disabled: !dataFreshnessApplies,
           ),
@@ -107,20 +107,20 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   static String _laborMapLine(VendorConnectionsBundle? bundle) {
     final labor = bundle?.laborConnection;
     if (labor == null) {
-      return 'Vendor wages appear when a labor integration can supply them.';
+      return 'Controls how Forge & Flow turns labor hours into labor dollars for the dashboard.';
     }
     final wageClass = laborWageSourceClassFor(labor.vendorId);
     return switch (wageClass) {
       LaborWageSourceClass.perEmployeeWithDollars =>
-        '${labor.displayName} reports labor dollars directly.',
+        '${labor.displayName} can supply labor dollars. This setting chooses the labor-dollar source for the dashboard.',
       LaborWageSourceClass.perEmployeeWithRates =>
-        '${labor.displayName} reports employee rates. Forge & Flow calculates labor dollars from rates and time.',
+        '${labor.displayName} supplies employee rates and time. This setting chooses how labor dollars are calculated.',
       LaborWageSourceClass.perPositionWithRates =>
-        '${labor.displayName} reports role rates. Forge & Flow calculates labor dollars from rates and hours.',
+        '${labor.displayName} supplies role rates and hours. This setting chooses how labor dollars are calculated.',
       LaborWageSourceClass.hoursOnly =>
-        '${labor.displayName} reports hours only. Vendor mode uses target wage x hours.',
+        '${labor.displayName} supplies hours. This setting chooses which wage source turns those hours into dollars.',
       null =>
-        '${labor.displayName} is connected, but its wage path is not mapped yet.',
+        '${labor.displayName} is connected. This setting chooses the labor-dollar source for the dashboard.',
     };
   }
 
@@ -130,24 +130,23 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   ) {
     final pos = bundle?.posConnection;
     if (pos == null) {
-      return 'Vendor covers appear when a POS exposes guest counts.';
+      return 'Controls the guest-count source for each service period. Covers drive per-cover metrics.';
     }
     if (posVendorExposesCovers(pos.vendorId)) {
-      return '${pos.displayName} exposes covers, so Vendor is available by service period.';
+      return '${pos.displayName} can supply POS guest counts. This setting chooses the cover source by service period.';
     }
     final periods = servicePeriodLabels.isEmpty
         ? 'each service period'
         : servicePeriodLabels.take(3).join(', ');
-    return '${pos.displayName} does not expose covers, so Vendor is locked. Pick the source for $periods.';
+    return '${pos.displayName} does not supply POS guest counts. This setting chooses the fallback cover source for $periods.';
   }
 
   static String _freshnessMapLine(VendorConnectionsBundle? bundle) {
     final vendors = _pollOnlyVendorNames(bundle);
     if (vendors.isEmpty) {
-      return 'Applies only when Oracle MICROS Simphony, QuickBooks Time, '
-          'Humanity, Agendrix, or Push Operations is connected.';
+      return 'Controls how often Forge & Flow checks scheduled integrations for new data.';
     }
-    return 'Applies to ${vendors.join(' and ')} because those vendors need scheduled checks.';
+    return 'Controls how often Forge & Flow checks ${vendors.join(' and ')} for new data.';
   }
 
   static List<VendorConnectionRow> _vendorList(

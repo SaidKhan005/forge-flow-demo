@@ -115,11 +115,14 @@ void main() {
       expect(find.text('Square'), findsWidgets);
       expect(find.text('OpenTable'), findsWidgets);
       expect(
-        find.textContaining('Square does not expose covers'),
+        find.textContaining('Square does not supply POS guest counts'),
         findsOneWidget,
       );
       expect(find.textContaining('Breakfast service'), findsOneWidget);
-      expect(find.textContaining('scheduled checks'), findsOneWidget);
+      expect(
+        find.textContaining('checks QuickBooks Time for new data'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('keeps real-time integrations compact on freshness', (
@@ -148,7 +151,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('Webhook vendors update when they happen.'),
+        find.textContaining('receives updates when vendors push them'),
         findsOneWidget,
       );
       expect(find.text('Toast'), findsWidgets);
@@ -172,15 +175,15 @@ void main() {
         findsNothing,
       );
       expect(
-        find.textContaining('Webhook vendors update when they happen.'),
+        find.textContaining('receives updates when vendors push them'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('Vendor wages appear when a labor integration'),
+        find.textContaining('turns labor hours into labor dollars'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('Vendor covers appear when a POS exposes'),
+        find.textContaining('guest-count source for each service period'),
         findsOneWidget,
       );
     });
