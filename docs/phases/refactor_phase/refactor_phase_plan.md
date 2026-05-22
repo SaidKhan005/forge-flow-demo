@@ -87,16 +87,28 @@ Each is an independent worker-agent slice; A1–A6 can fan out in parallel.
 | Slice | Scope | Effort | Output |
 |---|---|---|---|
 | **A1 — Test baseline + flake pin** | Capture the current full-suite result (11,484 pass / 0 fail / 8 skip on master @ 2026-05-22) as a committed regression reference. Multi-seed run of `test/operator_web` + `test/admin` widget tests to confirm only the one quarantined router test flakes. Build `tool/flake_counter.dart` (§8 gap) to parse multi-seed JSON. | S | `docs/_audits/code_health/test_baseline_2026_05_22.md` + `tool/flake_counter.dart` |
-| **A2 — Characterization tests for refactor targets** | Add behavior-pinning tests **only where coverage is thin**, for the exact files Phase B moves: (a) `my_account_screen` panes (MFA / sessions / profile / security) — widget tests pinning each pane's render + the tab-host wiring; (b) the 3 proxy hybrid dispatchers (B2.1, B11.2, C-4) — route tests pinning request/response envelope, auth guard, idempotency key, error shape **before** helper extraction; (c) `operator_location_admin`, `admin_routes`, `roles_hierarchy_sessions`, `operator_web_router` — smoke/widget tests pinning the key render + scope paths. Satisfies the contract's "Proof Required" up front. | L | New `*_characterization_test.dart` files; coverage-gap note |
+| **A2 — Characterization tests for refactor targets** | **DEFERRED to each B slice's start (post-happy-state) — see "A2 timing" note below.** Add behavior-pinning tests **only where coverage is thin**, for the exact files Phase B moves: (a) `my_account_screen` panes (MFA / sessions / profile / security); (b) the 3 proxy hybrid dispatchers (B2.1, B11.2, C-4) — route tests pinning request/response envelope, auth guard, idempotency key, error shape **before** helper extraction; (c) `operator_location_admin`, `admin_routes`, `roles_hierarchy_sessions`, `operator_web_router` — smoke/widget tests pinning the key render + scope paths. Satisfies the contract's "Proof Required". | L | New `*_characterization_test.dart` files, per B slice |
 | **A3 — Size-ceiling lints (anti-regrowth)** | Build `tool/operator_web_size_lint.dart` (R-1 #1) mirroring `advisor_proxy_size_lint.dart`. Generalize to a per-file ceiling map covering the admin god-screens too (`tool/screen_size_lint.dart` or extend). Set each ceiling at **current** size (freeze — they cannot grow during the phase); lowered per file as B1/B2 land. | M | `tool/operator_web_size_lint.dart` (+ admin coverage); pre-push wire |
 | **A4 — Metrics ratchet check (core "do not regress" gate)** | `tool/metrics_ratchet_check.dart`: run `dart_code_linter` JSON, count warning/alarm per metric, compare to the committed baseline (340 / 261 / 122 / 4), **fail if any count grows**. Wire into pre-push (advisory → ratchet). Per the runbook, per-metric promotion to *blocking* happens later (B5) once counts drop; this is the intermediate guardrail that guarantees cleanup only reduces debt. | M | `tool/metrics_ratchet_check.dart` + committed baseline JSON |
 | **A5 — Skip-quarantine lint** | `tool/skip_quarantine_lint.dart` (§8 gap): fail if any `skip:` / `.skip(` in `test/` lacks a matching row in `docs/KNOWN_FAILING_TESTS.md`. Stops silent test-skipping during the churn. | S | `tool/skip_quarantine_lint.dart` + pre-push wire |
 | **A6 — Test-output hygiene** | Gitignore the two tracked files that running the suite rewrites (`test/integration/pressure/p2c_spine_findings.jsonl`, `p2d_mobile_sync_findings_summary.txt`) so refactor PRs don't carry spurious diffs / dirty the worktree. | S | `.gitignore` patterns + force-keep the canonical committed copy if needed |
 | **A7 — (optional) TODO age lint** | `tool/todo_age_lint.dart` (§8 gap) — `git blame` TODOs, warn > 90 days. Low priority; keeps debt visible. | S | `tool/todo_age_lint.dart` |
 
-**Phase A exit:** all six lints/tools green on master; characterization
-suite green and committed; ratchet baseline frozen; full suite still
-11,484 pass. **This is the gate that lets Phase B start safely.**
+**Phase A exit:** A1 + A3 + A4 + A5 + A6 lints/tools green on master;
+ratchet baseline frozen; full suite still ~11,485 pass. **This is the
+gate that lets Phase B start safely.**
+
+**A2 timing (refinement 2026-05-22):** characterization tests pin a
+surface's current behavior, so they are written **just before each B
+slice runs, against the happy-state-frozen surface** — not in the
+upfront Phase A batch. Writing them now would pin surfaces that are
+still moving (operator-web is actively polished; the proxy is still
+taking feature work per the code_hardening §7 item-1 hold), which
+reproduces the stale-test failure mode this whole phase exists to
+prevent (see the 6 stale operator-web tests fixed in PR #1157). So A2 is
+a **per-B-slice prerequisite**, listed under each B row's "Pre-req"
+column, not an ungated now-slice. Everything else in Phase A is
+surface-independent and lands now.
 
 ---
 
@@ -146,7 +158,8 @@ lower; ceilings locked so they cannot regrow.
 
 | Work | Gated on |
 |---|---|
-| **Phase A (A1–A7)** | **Nothing — start now.** Additive guardrails. |
+| **Phase A guardrails (A1, A3–A7)** | **Nothing — start now.** Additive guardrails. |
+| **A2 (characterization tests)** | Written per-B-slice at each slice's start (post-happy-state) — see "A2 timing" note. |
 | **B0 (orphaned pane)** | Nothing (dead code); Codex-lane or operator OK. |
 | **B1, B2, B5, B6** | **Happy-state tag** (operator marks operator-web/admin surfaces feature-stable). |
 | **B3, B4** | **Proxy** surfaces feature-stable (separate "happy" mark per code_hardening §7 item 1). |
