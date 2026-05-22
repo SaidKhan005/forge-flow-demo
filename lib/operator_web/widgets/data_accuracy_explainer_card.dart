@@ -11,6 +11,7 @@ import '../../domain/models/service_period_definition.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../services/integration/labor_wage_source_class.dart';
 import '../../theme/app_theme.dart';
+import 'data_accuracy_applicability.dart';
 import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
@@ -66,6 +67,10 @@ class DataAccuracyExplainerCard extends StatelessWidget {
             key: const Key('data_accuracy_map_intro'),
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
+          if (!dataAccuracyHasAnyConnectedVendor(bundle)) ...[
+            const SizedBox(height: 10),
+            const _NoVendorsNotice(),
+          ],
           const SizedBox(height: 14),
           _MapNode(
             slug: 'labor',
@@ -94,9 +99,8 @@ class DataAccuracyExplainerCard extends StatelessWidget {
             heading: 'Data freshness',
             body: dataFreshnessApplies
                 ? _freshnessMapLine(bundle)
-                : 'Does not apply to your integrations. Your connected '
-                      'vendors push updates when they happen.',
-            vendors: _pollOnlyVendorNames(bundle),
+                : dataFreshnessNotApplicableCopy(bundle),
+            vendors: dataAccuracyConnectedPollOnlyVendors(bundle),
             disabled: !dataFreshnessApplies,
           ),
         ],
@@ -160,31 +164,50 @@ class DataAccuracyExplainerCard extends StatelessWidget {
         'scheduled checks.';
   }
 
-  static List<String> _vendorList(List<VendorConnectionRow?> rows) {
-    return rows
-        .whereType<VendorConnectionRow>()
-        .map((row) => row.displayName)
-        .toList(growable: false);
+  static List<VendorConnectionRow> _vendorList(
+    List<VendorConnectionRow?> rows,
+  ) {
+    return rows.whereType<VendorConnectionRow>().toList(growable: false);
   }
 
   static List<String> _pollOnlyVendorNames(VendorConnectionsBundle? bundle) {
-    const pollOnlyVendorIds = <String>{
-      'oracle_micros_simphony',
-      'quickbooks_time',
-      'humanity',
-      'agendrix',
-      'push_operations',
-    };
-    return <VendorConnectionRow?>[
-          bundle?.posConnection,
-          bundle?.laborConnection,
-        ]
-        .whereType<VendorConnectionRow>()
-        .where((row) {
-          return pollOnlyVendorIds.contains(row.vendorId);
-        })
-        .map((row) => row.displayName)
-        .toList(growable: false);
+    return dataAccuracyConnectedPollOnlyVendors(
+      bundle,
+    ).map((row) => row.displayName).toList(growable: false);
+  }
+}
+
+class _NoVendorsNotice extends StatelessWidget {
+  const _NoVendorsNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('data_accuracy_no_vendors_notice'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.shimmer,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.link_off_outlined,
+            size: 18,
+            color: AppColors.textMuted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'No vendor is connected for this location yet. Manual labor and manual covers stay available while vendor-only choices wait for an integration.',
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -202,7 +225,7 @@ class _MapNode extends StatelessWidget {
   final IconData icon;
   final String heading;
   final String body;
-  final List<String> vendors;
+  final List<VendorConnectionRow> vendors;
   final bool disabled;
 
   @override
@@ -252,7 +275,7 @@ class _MapNode extends StatelessWidget {
                     runSpacing: 6,
                     children: [
                       for (final vendor in vendors)
-                        _VendorChip(label: vendor, disabled: disabled),
+                        _VendorChip(vendor: vendor, disabled: disabled),
                     ],
                   ),
                 ],
@@ -266,9 +289,9 @@ class _MapNode extends StatelessWidget {
 }
 
 class _VendorChip extends StatelessWidget {
-  const _VendorChip({required this.label, required this.disabled});
+  const _VendorChip({required this.vendor, required this.disabled});
 
-  final String label;
+  final VendorConnectionRow vendor;
   final bool disabled;
 
   @override
@@ -280,10 +303,55 @@ class _VendorChip extends StatelessWidget {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _VendorChipMark(vendor: vendor, disabled: disabled),
+          const SizedBox(width: 6),
+          Text(
+            vendor.displayName,
+            style: AppTextStyles.chipLabel(
+              color: disabled ? AppColors.textMuted : AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VendorChipMark extends StatelessWidget {
+  const _VendorChipMark({required this.vendor, required this.disabled});
+
+  final VendorConnectionRow vendor;
+  final bool disabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = vendor.displayName
+        .split(RegExp(r'\s+'))
+        .where((word) => word.trim().isNotEmpty)
+        .take(2)
+        .map((word) => word.substring(0, 1))
+        .join();
+    return Container(
+      width: 18,
+      height: 18,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: disabled
+            ? AppColors.shimmer
+            : AppColors.sunset.withValues(alpha: 0.12),
+        border: Border.all(
+          color: disabled ? AppColors.borderSubtle : AppColors.sunsetDark,
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(5),
+      ),
       child: Text(
-        label,
-        style: AppTextStyles.chipLabel(
-          color: disabled ? AppColors.textMuted : AppColors.textSecondary,
+        initials.isEmpty ? '?' : initials,
+        style: AppTextStyles.mono11(
+          color: disabled ? AppColors.textMuted : AppColors.sunsetDark,
         ),
       ),
     );

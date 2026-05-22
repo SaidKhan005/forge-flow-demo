@@ -861,6 +861,53 @@ void main() {
       expect(find.textContaining('2 minutes'), findsOneWidget);
     });
 
+    testWidgets('stale tier cadence does not unlock freshness with no vendor', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final gateway = _RecordingDataAccuracyGateway()
+        ..seedPollingTier = OperatorWebPollingTierSnapshot(
+          operatorId: ownerSession.operatorId,
+          locationId: ownerSession.primaryLocationId ?? '',
+          tierKey: 'premium',
+          pollingCadencePerVendorSeconds: const <String, int>{
+            'quickbooks_time': 120,
+          },
+          monthlyPriceCents: 2900,
+          effectiveAt: DateTime.utc(2026, 5, 20),
+        );
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: gatewayWithBundle(
+              ownerSession,
+              bundleFor(session: ownerSession),
+            ),
+            dataAccuracyGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('polling_tier_not_applicable_notice')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('No vendor is connected'), findsWidgets);
+      expect(
+        find.byKey(const Key('polling_tier_vendor_row_quickbooks_time')),
+        findsNothing,
+      );
+      final button = tester.widget<FilledButton>(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      expect(button.onPressed, isNull);
+    });
+
     testWidgets('refreshes polling tier when the location changes', (
       tester,
     ) async {

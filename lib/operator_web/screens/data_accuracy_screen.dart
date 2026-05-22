@@ -43,6 +43,7 @@ import '../services/web_vendor_applicability_gateway.dart';
 import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
+import '../widgets/data_accuracy_applicability.dart';
 import '../widgets/data_accuracy_explainer_card.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/keyed_service_period_accuracy_card.dart';
@@ -60,7 +61,6 @@ import '../../services/restaurant_timing_config_read_service.dart';
 import '../../integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
-import '../../services/integration/polling_tier_presets.dart';
 import '../../theme/app_theme.dart';
 
 /// Roles permitted to edit data accuracy from the operator-web
@@ -84,20 +84,11 @@ const Set<String> kOperatorWebDataAccuracyAdmittedRoles = <String>{
 /// filtered to whichever poll-only vendors the operator has
 /// connected.
 PollingTierStatus _kDefaultStandardTier(VendorConnectionsBundle? bundle) {
-  final connectedPollOnly = <String, int>{};
-  final pos = bundle?.posConnection;
-  final labor = bundle?.laborConnection;
-  if (pos != null && kStandardTierPresets.containsKey(pos.vendorId)) {
-    connectedPollOnly[pos.vendorId] = kStandardTierPresets[pos.vendorId]!;
-  }
-  if (labor != null && kStandardTierPresets.containsKey(labor.vendorId)) {
-    connectedPollOnly[labor.vendorId] = kStandardTierPresets[labor.vendorId]!;
-  }
   return PollingTierStatus(
     tier: PollingTierLabel.standard,
     tierDisplayLabel: 'Standard',
     monthlyPriceLabel: 'Bundled with subscription',
-    perVendorCadenceSeconds: connectedPollOnly,
+    perVendorCadenceSeconds: defaultConnectedPollingCadences(bundle),
   );
 }
 
@@ -924,10 +915,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       );
       return;
     }
-    final tier =
-        widget.tierStatus ??
-        _loadedTierStatus ??
-        _kDefaultStandardTier(_bundle);
+    final tier = _displayTierStatus ?? _kDefaultStandardTier(_bundle);
     final idempotencyKey =
         widget.tierEmailIdempotencyKeyFactory?.call() ??
         _defaultTierEmailIdempotencyKey();
@@ -1017,13 +1005,23 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   bool get _showAnyFallbackCard =>
       _anyDaypartManual || _showWalkInCard || _showHistoricalSeedCard;
 
-  bool get _dataFreshnessApplies {
-    final tier = widget.tierStatus ?? _loadedTierStatus;
-    if (tier != null && tier.perVendorCadenceSeconds.isNotEmpty) return true;
-    final pos = _bundle?.posConnection;
-    final labor = _bundle?.laborConnection;
-    return (pos != null && kStandardTierPresets.containsKey(pos.vendorId)) ||
-        (labor != null && kStandardTierPresets.containsKey(labor.vendorId));
+  bool get _dataFreshnessApplies => dataFreshnessAppliesToBundle(_bundle);
+
+  PollingTierStatus? get _displayTierStatus {
+    final tier =
+        widget.tierStatus ??
+        _loadedTierStatus ??
+        (_tierLoading ? null : _kDefaultStandardTier(_bundle));
+    if (tier == null) return null;
+    return PollingTierStatus(
+      tier: tier.tier,
+      tierDisplayLabel: tier.tierDisplayLabel,
+      monthlyPriceLabel: tier.monthlyPriceLabel,
+      perVendorCadenceSeconds: connectedPollingCadences(
+        _bundle,
+        tier.perVendorCadenceSeconds,
+      ),
+    );
   }
 
   // ── Build ───────────────────────────────────────────────────────
@@ -1092,10 +1090,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         ),
       );
     }
-    final tier =
-        widget.tierStatus ??
-        _loadedTierStatus ??
-        (_tierLoading ? null : _kDefaultStandardTier(_bundle));
+    final tier = _displayTierStatus;
     final settings = _materialize();
     final locationLabel = _locationLabel();
     _scheduleWageAuthorityScrollIfNeeded();

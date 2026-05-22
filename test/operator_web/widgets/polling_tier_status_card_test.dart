@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/widgets/polling_tier_status_card.dart';
 
 PollingTierStatus standardStatus({Map<String, int>? cadences}) =>
@@ -30,6 +31,25 @@ PollingTierStatus standardStatus({Map<String, int>? cadences}) =>
 Widget _wrap(Widget child) {
   return MaterialApp(
     home: Scaffold(body: SingleChildScrollView(child: child)),
+  );
+}
+
+VendorConnectionsBundle realTimeBundle() {
+  return const VendorConnectionsBundle(
+    operatorId: 'op-1',
+    locationId: 'loc-1',
+    locationName: 'Water Street',
+    posConnection: VendorConnectionRow(
+      connectionId: 'toast-conn',
+      vendorId: 'toast',
+      displayName: 'Toast',
+      category: VendorCategory.pos,
+      status: VendorConnectionStatus.connected,
+      metadata: <String, Object?>{},
+    ),
+    laborConnection: null,
+    reservationConnection: null,
+    demoFlags: <VendorCategory, bool>{},
   );
 }
 
@@ -219,7 +239,7 @@ void main() {
         _wrap(
           PollingTierStatusCard(
             status: standardStatus(cadences: const <String, int>{}),
-            bundle: null,
+            bundle: realTimeBundle(),
             appliesToConnectedVendors: false,
             onRequestTierChange: () {},
           ),
@@ -239,6 +259,24 @@ void main() {
         find.byKey(const Key('polling_tier_request_change_button')),
       );
       expect(button.onPressed, isNull);
+    });
+
+    testWidgets('not-applicable state has honest no-vendor copy', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          PollingTierStatusCard(
+            status: standardStatus(cadences: const <String, int>{}),
+            bundle: null,
+            appliesToConnectedVendors: false,
+            onRequestTierChange: () {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('No vendor is connected'), findsOneWidget);
     });
   });
 

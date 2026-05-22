@@ -14,17 +14,16 @@
 // "Square does not expose covers directly..."
 //
 // Wage class lookup goes through Lane .2's
-// `lib/services/integration/labor_wage_source_class.dart` — the
-// 2026-05-05-binding sidecar — so this widget never disagrees with
-// the aggregator on what wage path a connected labor vendor takes.
-// Per the 2026-05-05 corrections, no Wave B vendor currently
-// qualifies as `perEmployeeWithDollars`; QBT/7shifts run at
-// `perEmployeeWithRates` (rate × duration), Humanity/Agendrix at
+// `lib/services/integration/labor_wage_source_class.dart`, so this
+// widget never disagrees with the aggregator on what wage path a
+// connected labor vendor takes. 7shifts now reports direct dollars;
+// QBT runs at `perEmployeeWithRates` (rate x duration),
+// Humanity/Agendrix at
 // `perPositionWithRates`, ADP/Push at `hoursOnly`.
 //
 // Covers exposure + poll-only-ness live as small const sets in this
-// file because there is no central capability registry yet. Keep them
-// in sync with each vendor's `api_consumed.md` reference doc.
+// file for Flutter-web availability. Keep them in sync with each
+// vendor's `api_consumed.md` reference doc.
 
 import 'package:flutter/material.dart';
 
@@ -144,15 +143,15 @@ List<String> _composeWageLines(VendorConnectionsBundle? bundle) {
   final labor = bundle?.laborConnection;
   if (labor == null) {
     return <String>[
-      'This setting applies when your labor vendor does not expose per-shift dollars.',
-      'Scheduling systems that do not expose dollars at V1: QuickBooks Time, 7shifts, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
+      'Connect a labor vendor before using vendor-reported wages. Manual wage mix stays available.',
+      'Vendors that need fallback math at V1: QuickBooks Time, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
     ];
   }
   final wageClass = laborWageSourceClassFor(labor.vendorId);
   if (wageClass == null) {
     return <String>[
       'Your labor vendor (${labor.displayName}) is connected. This setting controls how F&F resolves labor dollars when the vendor does not expose them directly.',
-      'Scheduling systems that do not expose dollars at V1: QuickBooks Time, 7shifts, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
+      'Vendors that need fallback math at V1: QuickBooks Time, Humanity, Agendrix, ADP Workforce Now, Push Operations.',
     ];
   }
   switch (wageClass) {
@@ -214,7 +213,7 @@ List<String> _composePollingLines(VendorConnectionsBundle? bundle) {
 
   if (pollOnlyConnected.isEmpty && webhookConnected.isEmpty) {
     return <String>[
-      'Some vendors push new data to Forge & Flow the moment it happens. Others only respond when we ask. Your tier controls how often we ask the ones that do not push.',
+      'Connect a vendor before data freshness has anything to control. Some vendors push new data right away; others only respond when we ask.',
       'Vendors that need to be asked: Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations.',
     ];
   }

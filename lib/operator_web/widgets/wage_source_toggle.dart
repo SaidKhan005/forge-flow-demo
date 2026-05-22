@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'data_accuracy_applicability.dart';
 import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
@@ -53,7 +54,8 @@ class WageSourceToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     final sourceLabel = source?.operatorFacingLabel;
     final vendorSelectable =
-        !vendorApplicabilityBound || applicableWageVendorSlugs.isNotEmpty;
+        wageVendorOptionApplies(bundle) &&
+        (!vendorApplicabilityBound || applicableWageVendorSlugs.isNotEmpty);
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_wage_source_card'),
       title: 'How labor dollars are calculated',
@@ -117,6 +119,9 @@ class WageSourceToggle extends StatelessWidget {
   }
 
   String _vendorCopy(bool vendorSelectable) {
+    if (!wageVendorOptionApplies(bundle)) {
+      return 'Connect a labor vendor before using vendor-reported wages. Manual mix stays available.';
+    }
     if (vendorApplicabilityBound && !vendorSelectable) {
       return 'No current wage vendor is enabled for this location yet. Use the manual mix until F&F enables one.';
     }
