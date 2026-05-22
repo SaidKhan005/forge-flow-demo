@@ -30,8 +30,8 @@ import 'package:flutter/material.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
-import 'operator_web_info_button.dart';
-import 'operator_web_section_heading.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 
 /// Pure value object the card emits when the operator submits the
 /// dialog. The screen forwards this into

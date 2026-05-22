@@ -26,10 +26,10 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_schedule_gateway.dart';
-import '../widgets/operator_web_info_button.dart';
-import '../widgets/operator_web_screen_body.dart';
-import '../widgets/operator_web_screen_header.dart';
-import '../widgets/operator_web_section_heading.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import '../widgets/schedule_forecast_explainer_panel.dart';
 
 /// Roles admitted to read the locked weekly plan from op-web. Mirrors the

@@ -45,7 +45,7 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
-import '../widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import 'invite_member_dialog.dart' show InviteMemberDialogCopy;
 
 /// Locked validation copy for the Edit member dialog. Reuses the

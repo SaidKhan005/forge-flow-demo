@@ -55,9 +55,9 @@ import '../services/web_audit_log_hierarchy_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
 import '../widgets/audit_log_row.dart';
-import '../widgets/operator_web_screen_body.dart';
-import '../widgets/operator_web_screen_header.dart';
-import '../widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../../theme/app_theme.dart';
 
 /// Permission-key bound for the Audit Log read surface. Live source

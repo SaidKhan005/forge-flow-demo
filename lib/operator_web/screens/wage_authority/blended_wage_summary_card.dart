@@ -19,8 +19,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_theme.dart';
-import '../../widgets/operator_web_info_button.dart';
-import '../../widgets/operator_web_section_heading.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import 'blended_wage_calculator.dart';
 
 /// Plain-English display name for each labor bucket. Keep in sync with

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/operator_web/widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {

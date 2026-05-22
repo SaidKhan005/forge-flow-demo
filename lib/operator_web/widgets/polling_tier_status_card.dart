@@ -23,8 +23,8 @@ import 'package:flutter/material.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
 import 'data_accuracy_applicability.dart';
-import 'operator_web_info_button.dart';
-import 'operator_web_section_heading.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import 'vendor_relativity_label.dart';
 
 /// Tier label keys. The display string + monthly price label come

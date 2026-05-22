@@ -74,7 +74,7 @@ import '../screens/sign_in_screen.dart';
 import '../screens/vendor_connections_screen.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/web_app_shell.dart';
-import '../widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../../theme/app_theme.dart';
 
 /// Stable nav ids for the post-onboarding shell. Tests and deep

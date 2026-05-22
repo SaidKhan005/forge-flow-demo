@@ -30,7 +30,7 @@ import 'package:forge_and_flow/operator_web/screens/audit_log_screen.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_audit_log_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_audit_log_gateway.dart';
-import 'package:forge_and_flow/operator_web/widgets/operator_web_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {

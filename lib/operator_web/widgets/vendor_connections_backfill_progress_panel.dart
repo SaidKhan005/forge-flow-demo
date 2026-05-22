@@ -30,8 +30,8 @@ import 'package:flutter/material.dart';
 
 import '../services/operator_web_connector_backfill_jobs_gateway.dart';
 import '../../theme/app_theme.dart';
-import 'operator_web_info_button.dart';
-import 'operator_web_section_heading.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 
 /// Panel state machine — drives the rendered surface based on the
 /// gateway response (or absence of gateway).
