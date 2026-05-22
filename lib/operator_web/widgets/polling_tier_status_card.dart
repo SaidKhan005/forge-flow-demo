@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'data_accuracy_applicability.dart';
 import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
@@ -181,8 +182,7 @@ class _FreshnessDoesNotApplyBlock extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Does not apply to your integrations. Your connected '
-                  'vendors push updates to Forge & Flow when they happen.',
+                  dataFreshnessNotApplicableCopy(bundle),
                   style: AppTextStyles.body13(color: AppColors.textMuted),
                 ),
               ),

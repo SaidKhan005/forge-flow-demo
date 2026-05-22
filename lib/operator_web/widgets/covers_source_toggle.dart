@@ -28,6 +28,7 @@ import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'data_accuracy_applicability.dart';
 import 'data_accuracy_explainer_card.dart';
 import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
@@ -87,6 +88,7 @@ class CoversSourceToggle extends StatelessWidget {
                 period: period,
                 source: settings.coversSourceFor(period.id),
                 sourceMetadata: settings.coversSourceSourceFor(period.id),
+                bundle: bundle,
                 onChanged: (source) => onChanged(period.id, source),
               ),
               if (period != servicePeriods.last) const SizedBox(height: 10),
@@ -107,12 +109,14 @@ class _PeriodRow extends StatelessWidget {
     required this.period,
     required this.source,
     required this.sourceMetadata,
+    required this.bundle,
     required this.onChanged,
   });
 
   final ServicePeriodDefinition period;
   final CoversSource source;
   final DataAccuracySettingSource? sourceMetadata;
+  final VendorConnectionsBundle? bundle;
   final ValueChanged<CoversSource> onChanged;
 
   @override
@@ -151,6 +155,11 @@ class _PeriodRow extends StatelessWidget {
                         ),
                         label: _sourceLabel(option),
                         selected: option == source,
+                        enabled: coversSourceOptionApplies(option, bundle),
+                        disabledReason: coversSourceDisabledReason(
+                          option,
+                          bundle,
+                        ),
                         onTap: () => onChanged(option),
                       ),
                   ],
@@ -158,6 +167,15 @@ class _PeriodRow extends StatelessWidget {
               ),
             ],
           ),
+          if (!coversSourceOptionApplies(source, bundle)) ...[
+            const SizedBox(height: 6),
+            Text(
+              coversSourceDisabledReason(source, bundle) ??
+                  'This source does not apply to the current integrations.',
+              key: Key('covers_source_disabled_reason_${period.id}'),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ],
           if (sourceLabel != null) ...[
             const SizedBox(height: 6),
             Text(
@@ -190,40 +208,53 @@ class _ChoiceChip extends StatelessWidget {
     required this.chipKey,
     required this.label,
     required this.selected,
+    required this.enabled,
+    this.disabledReason,
     required this.onTap,
   });
 
   final Key chipKey;
   final String label;
   final bool selected;
+  final bool enabled;
+  final String? disabledReason;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final chip = InkWell(
       key: chipKey,
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.sunset.withValues(alpha: 0.14)
-              : AppColors.backgroundSurface,
-          border: Border.all(
-            color: selected ? AppColors.sunsetDark : AppColors.borderSubtle,
-            width: 1,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.58,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.sunset.withValues(alpha: 0.14)
+                : AppColors.backgroundSurface,
+            border: Border.all(
+              color: selected ? AppColors.sunsetDark : AppColors.borderSubtle,
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(999),
           ),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: AppTextStyles.mono14(
-            color: selected ? AppColors.sunsetDark : AppColors.textSecondary,
-            weight: selected ? FontWeight.w700 : FontWeight.w500,
+          child: Text(
+            label,
+            style: AppTextStyles.mono14(
+              color: !enabled
+                  ? AppColors.textMuted
+                  : selected
+                  ? AppColors.sunsetDark
+                  : AppColors.textSecondary,
+              weight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
           ),
         ),
       ),
     );
+    if (enabled || disabledReason == null) return chip;
+    return Tooltip(message: disabledReason!, child: chip);
   }
 }

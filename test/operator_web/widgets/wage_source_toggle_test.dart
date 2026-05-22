@@ -47,6 +47,18 @@ void main() {
     );
   }
 
+  VendorConnectionsBundle noVendorBundle() {
+    return const VendorConnectionsBundle(
+      operatorId: 'brio-operator',
+      locationId: 'brio-chicago-loop',
+      locationName: 'Brio - Chicago Loop',
+      posConnection: null,
+      laborConnection: null,
+      reservationConnection: null,
+      demoFlags: <VendorCategory, bool>{},
+    );
+  }
+
   bool anyTextContains(String needle) {
     final elements = find.byType(Text).evaluate();
     for (final element in elements) {
@@ -66,7 +78,7 @@ void main() {
         WageSourceToggle(
           value: WageSource.vendor,
           onChanged: (_) {},
-          bundle: null,
+          bundle: noVendorBundle(),
         ),
       ),
     );
@@ -97,7 +109,7 @@ void main() {
         WageSourceToggle(
           value: WageSource.vendor,
           onChanged: (_) {},
-          bundle: null,
+          bundle: noVendorBundle(),
           source: const DataAccuracySettingSource(
             scopeType: 'org_unit',
             sourceKind: 'scoped_override',
@@ -123,7 +135,7 @@ void main() {
         WageSourceToggle(
           value: WageSource.vendor,
           onChanged: (value) => captured = value,
-          bundle: null,
+          bundle: noVendorBundle(),
         ),
       ),
     );
@@ -146,7 +158,7 @@ void main() {
             return WageSourceToggle(
               value: current,
               onChanged: (value) => setState(() => current = value),
-              bundle: null,
+              bundle: bundleWithLabor('quickbooks_time', 'QuickBooks Time'),
             );
           },
         ),
@@ -163,6 +175,58 @@ void main() {
     await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
     await tester.pumpAndSettle();
     expect(current, equals(WageSource.vendor));
+  });
+
+  testWidgets('vendor wage option is disabled with no labor vendor', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1024, 800));
+    WageSource? captured;
+
+    await tester.pumpWidget(
+      wrap(
+        WageSourceToggle(
+          value: WageSource.vendor,
+          onChanged: (value) => captured = value,
+          bundle: noVendorBundle(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+    await tester.pumpAndSettle();
+
+    expect(captured, isNull);
+    expect(
+      find.textContaining('Connect a labor vendor before using vendor'),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('vendor wage option follows the connected labor vendor slug', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1024, 800));
+    WageSource? captured;
+
+    await tester.pumpWidget(
+      wrap(
+        WageSourceToggle(
+          value: WageSource.manualMix,
+          onChanged: (value) => captured = value,
+          bundle: bundleWithLabor('quickbooks_time', 'QuickBooks Time'),
+          vendorApplicabilityBound: true,
+          applicableWageVendorSlugs: const <String>['toast'],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+    await tester.pumpAndSettle();
+
+    expect(captured, isNull);
   });
 
   testWidgets('wage class label updates with connected labor vendor', (
