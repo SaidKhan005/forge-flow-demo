@@ -112,7 +112,41 @@ document.querySelectorAll('flt-semantics').length  // expect > 50
 
 ---
 
-## Step 5 — Navigate and interact
+## Step 5 — Run the assertion-based test suite
+
+Paste the full contents of `web/_qa_runner.js` into a `preview_eval` call.
+The runner handles semantics enabling internally — no separate Step 4 invocation
+is needed when running the full suite.
+
+**What the runner covers:**
+
+- 5 boot checks — `visibilityState`, `hasFocus()`, canvas present, `document.title`,
+  `flt-semantics` count > 50
+- All 11 routes — each asserts specific text labels and no error state
+- 4 interaction tests — service periods Edit dialog opens/closes, audit log Last 7 days
+  filter keeps timestamps, vendor POS picker opens, DEF-02 regression (empty
+  Change password submit shows validation text)
+
+**Expected output on a clean run:**
+
+```json
+{
+  "passed": 42,
+  "failed": 0,
+  "skipped": 0,
+  "summary": "PASSED 42/42"
+}
+```
+
+Any `FAIL` entry includes a `detail` field stating what was not found. Fix,
+rebuild (`flutter build web --profile ...`), and re-run to confirm.
+
+**This is the canonical execution path.** Steps 6–7 below document the manual
+approach; use them only for targeted investigation of a specific failing assertion.
+
+---
+
+## Step 6 — Navigate and interact (manual fallback)
 
 All interactive elements are `flt-semantics` nodes. Target them by:
 
@@ -144,7 +178,7 @@ tree and confirm the route loaded.
 
 ---
 
-## Step 6 — Route checklist
+## Step 7 — Route checklist
 
 Navigate to every route via the left nav. Expected nav button text values:
 
@@ -168,7 +202,7 @@ Also test cross-cutting:
 
 ---
 
-## Step 7 — Document findings
+## Step 8 — Document findings
 
 For each issue found, record:
 
