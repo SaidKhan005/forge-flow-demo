@@ -41,6 +41,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/operator_web_surface.dart';
 import '../../theme/app_theme.dart';
@@ -683,21 +684,9 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        const Icon(
-          Icons.payments_outlined,
-          size: 22,
-          color: AppColors.sunsetDark,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            'Wage authority',
-            style: AppTextStyles.display20(color: AppColors.textPrimary),
-          ),
-        ),
-      ],
+    return const OperatorWebScreenHeader(
+      icon: Icons.payments_outlined,
+      title: 'Wage authority',
     );
   }
 }
