@@ -112,6 +112,32 @@ void main() {
     metadata: const <String, Object?>{},
   );
 
+  InMemoryVendorConnectionsGateway pollOnlyGateway(OperatorWebSession session) {
+    final primaryBundle = bundleFor(
+      session: session,
+      labor: row(
+        vendorId: 'quickbooks_time',
+        displayName: 'QuickBooks Time',
+        category: VendorCategory.labor,
+      ),
+    );
+    final secondLocationBundle = VendorConnectionsBundle(
+      operatorId: session.operatorId,
+      locationId: 'second-location',
+      locationName: 'Second Location',
+      posConnection: null,
+      laborConnection: primaryBundle.laborConnection,
+      reservationConnection: null,
+      demoFlags: const <VendorCategory, bool>{},
+    );
+    return InMemoryVendorConnectionsGateway(
+      seed: <String, VendorConnectionsBundle>{
+        '${session.operatorId}/${session.primaryLocationId}': primaryBundle,
+        '${session.operatorId}/second-location': secondLocationBundle,
+      },
+    );
+  }
+
   ServicePeriodDefinition servicePeriodDefinition({
     required String id,
     required String label,
@@ -184,10 +210,18 @@ void main() {
           find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
           findsNothing,
         );
+        expect(
+          find.byKey(const Key('polling_tier_not_applicable_notice')),
+          findsOneWidget,
+        );
+        final button = tester.widget<FilledButton>(
+          find.byKey(const Key('polling_tier_request_change_button')),
+        );
+        expect(button.onPressed, isNull);
       },
     );
 
-    testWidgets('subtitle names primary location', (tester) async {
+    testWidgets('map names primary location', (tester) async {
       await sizeViewport(tester, const Size(1280, 800));
 
       await tester.pumpWidget(
@@ -196,7 +230,7 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             businessDateIso: testBusinessDateIso,
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
             servicePeriodsLoader: () async =>
                 ServicePeriodDefinitionResolver.demoDefinitions,
           ),
@@ -204,14 +238,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final subtitle = tester.widget<Text>(
-        find.byKey(const Key('operator_web_data_accuracy_subtitle')),
-      );
-      expect(subtitle.data, isNotNull);
       expect(
-        subtitle.data!.contains('Brio - Chicago Loop'),
-        isTrue,
-        reason: 'Subtitle should name the primary location explicitly.',
+        find.byKey(const Key('operator_web_data_accuracy_subtitle')),
+        findsNothing,
+      );
+      await tester.tap(find.byTooltip('What this page is for'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Brio - Chicago Loop'),
+        findsOneWidget,
+        reason: 'The map help should name the primary location explicitly.',
       );
     });
   });
@@ -228,7 +264,7 @@ void main() {
             session: locationManagerSession,
             locationId: locationManagerSession.primaryLocationId ?? '',
             businessDateIso: testBusinessDateIso,
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
           ),
         ),
       );
@@ -456,7 +492,7 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             businessDateIso: testBusinessDateIso,
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
             // Inject the canonical demo service-period set directly so
             // the dinner row renders without depending on
             // RestaurantTimingConfigReadService.instance (which has no
@@ -518,7 +554,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
             dataAccuracyGateway: gateway,
             businessDateIso: '2026-05-08',
             servicePeriodsLoader: () async => periods,
@@ -591,7 +627,7 @@ void main() {
           DataAccuracyScreen(
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
             dataAccuracyGateway: gateway,
             businessDateIso: '2026-05-08',
             servicePeriodsLoader: () async => periods,
@@ -813,7 +849,7 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             businessDateIso: testBusinessDateIso,
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
             dataAccuracyGateway: gateway,
           ),
         ),
@@ -859,7 +895,7 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             businessDateIso: testBusinessDateIso,
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
             dataAccuracyGateway: gateway,
           ),
         ),
@@ -874,7 +910,7 @@ void main() {
             session: ownerSession,
             locationId: 'second-location',
             businessDateIso: testBusinessDateIso,
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
             dataAccuracyGateway: gateway,
           ),
         ),
@@ -895,7 +931,7 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             businessDateIso: testBusinessDateIso,
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
           ),
         ),
       );
@@ -931,7 +967,7 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               businessDateIso: testBusinessDateIso,
-              gateway: InMemoryVendorConnectionsGateway(),
+              gateway: pollOnlyGateway(ownerSession),
               tierEmailGateway: gateway,
               tierEmailIdempotencyKeyFactory: () => 'idem-test-1',
             ),
@@ -996,7 +1032,7 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               businessDateIso: testBusinessDateIso,
-              gateway: InMemoryVendorConnectionsGateway(),
+              gateway: pollOnlyGateway(ownerSession),
               tierEmailGateway: gateway,
               tierEmailIdempotencyKeyFactory: () => 'idem-test-2',
             ),
@@ -1045,7 +1081,7 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             businessDateIso: testBusinessDateIso,
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: pollOnlyGateway(ownerSession),
             tierEmailGateway: gateway,
           ),
         ),
@@ -1079,9 +1115,7 @@ void main() {
   // ─── Acceptance item I — UX writing audit ────────────────────────
 
   group('DataAccuracyScreen UX writing audit', () {
-    testWidgets('subtitle and screen body avoid engineering jargon', (
-      tester,
-    ) async {
+    testWidgets('map and screen body avoid engineering jargon', (tester) async {
       await sizeViewport(tester, const Size(1280, 1600));
 
       await tester.pumpWidget(
@@ -1114,17 +1148,10 @@ void main() {
         'advisory_lock',
       ];
 
-      // First check: subtitle text in particular.
-      final subtitle = tester.widget<Text>(
+      expect(
         find.byKey(const Key('operator_web_data_accuracy_subtitle')),
+        findsNothing,
       );
-      for (final banned in bannedSubstrings) {
-        expect(
-          subtitle.data!.toLowerCase().contains(banned.toLowerCase()),
-          isFalse,
-          reason: 'Subtitle leaked banned substring "$banned"',
-        );
-      }
 
       // Sweep every Text in the rendered tree and assert no banned
       // substring slips through the rest of the surface either.
@@ -1160,7 +1187,7 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               businessDateIso: testBusinessDateIso,
-              gateway: InMemoryVendorConnectionsGateway(),
+              gateway: pollOnlyGateway(ownerSession),
               // See sibling test "switching dinner to manual" — demo
               // service periods are injected explicitly so the
               // walkthrough's covers_source_chip_dinner_manual step

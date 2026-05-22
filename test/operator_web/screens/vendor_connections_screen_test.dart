@@ -502,9 +502,7 @@ void main() {
       );
       expect(find.text('7 available vendor options'), findsOneWidget);
       expect(
-        find.byTooltip(
-          'Official Aloha (NCR Voyix) icon from developer.ncrvoyix.com',
-        ),
+        find.byTooltip('Official Aloha (NCR Voyix) icon from ncrvoyix.com'),
         findsOneWidget,
       );
       expect(

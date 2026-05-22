@@ -28,6 +28,7 @@ import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'data_accuracy_explainer_card.dart';
 import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
@@ -69,14 +70,7 @@ class CoversSourceToggle extends StatelessWidget {
             trailing: OperatorWebInfoButton(
               title: 'Where covers come from, per service period',
               tooltip: 'Where covers come from, per service period',
-              body: Text(
-                'Covers (number of guests served) drive the per-cover '
-                'metrics on your dashboard. Pick where Forge & Flow should read '
-                'covers from for each service period. Different periods can use '
-                'different sources, for example vendor at lunch and manual at '
-                'dinner.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
+              body: const DataAccuracyCoversModeInfo(),
             ),
           ),
           const SizedBox(height: 14),

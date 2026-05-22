@@ -82,142 +82,145 @@ class _VendorBrand {
   final String? sourceHost;
 }
 
+String _brandIconUrl(String domain) =>
+    'https://www.google.com/s2/favicons?domain=$domain&sz=64';
+
 _VendorBrand _vendorBrand(String vendorId, String displayName) {
   switch (vendorId) {
     case 'aloha_ncr_voyix':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Aloha (NCR Voyix)',
         initials: 'NCR',
-        color: Color(0xFF004C97),
-        iconUrl: 'https://developer.ncrvoyix.com/favicon.ico',
-        sourceHost: 'developer.ncrvoyix.com',
+        color: const Color(0xFF004C97),
+        iconUrl: _brandIconUrl('ncrvoyix.com'),
+        sourceHost: 'ncrvoyix.com',
       );
     case 'clover':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Clover',
         initials: 'Cl',
-        color: Color(0xFF00875A),
-        iconUrl: 'https://www.clover.com/favicon.ico',
+        color: const Color(0xFF00875A),
+        iconUrl: _brandIconUrl('clover.com'),
         sourceHost: 'clover.com',
       );
     case 'lightspeed_lsk':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Lightspeed',
         initials: 'LS',
-        color: Color(0xFFE21B2D),
-        iconUrl: 'https://www.lightspeedhq.com/favicon.ico',
+        color: const Color(0xFFE21B2D),
+        iconUrl: _brandIconUrl('lightspeedhq.com'),
         sourceHost: 'lightspeedhq.com',
       );
     case 'oracle_micros_simphony':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Oracle MICROS Simphony',
         initials: 'Or',
-        color: Color(0xFFC74634),
-        iconUrl: 'https://www.oracle.com/favicon.ico',
+        color: const Color(0xFFC74634),
+        iconUrl: _brandIconUrl('oracle.com'),
         sourceHost: 'oracle.com',
       );
     case 'revel':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Revel Systems',
         initials: 'Rv',
-        color: Color(0xFF2B5C8A),
-        iconUrl: 'https://revelsystems.com/favicon.ico',
+        color: const Color(0xFF2B5C8A),
+        iconUrl: _brandIconUrl('revelsystems.com'),
         sourceHost: 'revelsystems.com',
       );
     case 'square':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Square',
         initials: 'Sq',
-        color: Color(0xFF111827),
-        iconUrl: 'https://squareup.com/favicon.ico',
+        color: const Color(0xFF111827),
+        iconUrl: _brandIconUrl('squareup.com'),
         sourceHost: 'squareup.com',
       );
     case 'toast':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Toast',
         initials: 'To',
-        color: Color(0xFFFF4F00),
-        iconUrl: 'https://www.toasttab.com/favicon.ico',
+        color: const Color(0xFFFF4F00),
+        iconUrl: _brandIconUrl('toasttab.com'),
         sourceHost: 'toasttab.com',
       );
     case 'libro':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Libro Reserve',
         initials: 'Li',
-        color: Color(0xFF006C5B),
-        iconUrl: 'https://librorez.com/favicon.ico',
+        color: const Color(0xFF006C5B),
+        iconUrl: _brandIconUrl('librorez.com'),
         sourceHost: 'librorez.com',
       );
     case 'opentable':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'OpenTable',
         initials: 'OT',
-        color: Color(0xFFDA3743),
-        iconUrl: 'https://www.opentable.com/favicon.ico',
+        color: const Color(0xFFDA3743),
+        iconUrl: _brandIconUrl('opentable.com'),
         sourceHost: 'opentable.com',
       );
     case 'sevenrooms':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'SevenRooms',
         initials: '7R',
-        color: Color(0xFF25364A),
-        iconUrl: 'https://sevenrooms.com/favicon.ico',
+        color: const Color(0xFF25364A),
+        iconUrl: _brandIconUrl('sevenrooms.com'),
         sourceHost: 'sevenrooms.com',
       );
     case 'tock':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Tock',
         initials: 'Tk',
-        color: Color(0xFF1F2933),
-        iconUrl: 'https://www.exploretock.com/favicon.ico',
+        color: const Color(0xFF1F2933),
+        iconUrl: _brandIconUrl('exploretock.com'),
         sourceHost: 'exploretock.com',
       );
     case 'adp':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'ADP Workforce Now / Workforce Manager',
         initials: 'ADP',
-        color: Color(0xFFD0271D),
-        iconUrl: 'https://www.adp.com/favicon.ico',
+        color: const Color(0xFFD0271D),
+        iconUrl: _brandIconUrl('adp.com'),
         sourceHost: 'adp.com',
       );
     case 'agendrix':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Agendrix',
         initials: 'Ag',
-        color: Color(0xFF246BFE),
-        iconUrl: 'https://www.agendrix.com/favicon.ico',
+        color: const Color(0xFF246BFE),
+        iconUrl: _brandIconUrl('agendrix.com'),
         sourceHost: 'agendrix.com',
       );
     case 'humanity':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Humanity',
         initials: 'Hu',
-        color: Color(0xFF2463EB),
-        iconUrl: 'https://www.humanity.com/favicon.ico',
+        color: const Color(0xFF2463EB),
+        iconUrl: _brandIconUrl('humanity.com'),
         sourceHost: 'humanity.com',
       );
     case 'push_operations':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'Push Operations',
         initials: 'Pu',
-        color: Color(0xFF22577A),
-        iconUrl: 'https://www.pushoperations.com/favicon.ico',
+        color: const Color(0xFF22577A),
+        iconUrl: _brandIconUrl('pushoperations.com'),
         sourceHost: 'pushoperations.com',
       );
     case 'quickbooks_time':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: 'QuickBooks Time',
         initials: 'QB',
-        color: Color(0xFF2CA01C),
-        iconUrl: 'https://www.intuit.com/favicon.ico',
+        color: const Color(0xFF2CA01C),
+        iconUrl: _brandIconUrl('quickbooks.intuit.com'),
         sourceHost: 'quickbooks.intuit.com',
       );
     case 'seven_shifts':
-      return const _VendorBrand(
+      return _VendorBrand(
         displayName: '7shifts',
         initials: '7s',
-        color: Color(0xFF2E6B4F),
-        iconUrl: 'https://www.7shifts.com/favicon.ico',
+        color: const Color(0xFF2E6B4F),
+        iconUrl: _brandIconUrl('7shifts.com'),
         sourceHost: '7shifts.com',
       );
     default:
