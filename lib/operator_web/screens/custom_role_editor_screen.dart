@@ -430,7 +430,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 880),
             child: Column(

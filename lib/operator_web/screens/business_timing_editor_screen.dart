@@ -35,6 +35,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_business_timing_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/service_period_editor.dart';
 
@@ -458,23 +459,9 @@ class _BusinessTimingEditorScreenState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (showInlineHeading) ...[
-            Row(
-              children: [
-                const Icon(
-                  Icons.schedule_outlined,
-                  size: 22,
-                  color: AppColors.sunsetDark,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _headingText,
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
+            OperatorWebScreenHeader(
+              icon: Icons.schedule_outlined,
+              title: _headingText,
             ),
             const SizedBox(height: 8),
           ],
