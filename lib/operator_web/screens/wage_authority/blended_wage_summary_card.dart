@@ -91,25 +91,33 @@ class BlendedWageSummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (hasAny) ...<Widget>[
-            Text(
-              _formatTotalsLine(summary),
-              key: const Key('wage_authority_blended_totals_line'),
-              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            Wrap(
+              spacing: 28,
+              runSpacing: 14,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                _SummaryMetric(
+                  label: 'Blended rate',
+                  value: '${formatWageCurrency(summary.blendedHourlyRate!)}/hr',
+                  valueKey: const Key('wage_authority_blended_hourly'),
+                  emphasized: true,
+                ),
+                _SummaryMetric(
+                  label: 'Weekly wage model',
+                  value: formatWageCurrency(summary.totalWeightedDollars),
+                  valueKey: const Key('wage_authority_blended_totals_line'),
+                ),
+                _SummaryMetric(
+                  label: 'Weighted hours',
+                  value: formatWageHours(summary.totalWeightedHours),
+                ),
+                _SummaryMetric(
+                  label: summary.rowCount == 1 ? 'Role' : 'Roles',
+                  value: '${summary.rowCount}',
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Blended wage mix: '
-              '${formatWageCurrency(summary.blendedHourlyRate!)}/hr',
-              key: const Key('wage_authority_blended_hourly'),
-              style: AppTextStyles.display20(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Averaged across ${summary.rowCount} '
-              '${summary.rowCount == 1 ? 'role' : 'roles'}.',
-              style: AppTextStyles.body11(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             _BucketBadgeRow(perBucket: summary.perBucket),
           ] else ...<Widget>[
             Text(
@@ -122,12 +130,42 @@ class BlendedWageSummaryCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  static String _formatTotalsLine(BlendedWageSummary s) {
-    final hours = formatWageHours(s.totalWeightedHours);
-    final dollars = formatWageCurrency(s.totalWeightedDollars);
-    return 'Total hourly cost: $dollars · $hours weighted '
-        '${s.totalWeightedHours == 1.0 ? 'hour' : 'hours'} per week';
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.label,
+    required this.value,
+    this.valueKey,
+    this.emphasized = false,
+  });
+
+  final String label;
+  final String value;
+  final Key? valueKey;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: emphasized ? 170 : 120),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppTextStyles.body11(color: AppColors.textMuted)),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            key: valueKey,
+            style: emphasized
+                ? AppTextStyles.display20(color: AppColors.textPrimary)
+                : AppTextStyles.body14(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
   }
 }
 

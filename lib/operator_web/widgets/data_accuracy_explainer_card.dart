@@ -107,20 +107,20 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   static String _laborMapLine(VendorConnectionsBundle? bundle) {
     final labor = bundle?.laborConnection;
     if (labor == null) {
-      return 'Manual wage mix is available now. Vendor wages appear when a labor integration can supply them.';
+      return 'Vendor wages appear when a labor integration can supply them.';
     }
     final wageClass = laborWageSourceClassFor(labor.vendorId);
     return switch (wageClass) {
       LaborWageSourceClass.perEmployeeWithDollars =>
-        '${labor.displayName} reports labor dollars directly. Manual mix stays available as a fallback.',
+        '${labor.displayName} reports labor dollars directly.',
       LaborWageSourceClass.perEmployeeWithRates =>
         '${labor.displayName} reports employee rates. Forge & Flow calculates labor dollars from rates and time.',
       LaborWageSourceClass.perPositionWithRates =>
         '${labor.displayName} reports role rates. Forge & Flow calculates labor dollars from rates and hours.',
       LaborWageSourceClass.hoursOnly =>
-        '${labor.displayName} reports hours only. Vendor mode uses target wage x hours; manual mix remains the fallback.',
+        '${labor.displayName} reports hours only. Vendor mode uses target wage x hours.',
       null =>
-        '${labor.displayName} is connected. Manual mix stays available if vendor labor dollars are not usable.',
+        '${labor.displayName} is connected, but its wage path is not mapped yet.',
     };
   }
 
@@ -130,10 +130,10 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   ) {
     final pos = bundle?.posConnection;
     if (pos == null) {
-      return 'Manual and forecast covers are available now. Vendor covers appear when a POS exposes guest counts.';
+      return 'Vendor covers appear when a POS exposes guest counts.';
     }
     if (posVendorExposesCovers(pos.vendorId)) {
-      return '${pos.displayName} exposes covers, so Vendor is available. Manual and forecast stay available by service period.';
+      return '${pos.displayName} exposes covers, so Vendor is available by service period.';
     }
     final periods = servicePeriodLabels.isEmpty
         ? 'each service period'

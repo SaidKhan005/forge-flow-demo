@@ -126,10 +126,10 @@ class WageSourceToggle extends StatelessWidget {
 
   String _vendorCopy(bool vendorSelectable) {
     if (!wageVendorOptionApplies(bundle)) {
-      return 'Connect a labor vendor before using vendor-reported wages. Manual mix stays available.';
+      return 'Connect a labor vendor before using vendor-reported wages.';
     }
     if (vendorApplicabilityBound && !vendorSelectable) {
-      return 'No current wage vendor is enabled for this location yet. Use manual mix until this vendor is ready.';
+      return 'No current wage vendor is enabled for this location yet.';
     }
     final suffix = vendorApplicabilityBound
         ? ' Current wage vendors: ${_slugList(applicableWageVendorSlugs)}.'
@@ -305,7 +305,7 @@ class _VendorApplicabilityStatus extends StatelessWidget {
         : isError
         ? error!
         : slugs.isEmpty
-        ? 'No enabled wage vendor is current. Manual mix stays available.'
+        ? 'No enabled wage vendor is current.'
         : 'Enabled wage vendors: ${_slugList(slugs)}';
     return Container(
       key: const Key('wage_source_vendor_applicability_status'),

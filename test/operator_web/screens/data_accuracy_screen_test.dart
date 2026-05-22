@@ -1605,7 +1605,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Manual mix stays available'), findsOneWidget);
+      expect(
+        find.textContaining('No enabled wage vendor is current'),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('wage_source_radio_manual_mix')),
         findsOneWidget,
