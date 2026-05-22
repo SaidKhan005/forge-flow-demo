@@ -176,11 +176,11 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('Manual wage mix is available now'),
+        find.textContaining('Vendor wages appear when a labor integration'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('Manual and forecast covers are available now'),
+        find.textContaining('Vendor covers appear when a POS exposes'),
         findsOneWidget,
       );
     });

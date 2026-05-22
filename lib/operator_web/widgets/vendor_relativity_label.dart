@@ -119,15 +119,11 @@ bool posVendorExposesCovers(String vendorId) =>
 List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
   final pos = bundle?.posConnection;
   if (pos == null) {
-    return <String>[
-      'Vendor covers need a POS that exposes guest counts. Forecast and manual stay available.',
-    ];
+    return <String>['Vendor covers need a POS that exposes guest counts.'];
   }
   final coversNotExposed = kPosVendorsWithoutCovers.contains(pos.vendorId);
   if (!coversNotExposed) {
-    return <String>[
-      '${pos.displayName} exposes covers. Manual stays available when a service period needs an override.',
-    ];
+    return <String>['${pos.displayName} exposes covers for the Vendor option.'];
   }
   return <String>[
     '${pos.displayName} does not expose covers. Use forecast, manual, or reservations plus walk-ins.',
@@ -139,21 +135,17 @@ List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
 List<String> _composeWageLines(VendorConnectionsBundle? bundle) {
   final labor = bundle?.laborConnection;
   if (labor == null) {
-    return <String>[
-      'Vendor wages need a labor integration. Manual wage mix stays available.',
-    ];
+    return <String>['Vendor wages need a labor integration.'];
   }
   final wageClass = laborWageSourceClassFor(labor.vendorId);
   if (wageClass == null) {
     return <String>[
-      '${labor.displayName} is connected. Manual wage mix stays available if vendor labor dollars are not usable.',
+      '${labor.displayName} is connected, but its wage path is not mapped yet.',
     ];
   }
   switch (wageClass) {
     case LaborWageSourceClass.perEmployeeWithDollars:
-      return <String>[
-        '${labor.displayName} reports labor dollars directly. Manual mix stays available as an override.',
-      ];
+      return <String>['${labor.displayName} reports labor dollars directly.'];
     case LaborWageSourceClass.perEmployeeWithRates:
       return <String>[
         '${labor.displayName} reports employee rates. Forge & Flow calculates labor dollars from rates and time.',

@@ -78,27 +78,24 @@ bool _anyLineContains(List<String> lines, String needle) {
 
 void main() {
   group('composeVendorRelativityLines — covers (acceptance item H)', () {
-    test(
-      'Toast (covers exposed) — copy mentions Toast and manual fallback',
-      () {
-        final lines = composeVendorRelativityLines(
-          VendorRelativitySetting.covers,
-          _bundle(pos: 'toast'),
-        );
-        expect(
-          _anyLineContains(lines, 'Toast exposes covers'),
-          isTrue,
-          reason:
-              'expected a line mentioning Toast exposes covers, got '
-              '$lines',
-        );
-        expect(
-          _anyLineContains(lines, 'Manual stays available'),
-          isTrue,
-          reason: 'expected manual fallback copy; got $lines',
-        );
-      },
-    );
+    test('Toast (covers exposed) mentions Toast and Vendor', () {
+      final lines = composeVendorRelativityLines(
+        VendorRelativitySetting.covers,
+        _bundle(pos: 'toast'),
+      );
+      expect(
+        _anyLineContains(lines, 'Toast exposes covers'),
+        isTrue,
+        reason:
+            'expected a line mentioning Toast exposes covers, got '
+            '$lines',
+      );
+      expect(
+        _anyLineContains(lines, 'Vendor option'),
+        isTrue,
+        reason: 'expected vendor option copy; got $lines',
+      );
+    });
 
     test('Square (covers NOT exposed) — copy says Square does not expose '
         'covers', () {
@@ -186,8 +183,7 @@ void main() {
       );
     });
 
-    test('Unknown labor vendor (toast as synthetic labor) — copy falls back '
-        'to generic manual-wage guidance', () {
+    test('Unknown labor vendor says wage path is not mapped', () {
       // Toast is not in the LaborWageSourceClass sidecar (it is a POS
       // adapter). Wiring it as the labor row exercises the
       // null-wage-class fallback branch.
@@ -201,10 +197,9 @@ void main() {
         reason: 'expected Toast display name in fallback copy, got $lines',
       );
       expect(
-        _anyLineContains(lines, 'Manual wage mix stays available'),
+        _anyLineContains(lines, 'wage path is not mapped'),
         isTrue,
-        reason:
-            'expected fallback copy to keep manual wage guidance, got $lines',
+        reason: 'expected unmapped wage-path copy, got $lines',
       );
     });
   });
