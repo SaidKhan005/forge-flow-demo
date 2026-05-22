@@ -92,5 +92,45 @@
     console.warn('[qa-polyfill] screen override failed:', e);
   }
 
-  console.log('[qa-polyfill] visibility forced visible; rAF replaced with setInterval(16ms); viewport 1440×900.');
-})();
+  // 6) getBoundingClientRect override — headless Electron CSS layout produces
+  // 0×0 for every element (no real display context), so Flutter's engine calls
+  // flutter-view.getBoundingClientRect() and gets an empty rect, initialises a
+  // 0×0 viewport, and never schedules a render frame.  Patch
+  // Element.prototype.getBoundingClientRect BEFORE Flutter creates any DOM so
+  // the flutter-view and flt-glass-pane elements return a real desktop rect.
+  // Also patches clientWidth / clientHeight / offsetWidth / offsetHeight on
+  // HTMLElement.prototype for the same reason.
+  try {
+    var _W = 1440, _H = 900;
+    var _fakeRect = function () {
+      return { x: 0, y: 0, width: _W, height: _H,
+               top: 0, left: 0, right: _W, bottom: _H,
+               toJSON: function () { return this; } };
+    };
+    var _isFlutterRoot = function (el) {
+      if (!el || !el.tagName) return false;
+      var t = el.tagName.toUpperCase();
+      return t === 'FLUTTER-VIEW' || t === 'FLT-GLASS-PANE' || t === 'BODY' || t === 'HTML';
+    };
+    var _origBCR = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      if (_isFlutterRoot(this)) return _fakeRect();
+      var r = _origBCR.call(this);
+      // If layout returned a zero rect for any element, return fake to avoid
+      // Flutter interpreting 0-size containers as collapsed views.
+      if (r && r.width === 0 && r.height === 0) return _fakeRect();
+      return r;
+    };
+    // clientWidth / clientHeight
+    var _HTMLEl = window.HTMLElement ? window.HTMLElement.prototype : Element.prototype;
+    Object.defineProperty(_HTMLEl, 'clientWidth',  { configurable: true, get: function () {
+      if (_isFlutterRoot(this)) return _W; return 0;
+    }});
+    Object.defineProperty(_HTMLEl, 'clientHeight', { configurable: true, get: function () {
+      if (_isFlutterRoot(this)) return _H; return 0;
+    }});
+  } catch (e) {
+    console.warn('[qa-polyfill] BCR override failed:', e);
+  }
+
+  console.log('[qa-polyfill] visibility forced visible; rAF replaced; viewport 1440×900; BCR patched.');
