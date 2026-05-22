@@ -204,7 +204,6 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
               onEdit:
                   widget.onEditTiming ??
                   () => _showSafeTimingDialog('Edit timing'),
-              onReset: null,
             )
           else
             const _ReadOnlyTimingBanner(),
@@ -219,10 +218,9 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
 }
 
 class _TimingEditControls extends StatelessWidget {
-  const _TimingEditControls({required this.onEdit, required this.onReset});
+  const _TimingEditControls({required this.onEdit});
 
   final VoidCallback onEdit;
-  final VoidCallback? onReset;
 
   @override
   Widget build(BuildContext context) {
@@ -260,13 +258,6 @@ class _TimingEditControls extends StatelessWidget {
               label: const Text('Edit service periods'),
             ),
           ),
-          if (onReset != null)
-            OutlinedButton.icon(
-              key: const Key('operator_web_business_timing_reset_button'),
-              onPressed: onReset,
-              icon: const Icon(Icons.undo_outlined, size: 15),
-              label: const Text('Reset timing'),
-            ),
         ],
       ),
     );
