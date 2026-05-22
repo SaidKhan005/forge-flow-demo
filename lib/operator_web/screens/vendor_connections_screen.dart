@@ -67,6 +67,7 @@ import '../widgets/vendor_connections_recently_available_panel.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/operator_web_info_button.dart';
 
 /// Roles permitted to configure inbound vendor connections from the
 /// operator-web console. Mirrors the `integrations.configure` row
@@ -179,6 +180,14 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
                 child: Text(
                   'Vendor integrations',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
+                ),
+              ),
+              OperatorWebInfoButton(
+                title: 'Vendor integrations',
+                tooltip: 'Vendor integrations',
+                body: Text(
+                  'Forge & Flow reads data from the connected services for this location.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ),
             ],

@@ -252,16 +252,13 @@ class _Header extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Text(
-          range == null
-              ? 'Forge & Flow locks one weekly plan at a time per location. '
-                    "Once your forecasts run you'll see $locationName's locked "
-                    "plan here, plus a plain-English explainer for every "
-                    "number that shaped it."
-              : "Week of $range: $locationName's locked plan and the "
-                    "forecast inputs that built it.",
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
+        if (range == null)
+          Text(
+            'Forge & Flow locks one weekly plan at a time per location. '
+            "Once your forecasts run you'll see the locked plan here, "
+            'plus a plain-English explainer for every number that shaped it.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
       ],
     );
   }
@@ -312,7 +309,8 @@ class _DailyPlanTable extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         OperatorWebSectionHeading(
-          title: 'Daily plan',
+          title:
+              'Daily plan | Week of ${_Header._formatWeekRange(snapshot.weekStartDate, snapshot.weekEndDate)}',
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[

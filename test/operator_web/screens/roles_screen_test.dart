@@ -108,7 +108,7 @@ void main() {
       );
       expect(
         find.byKey(const Key('operator_web_roles_open_explainer')),
-        findsOneWidget,
+        findsNothing,
       );
       final newRoleButton = find.byKey(
         const Key('operator_web_roles_new_role'),
@@ -125,7 +125,7 @@ void main() {
       );
       expect(
         find.byKey(const Key('operator_web_roles_scope_note')),
-        findsOneWidget,
+        findsNothing,
       );
       // Floor Captain custom row from the demo fixture set.
       expect(
@@ -150,13 +150,11 @@ void main() {
         ),
       );
 
-      expect(find.text('Managing roles for East Region'), findsOneWidget);
-      expect(find.textContaining('avoid whole-business access'), findsOneWidget);
+      expect(find.text('Managing roles for East Region'), findsNothing);
+      expect(find.textContaining('avoid whole-business access'), findsNothing);
     });
 
-    testWidgets('narrow header keeps title readable', (
-      tester,
-    ) async {
+    testWidgets('narrow header keeps title readable', (tester) async {
       await sizeViewport(tester, const Size(360, 1200));
       await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
@@ -172,7 +170,7 @@ void main() {
       );
       expect(
         find.byKey(const Key('operator_web_roles_open_explainer')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const Key('operator_web_roles_new_role')),
@@ -238,27 +236,21 @@ void main() {
       },
     );
 
-    test(
-      'Wave 2 S-3 (RP-8) helper: first-sentence trim '
-      'handles common end-of-sentence punctuation',
-      () {
-        expect(
-          shortRoleDescriptionForTest(
-            'Floor lead. Closes out the night. End-of-shift wrap.',
-          ),
-          'Floor lead.',
-        );
-        expect(
-          shortRoleDescriptionForTest('Single sentence with no period'),
-          'Single sentence with no period',
-        );
-        expect(shortRoleDescriptionForTest(''), '');
-        expect(
-          shortRoleDescriptionForTest('Question? Then more.'),
-          'Question?',
-        );
-      },
-    );
+    test('Wave 2 S-3 (RP-8) helper: first-sentence trim '
+        'handles common end-of-sentence punctuation', () {
+      expect(
+        shortRoleDescriptionForTest(
+          'Floor lead. Closes out the night. End-of-shift wrap.',
+        ),
+        'Floor lead.',
+      );
+      expect(
+        shortRoleDescriptionForTest('Single sentence with no period'),
+        'Single sentence with no period',
+      );
+      expect(shortRoleDescriptionForTest(''), '');
+      expect(shortRoleDescriptionForTest('Question? Then more.'), 'Question?');
+    });
 
     testWidgets('custom roles expose Edit + Delete for operator_owner', (
       tester,
@@ -318,23 +310,6 @@ void main() {
   });
 
   group('RolesScreen sub-route hooks', () {
-    testWidgets('Permission Explainer button fires onOpenExplainer hook', (
-      tester,
-    ) async {
-      await sizeViewport(tester, const Size(1280, 800));
-      var fired = false;
-      await pumpScreen(
-        tester,
-        session: sessionWithRole('operator_owner'),
-        onOpenExplainer: () => fired = true,
-      );
-      await tester.tap(
-        find.byKey(const Key('operator_web_roles_open_explainer')),
-      );
-      await tester.pumpAndSettle();
-      expect(fired, isTrue);
-    });
-
     testWidgets('New role button fires onOpenEditor hook with null target', (
       tester,
     ) async {
@@ -402,9 +377,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_display_name'),
-          ),
+          find.byKey(const Key('operator_web_custom_role_editor_display_name')),
           findsOneWidget,
         );
         expect(
@@ -413,9 +386,7 @@ void main() {
         );
         // Picker card renders.
         expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_permissions'),
-          ),
+          find.byKey(const Key('operator_web_custom_role_editor_permissions')),
           findsOneWidget,
         );
         // The new picker groups by productLabel → categoryLabel

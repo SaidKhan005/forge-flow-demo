@@ -49,6 +49,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
@@ -1390,27 +1391,14 @@ class _ActiveSessionsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = currentSessionId;
-    final otherSessionCount = currentId == null
-        ? 0
-        : sessions.where((session) => session.sessionId != currentId).length;
-    final summary = sessions.isEmpty
-        ? 'No active sessions are available for this account.'
-        : otherSessionCount == 0
-        ? 'This is the only active session we can see right now.'
-        : '$otherSessionCount other session${otherSessionCount == 1 ? '' : 's'} '
-              'can be reviewed or signed out.';
+    const summary = 'Manage active sessions here.';
     return _SectionCard(
       cardKey: const Key('account_section_active_sessions'),
       title: 'Active sessions',
       headerExplainer:
           'Review browsers and devices signed in to your operator account. '
           'This device stays signed in when you sign out the others.',
-      statusBadge: _StatusBadge(
-        key: const Key('account_active_sessions_count_badge'),
-        label: '${sessions.length} active',
-        color: AppColors.textMuted,
-      ),
+      statusBadge: null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1426,7 +1414,7 @@ class _ActiveSessionsSection extends StatelessWidget {
             const _AccountInlineState(
               stateKey: Key('account_active_sessions_empty'),
               icon: Icons.devices_other_outlined,
-              message: 'No active sessions are available for this account.',
+              message: 'Manage active sessions here.',
             )
           else ...[
             Text(
@@ -1441,7 +1429,7 @@ class _ActiveSessionsSection extends StatelessWidget {
                 key: const Key('account_active_sessions_manage'),
                 onPressed: onManageSessions,
                 icon: const Icon(Icons.open_in_new, size: 16),
-                label: const Text('Manage sessions'),
+                label: const Text('Manage active sessions here'),
               ),
             ),
           ],
@@ -1949,116 +1937,150 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
       backgroundColor: AppColors.backgroundSurface,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Turn on two-factor sign-in',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Open your authenticator app, scan this code, then type the '
-                '6-digit code it shows you below.',
-                style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                key: const Key('mfa_enroll_dialog_qr'),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.cardGlow,
-                  border: Border.all(color: AppColors.borderSubtle, width: 1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: SingleChildScrollView(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SelectableText(
-                      qrUri,
-                      style: AppTextStyles.mono10(color: AppColors.textPrimary),
+                    Text(
+                      'Turn on two-factor sign-in',
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Text(
-                          'Shared secret: ',
-                          style: AppTextStyles.mono11(
-                            color: AppColors.textMuted,
-                          ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Open your authenticator app, scan this code, then type the '
+                      '6-digit code it shows you below.',
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      key: const Key('mfa_enroll_dialog_qr'),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardGlow,
+                        border: Border.all(
+                          color: AppColors.borderSubtle,
+                          width: 1,
                         ),
-                        SelectableText(
-                          sharedSecret,
-                          style: AppTextStyles.mono12(
-                            color: AppColors.textPrimary,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: QrImageView(
+                              data: qrUri,
+                              version: QrVersions.auto,
+                              size: 148,
+                              backgroundColor: Colors.white,
+                            ),
                           ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                'Shared secret:',
+                                style: AppTextStyles.mono11(
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                              SelectableText(
+                                sharedSecret,
+                                style: AppTextStyles.mono12(
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Issuer: Forge & Flow • Account: $email',
+                            style: AppTextStyles.body12(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      key: const Key('mfa_enroll_dialog_code_field'),
+                      controller: _codeController,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onSubmitted: (_) => _confirm(),
+                      decoration: const InputDecoration(
+                        labelText: '6-digit code',
+                        border: OutlineInputBorder(),
+                        counterText: '',
+                      ),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _error!,
+                        style: AppTextStyles.body13(color: AppColors.negative),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          key: const Key('mfa_enroll_dialog_cancel'),
+                          onPressed: _submitting
+                              ? null
+                              : () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          key: const Key('mfa_enroll_dialog_confirm'),
+                          onPressed: _submitting ? null : _confirm,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.sunset,
+                            foregroundColor: AppColors.backgroundSurface,
+                          ),
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Verify and turn on'),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Issuer: Forge & Flow • Account: $email',
-                      style: AppTextStyles.body12(color: AppColors.textMuted),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
-              TextField(
-                key: const Key('mfa_enroll_dialog_code_field'),
-                controller: _codeController,
-                autofocus: true,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onSubmitted: (_) => _confirm(),
-                decoration: const InputDecoration(
-                  labelText: '6-digit code',
-                  border: OutlineInputBorder(),
-                  counterText: '',
-                ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                key: const Key('mfa_enroll_dialog_close'),
+                tooltip: 'Close',
+                onPressed: _submitting
+                    ? null
+                    : () => Navigator.of(context).pop(false),
+                icon: const Icon(Icons.close),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _error!,
-                  style: AppTextStyles.body13(color: AppColors.negative),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    key: const Key('mfa_enroll_dialog_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('mfa_enroll_dialog_confirm'),
-                    onPressed: _submitting ? null : _confirm,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.sunset,
-                      foregroundColor: AppColors.backgroundSurface,
-                    ),
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Verify and turn on'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

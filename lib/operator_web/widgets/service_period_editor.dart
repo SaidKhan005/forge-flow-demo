@@ -19,6 +19,7 @@
 // pin every rule without rendering Flutter widgets.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -297,8 +298,7 @@ ServicePeriodValidation validateServicePeriods(
       const ServicePeriodValidationError(
         code: 'multiple_past_midnight_periods',
         message:
-            'Only one service period can stretch past midnight. Two of your '
-            'periods currently do; trim one so it ends by midnight.',
+            'Only one period can roll past midnight. Trim one before saving.',
       ),
     );
   }
@@ -434,6 +434,37 @@ List<_Window> _toWindows(ServicePeriodDraft p) {
 }
 
 final RegExp _hhmmPattern = RegExp(r'^(\d{2}):(\d{2})$');
+
+String normalizeBusinessTimingTimeInput(String raw) {
+  final value = raw.trim();
+  if (_hhmmPattern.hasMatch(value)) return value;
+  final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.length == 3) {
+    return '0${digits.substring(0, 1)}:${digits.substring(1)}';
+  }
+  if (digits.length == 4) {
+    return '${digits.substring(0, 2)}:${digits.substring(2)}';
+  }
+  return value;
+}
+
+void _normalizeTimeController(TextEditingController controller, String raw) {
+  final formatted = normalizeBusinessTimingTimeInput(raw);
+  if (formatted == controller.text || formatted == raw) return;
+  controller.value = TextEditingValue(
+    text: formatted,
+    selection: TextSelection.collapsed(offset: formatted.length),
+  );
+}
+
+void _setControllerText(TextEditingController controller, String value) {
+  if (controller.text == value) return;
+  controller.value = TextEditingValue(
+    text: value,
+    selection: TextSelection.collapsed(offset: value.length),
+  );
+}
+
 final RegExp _keyPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
 final RegExp _servicePeriodKeyInvalidChars = RegExp(r'[^a-z0-9]+');
 final RegExp _servicePeriodKeyTrimUnderscores = RegExp(r'^_+|_+$');
@@ -578,19 +609,19 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
   void didUpdateWidget(covariant _ServicePeriodRow oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.period.label != widget.period.label) {
-      _label.text = widget.period.label;
+      _setControllerText(_label, widget.period.label);
     }
     if (oldWidget.period.startLocal != widget.period.startLocal) {
-      _start.text = widget.period.startLocal;
+      _setControllerText(_start, widget.period.startLocal);
     }
     if (oldWidget.period.endLocal != widget.period.endLocal) {
-      _end.text = widget.period.endLocal;
+      _setControllerText(_end, widget.period.endLocal);
     }
     if (oldWidget.period.shortLabel != widget.period.shortLabel) {
-      _shortLabel.text = widget.period.shortLabel;
+      _setControllerText(_shortLabel, widget.period.shortLabel);
     }
     if (oldWidget.period.sortOrder != widget.period.sortOrder) {
-      _sortOrder.text = widget.period.sortOrder.toString();
+      _setControllerText(_sortOrder, widget.period.sortOrder.toString());
     }
   }
 
@@ -692,13 +723,20 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
                 child: TextField(
                   key: ValueKey('service_period_editor_start_${widget.index}'),
                   controller: _start,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                    LengthLimitingTextInputFormatter(5),
+                  ],
                   decoration: const InputDecoration(
                     labelText: 'Starts (HH:MM)',
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (value) => widget.onChanged(
-                    widget.period.copyWith(startLocal: value),
-                  ),
+                  onChanged: (value) {
+                    _normalizeTimeController(_start, value);
+                    widget.onChanged(
+                      widget.period.copyWith(startLocal: _start.text),
+                    );
+                  },
                 ),
               ),
               const SizedBox(width: 10),
@@ -707,12 +745,20 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
                 child: TextField(
                   key: ValueKey('service_period_editor_end_${widget.index}'),
                   controller: _end,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                    LengthLimitingTextInputFormatter(5),
+                  ],
                   decoration: const InputDecoration(
                     labelText: 'Ends (HH:MM)',
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (value) =>
-                      widget.onChanged(widget.period.copyWith(endLocal: value)),
+                  onChanged: (value) {
+                    _normalizeTimeController(_end, value);
+                    widget.onChanged(
+                      widget.period.copyWith(endLocal: _end.text),
+                    );
+                  },
                 ),
               ),
               const SizedBox(width: 10),
@@ -748,7 +794,7 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
                   decoration: const InputDecoration(
                     labelText: 'Short label (e.g. L, D, B)',
                     border: OutlineInputBorder(),
-                    helperText: 'Compact label for tight UI.',
+                    helperText: 'For tight spaces.',
                   ),
                   onChanged: (value) => widget.onChanged(
                     widget.period.copyWith(shortLabel: value),
@@ -780,8 +826,7 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Pick the days this period runs. Leave the short label '
-                  'blank to use the long label everywhere.',
+                  'Pick active days. Leave short label blank to use the long label.',
                   style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
               ),

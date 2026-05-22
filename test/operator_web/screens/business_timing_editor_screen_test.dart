@@ -355,7 +355,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('America/Vancouver'), findsOneWidget);
+    expect(find.text('America/Vancouver (GMT-08:00 / -07:00)'), findsOneWidget);
     expect(
       find.textContaining('Business account for the selected scope'),
       findsNothing,
@@ -378,7 +378,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Schedule timing change'), findsNWidgets(2));
+    expect(find.text('Schedule service periods'), findsNWidgets(2));
     expect(find.text('2026-05-21'), findsOneWidget);
   });
 
@@ -449,7 +449,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('America/St_Johns').last);
+    await tester.tap(find.text('America/St_Johns (GMT-03:30 / -02:30)').last);
     await tester.pumpAndSettle();
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_business_timing_editor_save')),

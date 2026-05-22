@@ -291,7 +291,7 @@ void main() {
 
       expect(find.byKey(const Key('mfa_enroll_dialog')), findsOneWidget);
       expect(find.textContaining('did not match'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('mfa_enroll_dialog_cancel')));
+      await tester.tap(find.byKey(const Key('mfa_enroll_dialog_close')));
       await tester.pumpAndSettle();
       expect(find.text('Two-factor sign-in: Off'), findsOneWidget);
     });
@@ -568,10 +568,7 @@ void main() {
 
       await pumpAccount(tester, session, actions: actions);
 
-      expect(
-        find.text('2 other sessions can be reviewed or signed out.'),
-        findsOneWidget,
-      );
+      expect(find.text('Manage active sessions here.'), findsOneWidget);
       expect(find.text('This device'), findsNothing);
       expect(
         find.byKey(const Key('account_active_sessions_manage')),

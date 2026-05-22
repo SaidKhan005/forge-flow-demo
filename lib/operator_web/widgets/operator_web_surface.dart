@@ -131,6 +131,8 @@ class OperatorWebDialog extends StatelessWidget {
     required this.actions,
     this.icon,
     this.maxWidth = 460,
+    this.showCloseButton = true,
+    this.onClose,
   });
 
   final String title;
@@ -138,6 +140,8 @@ class OperatorWebDialog extends StatelessWidget {
   final Widget child;
   final List<Widget> actions;
   final double maxWidth;
+  final bool showCloseButton;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -179,6 +183,22 @@ class OperatorWebDialog extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (showCloseButton)
+                      SizedBox(
+                        width: 42,
+                        height: 42,
+                        child: IconButton(
+                          key: const Key('operator_web_dialog_close'),
+                          tooltip: 'Close',
+                          onPressed:
+                              onClose ?? () => Navigator.of(context).pop(),
+                          icon: const Icon(
+                            Icons.close,
+                            size: 22,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),

@@ -908,9 +908,7 @@ void main() {
       },
     );
 
-    testWidgets('standard demo Schedule timing opens schedule mode editor', (
-      tester,
-    ) async {
+    testWidgets('standard demo hides schedule timing action', (tester) async {
       await sizeViewport(tester);
       final writeGateway = DemoOperatorWebBusinessTimingWriteGateway();
       final source = _BusinessTimingHierarchyOperatorWebSource(writeGateway);
@@ -926,29 +924,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(
+      expect(
         find.byKey(const Key('operator_web_business_timing_schedule_button')),
-      );
-      await tester.tap(
-        find.byKey(const Key('operator_web_business_timing_schedule_button')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const Key('operator_web_business_setup_screen')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_business_timing_editor_dialog')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_business_timing_editor_screen')),
-        findsOneWidget,
-      );
-      expect(find.text('Schedule timing change'), findsWidgets);
-      expect(
-        find.byKey(const Key('operator_web_business_timing_safe_dialog')),
         findsNothing,
       );
     });

@@ -202,7 +202,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Business timing setup',
+                  'Business timing',
                   key: const Key('operator_web_business_setup_nav_title'),
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
@@ -215,9 +215,6 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
               onEdit:
                   widget.onEditTiming ??
                   () => _showSafeTimingDialog('Edit timing'),
-              onSchedule:
-                  widget.onScheduleTiming ??
-                  () => _showSafeTimingDialog('Schedule timing change'),
               onReset: null,
             )
           else
@@ -233,14 +230,9 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
 }
 
 class _TimingEditControls extends StatelessWidget {
-  const _TimingEditControls({
-    required this.onEdit,
-    required this.onSchedule,
-    required this.onReset,
-  });
+  const _TimingEditControls({required this.onEdit, required this.onReset});
 
   final VoidCallback onEdit;
-  final VoidCallback onSchedule;
   final VoidCallback? onReset;
 
   @override
@@ -258,28 +250,25 @@ class _TimingEditControls extends StatelessWidget {
         runSpacing: 10,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          OutlinedButton.icon(
-            key: const Key('operator_web_business_timing_edit_button'),
-            onPressed: onEdit,
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            ),
-            icon: const Icon(Icons.edit_outlined, size: 20),
-            label: Text(
-              'Edit timing',
-              style: AppTextStyles.display16(color: AppColors.textPrimary),
-            ),
-          ),
-          OutlinedButton.icon(
-            key: const Key('operator_web_business_timing_schedule_button'),
-            onPressed: onSchedule,
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            ),
-            icon: const Icon(Icons.event_outlined, size: 20),
-            label: Text(
-              'Schedule timing change',
-              style: AppTextStyles.display16(color: AppColors.textPrimary),
+          SizedBox(
+            height: 46,
+            child: FilledButton.icon(
+              key: const Key('operator_web_business_timing_edit_button'),
+              onPressed: onEdit,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.sunset,
+                foregroundColor: AppColors.backgroundSurface,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                textStyle: AppTextStyles.mono12(weight: FontWeight.w600),
+              ),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit service periods'),
             ),
           ),
           if (onReset != null)
@@ -319,7 +308,7 @@ class _EffectiveTimingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _TimingPanel(
       keyName: 'operator_web_business_timing_effective_card',
-      title: 'Timing in use',
+      title: 'Timing defaults',
       child: Column(
         children: [
           for (final field in bundle.effectiveFields)
@@ -397,9 +386,7 @@ class _EffectiveFieldRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final source = _TimingStatusPill(
-      label: field.inherited
-          ? 'Inherited from ${field.sourceLabel}'
-          : field.sourceLabel,
+      label: field.inherited ? 'Inherited' : field.sourceLabel,
       color: field.inherited ? AppColors.textMuted : AppColors.peacockDark,
     );
     return Padding(
@@ -488,7 +475,7 @@ class _ServicePeriodRow extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: _TimingStatusPill(
-                      label: 'Source: ${period.sourceLabel}',
+                      label: 'Inherited',
                       color: AppColors.textMuted,
                     ),
                   ),

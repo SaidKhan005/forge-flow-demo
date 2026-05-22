@@ -871,33 +871,6 @@ class _AuditLogFilters extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _TextFilterField(
-                  fieldKey: const Key(
-                    'operator_web_audit_log_filter_target_kind',
-                  ),
-                  label: 'Target kind',
-                  hint: 'team_user, role, session, org_unit',
-                  value: query.targetKind,
-                  onChanged: onTargetKindChanged,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _TextFilterField(
-                  fieldKey: const Key(
-                    'operator_web_audit_log_filter_target_id',
-                  ),
-                  label: 'Target id',
-                  hint: 'paste a uuid or stable id',
-                  value: query.targetId,
-                  onChanged: onTargetIdChanged,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );

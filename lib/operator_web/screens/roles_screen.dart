@@ -388,8 +388,6 @@ class _RolesScreenState extends State<RolesScreen> {
             onCreateRole: () => _openEditor(null),
           ),
           const SizedBox(height: 12),
-          _RolesScopeNote(selectedScope: widget.selectedScope),
-          const SizedBox(height: 18),
           if (custom.isEmpty)
             _EmptyCustomRolesPanel(
               canWrite: widget._canWrite,
@@ -417,59 +415,6 @@ class _RolesScreenState extends State<RolesScreen> {
             canWrite: false,
             onEdit: null,
             onDelete: null,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RolesScopeNote extends StatelessWidget {
-  const _RolesScopeNote({required this.selectedScope});
-
-  final OperatorWebManagementScopeOption? selectedScope;
-
-  @override
-  Widget build(BuildContext context) {
-    final scope = selectedScope;
-    final label = scope?.label ?? 'All locations';
-    final helper = scope?.helper ?? 'Business-wide';
-    final limited =
-        scope != null && scope.kind != OperatorWebManagementScopeKind.operator;
-    return Container(
-      key: const Key('operator_web_roles_scope_note'),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: AppColors.cardGlow,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Icon(Icons.account_tree_outlined, size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'Managing roles for $label',
-                  style: AppTextStyles.body13(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  limited
-                      ? '$helper scope: new role permissions are checked '
-                            'against this scope. Assign people from Team '
-                            'members to avoid whole-business access.'
-                      : 'Business-wide scope: new roles can include '
-                            'business-wide permissions. Assign people from '
-                            'Team members.',
-                  style: AppTextStyles.body12(color: AppColors.textSecondary),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -514,19 +459,6 @@ class _RolesHeader extends StatelessWidget {
       runSpacing: 8,
       alignment: WrapAlignment.end,
       children: <Widget>[
-        SizedBox(
-          height: 38,
-          child: OutlinedButton.icon(
-            key: const Key('operator_web_roles_open_explainer'),
-            onPressed: onOpenExplainer,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.sunsetDark,
-              side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-            ),
-            icon: const Icon(Icons.help_outline, size: 16),
-            label: const Text('Permission Explainer'),
-          ),
-        ),
         SizedBox(
           height: 38,
           child: FilledButton.icon(
@@ -601,12 +533,10 @@ class _RoleGroup extends StatelessWidget {
                   tooltip: title,
                   body: Text(
                     subtitleText,
-                    style: AppTextStyles.body13(
-                      color: AppColors.textSecondary,
-                    ),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                 ),
-          ),
+        ),
         const SizedBox(height: 10),
         for (final role in roles)
           _RoleTile(
