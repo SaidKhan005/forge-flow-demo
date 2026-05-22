@@ -97,11 +97,10 @@ class PollingTierStatusCard extends StatelessWidget {
       cardKey: const Key('data_accuracy_polling_tier_status_card'),
       title: 'Your data freshness tier',
       headerExplainer:
-          'Your plan tier sets how often Forge & Flow asks your vendors '
-          'for fresh data. Standard checks every few minutes, Premium '
-          'checks more often. If you need fresher numbers than your tier '
-          'allows, request a tier change below and the F&F team will '
-          'reach out.',
+          'This applies only to vendors that do not push live updates. '
+          'Forge & Flow asks those vendors for new data on the schedule '
+          'set by this location\'s tier. Webhook vendors update when they '
+          'send data, so this tier does not change them.',
       child: !appliesToConnectedVendors
           ? _FreshnessDoesNotApplyBlock(bundle: bundle)
           : status == null
@@ -137,9 +136,8 @@ class PollingTierStatusCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Tap the button and tell us what you need. The F&F team '
-                  'emails you back within one business day to discuss '
-                  'options and walk you through the change.',
+                  'Request a change when poll-only vendors need fresher '
+                  'data than this tier provides.',
                   style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 14),
@@ -270,7 +268,7 @@ class _PerVendorCadenceList extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
           'Every vendor you have connected pushes updates to Forge & Flow '
-          'in real time, so your dashboard is always current.',
+          'when they happen, so there is no polling schedule to edit here.',
           style: AppTextStyles.body13(color: AppColors.textMuted),
         ),
       );
