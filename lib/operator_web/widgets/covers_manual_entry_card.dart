@@ -165,8 +165,9 @@ class _CoversManualEntryCardState extends State<CoversManualEntryCard> {
               tooltip: "Type today's covers",
               body: Text(
                 'You set this service period to manual. Type how many guests '
-                "you served. Leave blank if you don't have the count yet. F&F "
-                "will show \"not yet available\" rather than make up a number.",
+                "you served. Leave blank if you don't have the count yet. The "
+                'app dashboard will show "not yet available" rather than make '
+                'up a number.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
             ),

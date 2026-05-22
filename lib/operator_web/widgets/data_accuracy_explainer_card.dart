@@ -3,7 +3,7 @@
 // Operator-facing "What this page is for" card. It sits at the top of
 // the Data Accuracy screen and shows how labor, covers, and data
 // freshness flow from the operator's connected vendors into the
-// dashboard.
+// app dashboard.
 
 import 'package:flutter/material.dart';
 
@@ -63,7 +63,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Labor, covers, and freshness feed the dashboard. Each setting is available only when the connected vendors make that choice useful.',
+            'Labor, covers, and freshness feed the app dashboard. Each setting is available only when the connected vendors make that choice useful.',
             key: const Key('data_accuracy_map_intro'),
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
@@ -107,12 +107,12 @@ class DataAccuracyExplainerCard extends StatelessWidget {
   static String _laborMapLine(VendorConnectionsBundle? bundle) {
     final labor = bundle?.laborConnection;
     if (labor == null) {
-      return 'Controls how Forge & Flow turns labor hours into labor dollars for the dashboard.';
+      return 'Controls how Forge & Flow turns labor hours into labor dollars for the app dashboard.';
     }
     final wageClass = laborWageSourceClassFor(labor.vendorId);
     return switch (wageClass) {
       LaborWageSourceClass.perEmployeeWithDollars =>
-        '${labor.displayName} can supply labor dollars. This setting chooses the labor-dollar source for the dashboard.',
+        '${labor.displayName} can supply labor dollars. This setting chooses the labor-dollar source for the app dashboard.',
       LaborWageSourceClass.perEmployeeWithRates =>
         '${labor.displayName} supplies employee rates and time. This setting chooses how labor dollars are calculated.',
       LaborWageSourceClass.perPositionWithRates =>
@@ -120,7 +120,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
       LaborWageSourceClass.hoursOnly =>
         '${labor.displayName} supplies hours. This setting chooses which wage source turns those hours into dollars.',
       null =>
-        '${labor.displayName} is connected. This setting chooses the labor-dollar source for the dashboard.',
+        '${labor.displayName} is connected. This setting chooses the labor-dollar source for the app dashboard.',
     };
   }
 
