@@ -154,5 +154,30 @@ void main() {
       expect(find.text('Toast'), findsWidgets);
       expect(find.text('7shifts'), findsWidgets);
     });
+
+    testWidgets('shows a no-vendor notice when location has no integrations', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyExplainerCard(
+            locationLabel: '95 Water Street',
+            bundle: bundle(),
+            dataFreshnessApplies: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('data_accuracy_no_vendors_notice')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('No vendor is connected'), findsWidgets);
+      expect(
+        find.textContaining('Manual labor and manual covers'),
+        findsOneWidget,
+      );
+    });
   });
 }

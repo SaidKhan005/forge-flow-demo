@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/widgets/covers_source_toggle.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -94,6 +95,32 @@ void main() {
       updatedAt: DateTime.utc(2026, 5, 5),
     );
   }
+
+  VendorConnectionRow row({
+    required String vendorId,
+    required String displayName,
+    required VendorCategory category,
+  }) => VendorConnectionRow(
+    connectionId: '$vendorId-conn',
+    vendorId: vendorId,
+    displayName: displayName,
+    category: category,
+    status: VendorConnectionStatus.connected,
+    metadata: const <String, Object?>{},
+  );
+
+  VendorConnectionsBundle bundle({
+    VendorConnectionRow? pos,
+    VendorConnectionRow? reservation,
+  }) => VendorConnectionsBundle(
+    operatorId: 'brio-operator',
+    locationId: 'brio-chicago-loop',
+    locationName: 'Brio - Chicago Loop',
+    posConnection: pos,
+    laborConnection: null,
+    reservationConnection: reservation,
+    demoFlags: const <VendorCategory, bool>{},
+  );
 
   testWidgets(
     'CoversSourceToggle renders one row per configured period (4 periods) '
@@ -186,6 +213,127 @@ void main() {
 
     expect(find.byKey(const Key('covers_source_no_periods')), findsOneWidget);
     expect(find.byKey(const Key('covers_source_daypart_lunch')), findsNothing);
+  });
+
+  testWidgets('manual covers remain editable when no vendor is connected', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1280, 1000));
+    CoversSource? capturedSource;
+
+    await tester.pumpWidget(
+      wrap(
+        CoversSourceToggle(
+          settings: settingsWith(),
+          servicePeriods: fourPeriods,
+          onChanged: (_, source) => capturedSource = source,
+          bundle: bundle(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('covers_source_chip_breakfast_vendor')),
+    );
+    await tester.pumpAndSettle();
+    expect(capturedSource, isNull);
+
+    await tester.tap(
+      find.byKey(const Key('covers_source_chip_breakfast_manual')),
+    );
+    await tester.pumpAndSettle();
+    expect(capturedSource, CoversSource.manual);
+  });
+
+  testWidgets('Square disables vendor covers but leaves manual available', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1280, 1000));
+    CoversSource? capturedSource;
+
+    await tester.pumpWidget(
+      wrap(
+        CoversSourceToggle(
+          settings: settingsWith(),
+          servicePeriods: fourPeriods,
+          onChanged: (_, source) => capturedSource = source,
+          bundle: bundle(
+            pos: row(
+              vendorId: 'square',
+              displayName: 'Square',
+              category: VendorCategory.pos,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('covers_source_chip_breakfast_vendor')),
+    );
+    await tester.pumpAndSettle();
+    expect(capturedSource, isNull);
+
+    await tester.tap(
+      find.byKey(const Key('covers_source_chip_breakfast_manual')),
+    );
+    await tester.pumpAndSettle();
+    expect(capturedSource, CoversSource.manual);
+  });
+
+  testWidgets('reservations plus walk-ins waits for reservation vendor', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1280, 1000));
+    CoversSource? capturedSource;
+
+    await tester.pumpWidget(
+      wrap(
+        CoversSourceToggle(
+          settings: settingsWith(),
+          servicePeriods: fourPeriods,
+          onChanged: (_, source) => capturedSource = source,
+          bundle: bundle(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(
+        const Key('covers_source_chip_breakfast_reservation_plus_walkin'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(capturedSource, isNull);
+
+    await tester.pumpWidget(
+      wrap(
+        CoversSourceToggle(
+          settings: settingsWith(),
+          servicePeriods: fourPeriods,
+          onChanged: (_, source) => capturedSource = source,
+          bundle: bundle(
+            reservation: row(
+              vendorId: 'opentable',
+              displayName: 'OpenTable',
+              category: VendorCategory.reservation,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(
+        const Key('covers_source_chip_breakfast_reservation_plus_walkin'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(capturedSource, CoversSource.reservationPlusWalkin);
   });
 
   testWidgets('vendor relativity label is present', (tester) async {
