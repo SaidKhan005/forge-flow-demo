@@ -56,6 +56,7 @@ import '../services/web_account_gateway.dart';
 import '../widgets/business_logo_upload_section.dart';
 import '../widgets/hierarchy_scope_notice.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/web_app_shell.dart';
 
@@ -960,7 +961,10 @@ class _AccountScreenState extends State<AccountScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(),
+          const OperatorWebScreenHeader(
+            icon: Icons.business_outlined,
+            title: 'Business account',
+          ),
           const SizedBox(height: 18),
           if (!_hasGateway) const _UnavailableBanner(),
           if (!_hasGateway) const SizedBox(height: 14),
@@ -1174,28 +1178,6 @@ class _AccountSourcePart {
 
   final String label;
   final LocationAccountOverridesFieldSource? source;
-}
-
-class _Header extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(
-          Icons.business_outlined,
-          size: 22,
-          color: AppColors.sunsetDark,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            'Business account',
-            style: AppTextStyles.display20(color: AppColors.textPrimary),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class _UnavailableBanner extends StatelessWidget {

@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
 import '../widgets/operator_web_info_button.dart';
+import '../widgets/operator_web_screen_header.dart';
 import '../widgets/operator_web_surface.dart';
 
 // G7d (spec §2.B/§3): v2 catalog constants. Phantom
@@ -192,22 +193,10 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.storefront_outlined,
-                size: 22,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Service periods',
-                  key: const Key('operator_web_business_setup_nav_title'),
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-              ),
-            ],
+          const OperatorWebScreenHeader(
+            icon: Icons.storefront_outlined,
+            title: 'Service periods',
+            titleKey: Key('operator_web_business_setup_nav_title'),
           ),
           const SizedBox(height: 18),
           if (widget._canEditTiming)
