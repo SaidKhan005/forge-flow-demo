@@ -298,6 +298,13 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   late Map<String, int> _walkInEntries;
   late bool _pendingInitialWageAuthorityScroll;
 
+  bool get _vendorApplicabilityBound =>
+      widget.vendorApplicabilityGateway != null;
+
+  List<String> get _applicableWageVendorSlugs => _wageApplicabilityRows
+      .map((row) => row.vendorSlug)
+      .toList(growable: false);
+
   @override
   void initState() {
     super.initState();
@@ -322,14 +329,18 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     try {
       final periods = await loader();
       if (!mounted || generation != _servicePeriodsLoadGeneration) return;
-      setState(() => _servicePeriods = periods);
+      setState(() {
+        _servicePeriods = periods;
+        _normalizeWorkingSources();
+      });
     } catch (_) {
       if (!mounted || generation != _servicePeriodsLoadGeneration) return;
-      setState(
-        () => _servicePeriods = ServicePeriodDefinitionResolver.ordered(
+      setState(() {
+        _servicePeriods = ServicePeriodDefinitionResolver.ordered(
           ServicePeriodDefinitionResolver.demoDefinitions,
-        ),
-      );
+        );
+        _normalizeWorkingSources();
+      });
     }
   }
 
@@ -358,6 +369,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _bundle = bundle;
+        _normalizeWorkingSources();
         _loadError = null;
         _loading = false;
       });
@@ -466,6 +478,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       if (!mounted || generation != _settingsLoadGeneration) return;
       setState(() {
         if (settings != null) _applySettingsSeed(settings);
+        _normalizeWorkingSources();
         _settingsLoading = false;
         _settingsLoadError = null;
       });
@@ -500,6 +513,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       if (!mounted || generation != _wageApplicabilityLoadGeneration) return;
       setState(() {
         _wageApplicabilityRows = currentEnabled;
+        _normalizeWorkingSources();
         _wageApplicabilityLoading = false;
         _wageApplicabilityError = null;
       });
@@ -536,6 +550,28 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               DataAccuracyWalkInHandlingMode.reservationsOnly,
         );
     _walkInDailyCount = seed?.dailyWalkInCountFor(widget.businessDateIso);
+  }
+
+  void _normalizeWorkingSources() {
+    final bundle = _bundle;
+    if (bundle == null) return;
+    if (!_vendorApplicabilityBound || !_wageApplicabilityLoading) {
+      _wageSource = effectiveWageSource(
+        configured: _wageSource,
+        bundle: bundle,
+        vendorApplicabilityBound: _vendorApplicabilityBound,
+        applicableWageVendorSlugs: _applicableWageVendorSlugs,
+      );
+    }
+    if (_servicePeriods.isEmpty) return;
+    _coversSourcePerPeriod = <String, CoversSource>{
+      ..._coversSourcePerPeriod,
+      for (final period in _servicePeriods)
+        period.id: effectiveCoversSource(
+          _coversSourcePerPeriod[period.id] ?? kDefaultCoversSource,
+          bundle,
+        ),
+    };
   }
 
   // ── Settings materialization ────────────────────────────────────
@@ -1141,9 +1177,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
             vendorApplicabilityLoading: _wageApplicabilityLoading,
             vendorApplicabilityError: _wageApplicabilityError,
-            applicableWageVendorSlugs: _wageApplicabilityRows
-                .map((row) => row.vendorSlug)
-                .toList(growable: false),
+            applicableWageVendorSlugs: _applicableWageVendorSlugs,
           ),
           const SizedBox(height: 14),
           KeyedSubtree(
@@ -1170,6 +1204,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
                     widget.ancestorOrgUnitIdsNearestFirst,
                 businessName: widget.businessName,
                 showHeader: false,
+                editingEnabled: _wageSource == WageSource.manualMix,
+                editingDisabledMessage:
+                    'Manual wage mix is locked while labor vendor wages are selected.',
               ),
             ),
           ),
