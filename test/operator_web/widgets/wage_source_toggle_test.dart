@@ -70,6 +70,16 @@ void main() {
     return false;
   }
 
+  bool rowHasCheckedRadio(Key rowKey) {
+    return find
+        .descendant(
+          of: find.byKey(rowKey),
+          matching: find.byIcon(Icons.radio_button_checked),
+        )
+        .evaluate()
+        .isNotEmpty;
+  }
+
   testWidgets('WageSourceToggle renders both radios', (tester) async {
     await sizeViewport(tester, const Size(1024, 800));
 
@@ -198,9 +208,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(captured, isNull);
+    expect(rowHasCheckedRadio(const Key('wage_source_radio_vendor')), isFalse);
     expect(
-      find.textContaining('Connect a labor vendor before using vendor'),
-      findsWidgets,
+      rowHasCheckedRadio(const Key('wage_source_radio_manual_mix')),
+      isTrue,
     );
   });
 
@@ -227,6 +238,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(captured, isNull);
+    expect(rowHasCheckedRadio(const Key('wage_source_radio_vendor')), isFalse);
+    expect(
+      rowHasCheckedRadio(const Key('wage_source_radio_manual_mix')),
+      isTrue,
+    );
   });
 
   testWidgets('wage class label updates with connected labor vendor', (
@@ -248,9 +264,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(anyTextContains('QuickBooks Time'), isTrue);
-    expect(anyTextContains('per-employee hourly rates'), isTrue);
+    expect(anyTextContains('employee rates'), isTrue);
 
-    // Humanity → per-position pay rates.
+    // Humanity → role rates.
     await tester.pumpWidget(
       wrap(
         WageSourceToggle(
@@ -263,6 +279,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(anyTextContains('Humanity'), isTrue);
-    expect(anyTextContains('per-position pay rates'), isTrue);
+    expect(anyTextContains('role rates'), isTrue);
   });
 }

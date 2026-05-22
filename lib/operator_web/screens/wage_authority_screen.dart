@@ -188,6 +188,8 @@ class WageAuthoritySection extends StatefulWidget {
     this.ancestorOrgUnitIdsNearestFirst = const <String>[],
     this.businessName,
     this.showHeader = true,
+    this.editingEnabled = true,
+    this.editingDisabledMessage,
   });
 
   final OperatorWebSession session;
@@ -211,6 +213,12 @@ class WageAuthoritySection extends StatefulWidget {
   /// keeps its title; the Data Accuracy embed passes `false` because
   /// the host renders its own section heading.
   final bool showHeader;
+
+  /// Whether this section may edit manual wage rows. Data Accuracy
+  /// locks edits when the operator is using labor vendor wages so the
+  /// manual mix remains an inactive fallback.
+  final bool editingEnabled;
+  final String? editingDisabledMessage;
 
   @override
   State<WageAuthoritySection> createState() => _WageAuthoritySectionState();
@@ -253,6 +261,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   }
 
   bool get _canWrite =>
+      widget.editingEnabled &&
       widget.gateway != null &&
       widget.session.roles.any(_kOperatorWriteRoles.contains);
 
@@ -621,8 +630,10 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
           const SizedBox(height: 12),
           _ReadOnlyBanner(
             message:
-                'Only operator owners can change wage rows. '
-                'Ask one of them to make the change for you.',
+                !widget.editingEnabled && widget.editingDisabledMessage != null
+                ? widget.editingDisabledMessage!
+                : 'Only operator owners can change wage rows. '
+                      'Ask one of them to make the change for you.',
           ),
         ],
         if (widget.gateway == null) ...<Widget>[

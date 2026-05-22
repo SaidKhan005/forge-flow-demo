@@ -53,11 +53,17 @@ class WageSourceToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sourceLabel = source?.operatorFacingLabel;
-    final laborVendorId = bundle?.laborConnection?.vendorId;
-    final vendorSelectable =
-        wageVendorOptionApplies(bundle) &&
-        (!vendorApplicabilityBound ||
-            applicableWageVendorSlugs.contains(laborVendorId));
+    final vendorSelectable = wageVendorOptionSelectable(
+      bundle: bundle,
+      vendorApplicabilityBound: vendorApplicabilityBound,
+      applicableWageVendorSlugs: applicableWageVendorSlugs,
+    );
+    final effectiveValue = effectiveWageSource(
+      configured: value,
+      bundle: bundle,
+      vendorApplicabilityBound: vendorApplicabilityBound,
+      applicableWageVendorSlugs: applicableWageVendorSlugs,
+    );
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_wage_source_card'),
       title: 'How labor dollars are calculated',
@@ -73,7 +79,7 @@ class WageSourceToggle extends StatelessWidget {
         children: [
           _RadioRow(
             rowKey: const Key('wage_source_radio_vendor'),
-            selected: value == WageSource.vendor,
+            selected: effectiveValue == WageSource.vendor,
             enabled: vendorSelectable,
             label:
                 'Use labor vendor\'s reported wages and dollars when available',
@@ -83,7 +89,7 @@ class WageSourceToggle extends StatelessWidget {
           const SizedBox(height: 10),
           _RadioRow(
             rowKey: const Key('wage_source_radio_manual_mix'),
-            selected: value == WageSource.manualMix,
+            selected: effectiveValue == WageSource.manualMix,
             label:
                 'Use my manual wage mix from Settings (the same rates the wage generator uses)',
             body:

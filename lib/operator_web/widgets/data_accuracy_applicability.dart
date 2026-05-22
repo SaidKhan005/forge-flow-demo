@@ -55,6 +55,33 @@ String dataFreshnessNotApplicableCopy(VendorConnectionsBundle? bundle) {
 bool wageVendorOptionApplies(VendorConnectionsBundle? bundle) =>
     bundle?.laborConnection != null;
 
+bool wageVendorOptionSelectable({
+  required VendorConnectionsBundle? bundle,
+  required bool vendorApplicabilityBound,
+  required Iterable<String> applicableWageVendorSlugs,
+}) {
+  final laborVendorId = bundle?.laborConnection?.vendorId;
+  return wageVendorOptionApplies(bundle) &&
+      (!vendorApplicabilityBound ||
+          applicableWageVendorSlugs.contains(laborVendorId));
+}
+
+WageSource effectiveWageSource({
+  required WageSource configured,
+  required VendorConnectionsBundle? bundle,
+  required bool vendorApplicabilityBound,
+  required Iterable<String> applicableWageVendorSlugs,
+}) {
+  if (configured != WageSource.vendor) return configured;
+  return wageVendorOptionSelectable(
+        bundle: bundle,
+        vendorApplicabilityBound: vendorApplicabilityBound,
+        applicableWageVendorSlugs: applicableWageVendorSlugs,
+      )
+      ? WageSource.vendor
+      : WageSource.manualMix;
+}
+
 bool coversSourceOptionApplies(
   CoversSource source,
   VendorConnectionsBundle? bundle,
@@ -69,6 +96,15 @@ bool coversSourceOptionApplies(
     case CoversSource.manual:
       return true;
   }
+}
+
+CoversSource effectiveCoversSource(
+  CoversSource configured,
+  VendorConnectionsBundle? bundle,
+) {
+  return coversSourceOptionApplies(configured, bundle)
+      ? configured
+      : CoversSource.manual;
 }
 
 String? coversSourceDisabledReason(
