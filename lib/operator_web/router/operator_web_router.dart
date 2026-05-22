@@ -1597,6 +1597,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
               actions: _accountActions,
               securityGateway: _securityGateway,
               onOpenAuditLog: _openAuditLog,
+              onOpenActiveSessions: () => _selectNav(kOperatorWebNavSessions),
               scrollToSecurityOnFirstBuild:
                   _scrollMyAccountSecurityOnFirstBuild,
             );

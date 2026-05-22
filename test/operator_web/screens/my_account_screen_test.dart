@@ -36,6 +36,7 @@ void main() {
     OperatorWebSession session, {
     OperatorWebAccountActions? actions,
     WebSecurityGateway? securityGateway,
+    VoidCallback? onOpenActiveSessions,
     DateTime Function()? now,
   }) async {
     await tester.pumpWidget(
@@ -44,6 +45,7 @@ void main() {
           session: session,
           actions: actions,
           securityGateway: securityGateway,
+          onOpenActiveSessions: onOpenActiveSessions,
           now: now,
         ),
       ),
@@ -568,7 +570,7 @@ void main() {
 
       await pumpAccount(tester, session, actions: actions);
 
-      expect(find.text('Manage active sessions here.'), findsOneWidget);
+      expect(find.text('Manage active sessions here'), findsOneWidget);
       expect(find.text('This device'), findsNothing);
       expect(
         find.byKey(const Key('account_active_sessions_manage')),
@@ -597,6 +599,30 @@ void main() {
         find.byKey(const Key('account_active_sessions_dialog_sign_out_others')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('empty summary still opens the Active Sessions route', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 768));
+      var opened = false;
+      final session = sessionWithRole('operator_owner');
+      final actions = _FakeAccountActions(sessions: const []);
+
+      await pumpAccount(
+        tester,
+        session,
+        actions: actions,
+        onOpenActiveSessions: () => opened = true,
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('account_active_sessions_manage')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account_active_sessions_manage')));
+
+      expect(opened, isTrue);
     });
 
     testWidgets('Sign out all other sessions revokes only non-current rows', (
@@ -717,7 +743,7 @@ void main() {
         final pwd = tester.widget<OutlinedButton>(
           find.byKey(const Key('account_section_password_change')),
         );
-        final sessions = tester.widget<OutlinedButton>(
+        final sessions = tester.widget<TextButton>(
           find.byKey(const Key('account_active_sessions_manage')),
         );
         expect(enroll.onPressed, isNull);

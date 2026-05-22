@@ -50,16 +50,23 @@ class PermissionExplainerScreen extends StatelessWidget {
         backgroundColor: AppColors.backgroundSurface,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
-        leading: IconButton(
-          key: const Key('operator_web_permission_explainer_back'),
-          icon: const Icon(Icons.arrow_back, size: 18),
-          onPressed: onClose ?? () => Navigator.of(context).maybePop(),
-          tooltip: 'Back to Roles & permissions',
-        ),
+        automaticallyImplyLeading: false,
         title: Text(
           'Permission Explainer',
           style: AppTextStyles.display20(color: AppColors.textPrimary),
         ),
+        actions: <Widget>[
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: IconButton(
+              key: const Key('operator_web_permission_explainer_close'),
+              icon: const Icon(Icons.close, size: 24),
+              onPressed: onClose ?? () => Navigator.of(context).maybePop(),
+              tooltip: 'Close',
+            ),
+          ),
+        ],
       ),
       body: const PermissionExplainerView(
         keyPrefix: 'operator_web_permission_explainer',
