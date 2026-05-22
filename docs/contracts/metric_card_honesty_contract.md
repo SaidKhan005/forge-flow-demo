@@ -15,7 +15,7 @@ The same doctrine was never extended to the load-bearing **metric cards** — CP
 
 (See `memory/project_one_outcome_anchor.md`.)
 
-Today, when covers data is missing, `lib/domain/services/shift_fact_builder.dart:36` silently renders `PPA = 0.0`. When actual FOH hours is zero, `lib/models/shift_dashboard_read_model.dart:191-192` silently renders `CPLH = 0.0`. The operator cannot tell a real `$0.00` from a broken-fallback `$0.00`. That kills the anchor.
+Before this contract, when covers data is missing, `lib/domain/services/shift_fact_builder.dart:49` silently rendered `PPA = 0.0`. When actual FOH hours is zero, `lib/models/shift_dashboard_read_model.dart:176-178` silently rendered `CPLH = 0.0`. The operator cannot tell a real `$0.00` from a broken-fallback `$0.00`. That kills the anchor.
 
 This contract closes that asymmetry.
 

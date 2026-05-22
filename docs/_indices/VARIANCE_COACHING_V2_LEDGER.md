@@ -1,7 +1,9 @@
 # Variance Coaching V2 Ledger
 
-One row per lane. Lanes A–F MERGED to `origin/master`; Lane G
-(wave-close verification) IN-REVIEW. Audit artifacts live at
+One row per lane. Lanes A–F and Lane G MERGED to `origin/master`
+(Lane G = PR #915, merged 2026-05-17). Two Lane-G follow-ups remain
+open: finding F-1 (presentation micro-slice) and operator visual
+sign-off (see DoD table below). Audit artifacts live at
 `docs/_audits/variance_coaching_v2/pr_<n>_<lane>.md`.
 
 Plan of record:

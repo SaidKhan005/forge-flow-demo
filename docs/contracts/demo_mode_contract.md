@@ -337,8 +337,8 @@ Carve-out #4 is a runtime `demo_mode_state` UI fold with no
 
 ### Carve-out #3: Settings screen demo-only management sections
 
-- **Location:** `lib/screens/settings_screen.dart:49` (the `_kDemoMode`
-  const), `:461` (gates the "Data reset" section), `:468` (gates the
+- **Location:** `lib/screens/settings_screen.dart:51` (the `_kDemoMode`
+  const), `:473` (gates the "Data reset" section), `:480` (gates the
   "Demo date" section). One const + two conditional renders, all
   behind the same flag, so this counts as one carve-out.
 - **What it does:** When the binary was built with

@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-18. Routing map only: shows **only what is left**.
+Updated: 2026-05-22. Routing map only: shows **only what is left**.
 Completed phases/slices: `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 Stale sprint-execution docs: `docs/archive/_execution/`. `docs/archive/**`
 is history; ignore unless explicitly named.
@@ -122,7 +122,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 
 | Slice | Status | Plan |
 |---|---|---|
-| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active implementation; Slices 0 to 5 landed (covers-source per-period schema + bottom-up locked weekly-plan snapshot + per-period verdict carry); later slices + benchmark-rework follow-ups in flight** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`**: 9 slices (0 to 1 to 1.5 to 2 to 2.5 to 3 to 4 to 5 to 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. Landed covers-source de-hardcode R5/R7a to R7d (#943/#972/#975 to #977; **#977 schema-destructive: drops legacy whole-day columns + trims view scalars**); run `migration_drift_scanner` + `migration_cutoff_lint` after any further `db/migrations` change. |
+| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active implementation; Slices 0 to 6 landed, completing the full numbered sequence (covers-source per-period schema + bottom-up locked weekly-plan snapshot + per-period verdict carry + Slice 6 audit-scorer per-period & pool-consistency checks, #917/#948); benchmark-rework follow-ups in flight** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`**: 9 slices (0 to 1 to 1.5 to 2 to 2.5 to 3 to 4 to 5 to 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. Landed covers-source de-hardcode R5/R7a to R7d (#943/#972/#975 to #977; **#977 schema-destructive: drops legacy whole-day columns + trims view scalars**); run `migration_drift_scanner` + `migration_cutoff_lint` after any further `db/migrations` change. |
 | `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
 | `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
@@ -242,11 +242,13 @@ arrive.
 - **Notify before** any live Firebase mutation, key/account request,
   billing setup, provider call, or product decision.
 
-## Recently landed (2026-05-16 to 2026-05-18; 92 non-merge commits on `origin/master`)
+## Recently landed (through 2026-05-22)
 
 Themed digest of what landed since the last tracker refresh (commit
 `54dbd2f5`). None of this changes the V1 launch path above; it is
 feature build-out, doc alignment, and repo hygiene.
+
+### 2026-05-16 to 2026-05-18 (92 non-merge commits since `54dbd2f5`)
 
 - **Covers-source per-period schema (Per-Daypart V1 Slice 0 to 5):**
   R5 covers-source de-hardcode + keyed-table backfill (#943); R7a
@@ -295,6 +297,73 @@ feature build-out, doc alignment, and repo hygiene.
   wage-at-lock-time reframe (#920/#948), settings/integrations copy
   and DI fixes, deterministic polling-vendor filter test (#978),
   demo-seed reservation apportionment (#956).
+
+### 2026-05-19 to 2026-05-22 (199 non-merge commits)
+
+- **Operator Web UX consistency wave (foundation through header
+  unification):** shared `OperatorWebScreenHeader` extracted and rolled
+  across ~14 screens (#1102/#1183/#1185/#1186/#1187); UX foundation +
+  execution plan (#1141); polish across My Account / Team Members
+  (#1151), Audit log (#1150), Business timing (#1145), Notifications
+  (#1146), Locations hierarchy (#1153/#1182), Business setup (#1097),
+  Plan help (#1095); Roles made scope-aware (#1152); my_account dialog
+  decomposition (#1180); hierarchy-scoped account settings (#1130).
+- **Data Accuracy operator surface (Wave 6 + hardening):** labor-grouping
+  polish (#1148), purpose / app-dashboard copy clarified (#1181), vendor
+  truth / applicability / source defaults hardened, reads from the
+  effective view, service-period reset paths (#1065), business date now
+  required and Business-Timing-anchored, parity gaps closed, legacy
+  wire-key aliases retired, InMemory admin gateway parity (#1086).
+- **Business Timing authoring + onboarding:** org-unit Business Timing
+  authoring, onboarding profile seed (#1052), timezone + starter
+  bootstrap fixes, route-truth + retry labels, service-period metadata
+  preserved.
+- **Test-suite tightening audit (2026-05-20):** largest test files split
+  into focused files (advisor_proxy 8,328 lines into 5 (#1120);
+  canonical_fact 3,981 into 3 (#1110); baseline_manager 3,608 into 4
+  (#1117); proxy_auth 3,599 into 4 (#1122); plus target_cycle /
+  data_alignment_audit / phase_9_0sigma / admin_operator_location /
+  mobile_operational_sync splits, #1121 to #1132); shared SQLite /
+  Postgres / HTTP / pump test helpers (#1100/#1107/#1111/#1113/#1114/#1119);
+  ~600 unbounded `pumpAndSettle()` calls converted to bounded pump loops
+  (Bucket 3 PRs); postgres-tagged tests gated out of the default suite
+  (#1089/#1098); doc refs repointed to the new split filenames
+  (#1129/#1131/#1132).
+- **Code-hardening guardrails (Phase A):** operator-web size lint +
+  metrics ratchet (#1162), skip-quarantine lint + flake counter + test
+  baseline (#1163), `dart_code_metrics` integration (#1142),
+  `PERF_BASELINES.json` ratchet skeleton (#1140), ignore-justification
+  lint (#1137); Phase A lints wired into the pre-push hook and ratcheted
+  into the pre-merge gate (#1165).
+- **Pressure + regression test waves:** in-memory pressure for audit
+  chain / webhook signature / cold boot (#1144) and for auth lockout /
+  RLS / idempotency / tenant isolation (#1143); mobile-pressure Lanes A
+  to D (boot/auth/shell/nav, shift+variance, plan/benchmark/baseline,
+  settings/demo); cross-surface mismatch + end-to-end vendor-spine audits
+  (#1060/#1061); ~9 pre-existing operator-web/admin failures fixed
+  (#1059); baseline-failure triage (#1090).
+- **Projection retry + vendor-spine hardening:** durable projection retry
+  ledger + drain worker + admin read-only visibility + evidence +
+  pre-input failure recording (#1050), runOnce default, orphan-scope
+  skip; direct-adapter and worker projection taps wired (#1027/#1028);
+  SendGrid `email_outbox` flips on terminal bounce/complaint events
+  (#1016/#1083); star-shift idempotency keys stabilized.
+- **Deep parity / gap-audit cascade:** cross-surface and graph-audit gap
+  closures (#1015 to #1024), role-gate alignment (#1018/#1019),
+  data-accuracy provenance + idempotency gaps; follow-up findings flipped
+  RESOLVED (#1067/#1070/#1077).
+- **Docs consolidation (Waves 2 to 8) + architecture-book rebuild:**
+  `docs/frameworks/` folded into `runbooks/` (#1000/#1002), personal
+  `ARCHITECTURE.md` de-authoritied with refs redirected to the canonical
+  contract (#1001), closed walkthroughs / execution packets / audits
+  archived (#997 to #1008, #1082), `NEXT_WAVE_PLAN` snapshot refreshed
+  (#1004); CLAUDE.md workflow-hardening + Doc Lean-Out codification
+  (#1005/#1014); architecture-book rebuilt as prose + printable PDF with
+  diagrams and factual-drift fixes (#1006/#1011); em/en dashes purged
+  (#1017/#1169).
+- **In-browser QA harness:** operator-web QA harness (#1172) +
+  admin-console QA runbook coverage; headless-Electron polyfill fixes;
+  stale operator-web tests quarantined pending surface-freeze (#1167).
 
 ## Recently archived
 
