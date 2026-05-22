@@ -154,7 +154,7 @@ count). Run this fixed procedure. Do NOT rebuild the knowledge graph
    `docs/architecture_book/book.html`).
 3. **Signal.** Build the live docs tree + reference scan; use an
    existing `graphify-out/graph.json` read-only for
-   orphan/repetition/staleness signal. Never rebuild the graph here.
+   orphan/repetition/staleness signal.
 4. **Classify** each candidate KEEP / ARCHIVE / MERGE / REPOINT via a
    read-only Explore agent (Cost & Convergence "reuse, don't
    re-derive": verify landed / superseded / paused-not-stale /
@@ -174,7 +174,6 @@ count). Run this fixed procedure. Do NOT rebuild the knowledge graph
    at every real gate.
 8. **Verify landed.** Confirm each merged PR's content is actually on
    `origin/master` ("MERGED" is not landed, Shared Checkout Safety #3).
-9. Report in plain English per Operator Communication Style.
 
 Origin: 2026-05-19 (8-wave consolidation + graph-verified re-run);
 binding form of a repeated operator workflow so it is never re-derived.
@@ -208,11 +207,19 @@ while another session ran `reset --hard origin/master` / `pull --rebase
 --autostash`. These rules are non-negotiable for every session (Claude or
 Codex, orchestrator or executor):
 
-1. **Own-worktree-only.** A session NEVER edits the shared main checkout
-   working tree. All work happens in that session's own
-   `.claude/worktrees/<lane>/` (or `.codex/worktrees/<lane>/`). The main
-   checkout is for ref/tracker/coordination commits by the orchestrator
-   only — never feature/code WIP.
+1. **Own-worktree-only; shared checkout stays on master.** A session NEVER
+   edits the shared main checkout working tree, and the shared checkout's
+   HEAD STAYS on `master` at all times. All implementation work happens in
+   that session's own `.claude/worktrees/<lane>/` (or
+   `.codex/worktrees/<lane>/`) on a `claude/*` (or `codex/*`) branch. No
+   session, executor, agent, or hook switches the shared checkout off
+   `master`, commits feature/slice work to it, or leaves it on a feature
+   branch. Only exception: ref/tracker/coordination commits by the
+   orchestrator on `master` — never feature/code WIP. If anything moves
+   the shared checkout off `master`, restore it to `origin/master`
+   immediately (rescue any uncommitted content per rule 4 first). Direct
+   fix for the repeated 2026-05-18/19 "HEAD landed on master mid-task"
+   incidents.
 2. **Push before you reset.** Only *pushed* commits are safe. Before any
    `reset`, rebase, branch switch, or autostash-triggering pull, commit and
    push. Uncommitted or local-only work in a shared checkout is considered
@@ -227,16 +234,6 @@ Codex, orchestrator or executor):
    Non-destructively snapshot via `git stash create`, point a
    `rescue/<topic>` branch at the result, and `git push origin
    rescue/<topic>` — then report. Never destroy another session's work.
-5. **Stay-on-master + worktree-only execution.** The shared main checkout's
-   working tree STAYS on `master` at all times. No session, executor, agent,
-   or hook switches the shared checkout off `master`, commits feature/slice
-   work to it, or leaves it on a feature branch. ALL implementation work
-   happens in a dedicated worktree on a `claude/*` (or `codex/*`) branch. If
-   a post-merge hook or any process moves the shared checkout's HEAD off
-   `master`, restore it to `origin/master` immediately (after rescuing any
-   uncommitted content per rule 4). This is the positive form of rule 1
-   (own-worktree-only) and the direct fix for the repeated 2026-05-18/19
-   "HEAD landed on master mid-task" incidents.
 
 ## Cost & Convergence Discipline (binding — stops rework spend)
 
@@ -364,8 +361,7 @@ flutter test test/
 Single canonical statement on graphify (cross-referenced by House
 rules, Tooling, and Commits & Push):
 
-- Manual-only for cost control. Do not auto-run `/graphify --update`, do not create `graphify-out/needs_update`, and do not treat a stale `needs_update` file as a required next-turn action. Do not run graphify mid-session unless the operator explicitly requests a manual refresh.
-- The operator manually triggers graph refresh when needed. Until then, prefer authority docs, repo-local search, and code inspection. Use `graphify` only when the operator explicitly asks for graph context or confirms it was manually refreshed.
+- Manual-only for cost control. The operator triggers any graph refresh. Do not auto-run `/graphify --update`, do not create `graphify-out/needs_update`, do not treat a stale `needs_update` file as a required next-turn action, and do not run graphify mid-session. Until the operator asks for graph context or confirms a fresh refresh, prefer authority docs, repo-local search, and code inspection.
 
 ## Commits & Push
 
@@ -376,12 +372,12 @@ rules, Tooling, and Commits & Push):
 
 ## Session Handoff (only when wrapping)
 
-Update `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/session_handoff.md` with what finished, files changed, tests run, next steps, doc moves. Hard cap **40 lines**. "What Completed" = last accepted slice only (prior slices live in `PROJECT_TRACKER.md`). Not prompt authority; don't reread mid-execution.
+Update `~/.claude/projects/C--forge-flow-demo/memory/session_handoff.md` with what finished, files changed, tests run, next steps, doc moves. Hard cap **40 lines**. "What Completed" = last accepted slice only (prior slices live in `PROJECT_TRACKER.md`). Not prompt authority; don't reread mid-execution.
 
 ## Demo Mode
 
 HP #2: `kDemoMode` is a writer-side switch — same tables, same reads, same
-UI either way. Audited 2026-05-07. **Full architecture + rationale:
+UI either way. **Full architecture + rationale:
 `docs/contracts/demo_mode_contract.md` (authoritative — do not duplicate
 its prose here).**
 
@@ -394,20 +390,19 @@ Binding essentials:
   flip state in Postgres `demo_mode_state`; disconnect does NOT auto-revert.
 - Readers (services/repos/widgets) NEVER branch on `kDemoMode`. Demo auth
   is a writer-side bootstrap SOURCE swap (`DemoAuthLoginService`), not a
-  reader branch; production auth is byte-unchanged.
+  reader branch.
 
 Sanctioned reader-side carve-outs — do NOT remove without an explicit
 replacement plan (rationale in the contract):
 1. `lib/screens/auth/login_screen.dart` — additive "Use demo operator" button (UX only).
 2. `lib/services/app_data_status_service.dart` — `DEMO` vs `CURRENT` badge (label only).
-3. `lib/screens/settings_screen.dart` — `_kDemoMode` gates demo-only "Data reset" + "Demo date" sections (operator sign-off 2026-05-08).
-4. `lib/screens/settings/settings_demo_live_switch.dart` — `demo_mode_state` UI fold for the master Demo→Live switch (no `kDemoMode` branch / no `demo_*` / no reader fork).
+3. `lib/screens/settings_screen.dart` — `_kDemoMode` gates demo-only "Data reset" + "Demo date" sections.
+4. `lib/screens/settings/settings_demo_live_switch.dart` — `demo_mode_state` UI fold for the master Demo→Live switch.
 
 Rules for new demo-aware code:
-- Default = NO branch; demo and prod read the same path.
-- UX-only flag use: mark `// kDemoMode carve-out: <reason>` and append rationale to the contract + this list.
-- Any `demo_*` SQLite/Postgres table violates HP #2 — use existing tables with `restaurant_id = DemoScope.restaurantId` (or the `demo_mode_state` row).
-- Demo seeders write the same DAOs/tables as production. A parallel `demo_*` table or a `kDemoMode`-gated reader requires explicit operator sign-off.
+- Default = NO branch; demo and prod read the same path. Demo seeders write the same DAOs/tables as production.
+- UX-only flag use: mark `// kDemoMode carve-out: <reason>` and append rationale to the contract + carve-out list above.
+- Any `demo_*` SQLite/Postgres table violates HP #2 — use existing tables with `restaurant_id = DemoScope.restaurantId` (or the `demo_mode_state` row). A parallel `demo_*` table or a `kDemoMode`-gated reader requires explicit operator sign-off.
 
 ## Flavors
 
