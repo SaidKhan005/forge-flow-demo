@@ -90,11 +90,16 @@ Do not re-open stale findings unless the repo regresses:
   `operator_owner` so the 11W.5 audit-log export gate has
   catalog parity); apply both on staging before claiming index hygiene parity
   or live audit-log export readiness, then carry into the next Production1
-  batch. The account hierarchy follow-up now carries the shared migration
+  batch. The account hierarchy follow-up carried the shared migration
   cutoff through `202605201100_operator_account_contact_fields.sql`: Brand is
   a real `org_units.unit_type`, Brand/Region/District/Location-group account
   overrides have their own table, and Business-level contact email/phone exist
-  on `public.operators` for inheritance. The Hardening Wave B3 audit-anchor
+  on `public.operators` for inheritance. Slice E then advances the shared
+  migration cutoff to
+  `202605230900_phase_slice_e_admin_hierarchy_keys.sql`, an additive seed of
+  five DORMANT `admin.hierarchy.*` permission-key catalog rows (granted to
+  `super_admin` + `ff_support`) for a later "Business accounts" admin
+  hierarchy-mutation gate; no consumer wires them yet. The Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
   schedule registration for `forge_audit_anchor_daily` at `0 2 * * *` UTC; the

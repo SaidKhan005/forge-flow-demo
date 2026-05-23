@@ -544,6 +544,43 @@ class PermissionKeyMetadataCatalog {
           scopeKind: PermissionScopeKind.orgWide,
           humanLabel: 'Read sensitive audit details',
         ),
+        // Slice E (2026-05-23). DORMANT — F&F-internal "Business accounts"
+        // cross-operator hierarchy mutations. No `implies` (the later
+        // gateway-wiring slice decides any view-required-for-write chain).
+        // `suspend` + `delete` carry requires_mfa via
+        // PermissionKeys.requiresMfa + the migration seed; create / move /
+        // rename do not. Distinct from the operator-self-service
+        // `team.hierarchy.*` keys.
+        PermissionKeys.adminHierarchyCreate: PermissionKeyMetadata(
+          productLabel: 'admin',
+          categoryLabel: 'F&F admin actions',
+          scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Create hierarchy nodes',
+        ),
+        PermissionKeys.adminHierarchyMove: PermissionKeyMetadata(
+          productLabel: 'admin',
+          categoryLabel: 'F&F admin actions',
+          scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Move hierarchy nodes',
+        ),
+        PermissionKeys.adminHierarchyRename: PermissionKeyMetadata(
+          productLabel: 'admin',
+          categoryLabel: 'F&F admin actions',
+          scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Rename hierarchy nodes',
+        ),
+        PermissionKeys.adminHierarchySuspend: PermissionKeyMetadata(
+          productLabel: 'admin',
+          categoryLabel: 'F&F admin actions',
+          scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Suspend hierarchy nodes',
+        ),
+        PermissionKeys.adminHierarchyDelete: PermissionKeyMetadata(
+          productLabel: 'admin',
+          categoryLabel: 'F&F admin actions',
+          scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Delete hierarchy nodes',
+        ),
 
         // ─── team.* ─────────────────────────────────────────────────
         PermissionKeys.teamUsersView: PermissionKeyMetadata(

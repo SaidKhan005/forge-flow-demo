@@ -117,7 +117,7 @@ where operator owners or F&F may curate Barrio content per operator.
 | `barrio.learning.complete_unit` | Mark a learning unit complete for the current user. | — |
 | `barrio.streak.view` | View own streak / leaderboard standing. | — |
 
-### `admin.*` (28)
+### `admin.*` (33)
 
 F&F admin actions. Mostly mounted under `/v1/admin/auth/*` (9.6, 9.8).
 Sensitive keys carry `requires_mfa = true`. The 9.0Σ.h2 slice
@@ -128,7 +128,17 @@ not by the 9.0 foundation seed. The 11A.14 slice (2026-05-06) added
 `admin.users.reset_mfa_factors` to gate the support-side MFA-reset
 escalation; that key is seeded by
 `db/migrations/202605061100_phase_11A_14_admin_users_reset_mfa_factors_key.sql`,
-also not by the 9.0 foundation seed.
+also not by the 9.0 foundation seed. Slice E (2026-05-23) added the
+five `admin.hierarchy.*` keys (`create`, `move`, `rename`, `suspend`,
+`delete`) that a later slice will use to gate the F&F-internal
+"Business accounts" console's cross-operator hierarchy mutations; those
+keys are seeded by
+`db/migrations/202605230900_phase_slice_e_admin_hierarchy_keys.sql`,
+also not by the 9.0 foundation seed. They are DORMANT at this slice
+(seeded + granted to `super_admin` + `ff_support`, but no gateway
+consumes them yet) and are distinct from the operator-self-service
+`team.hierarchy.suspend` / `team.hierarchy.delete` keys, which gate an
+operator managing their own hierarchy.
 
 | Key | Description | MFA |
 |---|---|---|
@@ -160,6 +170,11 @@ also not by the 9.0 foundation seed.
 | `admin.session.force_logout` | Force-revoke all sessions for a user. | — |
 | `admin.service_principal.issue_token` | Issue short-lived service-principal JWTs for automation identities. MFA required. | yes |
 | `admin.audit_privacy.read` | Read raw advisor conversation content (encrypted columns) under the audit-privacy access path. Every call writes an `audit_logs` provenance row capturing reader, reason, target, and records-read count. MFA required. | yes |
+| `admin.hierarchy.create` | Create operator hierarchy nodes (org-units and locations) from the F&F admin "Business accounts" console. | — |
+| `admin.hierarchy.move` | Move operator hierarchy nodes (org-units and locations) within the tree from the F&F admin "Business accounts" console. | — |
+| `admin.hierarchy.rename` | Rename operator hierarchy nodes (org-units and locations) from the F&F admin "Business accounts" console. | — |
+| `admin.hierarchy.suspend` | Suspend or reactivate operator hierarchy nodes (org-units and locations) from the F&F admin "Business accounts" console. MFA required. | yes |
+| `admin.hierarchy.delete` | Delete operator hierarchy nodes (org-units and empty locations) from the F&F admin "Business accounts" console. MFA required. | yes |
 
 ### `team.*` (19)
 
