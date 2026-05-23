@@ -47,6 +47,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'operator_web_error_envelope.dart';
+
 /// One MFA factor row. Mirrors the mobile [`MfaFactorSummary`] shape
 /// but keeps the gateway free of any dependency on the mobile-only
 /// `lib/services/mfa/*` types so the operator-web build stays free of
@@ -306,6 +308,16 @@ class WebSecurityError implements Exception {
   /// with one number and one symbol.").
   final List<String> rejections;
 
+  /// G63 — canonical cross-surface category for this failure. Delegates
+  /// to the shared [classifyOperatorWebError], which folds BOTH the
+  /// `mfa_freshness_required` 403 and the RFC 9470 step-up
+  /// `insufficient_user_authentication` sentinel into
+  /// [OperatorWebErrorKind.mfaFreshnessRedirect] — the same two codes the
+  /// Security surface already drives a "sign in again" remedy for. `code`
+  /// / `message` / `statusCode` / `rejections` are unchanged.
+  OperatorWebErrorKind get kind =>
+      classifyOperatorWebError(statusCode: statusCode, code: code);
+
   @override
   String toString() =>
       'WebSecurityError(code: $code, status: $statusCode, message: $message)';
@@ -544,21 +556,37 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
     final responseBody = decoded is Map<Object?, Object?>
         ? Map<String, Object?>.from(decoded)
         : const <String, Object?>{};
-    if (streamed.statusCode != 202 && streamed.statusCode != 200) {
-      throw WebSecurityError(
-        code:
-            _readNonBlankString(responseBody['error']) ??
-            'mfa_recovery_request_failed',
-        message:
-            _readNonBlankString(responseBody['message']) ??
-            'proxy returned status ${streamed.statusCode}',
-        statusCode: streamed.statusCode,
-      );
-    }
+    _throwUnlessRecoveryReplay(streamed.statusCode, responseBody);
     final queued = responseBody['queued'];
     return WebSecurityRecoveryRequestResult(
       queued: queued is bool ? queued : true,
       requestId: _readNonBlankString(responseBody['request_id']),
+    );
+  }
+
+  /// G63 — gate for the MFA-recovery request response. A 202/200 passes;
+  /// a 409 idempotency-replay also passes (the request was already
+  /// queued, so report it as queued rather than a hard 409); any other
+  /// non-2xx throws the classified [WebSecurityError]. Extracted from
+  /// [requestMfaRecovery] so that method stays under the cyclomatic bar.
+  void _throwUnlessRecoveryReplay(
+    int statusCode,
+    Map<String, Object?> responseBody,
+  ) {
+    if (statusCode == 202 || statusCode == 200) return;
+    final classified = classifyOperatorWebError(
+      statusCode: statusCode,
+      code: _readNonBlankString(responseBody['error']),
+    );
+    if (classified == OperatorWebErrorKind.idempotencyReplayConflict) return;
+    throw WebSecurityError(
+      code:
+          _readNonBlankString(responseBody['error']) ??
+          'mfa_recovery_request_failed',
+      message:
+          _readNonBlankString(responseBody['message']) ??
+          operatorWebErrorMessageFor(classified),
+      statusCode: statusCode,
     );
   }
 
@@ -660,6 +688,10 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
       idempotencyKey: idempotencyKey,
       body: <String, Object?>{'request_id': requestId},
     );
+    // G63 — replay-collision means this cancel was already processed.
+    if (_isReplayConflict(response)) {
+      return const WebSecurityCancelRemovalResult(cancelled: true);
+    }
     _expectStatus(response, 200);
     final cancelled = response.body['cancelled'];
     return WebSecurityCancelRemovalResult(
@@ -908,12 +940,31 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
         'security_failed';
     throw WebSecurityError(
       code: code,
+      // Preserve the proxy's own message when present; otherwise fall
+      // back to the shared canonical copy for the classified kind (G63).
       message:
           _readNonBlankString(response.body['message']) ??
-          'proxy returned status ${response.statusCode}',
+          operatorWebErrorMessageFor(
+            classifyOperatorWebError(
+              statusCode: response.statusCode,
+              code: code,
+            ),
+          ),
       statusCode: response.statusCode,
       rejections: _rejections(response.body['rejections']),
     );
+  }
+
+  /// G63 — true iff [response] is the proxy's 409 idempotency-replay
+  /// collision. A boolean/void write treats this as "already applied".
+  bool _isReplayConflict(WebSecurityResponse response) {
+    return classifyOperatorWebError(
+          statusCode: response.statusCode,
+          code:
+              _readNonBlankString(response.body['error']) ??
+              _readNonBlankString(response.body['code']),
+        ) ==
+        OperatorWebErrorKind.idempotencyReplayConflict;
   }
 
   WebSecurityError _malformed(WebSecurityResponse response, String message) {

@@ -7,6 +7,7 @@
 
 import '../../auth/mfa_freshness_redirect_listener.dart';
 import '../auth/operator_web_auth_source.dart';
+import '../services/operator_web_error_envelope.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_security_gateway.dart';
@@ -204,8 +205,11 @@ extension OperatorWebAccountMfaActions on OperatorWebAccountActions {
   }
 
   void _dispatchMfaSecurityRedirectIfNeeded(WebSecurityError error) {
-    if (error.code != MfaFreshnessRedirectPayload.errorCode &&
-        error.code != 'insufficient_user_authentication') {
+    // G63 — recognise the freshness redirect via the shared classifier
+    // (folds both `mfa_freshness_required` and the step-up
+    // `insufficient_user_authentication` sentinel into one kind) instead
+    // of the gateway re-listing those two codes itself.
+    if (error.kind != OperatorWebErrorKind.mfaFreshnessRedirect) {
       return;
     }
     if (this is MfaFreshnessRedirectListener) {

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:forge_and_flow/operator_web/services/operator_web_error_envelope.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_roles_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 
@@ -128,6 +129,141 @@ void main() {
             ),
           ),
           throwsA(isA<WebTeamRolesError>()),
+        );
+      },
+    );
+  });
+
+  group('G63 error-envelope conformance', () {
+    TeamRoleDeleteCommand deleteCommand() => const TeamRoleDeleteCommand(
+      actorUserId: 'actor',
+      operatorId: 'op',
+      locationId: 'loc',
+      roleId: 'role-1',
+    );
+
+    test(
+      'deleteRole treats a 409 idempotency_key_conflict as already-applied '
+      '(no throw, deleted == true)',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'error': 'idempotency_key_conflict',
+              'message': 'Idempotency-Key was reused with a different body',
+            }),
+            409,
+          );
+        });
+        final gateway = WebTeamRolesGatewayLive(
+          proxyBaseUri: proxyBase,
+          idTokenProvider: tokenProvider,
+          httpClient: client,
+        );
+
+        final result = await gateway.deleteRole(
+          deleteCommand(),
+          idempotencyKey: 'idem-delete-1',
+        );
+        expect(result.deleted, isTrue);
+      },
+    );
+
+    test(
+      'revokeRoleGrant treats a 409 idempotency_key_conflict as '
+      'already-applied (revoked == true)',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{'error': 'idempotency_key_conflict'}),
+            409,
+          );
+        });
+        final gateway = WebTeamRolesGatewayLive(
+          proxyBaseUri: proxyBase,
+          idTokenProvider: tokenProvider,
+          httpClient: client,
+        );
+
+        final result = await gateway.revokeRoleGrant(
+          const TeamRoleGrantRevokeCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            userRoleId: 'grant-1',
+            targetUserId: 'user-1',
+          ),
+          idempotencyKey: 'idem-revoke-1',
+        );
+        expect(result.revoked, isTrue);
+      },
+    );
+
+    test(
+      'a DOMAIN 409 still throws with the proxy code preserved and '
+      'classifies as resourceConflict (no regression)',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'error': 'role_has_active_grants',
+              'message': 'Revoke this role from every member first.',
+            }),
+            409,
+          );
+        });
+        final gateway = WebTeamRolesGatewayLive(
+          proxyBaseUri: proxyBase,
+          idTokenProvider: tokenProvider,
+          httpClient: client,
+        );
+
+        await expectLater(
+          gateway.deleteRole(deleteCommand(), idempotencyKey: 'idem-delete-2'),
+          throwsA(
+            isA<WebTeamRolesError>()
+                .having((e) => e.code, 'code', 'role_has_active_grants')
+                .having((e) => e.statusCode, 'statusCode', 409)
+                .having(
+                  (e) => e.kind,
+                  'kind',
+                  OperatorWebErrorKind.resourceConflict,
+                ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'a 403 still throws with the proxy code preserved and classifies as '
+      'permissionDenied (no regression)',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'error': 'forbidden',
+              'message': 'Caller is not allowed',
+            }),
+            403,
+          );
+        });
+        final gateway = WebTeamRolesGatewayLive(
+          proxyBaseUri: proxyBase,
+          idTokenProvider: tokenProvider,
+          httpClient: client,
+        );
+
+        await expectLater(
+          gateway.deleteRole(deleteCommand(), idempotencyKey: 'idem-delete-3'),
+          throwsA(
+            isA<WebTeamRolesError>()
+                .having((e) => e.code, 'code', 'forbidden')
+                .having(
+                  (e) => e.kind,
+                  'kind',
+                  OperatorWebErrorKind.permissionDenied,
+                ),
+          ),
         );
       },
     );
