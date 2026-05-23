@@ -82,6 +82,17 @@ class AdminIntegrationScopeFilter {
 /// `ff_support` role. Tests can inject a mock implementation.
 typedef RoleResolver = Future<List<String>> Function();
 
+/// UX-parity Slice E3 — resolves the current actor's server-resolved
+/// permission-key set. Mirrors how Slice E0 added
+/// `AdminAuthSession.permissions` additively: this is purely
+/// additive alongside [RoleResolver] and never replaces it. When a
+/// permission resolver is wired and returns a NON-EMPTY set, the
+/// rotation gate keys off [PermissionKeys.integrationKeyRotate]; when
+/// it is null or resolves EMPTY (demo / un-hydrated / tests), the gate
+/// falls back to the [RoleResolver] role check, which is byte-identical
+/// to the pre-slice `roles.contains(roleFfSupport)` deny.
+typedef PermissionResolver = Future<Set<String>> Function();
+
 class PermissionDeniedException implements Exception {
   const PermissionDeniedException(this.message);
 
@@ -91,6 +102,51 @@ class PermissionDeniedException implements Exception {
   String toString() => 'PermissionDeniedException: $message';
 }
 
+/// UX-parity Slice E3 — shared rotation-gate evaluation used by both
+/// gateway implementations so the two `_checkNotReadOnly` sites stay
+/// byte-identical (one place to audit the invariant). Throws
+/// [PermissionDeniedException] when the actor may not rotate a provider
+/// key; returns normally (no gate) when neither resolver is wired.
+///
+/// Fail-safe key-first logic, mirroring `adminCanEdit`:
+///   * Both resolvers null -> return (no gate; production server-
+///     enforced, demo un-gated).
+///   * Permission set NON-EMPTY -> allow iff it contains
+///     [PermissionKeys.integrationKeyRotate]; otherwise deny. This
+///     activates only once a live permission snapshot is supplied; a
+///     role holding the key is allowed even if not super_admin, and a
+///     role lacking it is denied even if not ff_support (intentional).
+///   * Permission set EMPTY/absent -> fall back to the historic role
+///     check: deny iff the role list contains
+///     [PermissionKeys.roleFfSupport]. Byte-identical to the pre-slice
+///     `roles.contains(roleFfSupport)` deny, so an empty set never
+///     changes the decision.
+Future<void> _evaluateRotationGate({
+  required PermissionResolver? permissionResolver,
+  required RoleResolver? roleResolver,
+}) async {
+  if (permissionResolver == null && roleResolver == null) {
+    return; // No gate configured (production server-enforced / demo).
+  }
+  final perms = permissionResolver == null
+      ? const <String>{}
+      : await permissionResolver();
+  if (perms.isNotEmpty) {
+    // Live permission set is authoritative.
+    if (!perms.contains(PermissionKeys.integrationKeyRotate)) {
+      throw const PermissionDeniedException('Read-only access');
+    }
+    return;
+  }
+  // Empty/absent permission set: preserve today's role-based decision
+  // exactly. If no role resolver is wired either, there is no gate.
+  if (roleResolver == null) return;
+  final roles = await roleResolver();
+  if (roles.contains(PermissionKeys.roleFfSupport)) {
+    throw const PermissionDeniedException('Read-only access');
+  }
+}
+
 class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   HttpIntegrationAdminGateway({
     required this.baseUri,
@@ -98,9 +154,11 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
     http.Client? httpClient,
     Duration timeout = kAdminHttpRequestTimeout,
     RoleResolver? roleResolver,
+    PermissionResolver? permissionResolver,
   }) : _httpClient = httpClient ?? http.Client(),
        _timeout = timeout,
-       _roleResolver = roleResolver;
+       _roleResolver = roleResolver,
+       _permissionResolver = permissionResolver;
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`).
   final Uri baseUri;
@@ -108,6 +166,13 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   final http.Client _httpClient;
   final Duration _timeout;
   final RoleResolver? _roleResolver;
+
+  /// UX-parity Slice E3 — optional permission-key source. Null in
+  /// production today (the rotation gate is server-enforced; the live
+  /// HTTP gateway is constructed with no resolver, so the client gate
+  /// is a no-op). When wired and non-empty it makes the rotation gate
+  /// key-first on [PermissionKeys.integrationKeyRotate].
+  final PermissionResolver? _permissionResolver;
 
   static const String listPath = '/v1/admin/integrations';
   static const String rotateAnthropicPath =
@@ -167,15 +232,26 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
     return RotateKeyResult.fromJson(body);
   }
 
-  /// Throws [PermissionDeniedException] if the actor holds the
-  /// `ff_support` role (read-only access).
+  /// UX-parity Slice E3 — key-first rotation gate with a fail-safe
+  /// role fallback. Throws [PermissionDeniedException] when the actor
+  /// may not rotate provider keys.
+  ///
+  /// Decision order (mirrors `adminCanEdit` in
+  /// `lib/admin/admin_capability_gate.dart`):
+  ///   * Both resolvers null -> no gate (same as today / production,
+  ///     where the rotation guard is server-enforced).
+  ///   * A non-empty permission set is authoritative: allow iff it
+  ///     contains [PermissionKeys.integrationKeyRotate], else deny.
+  ///   * An empty/absent permission set falls back to the historic
+  ///     role check: deny iff the actor holds
+  ///     [PermissionKeys.roleFfSupport]. This branch is byte-identical
+  ///     to the pre-slice behaviour, so an un-hydrated session decides
+  ///     exactly as before.
   Future<void> _checkNotReadOnly() async {
-    final roleResolver = _roleResolver;
-    if (roleResolver == null) return; // No role check configured (production).
-    final roles = await roleResolver();
-    if (roles.contains(PermissionKeys.roleFfSupport)) {
-      throw const PermissionDeniedException('Read-only access');
-    }
+    await _evaluateRotationGate(
+      permissionResolver: _permissionResolver,
+      roleResolver: _roleResolver,
+    );
   }
 
   Future<Map<String, Object?>> _send({
@@ -530,11 +606,13 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
     VendorConnectorStatus? fxRateSource,
     VendorConnectorStatus? emailProvider,
     RoleResolver? roleResolver,
+    PermissionResolver? permissionResolver,
   }) : _kmsProvider = kmsProvider ?? KmsStubProvider(),
        _actorUserId = actorUserId,
        _now = now ?? DateTime.now,
        _credentialIdGenerator = credentialIdGenerator ?? _defaultId,
        _roleResolver = roleResolver,
+       _permissionResolver = permissionResolver,
        _ledger = <ProviderKeyKind, ProviderKeyRow>{
          for (final row in seed) row.keyKind: row,
        },
@@ -549,6 +627,12 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
   final DateTime Function() _now;
   final String Function() _credentialIdGenerator;
   final RoleResolver? _roleResolver;
+
+  /// UX-parity Slice E3 — optional permission-key source. Null in the
+  /// demo / widget-test gateway today (no client gate is wired), so the
+  /// rotation gate stays a no-op there. When supplied and non-empty it
+  /// makes the gate key-first on [PermissionKeys.integrationKeyRotate].
+  final PermissionResolver? _permissionResolver;
   final Map<ProviderKeyKind, ProviderKeyRow> _ledger;
   final List<VendorConnectorStatus> _vendorConnectors;
   final VendorConnectorStatus _fxRateSource;
@@ -763,15 +847,18 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
         detailMessage: 'Email provider lands in Phase 9.8.',
       );
 
-  /// Throws [PermissionDeniedException] if the actor holds the
-  /// `ff_support` role (read-only access).
+  /// UX-parity Slice E3 — key-first rotation gate with a fail-safe
+  /// role fallback. Same evaluation as the live gateway (see
+  /// [_evaluateRotationGate]): a non-empty permission set keys off
+  /// [PermissionKeys.integrationKeyRotate]; an empty/absent set falls
+  /// back to the historic `roles.contains(roleFfSupport)` deny, which
+  /// is byte-identical to the pre-slice behaviour. Both resolvers null
+  /// (the demo / widget-test default) means no gate.
   Future<void> _checkNotReadOnly() async {
-    final roleResolver = _roleResolver;
-    if (roleResolver == null) return; // No role check configured (tests).
-    final roles = await roleResolver();
-    if (roles.contains(PermissionKeys.roleFfSupport)) {
-      throw const PermissionDeniedException('Read-only access');
-    }
+    await _evaluateRotationGate(
+      permissionResolver: _permissionResolver,
+      roleResolver: _roleResolver,
+    );
   }
 
   static int _idCounter = 0;
