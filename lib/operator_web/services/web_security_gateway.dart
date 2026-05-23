@@ -556,30 +556,37 @@ class WebSecurityGatewayLive implements WebSecurityGateway {
     final responseBody = decoded is Map<Object?, Object?>
         ? Map<String, Object?>.from(decoded)
         : const <String, Object?>{};
-    if (streamed.statusCode != 202 && streamed.statusCode != 200) {
-      final code =
-          _readNonBlankString(responseBody['error']) ??
-          'mfa_recovery_request_failed';
-      // G63 — replay-collision means this recovery request was already
-      // queued; report it as queued rather than surfacing a hard 409.
-      final classified = classifyOperatorWebError(
-        statusCode: streamed.statusCode,
-        code: _readNonBlankString(responseBody['error']),
-      );
-      if (classified != OperatorWebErrorKind.idempotencyReplayConflict) {
-        throw WebSecurityError(
-          code: code,
-          message:
-              _readNonBlankString(responseBody['message']) ??
-              operatorWebErrorMessageFor(classified),
-          statusCode: streamed.statusCode,
-        );
-      }
-    }
+    _throwUnlessRecoveryReplay(streamed.statusCode, responseBody);
     final queued = responseBody['queued'];
     return WebSecurityRecoveryRequestResult(
       queued: queued is bool ? queued : true,
       requestId: _readNonBlankString(responseBody['request_id']),
+    );
+  }
+
+  /// G63 — gate for the MFA-recovery request response. A 202/200 passes;
+  /// a 409 idempotency-replay also passes (the request was already
+  /// queued, so report it as queued rather than a hard 409); any other
+  /// non-2xx throws the classified [WebSecurityError]. Extracted from
+  /// [requestMfaRecovery] so that method stays under the cyclomatic bar.
+  void _throwUnlessRecoveryReplay(
+    int statusCode,
+    Map<String, Object?> responseBody,
+  ) {
+    if (statusCode == 202 || statusCode == 200) return;
+    final classified = classifyOperatorWebError(
+      statusCode: statusCode,
+      code: _readNonBlankString(responseBody['error']),
+    );
+    if (classified == OperatorWebErrorKind.idempotencyReplayConflict) return;
+    throw WebSecurityError(
+      code:
+          _readNonBlankString(responseBody['error']) ??
+          'mfa_recovery_request_failed',
+      message:
+          _readNonBlankString(responseBody['message']) ??
+          operatorWebErrorMessageFor(classified),
+      statusCode: statusCode,
     );
   }
 
