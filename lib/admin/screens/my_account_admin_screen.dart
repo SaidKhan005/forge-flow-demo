@@ -1601,133 +1601,124 @@ class _AdminEditIdentityDialogState
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    // UX parity: route this dialog through the shared [OperatorWebDialog]
+    // chrome (Playfair display20 title, hairline border + soft shadow, and
+    // a persistent top-right close affordance) so the admin Edit-identity
+    // popup matches the operator-web gold standard. Fields, validation,
+    // and save/cancel logic are unchanged; only the surrounding chrome
+    // and the dropped hand-rolled title row are different.
+    return OperatorWebDialog(
       key: const Key('admin_edit_identity_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Edit your identity',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Update your admin display name and sign-in email. '
-                'Changing your email signs you out so you can sign back '
-                'in with the new address.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              Text('Display name',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
-              const SizedBox(height: 4),
-              TextField(
-                key: const Key('admin_edit_identity_display_name_field'),
-                controller: _displayNameController,
-                enabled: !_submitting,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text('Email',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
-              const SizedBox(height: 4),
-              TextField(
-                key: const Key('admin_edit_identity_email_field'),
-                controller: _emailController,
-                enabled: !_submitting,
-                keyboardType: TextInputType.emailAddress,
-                inputFormatters: [
-                  FilteringTextInputFormatter.deny(RegExp(r'\s')),
-                ],
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-              ),
-              if (_emailChanged) ...[
-                const SizedBox(height: 10),
-                Container(
-                  key: const Key('admin_edit_identity_email_confirm_box'),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.sunset.withValues(alpha: 0.08),
-                    border: Border.all(
-                      color: AppColors.sunset.withValues(alpha: 0.40),
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    children: [
-                      Checkbox(
-                        key: const Key(
-                            'admin_edit_identity_email_confirm_checkbox'),
-                        value: _confirmEmailChange,
-                        onChanged: _submitting
-                            ? null
-                            : (v) => setState(
-                                () => _confirmEmailChange = v ?? false),
-                      ),
-                      Expanded(
-                        child: Text(
-                          'Confirm you want to change your sign-in email.',
-                          style: AppTextStyles.body13(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              if (_topLevelError != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  key: const Key('admin_edit_identity_error'),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.negative.withValues(alpha: 0.08),
-                    border: Border.all(
-                      color: AppColors.negative.withValues(alpha: 0.30),
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    _topLevelError!,
-                    style: AppTextStyles.body13(color: AppColors.negative),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    key: const Key('admin_edit_identity_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('admin_edit_identity_save'),
-                    onPressed: _canSave ? _handleSave : null,
-                    child: Text(_submitting ? 'Saving...' : 'Save changes'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+      title: 'Edit your identity',
+      maxWidth: 480,
+      onClose: _submitting ? () {} : null,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_edit_identity_cancel'),
+          onPressed:
+              _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
         ),
+        FilledButton(
+          key: const Key('admin_edit_identity_save'),
+          onPressed: _canSave ? _handleSave : null,
+          child: Text(_submitting ? 'Saving...' : 'Save changes'),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Update your admin display name and sign-in email. '
+            'Changing your email signs you out so you can sign back '
+            'in with the new address.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          Text('Display name',
+              style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+          const SizedBox(height: 4),
+          TextField(
+            key: const Key('admin_edit_identity_display_name_field'),
+            controller: _displayNameController,
+            enabled: !_submitting,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text('Email',
+              style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+          const SizedBox(height: 4),
+          TextField(
+            key: const Key('admin_edit_identity_email_field'),
+            controller: _emailController,
+            enabled: !_submitting,
+            keyboardType: TextInputType.emailAddress,
+            inputFormatters: [
+              FilteringTextInputFormatter.deny(RegExp(r'\s')),
+            ],
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          if (_emailChanged) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const Key('admin_edit_identity_email_confirm_box'),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.sunset.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: AppColors.sunset.withValues(alpha: 0.40),
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  Checkbox(
+                    key: const Key(
+                        'admin_edit_identity_email_confirm_checkbox'),
+                    value: _confirmEmailChange,
+                    onChanged: _submitting
+                        ? null
+                        : (v) => setState(
+                            () => _confirmEmailChange = v ?? false),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Confirm you want to change your sign-in email.',
+                      style: AppTextStyles.body13(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_topLevelError != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const Key('admin_edit_identity_error'),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.negative.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: AppColors.negative.withValues(alpha: 0.30),
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                _topLevelError!,
+                style: AppTextStyles.body13(color: AppColors.negative),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
