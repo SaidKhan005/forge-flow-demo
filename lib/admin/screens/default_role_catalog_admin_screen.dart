@@ -345,11 +345,18 @@ class _DefaultRoleCatalogAdminScreenState
 
   @override
   Widget build(BuildContext context) {
+    // Centre + max-width cap via the shared operator-web body kit, so the
+    // header and content stay balanced with even margins on a wide window
+    // instead of running edge-to-edge. The screen header is the first child
+    // of the single centred scroll body (gold-standard frame). The dark
+    // background stays full-bleed behind the cap.
     return ColoredBox(
       key: const Key('admin_default_role_catalog_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+      child: OperatorWebScreenBody(
+        scrollKey: const Key('admin_default_role_catalog_scroll'),
+        maxContentWidth: 1120,
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -359,7 +366,7 @@ class _DefaultRoleCatalogAdminScreenState
               const _ReadOnlyBanner(
                 key: Key('admin_default_role_catalog_readonly_banner'),
               ),
-            Expanded(child: _buildBody()),
+            _buildBody(),
           ],
         ),
       ),
@@ -368,14 +375,17 @@ class _DefaultRoleCatalogAdminScreenState
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-        key: Key('admin_default_role_catalog_loading'),
-        child: SizedBox(
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: AppColors.sunsetDark,
+      return const Padding(
+        padding: EdgeInsets.only(top: 40),
+        child: Center(
+          key: Key('admin_default_role_catalog_loading'),
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.sunsetDark,
+            ),
           ),
         ),
       );
@@ -390,33 +400,29 @@ class _DefaultRoleCatalogAdminScreenState
     if (listing == null) {
       return const SizedBox.shrink();
     }
-    return OperatorWebScreenBody(
-      scrollKey: const Key('admin_default_role_catalog_scroll'),
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _CurrentVersionPanel(current: listing.current),
-          const SizedBox(height: 18),
-          _DraftEditorPanel(
-            draft: _draft,
-            canEdit: widget.editingEnabled,
-            canPublish: _canPublish,
-            draftEqualsCurrent: _draftEqualsCurrent,
-            onAddRole: widget.editingEnabled ? _addRole : null,
-            onRemoveRole: widget.editingEnabled ? _removeRole : null,
-            onUpdateRole: widget.editingEnabled ? _updateRole : null,
-            onDiscardDraft: widget.editingEnabled ? _discardDraft : null,
-            onPublish: widget.editingEnabled ? _openPublishDialog : null,
-          ),
-          const SizedBox(height: 18),
-          _HistoryPanel(
-            history: listing.history,
-            expanded: _expanded,
-            onToggle: _toggleExpanded,
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _CurrentVersionPanel(current: listing.current),
+        const SizedBox(height: 18),
+        _DraftEditorPanel(
+          draft: _draft,
+          canEdit: widget.editingEnabled,
+          canPublish: _canPublish,
+          draftEqualsCurrent: _draftEqualsCurrent,
+          onAddRole: widget.editingEnabled ? _addRole : null,
+          onRemoveRole: widget.editingEnabled ? _removeRole : null,
+          onUpdateRole: widget.editingEnabled ? _updateRole : null,
+          onDiscardDraft: widget.editingEnabled ? _discardDraft : null,
+          onPublish: widget.editingEnabled ? _openPublishDialog : null,
+        ),
+        const SizedBox(height: 18),
+        _HistoryPanel(
+          history: listing.history,
+          expanded: _expanded,
+          onToggle: _toggleExpanded,
+        ),
+      ],
     );
   }
 }

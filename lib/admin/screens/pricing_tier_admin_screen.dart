@@ -198,31 +198,46 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Centre + max-width cap matching the shared operator-web body kit, so
+    // the content stays balanced with even margins on a wide window instead
+    // of running edge-to-edge. The body keeps its fill layout (the
+    // master/detail panes below need the bounded height an Expanded gives
+    // them, and stack on compact widths), so the cap is applied with the
+    // same Center + ConstrainedBox + edge padding OperatorWebScreenBody
+    // uses, without forcing a scroll view around the master/detail. The
+    // dark background stays full-bleed behind the cap.
     return Container(
       key: const Key('admin_pricing_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const OperatorWebScreenHeader(
-              icon: Icons.payments_outlined,
-              title: 'Plans and limits',
-              collapseBelowWidth: 0,
-              subtitle:
-                  'Review each operator\'s Forge & Flow AI plan and the limits that keep advisor spend predictable.',
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1120),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const OperatorWebScreenHeader(
+                  icon: Icons.payments_outlined,
+                  title: 'Plans and limits',
+                  collapseBelowWidth: 0,
+                  subtitle:
+                      'Review each operator\'s Forge & Flow AI plan and the limits that keep advisor spend predictable.',
+                ),
+                const SizedBox(height: 14),
+                if (!widget.editingEnabled)
+                  const _ReadOnlyBanner(
+                    key: Key('admin_pricing_readonly_banner'),
+                  ),
+                if (_actionError != null)
+                  _ErrorBanner(
+                    key: const Key('admin_pricing_action_error'),
+                    message: _actionError!,
+                  ),
+                Expanded(child: _buildBody()),
+              ],
             ),
-            const SizedBox(height: 14),
-            if (!widget.editingEnabled)
-              const _ReadOnlyBanner(key: Key('admin_pricing_readonly_banner')),
-            if (_actionError != null)
-              _ErrorBanner(
-                key: const Key('admin_pricing_action_error'),
-                message: _actionError!,
-              ),
-            Expanded(child: _buildBody()),
-          ],
+          ),
         ),
       ),
     );
