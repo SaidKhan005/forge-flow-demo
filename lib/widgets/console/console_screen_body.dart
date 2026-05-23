@@ -37,3 +37,38 @@ class OperatorWebScreenBody extends StatelessWidget {
     );
   }
 }
+
+/// Centered, max-width frame for screens that must NOT scroll vertically
+/// at the page level: fixed-height tabbed screens whose body is a
+/// `TabBar` + `Expanded(TabBarView)` (each tab scrolling internally) and
+/// therefore cannot live inside [OperatorWebScreenBody]'s
+/// `SingleChildScrollView` (which would strip the `Expanded` fill).
+///
+/// It renders the same balanced layout [OperatorWebScreenBody] gives
+/// scroll screens (content [Center]ed and capped at [maxContentWidth],
+/// with edge [padding]) but keeps its [child] at the bounded incoming
+/// height so an `Expanded` inside it still works. The caller supplies the
+/// background (e.g. a `ColoredBox` or `Material`) so this widget stays
+/// background-agnostic.
+class OperatorWebScreenFrame extends StatelessWidget {
+  const OperatorWebScreenFrame({
+    super.key,
+    required this.padding,
+    this.maxContentWidth = 1120,
+    required this.child,
+  });
+
+  final EdgeInsetsGeometry padding;
+  final double maxContentWidth;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxContentWidth),
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+  }
+}

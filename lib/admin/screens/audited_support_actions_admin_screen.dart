@@ -40,6 +40,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/inheritance_tree_node.dart';
@@ -561,52 +563,53 @@ class _AuditedSupportActionsAdminScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_audited_support_actions_screen'),
-      color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            AdminPageHeader(
-              title: 'Security, audit, and sessions',
-              subtitle:
-                  '${widget.pickedOperator.operatorBusinessName}: audit '
-                  'history, active sessions, and gated support actions.',
-              leading: widget.onBackToBusinessAccounts == null
-                  ? null
-                  : AdminBusinessAccountsBackButton(
-                      onPressed: widget.onBackToBusinessAccounts,
-                    ),
-              trailing: _buildHeaderActions(),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_audited_support_actions_screen'),
+      maxContentWidth: 1120,
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          OperatorWebScreenHeader(
+            icon: Icons.security_outlined,
+            title: 'Audit log',
+            subtitle:
+                '${widget.pickedOperator.operatorBusinessName}: audit '
+                'history, active sessions, and gated support actions.',
+            actions: _buildHeaderActions(),
+          ),
+          const SizedBox(height: 14),
+          if (!widget.editingEnabled)
+            const _ReadOnlyBanner(key: Key('admin_asa_readonly_banner')),
+          if (_actionError != null)
+            _ErrorBanner(
+              key: const Key('admin_asa_action_error'),
+              message: _actionError!,
             ),
-            const SizedBox(height: 14),
-            if (!widget.editingEnabled)
-              const _ReadOnlyBanner(key: Key('admin_asa_readonly_banner')),
-            if (_actionError != null)
-              _ErrorBanner(
-                key: const Key('admin_asa_action_error'),
-                message: _actionError!,
-              ),
-            if (_lastErasure != null)
-              _GraceWindowChip(
-                key: const Key('admin_asa_grace_window_chip'),
-                erasure: _lastErasure!,
-                memberDisplay: _lastErasureMember,
-                now: _graceNow(),
-                canReverse: widget.editingEnabled,
-                onReverse: _onReverseLastErasure,
-              ),
-            Expanded(child: _buildBody()),
-          ],
-        ),
+          if (_lastErasure != null)
+            _GraceWindowChip(
+              key: const Key('admin_asa_grace_window_chip'),
+              erasure: _lastErasure!,
+              memberDisplay: _lastErasureMember,
+              now: _graceNow(),
+              canReverse: widget.editingEnabled,
+              onReverse: _onReverseLastErasure,
+            ),
+          _buildBody(),
+        ],
       ),
     );
   }
 
-  Widget? _buildHeaderActions() {
+  List<Widget> _buildHeaderActions() {
     final children = <Widget>[];
+    if (widget.onBackToBusinessAccounts != null) {
+      children.add(
+        AdminBusinessAccountsBackButton(
+          onPressed: widget.onBackToBusinessAccounts,
+        ),
+      );
+    }
     if (widget.onChangeOperator != null) {
       children.add(
         OutlinedButton.icon(
@@ -618,8 +621,7 @@ class _AuditedSupportActionsAdminScreenState
         ),
       );
     }
-    if (children.isEmpty) return null;
-    return Wrap(spacing: 8, runSpacing: 8, children: children);
+    return children;
   }
 
   Widget _buildBody() {
@@ -642,69 +644,70 @@ class _AuditedSupportActionsAdminScreenState
         message: _loadError!,
       );
     }
-    return SingleChildScrollView(
+    // Outer frame is OperatorWebScreenBody (a SingleChildScrollView), so
+    // this body returns a plain Column to avoid nesting a second scroll
+    // view inside it.
+    return Column(
       key: const Key('admin_asa_body'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          // GAP B3 — when a scope tree is available, the shared
-          // InheritanceTree is the DEFAULT scope selector for the
-          // audit-log view (operator decision: close the gap where
-          // admins actually are). The selected node updates the scope
-          // banner below. When no tree is available the screen keeps
-          // the read-only scope banner the upstream hierarchy
-          // workspace already supplies — graceful fallback, no
-          // regression.
-          if (widget.auditScopeRootNode != null) ...<Widget>[
-            _AuditScopePickerCard(
-              rootNode: widget.auditScopeRootNode!,
-              onNodeTap: _onAuditScopeNodeTap,
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (_activeScope != null) ...<Widget>[
-            _SecurityHierarchyScopeBanner(scope: _activeScope!),
-            const SizedBox(height: 16),
-          ],
-          _SupportAuditSummaryStrip(
-            rows: _rows,
-            members: _members,
-            hasMoreRows: _nextCursor != null,
-          ),
-          if (widget.sessionsGateway != null) ...<Widget>[
-            const SizedBox(height: 16),
-            ActiveSessionsAdminPanel(
-              gateway: widget.sessionsGateway!,
-              operatorId: widget.pickedOperator.operatorId,
-              operatorName: widget.pickedOperator.operatorBusinessName,
-              actorUserId: widget.actorUserId,
-              editingEnabled: widget.editingEnabled,
-              idempotencyKeyFactory: widget.idempotencyKeyFactory,
-            ),
-          ],
-          const SizedBox(height: 16),
-          _AuditLogCard(
-            rows: _rows,
-            nextCursor: _nextCursor,
-            loadingMore: _loadingMore,
-            filters: _filters,
-            members: _members,
-            canExport: widget.editingEnabled && widget.canExportAuditLog,
-            onApplyFilters: _onApplyFilters,
-            onLoadMore: _loadMore,
-            onExportCsv: _onExportCsv,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        // GAP B3 — when a scope tree is available, the shared
+        // InheritanceTree is the DEFAULT scope selector for the
+        // audit-log view (operator decision: close the gap where
+        // admins actually are). The selected node updates the scope
+        // banner below. When no tree is available the screen keeps
+        // the read-only scope banner the upstream hierarchy
+        // workspace already supplies — graceful fallback, no
+        // regression.
+        if (widget.auditScopeRootNode != null) ...<Widget>[
+          _AuditScopePickerCard(
+            rootNode: widget.auditScopeRootNode!,
+            onNodeTap: _onAuditScopeNodeTap,
           ),
           const SizedBox(height: 16),
-          _ActionsPanelCard(
+        ],
+        if (_activeScope != null) ...<Widget>[
+          _SecurityHierarchyScopeBanner(scope: _activeScope!),
+          const SizedBox(height: 16),
+        ],
+        _SupportAuditSummaryStrip(
+          rows: _rows,
+          members: _members,
+          hasMoreRows: _nextCursor != null,
+        ),
+        if (widget.sessionsGateway != null) ...<Widget>[
+          const SizedBox(height: 16),
+          ActiveSessionsAdminPanel(
+            gateway: widget.sessionsGateway!,
+            operatorId: widget.pickedOperator.operatorId,
+            operatorName: widget.pickedOperator.operatorBusinessName,
+            actorUserId: widget.actorUserId,
             editingEnabled: widget.editingEnabled,
-            canResetMfaFactors: widget.canResetMfaFactors,
-            canIssuePairedErasure: widget.canIssuePairedErasure,
-            onResetMfa: _onResetMfa,
-            onPasswordReset: _onPasswordReset,
-            onIssueErasure: _onIssueErasure,
+            idempotencyKeyFactory: widget.idempotencyKeyFactory,
           ),
         ],
-      ),
+        const SizedBox(height: 16),
+        _AuditLogCard(
+          rows: _rows,
+          nextCursor: _nextCursor,
+          loadingMore: _loadingMore,
+          filters: _filters,
+          members: _members,
+          canExport: widget.editingEnabled && widget.canExportAuditLog,
+          onApplyFilters: _onApplyFilters,
+          onLoadMore: _loadMore,
+          onExportCsv: _onExportCsv,
+        ),
+        const SizedBox(height: 16),
+        _ActionsPanelCard(
+          editingEnabled: widget.editingEnabled,
+          canResetMfaFactors: widget.canResetMfaFactors,
+          canIssuePairedErasure: widget.canIssuePairedErasure,
+          onResetMfa: _onResetMfa,
+          onPasswordReset: _onPasswordReset,
+          onIssueErasure: _onIssueErasure,
+        ),
+      ],
     );
   }
 }
