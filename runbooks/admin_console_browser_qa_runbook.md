@@ -28,30 +28,55 @@ super-admin share-preview mode (no proxy, no login screen, all routes open).
 ## Step 1 — Build
 
 ```powershell
-# From the repo root (or the worktree)
-& 'C:\src\flutter\bin\flutter.bat' build web --profile `
+# From the repo root (or the worktree). Use whatever `flutter` resolves
+# to on PATH; the SDK path is machine-specific (see the note below).
+flutter build web --profile `
     -t lib/main_admin.dart `
-    --dart-define=ADMIN_SHARE_PREVIEW_AS_SUPER_ADMIN=true
+    --dart-define=ADMIN_SHARE_PREVIEW=true `
+    --dart-define=ADMIN_SHARE_PREVIEW_AS_SUPER_ADMIN=true `
+    --dart-define=ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH=true
 ```
 
-`ADMIN_SHARE_PREVIEW_AS_SUPER_ADMIN=true` boots the app as a fully-privileged
-ecosystem super-admin with no login screen and all gateways served from
-in-memory demo fixtures — no proxy required. Build output lands in
-`build/web/`. Takes ~30 s.
+All three dart-defines are required together to boot into demo data as a
+super-admin without a live proxy. With only the role selector, the app tries
+to reach a live server and shows "Admin live wiring failed... ADMIN_PROXY_BASE_URI
+is required". What each flag does:
+
+- `ADMIN_SHARE_PREVIEW=true` opens straight into seeded in-memory fixture data
+  with no Firebase, no proxy, and no login screen.
+- `ADMIN_SHARE_PREVIEW_AS_SUPER_ADMIN=true` picks the fixture identity: a
+  fully-privileged ecosystem super-admin (omit it and you get read-only support).
+- `ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH=true` is the release/profile fail-closed
+  opt-in. A non-debug build (like `--profile`) refuses fixture auth without it
+  and lands on a "fixture auth blocked" screen instead of the console.
+
+Build output lands in `build/web/`. Takes ~30 s.
 
 ---
 
 ## Step 2 — Serve
 
-Use the `admin-web-static` launch config in `.claude/launch.json`, which
-runs:
+Serve the `build/web` output on port 8186 with ANY static file server. The
+specific server does not matter, only that it serves `build/web` on 8186. For
+example, from inside `build/web`:
 
 ```
-C:\Users\blund\AppData\Local\Pub\Cache\bin\dhttpd.bat --path build/web --port 8186
+python -m http.server 8186
 ```
 
-Or start it via the `preview_start` MCP tool (server name
-`admin-web-static`, port 8186).
+The `.claude/launch.json` `admin-web-static` config and the `preview_start`
+MCP tool (server name `admin-web-static`, port 8186) both do the same thing
+via dhttpd:
+
+```
+dhttpd --path build/web --port 8186
+```
+
+Note: the dhttpd path and the flutter SDK path baked into `.claude/launch.json`
+are machine-specific (they point at one developer's user profile), and dhttpd
+may not be installed at all. Use whatever `flutter` resolves to on your PATH
+and whatever static server you have available. The only requirement is that
+`build/web` is served on port 8186.
 
 ---
 
