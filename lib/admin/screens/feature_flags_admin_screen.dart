@@ -28,6 +28,8 @@
 // widget tests pass the in-memory gateway.
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -319,20 +321,12 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Launch controls',
-          style: AppTextStyles.display28(color: AppColors.textPrimary),
-        ),
-        const SizedBox(height: 4),
-        Text(
+    return const OperatorWebScreenHeader(
+      icon: Icons.toggle_on_outlined,
+      title: 'Launch controls',
+      collapseBelowWidth: 0,
+      subtitle:
           'Turn staged features on or off. High-impact changes need typed confirmation and are logged.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ],
     );
   }
 }
@@ -342,25 +336,12 @@ class _ReadOnlyBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'View only: ecosystem admin access is required to change launch controls.',
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        icon: Icons.lock_outline,
+        message:
+            'View only: ecosystem admin access is required to change launch controls.',
       ),
     );
   }
@@ -373,17 +354,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.negative, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        message,
-        style: AppTextStyles.mono11(color: AppColors.negative),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        tone: OperatorWebBannerTone.error,
+        message: message,
       ),
     );
   }
@@ -624,51 +599,12 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_feature_flag_danger_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Change high-impact control?',
-        style: AppTextStyles.display20(color: AppColors.negative),
-      ),
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This can affect live behavior, service keys, or emergency shutoff. Type the control ID to continue:',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              widget.flagName,
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_feature_flag_danger_input'),
-              controller: _controller,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: widget.flagName,
-                hintStyle: AppTextStyles.mono11(color: AppColors.textMuted),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(
-                    color: AppColors.borderSubtle,
-                    width: 1,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: 'Change high-impact control?',
+      icon: Icons.warning_amber_outlined,
+      maxWidth: 460,
+      showCloseButton: false,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_feature_flag_danger_cancel'),
@@ -682,6 +618,41 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
           child: const Text('Update'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This can affect live behavior, service keys, or emergency shutoff. Type the control ID to continue:',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.flagName,
+            style: AppTextStyles.mono14(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_feature_flag_danger_input'),
+            controller: _controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: widget.flagName,
+              hintStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(
+                  color: AppColors.borderSubtle,
+                  width: 1,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
