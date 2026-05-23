@@ -29,6 +29,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
@@ -38,7 +40,6 @@ import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
-import '../widgets/admin_responsive_layout.dart';
 import 'invite_member_admin_dialog.dart';
 import 'operator_picker_screen.dart';
 import 'roles_hierarchy_sessions_admin_screen.dart';
@@ -893,83 +894,84 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_members_screen'),
-      color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AdminPageHeader(
-              title: 'People, access, and roles',
-              subtitle:
-                  '${widget.pickedOperator.operatorBusinessName}: members, '
-                  'invites, role grants, and access scopes. Changes require a reason.',
-              leading: widget.onBackToBusinessAccounts == null
-                  ? null
-                  : AdminBusinessAccountsBackButton(
-                      onPressed: widget.onBackToBusinessAccounts,
-                    ),
-              trailing: _buildHeaderActions(),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_members_screen'),
+      maxContentWidth: 1120,
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          OperatorWebScreenHeader(
+            icon: Icons.group_outlined,
+            title: 'Team members',
+            subtitle:
+                '${widget.pickedOperator.operatorBusinessName}: members, '
+                'invites, role grants, and access scopes. Changes require a reason.',
+            actions: _buildHeaderActions(),
+          ),
+          const SizedBox(height: 14),
+          if (!widget.editingEnabled)
+            const _ReadOnlyBanner(key: Key('admin_members_readonly_banner')),
+          if (_actionError != null)
+            _ErrorBanner(
+              key: const Key('admin_members_action_error'),
+              message: _actionError!,
+              emailConflicts: _actionEmailConflicts,
+              currentOperatorId: widget.pickedOperator.operatorId,
+              onShowConflict: _showEmailUsage,
+              onChangeOperator: widget.onChangeOperator,
             ),
-            const SizedBox(height: 14),
-            if (!widget.editingEnabled)
-              const _ReadOnlyBanner(key: Key('admin_members_readonly_banner')),
-            if (_actionError != null)
-              _ErrorBanner(
-                key: const Key('admin_members_action_error'),
-                message: _actionError!,
-                emailConflicts: _actionEmailConflicts,
-                currentOperatorId: widget.pickedOperator.operatorId,
-                onShowConflict: _showEmailUsage,
-                onChangeOperator: widget.onChangeOperator,
-              ),
-            _PeopleAccessScopeCard(
-              pickedOperator: widget.pickedOperator,
-              initialScope: widget.initialScope,
-              accessScopes: _availableAccessScopes,
-            ),
-            const SizedBox(height: 12),
-            _MembersFilterBar(
-              statusFilter: _statusFilter,
-              roleFilter: _roleFilter,
-              locationFilter: _locationFilter,
-              mfaEnrolledFilter: _mfaEnrolledFilter,
-              searchQuery: _searchQuery,
-              locations: _availableLocations,
-              onStatusChanged: (v) {
-                setState(() => _statusFilter = v);
-                _refresh();
-              },
-              onRoleChanged: (v) {
-                setState(() => _roleFilter = v);
-                _refresh();
-              },
-              onLocationChanged: (v) {
-                setState(() => _locationFilter = v);
-                _refresh();
-              },
-              onMfaEnrolledChanged: (v) {
-                setState(() => _mfaEnrolledFilter = v);
-                _refresh();
-              },
-              onSearchChanged: (v) {
-                setState(() => _searchQuery = v);
-                _refreshAfterSearchPause();
-              },
-              onClearFilters: _clearFilters,
-            ),
-            const SizedBox(height: 12),
-            Expanded(child: _buildBody()),
-          ],
-        ),
+          _PeopleAccessScopeCard(
+            pickedOperator: widget.pickedOperator,
+            initialScope: widget.initialScope,
+            accessScopes: _availableAccessScopes,
+          ),
+          const SizedBox(height: 12),
+          _MembersFilterBar(
+            statusFilter: _statusFilter,
+            roleFilter: _roleFilter,
+            locationFilter: _locationFilter,
+            mfaEnrolledFilter: _mfaEnrolledFilter,
+            searchQuery: _searchQuery,
+            locations: _availableLocations,
+            onStatusChanged: (v) {
+              setState(() => _statusFilter = v);
+              _refresh();
+            },
+            onRoleChanged: (v) {
+              setState(() => _roleFilter = v);
+              _refresh();
+            },
+            onLocationChanged: (v) {
+              setState(() => _locationFilter = v);
+              _refresh();
+            },
+            onMfaEnrolledChanged: (v) {
+              setState(() => _mfaEnrolledFilter = v);
+              _refresh();
+            },
+            onSearchChanged: (v) {
+              setState(() => _searchQuery = v);
+              _refreshAfterSearchPause();
+            },
+            onClearFilters: _clearFilters,
+          ),
+          const SizedBox(height: 12),
+          _buildBody(),
+        ],
       ),
     );
   }
 
-  Widget? _buildHeaderActions() {
+  List<Widget> _buildHeaderActions() {
     final children = <Widget>[];
+    if (widget.onBackToBusinessAccounts != null) {
+      children.add(
+        AdminBusinessAccountsBackButton(
+          onPressed: widget.onBackToBusinessAccounts,
+        ),
+      );
+    }
     if (widget.onChangeOperator != null) {
       children.add(
         OutlinedButton.icon(
@@ -1003,8 +1005,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         ),
       );
     }
-    if (children.isEmpty) return null;
-    return Wrap(spacing: 8, runSpacing: 8, children: children);
+    return children;
   }
 
   Widget _buildBody() {
@@ -1027,43 +1028,44 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         message: _loadError!,
       );
     }
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _MembersTable(
-            rows: _members,
-            editingEnabled: widget.editingEnabled,
-            onSuspend: _onSuspend,
-            onReactivate: _onReactivate,
-            onSoftDelete: _onSoftDelete,
-            onResetPassword: _onResetPassword,
-            onResetMfa: _onResetMfa,
-            onForceLogout: _onForceLogout,
-            onEditDisplayName: _onEditDisplayName,
-            onRestoreSoftDeleted: _onRestoreSoftDeleted,
-            onOverrideRoleGrant: _onOverrideRoleGrant,
-          ),
+    // Outer frame is OperatorWebScreenBody (a SingleChildScrollView), so
+    // this body returns a plain Column to avoid nesting a second scroll
+    // view inside it.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _MembersTable(
+          rows: _members,
+          editingEnabled: widget.editingEnabled,
+          onSuspend: _onSuspend,
+          onReactivate: _onReactivate,
+          onSoftDelete: _onSoftDelete,
+          onResetPassword: _onResetPassword,
+          onResetMfa: _onResetMfa,
+          onForceLogout: _onForceLogout,
+          onEditDisplayName: _onEditDisplayName,
+          onRestoreSoftDeleted: _onRestoreSoftDeleted,
+          onOverrideRoleGrant: _onOverrideRoleGrant,
+        ),
+        const SizedBox(height: 16),
+        _InvitesPanel(
+          invites: _invites,
+          editingEnabled: widget.editingEnabled,
+          busyInviteIds: _busyInviteIds,
+          onCancel: _onCancelInvite,
+        ),
+        if (widget.rolesGateway != null) ...<Widget>[
           const SizedBox(height: 16),
-          _InvitesPanel(
-            invites: _invites,
+          RolePolicyAdminPanel(
+            roles: _roles,
             editingEnabled: widget.editingEnabled,
-            busyInviteIds: _busyInviteIds,
-            onCancel: _onCancelInvite,
+            canEditSeededRoles: widget.canEditSeededRoles,
+            onEditSeeded: _onEditSeededRole,
+            onCreateCustom: _onCreateCustomRole,
+            onDeleteCustom: _onDeleteCustomRole,
           ),
-          if (widget.rolesGateway != null) ...<Widget>[
-            const SizedBox(height: 16),
-            RolePolicyAdminPanel(
-              roles: _roles,
-              editingEnabled: widget.editingEnabled,
-              canEditSeededRoles: widget.canEditSeededRoles,
-              onEditSeeded: _onEditSeededRole,
-              onCreateCustom: _onCreateCustomRole,
-              onDeleteCustom: _onDeleteCustomRole,
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 }
@@ -1418,11 +1420,31 @@ class _MembersTable extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           if (rows.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'No members match the current filters.',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
+            Container(
+              key: const Key('admin_members_empty_state'),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundDeep,
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'No members match the current filters',
+                    style: AppTextStyles.mono14(
+                      color: AppColors.textPrimary,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Try clearing a filter or use Invite member to add '
+                    'someone new to the team.',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
+                ],
               ),
             )
           else

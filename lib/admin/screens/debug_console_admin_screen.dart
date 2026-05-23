@@ -42,6 +42,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
@@ -53,7 +54,6 @@ import '../models/debug_console_admin_models.dart';
 import '../services/debug_console_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
-import '../widgets/admin_responsive_layout.dart';
 
 const String _kRequestLogTab = 'request_log';
 const String _kRelationshipHelpTab = 'relationship_help';
@@ -547,12 +547,16 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Fixed-height tabbed view (TabBar + Expanded TabBarView, the
+    // request-log tab being its own CustomScrollView): uses
+    // OperatorWebScreenFrame, not OperatorWebScreenBody. The sub-view
+    // (_SupportHelpTab) is single-axis and uses OperatorWebScreenBody.
     return Material(
       key: const Key('admin_debug_console_screen'),
       color: AppColors.backgroundDeep,
       type: MaterialType.canvas,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+      child: OperatorWebScreenFrame(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -701,69 +705,69 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminPageHeader(
+    return OperatorWebScreenHeader(
+      icon: Icons.bug_report_outlined,
       title: 'Support logs',
       subtitle:
           'Translate recent backend requests into support-safe details. Use precise references only when support needs a targeted lookup.',
-      leading: onBackToBusinessAccounts == null
-          ? null
-          : AdminBusinessAccountsBackButton(
-              onPressed: onBackToBusinessAccounts,
-            ),
-      compactBreakpoint: 640,
-      trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 320),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!editingEnabled)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Container(
-                  key: const Key('admin_debug_console_view_only_indicator'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.12),
-                    border: Border.all(color: AppColors.warning, width: 1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'Support view only',
-                    style: AppTextStyles.mono10(
-                      color: AppColors.warning,
-                    ).copyWith(fontWeight: FontWeight.w700),
+      collapseBelowWidth: 640,
+      actions: <Widget>[
+        if (onBackToBusinessAccounts != null)
+          AdminBusinessAccountsBackButton(onPressed: onBackToBusinessAccounts),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!editingEnabled)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Container(
+                    key: const Key('admin_debug_console_view_only_indicator'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.12),
+                      border: Border.all(color: AppColors.warning, width: 1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Support view only',
+                      style: AppTextStyles.mono10(
+                        color: AppColors.warning,
+                      ).copyWith(fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ),
+              OutlinedButton.icon(
+                key: const Key('admin_debug_console_refresh_button'),
+                onPressed: loading ? null : () => onRunRefresh(),
+                icon: loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 16),
+                label: Text(loading ? 'Loading...' : 'Refresh'),
               ),
-            OutlinedButton.icon(
-              key: const Key('admin_debug_console_refresh_button'),
-              onPressed: loading ? null : () => onRunRefresh(),
-              icon: loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh, size: 16),
-              label: Text(loading ? 'Loading...' : 'Refresh'),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              lastRefreshed == null
-                  ? 'Last checked: -'
-                  : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
-              key: const Key('admin_debug_console_last_refreshed'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-          ],
+              const SizedBox(height: 6),
+              Text(
+                lastRefreshed == null
+                    ? 'Last checked: -'
+                    : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
+                key: const Key('admin_debug_console_last_refreshed'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

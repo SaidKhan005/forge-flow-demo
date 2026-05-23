@@ -20,6 +20,8 @@
 // "§ Idempotency keys" + "§ Audit-row shape".
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../auth/permission_key_metadata.dart';
@@ -487,25 +489,22 @@ class _RolesHierarchySessionsAdminScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // Fixed-height tabbed view: OperatorWebScreenFrame, not OperatorWebScreenBody.
+    return ColoredBox(
       key: const Key('admin_roles_hierarchy_sessions_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+      child: OperatorWebScreenFrame(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            AdminPageHeader(
+            OperatorWebScreenHeader(
+              icon: Icons.account_tree_outlined,
               title: 'Team access',
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: role policy, '
                   'and location hierarchy. Active sessions moved to Security/audit/sessions.',
-              leading: widget.onBackToBusinessAccounts == null
-                  ? null
-                  : AdminBusinessAccountsBackButton(
-                      onPressed: widget.onBackToBusinessAccounts,
-                    ),
-              trailing: _buildHeaderActions(),
+              actions: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
@@ -542,8 +541,13 @@ class _RolesHierarchySessionsAdminScreenState
     );
   }
 
-  Widget? _buildHeaderActions() {
-    final children = <Widget>[];
+  List<Widget> _buildHeaderActions() {
+    final children = <Widget>[
+      if (widget.onBackToBusinessAccounts != null)
+        AdminBusinessAccountsBackButton(
+          onPressed: widget.onBackToBusinessAccounts,
+        ),
+    ];
     if (widget.onChangeOperator != null) {
       children.add(
         OutlinedButton.icon(
@@ -555,8 +559,7 @@ class _RolesHierarchySessionsAdminScreenState
         ),
       );
     }
-    if (children.isEmpty) return null;
-    return Wrap(spacing: 8, runSpacing: 8, children: children);
+    return children;
   }
 
   Widget _buildBody() {
