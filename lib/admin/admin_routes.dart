@@ -21,6 +21,7 @@ import '../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
 import 'admin_capability_gate.dart';
+import 'admin_destructive_gate.dart';
 import 'admin_route_handoff.dart';
 import 'models/corpus_admin_models.dart';
 import 'models/debug_console_admin_models.dart';
@@ -1680,7 +1681,11 @@ Widget _buildMembers(BuildContext context) {
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canEditSeededRoles: _isAdminMfaFresh(session),
+          canEditSeededRoles: adminCanEditDestructive(
+            session,
+            requiredKey: PermissionKeys.adminRolesEditSeeded,
+            mfaFresh: _isAdminMfaFresh(session),
+          ),
         );
       },
     );
@@ -1911,7 +1916,11 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canEditSeededRoles: _isAdminMfaFresh(session),
+          canEditSeededRoles: adminCanEditDestructive(
+            session,
+            requiredKey: PermissionKeys.adminRolesEditSeeded,
+            mfaFresh: _isAdminMfaFresh(session),
+          ),
         );
       },
     );
@@ -2237,12 +2246,15 @@ Widget _buildAuditedSupportActions(BuildContext context) {
         final session = state is AdminAuthAuthenticated ? state.session : null;
         final canEdit = _isAdminSuperAdmin(session);
         final fresh = _isAdminMfaFresh(session);
+        // Slice E4 — destructive audited-support gates keyed per-action.
+        bool can(String key) =>
+            adminCanEditDestructive(session, requiredKey: key, mfaFresh: fresh);
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canResetMfaFactors: fresh,
-          canIssuePairedErasure: fresh,
-          canExportAuditLog: fresh,
+          canResetMfaFactors: can(PermissionKeys.adminUsersResetMfaFactors),
+          canIssuePairedErasure: can(PermissionKeys.adminUsersErasePii),
+          canExportAuditLog: can(PermissionKeys.adminAuditLogExport),
         );
       },
     );
