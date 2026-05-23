@@ -694,7 +694,7 @@ class _WorkspaceHeader extends StatelessWidget {
           ],
           const Icon(
             Icons.account_tree_outlined,
-            size: 20,
+            size: 22,
             color: AppColors.sunsetDark,
           ),
           const SizedBox(width: 10),
@@ -705,7 +705,7 @@ class _WorkspaceHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: AppTextStyles.sectionTitle(
+                  style: AppTextStyles.display20(
                     color: AppColors.textPrimary,
                   ),
                 ),
