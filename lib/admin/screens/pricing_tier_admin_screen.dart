@@ -26,6 +26,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_screen_header.dart';
+import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
@@ -204,8 +206,10 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const AdminPageHeader(
+            const OperatorWebScreenHeader(
+              icon: Icons.payments_outlined,
               title: 'Plans and limits',
+              collapseBelowWidth: 0,
               subtitle:
                   'Review each operator\'s Forge & Flow AI plan and the limits that keep advisor spend predictable.',
             ),
@@ -388,25 +392,11 @@ class _ReadOnlyBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'View only: pricing edits require ecosystem admin access.',
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        icon: Icons.lock_outline,
+        message: 'View only: pricing edits require ecosystem admin access.',
       ),
     );
   }
@@ -515,15 +505,11 @@ class _OperatorPricingDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AdminCard(
+          OperatorWebPanel(
+            title: bundle.businessName,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  bundle.businessName,
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 10),
                 AdminDetailRow(
                   label: 'Forge & Flow AI plan',
                   value: _tierDisplayName(bundle.subscriptionTier),
@@ -585,33 +571,19 @@ class _OperatorPricingDetail extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          AdminCard(
+          OperatorWebPanel(
+            title: 'Usage limits',
+            trailing: editingEnabled
+                ? OutlinedButton.icon(
+                    key: const Key('admin_pricing_add_cap_button'),
+                    onPressed: () => onAddCap(bundle),
+                    icon: const Icon(Icons.add, size: 14),
+                    label: const Text('Add usage limit'),
+                  )
+                : null,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: <Widget>[
-                    Text(
-                      'Usage limits',
-                      style: AppTextStyles.mono15(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                    if (editingEnabled)
-                      OutlinedButton.icon(
-                        key: const Key('admin_pricing_add_cap_button'),
-                        onPressed: () => onAddCap(bundle),
-                        icon: const Icon(Icons.add, size: 14),
-                        label: const Text('Add usage limit'),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 10),
                 if (bundle.caps.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -906,15 +878,24 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
   @override
   Widget build(BuildContext context) {
     final editing = widget.existing != null;
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_pricing_cap_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        editing ? 'Edit usage limit' : 'Add usage limit',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 460,
+      title: editing ? 'Edit usage limit' : 'Add usage limit',
+      icon: Icons.speed_outlined,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_pricing_cap_cancel_button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_pricing_cap_submit_button'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: Text(editing ? 'Save' : 'Add'),
+        ),
+      ],
+      child: Flexible(
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
@@ -985,42 +966,28 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
           ),
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_pricing_cap_cancel_button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_pricing_cap_submit_button'),
-          style: AdminButtonStyles.primary,
-          onPressed: () {
-            if (!(_formKey.currentState?.validate() ?? false)) return;
-            final locationId =
-                widget.existing?.locationId ?? widget.primaryLocationId;
-            if (locationId == null) return;
-            final monthly = double.tryParse(_monthly.text.trim()) ?? 0;
-            final perInv = double.tryParse(_perInvocation.text.trim()) ?? 0;
-            Navigator.of(context).pop(
-              UsageCapUpsertCommand(
-                operatorId: widget.operatorId,
-                locationId: locationId,
-                usageClass: _usageClass.text.trim(),
-                monthlyCapUsd: monthly,
-                perInvocationCapUsd: perInv,
-                staffId: _staffId.text.trim().isEmpty
-                    ? null
-                    : _staffId.text.trim(),
-                workflowId: _workflowId.text.trim().isEmpty
-                    ? null
-                    : _workflowId.text.trim(),
-                idempotencyKey: widget.idempotencyKey,
-              ),
-            );
-          },
-          child: Text(editing ? 'Save' : 'Add'),
-        ),
-      ],
+    );
+  }
+
+  void _onSubmit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final locationId = widget.existing?.locationId ?? widget.primaryLocationId;
+    if (locationId == null) return;
+    final monthly = double.tryParse(_monthly.text.trim()) ?? 0;
+    final perInv = double.tryParse(_perInvocation.text.trim()) ?? 0;
+    Navigator.of(context).pop(
+      UsageCapUpsertCommand(
+        operatorId: widget.operatorId,
+        locationId: locationId,
+        usageClass: _usageClass.text.trim(),
+        monthlyCapUsd: monthly,
+        perInvocationCapUsd: perInv,
+        staffId: _staffId.text.trim().isEmpty ? null : _staffId.text.trim(),
+        workflowId: _workflowId.text.trim().isEmpty
+            ? null
+            : _workflowId.text.trim(),
+        idempotencyKey: widget.idempotencyKey,
+      ),
     );
   }
 }
@@ -1082,17 +1049,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.negative, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        message,
-        style: AppTextStyles.mono11(color: AppColors.negative),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        tone: OperatorWebBannerTone.error,
+        message: message,
       ),
     );
   }
@@ -1111,17 +1072,10 @@ class _ConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_pricing_confirm_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        title,
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: Text(
-        message,
-        style: AppTextStyles.body13(color: AppColors.textSecondary),
-      ),
+      title: title,
+      icon: Icons.help_outline,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_pricing_confirm_cancel'),
@@ -1135,6 +1089,10 @@ class _ConfirmDialog extends StatelessWidget {
           child: Text(confirmLabel),
         ),
       ],
+      child: Text(
+        message,
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
+      ),
     );
   }
 }

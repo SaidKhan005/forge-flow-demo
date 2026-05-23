@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
@@ -21,35 +22,29 @@ class TierDefinitionsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebPanel(
       key: const Key('admin_tier_definitions_card'),
-      child: AdminCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      title: 'Tier definitions',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (definitions.isEmpty)
             Text(
-              'Tier definitions',
-              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 12),
-            if (definitions.isEmpty)
-              Text(
-                'No tier definitions configured.',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
-              )
-            else
-              for (final def in definitions)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _TierDefinitionSubcard(
-                    definition: def,
-                    editingEnabled: editingEnabled,
-                    onEdit: () => onEdit(def),
-                  ),
+              'No tier definitions configured.',
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            )
+          else
+            for (final def in definitions)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _TierDefinitionSubcard(
+                  definition: def,
+                  editingEnabled: editingEnabled,
+                  onEdit: () => onEdit(def),
                 ),
-          ],
-        ),
+              ),
+        ],
       ),
     );
   }
