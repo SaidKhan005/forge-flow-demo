@@ -58,6 +58,10 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/notification_event_catalog.dart';
 import '../../theme/app_theme.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../services/admin_notification_preferences_gateway.dart';
 
 /// Wiring-readiness state for one catalog entry. Mirrors the
@@ -270,8 +274,8 @@ class _AdminNotificationPreferencesScreenState
       );
       visibleEvents[entry.category]!.add(entry);
     }
-    return SingleChildScrollView(
-      key: const Key('admin_notification_preferences_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_notification_preferences_screen'),
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -323,31 +327,22 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.notifications_outlined,
-              size: 22,
-              color: AppColors.sunsetDark,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Notifications',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Pick how Forge & Flow lets you know about important events. '
-          'These settings are just for your admin sign-in. You can change '
-          'any of them any time.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
+    return OperatorWebScreenHeader(
+      icon: Icons.notifications_outlined,
+      title: 'Notifications',
+      collapseBelowWidth: 0,
+      actions: <Widget>[
+        OperatorWebInfoButton(
+          key: const Key('admin_notification_preferences_header_info'),
+          title: 'Notifications',
+          tooltip: 'About notifications',
+          width: 360,
+          body: Text(
+            'Pick how Forge & Flow lets you know about important events. '
+            'These settings are just for your admin sign-in. You can change '
+            'any of them any time.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
         ),
       ],
     );
@@ -364,32 +359,13 @@ class _DisconnectedNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_notification_preferences_disconnected_note'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.borderSubtle.withValues(alpha: 0.40),
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.info_outline,
-            size: 16,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              "You're seeing the default settings. Saving is turned off "
-              'here until your account is connected. Your real settings '
-              'are safe and unchanged.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
+    return const OperatorWebBanner(
+      key: Key('admin_notification_preferences_disconnected_note'),
+      tone: OperatorWebBannerTone.neutral,
+      message:
+          "You're seeing the default settings. Saving is turned off "
+          'here until your account is connected. Your real settings '
+          'are safe and unchanged.',
     );
   }
 }
@@ -401,29 +377,10 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebBanner(
       key: const Key('admin_notification_preferences_error_banner'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.negative.withValues(alpha: 0.10),
-        border: Border.all(
-          color: AppColors.negative.withValues(alpha: 0.45),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.body13(color: AppColors.negative),
-            ),
-          ),
-        ],
-      ),
+      tone: OperatorWebBannerTone.error,
+      message: message,
     );
   }
 }
@@ -450,25 +407,12 @@ class _CategorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebPanel(
       key: Key('admin_notification_preferences_category_${category.name}'),
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      title: kNotificationCategoryLabels[category] ?? category.name,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            kNotificationCategoryLabels[category] ?? category.name,
-            style: AppTextStyles.mono15(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
           for (var i = 0; i < events.length; i++) ...[
             _EventRow(
               event: events[i],

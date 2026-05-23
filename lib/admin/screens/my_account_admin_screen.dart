@@ -50,6 +50,10 @@ import 'package:flutter/services.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../admin_auth_gate.dart';
 import '../services/admin_account_gateway.dart';
 import '../services/admin_security_gateway.dart';
@@ -176,8 +180,8 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      key: const Key('admin_my_account_screen'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_my_account_screen'),
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -218,21 +222,9 @@ class _AdminAccountHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(
-          Icons.person_outline,
-          size: 22,
-          color: AppColors.sunsetDark,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            'My account',
-            style: AppTextStyles.display20(color: AppColors.textPrimary),
-          ),
-        ),
-      ],
+    return const OperatorWebScreenHeader(
+      icon: Icons.person_outline,
+      title: 'My account',
     );
   }
 }
@@ -240,14 +232,12 @@ class _AdminAccountHeader extends StatelessWidget {
 class _AdminAccountCard extends StatelessWidget {
   const _AdminAccountCard({
     required this.cardKey,
-    required this.icon,
     required this.title,
     this.headerExplainer,
     required this.child,
   });
 
   final Key cardKey;
-  final IconData icon;
   final String title;
   final String? headerExplainer;
   final Widget child;
@@ -255,43 +245,21 @@ class _AdminAccountCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final explainer = headerExplainer;
-    return Container(
+    return OperatorWebPanel(
       key: cardKey,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: AppColors.sunsetDark),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
+      title: title,
+      trailing: explainer == null
+          ? null
+          : OperatorWebInfoButton(
+              title: title,
+              tooltip: title,
+              body: Text(
+                explainer,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
-            ],
-          ),
-          if (explainer != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              explainer,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-          ],
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      child: child,
     );
   }
 }
@@ -385,7 +353,6 @@ class _AdminIdentityCard extends StatelessWidget {
               'email. Changing your email signs you out.';
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_identity_card'),
-      icon: Icons.badge_outlined,
       title: 'Identity',
       headerExplainer: explainer,
       child: Column(
@@ -701,7 +668,6 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
         : (enrolled ? AppColors.positive : AppColors.sunsetDark);
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_security_card'),
-      icon: Icons.shield_outlined,
       title: 'Security',
       headerExplainer:
           'Two-factor sign-in is required for every Forge & Flow admin. '
@@ -834,7 +800,6 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
               '${_formatRelative(lastFresh, widget.now)}.';
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_security_card'),
-      icon: Icons.shield_outlined,
       title: 'Security',
       headerExplainer:
           'Two-factor sign-in is required for every Forge & Flow admin. '
@@ -1134,7 +1099,6 @@ class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
     final hasGateway = widget.gateway != null;
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_active_sessions_card'),
-      icon: Icons.devices_outlined,
       title: 'Active sessions',
       headerExplainer: hasGateway
           ? 'Every place you are currently signed in to the admin console. '
