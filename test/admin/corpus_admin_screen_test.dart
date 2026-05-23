@@ -323,7 +323,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_corpus_rollback_v1')));
+    // D7e shared-console adoption: the screen header now uses
+    // OperatorWebScreenHeader, whose multi-line subtitle reflows the
+    // version list a few pixels lower on the default 800x600 surface,
+    // leaving the prior-version Restore button at the viewport edge.
+    // Scroll it into view before tapping (same pattern the sibling
+    // graph-candidates tests already use). Intent is unchanged: the tap
+    // still opens the confirm dialog and the rollback assertions below
+    // still run.
+    final rollbackButton = find.byKey(const Key('admin_corpus_rollback_v1'));
+    await tester.ensureVisible(rollbackButton);
+    await tester.pumpAndSettle();
+    await tester.tap(rollbackButton);
     await tester.pumpAndSettle();
 
     expect(
