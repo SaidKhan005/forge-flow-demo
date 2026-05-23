@@ -242,61 +242,74 @@ class _VendorApplicabilityAdminScreenState
   @override
   Widget build(BuildContext context) {
     final spec = _tabs[_tabController.index];
+    // Centre + max-width cap matching the shared operator-web body kit, so
+    // the content stays balanced with even margins on a wide window instead
+    // of running edge-to-edge. The body keeps its fill layout (the data
+    // table below scrolls internally and needs the bounded height an
+    // Expanded gives it), so the cap is applied with the same
+    // Center + ConstrainedBox + edge padding OperatorWebScreenBody uses,
+    // without forcing a second scroll view around the table. The dark
+    // background stays full-bleed behind the cap.
     return Container(
       key: const Key('admin_vendor_applicability_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const OperatorWebScreenHeader(
-              icon: Icons.rule_outlined,
-              title: 'Vendor Applicability',
-              collapseBelowWidth: 0,
-              subtitle:
-                  'Choose which vendors are allowed to power wage, covers, and polling settings.',
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1120),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const OperatorWebScreenHeader(
+                  icon: Icons.rule_outlined,
+                  title: 'Vendor Applicability',
+                  collapseBelowWidth: 0,
+                  subtitle:
+                      'Choose which vendors are allowed to power wage, covers, and polling settings.',
+                ),
+                const SizedBox(height: 14),
+                if (!widget.editingEnabled)
+                  const _InlineBanner(
+                    key: Key('admin_vendor_applicability_readonly'),
+                    icon: Icons.lock_outline,
+                    message:
+                        'Only super admins can change vendor applicability. This view is read-only for support.',
+                  ),
+                if (_actionError != null)
+                  _InlineBanner(
+                    key: const Key('admin_vendor_applicability_action_error'),
+                    icon: Icons.warning_amber_rounded,
+                    message: _actionError!,
+                    isError: true,
+                  ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundSurface,
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    labelColor: AppColors.textPrimary,
+                    unselectedLabelColor: AppColors.textMuted,
+                    indicatorColor: AppColors.sunsetDark,
+                    tabs: [for (final tab in _tabs) Tab(text: tab.label)],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _Toolbar(
+                  copy: spec.copy,
+                  saving: _saving,
+                  editingEnabled: widget.editingEnabled,
+                  onAdd: _openAddDialog,
+                  onRefresh: _refresh,
+                ),
+                const SizedBox(height: 12),
+                Expanded(child: _buildBody()),
+              ],
             ),
-            const SizedBox(height: 14),
-            if (!widget.editingEnabled)
-              const _InlineBanner(
-                key: Key('admin_vendor_applicability_readonly'),
-                icon: Icons.lock_outline,
-                message:
-                    'Only super admins can change vendor applicability. This view is read-only for support.',
-              ),
-            if (_actionError != null)
-              _InlineBanner(
-                key: const Key('admin_vendor_applicability_action_error'),
-                icon: Icons.warning_amber_rounded,
-                message: _actionError!,
-                isError: true,
-              ),
-            Container(
-              decoration: BoxDecoration(
-                color: AppColors.backgroundSurface,
-                border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                labelColor: AppColors.textPrimary,
-                unselectedLabelColor: AppColors.textMuted,
-                indicatorColor: AppColors.sunsetDark,
-                tabs: [for (final tab in _tabs) Tab(text: tab.label)],
-              ),
-            ),
-            const SizedBox(height: 12),
-            _Toolbar(
-              copy: spec.copy,
-              saving: _saving,
-              editingEnabled: widget.editingEnabled,
-              onAdd: _openAddDialog,
-              onRefresh: _refresh,
-            ),
-            const SizedBox(height: 12),
-            Expanded(child: _buildBody()),
-          ],
+          ),
         ),
       ),
     );
