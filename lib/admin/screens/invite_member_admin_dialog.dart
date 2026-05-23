@@ -8,6 +8,7 @@
 // minted idempotency key.
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../operator_web/widgets/hierarchy_map_picker.dart';
 import '../../operator_web/widgets/hierarchy_tree_picker.dart';
@@ -292,15 +293,25 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_members_invite_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Invite member to ${widget.operatorBusinessName}',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 520,
+      title: 'Invite member to ${widget.operatorBusinessName}',
+      icon: Icons.person_add_alt_1_outlined,
+      maxWidth: 520,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_members_invite_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_members_invite_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Send invite'),
+        ),
+      ],
+      child: Flexible(
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -400,19 +411,6 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
           ),
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_members_invite_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_members_invite_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Send invite'),
-        ),
-      ],
     );
   }
 }
