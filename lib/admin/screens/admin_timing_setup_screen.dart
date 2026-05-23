@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/services/business_timing_profile_resolver.dart';
 import '../../theme/app_theme.dart';
@@ -7,6 +9,9 @@ import '../models/operator_location_admin_models.dart';
 import '../services/admin_business_timing_resolution_gateway.dart';
 import '../services/admin_business_timing_resolution_projection.dart';
 import '../services/operator_location_admin_gateway.dart';
+// AdminDetailRow is a detail-row primitive (not a card / panel / section /
+// scaffold widget), so it stays; the card / panel / scaffold containers in
+// this file now come from the shared console kit above (Slice D5).
 import '../widgets/admin_responsive_layout.dart';
 
 class AdminTimingSetupScreen extends StatelessWidget {
@@ -43,45 +48,39 @@ class AdminTimingSetupScreen extends StatelessWidget {
         return ColoredBox(
           key: const Key('admin_timing_setup_screen'),
           color: AppColors.backgroundDeep,
-          child: SingleChildScrollView(
+          child: OperatorWebScreenBody(
             padding: const EdgeInsets.all(20),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 880),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    if (snapshot.connectionState != ConnectionState.done)
-                      const LinearProgressIndicator(minHeight: 2),
-                    if (snapshot.hasError)
-                      _TimingMessageCard(
-                        icon: Icons.error_outline,
-                        title: 'Timing could not load',
-                        body:
-                            'Refresh Business Accounts and try this setup screen again.',
-                      )
-                    else if (location == null)
-                      const _TimingMessageCard(
-                        icon: Icons.storefront_outlined,
-                        title: 'Choose a location before editing timing',
-                        body:
-                            'Business and org-unit scopes show inherited timing from the locations they cover. Add or select a location to review timezone, business day, and service periods.',
-                      )
-                    else
-                      _TimingSummaryCard(
-                        selectedScope: selectedScope,
-                        location: location,
-                        scopeLocationCount: scopeLocationIds.isEmpty
-                            ? null
-                            : scopeLocationIds.length,
-                        editingEnabled: editingEnabled,
-                        timingResolutionGateway:
-                            timingResolutionGateway ??
-                            _fallbackTimingResolutionGateway,
-                      ),
-                  ],
-                ),
-              ),
+            maxContentWidth: 880,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                if (snapshot.connectionState != ConnectionState.done)
+                  const LinearProgressIndicator(minHeight: 2),
+                if (snapshot.hasError)
+                  const _TimingMessageCard(
+                    title: 'Timing could not load',
+                    body:
+                        'Refresh Business Accounts and try this setup screen again.',
+                  )
+                else if (location == null)
+                  const _TimingMessageCard(
+                    title: 'Choose a location before editing timing',
+                    body:
+                        'Business and org-unit scopes show inherited timing from the locations they cover. Add or select a location to review timezone, business day, and service periods.',
+                  )
+                else
+                  _TimingSummaryCard(
+                    selectedScope: selectedScope,
+                    location: location,
+                    scopeLocationCount: scopeLocationIds.isEmpty
+                        ? null
+                        : scopeLocationIds.length,
+                    editingEnabled: editingEnabled,
+                    timingResolutionGateway:
+                        timingResolutionGateway ??
+                        _fallbackTimingResolutionGateway,
+                  ),
+              ],
             ),
           ),
         );
@@ -149,43 +148,14 @@ class _TimingSummaryCard extends StatelessWidget {
         ? 'Selected location'
         : '$scopeLocationCount covered location'
               '${scopeLocationCount == 1 ? '' : 's'}';
-    return AdminCard(
+    return OperatorWebPanel(
       key: const Key('admin_timing_summary_card'),
+      title: 'Effective timing',
+      subtitle:
+          'Review the timezone, business day, and service periods used by this selected scope.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Icon(
-                Icons.schedule_outlined,
-                size: 20,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      'Effective timing',
-                      style: AppTextStyles.sectionTitle(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Review the timezone, business day, and service periods used by this selected scope.',
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
           if (!selectedScope.isLocationScope &&
               scopeLocationCount != null &&
               scopeLocationCount! > 1)
@@ -424,44 +394,19 @@ class _TimingPeriodLine extends StatelessWidget {
 }
 
 class _TimingMessageCard extends StatelessWidget {
-  const _TimingMessageCard({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
+  const _TimingMessageCard({required this.title, required this.body});
 
-  final IconData icon;
   final String title;
   final String body;
 
   @override
   Widget build(BuildContext context) {
-    return AdminCard(
+    return OperatorWebPanel(
       key: const Key('admin_timing_message_card'),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(icon, size: 20, color: AppColors.textMuted),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  title,
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  body,
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-        ],
+      title: title,
+      child: Text(
+        body,
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
     );
   }
