@@ -11,6 +11,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
@@ -579,36 +580,47 @@ class _PollingAndPricingAdminScreenState
     return Container(
       key: const Key('admin_polling_pricing_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            if (widget.showPageHeader) ...[
-              AdminPageHeader(
-                title: 'Polling Setup',
-                subtitle:
-                    'This surface is for F&F admins only. Operators cannot see it. Set vendor polling tiers, cost basis, and margin.',
-                leading: widget.onBackToBusinessAccounts == null
-                    ? null
-                    : AdminBusinessAccountsBackButton(
-                        onPressed: widget.onBackToBusinessAccounts,
-                      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (widget.showPageHeader ||
+              !widget.editingEnabled ||
+              _actionError != null)
+            Padding(
+              // Pinned header + banners keep operator-web edge insets; the
+              // scrollable body below carries its own OperatorWebScreenBody
+              // padding so it is not double-padded. Header gating unchanged.
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (widget.showPageHeader) ...[
+                    AdminPageHeader(
+                      title: 'Polling Setup',
+                      subtitle:
+                          'This surface is for F&F admins only. Operators cannot see it. Set vendor polling tiers, cost basis, and margin.',
+                      leading: widget.onBackToBusinessAccounts == null
+                          ? null
+                          : AdminBusinessAccountsBackButton(
+                              onPressed: widget.onBackToBusinessAccounts,
+                            ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (!widget.editingEnabled)
+                    const _ReadOnlyBanner(
+                      key: Key('admin_polling_pricing_readonly_banner'),
+                    ),
+                  if (_actionError != null)
+                    _ErrorBanner(
+                      key: const Key('admin_polling_pricing_action_error'),
+                      message: _actionError!,
+                    ),
+                ],
               ),
-              const SizedBox(height: 14),
-            ],
-            if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_polling_pricing_readonly_banner'),
-              ),
-            if (_actionError != null)
-              _ErrorBanner(
-                key: const Key('admin_polling_pricing_action_error'),
-                message: _actionError!,
-              ),
-            Expanded(child: _buildBody()),
-          ],
-        ),
+            ),
+          Expanded(child: _buildBody()),
+        ],
       ),
     );
   }
@@ -633,7 +645,12 @@ class _PollingAndPricingAdminScreenState
         message: _loadError!,
       );
     }
-    return SingleChildScrollView(
+    return OperatorWebScreenBody(
+      maxContentWidth: 1120,
+      // Top inset is owned by the pinned header block above when the page
+      // header shows; when it is gated off (scope-pane mount) the body owns
+      // the top inset so content is not flush against the pane edge.
+      padding: EdgeInsets.fromLTRB(24, widget.showPageHeader ? 0 : 24, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
