@@ -178,6 +178,24 @@ const Map<String, String> kPermissionExplainerDescriptions = <String, String>{
       'the audit-privacy access path. Every call writes an audit_logs '
       'provenance row capturing reader, reason, target, and records-read '
       'count. MFA required.',
+  // admin.hierarchy.* (5) — Slice E. Verbatim mirror of the catalog /
+  // migration descriptions for the dormant F&F-admin hierarchy keys.
+  'admin.hierarchy.create':
+      'Create operator hierarchy nodes (org-units and locations) from the '
+      'F&F admin "Business accounts" console.',
+  'admin.hierarchy.move':
+      'Move operator hierarchy nodes (org-units and locations) within the '
+      'tree from the F&F admin "Business accounts" console.',
+  'admin.hierarchy.rename':
+      'Rename operator hierarchy nodes (org-units and locations) from the '
+      'F&F admin "Business accounts" console.',
+  'admin.hierarchy.suspend':
+      'Suspend or reactivate operator hierarchy nodes (org-units and '
+      'locations) from the F&F admin "Business accounts" console. MFA '
+      'required.',
+  'admin.hierarchy.delete':
+      'Delete operator hierarchy nodes (org-units and empty locations) from '
+      'the F&F admin "Business accounts" console. MFA required.',
 
   // team.* (19)
   'team.users.view': "View the operator's user list.",
