@@ -69,9 +69,10 @@ void main() {
       'super_admin': sessionWithRoles(const <String>['super_admin']),
       'ff_support': sessionWithRoles(const <String>['ff_support']),
       'operator_owner': sessionWithRoles(const <String>['operator_owner']),
-      'super_admin + ff_support': sessionWithRoles(
-        const <String>['ff_support', 'super_admin'],
-      ),
+      'super_admin + ff_support': sessionWithRoles(const <String>[
+        'ff_support',
+        'super_admin',
+      ]),
       'empty roles': sessionWithRoles(const <String>[]),
       'null session': null,
     };
@@ -151,41 +152,63 @@ void main() {
       );
     });
 
-    test('the 3 dead-builder bare literals are still present in raw source',
-        () {
-      // Sanity: the dead builders were intentionally NOT changed, so
-      // the raw (un-stripped) file still has exactly 3 bare sites.
-      final bareRaw = RegExp(
-        r"\.roles\.contains\('super_admin'\)",
-      ).allMatches(source).length;
-      expect(
-        bareRaw,
-        3,
-        reason:
-            '3 legacy // ignore: unused_element builders keep the bare '
-            'literal (dead code, out of G7a scope).',
-      );
-    });
+    test(
+      'the 3 dead-builder bare literals are still present in raw source',
+      () {
+        // Sanity: the dead builders were intentionally NOT changed, so
+        // the raw (un-stripped) file still has exactly 3 bare sites.
+        final bareRaw = RegExp(
+          r"\.roles\.contains\('super_admin'\)",
+        ).allMatches(source).length;
+        expect(
+          bareRaw,
+          3,
+          reason:
+              '3 legacy // ignore: unused_element builders keep the bare '
+              'literal (dead code, out of G7a scope).',
+        );
+      },
+    );
 
-    test('exactly 14 _isAdminSuperAdmin(session) call sites', () {
+    test('exactly 13 _isAdminSuperAdmin(session) call sites', () {
+      // UX-parity Slice E1 moved the single, non-destructive Pricing
+      // editing gate from `_isAdminSuperAdmin(session)` to the new
+      // capability-key helper `adminCanEdit(session, requiredKey:
+      // PermissionKeys.adminPricingTierEdit)` (extracted to
+      // `lib/admin/admin_capability_gate.dart` so the frozen-ceiling
+      // monolith shrinks instead of grows). That helper is
+      // byte-identical for an EMPTY permissions set (it falls back to
+      // the same super-admin role check), so the decision is
+      // unchanged — only the call shape at that ONE site changed. The
+      // active `_isAdminSuperAdmin(session)` count therefore drops from
+      // 14 to 13. All other coarse-role sites are untouched.
       final calls = RegExp(
         r'_isAdminSuperAdmin\(session\)',
       ).allMatches(activeSource).length;
-      expect(calls, 14);
+      expect(calls, 13);
+    });
+
+    test('exactly 1 adminCanEdit(session, ...) call site (E1 Pricing)', () {
+      // UX-parity Slice E1 — the key-first helper is applied at exactly
+      // ONE site (the non-destructive, single-key Pricing route). The
+      // three destructive legacy builders deliberately stay coarse
+      // role-based (a later, operator-gated slice). The regex excludes
+      // `_isAdminSuperAdmin`/`_isAdminMfaFresh` by requiring the bare
+      // `adminCanEdit(` token at a word boundary.
+      final calls = RegExp(
+        r'(?<![\w_])adminCanEdit\(\s*session',
+      ).allMatches(activeSource).length;
+      expect(calls, 1);
     });
 
     test('shared helper is defined and aliases the catalog constant', () {
       expect(
         source,
-        contains(
-          'bool _isAdminSuperAdmin(AdminAuthSession? session) =>',
-        ),
+        contains('bool _isAdminSuperAdmin(AdminAuthSession? session) =>'),
       );
       expect(
         source,
-        contains(
-          'session.roles.contains(PermissionKeys.roleSuperAdmin)',
-        ),
+        contains('session.roles.contains(PermissionKeys.roleSuperAdmin)'),
       );
     });
 

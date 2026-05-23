@@ -50,6 +50,7 @@ import 'admin/services/admin_account_gateway.dart';
 import 'admin/services/admin_business_timing_resolution_gateway.dart';
 import 'admin/services/admin_http_timeout.dart';
 import 'admin/services/admin_notification_preferences_gateway.dart';
+import 'admin/services/admin_permission_snapshot_loader.dart';
 import 'admin/services/admin_security_gateway.dart';
 import 'admin/services/admin_sessions_gateway.dart';
 import 'admin/services/admin_vendor_connections_gateway.dart';
@@ -443,10 +444,20 @@ Future<_AdminAuthBinding> _resolveAuthSource() async {
   // Sessions surface). Fail-closed: outside demo/share-preview the
   // base URI is required, mirroring the other `_resolve*` resolvers.
   final sessionsGateway = _buildAdminSessionsGateway(authClient);
+  // UX-parity Slice E0 — best-effort permission-snapshot loader on the
+  // same admin proxy base URI + Firebase ID-token bearer. Wired into
+  // the auth source so a live admin session hydrates
+  // `AdminAuthSession.permissions`. Fail-safe: the loader returns an
+  // empty set (never throws) on any error, so sign-in is never blocked
+  // and the key-first editing gates fall back to the role check.
+  final permissionSnapshotLoader = _buildAdminPermissionSnapshotLoader(
+    authClient,
+  );
   return _AdminAuthBinding(
     source: FirebaseAdminAuthSource(
       client: authClient,
       sessionLedger: sessionsGateway,
+      permissionSnapshotLoader: permissionSnapshotLoader,
     ),
     authClient: authClient,
     sessionsGateway: sessionsGateway,
@@ -477,6 +488,39 @@ AdminSessionsGateway? _buildAdminSessionsGateway(
   return HttpAdminSessionsGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// UX-parity Slice E0 — best-effort permission-snapshot loader.
+/// Lives on the same admin proxy base URI + Firebase ID-token bearer
+/// the sibling admin gateways use. Demo / share-preview return null so
+/// the auth source skips hydration entirely (`permissions` stays empty
+/// → role fallback). Unlike the other `_build*`/`_resolve*` helpers
+/// this is NEVER fail-closed: a missing / malformed base URI returns
+/// null (skip hydration) rather than throwing, because the snapshot is
+/// an additive affordance and must never block sign-in. The bearer
+/// provider returns null on any token error so the loader resolves to
+/// an empty set (fail-safe) instead of throwing.
+AdminPermissionSnapshotLoader? _buildAdminPermissionSnapshotLoader(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
+  if (authClient == null) return null;
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpAdminPermissionSnapshotLoader(
+    baseUri: baseUri,
+    bearerTokenProvider: () async {
+      try {
+        return await authClient.currentIdToken();
+      } catch (_) {
+        // Fail-safe: a token error resolves to "no hydration" rather
+        // than blocking sign-in. Role fallback.
+        return null;
+      }
+    },
   );
 }
 
