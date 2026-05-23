@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:forge_and_flow/operator_web/services/operator_web_error_envelope.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_users_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 
@@ -208,7 +209,111 @@ void main() {
           throwsA(
             isA<WebTeamUsersError>()
                 .having((e) => e.code, 'code', 'forbidden')
-                .having((e) => e.statusCode, 'statusCode', 403),
+                .having((e) => e.statusCode, 'statusCode', 403)
+                // G63 — the preserved code now also classifies uniformly.
+                .having(
+                  (e) => e.kind,
+                  'kind',
+                  OperatorWebErrorKind.permissionDenied,
+                ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'G63: suspendUser treats a 409 idempotency_key_conflict as '
+      'already-applied (updated == true, no throw)',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{'error': 'idempotency_key_conflict'}),
+            409,
+          );
+        });
+        final gateway = WebTeamUsersGatewayLive(
+          proxyBaseUri: kProxyBase,
+          idTokenProvider: tokenProvider,
+          httpClient: client,
+        );
+
+        final result = await gateway.suspendUser(
+          const TeamUserStatusCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            targetUserId: 'u-1',
+            reason: 'r',
+          ),
+          idempotencyKey: 'idem-suspend-replay',
+        );
+        expect(result.updated, isTrue);
+      },
+    );
+
+    test(
+      'G63: revokeInvite treats a 409 idempotency_key_conflict as '
+      'already-applied (revoked == true)',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{'error': 'idempotency_key_conflict'}),
+            409,
+          );
+        });
+        final gateway = WebTeamUsersGatewayLive(
+          proxyBaseUri: kProxyBase,
+          idTokenProvider: tokenProvider,
+          httpClient: client,
+        );
+
+        final result = await gateway.revokeInvite(
+          const TeamInviteRevokeCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            inviteId: 'invite-1',
+          ),
+          idempotencyKey: 'idem-revoke-invite-replay',
+        );
+        expect(result.revoked, isTrue);
+      },
+    );
+
+    test(
+      'G63: a DOMAIN 409 still throws with the proxy code preserved + '
+      'resourceConflict kind (no regression)',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{'error': 'invite_already_accepted'}),
+            409,
+          );
+        });
+        final gateway = WebTeamUsersGatewayLive(
+          proxyBaseUri: kProxyBase,
+          idTokenProvider: tokenProvider,
+          httpClient: client,
+        );
+
+        await expectLater(
+          gateway.revokeInvite(
+            const TeamInviteRevokeCommand(
+              actorUserId: 'actor',
+              operatorId: 'op',
+              locationId: 'loc',
+              inviteId: 'invite-2',
+            ),
+            idempotencyKey: 'idem-domain-409',
+          ),
+          throwsA(
+            isA<WebTeamUsersError>()
+                .having((e) => e.code, 'code', 'invite_already_accepted')
+                .having(
+                  (e) => e.kind,
+                  'kind',
+                  OperatorWebErrorKind.resourceConflict,
+                ),
           ),
         );
       },

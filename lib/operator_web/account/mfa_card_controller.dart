@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../services/operator_web_error_envelope.dart';
 import '../services/web_security_gateway.dart';
 import 'operator_web_account_actions.dart';
 
@@ -426,8 +427,9 @@ class MfaCardController extends ChangeNotifier {
 
   String _friendlyError(Object error) {
     if (error is WebSecurityError) {
-      if (error.code == 'mfa_freshness_required' ||
-          error.code == 'insufficient_user_authentication') {
+      // G63 — freshness recognised via the shared classifier (covers
+      // both `mfa_freshness_required` and the step-up sentinel).
+      if (error.kind == OperatorWebErrorKind.mfaFreshnessRedirect) {
         return 'Please sign in again before changing two-factor sign-in. '
             'This protects your account settings.';
       }

@@ -45,6 +45,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../services/auth/auth_operations_gateway.dart';
+import 'operator_web_error_envelope.dart';
 
 /// Narrow interface the Members screen + invite dialog read against.
 /// Mirrors the team-users + team-invites slice of the existing
@@ -154,6 +155,12 @@ class WebTeamUsersError implements Exception {
   final String code;
   final String message;
   final int? statusCode;
+
+  /// G63 — canonical cross-surface category for this failure. Delegates
+  /// to the shared [classifyOperatorWebError]; `code` / `message` /
+  /// `statusCode` are unchanged.
+  OperatorWebErrorKind get kind =>
+      classifyOperatorWebError(statusCode: statusCode, code: code);
 
   @override
   String toString() =>
@@ -282,6 +289,10 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
       idempotencyKey: idempotencyKey,
       body: const <String, Object?>{},
     );
+    // G63 — replay-collision means this revoke was already processed.
+    if (_isReplayConflict(response)) {
+      return const TeamInviteRevoked(revoked: true);
+    }
     _expectStatus(response, 200);
     final revoked = response.body['revoked'];
     if (revoked is! bool) {
@@ -328,6 +339,8 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
       idempotencyKey: idempotencyKey,
       body: const <String, Object?>{},
     );
+    // G63 — replay-collision means this reset was already queued.
+    if (_isReplayConflict(response)) return const TeamPasswordResetQueued();
     _expectStatus(response, 200);
     return const TeamPasswordResetQueued();
   }
@@ -444,6 +457,10 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
           'reason': command.reason!.trim(),
       },
     );
+    // G63 — replay-collision means this revoke was already processed.
+    if (_isReplayConflict(response)) {
+      return const TeamRoleGrantRevoked(revoked: true);
+    }
     _expectStatus(response, 200);
     final revoked = response.body['revoked'];
     if (revoked is! bool) {
@@ -463,6 +480,11 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
       idempotencyKey: idempotencyKey,
       body: <String, Object?>{'reason': command.reason},
     );
+    // G63 — replay-collision means this status change was already
+    // applied (e.g. a retried suspend). Report it as updated.
+    if (_isReplayConflict(response)) {
+      return const TeamUserStatusUpdated(updated: true);
+    }
     _expectStatus(response, 200);
     final updated = response.body['updated'];
     if (updated is! bool) {
@@ -534,13 +556,32 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
 
   void _expectStatus(WebTeamUsersResponse response, int expected) {
     if (response.statusCode == expected) return;
+    final code =
+        _readNonBlankString(response.body['error']) ?? 'team_users_failed';
     throw WebTeamUsersError(
-      code: _readNonBlankString(response.body['error']) ?? 'team_users_failed',
+      code: code,
+      // Preserve the proxy's own message when present; otherwise fall
+      // back to the shared canonical copy for the classified kind (G63).
       message:
           _readNonBlankString(response.body['message']) ??
-          'proxy returned status ${response.statusCode}',
+          operatorWebErrorMessageFor(
+            classifyOperatorWebError(
+              statusCode: response.statusCode,
+              code: code,
+            ),
+          ),
       statusCode: response.statusCode,
     );
+  }
+
+  /// G63 — true iff [response] is the proxy's 409 idempotency-replay
+  /// collision. A boolean/void write treats this as "already applied".
+  bool _isReplayConflict(WebTeamUsersResponse response) {
+    return classifyOperatorWebError(
+          statusCode: response.statusCode,
+          code: _readNonBlankString(response.body['error']),
+        ) ==
+        OperatorWebErrorKind.idempotencyReplayConflict;
   }
 
   WebTeamUsersError _malformed(WebTeamUsersResponse response, String message) {

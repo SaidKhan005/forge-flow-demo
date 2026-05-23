@@ -35,6 +35,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../services/auth/auth_operations_gateway.dart';
+import 'operator_web_error_envelope.dart';
 
 /// Narrow interface the Roles screen + custom-role editor + Permission
 /// Explainer read against. Mirrors the role-catalog + role-grant slice
@@ -92,6 +93,14 @@ class WebTeamRolesError implements Exception {
   final String code;
   final String message;
   final int? statusCode;
+
+  /// G63 — canonical cross-surface category for this failure. Delegates
+  /// to the shared [classifyOperatorWebError] so the roles surface no
+  /// longer interprets `(status, code)` its own way. The `code` /
+  /// `message` / `statusCode` fields are unchanged; this is an additive
+  /// classification screens + callers can branch on uniformly.
+  OperatorWebErrorKind get kind =>
+      classifyOperatorWebError(statusCode: statusCode, code: code);
 
   @override
   String toString() =>
@@ -232,6 +241,10 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
           'reason': command.reason!.trim(),
       },
     );
+    // G63 — a replay-collision means this delete (keyed by its stable
+    // idempotency key) was already processed; report it as deleted
+    // rather than surfacing a hard 409.
+    if (_isReplayConflict(response)) return const TeamRoleDeleted(deleted: true);
     _expectStatus(response, 200);
     final deleted = response.body['deleted'];
     if (deleted is! bool) {
@@ -284,6 +297,10 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
           'reason': command.reason!.trim(),
       },
     );
+    // G63 — replay-collision means this revoke was already processed.
+    if (_isReplayConflict(response)) {
+      return const TeamRoleGrantRevoked(revoked: true);
+    }
     _expectStatus(response, 200);
     final revoked = response.body['revoked'];
     if (revoked is! bool) {
@@ -354,13 +371,38 @@ class WebTeamRolesGatewayLive implements WebTeamRolesGateway {
 
   void _expectStatus(WebTeamRolesResponse response, int expected) {
     if (response.statusCode == expected) return;
+    final code =
+        _readNonBlankString(response.body['error']) ?? 'team_roles_failed';
     throw WebTeamRolesError(
-      code: _readNonBlankString(response.body['error']) ?? 'team_roles_failed',
+      code: code,
+      // Preserve the proxy's own message when present; otherwise fall
+      // back to the shared canonical copy for the classified kind (G63)
+      // instead of the old stringly status text, so the generic case
+      // reads the same across operator-web surfaces.
       message:
           _readNonBlankString(response.body['message']) ??
-          'proxy returned status ${response.statusCode}',
+          operatorWebErrorMessageFor(
+            classifyOperatorWebError(
+              statusCode: response.statusCode,
+              code: code,
+            ),
+          ),
       statusCode: response.statusCode,
     );
+  }
+
+  /// G63 — true iff [response] is the proxy's 409 idempotency-replay
+  /// collision (the same Idempotency-Key reused with a different body).
+  /// A boolean/void write treats this as "already applied" rather than
+  /// a hard error: the logical action this key identifies was already
+  /// processed. A SAME-body retry replays the prior 2xx instead, so this
+  /// path is the genuine replay-collision case.
+  bool _isReplayConflict(WebTeamRolesResponse response) {
+    return classifyOperatorWebError(
+          statusCode: response.statusCode,
+          code: _readNonBlankString(response.body['error']),
+        ) ==
+        OperatorWebErrorKind.idempotencyReplayConflict;
   }
 
   WebTeamRolesError _malformed(WebTeamRolesResponse response, String message) {
