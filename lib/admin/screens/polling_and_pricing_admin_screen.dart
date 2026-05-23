@@ -11,6 +11,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
@@ -857,39 +858,19 @@ class _ScopedPollingActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminCard(
+    return OperatorWebPanel(
       key: const Key('admin_polling_setup_scope_action_card'),
-      child: Row(
-        children: [
-          const Icon(Icons.account_tree_outlined, color: AppColors.peacockDark),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Assign selected ${scope.scopeType.label.toLowerCase()}',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'This saves one scoped polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower scope overrides it.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          FilledButton.icon(
-            key: const Key('admin_polling_setup_scope_assign'),
-            style: AdminButtonStyles.primary,
-            onPressed: onPressed,
-            icon: const Icon(Icons.payments_outlined),
-            label: const Text('Assign scope'),
-          ),
-        ],
+      title: 'Assign selected ${scope.scopeType.label.toLowerCase()}',
+      trailing: FilledButton.icon(
+        key: const Key('admin_polling_setup_scope_assign'),
+        style: AdminButtonStyles.primary,
+        onPressed: onPressed,
+        icon: const Icon(Icons.payments_outlined),
+        label: const Text('Assign scope'),
+      ),
+      child: Text(
+        'This saves one scoped polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower scope overrides it.',
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
     );
   }
@@ -1006,17 +987,46 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_tier_assignment_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        widget.title ??
-            'Assign tier - ${widget.row.operatorRef.businessName} '
-                '/ ${widget.row.operatorRef.locationName}',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 560,
+      maxWidth: 560,
+      title:
+          widget.title ??
+          'Assign tier - ${widget.row.operatorRef.businessName} '
+              '/ ${widget.row.operatorRef.locationName}',
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_tier_assignment_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_tier_assignment_dialog_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: () {
+            final reason = _reason.text.trim();
+            if (reason.isEmpty) return;
+            Navigator.of(context).pop(
+              _TierAssignmentDraft(
+                tierKey: _tierKey,
+                customCadence: _tierKey == PollingTierKey.custom
+                    ? Map<String, int>.from(_customCadence)
+                    : null,
+                monthlyPriceCentsOverride: _parseCents(_price.text),
+                vendorApiCostEstimateCentsMonthlyOverride: _parseCents(
+                  _cost.text,
+                ),
+                adminNotes: _notes.text.trim().isEmpty
+                    ? null
+                    : _notes.text.trim(),
+                reasonNote: reason,
+              ),
+            );
+          },
+          child: const Text('Assign / update'),
+        ),
+      ],
+      child: Flexible(
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1197,38 +1207,6 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
           ),
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_tier_assignment_dialog_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_tier_assignment_dialog_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: () {
-            final reason = _reason.text.trim();
-            if (reason.isEmpty) return;
-            Navigator.of(context).pop(
-              _TierAssignmentDraft(
-                tierKey: _tierKey,
-                customCadence: _tierKey == PollingTierKey.custom
-                    ? Map<String, int>.from(_customCadence)
-                    : null,
-                monthlyPriceCentsOverride: _parseCents(_price.text),
-                vendorApiCostEstimateCentsMonthlyOverride: _parseCents(
-                  _cost.text,
-                ),
-                adminNotes: _notes.text.trim().isEmpty
-                    ? null
-                    : _notes.text.trim(),
-                reasonNote: reason,
-              ),
-            );
-          },
-          child: const Text('Assign / update'),
-        ),
-      ],
     );
   }
 }
