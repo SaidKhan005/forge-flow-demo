@@ -1680,7 +1680,23 @@ Widget _buildMembers(BuildContext context) {
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canEditSeededRoles: _isAdminMfaFresh(session),
+          // UX-parity Slice E4 — destructive seeded-role edit gate keyed
+          // per-action via [adminCanEdit] (`admin.roles.edit_seeded`),
+          // AND-ed with the unchanged MFA-freshness dimension. With an
+          // EMPTY permissions set `adminCanEdit` falls back to the
+          // `super_admin` role check, so this is byte-identical to the
+          // pre-slice `_isAdminMfaFresh(session)` decision under the
+          // screen's `editingEnabled && canEditSeededRoles` conjunction
+          // (`editingEnabled` is itself the `super_admin` role gate).
+          // Once a live snapshot hydrates, the per-action key gates this
+          // destructive affordance specifically; the proxy stays
+          // authoritative on every write.
+          canEditSeededRoles:
+              adminCanEdit(
+                session,
+                requiredKey: PermissionKeys.adminRolesEditSeeded,
+              ) &&
+              _isAdminMfaFresh(session),
         );
       },
     );
@@ -1911,7 +1927,23 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canEditSeededRoles: _isAdminMfaFresh(session),
+          // UX-parity Slice E4 — destructive seeded-role edit gate keyed
+          // per-action via [adminCanEdit] (`admin.roles.edit_seeded`),
+          // AND-ed with the unchanged MFA-freshness dimension. With an
+          // EMPTY permissions set `adminCanEdit` falls back to the
+          // `super_admin` role check, so this is byte-identical to the
+          // pre-slice `_isAdminMfaFresh(session)` decision under the
+          // screen's `editingEnabled && canEditSeededRoles` conjunction
+          // (`editingEnabled` is itself the `super_admin` role gate).
+          // Once a live snapshot hydrates, the per-action key gates this
+          // destructive affordance specifically; the proxy stays
+          // authoritative on every write.
+          canEditSeededRoles:
+              adminCanEdit(
+                session,
+                requiredKey: PermissionKeys.adminRolesEditSeeded,
+              ) &&
+              _isAdminMfaFresh(session),
         );
       },
     );
@@ -2236,13 +2268,38 @@ Widget _buildAuditedSupportActions(BuildContext context) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
         final canEdit = _isAdminSuperAdmin(session);
+        // UX-parity Slice E4 — the three destructive audited-support
+        // gates are keyed per-action via [adminCanEdit], each AND-ed
+        // with the unchanged shared MFA-freshness dimension (`fresh`).
+        // With an EMPTY permissions set `adminCanEdit` falls back to the
+        // `super_admin` role check, so each flag is byte-identical to the
+        // pre-slice `fresh` decision under the screen's
+        // `editingEnabled && <flag>` conjunction (`editingEnabled` is the
+        // `super_admin` role gate). Once a live snapshot hydrates, each
+        // key gates its specific destructive affordance; the proxy stays
+        // authoritative on every write.
         final fresh = _isAdminMfaFresh(session);
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canResetMfaFactors: fresh,
-          canIssuePairedErasure: fresh,
-          canExportAuditLog: fresh,
+          canResetMfaFactors:
+              adminCanEdit(
+                session,
+                requiredKey: PermissionKeys.adminUsersResetMfaFactors,
+              ) &&
+              fresh,
+          canIssuePairedErasure:
+              adminCanEdit(
+                session,
+                requiredKey: PermissionKeys.adminUsersErasePii,
+              ) &&
+              fresh,
+          canExportAuditLog:
+              adminCanEdit(
+                session,
+                requiredKey: PermissionKeys.adminAuditLogExport,
+              ) &&
+              fresh,
         );
       },
     );

@@ -188,17 +188,29 @@ void main() {
       expect(calls, 13);
     });
 
-    test('exactly 1 adminCanEdit(session, ...) call site (E1 Pricing)', () {
-      // UX-parity Slice E1 — the key-first helper is applied at exactly
-      // ONE site (the non-destructive, single-key Pricing route). The
-      // three destructive legacy builders deliberately stay coarse
-      // role-based (a later, operator-gated slice). The regex excludes
-      // `_isAdminSuperAdmin`/`_isAdminMfaFresh` by requiring the bare
-      // `adminCanEdit(` token at a word boundary.
+    test('exactly 6 adminCanEdit(session, ...) call sites (E1 + E4)', () {
+      // UX-parity Slice E1 applied the key-first helper at ONE site (the
+      // non-destructive, single-key Pricing route). UX-parity Slice E4
+      // (operator-approved 2026-05-23) then keyed the LIVE destructive
+      // per-action gates, adding FIVE more `adminCanEdit(session, ...)`
+      // calls in live builders:
+      //   * `_buildMembers`                — admin.roles.edit_seeded
+      //   * `_buildRolesHierarchySessions` — admin.roles.edit_seeded
+      //   * `_buildAuditedSupportActions`  — admin.users.reset_mfa_factors,
+      //     admin.users.erase_pii, admin.audit_log.export (3 calls)
+      // Each is AND-ed with the unchanged `_isAdminMfaFresh(session)`
+      // dimension, so with an EMPTY permissions set every decision stays
+      // byte-identical to the pre-slice role+MFA outcome (proven by
+      // slice_e_admin_capability_key_gating_test.dart). The three
+      // `// ignore: unused_element` legacy builders are stripped before
+      // this check and were deliberately NOT touched. Total: 1 + 5 = 6.
+      // The regex excludes `_isAdminSuperAdmin`/`_isAdminMfaFresh` by
+      // requiring the bare `adminCanEdit(` token at a word boundary;
+      // `\s*` spans the newline before the wrapped `session` argument.
       final calls = RegExp(
         r'(?<![\w_])adminCanEdit\(\s*session',
       ).allMatches(activeSource).length;
-      expect(calls, 1);
+      expect(calls, 6);
     });
 
     test('shared helper is defined and aliases the catalog constant', () {
