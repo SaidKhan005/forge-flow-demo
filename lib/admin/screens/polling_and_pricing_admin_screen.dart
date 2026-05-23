@@ -21,7 +21,8 @@ import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
-import '../widgets/admin_hierarchy_scope_notice.dart';
+import '../widgets/admin_scope_notice_adapter.dart';
+import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 import '../widgets/admin_hierarchy_scope_prompt.dart';
 import '../widgets/data_accuracy_audit_history_panel.dart';
 import '../widgets/margin_rollup_card.dart';
@@ -656,7 +657,16 @@ class _PollingAndPricingAdminScreenState
               onClear: _clearScope,
             ),
           if (widget.showScopeControls && _scopeRestrictionCopy != null)
-            AdminHierarchyScopeNotice(message: _scopeRestrictionCopy!),
+            HierarchyScopeNotice(
+              keyName: 'admin_polling_scope_notice',
+              selectedScope: adminScopeLevel(_scope!.scopeType),
+              scopeName: _scope!.displayLabel,
+              effectiveValueSummary:
+                  'Polling setup for the selected scope. Covered locations '
+                  'inherit it until a lower scope overrides it.',
+              backendOnlyHelpTitle: 'How this scope applies',
+              backendOnlyExplainer: _scopeRestrictionCopy!,
+            ),
           if (_singleCoveredLocationName != null)
             // Mirrors the inheritance notice landed in PR #485 for the
             // Timing tile (`admin_timing_scope_inheritance_notice`).

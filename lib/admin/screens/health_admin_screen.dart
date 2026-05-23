@@ -39,8 +39,9 @@ import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
-import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_run_check_controls.dart';
+import '../widgets/admin_scope_notice_adapter.dart';
+import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 
 /// One tile entry in a tab section.
 class _TileSpec {
@@ -322,9 +323,17 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
               ),
               const SizedBox(height: 12),
               if (widget.hierarchyScope != null)
-                AdminHierarchyScopeNotice(
-                  message:
-                      'Running platform health checks while focused on ${widget.hierarchyScope!.displayLabel}. Advisor data, app service, and ecosystem checks are shared signals for the selected business context.',
+                HierarchyScopeNotice(
+                  keyName: 'admin_health_scope_notice',
+                  selectedScope: adminScopeLevel(
+                    widget.hierarchyScope!.scopeType,
+                  ),
+                  scopeName: widget.hierarchyScope!.displayLabel,
+                  effectiveValueSummary:
+                      'Platform health checks for the selected business context.',
+                  backendOnlyHelpTitle: 'What stays platform-wide',
+                  backendOnlyExplainer:
+                      'Advisor data, app service, and ecosystem checks are shared signals for the selected business context.',
                 ),
               if (_loadError != null)
                 _ErrorBanner(

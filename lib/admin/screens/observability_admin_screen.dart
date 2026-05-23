@@ -40,8 +40,9 @@ import '../admin_route_handoff.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
-import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_run_check_controls.dart';
+import '../widgets/admin_scope_notice_adapter.dart';
+import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 
 class _TabSpec {
   const _TabSpec({required this.label, required this.keySuffix});
@@ -232,9 +233,17 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
               ),
               const SizedBox(height: 12),
               if (widget.hierarchyScope != null)
-                AdminHierarchyScopeNotice(
-                  message:
-                      'Showing AI usage, cost, and reliability for ${widget.hierarchyScope!.displayLabel}. Hosting and knowledge graph signals stay platform-wide when they are not stored per business.',
+                HierarchyScopeNotice(
+                  keyName: 'admin_observability_scope_notice',
+                  selectedScope: adminScopeLevel(
+                    widget.hierarchyScope!.scopeType,
+                  ),
+                  scopeName: widget.hierarchyScope!.displayLabel,
+                  effectiveValueSummary:
+                      'AI usage, cost, and reliability for the selected scope.',
+                  backendOnlyHelpTitle: 'What stays platform-wide',
+                  backendOnlyExplainer:
+                      'Hosting and knowledge graph signals stay platform-wide when they are not stored per business.',
                 ),
               if (_loadError != null)
                 _ErrorBanner(
