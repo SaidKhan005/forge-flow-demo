@@ -29,6 +29,8 @@
 // path. Stacked in-flight requests are blocked by `_refreshing`.
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../services/realtime/outbox_tripwire_evaluator.dart';
 import '../../theme/app_theme.dart';
@@ -38,7 +40,6 @@ import '../admin_route_handoff.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
-import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_hierarchy_scope_notice.dart';
 import '../widgets/admin_run_check_controls.dart';
 
@@ -362,48 +363,51 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminPageHeader(
+    return OperatorWebScreenHeader(
+      icon: Icons.insights_outlined,
       title: 'AI Metrics',
       subtitle:
           'Review advisor usage, cost, limits, model activity, and hosting status.',
-      compactBreakpoint: 720,
-      trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AdminRunCheckButton(
-              key: const Key('admin_observability_refresh_button'),
-              onPressed: () {
-                onRunCheck();
-              },
-              icon: Icons.insights_outlined,
-              label: 'Run metrics check',
-              loadingLabel: 'Running...',
-              loading: loading,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              lastRefreshed == null
-                  ? 'Last refreshed: -'
-                  : 'Last refreshed: ${adminHumanDateTime(lastRefreshed!)}',
-              key: const Key('admin_observability_last_refreshed'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Open System health for dependency checks.',
-              key: const Key('admin_observability_health_link_hint'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-          ],
+      collapseBelowWidth: 720,
+      actions: <Widget>[
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AdminRunCheckButton(
+                key: const Key('admin_observability_refresh_button'),
+                onPressed: () {
+                  onRunCheck();
+                },
+                icon: Icons.insights_outlined,
+                label: 'Run metrics check',
+                loadingLabel: 'Running...',
+                loading: loading,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                lastRefreshed == null
+                    ? 'Last refreshed: -'
+                    : 'Last refreshed: ${adminHumanDateTime(lastRefreshed!)}',
+                key: const Key('admin_observability_last_refreshed'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Open System health for dependency checks.',
+                key: const Key('admin_observability_health_link_hint'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -2692,6 +2696,11 @@ String _hostingServiceLabel(String serviceName) {
 String _hostingCapacityLabel(CloudRunInstanceMetric svc) =>
     'Autoscaling range ${svc.minInstances}-${svc.maxInstances} instances';
 
+/// Dashboard section panel. Slice D7a routes every observability
+/// section through the shared [OperatorWebPanel] console widget so the
+/// AI Metrics surface matches the admin parity kit. The section [keyName]
+/// moves onto the panel so existing widget tests keep resolving it; the
+/// outer [Padding] preserves the inter-card vertical rhythm.
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
     required this.keyName,
@@ -2709,30 +2718,11 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
+      child: OperatorWebPanel(
         key: Key(keyName),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              title,
-              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
+        title: title,
+        subtitle: subtitle,
+        child: child,
       ),
     );
   }
