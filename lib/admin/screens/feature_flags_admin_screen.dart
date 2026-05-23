@@ -38,7 +38,8 @@ import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
 import '../models/feature_flags_admin_models.dart';
 import '../services/feature_flags_admin_gateway.dart';
-import '../widgets/admin_hierarchy_scope_notice.dart';
+import '../widgets/admin_scope_notice_adapter.dart';
+import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 
 class FeatureFlagsAdminScreen extends StatefulWidget {
   const FeatureFlagsAdminScreen({
@@ -181,9 +182,15 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
         !_loading && _loadError == null && _flags.isNotEmpty;
     final secondaryChildren = <Widget>[
       if (widget.hierarchyScope != null)
-        AdminHierarchyScopeNotice(
-          message:
-              'Showing launch controls that apply to ${widget.hierarchyScope!.displayLabel}. Global controls still affect every business; business and location controls are limited to the selected hierarchy.',
+        HierarchyScopeNotice(
+          keyName: 'admin_feature_flags_scope_notice',
+          selectedScope: adminScopeLevel(widget.hierarchyScope!.scopeType),
+          scopeName: widget.hierarchyScope!.displayLabel,
+          effectiveValueSummary:
+              'Launch controls that apply to the selected hierarchy.',
+          backendOnlyHelpTitle: 'How control reach works',
+          backendOnlyExplainer:
+              'Global controls still affect every business; business and location controls are limited to the selected hierarchy.',
         ),
       if (!widget.editingEnabled)
         const _ReadOnlyBanner(

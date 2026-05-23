@@ -166,6 +166,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
+    // The shared scope notice keeps the platform-key caveat inside its
+    // "Section details" expander (collapsed by default). Expand it, then
+    // assert the same caveat is present verbatim.
+    await tester.tap(
+      find.byKey(const Key('admin_integration_scope_notice_details_toggle')),
+    );
+    await tester.pumpAndSettle();
     expect(
       find.textContaining('Platform service keys remain shared ecosystem keys'),
       findsOneWidget,

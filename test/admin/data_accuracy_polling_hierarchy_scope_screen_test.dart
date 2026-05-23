@@ -103,6 +103,13 @@ void main() {
       expect(find.text('Set at this scope'), findsOneWidget);
       expect(find.text('Effective: Business scope'), findsOneWidget);
       expect(find.text('Review selected scope'), findsWidgets);
+      // The structured scope notice keeps the restriction guidance inside its
+      // "Section details" expander (collapsed by default). Expand it, then
+      // assert the same copy is present verbatim.
+      await tester.tap(
+        find.byKey(const Key('admin_data_accuracy_scope_notice_details_toggle')),
+      );
+      await tester.pumpAndSettle();
       expect(
         find.textContaining('Pick a location row to apply'),
         findsOneWidget,
@@ -211,7 +218,10 @@ void main() {
     expect(find.text('Location only'), findsOneWidget);
     expect(find.text('Effective: Per-location overrides'), findsOneWidget);
     expect(find.text('Location controls'), findsOneWidget);
-    expect(find.byKey(const Key('admin_hierarchy_scope_notice')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_data_accuracy_scope_notice')),
+      findsNothing,
+    );
     expect(
       find.byKey(const Key('admin_data_accuracy_edit_op-1_loc-1a')),
       findsOneWidget,
