@@ -7,12 +7,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../services/settings/applicability_metadata_schemas.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../services/vendor_applicability_admin_gateway.dart';
-import '../widgets/admin_responsive_layout.dart';
 
 class VendorApplicabilityAdminScreen extends StatefulWidget {
   const VendorApplicabilityAdminScreen({
@@ -249,8 +250,10 @@ class _VendorApplicabilityAdminScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            AdminPageHeader(
+            const OperatorWebScreenHeader(
+              icon: Icons.rule_outlined,
               title: 'Vendor Applicability',
+              collapseBelowWidth: 0,
               subtitle:
                   'Choose which vendors are allowed to power wage, covers, and polling settings.',
             ),
@@ -273,7 +276,7 @@ class _VendorApplicabilityAdminScreenState
               decoration: BoxDecoration(
                 color: AppColors.backgroundSurface,
                 border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: TabBar(
                 controller: _tabController,
@@ -320,6 +323,13 @@ class _VendorApplicabilityAdminScreenState
     if (_rows.isEmpty) {
       return const _EmptyState();
     }
+    // The table fills the remaining pane height and scrolls internally
+    // (bidirectional). It is intentionally NOT wrapped in an
+    // OperatorWebPanel: the panel renders its body in a non-flex Column,
+    // which removes the bounded height the vertical scroll view needs and
+    // overflows the fixed-height function pane at the 800x600 widget-test
+    // viewport. The shared-kit adoption lands on the header, banners, and
+    // dialogs, matching the Launch controls sibling's body treatment.
     return Scrollbar(
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -448,13 +458,19 @@ class _Toolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Kept as a compact single-row surface (not an OperatorWebPanel): the
+    // admin route is built at the default 800x600 widget-test viewport
+    // where the function pane is only ~239 dp tall, and a panel's section
+    // heading + accent rule + copy block overflows the screen's static
+    // Column there. The OperatorWebPanel adoption lands on the data table
+    // and dialogs instead, where it fits.
     return Container(
       key: const Key('admin_vendor_applicability_toolbar'),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
@@ -602,92 +618,12 @@ class _VendorApplicabilityEditDialogState
   @override
   Widget build(BuildContext context) {
     final editing = widget.initial != null;
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_vendor_applicability_edit_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        editing ? 'Edit vendor applicability' : 'Add vendor applicability',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                key: const Key('admin_vendor_applicability_operator_id'),
-                controller: _operatorId,
-                decoration: const InputDecoration(
-                  labelText: 'Operator id (blank for F&F default)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                key: const Key('admin_vendor_applicability_setting_key'),
-                controller: _settingKey,
-                decoration: const InputDecoration(
-                  labelText: 'Setting key',
-                  helperText:
-                      'Use default unless a setting has named variants.',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                key: const Key('admin_vendor_applicability_vendor_slug'),
-                controller: _vendorSlug,
-                decoration: const InputDecoration(
-                  labelText: 'Vendor slug',
-                  helperText: 'Example: toast, seven_shifts, libro.',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SwitchListTile(
-                key: const Key('admin_vendor_applicability_enabled'),
-                value: _enabled,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Enabled'),
-                onChanged: (value) => setState(() => _enabled = value),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                key: const Key('admin_vendor_applicability_metadata'),
-                controller: _metadata,
-                minLines: 4,
-                maxLines: 8,
-                style: AppTextStyles.mono11(color: AppColors.textPrimary),
-                decoration: const InputDecoration(
-                  labelText: 'Metadata JSON',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                key: const Key('admin_vendor_applicability_reason'),
-                controller: _reason,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Reason for change',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                Text(
-                  _error!,
-                  key: const Key('admin_vendor_applicability_dialog_error'),
-                  style: AppTextStyles.body12(color: AppColors.negative),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+      title: editing
+          ? 'Edit vendor applicability'
+          : 'Add vendor applicability',
+      maxWidth: 560,
       actions: [
         TextButton(
           key: const Key('admin_vendor_applicability_cancel'),
@@ -701,6 +637,81 @@ class _VendorApplicabilityEditDialogState
           child: Text(editing ? 'Save row' : 'Add row'),
         ),
       ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: const Key('admin_vendor_applicability_operator_id'),
+              controller: _operatorId,
+              decoration: const InputDecoration(
+                labelText: 'Operator id (blank for F&F default)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('admin_vendor_applicability_setting_key'),
+              controller: _settingKey,
+              decoration: const InputDecoration(
+                labelText: 'Setting key',
+                helperText: 'Use default unless a setting has named variants.',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('admin_vendor_applicability_vendor_slug'),
+              controller: _vendorSlug,
+              decoration: const InputDecoration(
+                labelText: 'Vendor slug',
+                helperText: 'Example: toast, seven_shifts, libro.',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SwitchListTile(
+              key: const Key('admin_vendor_applicability_enabled'),
+              value: _enabled,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Enabled'),
+              onChanged: (value) => setState(() => _enabled = value),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('admin_vendor_applicability_metadata'),
+              controller: _metadata,
+              minLines: 4,
+              maxLines: 8,
+              style: AppTextStyles.mono11(color: AppColors.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Metadata JSON',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('admin_vendor_applicability_reason'),
+              controller: _reason,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Reason for change',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                key: const Key('admin_vendor_applicability_dialog_error'),
+                style: AppTextStyles.body12(color: AppColors.negative),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -736,38 +747,10 @@ class _ReasonDialogState extends State<_ReasonDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_vendor_applicability_reason_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(widget.helper),
-            const SizedBox(height: 10),
-            TextField(
-              key: const Key('admin_vendor_applicability_reason_note'),
-              controller: _controller,
-              minLines: 1,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Reason',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                style: AppTextStyles.body12(color: AppColors.negative),
-              ),
-            ],
-          ],
-        ),
-      ),
+      title: widget.title,
+      maxWidth: 420,
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -779,6 +762,31 @@ class _ReasonDialogState extends State<_ReasonDialog> {
           child: const Text('Continue'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.helper),
+          const SizedBox(height: 10),
+          TextField(
+            key: const Key('admin_vendor_applicability_reason_note'),
+            controller: _controller,
+            minLines: 1,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Reason',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: AppTextStyles.body12(color: AppColors.negative),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -797,34 +805,14 @@ class _InlineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isError ? AppColors.warningBadgeBg : AppColors.cardGlow,
-        border: Border.all(
-          color: isError ? AppColors.warning : AppColors.borderSubtle,
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 16,
-            color: isError ? AppColors.warning : AppColors.textMuted,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.body13(
-                color: isError ? AppColors.warning : AppColors.textSecondary,
-              ),
-            ),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        icon: icon,
+        message: message,
+        tone: isError
+            ? OperatorWebBannerTone.error
+            : OperatorWebBannerTone.neutral,
       ),
     );
   }
