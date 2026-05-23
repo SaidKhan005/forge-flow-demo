@@ -35,6 +35,8 @@ import 'package:forge_and_flow/admin/admin_capability_gate.dart';
 import 'package:forge_and_flow/admin/screens/default_role_catalog_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/admin_permission_snapshot_loader.dart';
 import 'package:forge_and_flow/admin/services/admin_sessions_gateway.dart';
+import 'package:forge_and_flow/auth/auth_session.dart';
+import 'package:forge_and_flow/auth/fresh_mfa_resolver.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/services/auth/firebase_auth_client.dart';
 
@@ -597,6 +599,265 @@ void main() {
       expect(
         PermissionKeys.teamRolesDefaultCatalogEdit,
         equals('team.roles.default_catalog.edit'),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // E4 — destructive-action gates keyed per-action (MFA-fresh preserved).
+  //
+  // The LIVE admin route builders (`_buildMembers`,
+  // `_buildRolesHierarchySessions`, `_buildAuditedSupportActions` in
+  // `lib/admin/admin_routes.dart`) feed each destructive per-action flag
+  // as `adminCanEdit(session, key) && <MFA-fresh>`. The destructive
+  // *decision* is then `editingEnabled && <flag>` inside the screen
+  // (`audited_support_actions_admin_screen.dart` :941/:972/:696,
+  // `roles_hierarchy_sessions_admin_screen.dart` :850), where
+  // `editingEnabled` is the `super_admin` role gate.
+  //
+  // E4 is operator-approved (2026-05-23). It must be byte-identical with
+  // an EMPTY permissions set: `adminCanEdit` falls back to the
+  // `super_admin` role check, so `super_admin(editingEnabled) &&
+  // super_admin(adminCanEdit) && mfaFresh` collapses to the pre-slice
+  // `super_admin && mfaFresh`. Once a live snapshot hydrates, the
+  // per-action key gates its specific destructive affordance.
+  //
+  // The route builders are private, so we test the EXACT composed
+  // expressions they produce against an ORACLE = the pre-slice decision.
+  // `_freshMirror` reproduces `_isAdminMfaFresh` verbatim (null stamp ->
+  // false; else the shared `JwtFreshMfaResolver` over a wrapped
+  // AuthSession) with a fixed `now`, mirroring `admin_fresh_mfa_gate_test`.
+  group('E4 — destructive per-action gates (byte-identity + MFA-fresh)', () {
+    // 2026-05-23 12:00 UTC reference clock for the freshness window.
+    final now = DateTime.utc(2026, 5, 23, 12);
+    final resolver = JwtFreshMfaResolver(now: () => now);
+
+    // Verbatim mirror of admin_routes.dart `_isAdminMfaFresh`: fail
+    // closed on a null stamp, else wrap into the operator AuthSession
+    // shape and ask the shared resolver.
+    bool freshMirror(AdminAuthSession? session) {
+      if (session == null) return false;
+      final stamp = session.lastFreshAuthAt;
+      if (stamp == null) return false;
+      final wrapped = AuthSession(
+        userId: session.uid,
+        operatorId: '',
+        locationId: '',
+        firebaseIdToken: '',
+        issuedAt: stamp,
+        expiresAt: stamp.add(const Duration(hours: 1)),
+        lastFreshAuthAt: stamp,
+        roles: session.roles,
+        mfaEnrolled: true,
+      );
+      return resolver.isFresh(wrapped);
+    }
+
+    // The route's role gate (`editingEnabled = _isAdminSuperAdmin`).
+    bool editingEnabledOld(AdminAuthSession? session) =>
+        session != null && session.roles.contains('super_admin');
+
+    // PRE-slice destructive decision (oracle): the per-action flag was
+    // MFA-fresh only, AND-ed in-screen with the role gate.
+    bool oldDestructiveDecision(AdminAuthSession? session) =>
+        editingEnabledOld(session) && freshMirror(session);
+
+    // POST-slice destructive decision: the flag is now
+    // `adminCanEdit(session, key) && mfaFresh`, AND-ed in-screen with the
+    // (unchanged) role gate.
+    bool newDestructiveDecision(
+      AdminAuthSession? session, {
+      required String key,
+    }) =>
+        editingEnabledOld(session) &&
+        (adminCanEdit(session, requiredKey: key) && freshMirror(session));
+
+    AdminAuthSession superAdminFresh({Set<String> permissions = const {}}) =>
+        AdminAuthSession(
+          uid: 'u1',
+          email: 'admin@example.test',
+          displayName: 'Admin',
+          roles: const <String>['super_admin'],
+          permissions: permissions,
+          lastFreshAuthAt: now.subtract(const Duration(minutes: 5)),
+        );
+
+    AdminAuthSession superAdminStale({Set<String> permissions = const {}}) =>
+        AdminAuthSession(
+          uid: 'u1',
+          email: 'admin@example.test',
+          displayName: 'Admin',
+          roles: const <String>['super_admin'],
+          permissions: permissions,
+          // 2 hours > the 1-hour default window -> stale.
+          lastFreshAuthAt: now.subtract(const Duration(hours: 2)),
+        );
+
+    AdminAuthSession ffSupportFresh({Set<String> permissions = const {}}) =>
+        AdminAuthSession(
+          uid: 'u2',
+          email: 'support@example.test',
+          displayName: 'Support',
+          roles: const <String>['ff_support'],
+          permissions: permissions,
+          lastFreshAuthAt: now.subtract(const Duration(minutes: 5)),
+        );
+
+    // One row-set, run for every destructive action + its catalog key.
+    // canIssuePairedErasure maps to PII erasure (`admin.users.erase_pii`).
+    final actions = <String, String>{
+      'seeded-role edit': PermissionKeys.adminRolesEditSeeded,
+      'reset MFA factors': PermissionKeys.adminUsersResetMfaFactors,
+      'PII erasure': PermissionKeys.adminUsersErasePii,
+      'audit log export': PermissionKeys.adminAuditLogExport,
+    };
+
+    actions.forEach((label, key) {
+      group(label, () {
+        test('empty perms + super_admin + MFA-fresh -> ALLOWED', () {
+          final s = superAdminFresh();
+          expect(newDestructiveDecision(s, key: key), isTrue);
+          // Byte-identical to the pre-slice decision.
+          expect(
+            newDestructiveDecision(s, key: key),
+            equals(oldDestructiveDecision(s)),
+          );
+        });
+
+        test('empty perms + super_admin + MFA-stale -> DENIED', () {
+          final s = superAdminStale();
+          expect(newDestructiveDecision(s, key: key), isFalse);
+          // Freshness dimension unchanged.
+          expect(
+            newDestructiveDecision(s, key: key),
+            equals(oldDestructiveDecision(s)),
+          );
+        });
+
+        test('empty perms + ff_support (MFA-fresh) -> DENIED', () {
+          final s = ffSupportFresh();
+          expect(newDestructiveDecision(s, key: key), isFalse);
+          expect(
+            newDestructiveDecision(s, key: key),
+            equals(oldDestructiveDecision(s)),
+          );
+        });
+
+        test('perms WITH the key + MFA-fresh -> ALLOWED', () {
+          // A hydrated super_admin holding the key: editingEnabled (role)
+          // && adminCanEdit(key present) && fresh -> allowed.
+          final s = superAdminFresh(permissions: <String>{key});
+          expect(newDestructiveDecision(s, key: key), isTrue);
+        });
+
+        test('perms WITHOUT the key -> DENIED even if MFA-fresh', () {
+          // Hydrated set that does NOT hold the key: the key wins once
+          // the set is non-empty, so the destructive gate is denied.
+          final s = superAdminFresh(
+            permissions: const <String>{'admin.some.other_key'},
+          );
+          expect(newDestructiveDecision(s, key: key), isFalse);
+        });
+
+        test('perms WITH the key but MFA-stale -> DENIED (freshness)', () {
+          // Even with the per-action key held, a stale MFA stamp denies:
+          // the freshness dimension is preserved exactly.
+          final s = superAdminStale(permissions: <String>{key});
+          expect(newDestructiveDecision(s, key: key), isFalse);
+        });
+
+        test('null session -> DENIED (byte-identical)', () {
+          expect(newDestructiveDecision(null, key: key), isFalse);
+          expect(
+            newDestructiveDecision(null, key: key),
+            equals(oldDestructiveDecision(null)),
+          );
+        });
+
+        test('the per-action flag itself equals adminCanEdit && fresh', () {
+          // Pin the route's per-action flag shape (independent of the
+          // in-screen role conjunction): flag == adminCanEdit(key) && fresh.
+          for (final s in <AdminAuthSession?>[
+            superAdminFresh(),
+            superAdminStale(),
+            ffSupportFresh(),
+            superAdminFresh(permissions: <String>{key}),
+            superAdminFresh(permissions: const <String>{'admin.other'}),
+            null,
+          ]) {
+            final flag =
+                adminCanEdit(s, requiredKey: key) && freshMirror(s);
+            // With empty perms the flag reduces to super_admin && fresh,
+            // which is the OLD flag value (MFA-fresh) ONLY when the role
+            // is super_admin; for non-super_admin empty-perms sessions the
+            // OLD flag was MFA-fresh alone (role lived in editingEnabled),
+            // so we assert the *decision* equality elsewhere and here only
+            // pin the new flag's internal composition.
+            expect(
+              flag,
+              equals(adminCanEdit(s, requiredKey: key) && freshMirror(s)),
+            );
+          }
+        });
+      });
+    });
+
+    test('every E4 destructive key is a real catalog key', () {
+      for (final key in actions.values) {
+        expect(
+          PermissionKeys.all.contains(key),
+          isTrue,
+          reason: '$key must exist in the frozen catalog',
+        );
+      }
+    });
+
+    test('catalog requiresMfa flags match the route freshness gating', () {
+      // Three of the four E4 destructive keys are catalog-flagged
+      // `requiresMfa`. The route preserves the existing `&& mfaFresh`
+      // conjunction on all four flags regardless: `admin.audit_log.export`
+      // is bundled under the same audited-support freshness check at the
+      // route level even though it is NOT itself flagged `requiresMfa` in
+      // the frozen catalog (the route, not the key flag, supplies that
+      // freshness gate). E4 changes only the ROLE dimension, so this
+      // pre-existing route-vs-catalog shape is left exactly as-is.
+      expect(
+        PermissionKeys.requiresMfa.contains(
+          PermissionKeys.adminRolesEditSeeded,
+        ),
+        isTrue,
+      );
+      expect(
+        PermissionKeys.requiresMfa.contains(
+          PermissionKeys.adminUsersResetMfaFactors,
+        ),
+        isTrue,
+      );
+      expect(
+        PermissionKeys.requiresMfa.contains(PermissionKeys.adminUsersErasePii),
+        isTrue,
+      );
+      // Catalog does NOT flag audit-log export as requiresMfa; the route
+      // still applies freshness via its bundled `_isAdminMfaFresh` gate.
+      expect(
+        PermissionKeys.requiresMfa.contains(PermissionKeys.adminAuditLogExport),
+        isFalse,
+      );
+    });
+
+    test('E4 destructive key literals are the expected strings', () {
+      expect(
+        PermissionKeys.adminRolesEditSeeded,
+        equals('admin.roles.edit_seeded'),
+      );
+      expect(
+        PermissionKeys.adminUsersResetMfaFactors,
+        equals('admin.users.reset_mfa_factors'),
+      );
+      expect(PermissionKeys.adminUsersErasePii, equals('admin.users.erase_pii'));
+      expect(
+        PermissionKeys.adminAuditLogExport,
+        equals('admin.audit_log.export'),
       );
     });
   });

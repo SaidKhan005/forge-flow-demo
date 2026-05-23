@@ -188,17 +188,53 @@ void main() {
       expect(calls, 13);
     });
 
-    test('exactly 1 adminCanEdit(session, ...) call site (E1 Pricing)', () {
-      // UX-parity Slice E1 — the key-first helper is applied at exactly
-      // ONE site (the non-destructive, single-key Pricing route). The
-      // three destructive legacy builders deliberately stay coarse
-      // role-based (a later, operator-gated slice). The regex excludes
-      // `_isAdminSuperAdmin`/`_isAdminMfaFresh` by requiring the bare
-      // `adminCanEdit(` token at a word boundary.
+    test('exactly 1 bare adminCanEdit(session, ...) call site (E1 Pricing)', () {
+      // UX-parity Slice E1 applied the key-first helper directly at ONE
+      // site (the non-destructive, single-key Pricing route) — that bare
+      // `adminCanEdit(session, ...)` call remains.
+      //
+      // UX-parity Slice E4 (operator-approved 2026-05-23) keyed the LIVE
+      // destructive per-action gates too, but routes them through the
+      // EXTRACTED `adminCanEditDestructive(...)` helper in
+      // `lib/admin/admin_destructive_gate.dart` (which internally calls
+      // `adminCanEdit` AND the MFA-fresh dimension), NOT through bare
+      // `adminCanEdit` in the route file. Extraction keeps the
+      // frozen-ceiling monolith from growing more than necessary. So the
+      // count of BARE `adminCanEdit(session` calls in active builders
+      // stays 1; the E4 destructive call sites are counted separately
+      // below. The regex excludes
+      // `_isAdminSuperAdmin`/`_isAdminMfaFresh`/`adminCanEditDestructive`
+      // by requiring the bare `adminCanEdit(` token at a word boundary;
+      // `\s*` spans the newline before the wrapped `session` argument.
       final calls = RegExp(
         r'(?<![\w_])adminCanEdit\(\s*session',
       ).allMatches(activeSource).length;
       expect(calls, 1);
+    });
+
+    test('exactly 3 adminCanEditDestructive(...) call sites (E4)', () {
+      // UX-parity Slice E4 keyed FOUR live destructive per-action gates
+      // via the extracted [adminCanEditDestructive] composer. It appears
+      // at THREE direct call sites in the active builders:
+      //   * `_buildMembers`                — admin.roles.edit_seeded
+      //   * `_buildRolesHierarchySessions` — admin.roles.edit_seeded
+      //   * `_buildAuditedSupportActions`  — once inside a local
+      //     `can(key)` closure that the three audited flags
+      //     (reset_mfa_factors / erase_pii / audit_log.export) forward to
+      // Each composes the per-action key (key-first, super_admin
+      // fallback) with the unchanged MFA-freshness dimension, so an EMPTY
+      // permissions set stays byte-identical to the pre-slice role+MFA
+      // outcome (proven by slice_e_admin_capability_key_gating_test.dart).
+      // The three `// ignore: unused_element` legacy builders are stripped
+      // before this check and were deliberately NOT touched.
+      final calls = RegExp(
+        r'(?<![\w_])adminCanEditDestructive\(',
+      ).allMatches(activeSource).length;
+      expect(calls, 3);
+    });
+
+    test('admin_destructive_gate import is present (E4 extraction)', () {
+      expect(source, contains("import 'admin_destructive_gate.dart';"));
     });
 
     test('shared helper is defined and aliases the catalog constant', () {
