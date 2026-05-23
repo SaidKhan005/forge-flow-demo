@@ -48,8 +48,7 @@ void main() {
           operatorId: 'demo-operator-001',
           envelope: const NotificationEventEnvelope(
             eventKey: 'notif.backfill.complete',
-            dedupeKeyPrefix:
-                'notif.backfill.complete:demo-operator-001:job-7',
+            dedupeKeyPrefix: 'notif.backfill.complete:demo-operator-001:job-7',
             pushTitle: 'First Connect Backfill complete',
             pushBody: '60 days of P.O.S. data uploaded.',
             emailTemplateId: 'backfill_complete',
@@ -118,8 +117,7 @@ void main() {
           operatorId: 'demo-operator-001',
           envelope: const NotificationEventEnvelope(
             eventKey: 'notif.backfill.complete',
-            dedupeKeyPrefix:
-                'notif.backfill.complete:demo-operator-001:job-7',
+            dedupeKeyPrefix: 'notif.backfill.complete:demo-operator-001:job-7',
             pushTitle: 't',
             pushBody: 'b',
             emailTemplateId: 'backfill_complete',
@@ -134,54 +132,51 @@ void main() {
       },
     );
 
+    test('audit-anchor failure envelope routes through emitAuditAnchorFailure '
+        'helper to the in-memory fanout', () async {
+      final bindings = InMemoryNotificationFanoutBindings(
+        users: const <FanoutUser>[
+          FanoutUser(
+            userId: 'demo-owner-1',
+            locationId: 'demo-loc-1',
+            email: 'demo-owner@forgeflow.app',
+            roles: <String>{'operator_owner'},
+          ),
+        ],
+      );
+
+      await emitAuditAnchorFailure(
+        fanout: bindings.fanout.fanOut,
+        operatorId: 'demo-operator-001',
+        chainDateIso: '2026-05-14',
+        reason: 'chain_hash_mismatch: row 7',
+      );
+
+      // Catalog defaults for `notif.audit.anchor_failure` include
+      // email + inbox; `roleGate = adminOnly` admits operator_owner only.
+      expect(bindings.emailCalls, hasLength(1));
+      expect(
+        bindings.emailCalls.single.payload.templateId,
+        'audit_anchor_failure',
+      );
+      expect(
+        bindings.emailCalls.single.payload.templateData['chainDate'],
+        '2026-05-14',
+      );
+    });
+
     test(
-      'audit-anchor failure envelope routes through emitAuditAnchorFailure '
-      'helper to the in-memory fanout',
+      'role-gate excludes retired operator_admin from admin-only event',
       () async {
+        // Audit anchor failure is owner-only. The retired phantom
+        // operator_admin role must be excluded entirely (no push, no email).
         final bindings = InMemoryNotificationFanoutBindings(
           users: const <FanoutUser>[
             FanoutUser(
-              userId: 'demo-admin-1',
+              userId: 'phantom-admin-1',
               locationId: 'demo-loc-1',
-              email: 'demo-admin@forgeflow.app',
+              email: 'phantom-admin@forgeflow.app',
               roles: <String>{'operator_admin'},
-            ),
-          ],
-        );
-
-        await emitAuditAnchorFailure(
-          fanout: bindings.fanout.fanOut,
-          operatorId: 'demo-operator-001',
-          chainDateIso: '2026-05-14',
-          reason: 'chain_hash_mismatch: row 7',
-        );
-
-        // Catalog defaults for `notif.audit.anchor_failure` include
-        // email + inbox; `roleGate = adminOnly` admits operator_admin.
-        expect(bindings.emailCalls, hasLength(1));
-        expect(
-          bindings.emailCalls.single.payload.templateId,
-          'audit_anchor_failure',
-        );
-        expect(
-          bindings.emailCalls.single.payload.templateData['chainDate'],
-          '2026-05-14',
-        );
-      },
-    );
-
-    test(
-      'role-gate excludes non-admin from admin-only event',
-      () async {
-        // Audit anchor failure is admin-only. A staff user must be
-        // excluded entirely (no push, no email).
-        final bindings = InMemoryNotificationFanoutBindings(
-          users: const <FanoutUser>[
-            FanoutUser(
-              userId: 'staff-1',
-              locationId: 'demo-loc-1',
-              email: 'staff@forgeflow.app',
-              roles: <String>{'operator_staff'},
             ),
           ],
         );
@@ -202,7 +197,7 @@ void main() {
       'updating user directory after construction is visible on next fanOut',
       () async {
         final bindings = InMemoryNotificationFanoutBindings();
-        // Seed adds one admin after the bundle is constructed.
+        // Seed adds one owner after the bundle is constructed.
         bindings.setUsers(const <FanoutUser>[
           FanoutUser(
             userId: 'late-admin',
@@ -216,8 +211,7 @@ void main() {
           operatorId: 'demo-operator-001',
           envelope: const NotificationEventEnvelope(
             eventKey: 'notif.backfill.complete',
-            dedupeKeyPrefix:
-                'notif.backfill.complete:demo-operator-001:job-1',
+            dedupeKeyPrefix: 'notif.backfill.complete:demo-operator-001:job-1',
             pushTitle: 't',
             pushBody: 'b',
             emailTemplateId: 'backfill_complete',
