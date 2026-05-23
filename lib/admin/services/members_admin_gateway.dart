@@ -46,6 +46,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:forge_and_flow/operator_web/screens/invite_member_dialog.dart'
+    show InviteMemberDialogCopy;
+
 import 'admin_http_timeout.dart';
 
 /// Bearer source the gateway attaches to every proxy call. Production
@@ -1197,18 +1200,23 @@ DateTime? _optionalDateTime(Object? value) {
 
 /// Locked validation copy mirrored from the parity contract's
 /// "Validation copy (locked, identical across surfaces)" block. The
-/// dialog reads these constants verbatim — paraphrasing them is an
+/// dialog reads these constants verbatim; paraphrasing them is an
 /// anti-pattern per § Anti-patterns of the contract.
+///
+/// Operator-web is the single source of truth for the strings shared
+/// across both surfaces: these fields reference
+/// [InviteMemberDialogCopy] (the operator-web locked constant) rather
+/// than re-declaring the literals, so admin can never silently drift
+/// from operator-web. `displayNameEmpty` stays an admin-only literal
+/// because operator-web has no matching shared constant.
 class MembersValidationCopy {
   const MembersValidationCopy._();
 
-  static const String emailEmpty = 'Email address is required.';
-  static const String emailMalformed = 'Enter a valid email address.';
-  static const String emailDuplicate =
-      'This email is already on the team. Edit the existing member instead.';
-  static const String roleMissing = 'Choose a role for this member.';
-  static const String locationMissing =
-      'Choose a primary location for this member.';
+  static const String emailEmpty = InviteMemberDialogCopy.emailMissing;
+  static const String emailMalformed = InviteMemberDialogCopy.emailMalformed;
+  static const String emailDuplicate = InviteMemberDialogCopy.emailDuplicate;
+  static const String roleMissing = InviteMemberDialogCopy.roleMissing;
+  static const String locationMissing = InviteMemberDialogCopy.locationMissing;
   static const String displayNameEmpty = 'Display name is required.';
 }
 
