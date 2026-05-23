@@ -29,6 +29,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_screen_header.dart';
+import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
@@ -957,53 +959,23 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           ),
           const SizedBox(height: 24),
           if (widget.editingEnabled && !widget.hasTarget)
-            Container(
-              key: const Key('admin_corpus_graph_no_target_banner'),
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.warningBadgeBg,
-                border: Border.all(
-                  color: AppColors.warning.withValues(alpha: 0.6),
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.info_outline,
-                        size: 16,
-                        color: AppColors.warning,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          widget.onPickOperator == null
-                              ? 'Select a location in the Scope pane before '
-                                    'applying relationship decisions. This '
-                                    'keeps approvals attached to the right '
-                                    'business workspace.'
-                              : 'Choose the operator and location before '
-                                    'applying relationship decisions. This '
-                                    'keeps approvals attached to the right '
-                                    'operator workspace for this session.',
-                          style: AppTextStyles.body13(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (widget.onPickOperator != null) ...[
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: FilledButton.icon(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: OperatorWebBanner(
+                key: const Key('admin_corpus_graph_no_target_banner'),
+                tone: OperatorWebBannerTone.warning,
+                message: widget.onPickOperator == null
+                    ? 'Select a location in the Scope pane before '
+                          'applying relationship decisions. This '
+                          'keeps approvals attached to the right '
+                          'business workspace.'
+                    : 'Choose the operator and location before '
+                          'applying relationship decisions. This '
+                          'keeps approvals attached to the right '
+                          'operator workspace for this session.',
+                action: widget.onPickOperator == null
+                    ? null
+                    : FilledButton.icon(
                         key: const Key(
                           'admin_corpus_graph_pick_operator_button',
                         ),
@@ -1012,43 +984,19 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                         icon: const Icon(Icons.swap_horiz, size: 16),
                         label: const Text('Choose operator'),
                       ),
-                    ),
-                  ],
-                ],
               ),
             ),
           if (widget.editingEnabled &&
               widget.hasTarget &&
               widget.pickedTargetLabel != null)
-            Container(
-              key: const Key('admin_corpus_graph_picked_target_indicator'),
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.positive.withValues(alpha: 0.10),
-                border: Border.all(
-                  color: AppColors.positive.withValues(alpha: 0.6),
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.check_circle_outline,
-                    size: 16,
-                    color: AppColors.positive,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Applying decisions to ${widget.pickedTargetLabel} for this '
-                      'session.',
-                      style: AppTextStyles.body13(color: AppColors.positive),
-                    ),
-                  ),
-                ],
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: OperatorWebBanner(
+                key: const Key('admin_corpus_graph_picked_target_indicator'),
+                tone: OperatorWebBannerTone.success,
+                message:
+                    'Applying decisions to ${widget.pickedTargetLabel} for this '
+                    'session.',
               ),
             ),
           if (widget.editingEnabled)
@@ -1104,18 +1052,11 @@ class _GraphCandidateMetaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Card(
+    return OperatorWebPanel(
+      title: 'Relationship review summary',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Relationship review summary',
-            style: AppTextStyles.mono15(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
           _DetailRow(label: 'Total suggestions', value: '${diff.totalCount}'),
           _AdvancedDetails(
             keyName: 'admin_corpus_graph_review_advanced',
@@ -1179,39 +1120,14 @@ class _GraphCandidateSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Card(
+    return OperatorWebPanel(
       key: sectionKey,
+      title: '$label (${candidates.length})',
+      subtitle: description,
+      trailing: trailing,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$label (${candidates.length})',
-                      style: AppTextStyles.mono15(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (trailing != null) trailing!,
-            ],
-          ),
-          const SizedBox(height: 12),
           if (candidates.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1567,62 +1483,10 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_corpus_graph_candidates_edit_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Edit relationship suggestion',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.candidate.displayLabel,
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w600,
-              ),
-            ),
-            if (widget.candidate.kind == GraphCandidateKind.edge)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  '${widget.candidate.fromNodeKey ?? '?'} → '
-                  '${widget.candidate.toNodeKey ?? '?'}',
-                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
-                ),
-              ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key(
-                'admin_corpus_graph_candidates_edit_dialog_type_field',
-              ),
-              controller: _typeController,
-              decoration: InputDecoration(
-                labelText: widget.candidate.kind == GraphCandidateKind.node
-                    ? 'Item type'
-                    : 'Relationship type',
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              key: const Key(
-                'admin_corpus_graph_candidates_edit_dialog_reason_field',
-              ),
-              controller: _reasonController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Reason (optional)',
-                alignLabelWithHint: true,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: 'Edit relationship suggestion',
+      maxWidth: 480,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -1658,6 +1522,52 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
           child: const Text('Queue edit'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.candidate.displayLabel,
+            style: AppTextStyles.mono14(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w600,
+            ),
+          ),
+          if (widget.candidate.kind == GraphCandidateKind.edge)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${widget.candidate.fromNodeKey ?? '?'} → '
+                '${widget.candidate.toNodeKey ?? '?'}',
+                style: AppTextStyles.mono11(color: AppColors.textSecondary),
+              ),
+            ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key(
+              'admin_corpus_graph_candidates_edit_dialog_type_field',
+            ),
+            controller: _typeController,
+            decoration: InputDecoration(
+              labelText: widget.candidate.kind == GraphCandidateKind.node
+                  ? 'Item type'
+                  : 'Relationship type',
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const Key(
+              'admin_corpus_graph_candidates_edit_dialog_reason_field',
+            ),
+            controller: _reasonController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Reason (optional)',
+              alignLabelWithHint: true,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1670,33 +1580,13 @@ class _AgeRebuildBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pending = !result.implemented;
-    final accent = pending ? AppColors.warning : AppColors.positive;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: pending
-            ? AppColors.warningBadgeBg
-            : AppColors.positive.withValues(alpha: 0.10),
-        border: Border.all(color: accent.withValues(alpha: 0.6), width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            pending ? Icons.info_outline : Icons.check_circle_outline,
-            size: 16,
-            color: accent,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              result.message,
-              style: AppTextStyles.body13(color: accent),
-            ),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        message: result.message,
+        tone: pending
+            ? OperatorWebBannerTone.warning
+            : OperatorWebBannerTone.success,
       ),
     );
   }
@@ -1707,20 +1597,11 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Knowledge base',
-          style: AppTextStyles.display28(color: AppColors.textPrimary),
-        ),
-        const SizedBox(height: 4),
-        Text(
+    return const OperatorWebScreenHeader(
+      icon: Icons.menu_book_outlined,
+      title: 'Knowledge base',
+      subtitle:
           'Upload advisor knowledge, review changes, publish approved content, and restore earlier versions.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ],
     );
   }
 }
@@ -1730,25 +1611,12 @@ class _ReadOnlyBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'View only: uploads, approvals, and restores require ecosystem admin access.',
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        icon: Icons.lock_outline,
+        message:
+            'View only: uploads, approvals, and restores require ecosystem admin access.',
       ),
     );
   }
@@ -1934,17 +1802,13 @@ class _VersionDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Card(
+          OperatorWebPanel(
+            title: version.isCurrent
+                ? 'Current knowledge version'
+                : 'Prior knowledge version',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  version.isCurrent
-                      ? 'Current knowledge version'
-                      : 'Prior knowledge version',
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 10),
                 _DetailRow(
                   label: 'Status',
                   value: version.isCurrent ? 'Current' : 'Superseded',
@@ -1990,18 +1854,11 @@ class _VersionDetail extends StatelessWidget {
             ),
             const SizedBox(height: 16),
           ],
-          _Card(
+          OperatorWebPanel(
+            title: 'Content in this version',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Content in this version',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 10),
                 if (chunks.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -2045,23 +1902,13 @@ class _StagedDiffCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Card(
+    return OperatorWebPanel(
       key: const Key('admin_corpus_staged_diff'),
+      title: 'Upload preview',
+      subtitle: diff.summary,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Upload preview',
-            style: AppTextStyles.mono15(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            diff.summary,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
           if (fileName != null)
             _AdvancedDetails(
               keyName: 'admin_corpus_staged_file_details',
@@ -2359,25 +2206,6 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-class _Card extends StatelessWidget {
-  const _Card({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: child,
-    );
-  }
-}
-
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({super.key, required this.message});
 
@@ -2385,17 +2213,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.negative, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        message,
-        style: AppTextStyles.mono11(color: AppColors.negative),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        message: message,
+        tone: OperatorWebBannerTone.error,
       ),
     );
   }
@@ -2414,17 +2236,10 @@ class _ConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_corpus_confirm_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        title,
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: Text(
-        message,
-        style: AppTextStyles.body13(color: AppColors.textSecondary),
-      ),
+      title: title,
+      onClose: () => Navigator.of(context).pop(false),
       actions: <Widget>[
         TextButton(
           key: const Key('admin_corpus_confirm_cancel'),
@@ -2438,6 +2253,10 @@ class _ConfirmDialog extends StatelessWidget {
           child: Text(confirmLabel),
         ),
       ],
+      child: Text(
+        message,
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
+      ),
     );
   }
 }
@@ -2481,39 +2300,10 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
   final result = await showDialog<UploadCommand>(
     context: context,
     builder: (dialogContext) {
-      return AlertDialog(
+      return OperatorWebDialog(
         key: const Key('admin_corpus_demo_picker_dialog'),
-        backgroundColor: AppColors.backgroundSurface,
-        title: Text(
-          'Demo upload',
-          style: AppTextStyles.display20(color: AppColors.textPrimary),
-        ),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                key: const Key('admin_corpus_demo_picker_filename'),
-                controller: fileNameController,
-                decoration: const InputDecoration(labelText: 'File name'),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: TextField(
-                  key: const Key('admin_corpus_demo_picker_body'),
-                  controller: controller,
-                  maxLines: null,
-                  decoration: const InputDecoration(
-                    labelText: 'Markdown content',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        title: 'Demo upload',
+        maxWidth: 520,
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
@@ -2542,6 +2332,32 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
             child: const Text('Preview upload'),
           ),
         ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              key: const Key('admin_corpus_demo_picker_filename'),
+              controller: fileNameController,
+              decoration: const InputDecoration(labelText: 'File name'),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 260,
+              child: TextField(
+                key: const Key('admin_corpus_demo_picker_body'),
+                controller: controller,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: const InputDecoration(
+                  labelText: 'Markdown content',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     },
   );
