@@ -46,6 +46,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../auth/permission_keys.dart';
 import 'admin_http_timeout.dart';
 
 /// Bearer source the gateway attaches to every proxy call. Production
@@ -258,6 +259,88 @@ class RolesHierarchySessionsGatewayError implements Exception {
       'RolesHierarchySessionsGatewayError($statusCode/$errorCode): $message';
 }
 
+/// Slice E — resolves the current actor's roles to gate hierarchy
+/// mutations when no live permission snapshot is available. Tests
+/// inject a mock implementation; production wires nothing today (the
+/// gate is server-enforced, so the live HTTP gateway is constructed
+/// with no resolver and the client gate is a no-op).
+typedef RolesHierarchySessionsRoleResolver = Future<List<String>> Function();
+
+/// Slice E — resolves the current actor's server-resolved permission-key
+/// set. Mirrors the integration gateway's Slice E3 [PermissionResolver]:
+/// purely additive alongside [RolesHierarchySessionsRoleResolver] and
+/// never replaces it. When a permission resolver is wired and returns a
+/// NON-EMPTY set, each hierarchy-mutation gate keys off the method's
+/// `admin.hierarchy.*` key; when it is null or resolves EMPTY (demo /
+/// un-hydrated / tests), the gate falls back to the role check, which is
+/// byte-identical to the pre-slice behaviour (no gate at all when no
+/// resolver is wired).
+typedef RolesHierarchySessionsPermissionResolver =
+    Future<Set<String>> Function();
+
+/// Slice E — shared hierarchy-mutation gate evaluation used by every
+/// concrete [RolesHierarchySessionsAdminGateway] implementation so all
+/// 10 mutate-method call sites stay byte-identical (one place to audit
+/// the invariant). Throws [RolesHierarchySessionsGatewayError] (403 /
+/// `permission_denied`) when the actor may not perform the mutation;
+/// returns normally (no gate) when neither resolver is wired.
+///
+/// Fail-safe key-first logic, mirroring the integration gateway's Slice
+/// E3 `_evaluateRotationGate` (`integration_admin_gateway.dart`):
+///   * Both resolvers null -> return (no gate; production server-
+///     enforced, demo / widget-test un-gated). This is the BYTE-IDENTITY
+///     branch: every current caller injects no resolver, so the gate is
+///     a pure no-op and behaviour is exactly as before the slice.
+///   * Permission set NON-EMPTY -> allow iff it contains [requiredKey];
+///     otherwise deny. Activates only once a live permission snapshot is
+///     supplied; a role holding the key is allowed even if not
+///     super_admin, and a role lacking it is denied even if super_admin
+///     (intentional, mirrors E3).
+///   * Permission set EMPTY/absent -> fall back to the role check. The
+///     `admin.hierarchy.*` keys default-grant to `super_admin` +
+///     `ff_support` ONLY (see
+///     `db/migrations/202605230900_phase_slice_e_admin_hierarchy_keys.sql`
+///     "default-grant to super_admin + ff_support"), so the fallback
+///     ALLOWS those two roles and denies all others. If no role resolver
+///     is wired either, there is no gate.
+Future<void> evaluateHierarchyMutationGate({
+  required String requiredKey,
+  required RolesHierarchySessionsPermissionResolver? permissionResolver,
+  required RolesHierarchySessionsRoleResolver? roleResolver,
+}) async {
+  if (permissionResolver == null && roleResolver == null) {
+    return; // No gate configured (production server-enforced / demo).
+  }
+  final perms = permissionResolver == null
+      ? const <String>{}
+      : await permissionResolver();
+  if (perms.isNotEmpty) {
+    // Live permission set is authoritative.
+    if (!perms.contains(requiredKey)) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 403,
+        errorCode: 'permission_denied',
+        message: 'caller lacks $requiredKey',
+      );
+    }
+    return;
+  }
+  // Empty/absent permission set: fall back to the role check. The
+  // default grant for these keys is super_admin + ff_support only.
+  if (roleResolver == null) return;
+  final roles = await roleResolver();
+  final allowed =
+      roles.contains(PermissionKeys.roleSuperAdmin) ||
+      roles.contains(PermissionKeys.roleFfSupport);
+  if (!allowed) {
+    throw RolesHierarchySessionsGatewayError(
+      statusCode: 403,
+      errorCode: 'permission_denied',
+      message: 'caller lacks $requiredKey',
+    );
+  }
+}
+
 abstract class RolesHierarchySessionsAdminGateway {
   Future<List<RoleAdminRow>> listRoles({required String operatorId});
 
@@ -436,13 +519,26 @@ class HttpRolesHierarchySessionsAdminGateway
     required this.bearerTokenProvider,
     http.Client? httpClient,
     Duration timeout = kAdminHttpRequestTimeout,
+    RolesHierarchySessionsRoleResolver? roleResolver,
+    RolesHierarchySessionsPermissionResolver? permissionResolver,
   }) : _httpClient = httpClient ?? http.Client(),
-       _timeout = timeout;
+       _timeout = timeout,
+       _roleResolver = roleResolver,
+       _permissionResolver = permissionResolver;
 
   final Uri baseUri;
   final RolesHierarchySessionsBearerTokenProvider bearerTokenProvider;
   final http.Client _httpClient;
   final Duration _timeout;
+
+  /// Slice E — optional role / permission sources for the hierarchy-
+  /// mutation gate. Both null in production today (the gate is server-
+  /// enforced; the live gateway is constructed with no resolver, so the
+  /// client gate is a pure no-op and behaviour is byte-identical to the
+  /// pre-slice path). When wired, see [evaluateHierarchyMutationGate].
+  final RolesHierarchySessionsRoleResolver? _roleResolver;
+  final RolesHierarchySessionsPermissionResolver? _permissionResolver;
+
   final Map<String, Future<_HierarchyEnvelope>> _hierarchyInFlight =
       <String, Future<_HierarchyEnvelope>>{};
 
@@ -614,6 +710,7 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyCreate);
     _requireEditable(actorIsForgeAdmin, 'createOrgUnit');
     _requireAdminReason(adminReason, 'createOrgUnit');
     final body = await _send(
@@ -652,6 +749,7 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyMove);
     _requireEditable(actorIsForgeAdmin, 'moveOrgUnit');
     _requireAdminReason(adminReason, 'moveOrgUnit');
     final body = await _send(
@@ -689,6 +787,7 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyRename);
     _requireEditable(actorIsForgeAdmin, 'renameOrgUnit');
     _requireAdminReason(adminReason, 'renameOrgUnit');
     final body = await _send(
@@ -761,6 +860,7 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchySuspend);
     _requireEditable(actorIsForgeAdmin, operation);
     _requireAdminReason(adminReason, operation);
     final body = await _send(
@@ -784,6 +884,7 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyDelete);
     _requireEditable(actorIsForgeAdmin, 'deleteOrgUnit');
     _requireAdminReason(adminReason, 'deleteOrgUnit');
     await _send(
@@ -807,6 +908,7 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyMove);
     _requireEditable(actorIsForgeAdmin, 'moveLocation');
     _requireAdminReason(adminReason, 'moveLocation');
     final body = await _send(
@@ -881,6 +983,7 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchySuspend);
     _requireEditable(actorIsForgeAdmin, operation);
     _requireAdminReason(adminReason, operation);
     final body = await _send(
@@ -905,6 +1008,7 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyDelete);
     _requireEditable(actorIsForgeAdmin, 'deleteLocation');
     _requireAdminReason(adminReason, 'deleteLocation');
     await _send(
@@ -940,6 +1044,19 @@ class HttpRolesHierarchySessionsAdminGateway
         'user_id': userId,
         'admin_reason': adminReason,
       },
+    );
+  }
+
+  /// Slice E — key-first hierarchy-mutation gate with a fail-safe role
+  /// fallback (default grant: super_admin + ff_support). Delegates to
+  /// the shared [evaluateHierarchyMutationGate] so the live and demo
+  /// gateways share one auditable evaluation. With no resolver wired
+  /// (production today / every current caller) this is a no-op.
+  Future<void> _evaluateHierarchyGate({required String requiredKey}) {
+    return evaluateHierarchyMutationGate(
+      requiredKey: requiredKey,
+      permissionResolver: _permissionResolver,
+      roleResolver: _roleResolver,
     );
   }
 
