@@ -982,4 +982,180 @@ void main() {
     expect(find.byKey(const Key('admin_rhs_no_operator_state')), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  // UX-parity Slice C — the scope-aware per-business nav cluster. These
+  // exercise the SAME top-bar scope picker (Slice B) the production shell
+  // uses; picking a business sets `_hierarchyScope`, which the cluster
+  // gates on. The seeded demo business for operator `...001` is
+  // "Demo Diner Co." (lib/admin/admin_routes.dart `_defaultDemoGateway`).
+  Future<void> pickBusinessScopeFromTopBar(
+    WidgetTester tester, {
+    required String operatorId,
+  }) async {
+    await tester.tap(find.byKey(const Key('admin_scope_picker_trigger')));
+    await pumpEventually(tester);
+    final businessRow = find.byKey(
+      Key('admin_scope_picker_business_$operatorId'),
+    );
+    await tester.ensureVisible(businessRow);
+    await pumpEventually(tester);
+    await tester.tap(businessRow);
+    await pumpEventually(tester);
+  }
+
+  testWidgets(
+    'per-business cluster renders headed by the business name with the six '
+    'operator-named items once a scope is picked',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(AdminShell(session: superAdmin, authSource: source)),
+      );
+      await pumpEventually(tester);
+
+      // No scope yet: the cluster is absent and Business accounts remains
+      // the only entry point.
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster')),
+        findsNothing,
+      );
+
+      await pickBusinessScopeFromTopBar(
+        tester,
+        operatorId: '00000000-0000-4000-8000-000000000001',
+      );
+
+      // Cluster now present, headed by the selected business name.
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster_business_name')),
+        findsOneWidget,
+      );
+      expect(find.text('Demo Diner Co.'), findsWidgets);
+
+      // All six per-business cluster rows render with operator vocabulary.
+      for (final routeId in <String>[
+        kAdminMembersRouteId,
+        kAdminRolesHierarchySessionsRouteId,
+        kAdminAuditedSupportActionsRouteId,
+        kAdminVendorIntegrationsRouteId,
+        kAdminDataAccuracyRouteId,
+        kAdminTimingSetupRouteId,
+      ]) {
+        expect(
+          find.byKey(Key('admin_nav_cluster_item_$routeId')),
+          findsOneWidget,
+          reason: 'cluster must surface per-business route $routeId',
+        );
+      }
+
+      // Operator-web vocabulary (the renamed titles) is visible in the nav.
+      expect(find.text('Team members'), findsWidgets);
+      expect(find.text('Roles & permissions'), findsWidgets);
+      expect(find.text('Audit log'), findsWidgets);
+      expect(find.text('Data accuracy'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'selecting a per-business cluster item navigates carrying the active '
+    'scope',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(AdminShell(session: superAdmin, authSource: source)),
+      );
+      await pumpEventually(tester);
+
+      await pickBusinessScopeFromTopBar(
+        tester,
+        operatorId: '00000000-0000-4000-8000-000000000001',
+      );
+
+      // Tapping the Team members cluster row lands on the members screen
+      // scoped to the picked business (no operator-picker detour, because
+      // the cluster carries the active scope through `_selectIntent`).
+      final teamRow = find.byKey(
+        Key('admin_nav_cluster_item_$kAdminMembersRouteId'),
+      );
+      await tester.ensureVisible(teamRow);
+      await pumpEventually(tester);
+      await tester.tap(teamRow);
+      await pumpEventually(tester);
+
+      expect(find.byKey(const Key('admin_members_screen')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_operator_picker_screen')),
+        findsNothing,
+      );
+      // The cluster row for the open destination is highlighted, and the
+      // cluster stays visible (scope is still active).
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('per-business cluster is absent when no business is selected', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+    await pumpEventually(tester);
+
+    // With no scope, the cluster, its header, and its rows are all absent;
+    // the existing Business-accounts drill-in remains the entry point.
+    expect(
+      find.byKey(const Key('admin_nav_per_business_cluster')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_nav_per_business_cluster_header')),
+      findsNothing,
+    );
+    for (final routeId in kAdminPerBusinessClusterRouteIds) {
+      expect(
+        find.byKey(Key('admin_nav_cluster_item_$routeId')),
+        findsNothing,
+        reason: 'cluster row $routeId must be hidden without a scope',
+      );
+    }
+    expect(find.byKey(const Key('admin_nav_item_operators')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

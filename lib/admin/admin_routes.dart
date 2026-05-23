@@ -425,7 +425,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminDataAccuracyRouteId,
-    title: 'Covers and Wage Data Accuracy',
+    title: 'Data accuracy', // UX-parity Slice C: operator-web nav label (screen header unchanged).
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
@@ -487,7 +487,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminMembersRouteId,
-    title: 'People, access & roles',
+    title: 'Team members', // UX-parity Slice C: operator-web nav label.
     path: '/admin/members',
     icon: Icons.people_alt_outlined,
     section: AdminRouteSection.operations,
@@ -499,7 +499,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminRolesHierarchySessionsRouteId,
-    title: 'Access',
+    title: 'Roles & permissions', // UX-parity Slice C: operator-web nav label.
     path: '/admin/roles-hierarchy-sessions',
     icon: Icons.account_tree_outlined,
     section: AdminRouteSection.operations,
@@ -510,7 +510,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminAuditedSupportActionsRouteId,
-    title: 'Security & audit',
+    title: 'Audit log', // UX-parity Slice C: operator-web nav label.
     path: '/admin/audited-support-actions',
     icon: Icons.security_outlined,
     section: AdminRouteSection.operations,
