@@ -196,6 +196,18 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     }
   }
 
+  /// Floor height the master/detail body needs before the compact
+  /// (stacked) layout can render without clipping. The compact branch of
+  /// [AdminMasterDetailLayout] reserves a master pane (up to
+  /// [kAdminDefaultCompactMasterHeight]) plus a gap above the detail pane;
+  /// below this floor the detail pane is squeezed to nothing and the inner
+  /// Column overflows. When the header plus the read-only banner eat enough
+  /// vertical space that the body falls under the floor, we let the whole
+  /// body scroll at the floor height instead of clipping. Pure layout: no
+  /// change to which affordances render or to any gateway call.
+  static const double _kBodyMinHeight =
+      kAdminDefaultCompactMasterHeight + 16 + 200;
+
   @override
   Widget build(BuildContext context) {
     // Centre + max-width cap matching the shared operator-web body kit, so
@@ -234,12 +246,36 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
                     key: const Key('admin_pricing_action_error'),
                     message: _actionError!,
                   ),
-                Expanded(child: _buildBody()),
+                Expanded(child: _buildBoundedBody()),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// Wraps the body so it keeps the existing fill layout when there is room,
+  /// but scrolls at a fixed floor height when the leftover vertical space is
+  /// too small for the stacked master/detail panes (e.g. on short viewports
+  /// where the read-only banner has consumed height). This is what stops the
+  /// read-only pane from clipping while leaving the wide / edit-mode path
+  /// byte-for-byte unchanged.
+  Widget _buildBoundedBody() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final body = _buildBody();
+        if (!constraints.hasBoundedHeight ||
+            constraints.maxHeight >= _kBodyMinHeight) {
+          return body;
+        }
+        // Not enough height for the panes to lay out: give the body its
+        // floor height and let the surrounding region scroll instead of
+        // overflowing.
+        return SingleChildScrollView(
+          child: SizedBox(height: _kBodyMinHeight, child: body),
+        );
+      },
     );
   }
 

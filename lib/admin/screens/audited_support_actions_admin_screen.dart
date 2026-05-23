@@ -713,11 +713,11 @@ class _AuditedSupportActionsAdminScreenState
 }
 
 /// GAP B3 — the in-screen audit-log scope picker. Renders the shared
-/// [InheritanceTree] (the same widget the orphan AuditLogAdminScreen
-/// and the operator-web B8.b pane use) so F&F admins pick a business,
-/// region, district, or location by tapping the tree instead of
-/// hand-typing operator_id / org_unit_id / location_id. Pure UI over a
-/// route-built [InheritanceTreeNode]; no proxy / gateway change.
+/// [InheritanceTree] (the same widget the operator-web B8.b pane uses)
+/// so F&F admins pick a business, region, district, or location by
+/// tapping the tree instead of hand-typing operator_id / org_unit_id /
+/// location_id. Pure UI over a route-built [InheritanceTreeNode]; no
+/// proxy / gateway change.
 class _AuditScopePickerCard extends StatelessWidget {
   const _AuditScopePickerCard({
     required this.rootNode,
