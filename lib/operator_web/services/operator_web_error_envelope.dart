@@ -105,27 +105,33 @@ OperatorWebErrorKind classifyOperatorWebError({
   required String? code,
   bool isMfaFreshnessRedirect = false,
 }) {
-  final normalisedCode = code?.trim();
-  final freshnessByCode =
-      normalisedCode == MfaFreshnessRedirectPayload.errorCode ||
-      normalisedCode == kStepUpErrorCode;
-
-  // Freshness is recognised by code even on a non-403 path so a surface
-  // that only has the envelope code (no status) still classifies it
-  // consistently; on the canonical 403 path either signal suffices.
-  if (isMfaFreshnessRedirect || (statusCode == 403 && freshnessByCode)) {
+  if (_isFreshnessFailure(statusCode, code, isMfaFreshnessRedirect)) {
     return OperatorWebErrorKind.mfaFreshnessRedirect;
   }
+  return _kindForStatus(statusCode, code?.trim());
+}
 
+/// True when a failure is the two-factor-freshness redirect: the
+/// canonical client already flagged it, OR the envelope code is the
+/// `mfa_freshness_required` sentinel or the RFC 9470 step-up sentinel on
+/// a 403. Recognising it by code lets a surface that only has the
+/// envelope code (no status) classify it consistently.
+bool _isFreshnessFailure(int? statusCode, String? code, bool clientFlagged) {
+  if (clientFlagged) return true;
+  if (statusCode != 403) return false;
+  final normalisedCode = code?.trim();
+  return normalisedCode == MfaFreshnessRedirectPayload.errorCode ||
+      normalisedCode == kStepUpErrorCode;
+}
+
+/// Maps the HTTP status (plus the envelope code for the 409 split) to
+/// its canonical kind. Freshness is resolved by [_isFreshnessFailure]
+/// before this is reached, so a 403 here is always a plain permission
+/// denial.
+OperatorWebErrorKind _kindForStatus(int? statusCode, String? normalisedCode) {
   switch (statusCode) {
     case 403:
-      // Freshness already handled above; a bare 403 is a permission
-      // denial. (A non-403 carrying the step-up code still falls through
-      // to its status bucket — the freshness branch only claims 403s or
-      // the client-flagged case.)
-      return freshnessByCode
-          ? OperatorWebErrorKind.mfaFreshnessRedirect
-          : OperatorWebErrorKind.permissionDenied;
+      return OperatorWebErrorKind.permissionDenied;
     case 409:
       return normalisedCode == kIdempotencyKeyConflictCode
           ? OperatorWebErrorKind.idempotencyReplayConflict
@@ -135,15 +141,17 @@ OperatorWebErrorKind classifyOperatorWebError({
     case 400:
     case 422:
       return OperatorWebErrorKind.validation;
-    case 408:
-    case 429:
-      return OperatorWebErrorKind.transient;
-    default:
-      if (statusCode != null && statusCode >= 500 && statusCode < 600) {
-        return OperatorWebErrorKind.transient;
-      }
-      return OperatorWebErrorKind.unknown;
   }
+  if (_isTransientStatus(statusCode)) return OperatorWebErrorKind.transient;
+  return OperatorWebErrorKind.unknown;
+}
+
+/// True for retryable transport / availability statuses: 408, 429, or
+/// any 5xx.
+bool _isTransientStatus(int? statusCode) {
+  if (statusCode == null) return false;
+  if (statusCode == 408 || statusCode == 429) return true;
+  return statusCode >= 500 && statusCode < 600;
 }
 
 /// The proxy envelope code for a replayed Idempotency-Key collision: a
