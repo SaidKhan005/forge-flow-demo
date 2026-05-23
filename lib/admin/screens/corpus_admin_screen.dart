@@ -29,6 +29,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_screen_body.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
@@ -329,11 +330,11 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
-      child: Container(
+      child: ColoredBox(
         key: const Key('admin_corpus_screen'),
         color: AppColors.backgroundDeep,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+        child: OperatorWebScreenFrame(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

@@ -28,6 +28,7 @@
 // widget tests pass the in-memory gateway.
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
@@ -202,11 +203,11 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
           message: _actionError!,
         ),
     ];
-    return Container(
+    return ColoredBox(
       key: const Key('admin_feature_flags_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+      child: OperatorWebScreenFrame(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

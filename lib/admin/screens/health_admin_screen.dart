@@ -32,6 +32,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_screen_body.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
@@ -301,16 +302,19 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
 
   @override
   Widget build(BuildContext context) {
-    // The TabBar widget requires a Material ancestor; wrapping the
-    // screen root in Material satisfies that without depending on the
+    // The TabBar widget requires a Material ancestor; keeping the
+    // screen root as Material satisfies that without depending on the
     // outer shell (admin shell wires Scaffold; widget tests pump the
-    // screen directly).
+    // screen directly). The Material paints the dark background; the
+    // body is centred and capped at the shared operator-web content
+    // width through OperatorWebScreenFrame, a no-scroll wrapper so the
+    // fixed-height tabbed body (Expanded TabBarView) keeps its fill.
     return Material(
       key: const Key('admin_health_screen'),
       color: AppColors.backgroundDeep,
       type: MaterialType.canvas,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+      child: OperatorWebScreenFrame(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Builder(
           builder: (context) {
             final showManualPrompt =
