@@ -24,6 +24,23 @@ import 'widgets/admin_scope_picker.dart';
 
 const double _kCompactShellBreakpoint = 720;
 
+/// UX-parity Slice C — the six per-business screens, in the order the
+/// approved mock renders them (`docs/_mockups/admin_unified_scope_sample.html`,
+/// the `PERBIZ` cluster). These routes are `visibleInNav: false` in
+/// [kAdminRoutes] because they need a business scope; the scope-aware
+/// nav cluster surfaces them with operator-web vocabulary once a business
+/// is selected, routing through the SAME `_selectIntent` scope path the
+/// Business accounts drill-in uses. The Business accounts drill-in stays
+/// the entry point when no scope is selected.
+const List<String> kAdminPerBusinessClusterRouteIds = <String>[
+  kAdminMembersRouteId,
+  kAdminRolesHierarchySessionsRouteId,
+  kAdminAuditedSupportActionsRouteId,
+  kAdminVendorIntegrationsRouteId,
+  kAdminDataAccuracyRouteId,
+  kAdminTimingSetupRouteId,
+];
+
 class AdminShell extends StatefulWidget {
   const AdminShell({
     super.key,
@@ -49,6 +66,16 @@ class _AdminShellState extends State<AdminShell> {
   AdminSupportLogFilterIntent? _supportLogFilter;
   AdminOperatorLocationScopeIntent? _operatorLocationScope;
   AdminHierarchyScopeIntent? _hierarchyScope;
+
+  /// UX-parity Slice C — whether the operator has DELIBERATELY chosen a
+  /// business to manage (top-bar scope picker, a Business-accounts
+  /// drill-in, or a per-business surface), as opposed to the operators
+  /// list's automatic highlight of its first row on load. The per-business
+  /// nav cluster gates on this so it stays absent on the bare Business
+  /// accounts landing (the drill-in remains the entry point) and appears
+  /// only once a business is genuinely selected. Latches true for the
+  /// session; there is no "clear scope" affordance today.
+  bool _businessScopeChosen = false;
 
   @override
   void initState() {
@@ -88,10 +115,21 @@ class _AdminShellState extends State<AdminShell> {
         nextHierarchyScope?.toOperatorLocationScope() ??
         intent.operatorLocationScope ??
         _operatorLocationScope;
-    if (nextRouteId == _selectedRouteId &&
-        nextSupportLogFilter == _supportLogFilter &&
-        nextOperatorLocationScope == _operatorLocationScope &&
-        nextHierarchyScope == _hierarchyScope) {
+    // A scope counts as deliberately chosen when the intent carries an
+    // explicit hierarchy scope (top-bar picker / scope prompt) or targets a
+    // per-business surface (a Business-accounts drill-in). The operators
+    // list's auto-highlight emits only `operatorLocationScope` while staying
+    // on the operators route, so it never flips this on. Latches once true.
+    final nextBusinessScopeChosen =
+        _businessScopeChosen ||
+        _intentChoosesBusinessScope(intent, nextRouteId);
+    if (_selectionUnchanged(
+      nextRouteId: nextRouteId,
+      nextSupportLogFilter: nextSupportLogFilter,
+      nextOperatorLocationScope: nextOperatorLocationScope,
+      nextHierarchyScope: nextHierarchyScope,
+      nextBusinessScopeChosen: nextBusinessScopeChosen,
+    )) {
       return;
     }
     setState(() {
@@ -99,7 +137,25 @@ class _AdminShellState extends State<AdminShell> {
       _supportLogFilter = nextSupportLogFilter;
       _operatorLocationScope = nextOperatorLocationScope;
       _hierarchyScope = nextHierarchyScope;
+      _businessScopeChosen = nextBusinessScopeChosen;
     });
+  }
+
+  /// True when a recomputed selection matches the current shell state, so
+  /// `_selectIntent` can early-return without a rebuild. Extracted so the
+  /// equality chain does not count against `_selectIntent`'s complexity.
+  bool _selectionUnchanged({
+    required String nextRouteId,
+    required AdminSupportLogFilterIntent? nextSupportLogFilter,
+    required AdminOperatorLocationScopeIntent? nextOperatorLocationScope,
+    required AdminHierarchyScopeIntent? nextHierarchyScope,
+    required bool nextBusinessScopeChosen,
+  }) {
+    return nextRouteId == _selectedRouteId &&
+        nextSupportLogFilter == _supportLogFilter &&
+        nextOperatorLocationScope == _operatorLocationScope &&
+        nextHierarchyScope == _hierarchyScope &&
+        nextBusinessScopeChosen == _businessScopeChosen;
   }
 
   void _select(String id) {
@@ -176,6 +232,11 @@ class _AdminShellState extends State<AdminShell> {
                             _AdminSideNav(
                               routes: widget.routes,
                               selectedRouteId: _selectedNavRouteId,
+                              activeRouteId: _selectedRouteId,
+                              // Only feed a scope to the cluster once a
+                              // business has been deliberately chosen, so the
+                              // cluster is absent on the bare landing.
+                              scope: _businessScopeChosen ? _hierarchyScope : null,
                               onSelect: _select,
                             ),
                             Expanded(child: _buildRouteBody()),
@@ -310,6 +371,28 @@ class _CompactNavItem extends StatelessWidget {
       ),
     );
   }
+}
+
+/// UX-parity Slice C — whether [intent] represents a DELIBERATE business
+/// selection (an explicit hierarchy scope from the top-bar picker / scope
+/// prompt, or navigation into a per-business surface) rather than the
+/// operators list's automatic first-row highlight. Extracted from
+/// `_selectIntent` to keep that method within the complexity ratchet.
+bool _intentChoosesBusinessScope(AdminRouteIntent intent, String nextRouteId) {
+  if (intent.hierarchyScope != null) return true;
+  return kAdminPerBusinessClusterRouteIds.contains(nextRouteId);
+}
+
+/// UX-parity Slice C — the [AdminRoute]s for the per-business cluster, in
+/// [kAdminPerBusinessClusterRouteIds] order, filtered to those present in
+/// [routes]. Top-level helper so the nested lookup does not count against
+/// the side-nav cluster builder's complexity ratchet.
+List<AdminRoute> _resolvePerBusinessClusterRoutes(List<AdminRoute> routes) {
+  final byId = <String, AdminRoute>{for (final route in routes) route.id: route};
+  return <AdminRoute>[
+    for (final routeId in kAdminPerBusinessClusterRouteIds)
+      if (byId[routeId] case final AdminRoute route) route,
+  ];
 }
 
 bool _routeUsesOperatorScope(String routeId) {
@@ -547,11 +630,26 @@ class _AdminSideNav extends StatelessWidget {
   const _AdminSideNav({
     required this.routes,
     required this.selectedRouteId,
+    required this.activeRouteId,
+    required this.scope,
     required this.onSelect,
   });
 
   final List<AdminRoute> routes;
+
+  /// The nav row to highlight in the standing sections. Setup-only routes
+  /// resolve this to their `navAnchorRouteId` (Business accounts), so the
+  /// anchor stays lit while a per-business screen is open.
   final String selectedRouteId;
+
+  /// The route actually open. Used only to highlight the per-business
+  /// cluster row (which is the real destination, not the anchor).
+  final String activeRouteId;
+
+  /// The active business/location scope, or null when nothing is picked.
+  /// The per-business cluster renders only when this is non-null.
+  final AdminHierarchyScopeIntent? scope;
+
   final ValueChanged<String> onSelect;
 
   static const List<_NavSectionMeta> _sections = <_NavSectionMeta>[
@@ -610,11 +708,67 @@ class _AdminSideNav extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            ..._buildPerBusinessCluster(context),
             for (final section in _sections) ..._buildSection(context, section),
           ],
         ),
       ),
     );
+  }
+
+  /// UX-parity Slice C — the scope-gated per-business cluster. Absent
+  /// until a business/location scope is active; the existing Business
+  /// accounts drill-in remains the entry point. Headed by the selected
+  /// business name and listing the six per-business screens with
+  /// operator-web vocabulary, each routing through the shell's existing
+  /// `onSelect` -> `_selectIntent` path, which carries the active scope
+  /// forward (it preserves `_hierarchyScope` when an intent omits one).
+  List<Widget> _buildPerBusinessCluster(BuildContext context) {
+    final activeScope = scope;
+    if (activeScope == null) return const <Widget>[];
+    final clusterRoutes = _resolvePerBusinessClusterRoutes(routes);
+    if (clusterRoutes.isEmpty) return const <Widget>[];
+    final businessName = _businessClusterLabel(activeScope);
+    return <Widget>[
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: DecoratedBox(
+          key: const Key('admin_nav_per_business_cluster'),
+          decoration: BoxDecoration(
+            color: AppColors.sunset.withValues(alpha: 0.055),
+            border: Border.all(
+              color: AppColors.sunset.withValues(alpha: 0.18),
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _PerBusinessClusterHeader(businessName: businessName),
+                const SizedBox(height: 8),
+                for (final route in clusterRoutes)
+                  _NavItem(
+                    key: Key('admin_nav_cluster_item_${route.id}'),
+                    route: route,
+                    selected: route.id == activeRouteId,
+                    onTap: () => onSelect(route.id),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  /// The business name shown as the cluster header. Falls back to a plain
+  /// "Selected business" when the scope carries no operator name.
+  static String _businessClusterLabel(AdminHierarchyScopeIntent scope) {
+    final name = (scope.operatorName ?? '').trim();
+    return name.isEmpty ? 'Selected business' : name;
   }
 
   List<Widget> _buildSection(BuildContext context, _NavSectionMeta section) {
@@ -659,6 +813,51 @@ class _AdminSideNav extends StatelessWidget {
         ),
       ),
     ];
+  }
+}
+
+/// Header row for the per-business cluster: a business icon plus the
+/// selected business name, styled like the mock's per-business group
+/// label (sunset-dark name, building glyph).
+class _PerBusinessClusterHeader extends StatelessWidget {
+  const _PerBusinessClusterHeader({required this.businessName});
+
+  final String businessName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: const Key('admin_nav_per_business_cluster_header'),
+      padding: const EdgeInsets.fromLTRB(2, 0, 0, 0),
+      child: Row(
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.sunset.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Icon(
+              Icons.business_outlined,
+              size: 16,
+              color: AppColors.sunsetDark,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              businessName,
+              key: const Key('admin_nav_per_business_cluster_business_name'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
