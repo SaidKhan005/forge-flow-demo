@@ -43,6 +43,7 @@ import '../services/auth/firebase_auth_client.dart';
 import '../services/auth/firebase_auth_client_sdk.dart';
 import '../theme/app_theme.dart';
 import 'admin_button_styles.dart';
+import 'services/admin_permission_snapshot_loader.dart';
 import 'services/admin_sessions_gateway.dart';
 
 /// Roles that are admitted to the admin console. Mirrors the
@@ -66,6 +67,7 @@ class AdminAuthSession {
     required this.email,
     required this.displayName,
     required this.roles,
+    this.permissions = const <String>{},
     this.lastFreshAuthAt,
   });
 
@@ -82,6 +84,18 @@ class AdminAuthSession {
   /// Role claims. Membership in [kAdminConsoleRoles] is what the
   /// admit decision keys off.
   final List<String> roles;
+
+  /// Server-resolved permission keys allowed for this admin user.
+  /// Mirrors `OperatorWebSession.permissions`. Live (non-demo) sign-in
+  /// hydrates this best-effort from `/v1/auth/permissions/snapshot`;
+  /// demo / share-preview / test fixtures leave it empty and continue
+  /// to use the role-tier fallback. The key-first editing gates in
+  /// `admin_routes.dart` (`_adminCanEdit`) only consult this set when
+  /// it is non-empty; an EMPTY set is always the role fallback, so an
+  /// un-hydrated session is byte-identical to the pre-snapshot
+  /// behaviour. This field never gates console ADMIT (that stays a
+  /// role/claim check via [isAdmin] / [kAdminConsoleRoles]).
+  final Set<String> permissions;
 
   /// JWT `auth_time` (last time the user actually authenticated,
   /// including MFA completion). Drives the
@@ -382,8 +396,10 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
   FirebaseAdminAuthSource({
     FirebaseAuthClient? client,
     AdminSessionsGateway? sessionLedger,
+    AdminPermissionSnapshotLoader? permissionSnapshotLoader,
   }) : _client = client ?? FirebaseAuthSdkClient(),
        _sessionLedger = sessionLedger,
+       _permissionSnapshotLoader = permissionSnapshotLoader,
        _state = const AdminAuthLoading() {
     _controller.add(_state);
     unawaited(_bootstrapCurrentUser());
@@ -400,6 +416,17 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
   /// `lib/services/auth/auth_session_notifier.dart`). An unrecorded
   /// admin session is never admitted in live mode.
   final AdminSessionsGateway? _sessionLedger;
+
+  /// UX-parity Slice E0 — best-effort permission-snapshot loader. Wired
+  /// live in `lib/main_admin.dart` against the same admin proxy base
+  /// URI + Firebase ID-token bearer the sibling admin gateways use;
+  /// null in demo / share-preview / tests (no proxy). When null, OR on
+  /// any load failure, `AdminAuthSession.permissions` stays empty and
+  /// the key-first editing gates fall back to the role check
+  /// (byte-identical to the pre-slice behaviour). Hydration is ALWAYS
+  /// fail-safe: it runs AFTER the admit decision + ledger record and
+  /// NEVER blocks or fails sign-in.
+  final AdminPermissionSnapshotLoader? _permissionSnapshotLoader;
 
   /// Session id returned by the ledger at sign-in. Kept so `signOut`
   /// can close exactly that row (parity with operator-web's
@@ -620,7 +647,14 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
         idempotencyKey: _mintLedgerIdempotencyKey('login', credential.userId),
       );
       _ledgerSessionId = record.sessionId;
-      _emit(AdminAuthAuthenticated(session));
+      // UX-parity Slice E0 — hydrate `permissions` best-effort AFTER the
+      // admit decision + ledger record so it can never interfere with
+      // the fail-closed ledger gate above. A null loader (demo / tests)
+      // or any load failure leaves `permissions` empty, so the
+      // key-first editing gates fall back to the role check
+      // (byte-identical to the pre-slice behaviour). This NEVER blocks
+      // sign-in.
+      _emit(AdminAuthAuthenticated(await _withHydratedPermissions(session)));
     } catch (_) {
       // Fail-closed. Do NOT admit an unrecorded admin session. The
       // calm copy mirrors the mobile ledger-unavailable banner: the
@@ -642,6 +676,38 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
         ),
       );
     }
+  }
+
+  /// UX-parity Slice E0 — returns a copy of [session] with
+  /// `permissions` populated from the best-effort snapshot loader, or
+  /// the SAME session (empty permissions) when no loader is wired or
+  /// the loader resolves to empty. The loader itself is fail-safe
+  /// (returns empty, never throws); the extra guard here is
+  /// defense-in-depth so a future non-conforming loader still cannot
+  /// block sign-in. An empty result returns the original session
+  /// instance so the no-loader path is a true no-op.
+  Future<AdminAuthSession> _withHydratedPermissions(
+    AdminAuthSession session,
+  ) async {
+    final loader = _permissionSnapshotLoader;
+    if (loader == null) return session;
+    Set<String> allowed;
+    try {
+      allowed = await loader.load();
+    } catch (_) {
+      // Fail-safe: a misbehaving loader must not block sign-in. Role
+      // fallback (empty permissions).
+      return session;
+    }
+    if (allowed.isEmpty) return session;
+    return AdminAuthSession(
+      uid: session.uid,
+      email: session.email,
+      displayName: session.displayName,
+      roles: session.roles,
+      permissions: Set<String>.unmodifiable(allowed),
+      lastFreshAuthAt: session.lastFreshAuthAt,
+    );
   }
 
   String _mintLedgerIdempotencyKey(String action, String scopeHint) {

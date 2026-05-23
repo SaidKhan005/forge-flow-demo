@@ -20,6 +20,7 @@ import '../auth/permission_keys.dart';
 import '../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
+import 'admin_capability_gate.dart';
 import 'admin_route_handoff.dart';
 import 'models/corpus_admin_models.dart';
 import 'models/debug_console_admin_models.dart';
@@ -425,7 +426,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminDataAccuracyRouteId,
-    title: 'Data accuracy', // UX-parity Slice C: operator-web nav label (screen header unchanged).
+    title:
+        'Data accuracy', // UX-parity Slice C: operator-web nav label (screen header unchanged).
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
@@ -1043,11 +1045,12 @@ Widget _buildPricing(BuildContext context) {
         stream: source.stream,
         initialData: source.current,
         builder: (context, snapshot) {
-          final state = snapshot.data;
-          final session = state is AdminAuthAuthenticated
-              ? state.session
-              : null;
-          final canEdit = _isAdminSuperAdmin(session);
+          final session = adminSessionOf(snapshot.data);
+          // UX-parity Slice E1 — key-first Pricing gate; see [adminCanEdit].
+          final canEdit = adminCanEdit(
+            session,
+            requiredKey: PermissionKeys.adminPricingTierEdit,
+          );
           return PricingTierAdminScreen(
             gateway: gateway,
             editingEnabled: canEdit,
@@ -1099,10 +1102,7 @@ Widget _buildCorpus(BuildContext context) {
         stream: source.stream,
         initialData: source.current,
         builder: (context, snapshot) {
-          final state = snapshot.data;
-          final session = state is AdminAuthAuthenticated
-              ? state.session
-              : null;
+          final session = adminSessionOf(snapshot.data);
           final canEdit = _isAdminSuperAdmin(session);
           return CorpusAdminScreen(
             gateway: gateway,
@@ -1143,10 +1143,7 @@ Widget _buildIntegrations(BuildContext context) {
         stream: source.stream,
         initialData: source.current,
         builder: (context, snapshot) {
-          final state = snapshot.data;
-          final session = state is AdminAuthAuthenticated
-              ? state.session
-              : null;
+          final session = adminSessionOf(snapshot.data);
           final canEdit = _isAdminSuperAdmin(session);
           return buildScreen(canEdit: canEdit);
         },
@@ -1224,10 +1221,7 @@ Widget _buildFeatureFlags(BuildContext context) {
         stream: source.stream,
         initialData: source.current,
         builder: (context, snapshot) {
-          final state = snapshot.data;
-          final session = state is AdminAuthAuthenticated
-              ? state.session
-              : null;
+          final session = adminSessionOf(snapshot.data);
           final canEdit = _isAdminSuperAdmin(session);
           return buildScreen(canEdit: canEdit);
         },
@@ -1272,17 +1266,19 @@ Widget _buildDefaultRoleCatalog(BuildContext context) {
     stream: source.stream,
     initialData: source.current,
     builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      // Wave 2 RP-9 — gate on the `team.roles.default_catalog.edit`
-      // permission key via the role-tier fallback. When the admin
-      // console grows a wired `PermissionResolver`, replace the
-      // role-tier check with `resolver.has(
-      // PermissionKeys.teamRolesDefaultCatalogEdit)` and pass the
-      // resolver's verdict in via `actorHasEditKeyHint`.
+      // Wave 2 RP-9 / UX-parity Slice E2 — role-tier check stays
+      // AUTHORITATIVE; the live permissions snapshot feeds in only as
+      // the advisory `actorHasEditKeyHint` (see [adminEditKeyHint]).
+      final session = adminSessionOf(snapshot.data);
       final canEdit =
           session != null &&
-          defaultRoleCatalogScreenCanEdit(actorRoles: session.roles);
+          defaultRoleCatalogScreenCanEdit(
+            actorRoles: session.roles,
+            actorHasEditKeyHint: adminEditKeyHint(
+              session,
+              PermissionKeys.teamRolesDefaultCatalogEdit,
+            ),
+          );
       return buildScreen(canEdit: canEdit);
     },
   );
