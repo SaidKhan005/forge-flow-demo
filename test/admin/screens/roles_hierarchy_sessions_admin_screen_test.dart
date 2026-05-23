@@ -14,11 +14,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
 import 'package:forge_and_flow/admin/screens/roles_hierarchy_sessions_admin_screen.dart'
-    show ActiveSessionsAdminPanel, RolesHierarchySessionsAdminScreen;
+    show
+        ActiveSessionsAdminPanel,
+        CreateCustomRoleDialog,
+        CustomRoleDraft,
+        RolesHierarchySessionsAdminScreen;
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/domain/hierarchy/org_unit_depth_rule.dart';
+import 'package:forge_and_flow/services/auth/custom_role_validator.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 import '../../_test_helpers/widget_pump_helpers.dart';
@@ -1267,6 +1272,141 @@ void main() {
     });
   });
 
+  group('W4 - CustomRoleValidator advisory warnings in create dialog', () {
+    // The admin create-custom-role dialog now calls
+    // CustomRoleValidator.validate(...) on the ticked permissions and
+    // surfaces the resulting advisory warnings, mirroring the
+    // operator-web editor. The picker only exposes Forge & Flow keys
+    // (all of which auto-satisfy their `*.view` sibling through the
+    // implies graph, so a real selection is always coherent); we pin
+    // the warning set with an injected stub validator, exactly as the
+    // operator-web editor allows for its own tests.
+    Future<void> pumpDialog(
+      WidgetTester tester, {
+      required CustomRoleValidator validator,
+      ValueChanged<CustomRoleDraft?>? onResult,
+    }) async {
+      wideViewport(tester);
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                key: const Key('open_dialog'),
+                onPressed: () async {
+                  final draft = await showDialog<CustomRoleDraft>(
+                    context: context,
+                    builder: (_) => CreateCustomRoleDialog(
+                      existingRoleKeys: const <String>{},
+                      validator: validator,
+                    ),
+                  );
+                  onResult?.call(draft);
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open_dialog')));
+      await pumpEventually(tester);
+    }
+
+    testWidgets('incoherent draft surfaces the advisory warning banner '
+        'and the per-warning row', (tester) async {
+      await pumpDialog(tester, validator: const _AlwaysWarnValidator());
+
+      // No permissions ticked yet -> no warnings.
+      expect(
+        find.byKey(const Key('admin_rhs_create_custom_role_warnings')),
+        findsNothing,
+      );
+
+      await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
+
+      // The stub flags any non-empty role: banner + the keyed
+      // per-warning row both render.
+      expect(
+        find.byKey(const Key('admin_rhs_create_custom_role_warnings')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key(
+            'admin_rhs_create_custom_role_warning_orphanViewDependency',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Heads up: this role has 1 thing worth a second look'),
+          findsOneWidget);
+      expect(find.text(_AlwaysWarnValidator.kMessage), findsOneWidget);
+    });
+
+    testWidgets('coherent draft shows no warning banner', (tester) async {
+      await pumpDialog(tester, validator: const _NeverWarnValidator());
+
+      await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
+
+      expect(
+        find.byKey(const Key('admin_rhs_create_custom_role_warnings')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('warnings are advisory: submit still returns a draft '
+        'while a warning is showing', (tester) async {
+      CustomRoleDraft? captured;
+      var resultSet = false;
+      await pumpDialog(
+        tester,
+        validator: const _AlwaysWarnValidator(),
+        onResult: (draft) {
+          captured = draft;
+          resultSet = true;
+        },
+      );
+
+      await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
+      expect(
+        find.byKey(const Key('admin_rhs_create_custom_role_warnings')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_create_custom_role_name')),
+        'Line Lead',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_create_custom_role_key')),
+        'custom.line_lead',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_create_custom_role_reason')),
+        'support-onboarding',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_create_custom_role_submit')),
+      );
+      await pumpEventually(tester);
+
+      // The warning never blocked submit: the dialog closed and handed
+      // back a populated draft.
+      expect(resultSet, isTrue);
+      expect(captured, isNotNull);
+      expect(captured!.displayName, equals('Line Lead'));
+      expect(
+        captured!.permissionKeys,
+        containsAll(<String>['forgeflow.shift.view', 'forgeflow.shift.edit']),
+      );
+      expect(
+        find.byKey(const Key('admin_rhs_create_custom_role_dialog')),
+        findsNothing,
+      );
+    });
+  });
+
   group('zero em dashes in operator-facing literals', () {
     testWidgets('rendered text never contains an em dash', (tester) async {
       wideViewport(tester);
@@ -1333,4 +1473,47 @@ class _CountingRolesHierarchySessionsGateway
     listSessionsCalls += 1;
     return super.listSessions(operatorId: operatorId);
   }
+}
+
+/// Stub validator that flags any non-empty role with a single advisory
+/// warning. Lets the dialog test pin the warning surface without
+/// seeding an incoherent permission combination through the picker
+/// (which only exposes Forge & Flow keys, all of which auto-satisfy
+/// their view sibling). Mirrors the operator-web editor's injectable
+/// `validator` test hook.
+class _AlwaysWarnValidator extends CustomRoleValidator {
+  const _AlwaysWarnValidator();
+
+  static const String kMessage =
+      'Test stub: this role looks incoherent and would hide a screen.';
+
+  @override
+  List<RoleWarning> validate(
+    Set<String> permissionKeys, {
+    required RoleScope scope,
+    String roleDisplayName = '',
+  }) {
+    if (permissionKeys.isEmpty) return const <RoleWarning>[];
+    return const <RoleWarning>[
+      RoleWarning(
+        severity: RoleWarningSeverity.warn,
+        code: RoleWarningCode.orphanViewDependency,
+        affectedKeys: <String>['forgeflow.shift.edit'],
+        message: kMessage,
+      ),
+    ];
+  }
+}
+
+/// Stub validator that never warns, so the dialog test can assert the
+/// banner is absent for a coherent draft.
+class _NeverWarnValidator extends CustomRoleValidator {
+  const _NeverWarnValidator();
+
+  @override
+  List<RoleWarning> validate(
+    Set<String> permissionKeys, {
+    required RoleScope scope,
+    String roleDisplayName = '',
+  }) => const <RoleWarning>[];
 }
