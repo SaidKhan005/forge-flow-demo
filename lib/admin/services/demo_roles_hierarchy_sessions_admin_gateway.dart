@@ -14,6 +14,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../domain/hierarchy/org_unit_depth_rule.dart';
 import 'demo_members_admin_gateway.dart';
 import 'roles_hierarchy_sessions_admin_gateway.dart';
@@ -26,7 +27,11 @@ class InMemoryRolesHierarchySessionsAdminGateway
     Map<String, List<HierarchyLocationLeaf>>? locationsByOperator,
     Map<String, List<SessionAdminRow>>? sessionsByOperator,
     DateTime Function()? clock,
+    RolesHierarchySessionsRoleResolver? roleResolver,
+    RolesHierarchySessionsPermissionResolver? permissionResolver,
   }) : _clock = clock ?? DateTime.now,
+       _roleResolver = roleResolver,
+       _permissionResolver = permissionResolver,
        _roles = <String, List<RoleAdminRow>>{
          for (final entry in (rolesByOperator ?? const {}).entries)
            entry.key: List<RoleAdminRow>.of(entry.value),
@@ -45,6 +50,14 @@ class InMemoryRolesHierarchySessionsAdminGateway
        };
 
   final DateTime Function() _clock;
+
+  /// Slice E — optional role / permission sources for the hierarchy-
+  /// mutation gate. Both null in the demo / widget-test default, so the
+  /// gate is a pure no-op there and behaviour is byte-identical to the
+  /// pre-slice path. When wired, see [evaluateHierarchyMutationGate].
+  final RolesHierarchySessionsRoleResolver? _roleResolver;
+  final RolesHierarchySessionsPermissionResolver? _permissionResolver;
+
   final Map<String, List<RoleAdminRow>> _roles;
   final Map<String, List<OrgUnitAdminNode>> _orgUnits;
   final Map<String, List<HierarchyLocationLeaf>> _locations;
@@ -60,6 +73,19 @@ class InMemoryRolesHierarchySessionsAdminGateway
   /// captured so far. Tests assert on this directly.
   List<RolesHierarchySessionsAuditEvent> get capturedAuditEvents =>
       List<RolesHierarchySessionsAuditEvent>.unmodifiable(_auditLog);
+
+  /// Slice E — key-first hierarchy-mutation gate with a fail-safe role
+  /// fallback (default grant: super_admin + ff_support). Delegates to
+  /// the shared [evaluateHierarchyMutationGate] so the demo and live
+  /// gateways share one auditable evaluation. With no resolver wired
+  /// (the demo / widget-test default) this is a no-op.
+  Future<void> _evaluateHierarchyGate({required String requiredKey}) {
+    return evaluateHierarchyMutationGate(
+      requiredKey: requiredKey,
+      permissionResolver: _permissionResolver,
+      roleResolver: _roleResolver,
+    );
+  }
 
   void _ensureForgeAdmin(bool actorIsForgeAdmin, String operation) {
     if (!actorIsForgeAdmin) {
@@ -365,6 +391,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyCreate);
     _ensureForgeAdmin(actorIsForgeAdmin, 'createOrgUnit');
     _ensureAdminReason(adminReason, 'createOrgUnit');
     final cached = _idempotentResults[idempotencyKey];
@@ -435,6 +462,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyMove);
     _ensureForgeAdmin(actorIsForgeAdmin, 'moveOrgUnit');
     _ensureAdminReason(adminReason, 'moveOrgUnit');
     final cached = _idempotentResults[idempotencyKey];
@@ -502,6 +530,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyRename);
     _ensureForgeAdmin(actorIsForgeAdmin, 'renameOrgUnit');
     _ensureAdminReason(adminReason, 'renameOrgUnit');
     final cached = _idempotentResults[idempotencyKey];
@@ -615,6 +644,9 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchySuspend,
+    );
     _ensureForgeAdmin(actorIsForgeAdmin, 'setOrgUnitSuspended');
     _ensureAdminReason(adminReason, 'setOrgUnitSuspended');
     final cached = _idempotentResults[idempotencyKey];
@@ -668,6 +700,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyDelete);
     _ensureForgeAdmin(actorIsForgeAdmin, 'deleteOrgUnit');
     _ensureAdminReason(adminReason, 'deleteOrgUnit');
     if (_idempotentResults.containsKey(idempotencyKey)) return;
@@ -752,6 +785,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyMove);
     _ensureForgeAdmin(actorIsForgeAdmin, 'moveLocation');
     _ensureAdminReason(adminReason, 'moveLocation');
     final cached = _idempotentResults[idempotencyKey];
@@ -842,6 +876,9 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchySuspend,
+    );
     _ensureForgeAdmin(actorIsForgeAdmin, 'setLocationSuspended');
     _ensureAdminReason(adminReason, 'setLocationSuspended');
     final cached = _idempotentResults[idempotencyKey];
@@ -887,6 +924,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
+    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyDelete);
     _ensureForgeAdmin(actorIsForgeAdmin, 'deleteLocation');
     _ensureAdminReason(adminReason, 'deleteLocation');
     if (_idempotentResults.containsKey(idempotencyKey)) return;
