@@ -16,6 +16,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/models/integration_admin_models.dart';
 import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
+import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/infrastructure/kms/kms_stub_provider.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:http/http.dart' as http;
@@ -418,6 +419,215 @@ void main() {
         // Plaintext belongs in the body; the idempotency key does NOT.
         expect(req.body['plaintext_value'], equals('sk-ant-1234'));
         expect(req.body.containsKey('idempotency_key'), isFalse);
+      },
+    );
+  });
+
+  // UX-parity Slice E3 — the rotation gate (`_checkNotReadOnly`) keys
+  // off `integration.key_rotate` when a non-empty permission set is
+  // supplied, and falls back to the historic `ff_support` role deny
+  // when the set is empty/absent. The fallback path MUST be
+  // byte-identical to the pre-slice decision. Covered for BOTH gateway
+  // impls and BOTH directions.
+  const rotateAnthropic = RotateKeyCommand(
+    keyKind: ProviderKeyKind.anthropic,
+    plaintextValue: 'sk-ant-rotation-gate-plaintext-1234',
+    idempotencyKey: 'e3-rotate-gate',
+  );
+
+  group('InMemoryIntegrationAdminGateway — Slice E3 rotation gate', () {
+    test(
+      'empty permissions: ff_support is DENIED (byte-identical fallback)',
+      () async {
+        final gateway = InMemoryIntegrationAdminGateway(
+          roleResolver: () async => <String>[PermissionKeys.roleFfSupport],
+          permissionResolver: () async => const <String>{},
+        );
+        await expectLater(
+          () => gateway.rotateKey(rotateAnthropic),
+          throwsA(isA<PermissionDeniedException>()),
+        );
+      },
+    );
+
+    test('empty permissions: super_admin is ALLOWED (fallback)', () async {
+      final gateway = InMemoryIntegrationAdminGateway(
+        roleResolver: () async => <String>[PermissionKeys.roleSuperAdmin],
+        permissionResolver: () async => const <String>{},
+      );
+      final result = await gateway.rotateKey(rotateAnthropic);
+      expect(result.row.keyKind, ProviderKeyKind.anthropic);
+    });
+
+    test(
+      'absent permission resolver: ff_support DENIED via role fallback '
+      '(byte-identical to pre-slice)',
+      () async {
+        final gateway = InMemoryIntegrationAdminGateway(
+          roleResolver: () async => <String>[PermissionKeys.roleFfSupport],
+        );
+        await expectLater(
+          () => gateway.rotateKey(rotateAnthropic),
+          throwsA(isA<PermissionDeniedException>()),
+        );
+      },
+    );
+
+    test(
+      'permissions WITH integration.key_rotate: ALLOWED even for a role '
+      'that is neither super_admin nor ff_support',
+      () async {
+        final gateway = InMemoryIntegrationAdminGateway(
+          // A role tier that is NOT super_admin and NOT ff_support.
+          roleResolver: () async => const <String>['ops_reviewer'],
+          permissionResolver: () async => <String>{
+            PermissionKeys.integrationKeyRotate,
+          },
+        );
+        final result = await gateway.rotateKey(rotateAnthropic);
+        expect(result.row.keyKind, ProviderKeyKind.anthropic);
+      },
+    );
+
+    test(
+      'permissions WITHOUT the key: DENIED even for a role that is not '
+      'ff_support (and even super_admin)',
+      () async {
+        final gateway = InMemoryIntegrationAdminGateway(
+          // super_admin would pass the role fallback, but a non-empty
+          // permission set lacking the key is authoritative -> deny.
+          roleResolver: () async => <String>[PermissionKeys.roleSuperAdmin],
+          permissionResolver: () async => const <String>{'integration.toast.view'},
+        );
+        await expectLater(
+          () => gateway.rotateKey(rotateAnthropic),
+          throwsA(isA<PermissionDeniedException>()),
+        );
+      },
+    );
+
+    test('both resolvers null: no gate, rotateKey proceeds', () async {
+      // This is the demo / widget-test default (no resolver wired).
+      final gateway = InMemoryIntegrationAdminGateway();
+      final result = await gateway.rotateKey(rotateAnthropic);
+      expect(result.row.keyKind, ProviderKeyKind.anthropic);
+    });
+  });
+
+  group('HttpIntegrationAdminGateway — Slice E3 rotation gate', () {
+    // A rotate POST succeeds with this canned response when the gate
+    // ALLOWS; when the gate DENIES, the throw happens before any HTTP
+    // call, so `captured` stays empty.
+    _SingleResponseClient rotateOkClient(
+      List<_CapturedAdminRequest> captured,
+    ) {
+      return _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: <String, Object?>{
+            'row': <String, Object?>{
+              'credential_id': 'cred-e3',
+              'key_kind': 'anthropic',
+              'masked_value': 'sk-a***1234',
+              'kms_secret_name': 'kms://stub/cred-e3',
+              'created_by': 'actor-x',
+              'updated_by': 'actor-x',
+              'rotated_at': '2026-05-23T12:00:00.000Z',
+            },
+            'plaintext_value': 'sk-ant-rotation-gate-plaintext-1234',
+          },
+        ),
+      );
+    }
+
+    test(
+      'empty permissions: ff_support DENIED before any HTTP call '
+      '(byte-identical fallback)',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final gateway = HttpIntegrationAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: rotateOkClient(captured),
+          roleResolver: () async => <String>[PermissionKeys.roleFfSupport],
+          permissionResolver: () async => const <String>{},
+        );
+        await expectLater(
+          () => gateway.rotateKey(rotateAnthropic),
+          throwsA(isA<PermissionDeniedException>()),
+        );
+        expect(captured, isEmpty);
+      },
+    );
+
+    test('empty permissions: super_admin ALLOWED (fallback)', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final gateway = HttpIntegrationAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: rotateOkClient(captured),
+        roleResolver: () async => <String>[PermissionKeys.roleSuperAdmin],
+        permissionResolver: () async => const <String>{},
+      );
+      final result = await gateway.rotateKey(rotateAnthropic);
+      expect(result.row.maskedValue, equals('sk-a***1234'));
+      expect(captured.single.method, equals('POST'));
+    });
+
+    test(
+      'permissions WITH integration.key_rotate: ALLOWED for a role that is '
+      'neither super_admin nor ff_support',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final gateway = HttpIntegrationAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: rotateOkClient(captured),
+          roleResolver: () async => const <String>['ops_reviewer'],
+          permissionResolver: () async => <String>{
+            PermissionKeys.integrationKeyRotate,
+          },
+        );
+        final result = await gateway.rotateKey(rotateAnthropic);
+        expect(result.row.maskedValue, equals('sk-a***1234'));
+        expect(captured.single.uri.path, contains('rotate-anthropic'));
+      },
+    );
+
+    test(
+      'permissions WITHOUT the key: DENIED before any HTTP call, even for '
+      'a non-ff_support role',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final gateway = HttpIntegrationAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: rotateOkClient(captured),
+          roleResolver: () async => <String>[PermissionKeys.roleSuperAdmin],
+          permissionResolver: () async => const <String>{'integration.toast.view'},
+        );
+        await expectLater(
+          () => gateway.rotateKey(rotateAnthropic),
+          throwsA(isA<PermissionDeniedException>()),
+        );
+        expect(captured, isEmpty);
+      },
+    );
+
+    test(
+      'both resolvers null (production server-enforced): no client gate, '
+      'rotate POST proceeds',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final gateway = HttpIntegrationAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: rotateOkClient(captured),
+        );
+        final result = await gateway.rotateKey(rotateAnthropic);
+        expect(result.row.maskedValue, equals('sk-a***1234'));
+        expect(captured.single.method, equals('POST'));
       },
     );
   });
