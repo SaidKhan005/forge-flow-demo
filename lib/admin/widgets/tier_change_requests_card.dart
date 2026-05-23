@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
-import 'admin_responsive_layout.dart';
 
 class TierChangeRequestsCard extends StatelessWidget {
   const TierChangeRequestsCard({
@@ -25,38 +25,32 @@ class TierChangeRequestsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebPanel(
       key: const Key('admin_tier_change_requests_card'),
-      child: AdminCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      title: 'Tier change requests',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (requests.isEmpty)
             Text(
-              'Tier change requests',
-              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 12),
-            if (requests.isEmpty)
-              Text(
-                'No requests.',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: requests.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(color: AppColors.borderSubtle, height: 16),
-                itemBuilder: (context, index) => _RequestRow(
-                  request: requests[index],
-                  editingEnabled: editingEnabled,
-                  onResolve: onResolve,
-                ),
+              'No requests.',
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: requests.length,
+              separatorBuilder: (_, __) =>
+                  const Divider(color: AppColors.borderSubtle, height: 16),
+              itemBuilder: (context, index) => _RequestRow(
+                request: requests[index],
+                editingEnabled: editingEnabled,
+                onResolve: onResolve,
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
