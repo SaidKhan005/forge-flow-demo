@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/console/console_screen_body.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../theme/app_theme.dart';
@@ -244,37 +245,48 @@ class _PerLocationDataAccuracyScreenState
     return Container(
       key: const Key('admin_data_accuracy_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (widget.showPageHeader) ...[
-              AdminPageHeader(
-                title: 'Covers and Wage Data Accuracy',
-                subtitle: widget.editingEnabled
-                    ? 'Review effective covers, wages, walk-ins, and audit history by location. Super admins can apply audited location repairs.'
-                    : 'Review effective covers, wages, walk-ins, and audit history by location. Normal operator edits stay in Operator Web; location repair actions are hidden for this role.',
-                leading: widget.onBackToBusinessAccounts == null
-                    ? null
-                    : AdminBusinessAccountsBackButton(
-                        onPressed: widget.onBackToBusinessAccounts,
-                      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.showPageHeader ||
+              !widget.editingEnabled ||
+              _actionError != null)
+            Padding(
+              // Pinned header + banners keep operator-web edge insets; the
+              // scrollable body below carries its own OperatorWebScreenBody
+              // padding so it is not double-padded. Header gating unchanged.
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.showPageHeader) ...[
+                    AdminPageHeader(
+                      title: 'Covers and Wage Data Accuracy',
+                      subtitle: widget.editingEnabled
+                          ? 'Review effective covers, wages, walk-ins, and audit history by location. Super admins can apply audited location repairs.'
+                          : 'Review effective covers, wages, walk-ins, and audit history by location. Normal operator edits stay in Operator Web; location repair actions are hidden for this role.',
+                      leading: widget.onBackToBusinessAccounts == null
+                          ? null
+                          : AdminBusinessAccountsBackButton(
+                              onPressed: widget.onBackToBusinessAccounts,
+                            ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (!widget.editingEnabled)
+                    const _ReadOnlyBanner(
+                      key: Key('admin_data_accuracy_readonly_banner'),
+                    ),
+                  if (_actionError != null)
+                    _ErrorBanner(
+                      key: const Key('admin_data_accuracy_action_error'),
+                      message: _actionError!,
+                    ),
+                ],
               ),
-              const SizedBox(height: 14),
-            ],
-            if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_data_accuracy_readonly_banner'),
-              ),
-            if (_actionError != null)
-              _ErrorBanner(
-                key: const Key('admin_data_accuracy_action_error'),
-                message: _actionError!,
-              ),
-            Expanded(child: _buildBody()),
-          ],
-        ),
+            ),
+          Expanded(child: _buildBody()),
+        ],
       ),
     );
   }
@@ -418,7 +430,12 @@ class _PerLocationDataAccuracyScreenState
         message: _loadError!,
       );
     }
-    return SingleChildScrollView(
+    return OperatorWebScreenBody(
+      maxContentWidth: 1120,
+      // Top inset is owned by the pinned header block above when the page
+      // header shows; when it is gated off (scope-pane mount) the body owns
+      // the top inset so content is not flush against the pane edge.
+      padding: EdgeInsets.fromLTRB(24, widget.showPageHeader ? 0 : 24, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

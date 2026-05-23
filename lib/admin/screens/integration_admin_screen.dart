@@ -35,6 +35,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
@@ -218,38 +219,46 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
     return Container(
       key: const Key('admin_integrations_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _Header(),
-            const SizedBox(height: 14),
-            if (widget.hierarchyScope != null)
-              HierarchyScopeNotice(
-                keyName: 'admin_integration_scope_notice',
-                selectedScope: adminScopeLevel(
-                  widget.hierarchyScope!.scopeType,
-                ),
-                scopeName: widget.hierarchyScope!.displayLabel,
-                effectiveValueSummary:
-                    'Vendor API reachability for the selected scope.',
-                backendOnlyHelpTitle: 'About platform service keys',
-                backendOnlyExplainer:
-                    'Platform service keys remain shared ecosystem keys and are not stored per business.',
-              ),
-            if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_integrations_readonly_banner'),
-              ),
-            if (_actionError != null)
-              _ErrorBanner(
-                key: const Key('admin_integrations_action_error'),
-                message: _actionError!,
-              ),
-            Expanded(child: _buildBody()),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            // Pinned header + banners keep operator-web edge insets; the
+            // scrollable body below carries its own OperatorWebScreenBody
+            // padding so it is not double-padded.
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _Header(),
+                const SizedBox(height: 14),
+                if (widget.hierarchyScope != null)
+                  HierarchyScopeNotice(
+                    keyName: 'admin_integration_scope_notice',
+                    selectedScope: adminScopeLevel(
+                      widget.hierarchyScope!.scopeType,
+                    ),
+                    scopeName: widget.hierarchyScope!.displayLabel,
+                    effectiveValueSummary:
+                        'Vendor API reachability for the selected scope.',
+                    backendOnlyHelpTitle: 'About platform service keys',
+                    backendOnlyExplainer:
+                        'Platform service keys remain shared ecosystem keys and are not stored per business.',
+                  ),
+                if (!widget.editingEnabled)
+                  const _ReadOnlyBanner(
+                    key: Key('admin_integrations_readonly_banner'),
+                  ),
+                if (_actionError != null)
+                  _ErrorBanner(
+                    key: const Key('admin_integrations_action_error'),
+                    message: _actionError!,
+                  ),
+              ],
+            ),
+          ),
+          Expanded(child: _buildBody()),
+        ],
       ),
     );
   }
@@ -278,7 +287,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
     if (bundle == null) {
       return const SizedBox.shrink();
     }
-    return SingleChildScrollView(
+    return OperatorWebScreenBody(
+      maxContentWidth: 1120,
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
