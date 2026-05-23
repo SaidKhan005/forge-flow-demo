@@ -12,9 +12,13 @@ class AdminButtonStyles {
     vertical: 12,
   );
 
-  static TextStyle get dialogTitleStyle => AppTextStyles.pageTitle(
-    color: AppColors.textPrimary,
-  ).copyWith(fontSize: 20, height: 1.28);
+  // Operator-web is the typography gold standard: its dialog titles render
+  // in the Playfair display family via [OperatorWebDialog] (display20).
+  // Match it here so admin dialogs that lean on the shared dialog theme
+  // (DialogThemeData.titleTextStyle below) carry the same Playfair title
+  // rather than the smaller sans pageTitle@20 admin used before.
+  static TextStyle get dialogTitleStyle =>
+      AppTextStyles.display20(color: AppColors.textPrimary);
 
   static ThemeData applyTo(ThemeData base) {
     return base.copyWith(
