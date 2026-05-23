@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
@@ -6,7 +7,6 @@ import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
-import 'admin_responsive_layout.dart';
 
 enum _SortColumn { operator, location, covers, wage, modifiedBy, modifiedAt }
 
@@ -94,16 +94,12 @@ class _PerLocationDataAccuracyTableState
 
     return Container(
       key: const Key('admin_data_accuracy_table'),
-      child: AdminCard(
+      child: OperatorWebPanel(
+        title: 'Covers and wage data accuracy',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Covers and wage data accuracy',
-              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 12),
             _TableToolbar(
               count: sorted.length,
               sortColumn: _sortColumn,

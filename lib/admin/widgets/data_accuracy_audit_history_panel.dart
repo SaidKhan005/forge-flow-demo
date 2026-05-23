@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
+
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
-import 'admin_responsive_layout.dart';
 
 class DataAccuracyAuditHistoryPanel extends StatefulWidget {
   const DataAccuracyAuditHistoryPanel({
@@ -37,25 +38,13 @@ class _DataAccuracyAuditHistoryPanelState
 
     return Container(
       key: const Key('admin_data_accuracy_audit_panel'),
-      child: AdminCard(
+      child: OperatorWebPanel(
+        title: widget.title,
+        trailing: _CountChip(count: sorted.length),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.title,
-                    style: AppTextStyles.sectionTitle(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                _CountChip(count: sorted.length),
-              ],
-            ),
-            const SizedBox(height: 8),
             if (sorted.isEmpty)
               Text(
                 widget.emptyText,
