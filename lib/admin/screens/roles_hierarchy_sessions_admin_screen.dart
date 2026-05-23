@@ -20,6 +20,7 @@
 // "§ Idempotency keys" + "§ Audit-row shape".
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../auth/permission_key_metadata.dart';
 import '../../auth/permission_keys.dart';
@@ -640,23 +641,15 @@ class _AccessScopeFilterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scope = initialScope ?? _scopeFromPickedOperator(pickedOperator);
-    return AdminCard(
+    return OperatorWebPanel(
       key: const Key('admin_rhs_filter_card'),
+      title: 'Scope context',
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Wrap(
         spacing: 8,
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          const Icon(
-            Icons.account_tree_outlined,
-            size: 18,
-            color: AppColors.sunsetDark,
-          ),
-          Text(
-            'Scope context',
-            style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-          ),
           _ScopeChip(
             icon: Icons.business_outlined,
             label: pickedOperator.operatorBusinessName,
@@ -803,28 +796,16 @@ class RolePolicyAdminPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          AdminCard(
+          OperatorWebPanel(
+            title: 'Seeded roles',
+            trailing: Text(
+              '${seeded.length} role${seeded.length == 1 ? '' : 's'}',
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
+            ),
             child: Column(
               key: const Key('admin_rhs_roles_seeded'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        'Seeded roles',
-                        style: AppTextStyles.sectionTitle(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${seeded.length} role${seeded.length == 1 ? '' : 's'}',
-                      style: AppTextStyles.mono11(color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
                 Text(
                   'Seeded roles are read only. To change a seeded role you '
                   'need an admin role edit permission with multi-factor sign-in.',
@@ -851,32 +832,21 @@ class RolePolicyAdminPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          AdminCard(
+          OperatorWebPanel(
+            title: 'Custom roles',
+            trailing: editingEnabled
+                ? FilledButton.icon(
+                    key: const Key('admin_rhs_roles_create_custom'),
+                    onPressed: onCreateCustom,
+                    style: AdminButtonStyles.primary,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('New custom role'),
+                  )
+                : null,
             child: Column(
               key: const Key('admin_rhs_roles_custom'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        'Custom roles',
-                        style: AppTextStyles.sectionTitle(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (editingEnabled)
-                      FilledButton.icon(
-                        key: const Key('admin_rhs_roles_create_custom'),
-                        onPressed: onCreateCustom,
-                        style: AdminButtonStyles.primary,
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('New custom role'),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
                 if (custom.isEmpty)
                   Text(
                     'This operator has no custom roles yet.',
@@ -1360,8 +1330,9 @@ class _PermissionExplainerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AdminCard(
+    return const OperatorWebPanel(
       key: Key('admin_rhs_permission_explainer'),
+      title: 'Permission explainer',
       child: PermissionExplainerView(
         embedded: true,
         keyPrefix: 'admin_rhs_permission_explainer',
@@ -1427,30 +1398,18 @@ class _HierarchyTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          AdminCard(
+          OperatorWebPanel(
+            title: 'Org units and locations',
+            trailing: Text(
+              '${orgUnits.length} unit'
+              '${orgUnits.length == 1 ? '' : 's'}, '
+              '${locations.length} location'
+              '${locations.length == 1 ? '' : 's'}',
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        'Org units and locations',
-                        style: AppTextStyles.sectionTitle(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${orgUnits.length} unit'
-                      '${orgUnits.length == 1 ? '' : 's'}, '
-                      '${locations.length} location'
-                      '${locations.length == 1 ? '' : 's'}',
-                      style: AppTextStyles.mono11(color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
                 Text(
                   'Location moves are audit-logged with your name and reason. '
                   'Use Add child to create a new region, district, or '
@@ -1938,28 +1897,16 @@ class _SessionsTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          AdminCard(
+          OperatorWebPanel(
+            title: 'People and devices signed in',
+            trailing: Text(
+              '${sessions.length} session'
+              '${sessions.length == 1 ? '' : 's'}',
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        'People and devices signed in',
-                        style: AppTextStyles.sectionTitle(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${sessions.length} session'
-                      '${sessions.length == 1 ? '' : 's'}',
-                      style: AppTextStyles.mono11(color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
                 Text(
                   '$operatorName has ${_peopleCount(sessions)} signed-in '
                   '${_peopleCount(sessions) == 1 ? 'person' : 'people'} '
@@ -2212,23 +2159,12 @@ class _DeleteOrgUnitConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_rhs_delete_org_unit_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Delete ${node.name}?',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 460,
-        child: Text(
-          'This removes the group from the hierarchy. It only works if '
-          'the group is empty. Move or delete the groups and locations '
-          'inside it first. You will add a reason on the next step, and '
-          'the operator will see it in their audit log.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ),
+      title: 'Delete ${node.name}?',
+      icon: Icons.delete_outline,
+      maxWidth: 520,
+      onClose: () => Navigator.of(context).pop(false),
       actions: <Widget>[
         TextButton(
           key: const Key('admin_rhs_delete_org_unit_cancel'),
@@ -2242,6 +2178,16 @@ class _DeleteOrgUnitConfirmDialog extends StatelessWidget {
           child: const Text('Delete'),
         ),
       ],
+      child: SizedBox(
+        width: 460,
+        child: Text(
+          'This removes the group from the hierarchy. It only works if '
+          'the group is empty. Move or delete the groups and locations '
+          'inside it first. You will add a reason on the next step, and '
+          'the operator will see it in their audit log.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+      ),
     );
   }
 }
@@ -2276,11 +2222,25 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_rhs_reason_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
+      title: widget.title,
+      icon: Icons.edit_note_outlined,
+      maxWidth: 520,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_rhs_reason_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_reason_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Confirm'),
+        ),
+      ],
+      child: SizedBox(
         width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2307,19 +2267,6 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_rhs_reason_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_rhs_reason_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Confirm'),
-        ),
-      ],
     );
   }
 }
@@ -2618,14 +2565,24 @@ class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_rhs_edit_seeded_role_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Edit ${roleAdminDisplayLabel(widget.initial)}',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
+      title: 'Edit ${roleAdminDisplayLabel(widget.initial)}',
+      icon: Icons.shield_outlined,
+      maxWidth: 780,
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_edit_seeded_role_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Save'),
+        ),
+      ],
+      child: SizedBox(
         width: 720,
         height: 640,
         child: Column(
@@ -2659,18 +2616,6 @@ class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_rhs_edit_seeded_role_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Save'),
-        ),
-      ],
     );
   }
 }
@@ -2771,11 +2716,24 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_rhs_create_custom_role_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text('New custom role', style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
+      title: 'New custom role',
+      icon: Icons.person_add_alt_outlined,
+      maxWidth: 780,
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_create_custom_role_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Create role'),
+        ),
+      ],
+      child: SizedBox(
         width: 720,
         height: 720,
         child: Column(
@@ -2844,18 +2802,6 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_rhs_create_custom_role_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Create role'),
-        ),
-      ],
     );
   }
 }
@@ -2950,14 +2896,25 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_rhs_add_child_org_unit_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Add child org unit',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
+      title: 'Add child org unit',
+      icon: Icons.add_circle_outline,
+      maxWidth: 560,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_rhs_add_org_unit_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_add_org_unit_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Add'),
+        ),
+      ],
+      child: SizedBox(
         width: 500,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3029,19 +2986,6 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_rhs_add_org_unit_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_rhs_add_org_unit_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Add'),
-        ),
-      ],
     );
   }
 }
@@ -3093,11 +3037,25 @@ class _RenameOrgUnitDialogState extends State<_RenameOrgUnitDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_rhs_rename_org_unit_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text('Rename org unit', style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
+      title: 'Rename org unit',
+      icon: Icons.drive_file_rename_outline,
+      maxWidth: 560,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_rhs_rename_org_unit_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_rename_org_unit_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Continue'),
+        ),
+      ],
+      child: SizedBox(
         width: 500,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3126,19 +3084,6 @@ class _RenameOrgUnitDialogState extends State<_RenameOrgUnitDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_rhs_rename_org_unit_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_rhs_rename_org_unit_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Continue'),
-        ),
-      ],
     );
   }
 }
@@ -3190,14 +3135,24 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_rhs_move_location_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Move ${widget.leaf.name}',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
+      title: 'Move ${widget.leaf.name}',
+      icon: Icons.swap_horiz,
+      maxWidth: 540,
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_move_location_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Move'),
+        ),
+      ],
+      child: SizedBox(
         width: 480,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3238,18 +3193,6 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
           ],
         ),
       ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_rhs_move_location_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Move'),
-        ),
-      ],
     );
   }
 }
