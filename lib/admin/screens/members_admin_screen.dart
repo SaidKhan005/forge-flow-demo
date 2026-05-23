@@ -29,6 +29,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
@@ -1084,23 +1085,15 @@ class _PeopleAccessScopeCard extends StatelessWidget {
     final scopeLabel = _selectedScopeLabel(scope);
     final scopeDisplay =
         scope?.displayLabel ?? pickedOperator.operatorBusinessName;
-    return AdminCard(
+    return OperatorWebPanel(
       key: const Key('admin_people_access_scope_card'),
+      title: 'People, access, and roles',
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Wrap(
         spacing: 8,
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: <Widget>[
-          const Icon(
-            Icons.account_tree_outlined,
-            size: 18,
-            color: AppColors.sunsetDark,
-          ),
-          Text(
-            'People, access, and roles',
-            style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-          ),
           _ScopePill(
             icon: Icons.business_outlined,
             label: pickedOperator.operatorBusinessName,
@@ -1238,41 +1231,24 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
       if (widget.mfaEnrolledFilter != null) 'MFA',
       if (widget.searchQuery.trim().isNotEmpty) 'Search',
     ];
-    return AdminCard(
+    return OperatorWebPanel(
+      key: const Key('admin_members_filter_card'),
+      title: 'People filters',
+      trailing: activeFilters.isEmpty
+          ? null
+          : OutlinedButton.icon(
+              key: const Key('admin_members_clear_filters'),
+              onPressed: widget.onClearFilters,
+              style: AdminButtonStyles.secondary(
+                minWidth: 120,
+                minHeight: 40,
+              ),
+              icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
+              label: const Text('Clear filters'),
+            ),
       child: Column(
-        key: const Key('admin_members_filter_card'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.filter_list,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'People filters',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              if (activeFilters.isNotEmpty)
-                OutlinedButton.icon(
-                  key: const Key('admin_members_clear_filters'),
-                  onPressed: widget.onClearFilters,
-                  style: AdminButtonStyles.secondary(
-                    minWidth: 120,
-                    minHeight: 40,
-                  ),
-                  icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
-                  label: const Text('Clear filters'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -1431,28 +1407,16 @@ class _MembersTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminCard(
+    return OperatorWebPanel(
+      key: const Key('admin_members_table'),
+      title: 'Members',
+      trailing: Text(
+        '${rows.length} row${rows.length == 1 ? '' : 's'}',
+        style: AppTextStyles.mono11(color: AppColors.textMuted),
+      ),
       child: Column(
-        key: const Key('admin_members_table'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Members',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              Text(
-                '${rows.length} row${rows.length == 1 ? '' : 's'}',
-                style: AppTextStyles.mono11(color: AppColors.textMuted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           if (rows.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1775,28 +1739,16 @@ class _InvitesPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminCard(
+    return OperatorWebPanel(
+      key: const Key('admin_members_invites_panel'),
+      title: 'Pending invites',
+      trailing: Text(
+        '${invites.length} invite${invites.length == 1 ? '' : 's'}',
+        style: AppTextStyles.mono11(color: AppColors.textMuted),
+      ),
       child: Column(
-        key: const Key('admin_members_invites_panel'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Pending invites',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              Text(
-                '${invites.length} invite${invites.length == 1 ? '' : 's'}',
-                style: AppTextStyles.mono11(color: AppColors.textMuted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           if (invites.isEmpty)
             Text(
               'No pending invites.',
