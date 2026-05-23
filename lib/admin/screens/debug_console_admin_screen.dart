@@ -41,6 +41,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -620,7 +622,6 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                     key: const Key('admin_debug_console_relationship_help_tab'),
                     surface: SupportHelpSurface.relationship,
                     title: 'Relationship help',
-                    icon: Icons.hub_outlined,
                     entries: _relationshipHelpEntries,
                     filter: _relationshipHelpFilter,
                     selectedUseCaseId: _relationshipHelpUseCase,
@@ -649,7 +650,6 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                     key: const Key('admin_debug_console_account_help_tab'),
                     surface: SupportHelpSurface.account,
                     title: 'Account help',
-                    icon: Icons.manage_accounts_outlined,
                     entries: _accountHelpEntries,
                     filter: _accountHelpFilter,
                     selectedUseCaseId: _accountHelpUseCase,
@@ -1043,14 +1043,10 @@ class _FilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebPanel(
       key: const Key('admin_debug_console_filter_bar'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      title: 'Filters',
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -1311,13 +1307,9 @@ class _StringFilterDialogState extends State<_StringFilterDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Filter by ${widget.label.toLowerCase()}'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: InputDecoration(hintText: widget.hint),
-      ),
+    return OperatorWebDialog(
+      title: 'Filter by ${widget.label.toLowerCase()}',
+      icon: Icons.filter_alt_outlined,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_debug_console_filter_clear'),
@@ -1330,6 +1322,11 @@ class _StringFilterDialogState extends State<_StringFilterDialog> {
           child: const Text('Apply'),
         ),
       ],
+      child: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: InputDecoration(hintText: widget.hint),
+      ),
     );
   }
 }
@@ -1816,7 +1813,6 @@ class _SupportHelpTab extends StatelessWidget {
     super.key,
     required this.surface,
     required this.title,
-    required this.icon,
     required this.entries,
     required this.filter,
     required this.selectedUseCaseId,
@@ -1833,7 +1829,6 @@ class _SupportHelpTab extends StatelessWidget {
 
   final SupportHelpSurface surface;
   final String title;
-  final IconData icon;
   final List<RequestLogEntry> entries;
   final RequestLogFilter filter;
   final String? selectedUseCaseId;
@@ -1850,93 +1845,61 @@ class _SupportHelpTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = entries;
-    return SingleChildScrollView(
+    return OperatorWebScreenBody(
       padding: const EdgeInsets.all(16),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: AdminCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Icon(icon, size: 18, color: AppColors.sunsetDark),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            title,
-                            style: AppTextStyles.display20(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            body,
-                            style: AppTextStyles.body13(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    _SupportHelpCountPill(count: rows.length),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _SupportHelpFilterBar(
-                  surface: surface,
-                  filter: filter,
-                  selectedUseCaseId: selectedUseCaseId,
-                  searchController: searchController,
-                  onFilterChanged: onFilterChanged,
-                  onSearchChanged: onSearchChanged,
-                  onUseCaseChanged: onUseCaseChanged,
-                ),
-                const SizedBox(height: 14),
-                if (loadError != null)
-                  _ErrorBanner(message: loadError!)
-                else if (loading && rows.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.sunsetDark,
-                        ),
-                      ),
-                    ),
-                  )
-                else if (rows.isEmpty)
-                  Text(
-                    emptyBody,
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  )
-                else
-                  for (final entry in rows.take(8))
-                    _SupportHelpRequestRow(surface: surface, entry: entry),
-                if (rows.isEmpty && !loading && loadError == null) ...[
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    key: Key(
-                      'admin_debug_console_${surface.name}_help_refresh',
-                    ),
-                    onPressed: onRunRefresh,
-                    style: AdminButtonStyles.secondary(),
-                    icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('Refresh'),
-                  ),
-                ],
-              ],
+      maxContentWidth: 760,
+      child: OperatorWebPanel(
+        title: title,
+        subtitle: body,
+        trailing: _SupportHelpCountPill(count: rows.length),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _SupportHelpFilterBar(
+              surface: surface,
+              filter: filter,
+              selectedUseCaseId: selectedUseCaseId,
+              searchController: searchController,
+              onFilterChanged: onFilterChanged,
+              onSearchChanged: onSearchChanged,
+              onUseCaseChanged: onUseCaseChanged,
             ),
-          ),
+            const SizedBox(height: 14),
+            if (loadError != null)
+              _ErrorBanner(message: loadError!)
+            else if (loading && rows.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.sunsetDark,
+                    ),
+                  ),
+                ),
+              )
+            else if (rows.isEmpty)
+              Text(
+                emptyBody,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              )
+            else
+              for (final entry in rows.take(8))
+                _SupportHelpRequestRow(surface: surface, entry: entry),
+            if (rows.isEmpty && !loading && loadError == null) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: Key('admin_debug_console_${surface.name}_help_refresh'),
+                onPressed: onRunRefresh,
+                style: AdminButtonStyles.secondary(),
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Refresh'),
+              ),
+            ],
+          ],
         ),
       ),
     );
