@@ -77,6 +77,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../auth/permission_key_metadata.dart';
 import '../../auth/permission_keys.dart';
@@ -342,7 +345,7 @@ class _DefaultRoleCatalogAdminScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ColoredBox(
       key: const Key('admin_default_role_catalog_screen'),
       color: AppColors.backgroundDeep,
       child: Padding(
@@ -387,8 +390,9 @@ class _DefaultRoleCatalogAdminScreenState
     if (listing == null) {
       return const SizedBox.shrink();
     }
-    return SingleChildScrollView(
-      key: const Key('admin_default_role_catalog_scroll'),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_default_role_catalog_scroll'),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -422,33 +426,15 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            const Icon(
-              Icons.shield_outlined,
-              size: 22,
-              color: AppColors.sunsetDark,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Default roles',
-              style: AppTextStyles.display28(color: AppColors.textPrimary),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
+    return const OperatorWebScreenHeader(
+      icon: Icons.shield_outlined,
+      title: 'Default roles',
+      collapseBelowWidth: 0,
+      subtitle:
           'Edit the starter role set every Forge & Flow business begins '
           'with. Publish creates a new version; businesses set to follow '
           'the latest see the change immediately. Customized roles are '
           'unaffected.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ],
     );
   }
 }
@@ -458,26 +444,13 @@ class _ReadOnlyBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: <Widget>[
-          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'View only: ecosystem admin access is required to publish '
-              'a new default catalog version.',
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        icon: Icons.lock_outline,
+        message:
+            'View only: ecosystem admin access is required to publish '
+            'a new default catalog version.',
       ),
     );
   }
@@ -490,17 +463,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.negative, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        message,
-        style: AppTextStyles.mono11(color: AppColors.negative),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        tone: OperatorWebBannerTone.error,
+        message: message,
       ),
     );
   }
@@ -514,60 +481,32 @@ class _CurrentVersionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (current == null) {
-      return Container(
+      return OperatorWebPanel(
         key: const Key('admin_default_role_catalog_current_empty'),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              'No default catalog published yet',
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Forge & Flow is using the built-in starter roles. Publish '
-              'a first version to put the catalog under change control.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ],
+        title: 'No default catalog published yet',
+        child: Text(
+          'Forge & Flow is using the built-in starter roles. Publish '
+          'a first version to put the catalog under change control.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       );
     }
     final c = current!;
-    return Container(
+    return OperatorWebPanel(
       key: const Key('admin_default_role_catalog_current_panel'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.sunset, width: 1.2),
-        borderRadius: BorderRadius.circular(8),
+      title: 'Current version',
+      trailing: _Pill(
+        label: 'Active',
+        background: AppColors.positive.withValues(alpha: 0.15),
+        foreground: AppColors.positive,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Text(
-                'Current version: v${c.versionNumber}',
-                key: const Key('admin_default_role_catalog_current_version'),
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(width: 10),
-              _Pill(
-                label: 'Active',
-                background: AppColors.positive.withValues(alpha: 0.15),
-                foreground: AppColors.positive,
-              ),
-            ],
+          Text(
+            'v${c.versionNumber}',
+            key: const Key('admin_default_role_catalog_current_version'),
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
           ),
           const SizedBox(height: 6),
           Text(
@@ -622,51 +561,28 @@ class _DraftEditorPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OperatorWebPanel(
       key: const Key('admin_default_role_catalog_draft_panel'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      title: 'Draft',
+      subtitle:
+          'Add, remove, or edit roles below. Drafts are not saved on '
+          'the server - if you leave the page, the changes are lost.',
+      trailing: !draftEqualsCurrent
+          ? _Pill(
+              key: const Key('admin_default_role_catalog_draft_dirty_pill'),
+              label: 'Unsaved changes',
+              background: AppColors.warning.withValues(alpha: 0.15),
+              foreground: AppColors.warning,
+            )
+          : _Pill(
+              key: const Key('admin_default_role_catalog_draft_clean_pill'),
+              label: 'Matches current',
+              background: AppColors.backgroundDeep,
+              foreground: AppColors.textMuted,
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Text(
-                'Draft',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(width: 10),
-              if (!draftEqualsCurrent)
-                _Pill(
-                  key: const Key(
-                    'admin_default_role_catalog_draft_dirty_pill',
-                  ),
-                  label: 'Unsaved changes',
-                  background: AppColors.warning.withValues(alpha: 0.15),
-                  foreground: AppColors.warning,
-                )
-              else
-                _Pill(
-                  key: const Key(
-                    'admin_default_role_catalog_draft_clean_pill',
-                  ),
-                  label: 'Matches current',
-                  background: AppColors.backgroundDeep,
-                  foreground: AppColors.textMuted,
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Add, remove, or edit roles below. Drafts are not saved on '
-            'the server - if you leave the page, the changes are lost.',
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
           if (draft.isEmpty)
             Padding(
               key: const Key(
@@ -967,42 +883,24 @@ class _HistoryPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (history.isEmpty) {
-      return Container(
+      return OperatorWebPanel(
         key: const Key('admin_default_role_catalog_history_empty'),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(8),
-        ),
+        title: 'History',
         child: Text(
           'History will appear here after the first publish.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       );
     }
-    return Container(
+    return OperatorWebPanel(
       key: const Key('admin_default_role_catalog_history_panel'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      title: 'History',
+      subtitle:
+          'Up to 20 most recent versions. Tap a row to see its full role '
+          'definitions.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(
-            'History',
-            style: AppTextStyles.display20(color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Up to 20 most recent versions. Tap a row to see its full role '
-            'definitions.',
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 10),
           for (final version in history)
             _HistoryRow(
               key: Key(

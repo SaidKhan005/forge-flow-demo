@@ -32,6 +32,7 @@
 //   * test/admin/default_role_catalog_publish_dialog_test.dart
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
@@ -235,18 +236,13 @@ class _DefaultRoleCatalogPublishDialogState
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_default_role_catalog_publish_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        _titleForStage(),
-        style: AppTextStyles.display20(color: _titleColorForStage()),
-      ),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(child: _buildBody()),
-      ),
+      title: _titleForStage(),
+      maxWidth: 520,
+      showCloseButton: false,
       actions: _buildActions(),
+      child: SingleChildScrollView(child: _buildBody()),
     );
   }
 
@@ -264,17 +260,6 @@ class _DefaultRoleCatalogPublishDialogState
         return 'Published version ${_published?.versionNumber ?? widget.nextVersionNumber}';
       case _Stage.error:
         return 'Publish failed';
-    }
-  }
-
-  Color _titleColorForStage() {
-    switch (_stage) {
-      case _Stage.error:
-        return AppColors.negative;
-      case _Stage.success:
-        return AppColors.positive;
-      default:
-        return AppColors.textPrimary;
     }
   }
 
@@ -409,77 +394,29 @@ class _AwarenessBody extends StatelessWidget {
           key: const Key('admin_default_role_catalog_publish_headline'),
           style: AppTextStyles.body13(color: AppColors.textPrimary),
         ),
-        if (_shouldShowErrorChip)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Container(
-              key: const Key(
-                'admin_default_role_catalog_publish_blast_error_chip',
-              ),
-              padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-              decoration: BoxDecoration(
-                color: AppColors.negative.withValues(alpha: 0.08),
-                border: Border.all(
-                  color: AppColors.negative.withValues(alpha: 0.40),
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Icon(
-                    Icons.error_outline,
-                    size: 14,
-                    color: AppColors.negative,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Blast-radius preview unavailable '
-                      '(${blastRadius!.errorCode}). Showing plain-English '
-                      'consequences instead. Publish still works.',
-                      style: AppTextStyles.body12(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+        if (_shouldShowErrorChip) ...<Widget>[
+          const SizedBox(height: 8),
+          OperatorWebBanner(
+            key: const Key(
+              'admin_default_role_catalog_publish_blast_error_chip',
             ),
+            tone: OperatorWebBannerTone.error,
+            message:
+                'Blast-radius preview unavailable '
+                '(${blastRadius!.errorCode}). Showing plain-English '
+                'consequences instead. Publish still works.',
           ),
+        ],
         const SizedBox(height: 14),
-        Container(
-          key: const Key('admin_default_role_catalog_publish_blast_notice'),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: AppColors.warning.withValues(alpha: 0.10),
-            border: Border.all(
-              color: AppColors.warning.withValues(alpha: 0.45),
-              width: 1,
-            ),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Icon(
-                Icons.info_outline,
-                size: 18,
-                color: AppColors.warning,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Blast radius: this catalog is shared across every '
-                  'business on Forge & Flow. The audit log records the '
-                  'number of businesses pinned to the prior version at '
-                  'publish time.',
-                  style: AppTextStyles.body12(color: AppColors.textPrimary),
-                ),
-              ),
-            ],
-          ),
+        const OperatorWebBanner(
+          key: Key('admin_default_role_catalog_publish_blast_notice'),
+          tone: OperatorWebBannerTone.warning,
+          icon: Icons.info_outline,
+          message:
+              'Blast radius: this catalog is shared across every '
+              'business on Forge & Flow. The audit log records the '
+              'number of businesses pinned to the prior version at '
+              'publish time.',
         ),
         const SizedBox(height: 14),
         Text(
