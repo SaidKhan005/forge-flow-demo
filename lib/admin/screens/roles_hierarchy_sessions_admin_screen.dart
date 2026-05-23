@@ -26,6 +26,7 @@ import '../../auth/permission_key_metadata.dart';
 import '../../auth/permission_keys.dart';
 import '../../domain/hierarchy/org_unit_depth_rule.dart';
 import '../../domain/models/inheritance_tree_node.dart';
+import '../../services/auth/custom_role_validator.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../../widgets/permission_explainer_view.dart';
@@ -35,6 +36,7 @@ import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
+import '../widgets/admin_role_warning_panel.dart';
 import 'operator_picker_screen.dart';
 
 class RolesHierarchySessionsAdminScreen extends StatefulWidget {
@@ -278,10 +280,13 @@ class _RolesHierarchySessionsAdminScreenState
   }
 
   Future<void> _onCreateCustomRole() async {
+    final scope =
+        widget.initialScope ?? _scopeFromPickedOperator(widget.pickedOperator);
     final result = await showDialog<CustomRoleDraft>(
       context: context,
       builder: (_) => CreateCustomRoleDialog(
         existingRoleKeys: <String>{for (final r in _roles) r.roleKey},
+        roleScope: _roleScopeFromAdminScope(scope.scopeType),
       ),
     );
     if (result == null) return;
@@ -709,6 +714,22 @@ IconData _scopeIcon(AdminHierarchyScopeType type) {
       return Icons.account_tree_outlined;
     case AdminHierarchyScopeType.location:
       return Icons.location_on_outlined;
+  }
+}
+
+/// Map the admin shell's working hierarchy scope onto the shared
+/// [RoleScope] the [CustomRoleValidator] understands, so the admin
+/// custom-role editor surfaces the same coherence warnings as the
+/// operator-web editor (W4 parity). The two enums mirror each other
+/// one-for-one (business / org unit / location).
+RoleScope _roleScopeFromAdminScope(AdminHierarchyScopeType type) {
+  switch (type) {
+    case AdminHierarchyScopeType.business:
+      return RoleScope.business;
+    case AdminHierarchyScopeType.orgUnit:
+      return RoleScope.orgUnit;
+    case AdminHierarchyScopeType.location:
+      return RoleScope.location;
   }
 }
 
@@ -2637,9 +2658,22 @@ class CustomRoleDraft {
 }
 
 class CreateCustomRoleDialog extends StatefulWidget {
-  const CreateCustomRoleDialog({super.key, required this.existingRoleKeys});
+  const CreateCustomRoleDialog({
+    super.key,
+    required this.existingRoleKeys,
+    this.roleScope = RoleScope.business,
+    this.validator = const CustomRoleValidator(),
+  });
 
   final Set<String> existingRoleKeys;
+
+  /// Working hierarchy scope this role is being authored at, so the
+  /// validator's location-scope warnings fire as on operator-web.
+  final RoleScope roleScope;
+
+  /// Advisory validator for the inline coherence warnings. Override in
+  /// tests to pin a warning set without seeding keys (as operator-web).
+  final CustomRoleValidator validator;
 
   @override
   State<CreateCustomRoleDialog> createState() => _CreateCustomRoleDialogState();
@@ -2657,7 +2691,21 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   String? _reasonError;
 
   @override
+  void initState() {
+    super.initState();
+    // Rebuild on name change so the advisory warning panel re-runs the
+    // validator as the admin types (the non-Owner billing rule reads
+    // the display name). Mirrors the operator-web editor.
+    _displayNameController.addListener(_onDisplayNameChanged);
+  }
+
+  void _onDisplayNameChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _displayNameController.removeListener(_onDisplayNameChanged);
     _displayNameController.dispose();
     _roleKeyController.dispose();
     _descriptionController.dispose();
@@ -2787,6 +2835,12 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
                 style: AppTextStyles.body12(color: AppColors.negative),
               ),
             ],
+            AdminRoleWarningPanel(
+              permissionKeys: _selectedPermissionKeys,
+              scope: widget.roleScope,
+              roleDisplayName: _displayNameController.text,
+              validator: widget.validator,
+            ),
             const SizedBox(height: 10),
             TextField(
               key: const Key('admin_rhs_create_custom_role_reason'),
