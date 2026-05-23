@@ -27,7 +27,7 @@
 //   - product.*       (2 keys)  product-access gates
 //   - forgeflow.*     (20 keys) Forge & Flow surfaces and actions
 //   - barrio.*        (12 keys) Barrio destinations and actions
-//   - admin.*         (28 keys) admin actions
+//   - admin.*         (33 keys) admin actions
 //   - team.*          (17 keys) operator-self-service team management
 //                                (added 9.0a; consumed by 9.10 operator-
 //                                facing Settings → Team UX; W-3 added
@@ -46,12 +46,13 @@
 //   - integrations.*  (1 key)   Phase 8.0 vendor-connections category gate
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 106 keys (81 baseline + 13 team.* keys + 2 later admin
+// Total: 111 keys (81 baseline + 13 team.* keys + 2 later admin
 // keys added in 9.0Σ.h2/B41 + 1 integrations.configure added in
 // Phase 8.0 + 1 admin.users.reset_mfa_factors added in 11A.14 +
 // 1 team.audit_log.export added in 11W.5 + 2 hierarchy lifecycle
 // keys + 2 B5.b settings keys + 1 team.users.self_update added in W-3 +
-// 2 team.roles.default_catalog.* keys added in Wave 2 RP-9).
+// 2 team.roles.default_catalog.* keys added in Wave 2 RP-9
+// + 5 admin.hierarchy.* keys added in Slice E).
 // Some keys are flagged MFA-required via PermissionKeys.requiresMfa;
 // the migration mirrors that in the permission_keys.requires_mfa
 // column.
@@ -109,7 +110,7 @@ class PermissionKeys {
       'barrio.learning.complete_unit';
   static const String barrioStreakView = 'barrio.streak.view';
 
-  // ─── admin.* (27) ─────────────────────────────────────────────────
+  // ─── admin.* (33) ─────────────────────────────────────────────────
   static const String adminUsersView = 'admin.users.view';
   static const String adminUsersCreate = 'admin.users.create';
   static const String adminUsersDeactivate = 'admin.users.deactivate';
@@ -148,6 +149,23 @@ class PermissionKeys {
   // tier roles do NOT receive this key by default — raw advisor-
   // conversation content is F&F-internal at launch.
   static const String adminAuditPrivacyRead = 'admin.audit_privacy.read'; // MFA
+  // Added Slice E (2026-05-23). DORMANT catalog additions — present in
+  // PermissionKeys.all, seeded, and granted to super_admin + ff_support,
+  // but not yet consumed by any gate. A later slice wires the F&F-internal
+  // "Business accounts" admin path (cross-operator hierarchy mutations:
+  // create / move / rename / suspend / delete org-units + locations) to
+  // these keys. Distinct from the operator-self-service
+  // `team.hierarchy.suspend` / `team.hierarchy.delete` keys, which gate an
+  // operator managing their OWN hierarchy. `suspend` + `delete` require MFA
+  // (destructive admin posture, mirroring admin.users.erase_pii /
+  // admin.users.reset_mfa_factors); create / move / rename do not
+  // (additive / reversible structural edits). Default-granted to
+  // `super_admin` + `ff_support` only — NOT operator-tier roles.
+  static const String adminHierarchyCreate = 'admin.hierarchy.create';
+  static const String adminHierarchyMove = 'admin.hierarchy.move';
+  static const String adminHierarchyRename = 'admin.hierarchy.rename';
+  static const String adminHierarchySuspend = 'admin.hierarchy.suspend'; // MFA
+  static const String adminHierarchyDelete = 'admin.hierarchy.delete'; // MFA
 
   // ─── team.* (15) ──────────────────────────────────────────────────
   // Added 9.0a (2026-04-27). Operator-self-service team management;
@@ -312,6 +330,11 @@ class PermissionKeys {
     adminSessionForceLogout,
     adminServicePrincipalIssueToken,
     adminAuditPrivacyRead,
+    adminHierarchyCreate,
+    adminHierarchyMove,
+    adminHierarchyRename,
+    adminHierarchySuspend,
+    adminHierarchyDelete,
     teamUsersView,
     teamUsersInvite,
     teamUsersDeactivate,
@@ -367,6 +390,8 @@ class PermissionKeys {
     adminPricingTierEdit,
     adminServicePrincipalIssueToken,
     adminAuditPrivacyRead,
+    adminHierarchySuspend,
+    adminHierarchyDelete,
     billingSubscriptionManage,
     billingPaymentMethodManage,
     billingUsageCapsEdit,
