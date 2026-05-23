@@ -35,6 +35,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -271,22 +273,13 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Card(
+          OperatorWebPanel(
+            title: 'Service Access',
+            subtitle:
+                'Platform keys F&F uses to call model, embedding, database, and email providers. Saved rows show only a preview; a new key is revealed once after replacement.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Service Access',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Platform keys F&F uses to call model, embedding, database, and email providers. Saved rows show only a preview; a new key is revealed once after replacement.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 10),
                 for (final kind in ProviderKeyKind.values)
                   _ProviderKeyTile(
                     kind: kind,
@@ -299,22 +292,13 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          _Card(
+          OperatorWebPanel(
+            title: 'Vendor connector catalog',
+            subtitle:
+                'Grouped by the operational system each vendor feeds. Status reflects global vendor API health; operator edits live on Operator Web.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Vendor connector catalog',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Grouped by the operational system each vendor feeds. Status reflects global vendor API health; operator edits live on Operator Web.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 10),
                 if (bundle.vendorConnectors.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
@@ -331,22 +315,13 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          _Card(
+          OperatorWebPanel(
+            title: 'Shared Services',
+            subtitle:
+                'Shared platform services used across operators, such as exchange rates and outbound email. These are separate from per-location vendor integrations.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Shared Services',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Shared platform services used across operators, such as exchange rates and outbound email. These are separate from per-location vendor integrations.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 10),
                 _StatusRowTile(bundle.fxRateSource),
                 _StatusRowTile(bundle.emailProvider),
               ],
@@ -380,20 +355,11 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Connected services',
-          style: AppTextStyles.display28(color: AppColors.textPrimary),
-        ),
-        const SizedBox(height: 4),
-        Text(
+    return const OperatorWebScreenHeader(
+      icon: Icons.extension_outlined,
+      title: 'Connected services',
+      subtitle:
           'Review global provider health and platform keys. Operator edits live on Operator Web; this view is for F&F support.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ],
     );
   }
 }
@@ -403,25 +369,12 @@ class _ReadOnlyBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Operator edits live on Operator Web; this view is for F&F support. Global provider health stays here.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        icon: Icons.lock_outline,
+        message:
+            'Operator edits live on Operator Web; this view is for F&F support. Global provider health stays here.',
       ),
     );
   }
@@ -737,64 +690,10 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_integrations_rotate_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Replace ${widget.keyKind.displayName} key',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 460,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Paste the new key. Only the saved preview is shown after rotation.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                key: const Key('admin_integrations_rotate_plaintext_field'),
-                controller: _controller,
-                obscureText: _obscured,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'New key',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(6),
-                    borderSide: const BorderSide(
-                      color: AppColors.borderSubtle,
-                      width: 1,
-                    ),
-                  ),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscured
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                      size: 18,
-                    ),
-                    onPressed: () => setState(() => _obscured = !_obscured),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Required';
-                  }
-                  if (value.trim().length < 9) {
-                    return 'Key must be at least 9 characters.';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+      title: 'Replace ${widget.keyKind.displayName} key',
+      showCloseButton: false,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_integrations_rotate_cancel_button'),
@@ -817,6 +716,54 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
           child: const Text('Save key'),
         ),
       ],
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Paste the new key. Only the saved preview is shown after rotation.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              key: const Key('admin_integrations_rotate_plaintext_field'),
+              controller: _controller,
+              obscureText: _obscured,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'New key',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: const BorderSide(
+                    color: AppColors.borderSubtle,
+                    width: 1,
+                  ),
+                ),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscured
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 18,
+                  ),
+                  onPressed: () => setState(() => _obscured = !_obscured),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Required';
+                }
+                if (value.trim().length < 9) {
+                  return 'Key must be at least 9 characters.';
+                }
+                return null;
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -860,55 +807,10 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_integrations_reveal_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        '${widget.keyKind.displayName} key saved',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This is the only time this key is shown. Store it now; the console cannot reveal it again.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundDeep,
-                border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: SelectableText(
-                widget.plaintextValue,
-                key: const Key('admin_integrations_reveal_plaintext'),
-                style: AppTextStyles.mono14(color: AppColors.textPrimary),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                FilledButton.icon(
-                  key: const Key('admin_integrations_reveal_copy_button'),
-                  style: AdminButtonStyles.primary,
-                  onPressed: _copyPlaintext,
-                  icon: Icon(
-                    _copied ? Icons.check : Icons.content_copy,
-                    size: 14,
-                  ),
-                  label: Text(_copied ? 'Copied' : 'Copy'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+      title: '${widget.keyKind.displayName} key saved',
+      showCloseButton: false,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_integrations_reveal_close_button'),
@@ -916,25 +818,45 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
           child: const Text('Close'),
         ),
       ],
-    );
-  }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This is the only time this key is shown. Store it now; the console cannot reveal it again.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundDeep,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: SelectableText(
+              widget.plaintextValue,
+              key: const Key('admin_integrations_reveal_plaintext'),
+              style: AppTextStyles.mono14(color: AppColors.textPrimary),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              FilledButton.icon(
+                key: const Key('admin_integrations_reveal_copy_button'),
+                style: AdminButtonStyles.primary,
+                onPressed: _copyPlaintext,
+                icon: Icon(
+                  _copied ? Icons.check : Icons.content_copy,
+                  size: 14,
+                ),
+                label: Text(_copied ? 'Copied' : 'Copy'),
+              ),
+            ],
+          ),
+        ],
       ),
-      padding: const EdgeInsets.all(16),
-      child: child,
     );
   }
 }
@@ -946,17 +868,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.negative, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        message,
-        style: AppTextStyles.mono11(color: AppColors.negative),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OperatorWebBanner(
+        tone: OperatorWebBannerTone.error,
+        message: message,
       ),
     );
   }
@@ -975,17 +891,10 @@ class _ConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_integrations_confirm_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        title,
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: Text(
-        message,
-        style: AppTextStyles.body13(color: AppColors.textSecondary),
-      ),
+      title: title,
+      showCloseButton: false,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_integrations_confirm_cancel'),
@@ -999,6 +908,10 @@ class _ConfirmDialog extends StatelessWidget {
           child: Text(confirmLabel),
         ),
       ],
+      child: Text(
+        message,
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
+      ),
     );
   }
 }
