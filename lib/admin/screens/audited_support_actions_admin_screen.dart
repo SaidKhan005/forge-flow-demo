@@ -40,6 +40,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/inheritance_tree_node.dart';
 import '../../theme/app_theme.dart';
@@ -725,29 +726,17 @@ class _AuditScopePickerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminCard(
-      child: Column(
-        key: const Key('admin_asa_audit_scope_picker'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(
-            'Audit log scope',
-            style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Pick a business, region, district, or location in the tree '
-            'to set the audit log scope. The scope you pick is shown '
-            'below.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 10),
-          InheritanceTree(
-            rootNode: rootNode,
-            onNodeTap: onNodeTap,
-            annotationBuilder: (context, node) => const SizedBox.shrink(),
-          ),
-        ],
+    return OperatorWebPanel(
+      key: const Key('admin_asa_audit_scope_picker'),
+      title: 'Audit log scope',
+      subtitle:
+          'Pick a business, region, district, or location in the tree '
+          'to set the audit log scope. The scope you pick is shown '
+          'below.',
+      child: InheritanceTree(
+        rootNode: rootNode,
+        onNodeTap: onNodeTap,
+        annotationBuilder: (context, node) => const SizedBox.shrink(),
       ),
     );
   }
@@ -924,23 +913,16 @@ class _ActionsPanelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminCard(
+    return OperatorWebPanel(
+      key: const Key('admin_asa_actions_panel'),
+      title: 'Actions',
+      subtitle:
+          'Each action asks for a reason and writes a row to the audit log '
+          'plus the F&F internal action log. Multi-factor sign-in is '
+          'required for the most sensitive actions.',
       child: Column(
-        key: const Key('admin_asa_actions_panel'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(
-            'Actions',
-            style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Each action asks for a reason and writes a row to the audit log '
-            'plus the F&F internal action log. Multi-factor sign-in is '
-            'required for the most sensitive actions.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
           _ActionGroup(
             keyId: 'admin_asa_action_group_recovery',
             title: 'Account recovery',
@@ -1162,39 +1144,25 @@ class _AuditLogCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminCard(
+    return OperatorWebPanel(
+      key: const Key('admin_asa_audit_log'),
+      title: 'Audit log',
+      trailing: canExport
+          ? FilledButton.icon(
+              key: const Key('admin_asa_audit_log_export'),
+              onPressed: onExportCsv,
+              style: AdminButtonStyles.primary,
+              icon: const Icon(Icons.download, size: 16),
+              label: const Text('Export CSV'),
+            )
+          : null,
+      subtitle:
+          'Cursor-paginated rows scoped to this operator. Sorted newest '
+          'first. Filters and the CSV export are audit-logged. Times are '
+          'shown in your browser local timezone.',
       child: Column(
-        key: const Key('admin_asa_audit_log'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  'Audit log',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              if (canExport)
-                FilledButton.icon(
-                  key: const Key('admin_asa_audit_log_export'),
-                  onPressed: onExportCsv,
-                  style: AdminButtonStyles.primary,
-                  icon: const Icon(Icons.download, size: 16),
-                  label: const Text('Export CSV'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Cursor-paginated rows scoped to this operator. Sorted newest '
-            'first. Filters and the CSV export are audit-logged. Times are '
-            'shown in your browser local timezone.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 8),
           _FiltersBar(
             filters: filters,
             members: members,
@@ -2056,39 +2024,11 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_asa_reason_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              'The operator will see this reason in their audit log. '
-              'Write a short, plain-English note about why you are running '
-              'this action.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_asa_reason_field'),
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _violated
-                    ? SupportActionsValidationCopy.adminReasonRequired
-                    : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: widget.title,
+      maxWidth: 460,
+      showCloseButton: false,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_asa_reason_cancel'),
@@ -2102,6 +2042,32 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
           child: const Text('Confirm'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'The operator will see this reason in their audit log. '
+            'Write a short, plain-English note about why you are running '
+            'this action.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_asa_reason_field'),
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _violated
+                  ? SupportActionsValidationCopy.adminReasonRequired
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2140,35 +2106,11 @@ class _MemberPickerDialogState extends State<_MemberPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_asa_member_picker_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
-        width: 460,
-        child: widget.members.isEmpty
-            ? Text(
-                widget.emptyCopy,
-                style: AppTextStyles.body13(color: AppColors.textMuted),
-              )
-            : DropdownButtonFormField<String>(
-                key: const Key('admin_asa_member_picker_dropdown'),
-                initialValue: _selected,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Member',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<String>>[
-                  for (final m in widget.members)
-                    DropdownMenuItem<String>(
-                      value: m.userId,
-                      child: Text('${m.displayName} (${m.email})'),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _selected = v),
-              ),
-      ),
+      title: widget.title,
+      maxWidth: 460,
+      showCloseButton: false,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -2181,6 +2123,28 @@ class _MemberPickerDialogState extends State<_MemberPickerDialog> {
           child: const Text('Continue'),
         ),
       ],
+      child: widget.members.isEmpty
+          ? Text(
+              widget.emptyCopy,
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            )
+          : DropdownButtonFormField<String>(
+              key: const Key('admin_asa_member_picker_dropdown'),
+              initialValue: _selected,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Member',
+                border: OutlineInputBorder(),
+              ),
+              items: <DropdownMenuItem<String>>[
+                for (final m in widget.members)
+                  DropdownMenuItem<String>(
+                    value: m.userId,
+                    child: Text('${m.displayName} (${m.email})'),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _selected = v),
+            ),
     );
   }
 }
@@ -2215,41 +2179,11 @@ class _SecondApproverDialogState extends State<_SecondApproverDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_asa_second_approver_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Second F&F admin confirmation',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              'A second F&F admin must confirm this erasure. The first '
-              'approver was '
-              '${widget.firstApproverUserId}. Enter the second admin\'s '
-              'user ID to record their confirmation.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_asa_second_approver_uid'),
-              controller: _uidController,
-              decoration: InputDecoration(
-                labelText: 'Second admin user ID',
-                border: const OutlineInputBorder(),
-                errorText: _violated
-                    ? SupportActionsValidationCopy.adminReasonRequired
-                    : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: 'Second F&F admin confirmation',
+      maxWidth: 480,
+      showCloseButton: false,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -2262,6 +2196,31 @@ class _SecondApproverDialogState extends State<_SecondApproverDialog> {
           child: const Text('Confirm erasure'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'A second F&F admin must confirm this erasure. The first '
+            'approver was '
+            '${widget.firstApproverUserId}. Enter the second admin\'s '
+            'user ID to record their confirmation.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_asa_second_approver_uid'),
+            controller: _uidController,
+            decoration: InputDecoration(
+              labelText: 'Second admin user ID',
+              border: const OutlineInputBorder(),
+              errorText: _violated
+                  ? SupportActionsValidationCopy.adminReasonRequired
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
