@@ -32,13 +32,14 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_screen_header.dart';
+import '../../widgets/console/console_surface.dart';
 
 import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
 import '../widgets/admin_hierarchy_scope_notice.dart';
-import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_run_check_controls.dart';
 
 /// One tile entry in a tab section.
@@ -433,40 +434,43 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminPageHeader(
+    return OperatorWebScreenHeader(
+      icon: Icons.health_and_safety_outlined,
       title: 'System health',
       subtitle:
           'Run a read-only check of advisor data, app service, and platform services.',
-      compactBreakpoint: 640,
-      trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 320),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AdminRunCheckButton(
-              key: const Key('admin_health_refresh_button'),
-              onPressed: () {
-                onRunHealthCheck();
-              },
-              icon: Icons.health_and_safety_outlined,
-              label: 'Run system check',
-              loadingLabel: 'Running...',
-              loading: loading,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              lastRefreshed == null
-                  ? 'Last checked: -'
-                  : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
-              key: const Key('admin_health_last_refreshed'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-          ],
+      collapseBelowWidth: 640,
+      actions: <Widget>[
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AdminRunCheckButton(
+                key: const Key('admin_health_refresh_button'),
+                onPressed: () {
+                  onRunHealthCheck();
+                },
+                icon: Icons.health_and_safety_outlined,
+                label: 'Run system check',
+                loadingLabel: 'Running...',
+                loading: loading,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                lastRefreshed == null
+                    ? 'Last checked: -'
+                    : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
+                key: const Key('admin_health_last_refreshed'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -954,33 +958,18 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: OperatorWebPanel(
+        title: section.title,
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
           children: <Widget>[
-            Text(
-              section.title,
-              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: <Widget>[
-                for (final tile in section.tiles)
-                  _MetricTile(
-                    key: Key('admin_health_tile_${tile.metricKey}'),
-                    tile: tile,
-                    metric: envelope.metrics[tile.metricKey],
-                  ),
-              ],
-            ),
+            for (final tile in section.tiles)
+              _MetricTile(
+                key: Key('admin_health_tile_${tile.metricKey}'),
+                tile: tile,
+                metric: envelope.metrics[tile.metricKey],
+              ),
           ],
         ),
       ),
