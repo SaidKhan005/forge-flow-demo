@@ -32,6 +32,7 @@ class AdminSetupWorkspace extends StatefulWidget {
     this.onScopeChanged,
     this.onBackToBusinessAccounts,
     this.description,
+    this.showWorkspaceHeader = true,
   });
 
   final String functionTitle;
@@ -42,6 +43,14 @@ class AdminSetupWorkspace extends StatefulWidget {
   final ValueChanged<AdminHierarchyScopeIntent>? onScopeChanged;
   final VoidCallback? onBackToBusinessAccounts;
   final AdminSetupWorkspaceBuilder functionBuilder;
+
+  /// When false, the function pane renders the builder's screen WITHOUT
+  /// the generic workspace header bar, so a screen that owns a web-style
+  /// `OperatorWebScreenHeader` (Team members, Vendor integrations, ...)
+  /// is the single page header (operator-web parity). The 360px scope
+  /// tree pane is unaffected. Defaults true for the setup workspaces that
+  /// still rely on the shared header.
+  final bool showWorkspaceHeader;
 
   @override
   State<AdminSetupWorkspace> createState() => _AdminSetupWorkspaceState();
@@ -141,6 +150,7 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
               description: widget.description,
               selectedScope: _selectedScope,
               onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
+              showWorkspaceHeader: widget.showWorkspaceHeader,
               child: _selectedScope == null
                   ? null
                   : KeyedSubtree(
@@ -202,6 +212,7 @@ class _FunctionPane extends StatelessWidget {
     required this.description,
     required this.selectedScope,
     required this.onBackToBusinessAccounts,
+    required this.showWorkspaceHeader,
     required this.child,
   });
 
@@ -209,6 +220,7 @@ class _FunctionPane extends StatelessWidget {
   final String? description;
   final AdminHierarchyScopeIntent? selectedScope;
   final VoidCallback? onBackToBusinessAccounts;
+  final bool showWorkspaceHeader;
   final Widget? child;
 
   @override
@@ -243,7 +255,8 @@ class _FunctionPane extends StatelessWidget {
                 ),
               ),
             )
-          : Column(
+          : showWorkspaceHeader
+          ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _WorkspaceHeader(
@@ -254,7 +267,8 @@ class _FunctionPane extends StatelessWidget {
                 ),
                 Expanded(child: child!),
               ],
-            ),
+            )
+          : child!,
     );
   }
 }
