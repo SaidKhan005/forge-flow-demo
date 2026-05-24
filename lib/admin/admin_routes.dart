@@ -76,6 +76,7 @@ import 'services/pricing_tier_admin_gateway.dart';
 import 'services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'services/vendor_applicability_admin_gateway.dart';
 import 'widgets/admin_setup_workspace.dart';
+import 'widgets/corpus_upload_dialog.dart';
 import '../domain/models/data_accuracy_settings.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../domain/models/inheritance_tree_node.dart';
@@ -1000,9 +1001,18 @@ Widget _buildCorpus(BuildContext context) {
     functionBuilder: (context, selectedScope, selection) {
       final targetOperatorId = selectedScope.operatorId;
       final targetLocationId = selectedScope.locationId;
+      // B1 — wire the real file-picker dialog as the upload picker.
+      // Production (source != null) and demo (source == null) both use
+      // [showCorpusUploadDialog]; the dialog internally renders a
+      // "Use sample file" affordance when `kDemoMode` is true so the
+      // demo walkthrough click-path runs without a real file on disk.
+      // The old paste-markdown `_defaultDemoPicker` in the screen remains
+      // as a fallback but is no longer reached from this wiring.
+      final CorpusUploadPicker uploadPicker = showCorpusUploadDialog;
       if (source == null) {
         return CorpusAdminScreen(
           gateway: gateway,
+          uploadPicker: uploadPicker,
           targetOperatorId: targetOperatorId,
           targetLocationId: targetLocationId,
         );
@@ -1016,6 +1026,7 @@ Widget _buildCorpus(BuildContext context) {
           return CorpusAdminScreen(
             gateway: gateway,
             editingEnabled: canEdit,
+            uploadPicker: uploadPicker,
             targetOperatorId: targetOperatorId,
             targetLocationId: targetLocationId,
           );
