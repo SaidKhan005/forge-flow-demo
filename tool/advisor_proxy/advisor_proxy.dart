@@ -51,6 +51,14 @@ import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/domain/services/graceful_refusal_response.dart';
 import 'package:forge_and_flow/domain/services/llm_provider.dart';
+// Slice A3 — `RerankCandidate` (build the candidate pool from chunks) and
+// `RetrievedChunk` (reorder the pool by rerank rank) are used in the
+// monolith's library scope by the retrieve route part. The rerank gateway
+// itself owns the provider/result plumbing.
+import 'package:forge_and_flow/domain/models/retrieved_chunk.dart'
+    show RetrievedChunk;
+import 'package:forge_and_flow/domain/services/rerank_provider.dart'
+    show RerankCandidate;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart'
     show PostgresPoolGaugeSnapshot;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
@@ -131,6 +139,15 @@ export 'advisor_query_embedding_gateway_part.dart'
         AdvisorQueryEmbeddingException,
         AdvisorQueryEmbeddingResult,
         VoyageHttpQueryEmbeddingGateway;
+// Slice A3 — server-side Voyage rerank gateway types exported so
+// proxy_bootstrap.dart and main.dart can construct the production gateway
+// by importing advisor_proxy.dart only (no extra import of the sibling file).
+export 'advisor_rerank_gateway_part.dart'
+    show
+        AdvisorRerankGateway,
+        AdvisorRerankException,
+        AdvisorRerankResult,
+        VoyageHttpRerankGateway;
 export 'log.dart'
     show
         LogSeverity,
@@ -352,6 +369,17 @@ import 'advisor_query_embedding_gateway_part.dart'
         AdvisorQueryEmbeddingGateway,
         AdvisorQueryEmbeddingException,
         AdvisorQueryEmbeddingResult;
+
+// Advisor Knowledge Activation — Slice A3: server-side Voyage rerank
+// gateway. Standalone file (not a `part`) so its own imports (dart:io,
+// dart:convert, package:http, the rerank domain types) do not land in the
+// monolith's import space. `VoyageHttpRerankGateway` is re-exported above
+// (for proxy_bootstrap / main.dart) but NOT imported here — it is not used
+// inside the monolith or its `part` files; the abstract interface,
+// exception, and result type are the only types the retrieve route needs,
+// plus `RerankCandidate` to build the candidate pool from chunks.
+import 'advisor_rerank_gateway_part.dart'
+    show AdvisorRerankGateway, AdvisorRerankException, AdvisorRerankResult;
 
 // chore(advisor-proxy) size refactor: cohesive admin route group
 // (corpus / debug-console / observability / feature-flags /
@@ -6195,6 +6223,16 @@ Future<void> routeRequest(
   // logged, NEVER returned to the client.
   AdvisorQueryEmbeddingGateway? corpusQueryEmbeddingGateway,
   String? voyageApiKeyForRetrieval,
+  // Slice A3 — server-side Voyage rerank gateway. Optional: when null the
+  // text-query path returns the A2b vector-only order unchanged (full
+  // back-compat). When wired (production), the route fetches a larger
+  // candidate pool, reranks it against the query text, and returns the
+  // top max_results reordered by rerank score. HP #7:
+  // [voyageRerankApiKeyForRetrieval] is a server-side secret — NEVER
+  // logged, NEVER returned to the client. Reuses the SAME VOYAGE_API_KEY
+  // secret as the embedding gateway (one Voyage account, two endpoints).
+  AdvisorRerankGateway? corpusRerankGateway,
+  String? voyageRerankApiKeyForRetrieval,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -13334,6 +13372,11 @@ Future<void> routeRequest(
               embeddingGateway: corpusQueryEmbeddingGateway,
               // HP #7: key stays in the call stack; never logged or returned.
               voyageApiKey: voyageApiKeyForRetrieval,
+              // Slice A3 — optional server-side rerank gateway + its key.
+              // Null in tests/scaffolds → vector-only order unchanged. HP #7:
+              // the rerank key stays in the call stack, never logged/returned.
+              rerankGateway: corpusRerankGateway,
+              voyageRerankApiKey: voyageRerankApiKeyForRetrieval,
               // HP #9: meter the Voyage embedding spend by class. `scope` is
               // the resolved operator JWT (operator_id/location_id). The
               // guard + accounting store are the SAME handles the metered
