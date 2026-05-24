@@ -14,7 +14,12 @@
 //   * lib/admin/admin_auth_gate.dart — `kAdminConsoleRoles` set, the
 //     `is_super_admin`/`is_ff_support` claims→roles map, and the demo /
 //     test fixture role lists.
-//   * lib/admin/admin_shell.dart — the role-pill `switch` arms.
+//   * lib/admin/admin_shell.dart — the role-pill `switch` arms (the
+//     role pill was later removed in PR #1245, so the shell no longer
+//     imports or uses the catalog: the import assertion was dropped
+//     accordingly. The no-bare-literal grep-guard below still covers
+//     the shell to prevent a bare 'super_admin'/'ff_support' literal
+//     from being re-added).
 //   * lib/admin/screens/my_account_admin_screen.dart — the
 //     `_readableAdminRole` value-equality checks.
 //   * lib/admin/services/integration_admin_gateway.dart — the
@@ -242,12 +247,13 @@ void main() {
     }
 
     test('each touched file imports the permission_keys catalog', () {
+      // Note: lib/admin/admin_shell.dart is intentionally NOT asserted
+      // here. Its only catalog consumer was the role pill, which PR
+      // #1245 removed along with the permission_keys import; the shell
+      // no longer needs the catalog. It remains in authWiringFiles
+      // above so the no-bare-literal grep-guard still covers it.
       expect(
         File('lib/admin/admin_auth_gate.dart').readAsStringSync(),
-        contains("import '../auth/permission_keys.dart';"),
-      );
-      expect(
-        File('lib/admin/admin_shell.dart').readAsStringSync(),
         contains("import '../auth/permission_keys.dart';"),
       );
       expect(
