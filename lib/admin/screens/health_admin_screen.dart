@@ -10,12 +10,17 @@
 //                 anchor, event_outbox, dependency probes, migration
 //                 drift.
 //
-// Tier coloring per F.1 prompt:
-//   - Tier-1 fail (or HTTP 503 dependency probe) → red top-of-page
-//     banner ("Dependencies unavailable" or
-//     "Tier-1 signals failing").
-//   - Tier-2 fail → yellow chip on the offending tile.
-//   - Tier-3 fail → grey chip on the offending tile (informational).
+// A single lead-with-the-answer summary sits at the top of the body and
+// gives the operator one verdict before anything else:
+//   - Red "Action needed" → a tier-1 metric is failing, a dependency
+//     probe is red/yellow, or HTTP 503 left the results stale.
+//   - Amber "N things need attention" → nothing critical, but some
+//     tier-2/3 check is warning or failing.
+//   - Green "Everything looks good" → every reported check passed.
+// When red or amber the summary also lists every failing/needs-attention
+// check (across all tabs); tapping a row jumps to that check's tab. Per
+// metric, the tile still carries its own status pill (yellow = needs
+// attention, red = failing, grey = no data) inside its tab.
 //
 // Health checks are manual-only. The staging `/health` envelope can
 // take tens of seconds because it checks real backend dependencies
@@ -161,7 +166,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
     ],
   ),
   _TabSpec(
-    label: 'Ecosystem',
+    label: 'Behind the scenes',
     keySuffix: 'infra',
     sections: <_SectionSpec>[
       _SectionSpec(
@@ -387,15 +392,12 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (envelope.dependenciesUnavailable)
-            const _DependenciesUnavailableBanner(
-              key: Key('admin_health_dependencies_unavailable'),
-            )
-          else if (envelope.hasTier1Failure)
-            _Tier1FailureBanner(
-              key: const Key('admin_health_tier1_banner'),
-              envelope: envelope,
-            ),
+          _HealthSummary(
+            key: const Key('admin_health_summary'),
+            envelope: envelope,
+            onSelectTab: (index) => _tabs.animateTo(index),
+          ),
+          const SizedBox(height: 12),
           const _HealthPriorityKey(),
           const SizedBox(height: 12),
           if (showDefinitions) ...[
@@ -403,8 +405,6 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             const SizedBox(height: 12),
           ],
           _DependenciesStrip(envelope: envelope),
-          const SizedBox(height: 12),
-          _OverallSeverityChip(envelope: envelope),
           const SizedBox(height: 12),
           _TechDetailsToggle(
             value: _showTechDetails,
@@ -419,10 +419,13 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             unselectedLabelColor: AppColors.textSecondary,
             indicatorColor: AppColors.sunset,
             tabs: <Widget>[
-              for (final tab in _kTabs)
+              for (var i = 0; i < _kTabs.length; i++)
                 Tab(
-                  key: Key('admin_health_tab_${tab.keySuffix}'),
-                  text: tab.label,
+                  key: Key('admin_health_tab_${_kTabs[i].keySuffix}'),
+                  child: _TabLabel(
+                    label: _kTabs[i].label,
+                    attention: _tabAttention(_kTabs[i], envelope),
+                  ),
                 ),
             ],
           ),
@@ -443,6 +446,338 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
           ),
         ],
       ),
+    );
+  }
+
+  /// Count + worst-severity of the metrics in [tab] that need attention,
+  /// for the tab's count badge. Returns a zero count when nothing in the
+  /// tab is failing (the badge is then omitted).
+  _TabAttention _tabAttention(_TabSpec tab, HealthEnvelope envelope) {
+    var count = 0;
+    var hasRed = false;
+    for (final key in _metricKeysForTab(tab)) {
+      final metric = envelope.metrics[key];
+      if (metric == null || !metric.isFailing) continue;
+      count += 1;
+      if (metric.status == HealthSeverity.red) hasRed = true;
+    }
+    return _TabAttention(count: count, hasRed: hasRed);
+  }
+}
+
+/// Unique metric keys in a tab, in section then tile order. A key that
+/// appears in more than one tile (none do today, but the model allows
+/// it) is counted once.
+List<String> _metricKeysForTab(_TabSpec tab) {
+  final keys = <String>[];
+  for (final section in tab.sections) {
+    for (final tile in section.tiles) {
+      if (!keys.contains(tile.metricKey)) keys.add(tile.metricKey);
+    }
+  }
+  return keys;
+}
+
+/// The tab index (into [_kTabs]) whose tiles contain [metricKey], or -1
+/// when the key lives in no tab.
+int _tabIndexForMetric(String metricKey) {
+  for (var i = 0; i < _kTabs.length; i++) {
+    if (_metricKeysForTab(_kTabs[i]).contains(metricKey)) return i;
+  }
+  return -1;
+}
+
+/// Plain-English tab name for a tab index, used in the summary
+/// attention list so the operator knows where a failing check lives.
+String _tabLabelForIndex(int index) {
+  if (index < 0 || index >= _kTabs.length) return '';
+  return _kTabs[index].label;
+}
+
+/// Count + worst-severity carried to a tab's count badge.
+class _TabAttention {
+  const _TabAttention({required this.count, required this.hasRed});
+
+  final int count;
+  final bool hasRed;
+
+  bool get isEmpty => count == 0;
+}
+
+/// Lead-with-the-answer summary. Renders FIRST in the envelope body and
+/// subsumes the old dependencies-unavailable banner, tier-1 failure
+/// banner, and overall-severity chip in a single calm verdict the
+/// operator reads before anything else. Three states, computed straight
+/// from the envelope:
+///   * Red "Action needed" - a dependency probe is failing, a 503 made
+///     the results stale, or a critical (tier-1) check is failing.
+///   * Amber "N things need attention" - nothing critical, but some
+///     check is warning or failing.
+///   * Green "Everything looks good" - every reported check passed.
+/// When red or amber it also lists every check that needs attention
+/// (across all tabs); tapping a row jumps to that check's tab.
+class _HealthSummary extends StatelessWidget {
+  const _HealthSummary({
+    super.key,
+    required this.envelope,
+    required this.onSelectTab,
+  });
+
+  final HealthEnvelope envelope;
+  final ValueChanged<int> onSelectTab;
+
+  @override
+  Widget build(BuildContext context) {
+    final failingDeps = envelope.dependencies
+        .where(
+          (d) =>
+              d.status == HealthSeverity.red ||
+              d.status == HealthSeverity.yellow,
+        )
+        .toList(growable: false);
+    final failingTier1 = envelope
+        .metricsAtTier(1)
+        .where((m) => m.isFailing)
+        .toList(growable: false);
+    final isRed =
+        envelope.dependenciesUnavailable ||
+        failingTier1.isNotEmpty ||
+        failingDeps.isNotEmpty;
+
+    // Every metric in the envelope that needs attention, in tab order so
+    // the triage list reads top-to-bottom like the tabs.
+    final attention = _attentionMetrics(envelope);
+    final amber = !isRed && attention.isNotEmpty;
+
+    final Color color;
+    final IconData icon;
+    final String headline;
+    final String subLine;
+    if (isRed) {
+      color = AppColors.negative;
+      icon = Icons.error_outline;
+      if (failingTier1.isNotEmpty) {
+        final n = failingTier1.length;
+        headline = n == 1
+            ? 'Action needed: 1 critical check failing'
+            : 'Action needed: $n critical checks failing';
+      } else {
+        headline = 'Action needed: a required service is unavailable';
+      }
+      subLine = _redSubLine(failingDeps);
+    } else if (amber) {
+      color = AppColors.warning;
+      icon = Icons.warning_amber_outlined;
+      final n = attention.length;
+      headline = n == 1
+          ? '1 thing needs attention'
+          : '$n things need attention';
+      subLine = 'Everything else is running normally.';
+    } else {
+      color = AppColors.positive;
+      icon = Icons.check_circle_outline;
+      headline = 'Everything looks good';
+      final n = envelope.metrics.length;
+      subLine = n == 1 ? 'All 1 check passed.' : 'All $n checks passed.';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: color, width: 2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      headline,
+                      key: const Key('admin_health_summary_headline'),
+                      style: AppTextStyles.body14(
+                        color: color,
+                      ).copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subLine,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if ((isRed || amber) && attention.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            for (final metric in attention)
+              _HealthAttentionRow(
+                metricKey: metric.key,
+                status: metric.status,
+                onTap: () {
+                  final index = _tabIndexForMetric(metric.key);
+                  if (index >= 0) onSelectTab(index);
+                },
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// All metrics present in the envelope that are failing/needs-attention,
+  /// ordered by their tab (then by tile order within the tab) so the list
+  /// mirrors the tab strip left-to-right.
+  static List<HealthMetric> _attentionMetrics(HealthEnvelope envelope) {
+    final ordered = <HealthMetric>[];
+    final seen = <String>{};
+    for (final tab in _kTabs) {
+      for (final key in _metricKeysForTab(tab)) {
+        final metric = envelope.metrics[key];
+        if (metric == null || !metric.isFailing) continue;
+        if (seen.add(key)) ordered.add(metric);
+      }
+    }
+    // Any failing metric not placed in a tab still belongs in triage.
+    for (final metric in envelope.metrics.values) {
+      if (!metric.isFailing) continue;
+      if (seen.add(metric.key)) ordered.add(metric);
+    }
+    return ordered;
+  }
+
+  String _redSubLine(List<HealthDependency> failingDeps) {
+    final services = failingDeps.map(_dependencyLabel).toList(growable: false);
+    if (envelope.dependenciesUnavailable) {
+      if (services.isNotEmpty) {
+        return 'Services affected: ${services.join(", ")}. '
+            'Results below may be out of date.';
+      }
+      return 'Results below may be out of date.';
+    }
+    if (services.isNotEmpty) {
+      return 'Services affected: ${services.join(", ")}. '
+          'Fix the cause before relying on this environment.';
+    }
+    return 'Fix the cause before relying on this environment.';
+  }
+}
+
+/// One row in the summary's "needs attention" triage list: a status dot,
+/// the plain-English check name, the tab it lives in, and a chevron. The
+/// whole row is tappable and jumps to that check's tab.
+class _HealthAttentionRow extends StatelessWidget {
+  const _HealthAttentionRow({
+    required this.metricKey,
+    required this.status,
+    required this.onTap,
+  });
+
+  final String metricKey;
+  final HealthSeverity status;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _severityColor(status);
+    final name = healthMetricName(
+      metricKey,
+      fallback: _healthMetricLabel(metricKey),
+    );
+    final tabLabel = _tabLabelForIndex(_tabIndexForMetric(metricKey));
+    return InkWell(
+      key: Key('admin_health_attn_$metricKey'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  text: name,
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                  children: <InlineSpan>[
+                    if (tabLabel.isNotEmpty)
+                      TextSpan(
+                        text: '  ·  $tabLabel',
+                        style: AppTextStyles.body13(
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: AppColors.textMuted,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A tab label with an optional count badge. The badge shows the number
+/// of checks in the tab that need attention and is omitted when the tab
+/// is all-clear. Badge colour is red when the tab has any failing check,
+/// otherwise amber.
+class _TabLabel extends StatelessWidget {
+  const _TabLabel({required this.label, required this.attention});
+
+  final String label;
+  final _TabAttention attention;
+
+  @override
+  Widget build(BuildContext context) {
+    if (attention.isEmpty) {
+      return Text(label);
+    }
+    final color = attention.hasRed ? AppColors.negative : AppColors.warning;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(label),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            border: Border.all(color: color, width: 1),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            '${attention.count}',
+            style: AppTextStyles.chipLabel(color: color),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -570,95 +905,6 @@ class _ManualHealthPrompt extends StatelessWidget {
           text: 'Live staging checks can take 15-30 seconds.',
         ),
       ],
-    );
-  }
-}
-
-class _DependenciesUnavailableBanner extends StatelessWidget {
-  const _DependenciesUnavailableBanner({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.negative, width: 2),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, size: 18, color: AppColors.negative),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'A required service check is failing, so the results below may be stale.',
-              style: AppTextStyles.mono11(color: AppColors.negative),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Tier1FailureBanner extends StatelessWidget {
-  const _Tier1FailureBanner({super.key, required this.envelope});
-
-  final HealthEnvelope envelope;
-
-  @override
-  Widget build(BuildContext context) {
-    final failingDeps = envelope.dependencies
-        .where(
-          (d) =>
-              d.status == HealthSeverity.red ||
-              d.status == HealthSeverity.yellow,
-        )
-        .map(_dependencyLabel)
-        .toList(growable: false);
-    final failingTier1 = envelope
-        .metricsAtTier(1)
-        .where((m) => m.isFailing)
-        .map((m) => _healthMetricLabel(m.key))
-        .toList(growable: false);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.negative, width: 2),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber, size: 18, color: AppColors.negative),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Critical checks are failing. Fix the cause before relying on this environment.',
-                  style: AppTextStyles.body13(color: AppColors.negative),
-                ),
-                if (failingDeps.isNotEmpty)
-                  Text(
-                    'Services affected: ${failingDeps.join(", ")}',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                if (failingTier1.isNotEmpty)
-                  Text(
-                    'Critical checks affected: ${failingTier1.join(", ")}',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -796,7 +1042,7 @@ class _HealthDefinitionsCard extends StatelessWidget {
               ),
               _HealthDefinitionItem(
                 width: itemWidth,
-                label: 'Ecosystem',
+                label: 'Behind the scenes',
                 description:
                     'Shared database, search, queues, and scheduled work that keep the app running.',
               ),
@@ -908,44 +1154,6 @@ class _DependencyChip extends StatelessWidget {
   }
 }
 
-class _OverallSeverityChip extends StatelessWidget {
-  const _OverallSeverityChip({required this.envelope});
-
-  final HealthEnvelope envelope;
-
-  @override
-  Widget build(BuildContext context) {
-    final severity = envelope.severity;
-    final color = _severityColor(severity);
-    return Container(
-      key: const Key('admin_health_overall_severity'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _overallStatusLabel(envelope),
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _TechDetailsToggle extends StatelessWidget {
   const _TechDetailsToggle({required this.value, required this.onChanged});
 
@@ -1029,6 +1237,23 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Problems first: order this section's tiles by the effective status
+    // of their metric (failing, then needs-attention, then good, then
+    // no-data / missing last). Section grouping and headings are
+    // untouched; only the within-section order changes so an operator
+    // sees what is wrong before what is fine. The original index is the
+    // tiebreaker so tiles sharing a rank keep their authored order
+    // (Dart's List.sort is not guaranteed stable).
+    final indexed = <MapEntry<int, _TileSpec>>[
+      for (var i = 0; i < section.tiles.length; i++)
+        MapEntry(i, section.tiles[i]),
+    ]..sort((a, b) {
+      final byRank = _tileStatusRank(
+        envelope.metrics[a.value.metricKey],
+      ).compareTo(_tileStatusRank(envelope.metrics[b.value.metricKey]));
+      return byRank != 0 ? byRank : a.key.compareTo(b.key);
+    });
+    final orderedTiles = <_TileSpec>[for (final entry in indexed) entry.value];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: OperatorWebPanel(
@@ -1037,7 +1262,7 @@ class _Section extends StatelessWidget {
           spacing: 12,
           runSpacing: 12,
           children: <Widget>[
-            for (final tile in section.tiles)
+            for (final tile in orderedTiles)
               _MetricCard(
                 // Card identity stays keyed by metric key so later
                 // slices and tests locate it the same way.
@@ -1050,6 +1275,23 @@ class _Section extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Problems-first sort rank for a section tile's metric:
+/// 0 = failing (red), 1 = needs-attention (yellow), 2 = good (green),
+/// 3 = no-data / unknown / missing from the envelope.
+int _tileStatusRank(HealthMetric? metric) {
+  if (metric == null) return 3;
+  switch (metric.status) {
+    case HealthSeverity.red:
+      return 0;
+    case HealthSeverity.yellow:
+      return 1;
+    case HealthSeverity.green:
+      return 2;
+    case HealthSeverity.unknown:
+      return 3;
   }
 }
 
@@ -1538,34 +1780,6 @@ String _tierLabel(int tier) {
     2 => 'Important',
     _ => 'Info',
   };
-}
-
-String _friendlyEnvelopeStatus(String status) {
-  return switch (status.trim().toLowerCase()) {
-    'ok' => 'all clear',
-    'degraded' => 'needs attention',
-    'down' => 'failing',
-    _ => status,
-  };
-}
-
-String _overallStatusLabel(HealthEnvelope envelope) {
-  final severity = _severityLabel(envelope.severity);
-  final status = _friendlyEnvelopeStatus(envelope.status);
-  if (status.isEmpty || status == severity.toLowerCase()) {
-    return 'Overall status: $severity';
-  }
-  if (status == 'all clear' && envelope.severity == HealthSeverity.green) {
-    return 'Overall status: Good';
-  }
-  if (status == 'needs attention' &&
-      envelope.severity == HealthSeverity.yellow) {
-    return 'Overall status: Needs attention';
-  }
-  if (status == 'failing' && envelope.severity == HealthSeverity.red) {
-    return 'Overall status: Failing';
-  }
-  return 'Overall status: $severity - $status';
 }
 
 String _dependencyLabel(HealthDependency dep) {
