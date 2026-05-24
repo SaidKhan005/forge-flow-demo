@@ -29,6 +29,8 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/services/business_timing/production_operator_write_audit_sink.dart';
 import 'package:forge_and_flow/services/business_timing/repository_operator_write_gateways.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_retrieval_repository_impl.dart';
+import 'package:forge_and_flow/services/corpus_retrieval_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/default_role_catalog_versions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/demo_mode_state_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/email_event_repository.dart';
@@ -279,6 +281,9 @@ class ProxyProductionBindings {
     required this.passwordResetIpCounter,
     required this.permissionVersionChecker,
     required this.sessionRecordIncompleteGauge,
+    // Slice A2b — optional (when null, /v1/advisor/retrieve returns 503).
+    this.corpusRetrievalService,
+    this.corpusQueryEmbeddingGateway,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -697,6 +702,26 @@ class ProxyProductionBindings {
   /// Authority: docs/archive/_execution/lane_a_code_health/03_execution_slices.md
   /// "Slice A11.1 — Production Session-Record Gauge" + R3 §2 stretch.
   final SessionRecordIncompleteGauge sessionRecordIncompleteGauge;
+
+  // ── Slice A2b — Advisor Knowledge Activation retrieval ──────────────────────
+
+  /// Corpus vector retrieval service (Slice A1). Backed by
+  /// [PostgresCorpusRetrievalRepository] over the tenant pool.
+  /// Optional: when null the route returns 503
+  /// `corpus_retrieval_not_configured` so existing tests do not need
+  /// to plumb the service through every binding.
+  final CorpusRetrievalService? corpusRetrievalService;
+
+  /// Server-side Voyage query-embedding gateway (Slice A2b). Accepts
+  /// a text string and returns a 1024-dim vector via the Voyage
+  /// `/v1/embeddings` API with `input_type: 'query'`. Optional: when
+  /// null the text-query path of [advisorRetrievePath] returns 503.
+  ///
+  /// HP #7: the Voyage API key is resolved from [ProxyConfig] at
+  /// bootstrap time and is NEVER stored in this field — it is passed
+  /// to [routeRequest] alongside this gateway so main.dart controls
+  /// the key lifetime.
+  final AdvisorQueryEmbeddingGateway? corpusQueryEmbeddingGateway;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -1790,6 +1815,19 @@ ProxyProductionBindings buildProxyProductionBindings(
     // `_buildRegistryProxyHealthCheckStore` above so /health surfaces it
     // under `session_record_incomplete_count`.
     sessionRecordIncompleteGauge: sessionRecordIncompleteGauge,
+    // Slice A2b — corpus retrieval service and Voyage query-embedding
+    // gateway. Both are optional at build time (constructor defaults to
+    // null) so existing scaffolds that do not wire them keep returning 503
+    // from /v1/advisor/retrieve without any change.
+    //
+    // The Voyage API key is NOT stored in `ProxyProductionBindings` —
+    // it is resolved from `config` by `main.dart` and passed to
+    // `routeRequest` alongside `corpusQueryEmbeddingGateway` at request
+    // time (HP #7: key lifetime bounded to a single call stack).
+    corpusRetrievalService: CorpusRetrievalService(
+      repository: PostgresCorpusRetrievalRepository(tenantWrapper),
+    ),
+    corpusQueryEmbeddingGateway: VoyageHttpQueryEmbeddingGateway(),
   );
 }
 

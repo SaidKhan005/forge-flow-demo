@@ -122,6 +122,15 @@ import 'vendor_lifecycle_recently_available_routes.dart';
 import 'weekly_plan_routes.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
+// Slice A2b — server-side query embedding gateway types exported so
+// proxy_bootstrap.dart and main.dart can construct the production gateway
+// by importing advisor_proxy.dart only (no extra import of the sibling file).
+export 'advisor_query_embedding_gateway_part.dart'
+    show
+        AdvisorQueryEmbeddingGateway,
+        AdvisorQueryEmbeddingException,
+        AdvisorQueryEmbeddingResult,
+        VoyageHttpQueryEmbeddingGateway;
 export 'log.dart'
     show
         LogSeverity,
@@ -323,6 +332,20 @@ export 'admin_default_role_catalog_routes.dart'
         kAdminDefaultRoleCatalogPublishPath,
         kDefaultRoleCatalogAdminReadRoles,
         kDefaultRoleCatalogAdminWriteRoles;
+
+// Advisor Knowledge Activation — Slice A2b: server-side query embedding
+// gateway. Standalone file (not a `part`) so its own imports (dart:io,
+// dart:convert, package:http) do not land in the monolith's import space.
+// Import precedes `part` directives as required by Dart spec.
+// `VoyageHttpQueryEmbeddingGateway` is re-exported below (for
+// proxy_bootstrap / main.dart) but NOT imported here — it is not used
+// inside the monolith or its `part` files; the abstract interface and
+// exception are the only types needed by the part.
+import 'advisor_query_embedding_gateway_part.dart'
+    show
+        AdvisorQueryEmbeddingGateway,
+        AdvisorQueryEmbeddingException,
+        AdvisorQueryEmbeddingResult;
 
 // chore(advisor-proxy) size refactor: cohesive admin route group
 // (corpus / debug-console / observability / feature-flags /
@@ -6152,6 +6175,13 @@ Future<void> routeRequest(
   // POST /v1/advisor/retrieve route returns 503 so existing tests do not
   // need to plumb the service through every call site.
   CorpusRetrievalService? corpusRetrievalService,
+  // Slice A2b — server-side query embedding gateway. Optional: when null
+  // the text-query path of POST /v1/advisor/retrieve returns 503 and
+  // callers must supply a pre-computed query_embedding instead.
+  // HP #7: [voyageApiKeyForRetrieval] is a server-side secret — NEVER
+  // logged, NEVER returned to the client.
+  AdvisorQueryEmbeddingGateway? corpusQueryEmbeddingGateway,
+  String? voyageApiKeyForRetrieval,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -13223,6 +13253,18 @@ Future<void> routeRequest(
               response: response,
               body: body,
               retrievalService: corpusRetrievalService,
+              embeddingGateway: corpusQueryEmbeddingGateway,
+              // HP #7: key stays in the call stack; never logged or returned.
+              voyageApiKey: voyageApiKeyForRetrieval,
+              // HP #9: meter the Voyage embedding spend by class. `scope` is
+              // the resolved operator JWT (operator_id/location_id). The
+              // guard + accounting store are the SAME handles the metered
+              // LLM route uses (HP #8: no parallel stack); both are optional,
+              // so tests/scaffolds that pass neither stay unmetered.
+              operator: scope,
+              usageGuard: usageGuard,
+              accountingStore: accountingStore,
+              clock: clock,
             );
           } catch (error, stackTrace) {
             if (_maybeWriteDependencyTimeout(response, error)) return;
