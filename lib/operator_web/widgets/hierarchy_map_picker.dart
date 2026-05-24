@@ -31,6 +31,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 
 /// One node in the hierarchy tree the picker renders.
 ///
@@ -492,17 +493,23 @@ class _HierarchyMapPickerState extends State<HierarchyMapPicker> {
     );
   }
 
-  static IconData _iconForKind(HierarchyMapNodeKind? kind) {
-    switch (kind) {
-      case HierarchyMapNodeKind.business:
-        return Icons.apartment_outlined;
-      case HierarchyMapNodeKind.orgUnit:
-        return Icons.account_tree_outlined;
-      case HierarchyMapNodeKind.location:
-        return Icons.place_outlined;
-      case null:
-        return Icons.account_tree_outlined;
-    }
+  static IconData _iconForKind(HierarchyMapNodeKind? kind) =>
+      _hierarchyMapScopeIcon(kind);
+}
+
+/// Canonical glyph for a [HierarchyMapNodeKind]. A null kind falls back
+/// to the generic org-unit glyph. Routes through the single source of
+/// truth at lib/theme/scope_icons.dart so this picker stays in lockstep
+/// with every other hierarchy surface.
+IconData _hierarchyMapScopeIcon(HierarchyMapNodeKind? kind) {
+  switch (kind) {
+    case HierarchyMapNodeKind.business:
+      return scopeIcon(kind: ScopeEntityKind.business);
+    case HierarchyMapNodeKind.location:
+      return scopeIcon(kind: ScopeEntityKind.location);
+    case HierarchyMapNodeKind.orgUnit:
+    case null:
+      return scopeIcon(kind: ScopeEntityKind.orgUnit);
   }
 }
 
@@ -976,16 +983,8 @@ class _NodeRow extends StatelessWidget {
     );
   }
 
-  static IconData _iconForKind(HierarchyMapNodeKind kind) {
-    switch (kind) {
-      case HierarchyMapNodeKind.business:
-        return Icons.apartment_outlined;
-      case HierarchyMapNodeKind.orgUnit:
-        return Icons.account_tree_outlined;
-      case HierarchyMapNodeKind.location:
-        return Icons.place_outlined;
-    }
-  }
+  static IconData _iconForKind(HierarchyMapNodeKind kind) =>
+      _hierarchyMapScopeIcon(kind);
 }
 
 class _NodeStatusChip extends StatelessWidget {

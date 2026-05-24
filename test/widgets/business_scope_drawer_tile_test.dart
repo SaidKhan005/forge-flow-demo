@@ -111,7 +111,7 @@ void main() {
     test('iconFor maps each scope type to the canonical glyph', () {
       expect(
         BusinessScopeDrawerTile.iconFor(activeScope),
-        Icons.storefront_outlined,
+        Icons.place_outlined,
       );
       expect(
         BusinessScopeDrawerTile.iconFor(
@@ -122,7 +122,7 @@ void main() {
             label: 'Acme',
           ),
         ),
-        Icons.business_outlined,
+        Icons.apartment_outlined,
       );
       expect(
         BusinessScopeDrawerTile.iconFor(
