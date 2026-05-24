@@ -104,15 +104,31 @@ const Map<_NotifEventState, String> _kStateLabel = <_NotifEventState, String>{
   _NotifEventState.backendOnly: 'Always on',
 };
 
-const Map<_NotifEventState, String> _kStateSubcopy = <_NotifEventState, String>{
-  _NotifEventState.available: '',
+/// Per-state detail copy shown inside the row's info button popover,
+/// appended to the event description. Mirrors the operator-web
+/// Notifications screen's `_kStateDetails` so the two surfaces read
+/// the same.
+const Map<_NotifEventState, String> _kStateDetails = <_NotifEventState, String>{
+  _NotifEventState.available:
+      'These alerts are wired now. Your switches decide how Forge & Flow '
+      'contacts you.',
   _NotifEventState.comingSoon:
-      "We'll turn this on once the team launches it. "
-      "You can come back later to set how you'd like to be notified.",
+      'The alert is in the catalog, but the sending hook is not live yet. '
+      'We show it here so you can see what is planned without pretending '
+      'the switch can save a real preference today.',
   _NotifEventState.backendOnly:
-      "Forge & Flow sends this no matter what. It's part of how we "
-      "keep your data safe. Open the audit log to see recent activity.",
+      'Forge & Flow sends this required alert even when personal '
+      'preferences are off. Security and integrity alerts protect your '
+      'account and business records.',
 };
+
+/// Info-button body for one row: the event description, then the
+/// state detail copy. Mirrors the operator-web `_infoBodyFor`.
+String _infoBodyFor(NotificationCatalogEntry event, _NotifEventState state) {
+  final status = _kStateDetails[state] ?? '';
+  if (status.isEmpty) return event.description;
+  return '${event.description}\n\n$status';
+}
 
 /// Admin notification-preferences screen. Pure render +
 /// optimistic-toggle widget; all I/O flows through [gateway]. When
@@ -289,7 +305,7 @@ class _AdminNotificationPreferencesScreenState
             const SizedBox(height: 12),
             _ErrorBanner(message: _loadError!),
           ],
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           for (final category in NotificationCategory.values)
             if (visibleEvents.containsKey(category)) ...[
               _CategorySection(
@@ -451,47 +467,40 @@ class _EventRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = _stateFor(event);
     final isAvailable = state == _NotifEventState.available;
-    final subcopy = _kStateSubcopy[state] ?? '';
+    // Match the operator-web row: title + state badge + an info "i"
+    // button whose popover carries the description and the state
+    // detail. No inline description / subcopy text.
     return Row(
       key: Key('admin_notification_preferences_event_${event.eventKey}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      event.title,
-                      style: AppTextStyles.mono14(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w600,
-                      ),
-                    ),
+              Flexible(
+                child: Text(
+                  event.title,
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w600,
                   ),
-                  const SizedBox(width: 8),
-                  _StateBadge(eventKey: event.eventKey, state: state),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                event.description,
-                style: AppTextStyles.body12(color: AppColors.textMuted),
-              ),
-              if (subcopy.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subcopy,
-                  key: Key(
-                    'admin_notification_preferences_subcopy_'
-                    '${event.eventKey}',
-                  ),
-                  style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
-              ],
+              ),
+              const SizedBox(width: 8),
+              _StateBadge(eventKey: event.eventKey, state: state),
+              const SizedBox(width: 4),
+              OperatorWebInfoButton(
+                key: Key(
+                  'admin_notification_preferences_state_info_${event.eventKey}',
+                ),
+                title: _kStateLabel[state] ?? 'Notification status',
+                tooltip: 'Notification status',
+                body: Text(
+                  _infoBodyFor(event, state),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
             ],
           ),
         ),

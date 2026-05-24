@@ -15,6 +15,8 @@ import 'package:forge_and_flow/admin/admin_auth_gate.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/admin_shell.dart';
 import 'package:forge_and_flow/admin/screens/my_account_admin_screen.dart';
+import 'package:forge_and_flow/admin/services/admin_security_gateway.dart';
+import 'package:forge_and_flow/admin/services/admin_sessions_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -112,9 +114,10 @@ void main() {
         // 2FA status read off lastFreshAuthAt.
         expect(find.byKey(const Key('admin_my_account_mfa_status')), findsOneWidget);
         expect(find.text('On'), findsOneWidget);
-        // Read-only note is present in security card.
+        // Read-only note is present in the two-factor card (MFA is now
+        // its own card, mirroring the ops My account layout).
         expect(
-          find.byKey(const Key('admin_my_account_security_readonly_note')),
+          find.byKey(const Key('admin_my_account_two_factor_readonly_note')),
           findsOneWidget,
         );
       },
@@ -139,15 +142,16 @@ void main() {
 
         // 2FA status shows 'Unknown' when there's no auth_time stamp.
         expect(find.text('Unknown'), findsOneWidget);
-        // The helper copy nudges the operator to re-sign-in.
+        // The read-only note nudges the admin to update 2FA at next
+        // sign-in.
         expect(
-          find.textContaining('Sign in again from'),
+          find.textContaining('the next time you sign in'),
           findsOneWidget,
         );
       },
     );
 
-    testWidgets('renders Sign-out CTA on the active sessions card', (
+    testWidgets('manage active sessions popup exposes the sign-out CTA', (
       tester,
     ) async {
       wideViewport(tester);
@@ -171,18 +175,28 @@ void main() {
         ),
       );
 
+      // The card shows the ops-style "Manage active sessions here"
+      // button; the session detail + sign-out live in the popup.
+      final manage = find.byKey(
+        const Key('admin_my_account_active_sessions_manage'),
+      );
+      expect(manage, findsOneWidget);
+      await tester.ensureVisible(manage);
+      await tester.tap(manage);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_my_account_active_sessions_dialog')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('admin_my_account_current_session_row')),
         findsOneWidget,
       );
       expect(find.text('This admin console session'), findsOneWidget);
-      expect(
-        find.byKey(const Key('admin_my_account_sign_out_button')),
-        findsOneWidget,
-      );
 
-      // Tap the sign-out button — this should drive the auth source
-      // back to an unauthenticated state.
+      // Tap the in-popup sign-out — drives the auth source back to an
+      // unauthenticated state.
       await tester.tap(
         find.byKey(const Key('admin_my_account_sign_out_button')),
       );
@@ -256,6 +270,119 @@ void main() {
         }
       },
     );
+  });
+
+  group('MyAccountAdminScreen live gateways', () {
+    DateTime fixedNow() => DateTime.utc(2026, 5, 14, 12, 30, 0);
+
+    Future<void> pumpLive(
+      WidgetTester tester, {
+      bool seedFactor = false,
+    }) async {
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+      final session = (source.current as AdminAuthAuthenticated).session;
+      await tester.pumpWidget(
+        wrap(
+          MyAccountAdminScreen(
+            session: session,
+            authSource: source,
+            securityGateway: InMemoryAdminSecurityGateway(
+              seedEnrolledFactor: seedFactor,
+              now: fixedNow,
+            ),
+            sessionsGateway: InMemoryAdminSessionsGateway(now: fixedNow),
+            now: fixedNow,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+      'two-factor card shows the set-up CTA when no factor is enrolled',
+      (tester) async {
+        wideViewport(tester);
+        await pumpLive(tester);
+        expect(
+          find.byKey(const Key('admin_my_account_two_factor_card')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('admin_my_account_mfa_enroll_button')),
+          findsOneWidget,
+        );
+        expect(find.text('Not set up'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'two-factor card shows recovery when a factor is enrolled',
+      (tester) async {
+        wideViewport(tester);
+        await pumpLive(tester, seedFactor: true);
+        expect(
+          find.byKey(const Key('admin_my_account_mfa_recovery_button')),
+          findsOneWidget,
+        );
+        expect(find.text('On'), findsWidgets);
+      },
+    );
+
+    testWidgets('Security card renders recent sign-in activity rows', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      await pumpLive(tester);
+      expect(
+        find.byKey(const Key('admin_my_account_login_history_section')),
+        findsOneWidget,
+      );
+      // The seeded "Signed in" event renders within the default 90-day
+      // window.
+      expect(find.text('Signed in'), findsWidgets);
+    });
+
+    testWidgets('Audit log card opens the account audit popup', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      await pumpLive(tester);
+      final link = find.byKey(const Key('admin_my_account_audit_log_link'));
+      expect(link, findsOneWidget);
+      await tester.ensureVisible(link);
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('admin_my_account_audit_log_dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_my_account_audit_log_list')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Active sessions popup exposes sign out everywhere', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      await pumpLive(tester);
+      final manage = find.byKey(
+        const Key('admin_my_account_active_sessions_manage'),
+      );
+      await tester.ensureVisible(manage);
+      await tester.tap(manage);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('admin_my_account_active_sessions_dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_my_account_sign_out_everywhere_button')),
+        findsOneWidget,
+      );
+    });
   });
 
   group('Admin shell side-nav wiring', () {

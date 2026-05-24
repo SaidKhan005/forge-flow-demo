@@ -59,7 +59,7 @@ void main() {
     );
 
     expect(
-      find.byKey(const Key('admin_my_account_security_readonly_note')),
+      find.byKey(const Key('admin_my_account_two_factor_readonly_note')),
       findsOneWidget,
     );
     expect(
