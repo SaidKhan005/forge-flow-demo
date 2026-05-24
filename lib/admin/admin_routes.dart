@@ -693,6 +693,8 @@ Widget _buildScopedAdminWorkspace({
   required String functionTitle,
   required String description,
   required AdminSetupWorkspaceBuilder functionBuilder,
+  bool allowAllBusinessesScope = false,
+  WidgetBuilder? allBusinessesBuilder,
 }) {
   final handoff = AdminRouteHandoff.maybeOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
@@ -713,6 +715,8 @@ Widget _buildScopedAdminWorkspace({
             AdminRouteIntent(routeId: routeId, hierarchyScope: scope),
           ),
     functionBuilder: functionBuilder,
+    allowAllBusinessesScope: allowAllBusinessesScope,
+    allBusinessesBuilder: allBusinessesBuilder,
   );
 }
 
@@ -1139,6 +1143,15 @@ Widget _buildObservability(BuildContext context) {
           hierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
         ),
+    // super_admin / ff_support can pick the platform-wide aggregate
+    // (operator_id = null). The screen already reads cross-business when
+    // its hierarchy scope is null, so the all-businesses builder simply
+    // omits the scope.
+    allowAllBusinessesScope: true,
+    allBusinessesBuilder: (context) => ObservabilityAdminScreen(
+      key: const ValueKey<String>('observability-all-businesses'),
+      gateway: gateway,
+    ),
   );
 }
 
