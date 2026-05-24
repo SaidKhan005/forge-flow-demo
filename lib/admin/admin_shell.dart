@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/scope_icons.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
@@ -918,8 +919,8 @@ class _PerBusinessClusterHeader extends StatelessWidget {
               color: AppColors.sunset.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: const Icon(
-              Icons.business_outlined,
+            child: Icon(
+              scopeIcon(kind: ScopeEntityKind.business),
               size: 16,
               color: AppColors.sunsetDark,
             ),
@@ -973,8 +974,8 @@ class _PerBusinessClusterInactiveHint extends StatelessWidget {
                     color: AppColors.sunset.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Icon(
-                    Icons.business_outlined,
+                  child: Icon(
+                    scopeIcon(kind: ScopeEntityKind.business),
                     size: 16,
                     color: AppColors.textMuted,
                   ),

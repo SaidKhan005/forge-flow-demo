@@ -210,6 +210,52 @@ void main() {
     expect(find.text('All locations'), findsOneWidget);
   });
 
+  testWidgets(
+    'overlay business + location rows render canonical scope-entity icons',
+    (tester) async {
+      // Wide enough that the overlay (title + search + businesses) lays out
+      // without a viewport-only overflow on the default test surface.
+      tester.view.physicalSize = const Size(1024, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(pickerHost(seededGateway(), onSelected: (_) {}));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_scope_picker_trigger')));
+      await tester.pumpAndSettle();
+
+      // Business rows use the canonical business glyph (apartment), not the
+      // legacy admin business_outlined.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_scope_picker_business_op-diner')),
+          matching: find.byIcon(Icons.apartment_outlined),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.business_outlined), findsNothing);
+
+      // Expand the diner to reveal its locations; each location row uses the
+      // canonical location glyph (place).
+      await tester.tap(
+        find.byKey(const Key('admin_scope_picker_expander_op-diner')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_scope_picker_location_loc-van')),
+          matching: find.byIcon(Icons.place_outlined),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('demo banner renders only under sharePreviewMode: true', (
     tester,
   ) async {

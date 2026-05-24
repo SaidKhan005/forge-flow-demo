@@ -624,6 +624,17 @@ void main() {
       );
       expect(find.text('Demo Diner Co.'), findsWidgets);
 
+      // The cluster header business glyph is the canonical scope-entity
+      // business icon (apartment), routed through the shared `scopeIcon`
+      // helper, not the legacy admin business_outlined.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_nav_per_business_cluster_header')),
+          matching: find.byIcon(Icons.apartment_outlined),
+        ),
+        findsOneWidget,
+      );
+
       // All six per-business cluster rows render with operator vocabulary.
       for (final routeId in <String>[
         kAdminMembersRouteId,

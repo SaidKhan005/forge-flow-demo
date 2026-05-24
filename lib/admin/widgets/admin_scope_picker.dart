@@ -22,6 +22,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_route_handoff.dart';
 import '../models/operator_location_admin_models.dart';
@@ -282,10 +283,13 @@ String adminScopeTriggerHelperLabel(AdminHierarchyScopeIntent? scope) {
 
 /// Trigger icon mirroring operator-web's `_iconForKind`: a building for a
 /// business-wide scope (and the resting state), a place pin for a
-/// location scope.
+/// location scope. Both glyphs resolve through the canonical
+/// [scopeIcon] helper so the trigger matches every other scope surface.
 IconData _adminScopeTriggerIcon(AdminHierarchyScopeIntent? scope) {
-  if (scope != null && scope.isLocationScope) return Icons.place_outlined;
-  return Icons.apartment_outlined;
+  if (scope != null && scope.isLocationScope) {
+    return scopeIcon(kind: ScopeEntityKind.location);
+  }
+  return scopeIcon(kind: ScopeEntityKind.business);
 }
 
 /// Overlay body: search field, recents, capped business list, and (once
@@ -615,7 +619,7 @@ class _AdminScopeBusinessRow extends StatelessWidget {
       children: <Widget>[
         _AdminScopeRow(
           key: Key('admin_scope_picker_business_$operatorId'),
-          icon: Icons.business_outlined,
+          icon: scopeIcon(kind: ScopeEntityKind.business),
           title: bundle.operator.businessName,
           subtitle: _locationCountLabel(locations.length),
           selected: _selectedBusinessWide,
@@ -632,7 +636,7 @@ class _AdminScopeBusinessRow extends StatelessWidget {
           for (final location in locations)
             _AdminScopeRow(
               key: Key('admin_scope_picker_location_${location.locationId}'),
-              icon: Icons.place_outlined,
+              icon: scopeIcon(kind: ScopeEntityKind.location),
               title: location.name,
               subtitle: location.address.trim().isEmpty
                   ? 'Location'
@@ -671,7 +675,11 @@ class _AdminScopeRecentRow extends StatelessWidget {
     final isLocation = scope.isLocationScope;
     return _AdminScopeRow(
       key: Key('admin_scope_picker_recent_${scope.cacheKey}'),
-      icon: isLocation ? Icons.place_outlined : Icons.business_outlined,
+      icon: scopeIcon(
+        kind: isLocation
+            ? ScopeEntityKind.location
+            : ScopeEntityKind.business,
+      ),
       title: adminScopeTriggerValueLabel(scope),
       subtitle: isLocation ? 'Location' : 'Business: all locations',
       selected: selected,
