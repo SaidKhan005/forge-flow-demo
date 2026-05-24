@@ -226,11 +226,23 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   Future<void> _handleEnrollMfa() async {
     if (!_canWriteAccount) return;
     final actions = widget.actions;
+    // G60 — mint ONE caller-stable idempotency key for THIS enroll
+    // attempt and reuse it across BOTH the begin call and the confirm
+    // call so the proxy `proxy_requests` UNIQUE guard sees begin+confirm
+    // as one correlated write chain and a retried confirm replays the
+    // original outcome instead of getting a brand-new key. Each fresh
+    // button press mints a DISTINCT key (so two separate attempts never
+    // collide). Matches the admin "My account" 2FA enroll pattern.
+    final enrollIdempotencyKey =
+        OperatorWebProxyClient.mintActionChainIdempotencyKey(
+          'account-mfa-enroll',
+        );
     MfaEnrollmentArtifact? artifact;
     if (actions != null) {
       try {
         artifact = await actions.beginAccountMfaEnrollment(
           email: widget.session.email,
+          idempotencyKey: enrollIdempotencyKey,
         );
       } catch (error) {
         if (!mounted) return;
@@ -246,11 +258,15 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       builder: (_) => _MfaEnrollDialog(
         operatorEmail: widget.session.email,
         artifact: artifact,
+        // The SAME key the begin call used. The dialog hands it back on
+        // confirm so begin+confirm of this one attempt share it.
+        idempotencyKey: enrollIdempotencyKey,
         onConfirm: actions == null || artifact == null
             ? null
-            : (code) => actions.confirmAccountMfaEnrollment(
+            : (code, idempotencyKey) => actions.confirmAccountMfaEnrollment(
                 enrollmentId: artifact!.enrollmentId,
                 oneTimeCode: code,
+                idempotencyKey: idempotencyKey,
               ),
       ),
     );
@@ -1882,12 +1898,23 @@ class _MfaEnrollDialog extends StatefulWidget {
   const _MfaEnrollDialog({
     required this.operatorEmail,
     this.artifact,
+    this.idempotencyKey,
     this.onConfirm,
   });
 
   final String operatorEmail;
   final MfaEnrollmentArtifact? artifact;
-  final Future<void> Function(String code)? onConfirm;
+
+  /// G60 — the caller-stable idempotency key minted once for THIS enroll
+  /// attempt (the begin call already used it). The dialog hands it back
+  /// to [onConfirm] so the confirm replays the SAME key, correlating
+  /// begin+confirm as one write chain. Null in the demo/local path (no
+  /// live proxy call), where confirm is purely client-side.
+  final String? idempotencyKey;
+
+  /// Invoked with the entered code AND the enroll [idempotencyKey] so the
+  /// confirm carries the SAME key the begin used.
+  final Future<void> Function(String code, String? idempotencyKey)? onConfirm;
 
   @override
   State<_MfaEnrollDialog> createState() => _MfaEnrollDialogState();
@@ -1931,7 +1958,10 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
         _error = null;
       });
       try {
-        await liveConfirm(code);
+        // Reuse the SAME key the begin call used (G60). Fail-closed
+        // behavior is unchanged: any error keeps the dialog open, shows
+        // the error, and leaves the operator unenrolled.
+        await liveConfirm(code, widget.idempotencyKey);
       } catch (error) {
         if (!mounted) return;
         setState(() {

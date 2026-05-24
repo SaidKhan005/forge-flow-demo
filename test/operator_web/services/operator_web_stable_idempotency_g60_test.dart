@@ -718,4 +718,142 @@ void main() {
       },
     );
   });
+
+  // opweb-mfa-enroll — TOTP enroll's begin + confirm are TWO proxy
+  // writes in ONE user action, so a retried confirm must replay the
+  // SAME key (CLAUDE.md Proxy & API Conventions: every proxy write is
+  // idempotent; proxy stores keys in proxy_requests UNIQUE). Mirrors
+  // the admin one-stable-key-per-enroll-chain parity at the proxy-
+  // client HTTP boundary.
+  group('opweb-mfa-enroll — OperatorWebProxyClient TOTP enroll', () {
+    test(
+      'begin + confirm with the SAME caller key send the SAME '
+      'Idempotency-Key (one enroll attempt correlates)',
+      () async {
+        final captured = <http.Request>[];
+        final mock = MockClient((request) async {
+          captured.add(request);
+          if (request.url.path.endsWith('/begin')) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'factor_id': 'totp-1',
+                'secret_base32': 'JBSWY3DPEHPK3PXP',
+                'otp_auth_url': 'otpauth://totp/Forge:demo?secret=JBSWY3DPEHPK3PXP',
+              }),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json',
+              },
+            );
+          }
+          return http.Response('{}', 200);
+        });
+        var mintCount = 0;
+        final client = OperatorWebProxyClient(
+          baseUri: Uri.parse('https://proxy.test/'),
+          httpClient: mock,
+          idempotencyKeyFactory: () => 'minted-${mintCount++}',
+        );
+
+        const enrollKey = 'op-web-account-mfa-enroll-abc-123';
+        await client.beginTotpEnrollment(
+          idToken: 'tok',
+          email: 'alex@brio.test',
+          idempotencyKey: enrollKey,
+        );
+        // A retried confirm of the SAME attempt replays the SAME key.
+        await client.confirmTotpEnrollment(
+          idToken: 'tok',
+          factorId: 'totp-1',
+          oneTimeCode: '654321',
+          idempotencyKey: enrollKey,
+        );
+        await client.confirmTotpEnrollment(
+          idToken: 'tok',
+          factorId: 'totp-1',
+          oneTimeCode: '654321',
+          idempotencyKey: enrollKey,
+        );
+
+        expect(captured, hasLength(3));
+        final keys = captured
+            .map((r) => r.headers['idempotency-key'])
+            .toList(growable: false);
+        expect(keys, everyElement(enrollKey));
+        expect(keys.toSet(), hasLength(1));
+        // The auto-mint factory must NOT have been consulted for any of
+        // the three writes.
+        expect(mintCount, 0);
+      },
+    );
+
+    test(
+      'begin + confirm WITHOUT a caller key keep the byte-identical '
+      'auto-mint fallback (no-op when no caller key)',
+      () async {
+        final captured = <http.Request>[];
+        final mock = MockClient((request) async {
+          captured.add(request);
+          if (request.url.path.endsWith('/begin')) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'factor_id': 'totp-1',
+                'secret_base32': 'JBSWY3DPEHPK3PXP',
+                'otp_auth_url': 'otpauth://totp/Forge:demo?secret=JBSWY3DPEHPK3PXP',
+              }),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json',
+              },
+            );
+          }
+          return http.Response('{}', 200);
+        });
+        var mintCount = 0;
+        final client = OperatorWebProxyClient(
+          baseUri: Uri.parse('https://proxy.test/'),
+          httpClient: mock,
+          idempotencyKeyFactory: () => 'minted-${mintCount++}',
+        );
+
+        await client.beginTotpEnrollment(
+          idToken: 'tok',
+          email: 'alex@brio.test',
+        );
+        await client.confirmTotpEnrollment(
+          idToken: 'tok',
+          factorId: 'totp-1',
+          oneTimeCode: '654321',
+        );
+
+        // The legacy path: each call auto-mints a fresh per-request key
+        // (begin and confirm therefore DIFFER), exactly as before this
+        // change. The factory was consulted once per call.
+        expect(mintCount, 2);
+        expect(captured[0].headers['idempotency-key'], 'minted-0');
+        expect(captured[1].headers['idempotency-key'], 'minted-1');
+      },
+    );
+
+    test(
+      'mintActionChainIdempotencyKey is distinct per call and web-safe '
+      'shaped',
+      () {
+        final a = OperatorWebProxyClient.mintActionChainIdempotencyKey(
+          'account-mfa-enroll',
+        );
+        final b = OperatorWebProxyClient.mintActionChainIdempotencyKey(
+          'account-mfa-enroll',
+        );
+        expect(a, startsWith('op-web-account-mfa-enroll-'));
+        expect(
+          a,
+          isNot(equals(b)),
+          reason:
+              'two separate enroll attempts must never collide, so each '
+              'mint yields a distinct key',
+        );
+      },
+    );
+  });
 }

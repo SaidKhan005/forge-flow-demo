@@ -298,6 +298,99 @@ void main() {
       expect(find.text('Two-factor sign-in: Off'), findsOneWidget);
     });
 
+    // G60 — begin + confirm of ONE enroll attempt must carry the SAME
+    // caller-stable idempotency key so the proxy `proxy_requests` UNIQUE
+    // guard correlates them and a retried confirm replays. Mirrors the
+    // admin assertion in
+    // `test/admin/screens/my_account_admin_screen_security_test.dart`
+    // (gateway saw 2 calls but 1 distinct key).
+    testWidgets(
+      'Enroll passes ONE stable idempotency key to begin and confirm',
+      (tester) async {
+        await sizeViewport(tester, const Size(1024, 900));
+        final session = sessionWithRole('operator_owner');
+        final actions = _FakeMfaAccountActions(factorCount: 0);
+
+        await pumpAccount(tester, session, actions: actions);
+
+        await tester.ensureVisible(
+          find.byKey(const Key('account_section_mfa_enroll')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('account_section_mfa_enroll')));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('mfa_enroll_dialog_code_field')),
+          '654321',
+        );
+        await tester.tap(find.byKey(const Key('mfa_enroll_dialog_confirm')));
+        await tester.pumpAndSettle();
+
+        // The live confirm path closed the dialog (fail-closed only on
+        // error; this succeeded).
+        expect(find.byKey(const Key('mfa_enroll_dialog')), findsNothing);
+
+        // Exactly one begin + one confirm for this single attempt.
+        expect(actions.beginIdempotencyKeys, hasLength(1));
+        expect(actions.confirmIdempotencyKeys, hasLength(1));
+
+        final seenKeys = <String?>[
+          ...actions.beginIdempotencyKeys,
+          ...actions.confirmIdempotencyKeys,
+        ];
+        // Both calls carried a key (no auto-mint fallback when the screen
+        // supplies one) ...
+        expect(seenKeys, everyElement(isNotNull));
+        // ... and it is the SAME key across begin + confirm.
+        expect(seenKeys.toSet(), hasLength(1));
+      },
+    );
+
+    // G60 — two SEPARATE enroll attempts (two button presses) must mint
+    // DISTINCT keys so distinct user intents are never coalesced by the
+    // proxy replay guard.
+    testWidgets('Two separate enroll attempts use DIFFERENT keys', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 900));
+      final session = sessionWithRole('operator_owner');
+
+      Future<String?> runEnrollAttempt() async {
+        final actions = _FakeMfaAccountActions(factorCount: 0);
+        await pumpAccount(tester, session, actions: actions);
+        await tester.ensureVisible(
+          find.byKey(const Key('account_section_mfa_enroll')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('account_section_mfa_enroll')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('mfa_enroll_dialog_code_field')),
+          '654321',
+        );
+        await tester.tap(find.byKey(const Key('mfa_enroll_dialog_confirm')));
+        await tester.pumpAndSettle();
+        // begin + confirm of this attempt agree (re-asserted here so the
+        // helper is self-checking).
+        expect(
+          <String?>{
+            ...actions.beginIdempotencyKeys,
+            ...actions.confirmIdempotencyKeys,
+          },
+          hasLength(1),
+        );
+        return actions.beginIdempotencyKeys.single;
+      }
+
+      final firstKey = await runEnrollAttempt();
+      final secondKey = await runEnrollAttempt();
+
+      expect(firstKey, isNotNull);
+      expect(secondKey, isNotNull);
+      expect(firstKey, isNot(equals(secondKey)));
+    });
+
     testWidgets('Manage methods can request and cancel 24-hour removal', (
       tester,
     ) async {
@@ -783,10 +876,18 @@ class _FakeAccountActions implements OperatorWebAccountActions {
   final List<AccountActiveSessionEntry> _sessions;
   final List<List<String>> signOutCalls = <List<String>>[];
 
+  // G60 — record the idempotency key seen on each begin/confirm call so
+  // tests can assert begin+confirm of ONE enroll attempt share the SAME
+  // key, and two separate attempts use DIFFERENT keys.
+  final List<String?> beginIdempotencyKeys = <String?>[];
+  final List<String?> confirmIdempotencyKeys = <String?>[];
+
   @override
   Future<MfaEnrollmentArtifact> beginAccountMfaEnrollment({
     required String email,
+    String? idempotencyKey,
   }) async {
+    beginIdempotencyKeys.add(idempotencyKey);
     return const MfaEnrollmentArtifact(
       enrollmentId: 'enroll-1',
       factorType: MfaFactorType.totp,
@@ -799,7 +900,10 @@ class _FakeAccountActions implements OperatorWebAccountActions {
   Future<void> confirmAccountMfaEnrollment({
     required String enrollmentId,
     required String oneTimeCode,
-  }) async {}
+    String? idempotencyKey,
+  }) async {
+    confirmIdempotencyKeys.add(idempotencyKey);
+  }
 
   @override
   Future<void> changeAccountPassword({
