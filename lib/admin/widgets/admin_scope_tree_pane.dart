@@ -52,6 +52,9 @@ class AdminScopeTreePane extends StatelessWidget {
     required this.onToggleExpanded,
     required this.forceExpanded,
     this.header,
+    this.showAllBusinesses = false,
+    this.allBusinessesSelected = false,
+    this.onSelectAllBusinesses,
   });
 
   final List<AdminScopeTree> trees;
@@ -67,6 +70,18 @@ class AdminScopeTreePane extends StatelessWidget {
   /// accounts screen uses this slot to keep its "New business"
   /// onboarding affordance reachable from the scope pane.
   final Widget? header;
+
+  /// When true, an additive "All businesses" row is rendered above the
+  /// per-business tree. Opt-in (default off) so screens that are not
+  /// platform-aggregate-capable are byte-unaffected. Selecting it yields
+  /// the cross-business (platform-wide) view via [onSelectAllBusinesses].
+  final bool showAllBusinesses;
+
+  /// Whether the "All businesses" row is the active selection.
+  final bool allBusinessesSelected;
+
+  /// Invoked when the operator taps the "All businesses" row.
+  final VoidCallback? onSelectAllBusinesses;
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +114,20 @@ class AdminScopeTreePane extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            if (showAllBusinesses) ...[
+              AdminScopeRow(
+                key: const Key('admin_setup_scope_all_businesses'),
+                icon: Icons.public_outlined,
+                label: 'All businesses',
+                detail: 'Every business on the platform',
+                selected: allBusinessesSelected,
+                depth: 0,
+                onTap: onSelectAllBusinesses ?? () {},
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+            ],
             if (loading) const LinearProgressIndicator(minHeight: 2),
             if (loading) const SizedBox(height: 12),
             Expanded(
