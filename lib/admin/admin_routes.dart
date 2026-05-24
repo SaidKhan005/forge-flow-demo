@@ -1406,6 +1406,7 @@ Widget _buildVendorIntegrations(BuildContext context) {
         gateway: gateway,
         canMutate: canMutate,
         embedded: true,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
 
@@ -1426,6 +1427,7 @@ Widget _buildVendorIntegrations(BuildContext context) {
 
   return AdminSetupWorkspace(
     functionTitle: 'Vendor integrations',
+    showWorkspaceHeader: false,
     description:
         'Select a location, then connect, test, disconnect, and review vendor setup.',
     operatorGateway: operatorGateway,
@@ -1593,6 +1595,7 @@ Widget _buildMembers(BuildContext context) {
         canEditSeededRoles: canEditSeededRoles,
         initialScope: selectedScope,
         onOpenAccess: openAccess,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
 
@@ -1624,7 +1627,8 @@ Widget _buildMembers(BuildContext context) {
   }
 
   return AdminSetupWorkspace(
-    functionTitle: 'People, access, and roles',
+    functionTitle: 'Team members',
+    showWorkspaceHeader: false,
     description:
         'Manage members, invites, role assignments, and access policy for the selected scope.',
     operatorGateway: operatorGateway,
@@ -2156,6 +2160,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
             canExportAuditLog: canExportAuditLog,
             hierarchyScope: selectedScope,
             auditScopeRootNode: scopeSnapshot.data,
+            onBackToBusinessAccounts: onBackToBusinessAccounts,
           );
         },
       );
@@ -2193,7 +2198,8 @@ Widget _buildAuditedSupportActions(BuildContext context) {
   }
 
   return AdminSetupWorkspace(
-    functionTitle: 'Security, audit, and sessions',
+    functionTitle: 'Audit log',
+    showWorkspaceHeader: false,
     description:
         'Review audit history, active sessions, and guarded support actions for the selected scope.',
     operatorGateway: operatorGateway,
