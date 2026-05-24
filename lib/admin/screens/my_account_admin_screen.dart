@@ -150,7 +150,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
   // same HIGH case G60 flagged for operator-web, fixed by #855).
   static String _mintIdentityIdempotencyKey() {
     final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
     return 'admin-self-profile-$ts-$r';
   }
 
@@ -575,7 +575,7 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
   String _mintIdempotencyKey(String action) {
     _idempotencyCounter += 1;
     final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
     return 'admin-my-account-2fa-$action-$ts-$r-$_idempotencyCounter';
   }
 
@@ -826,7 +826,7 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
   String _mintIdempotencyKey(String action) {
     _idempotencyCounter += 1;
     final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
     return 'admin-my-account-security-$action-$ts-$r-$_idempotencyCounter';
   }
 
@@ -1522,7 +1522,7 @@ class _AdminActiveSessionsDialogState
   String _mintIdempotencyKey(String action) {
     _idempotencyCounter += 1;
     final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
     return 'admin-my-account-sessions-$action-$ts-$r-$_idempotencyCounter';
   }
 
