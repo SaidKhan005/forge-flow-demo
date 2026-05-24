@@ -295,7 +295,7 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
   Widget build(BuildContext context) {
     return OperatorWebDialog(
       key: const Key('admin_members_invite_dialog'),
-      title: 'Invite member to ${widget.operatorBusinessName}',
+      title: 'Invite a team member',
       icon: Icons.person_add_alt_1_outlined,
       maxWidth: 520,
       actions: <Widget>[
@@ -336,8 +336,8 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
                 key: const Key('admin_members_invite_email'),
                 controller: _emailController,
                 decoration: const InputDecoration(
-                  labelText: 'Email',
-                  hintText: 'name@example.com',
+                  labelText: 'Email address',
+                  hintText: 'jordan.lee@example.com',
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.emailAddress,
