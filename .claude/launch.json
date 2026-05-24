@@ -102,6 +102,18 @@
         "docs/_mockups"
       ],
       "port": 8190
+    },
+    {
+      "name": "kb-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8191",
+        "--directory",
+        "ux_preview"
+      ],
+      "port": 8191
     }
   ]
 }
