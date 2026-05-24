@@ -1185,45 +1185,56 @@ class _VendorApplicabilityEditDialogState
           child: Text(_isEditing ? 'Save rule' : 'Add rule'),
         ),
       ],
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_error != null) ...[
-              OperatorWebBanner(
-                key: const Key('admin_vendor_applicability_dialog_error'),
-                icon: Icons.warning_amber_rounded,
-                message: _error!,
-                tone: OperatorWebBannerTone.error,
+      // The friendly form can be taller than the dialog surface (vendor
+      // picker + allowed toggle + applies-to + optional fields + advanced
+      // editor + reason). [OperatorWebDialog] lays its body out in a
+      // min-height column, so cap the scroll area to a fraction of the
+      // viewport: the form then scrolls inside the dialog instead of
+      // overflowing, and the dialog still fits on screen.
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_error != null) ...[
+                OperatorWebBanner(
+                  key: const Key('admin_vendor_applicability_dialog_error'),
+                  icon: Icons.warning_amber_rounded,
+                  message: _error!,
+                  tone: OperatorWebBannerTone.error,
+                ),
+                const SizedBox(height: 14),
+              ],
+              _buildVendorPicker(),
+              const SizedBox(height: 16),
+              _buildAllowedToggle(),
+              const SizedBox(height: 16),
+              _buildAppliesTo(),
+              const SizedBox(height: 16),
+              _buildOptionalFields(),
+              const SizedBox(height: 16),
+              _buildAdvancedKey(),
+              const SizedBox(height: 8),
+              _buildAdvancedJson(),
+              const SizedBox(height: 16),
+              _FieldLabel(
+                label: 'Why are you making this change?',
+                example: 'Saved with the audit log. Example: Ticket VA-200.',
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 6),
+              TextField(
+                key: const Key('admin_vendor_applicability_reason'),
+                controller: _reason,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+              ),
             ],
-            _buildVendorPicker(),
-            const SizedBox(height: 16),
-            _buildAllowedToggle(),
-            const SizedBox(height: 16),
-            _buildAppliesTo(),
-            const SizedBox(height: 16),
-            _buildOptionalFields(),
-            const SizedBox(height: 16),
-            _buildAdvancedKey(),
-            const SizedBox(height: 8),
-            _buildAdvancedJson(),
-            const SizedBox(height: 16),
-            _FieldLabel(
-              label: 'Why are you making this change?',
-              example: 'Saved with the audit log. Example: Ticket VA-200.',
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              key: const Key('admin_vendor_applicability_reason'),
-              controller: _reason,
-              minLines: 1,
-              maxLines: 3,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
-            ),
-          ],
+          ),
         ),
       ),
     );
