@@ -636,7 +636,7 @@ class _AdminSideNav extends StatelessWidget {
     _NavSectionMeta(
       section: AdminRouteSection.operations,
       label: 'Operations',
-      icon: Icons.storefront_outlined,
+      icon: Icons.dashboard_outlined,
       accentColor: AppColors.sunset,
     ),
     _NavSectionMeta(
