@@ -60,6 +60,17 @@ abstract class AdvisorProviderConstants {
   static const String mockReplayProviderId = 'mock_replay';
 }
 
+/// Usage-class string for the server-side Voyage query-embedding call on
+/// the advisor text-query retrieval path (POST /v1/advisor/retrieve).
+///
+/// HP #9 (AI cost metered by class): the Voyage embedding spend is a
+/// distinct cost class from the Anthropic answer (`advisor_qa`), so it is
+/// recorded under its own `usage_logs.usage_class`. `usage_class` is a
+/// free-form text column (1–64 chars), so no migration is needed for a new
+/// class. Exported as a top-level const so route code and tests reference
+/// the same literal instead of hardcoding it.
+const String kVoyageQueryEmbeddingUsageClass = 'voyage_query_embedding';
+
 /// Per-model token-cost rates. Cents per million tokens, stored as ints
 /// so we can do integer-arithmetic cost computation without floats.
 /// Numbers are list prices per provider as of late 2025 / early 2026 —
@@ -113,6 +124,18 @@ abstract class LlmCostRateRegistry {
     outputCentsPerMillion: 500,
   );
 
+  // Voyage embeddings — list price per the official Voyage pricing page
+  // https://docs.voyageai.com/docs/pricing (looked up 2026-05-24).
+  // voyage-4-large: $0.12 per 1M tokens → 12 cents/MTok. Embeddings bill
+  // INPUT tokens only (there is no generated-output token stream), so
+  // outputCentsPerMillion is 0. The shared LlmCostRates.costCentsFor still
+  // computes correctly: outputTokens contributes 0 regardless of value.
+  // TODO(go-live): confirm against Voyage contract before enabling.
+  static const LlmCostRates _voyage4Large = LlmCostRates(
+    inputCentsPerMillion: 12,
+    outputCentsPerMillion: 0,
+  );
+
   /// Returns the rate for [modelId], or null when the model is not
   /// recognized (the proxy falls back to a zero charge in that case
   /// AND logs a warning so unknown models don't silently bypass caps).
@@ -126,6 +149,8 @@ abstract class LlmCostRateRegistry {
         return _geminiFlash25;
       case AdvisorProviderConstants.geminiProModelId:
         return _geminiPro25;
+      case AdvisorProviderConstants.voyageEmbeddingModelId:
+        return _voyage4Large;
     }
     return null;
   }

@@ -42,14 +42,20 @@
 // used in exactly one downstream call, and never returned to the client
 // or captured in a log field.
 //
-// TODO(HP#9): increment the voyage usage counter for the embedding call.
-//   The existing [ProxyUsageGuard] / [ProxyUsageCounterStore] is scoped
-//   to LLM advisor requests (operator/location/tier). The query-embedding
-//   call is a different cost class (Voyage tokens, not Anthropic tokens).
-//   Wiring requires a separate counter lane or a new cost-class key in
-//   `advisor_proxy_usage_counters`. This is left for a follow-up slice
-//   (A2b.1 or the HP#9 dedicated pass) rather than implemented silently
-//   with a no-op that would be invisible in the audit trail.
+// HP #9 (AI cost metered by class) — Slice A2b.1: the server-side Voyage
+// embedding call on the TEXT-QUERY path is now metered as its own cost
+// class. It reuses the SAME infrastructure the metered Anthropic LLM
+// route uses (HP #8: no parallel stack) — the [ProxyUsageGuard] cap-check
+// (`requireAllowed` → `recordAllowed`) plus the [ProxyAccountingStore]
+// `usage_logs` rollup (`commitUsageLog`) — but under a DISTINCT
+// `usage_class` ([kVoyageQueryEmbeddingUsageClass] = 'voyage_query_embedding').
+// Cost is computed from the ACTUAL Voyage-returned token count via the
+// Voyage rate in [LlmCostRateRegistry]. `usage_class` is a free-form text
+// column, so no migration is required. Both the guard and the accounting
+// store are OPTIONAL (null in tests / scaffolds): when unwired the route
+// behaves exactly as before (no metering, no cap-check), so existing A2/A2b
+// callers stay byte-compatible. The pre-computed-embedding (A2 back-compat)
+// path performs NO provider call and therefore records NO Voyage cost.
 
 part of 'advisor_proxy.dart';
 
@@ -72,6 +78,15 @@ const String advisorRetrievePath = '/v1/advisor/retrieve';
 ///      [retrievalService] — no API call.
 ///
 /// HP #7: [voyageApiKey] is never logged or returned to the client.
+///
+/// HP #9 metering (text-query path only): when both [operator] and
+/// [accountingStore] are supplied, the server-side Voyage embedding spend
+/// is recorded under [kVoyageQueryEmbeddingUsageClass] via the SAME
+/// accounting path the Anthropic LLM route uses. When [usageGuard] is also
+/// supplied, the operator's per-minute / monthly caps are checked BEFORE
+/// the Voyage call so an over-budget operator is refused consistently with
+/// LLM calls. All three are OPTIONAL — when null (tests / scaffolds) the
+/// route runs unmetered exactly as the A2/A2b baseline did.
 Future<void> _handleAdvisorRetrieve({
   required HttpRequest request,
   required HttpResponse response,
@@ -79,6 +94,14 @@ Future<void> _handleAdvisorRetrieve({
   required CorpusRetrievalService retrievalService,
   AdvisorQueryEmbeddingGateway? embeddingGateway,
   String? voyageApiKey,
+  // HP #9 metering handles — threaded from the dispatch site in
+  // [routeRequest] after the operator JWT has been resolved. Optional so
+  // existing tests that drive the route without the accounting stack keep
+  // working unchanged.
+  OperatorContext? operator,
+  ProxyUsageGuard? usageGuard,
+  ProxyAccountingStore? accountingStore,
+  DateTime Function()? clock,
 }) async {
   // ── Resolve the embedding (text query or pre-computed) ───────────────
   List<double> embedding;
@@ -107,13 +130,40 @@ Future<void> _handleAdvisorRetrieve({
       return;
     }
 
+    final trimmedQuery = rawQuery.trim();
+
+    // ── HP #9 cap-check BEFORE the provider call ──────────────────────
+    // Estimate input tokens (Voyage bills input tokens only). ceil(chars/4)
+    // is the standard heuristic the proxy uses elsewhere for pre-call
+    // estimation; the ACTUAL provider-returned token count drives the
+    // recorded cost below. The estimate only gates the cap-check so an
+    // over-budget operator is refused consistently with LLM calls. The
+    // guard is OPTIONAL — when unwired (tests/scaffold) no cap-check runs,
+    // exactly as the LLM smoke route behaves with `usageGuard == null`.
+    final estimatedInputTokens = (trimmedQuery.length + 3) ~/ 4;
+    UsageDecisionAllowed? voyageUsageDecision;
+    if (usageGuard != null && operator != null) {
+      try {
+        voyageUsageDecision = await usageGuard.requireAllowed(
+          operator: operator,
+          estimate: UsageEstimate(requestTokens: estimatedInputTokens),
+        );
+      } on UsageRefusal catch (refusal) {
+        // Same refusal envelope the metered LLM route returns, so an
+        // over-budget operator gets a consistent 402/429/413/503.
+        _writeJson(response, refusal.statusCode, refusal.toJson());
+        return;
+      }
+    }
+
+    final AdvisorQueryEmbeddingResult embeddingResult;
     try {
-      embedding = await embeddingGateway.embedQuery(
+      embeddingResult = await embeddingGateway.embedQuery(
         // HP #7: key stays in the call stack, never logged or returned.
         apiKey: voyageApiKey,
         model: AdvisorProviderConstants.voyageEmbeddingModelId,
         dimensions: AdvisorProviderConstants.voyageEmbeddingDimensions,
-        queryText: rawQuery.trim(),
+        queryText: trimmedQuery,
       );
     } on AdvisorQueryEmbeddingException catch (e) {
       // Surface the exception message in the proxy log — it is safe
@@ -130,6 +180,8 @@ Future<void> _handleAdvisorRetrieve({
       });
       return;
     }
+
+    embedding = embeddingResult.embedding;
 
     // Dimension sanity check — Voyage should always return the
     // requested dimension, but guard defensively.
@@ -148,6 +200,65 @@ Future<void> _handleAdvisorRetrieve({
             'embedding provider returned wrong dimension; please retry',
       });
       return;
+    }
+
+    // ── HP #9 record the Voyage spend AFTER a successful call ─────────
+    // Cost is computed from the ACTUAL provider-returned token count via
+    // the Voyage rate, NOT a hardcoded constant. Recorded under the
+    // distinct `voyage_query_embedding` usage class, attributed to the
+    // caller's operator_id/location_id, through the SAME accounting path
+    // the Anthropic answer uses (HP #8: no parallel stack). Both writes
+    // mirror the LLM route: `commitUsageLog` rolls up `usage_logs`, and
+    // `recordAllowed` advances `advisor_proxy_usage_counters` so the next
+    // request's cap-check sees this spend. Metering only runs when the
+    // accounting store is wired (production); tests/scaffolds skip it.
+    if (accountingStore != null && operator != null) {
+      final voyageRate = LlmCostRateRegistry.rateFor(
+        AdvisorProviderConstants.voyageEmbeddingModelId,
+      );
+      // Embeddings bill input tokens only → outputTokens: 0. Unknown model
+      // (rate == null) charges 0, preserving the registry's fail-open
+      // contract; the Voyage model is registered so this resolves to the
+      // 12 cents/MTok rate in practice.
+      final voyageCostCents = voyageRate == null
+          ? 0
+          : voyageRate.costCentsFor(
+              inputTokens: embeddingResult.totalTokens,
+              outputTokens: 0,
+            );
+      final voyageClock = clock ?? DateTime.now;
+      await accountingStore.commitUsageLog(
+        operator: operator,
+        usageClass: kVoyageQueryEmbeddingUsageClass,
+        telemetry: ProxyUsageTelemetry(
+          // Fixed query-class label for the embedding cost class. NOT the
+          // request's graph_scope (which is parsed later and may yet 400):
+          // the Voyage tokens are already spent the moment embedQuery
+          // succeeds, so the spend is recorded here regardless.
+          queryClass: 'query_embedding',
+          cacheHit: false,
+          // llmTier/modelUsed carry the Voyage provider+model for this
+          // cost class — these are telemetry dims on the usage_logs row,
+          // not an Anthropic tier. HP #7: no key, only the public model id.
+          llmTier: AdvisorProviderConstants.voyageProviderId,
+          modelUsed: AdvisorProviderConstants.voyageEmbeddingModelId,
+        ),
+        estimate: ProxyUsageChargeEstimate(
+          tokenCount: embeddingResult.totalTokens,
+          costCents: voyageCostCents,
+        ),
+        now: voyageClock().toUtc(),
+      );
+      // Advance the per-minute / monthly counters with the actual cost so
+      // the next cap-check reflects this spend. Only when the guard ran a
+      // cap-check above (so we hold a decision to record against).
+      if (usageGuard != null && voyageUsageDecision != null) {
+        await usageGuard.recordAllowed(
+          operator: operator,
+          decision: voyageUsageDecision,
+          costCentsToAdd: voyageCostCents,
+        );
+      }
     }
   } else if (rawEmbedding != null) {
     // ── Path B: pre-computed embedding (A2 back-compat) ───────────────

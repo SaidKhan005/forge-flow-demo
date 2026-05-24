@@ -12970,6 +12970,15 @@ Future<void> routeRequest(
               embeddingGateway: corpusQueryEmbeddingGateway,
               // HP #7: key stays in the call stack; never logged or returned.
               voyageApiKey: voyageApiKeyForRetrieval,
+              // HP #9: meter the Voyage embedding spend by class. `scope` is
+              // the resolved operator JWT (operator_id/location_id). The
+              // guard + accounting store are the SAME handles the metered
+              // LLM route uses (HP #8: no parallel stack); both are optional,
+              // so tests/scaffolds that pass neither stay unmetered.
+              operator: scope,
+              usageGuard: usageGuard,
+              accountingStore: accountingStore,
+              clock: clock,
             );
           } catch (error, stackTrace) {
             if (_maybeWriteDependencyTimeout(response, error)) return;
