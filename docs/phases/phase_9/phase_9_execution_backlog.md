@@ -111,7 +111,15 @@ Do not re-open stale findings unless the repo regresses:
   backfills the legacy `operators.subscription_tier = 'launch'` placeholder to
   `'pilot'`, relaxes the column default to `'pilot'`, and adds a CHECK pinning
   the column to the six operator-approved tiers (pilot/starter/premium/elite/
-  pro/enterprise). The Hardening Wave B3 audit-anchor
+  pro/enterprise). The Support logs telemetry groundwork (P1a) then advances
+  the shared migration cutoff to
+  `202605241000_advisor_conversation_log_request_correlation_and_retention.sql`,
+  which adds a NULLABLE `request_id` uuid correlation key + operator-leading
+  `(operator_id, location_id, request_id)` join index to
+  `advisor_conversation_log` and schedules a cluster-wide 30-day retention
+  purge via pg_cron that never deletes `legal_hold` or `permanent`-retention
+  rows (schema + RLS-adjacent; gated on explicit operator approval). The
+  Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
   schedule registration for `forge_audit_anchor_daily` at `0 2 * * *` UTC; the
