@@ -21,7 +21,10 @@ void main() {
     setUpAll(() {
       final file = File(_path);
       expect(file.existsSync(), isTrue, reason: 'migration must exist');
-      sql = file.readAsStringSync();
+      // Normalize CRLF -> LF so the `contains('...\n')` assertions hold on a
+      // Windows autocrlf checkout (`.gitattributes` only forces eol=lf for
+      // *.sh, not *.sql). Mirrors test/migrations/202605021500_rls_depth_test.dart.
+      sql = file.readAsStringSync().replaceAll('\r\n', '\n');
       lower = sql.toLowerCase();
     });
 
