@@ -159,32 +159,30 @@ class _AdminScopeTrigger extends StatelessWidget {
             onTap: onTap,
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              // minWidth stays 0 so the trigger sizes to its content and
-              // can shrink inside the header's Flexible. minHeight matches
-              // operator-web's large trigger so the two bars line up.
-              constraints: BoxConstraints(
-                maxWidth: showLabel ? 360 : 60,
-                minHeight: showLabel ? 64 : 44,
-              ),
+              // Fill the width the header allots (operator-web sizes its
+              // picker with a fixed-width SizedBox), so the admin "Managing"
+              // control is the same width as operator-web's. minHeight
+              // matches operator-web's large trigger so the two bars line up.
+              width: showLabel ? double.infinity : 60,
+              constraints: BoxConstraints(minHeight: showLabel ? 68 : 44),
               padding: EdgeInsets.symmetric(
                 horizontal: showLabel ? 14 : 10,
-                vertical: showLabel ? 10 : 8,
+                vertical: 10,
               ),
               decoration: BoxDecoration(
                 border: Border.all(color: AppColors.borderSubtle, width: 1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Icon(
                     _adminScopeTriggerIcon(scope),
-                    size: showLabel ? 20 : 18,
+                    size: 20,
                     color: AppColors.sunsetDark,
                   ),
                   if (showLabel) ...<Widget>[
                     const SizedBox(width: 12),
-                    Flexible(child: _AdminScopeTriggerLabel(scope: scope)),
+                    Expanded(child: _AdminScopeTriggerLabel(scope: scope)),
                     const SizedBox(width: 8),
                     const Icon(
                       Icons.arrow_drop_down,
