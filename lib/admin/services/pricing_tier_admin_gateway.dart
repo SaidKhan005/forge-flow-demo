@@ -70,6 +70,18 @@ abstract class PricingTierAdminGateway {
   /// Month-to-date spend per `(location, usage_class)` for one operator
   /// (Phase 2 live spend-vs-cap figures).
   Future<OperatorSpendSummary> fetchSpendSummary(String operatorId);
+
+  /// Phase 3 — read the editable plan-pricing catalog
+  /// (`GET /v1/admin/pricing/plans`). One entry per plan. The screen's
+  /// plan map prefers this over the hard-coded presentations.
+  Future<List<PricingPlanCatalogEntry>> listPlanCatalog();
+
+  /// Phase 3 — edit one plan's pricing fields
+  /// (`PATCH /v1/admin/pricing/plans/{tier_key}`). Returns the updated
+  /// catalog row.
+  Future<PricingPlanCatalogEntry> updatePlanPricing(
+    PricingPlanPricingUpdateCommand command,
+  );
 }
 
 class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
@@ -91,6 +103,8 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
   static const String operatorsPath = '/v1/admin/pricing/operators';
   static const String operatorsPrefix = '$operatorsPath/';
   static const String usageCapsPath = '/v1/admin/pricing/usage-caps';
+  static const String plansPath = '/v1/admin/pricing/plans';
+  static const String plansPrefix = '$plansPath/';
 
   // Idempotency key generation lives in the screen layer
   // (`_PricingTierAdminScreenState._nextIdempotencyKey`) so a single
@@ -165,6 +179,31 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
     return OperatorSpendSummary.fromJson(body);
   }
 
+  @override
+  Future<List<PricingPlanCatalogEntry>> listPlanCatalog() async {
+    final body = await _send(method: 'GET', path: plansPath);
+    final list = (body['plans'] as List?) ?? const [];
+    return <PricingPlanCatalogEntry>[
+      for (final entry in list)
+        PricingPlanCatalogEntry.fromJson((entry as Map).cast<String, Object?>()),
+    ];
+  }
+
+  @override
+  Future<PricingPlanCatalogEntry> updatePlanPricing(
+    PricingPlanPricingUpdateCommand command,
+  ) async {
+    final body = await _send(
+      method: 'PATCH',
+      path: '$plansPrefix${Uri.encodeComponent(command.tierKey)}',
+      idempotencyKey: command.idempotencyKey,
+      jsonBody: command.toJson(),
+    );
+    return PricingPlanCatalogEntry.fromJson(
+      (body['plan'] as Map).cast<String, Object?>(),
+    );
+  }
+
   Future<Map<String, Object?>> _send({
     required String method,
     required String path,
@@ -232,18 +271,27 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     DateTime Function()? now,
     String Function()? idGenerator,
     String? actorUserId,
+    Iterable<PricingPlanCatalogEntry>? planCatalogSeed,
   }) : _now = now ?? DateTime.now,
        _idGenerator = idGenerator ?? _randomId,
        _actorUserId = actorUserId,
        _bundles = <String, _MutableBundle>{
          for (final bundle in seed)
            bundle.operatorId: _MutableBundle.from(bundle),
+       },
+       // Demo mode edits plan pricing offline: seed the catalog from the
+       // hard-coded fallback (which mirrors the server migration seed) and
+       // mutate it in place. Callers can override with a custom seed.
+       _planCatalog = <String, PricingPlanCatalogEntry>{
+         for (final entry in (planCatalogSeed ?? buildFallbackPlanCatalog()))
+           entry.tierKey: entry,
        };
 
   final DateTime Function() _now;
   final String Function() _idGenerator;
   final String? _actorUserId;
   final Map<String, _MutableBundle> _bundles;
+  final Map<String, PricingPlanCatalogEntry> _planCatalog;
 
   /// Per-key cache so a retried mutation on the in-memory gateway
   /// returns the prior result instead of mutating again - mirrors the
