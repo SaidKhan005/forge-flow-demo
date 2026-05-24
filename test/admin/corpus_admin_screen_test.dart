@@ -641,6 +641,151 @@ void main() {
       expect(find.byKey(const Key('admin_corpus_action_error')), findsNothing);
     },
   );
+
+  // ── B3 tests: grouped sections view + client-side search ──
+
+  CorpusBundle b3Bundle() {
+    // Two source documents, three sections total:
+    //   doc_a.md  -> Section Alpha, Section Beta
+    //   doc_b.md  -> Section Gamma
+    return CorpusBundle(
+      version: CorpusVersionRef(
+        versionId: 'v-b3',
+        createdBy: 'seed-actor',
+        createdAt: DateTime.utc(2026, 1, 1),
+        summary: 'B3 grouped-view check',
+        rollbackOf: null,
+        supersededAt: null,
+        chunkCount: 3,
+      ),
+      chunks: const <ChunkPreview>[
+        ChunkPreview(
+          chunkId: 'doc_a.md#001',
+          docId: 'doc_a',
+          sourcePath: 'doc_a.md',
+          headingPath: <String>['Section Alpha'],
+          snippet: 'Alpha snippet content about workflows.',
+          estimatedTokens: 40,
+          riskLevel: 'standard',
+          contentSha256: 'aaaa',
+          versionId: 'v-b3',
+          active: true,
+        ),
+        ChunkPreview(
+          chunkId: 'doc_a.md#002',
+          docId: 'doc_a',
+          sourcePath: 'doc_a.md',
+          headingPath: <String>['Section Beta'],
+          snippet: 'Beta snippet about scheduling.',
+          estimatedTokens: 42,
+          riskLevel: 'standard',
+          contentSha256: 'bbbb',
+          versionId: 'v-b3',
+          active: true,
+        ),
+        ChunkPreview(
+          chunkId: 'doc_b.md#001',
+          docId: 'doc_b',
+          sourcePath: 'doc_b.md',
+          headingPath: <String>['Section Gamma'],
+          snippet: 'Gamma snippet about targets.',
+          estimatedTokens: 35,
+          riskLevel: 'standard',
+          contentSha256: 'cccc',
+          versionId: 'v-b3',
+          active: true,
+        ),
+      ],
+    );
+  }
+
+  testWidgets(
+    'B3: grouped view renders one collapsible group per source document',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(seed: <CorpusBundle>[b3Bundle()]);
+      await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+
+      // Two document groups should appear.
+      expect(
+        find.byKey(Key('admin_corpus_doc_group_${'doc_a.md'.hashCode}')),
+        findsOneWidget,
+        reason: 'doc_a.md group must render',
+      );
+      expect(
+        find.byKey(Key('admin_corpus_doc_group_${'doc_b.md'.hashCode}')),
+        findsOneWidget,
+        reason: 'doc_b.md group must render',
+      );
+
+      // All three sections are visible (groups start expanded).
+      expect(
+        find.byKey(const Key('admin_corpus_chunk_doc_a.md#001')),
+        findsOneWidget,
+        reason: 'Section Alpha tile must be visible (group expanded by default)',
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_chunk_doc_a.md#002')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_chunk_doc_b.md#001')),
+        findsOneWidget,
+      );
+
+      // Technical-details disclosure still exists (B2 carryover).
+      expect(
+        find.byKey(const Key('admin_corpus_chunk_details_doc_a.md#001')),
+        findsOneWidget,
+        reason: 'Technical details ExpansionTile must be present per B2',
+      );
+
+      // Search box is rendered.
+      expect(
+        find.byKey(const Key('admin_corpus_content_search')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'B3: search box filters sections — matching section stays, non-matching is hidden',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(seed: <CorpusBundle>[b3Bundle()]);
+      await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+
+      // Initially all three tiles are visible.
+      expect(find.byKey(const Key('admin_corpus_chunk_doc_a.md#001')), findsOneWidget);
+      expect(find.byKey(const Key('admin_corpus_chunk_doc_b.md#001')), findsOneWidget);
+
+      // Type a query that only matches "Gamma" (doc_b).
+      await tester.enterText(
+        find.byKey(const Key('admin_corpus_content_search')),
+        'Gamma',
+      );
+      await tester.pumpAndSettle();
+
+      // doc_b section must still be visible.
+      expect(
+        find.byKey(const Key('admin_corpus_chunk_doc_b.md#001')),
+        findsOneWidget,
+        reason: 'Section Gamma matches the search query and must be visible',
+      );
+
+      // doc_a sections must be hidden (neither name nor snippet contains "gamma").
+      expect(
+        find.byKey(const Key('admin_corpus_chunk_doc_a.md#001')),
+        findsNothing,
+        reason: 'Section Alpha does not match "Gamma" and must be hidden',
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_chunk_doc_a.md#002')),
+        findsNothing,
+        reason: 'Section Beta does not match "Gamma" and must be hidden',
+      );
+    },
+  );
 }
 
 class _CountingCorpusAdminGateway implements CorpusAdminGateway {
