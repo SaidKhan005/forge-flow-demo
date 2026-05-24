@@ -92,15 +92,13 @@
       "port": 8184
     },
     {
-      "name": "mockup-static",
-      "runtimeExecutable": "python",
+      "name": "va-mockup",
+      "runtimeExecutable": "dart",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "8190",
-        "--directory",
-        "docs/_mockups"
+        "run",
+        "tool/_mock_preview_server.dart"
       ],
+      "autoPort": true,
       "port": 8190
     }
   ]
