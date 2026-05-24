@@ -48,6 +48,19 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
   bool deleteResult = true;
   List<Map<String, Object?>>? spendSummaryResult = const <Map<String, Object?>>[];
 
+  List<Map<String, Object?>> planCatalogResult = const <Map<String, Object?>>[];
+  Map<String, Object?>? planUpdateResult = <String, Object?>{
+    'tier_key': 'premium',
+    'monthly_usd': 300.0,
+    'first_n_seats': 20,
+    'first_seat_usd': 6.0,
+    'additional_seat_usd': 4.0,
+    'onboarding_min_usd': 750.0,
+    'onboarding_max_usd': 2000.0,
+    'updated_at': '2026-04-30T12:00:00.000Z',
+    'updated_by': 'user_admin',
+  };
+
   String? lastReason;
   String? lastActorUserId;
   String? lastTierUpdateOperatorId;
@@ -63,6 +76,9 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
   String? lastDeleteCapId;
   String? lastDeleteUsageClass;
   String? lastSpendSummaryOperatorId;
+  String? lastPlanUpdateTierKey;
+  double? lastPlanUpdateMonthlyUsd;
+  int? lastPlanUpdateFirstNSeats;
 
   @override
   Future<List<Map<String, Object?>>> listOperatorsWithCaps({
@@ -154,6 +170,36 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
     lastReason = adminReason;
     lastSpendSummaryOperatorId = operatorId;
     return spendSummaryResult;
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listPlanCatalog({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    return planCatalogResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> updatePlanPricing({
+    required String actorUserId,
+    required String tierKey,
+    required double? monthlyUsd,
+    required int? firstNSeats,
+    required double? firstSeatUsd,
+    required double? additionalSeatUsd,
+    required double? onboardingMinUsd,
+    required double? onboardingMaxUsd,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastPlanUpdateTierKey = tierKey;
+    lastPlanUpdateMonthlyUsd = monthlyUsd;
+    lastPlanUpdateFirstNSeats = firstNSeats;
+    return planUpdateResult;
   }
 }
 

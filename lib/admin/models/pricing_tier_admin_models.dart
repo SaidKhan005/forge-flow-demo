@@ -448,9 +448,12 @@ const List<PricingTierTemplate> kPricingTierTemplates = <PricingTierTemplate>[
 /// ("Reconciled pricing model (2026-05-24)") and the operator-approved
 /// mockup `docs/_mockups/admin_plans_and_limits_redesign.html`.
 ///
-/// This is display-only. There is no editable pricing catalog yet (that
-/// is Phase 3, schema + proxy), so nothing here is wired to a save path
-/// and the plan map renders read-only.
+/// As of Phase 3 these constants are the OFFLINE / DEMO FALLBACK for the
+/// editable server catalog (`pricing_plan_catalog`, read via
+/// `GET /v1/admin/pricing/plans`). The screen prefers the live catalog
+/// and falls back to these values when the call fails or in offline demo
+/// mode (see [buildFallbackPlanCatalog]). They are NOT deleted — they
+/// keep the plan map painting without a backend.
 @immutable
 class PricingPlanPresentation {
   const PricingPlanPresentation({
@@ -582,9 +585,240 @@ PricingTierTemplate? findPricingTierTemplate(String tierKey) {
   return null;
 }
 
+/// Phase 3 — one editable row from the server `pricing_plan_catalog`
+/// table (`db/migrations/202605241100_plans_and_limits_phase3_pricing_plan_catalog.sql`).
+///
+/// This is the live, admin-editable source of plan pricing. The screen
+/// reads the catalog via `GET /v1/admin/pricing/plans` and falls back to
+/// the hard-coded [kPricingPlanPresentations] when the call fails or in
+/// offline demo mode, so the plan map always paints. Nullable money
+/// fields mirror the catalog columns: Enterprise has a null
+/// `monthlyUsd` (custom contract); plans with no per-seat fee have null
+/// seat fields; the self-serve / custom plans have null onboarding
+/// bounds.
+@immutable
+class PricingPlanCatalogEntry {
+  const PricingPlanCatalogEntry({
+    required this.tierKey,
+    required this.monthlyUsd,
+    required this.firstNSeats,
+    required this.firstSeatUsd,
+    required this.additionalSeatUsd,
+    required this.onboardingMinUsd,
+    required this.onboardingMaxUsd,
+    this.updatedAt,
+    this.updatedBy,
+  });
+
+  /// Matches [PricingTierTemplate.tierKey] / the catalog primary key.
+  final String tierKey;
+
+  /// Headline monthly fee in USD, or null for a custom-contract plan
+  /// (Enterprise).
+  final double? monthlyUsd;
+
+  /// Size of the first per-seat pricing band (e.g. 20), or null when the
+  /// plan has no per-seat fee.
+  final int? firstNSeats;
+
+  /// Per-seat USD price inside / past the first band; null when the plan
+  /// has no per-seat fee.
+  final double? firstSeatUsd;
+  final double? additionalSeatUsd;
+
+  /// Onboarding fee range in USD; null for the self-serve and custom
+  /// plans.
+  final double? onboardingMinUsd;
+  final double? onboardingMaxUsd;
+
+  /// UTC instant of the last edit + the actor who made it. Null on a
+  /// fallback entry projected from the hard-coded presentations.
+  final DateTime? updatedAt;
+  final String? updatedBy;
+
+  static PricingPlanCatalogEntry fromJson(Map<String, Object?> json) {
+    final updatedAtRaw = json['updated_at'] as String?;
+    return PricingPlanCatalogEntry(
+      tierKey: json['tier_key']! as String,
+      monthlyUsd: _asNullableDouble(json['monthly_usd']),
+      firstNSeats: _asNullableInt(json['first_n_seats']),
+      firstSeatUsd: _asNullableDouble(json['first_seat_usd']),
+      additionalSeatUsd: _asNullableDouble(json['additional_seat_usd']),
+      onboardingMinUsd: _asNullableDouble(json['onboarding_min_usd']),
+      onboardingMaxUsd: _asNullableDouble(json['onboarding_max_usd']),
+      updatedAt: (updatedAtRaw == null || updatedAtRaw.isEmpty)
+          ? null
+          : DateTime.parse(updatedAtRaw),
+      updatedBy: json['updated_by'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'tier_key': tierKey,
+    'monthly_usd': monthlyUsd,
+    'first_n_seats': firstNSeats,
+    'first_seat_usd': firstSeatUsd,
+    'additional_seat_usd': additionalSeatUsd,
+    'onboarding_min_usd': onboardingMinUsd,
+    'onboarding_max_usd': onboardingMaxUsd,
+    if (updatedAt != null) 'updated_at': updatedAt!.toUtc().toIso8601String(),
+    if (updatedBy != null) 'updated_by': updatedBy,
+  };
+
+  /// Project a hard-coded [PricingPlanPresentation] into a catalog entry
+  /// for the offline / demo fallback. Only the headline monthly price is
+  /// carried verbatim; the per-seat ramp + onboarding bounds are sourced
+  /// from [kPricingTierTemplates]-adjacent constants below so the demo
+  /// editor shows the same numbers the server seed holds.
+  factory PricingPlanCatalogEntry.fromPresentation(
+    PricingPlanPresentation presentation,
+  ) {
+    final seed = _kPlanPricingSeed[presentation.tierKey];
+    return PricingPlanCatalogEntry(
+      tierKey: presentation.tierKey,
+      monthlyUsd: presentation.monthlyUsd,
+      firstNSeats: seed?.firstNSeats,
+      firstSeatUsd: seed?.firstSeatUsd,
+      additionalSeatUsd: seed?.additionalSeatUsd,
+      onboardingMinUsd: seed?.onboardingMinUsd,
+      onboardingMaxUsd: seed?.onboardingMaxUsd,
+    );
+  }
+}
+
+/// Edit one plan's pricing fields. Goes to
+/// `PATCH /v1/admin/pricing/plans/{tier_key}`. Only the editable money /
+/// band fields travel; `tier_key` is the path segment, not a body field.
+@immutable
+class PricingPlanPricingUpdateCommand {
+  const PricingPlanPricingUpdateCommand({
+    required this.tierKey,
+    required this.monthlyUsd,
+    required this.firstNSeats,
+    required this.firstSeatUsd,
+    required this.additionalSeatUsd,
+    required this.onboardingMinUsd,
+    required this.onboardingMaxUsd,
+    required this.idempotencyKey,
+  });
+
+  final String tierKey;
+  final double? monthlyUsd;
+  final int? firstNSeats;
+  final double? firstSeatUsd;
+  final double? additionalSeatUsd;
+  final double? onboardingMinUsd;
+  final double? onboardingMaxUsd;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried PATCH collapses to one
+  /// pricing mutation + one audit row.
+  final String idempotencyKey;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'monthly_usd': monthlyUsd,
+    'first_n_seats': firstNSeats,
+    'first_seat_usd': firstSeatUsd,
+    'additional_seat_usd': additionalSeatUsd,
+    'onboarding_min_usd': onboardingMinUsd,
+    'onboarding_max_usd': onboardingMaxUsd,
+  };
+}
+
+/// Per-plan per-seat + onboarding seed values, mirroring the catalog
+/// migration's seed (`202605241100_...`) and the reconciled pricing
+/// model. Used only to build the offline/demo fallback catalog so the
+/// in-memory gateway + the screen's fallback path show the same numbers
+/// the server holds. The headline monthly price stays sourced from
+/// [kPricingPlanPresentations]; this table carries the fields the
+/// presentations do not.
+class _PlanPricingSeed {
+  const _PlanPricingSeed({
+    this.firstNSeats,
+    this.firstSeatUsd,
+    this.additionalSeatUsd,
+    this.onboardingMinUsd,
+    this.onboardingMaxUsd,
+  });
+
+  final int? firstNSeats;
+  final double? firstSeatUsd;
+  final double? additionalSeatUsd;
+  final double? onboardingMinUsd;
+  final double? onboardingMaxUsd;
+}
+
+const Map<String, _PlanPricingSeed> _kPlanPricingSeed =
+    <String, _PlanPricingSeed>{
+      'pilot': _PlanPricingSeed(onboardingMinUsd: 0, onboardingMaxUsd: 0),
+      'starter': _PlanPricingSeed(
+        onboardingMinUsd: 500,
+        onboardingMaxUsd: 1000,
+      ),
+      'premium': _PlanPricingSeed(
+        firstNSeats: 20,
+        firstSeatUsd: 5,
+        additionalSeatUsd: 3,
+        onboardingMinUsd: 750,
+        onboardingMaxUsd: 2000,
+      ),
+      'elite': _PlanPricingSeed(
+        firstNSeats: 20,
+        firstSeatUsd: 10,
+        additionalSeatUsd: 5,
+        onboardingMinUsd: 1500,
+        onboardingMaxUsd: 3500,
+      ),
+      'pro': _PlanPricingSeed(
+        firstNSeats: 20,
+        firstSeatUsd: 15,
+        additionalSeatUsd: 8,
+        onboardingMinUsd: 2500,
+        onboardingMaxUsd: 5000,
+      ),
+      'enterprise': _PlanPricingSeed(),
+    };
+
+/// Build the full offline/demo fallback catalog from the hard-coded
+/// presentations + the per-seat/onboarding seed. The in-memory gateway
+/// seeds from this so demo mode edits plan pricing without a backend,
+/// and the screen falls back to it when `GET /v1/admin/pricing/plans`
+/// fails.
+List<PricingPlanCatalogEntry> buildFallbackPlanCatalog() => <
+  PricingPlanCatalogEntry
+>[
+  for (final p in kPricingPlanPresentations)
+    PricingPlanCatalogEntry.fromPresentation(p),
+];
+
 double _asDouble(Object? raw) {
   if (raw == null) return 0;
   if (raw is num) return raw.toDouble();
   if (raw is String) return double.tryParse(raw) ?? 0;
   return 0;
+}
+
+/// Parse a JSON money/number field that may be a genuine SQL NULL.
+/// Numeric columns can arrive as `num` (driver) or `String` (jsonb text);
+/// a missing/blank value stays null so the UI renders the honest empty
+/// sentinel rather than a phantom $0.
+double? _asNullableDouble(Object? raw) {
+  if (raw == null) return null;
+  if (raw is num) return raw.toDouble();
+  if (raw is String) {
+    if (raw.isEmpty) return null;
+    return double.tryParse(raw);
+  }
+  return null;
+}
+
+int? _asNullableInt(Object? raw) {
+  if (raw == null) return null;
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  if (raw is String) {
+    if (raw.isEmpty) return null;
+    return int.tryParse(raw);
+  }
+  return null;
 }

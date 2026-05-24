@@ -475,6 +475,160 @@ void main() {
     });
   });
 
+  group('InMemoryPricingTierAdminGateway — plan catalog (Phase 3)', () {
+    test('listPlanCatalog seeds the six plans in ladder order', () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      final plans = await gateway.listPlanCatalog();
+      expect(
+        plans.map((p) => p.tierKey).toList(),
+        equals(<String>['pilot', 'starter', 'premium', 'elite', 'pro',
+            'enterprise']),
+      );
+      // Seed values mirror the migration + reconciled pricing model.
+      final elite = plans.firstWhere((p) => p.tierKey == 'elite');
+      expect(elite.monthlyUsd, equals(250));
+      expect(elite.firstNSeats, equals(20));
+      expect(elite.firstSeatUsd, equals(10));
+      expect(elite.additionalSeatUsd, equals(5));
+      expect(elite.onboardingMinUsd, equals(1500));
+      expect(elite.onboardingMaxUsd, equals(3500));
+      // Enterprise is a custom contract: null monthly + null bounds.
+      final enterprise = plans.firstWhere((p) => p.tierKey == 'enterprise');
+      expect(enterprise.monthlyUsd, isNull);
+      expect(enterprise.onboardingMinUsd, isNull);
+    });
+
+    test('updatePlanPricing mutates the row and listPlanCatalog reflects it',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        actorUserId: 'actor-x',
+      );
+      final updated = await gateway.updatePlanPricing(
+        const PricingPlanPricingUpdateCommand(
+          tierKey: 'premium',
+          monthlyUsd: 300,
+          firstNSeats: 25,
+          firstSeatUsd: 6,
+          additionalSeatUsd: 4,
+          onboardingMinUsd: 800,
+          onboardingMaxUsd: 2200,
+          idempotencyKey: 'k-plan-premium',
+        ),
+      );
+      expect(updated.monthlyUsd, equals(300));
+      expect(updated.firstSeatUsd, equals(6));
+      expect(updated.updatedBy, equals('actor-x'));
+      expect(updated.updatedAt, isNotNull);
+
+      final plans = await gateway.listPlanCatalog();
+      final premium = plans.firstWhere((p) => p.tierKey == 'premium');
+      expect(premium.monthlyUsd, equals(300));
+      expect(premium.firstNSeats, equals(25));
+      expect(premium.additionalSeatUsd, equals(4));
+    });
+
+    test('updatePlanPricing accepts null fields (clear to none)', () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      final updated = await gateway.updatePlanPricing(
+        const PricingPlanPricingUpdateCommand(
+          tierKey: 'enterprise',
+          monthlyUsd: null,
+          firstNSeats: null,
+          firstSeatUsd: null,
+          additionalSeatUsd: null,
+          onboardingMinUsd: null,
+          onboardingMaxUsd: null,
+          idempotencyKey: 'k-plan-enterprise',
+        ),
+      );
+      expect(updated.monthlyUsd, isNull);
+      expect(updated.firstSeatUsd, isNull);
+    });
+
+    test('updatePlanPricing rejects an unknown tier_key (404-style)',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      Object? thrown;
+      try {
+        await gateway.updatePlanPricing(
+          const PricingPlanPricingUpdateCommand(
+            tierKey: 'megapremium',
+            monthlyUsd: 100,
+            firstNSeats: null,
+            firstSeatUsd: null,
+            additionalSeatUsd: null,
+            onboardingMinUsd: null,
+            onboardingMaxUsd: null,
+            idempotencyKey: 'k-plan-bad',
+          ),
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isA<PricingTierAdminGatewayError>());
+      final error = thrown! as PricingTierAdminGatewayError;
+      expect(error.errorCode, equals('unknown_plan'));
+      expect(error.statusCode, equals(404));
+    });
+
+    test('updatePlanPricing rejects a negative monthly fee', () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      Object? thrown;
+      try {
+        await gateway.updatePlanPricing(
+          const PricingPlanPricingUpdateCommand(
+            tierKey: 'starter',
+            monthlyUsd: -5,
+            firstNSeats: null,
+            firstSeatUsd: null,
+            additionalSeatUsd: null,
+            onboardingMinUsd: null,
+            onboardingMaxUsd: null,
+            idempotencyKey: 'k-plan-neg',
+          ),
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isA<PricingTierAdminGatewayError>());
+      expect(
+        (thrown! as PricingTierAdminGatewayError).errorCode,
+        equals('invalid_monthly_usd'),
+      );
+    });
+
+    test('replayed updatePlanPricing under the same key returns the cached row',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      const command = PricingPlanPricingUpdateCommand(
+        tierKey: 'starter',
+        monthlyUsd: 275,
+        firstNSeats: null,
+        firstSeatUsd: null,
+        additionalSeatUsd: null,
+        onboardingMinUsd: 500,
+        onboardingMaxUsd: 1000,
+        idempotencyKey: 'k-plan-replay',
+      );
+      final first = await gateway.updatePlanPricing(command);
+      // Replay with a DIFFERENT value under the same key — cached wins.
+      final second = await gateway.updatePlanPricing(
+        const PricingPlanPricingUpdateCommand(
+          tierKey: 'starter',
+          monthlyUsd: 999,
+          firstNSeats: null,
+          firstSeatUsd: null,
+          additionalSeatUsd: null,
+          onboardingMinUsd: 500,
+          onboardingMaxUsd: 1000,
+          idempotencyKey: 'k-plan-replay',
+        ),
+      );
+      expect(second.monthlyUsd, equals(first.monthlyUsd));
+      expect(second.monthlyUsd, equals(275));
+    });
+  });
+
   // HARD-H — admin idempotency parcel. The InMemory gateway caches
   // per-key like the proxy does against `admin_request_idempotency`.
   group('InMemoryPricingTierAdminGateway — idempotency replay', () {
@@ -724,6 +878,117 @@ void main() {
         );
         expect(summary.spendFor('loc-1', 'advisor_qa'), equals(42.5));
         expect(summary.spendFor('loc-1', 'coach_qa'), isNull);
+      },
+    );
+
+    test(
+      'listPlanCatalog GETs /plans and parses the rows (Phase 3)',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{
+              'plans': <Map<String, Object?>>[
+                <String, Object?>{
+                  'tier_key': 'elite',
+                  'monthly_usd': 250.0,
+                  'first_n_seats': 20,
+                  'first_seat_usd': 10.0,
+                  'additional_seat_usd': 5.0,
+                  'onboarding_min_usd': 1500.0,
+                  'onboarding_max_usd': 3500.0,
+                  'updated_at': '2026-05-02T12:00:00.000Z',
+                  'updated_by': 'user_admin',
+                },
+                <String, Object?>{
+                  'tier_key': 'enterprise',
+                  'monthly_usd': null,
+                  'first_n_seats': null,
+                  'first_seat_usd': null,
+                  'additional_seat_usd': null,
+                  'onboarding_min_usd': null,
+                  'onboarding_max_usd': null,
+                  'updated_at': null,
+                  'updated_by': null,
+                },
+              ],
+            },
+          ),
+        );
+        final gateway = HttpPricingTierAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        final plans = await gateway.listPlanCatalog();
+        final req = captured.single;
+        expect(req.method, equals('GET'));
+        expect(req.uri.path, equals('/v1/admin/pricing/plans'));
+        expect(plans, hasLength(2));
+        expect(plans.first.tierKey, equals('elite'));
+        expect(plans.first.firstSeatUsd, equals(10.0));
+        // Enterprise null fields parse as null, not phantom 0.
+        expect(plans.last.monthlyUsd, isNull);
+        expect(plans.last.onboardingMinUsd, isNull);
+      },
+    );
+
+    test(
+      'updatePlanPricing PATCHes /plans/{tier_key} with Idempotency-Key '
+      'header and money body WITHOUT the key inside (Phase 3)',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{
+              'plan': <String, Object?>{
+                'tier_key': 'premium',
+                'monthly_usd': 300.0,
+                'first_n_seats': 25,
+                'first_seat_usd': 6.0,
+                'additional_seat_usd': 4.0,
+                'onboarding_min_usd': 800.0,
+                'onboarding_max_usd': 2200.0,
+                'updated_at': '2026-05-02T12:00:00.000Z',
+                'updated_by': 'user_admin',
+              },
+            },
+          ),
+        );
+        final gateway = HttpPricingTierAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        final updated = await gateway.updatePlanPricing(
+          const PricingPlanPricingUpdateCommand(
+            tierKey: 'premium',
+            monthlyUsd: 300,
+            firstNSeats: 25,
+            firstSeatUsd: 6,
+            additionalSeatUsd: 4,
+            onboardingMinUsd: 800,
+            onboardingMaxUsd: 2200,
+            idempotencyKey: 'idem-http-plan',
+          ),
+        );
+        expect(updated.monthlyUsd, equals(300.0));
+        final req = captured.single;
+        expect(req.method, equals('PATCH'));
+        expect(req.uri.path, equals('/v1/admin/pricing/plans/premium'));
+        expect(
+          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+          equals('idem-http-plan'),
+        );
+        expect(req.body['monthly_usd'], equals(300));
+        expect(req.body['first_n_seats'], equals(25));
+        expect(req.body.containsKey('idempotency_key'), isFalse);
+        // tier_key travels in the path, not the body.
+        expect(req.body.containsKey('tier_key'), isFalse);
       },
     );
   });

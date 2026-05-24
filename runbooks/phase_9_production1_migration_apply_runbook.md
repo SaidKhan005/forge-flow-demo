@@ -7,6 +7,12 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605241100_plans_and_limits_phase3_pricing_plan_catalog.sql`
+(Plans & Limits V1 Phase 3: adds the GLOBAL, no-RLS `pricing_plan_catalog`
+table — one editable row per plan, monthly fee + per-seat ramp + onboarding
+range — seeded from the reconciled pricing model; admin-pool BYPASSRLS posture
+like `default_role_catalog_versions`; build-only, gated on explicit operator
+approval). The prior cutoff
 `202605241000_advisor_conversation_log_request_correlation_and_retention.sql`
 (P1a Support logs telemetry groundwork: adds a NULLABLE `request_id` uuid
 correlation key + operator-leading join index to `advisor_conversation_log`,
@@ -341,6 +347,17 @@ Current known post-cutoff staging additions:
   (`forge_advisor_conversation_log_retention`). The purge predicate NEVER
   deletes rows where `legal_hold = true` or `retention_class = 'permanent'`.
   Schema-touching + RLS-adjacent groundwork for the Support logs redesign;
+  code-ready and gated on explicit operator approval before any apply.
+- `db/migrations/202605241100_plans_and_limits_phase3_pricing_plan_catalog.sql`
+  adds the GLOBAL, platform-wide `pricing_plan_catalog` table (one row per
+  plan: tier_key PK CHECK-pinned to the six locked keys, monthly_usd, the
+  first-N / first-seat / additional-seat per-seat ramp, onboarding min/max,
+  updated_at TIMESTAMPTZ + updated_by). No operator_id and no RLS policy —
+  plan pricing is identical for every operator, so the table follows the
+  admin-pool BYPASSRLS posture of `default_role_catalog_versions` (REVOKE all
+  from public, SELECT to service_role, full DML to forge_admin). Seeds the six
+  plans from the reconciled pricing model (`on conflict do nothing` so a
+  re-apply never clobbers a later admin price edit). Schema-touching;
   code-ready and gated on explicit operator approval before any apply.
 
 Migration drift automation:

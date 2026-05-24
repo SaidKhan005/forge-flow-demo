@@ -17,6 +17,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/pricing_plan_catalog_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
@@ -667,6 +668,7 @@ void main() {
         locationsRepository: _StubLocationsRepository(),
         usageCapsRepository: _StubUsageCapsRepository(),
         orgUnitsRepository: _StubOrgUnitsRepository(),
+        planCatalogRepository: _StubPricingPlanCatalogRepository(),
         auditRepository: auditRepository,
       );
 
@@ -1182,6 +1184,17 @@ class _StubUsageCapsRepository extends UsageCapsRepository {
 
 class _StubOrgUnitsRepository extends OrgUnitsRepository {
   _StubOrgUnitsRepository() : super(_dummyTenantWrapper());
+}
+
+class _StubPricingPlanCatalogRepository extends PricingPlanCatalogRepository {
+  _StubPricingPlanCatalogRepository() : super(_dummyTenantWrapper());
+
+  @override
+  Future<List<PricingPlanCatalogRow>> listPlans({
+    String reason = 'admin.pricing.plans_list',
+  }) async {
+    return const <PricingPlanCatalogRow>[];
+  }
 }
 
 class _StubCorpusRepository extends CorpusRepository {
