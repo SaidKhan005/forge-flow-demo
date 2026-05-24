@@ -19,6 +19,7 @@ import '../auth/fresh_mfa_resolver.dart';
 import '../auth/permission_keys.dart';
 import '../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../theme/app_theme.dart';
+import '../theme/scope_icons.dart';
 import 'admin_auth_gate.dart';
 import 'admin_capability_gate.dart';
 import 'admin_destructive_gate.dart';
@@ -920,7 +921,8 @@ class _SupportOperatorViewRouteShellState
                   FilledButton.icon(
                     key: const Key('admin_support_operator_view_open_picker'),
                     onPressed: _openPicker,
-                    icon: const Icon(Icons.business_outlined, size: 16),
+                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
+                        size: 16),
                     label: const Text('Choose business'),
                   ),
                 ],
@@ -1772,7 +1774,8 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
                   FilledButton.icon(
                     key: const Key('admin_members_open_picker'),
                     onPressed: _openPicker,
-                    icon: const Icon(Icons.business_outlined, size: 16),
+                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
+                        size: 16),
                     label: const Text('Choose operator'),
                   ),
                 ],
@@ -2085,7 +2088,8 @@ class _RolesHierarchySessionsRouteShellState
                   FilledButton.icon(
                     key: const Key('admin_rhs_open_picker'),
                     onPressed: _openPicker,
-                    icon: const Icon(Icons.business_outlined, size: 16),
+                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
+                        size: 16),
                     label: const Text('Choose operator'),
                   ),
                 ],
@@ -2460,7 +2464,8 @@ class _AuditedSupportActionsRouteShellState
                   FilledButton.icon(
                     key: const Key('admin_asa_open_picker'),
                     onPressed: _openPicker,
-                    icon: const Icon(Icons.business_outlined, size: 16),
+                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
+                        size: 16),
                     label: const Text('Choose operator'),
                   ),
                 ],

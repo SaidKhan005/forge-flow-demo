@@ -30,6 +30,7 @@ import '../../domain/hierarchy/org_unit_depth_rule.dart';
 import '../../domain/models/inheritance_tree_node.dart';
 import '../../services/auth/custom_role_validator.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../../widgets/permission_explainer_view.dart';
 import '../admin_button_styles.dart';
@@ -659,7 +660,7 @@ class _AccessScopeFilterCard extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _ScopeChip(
-            icon: Icons.business_outlined,
+            icon: scopeIcon(kind: ScopeEntityKind.business),
             label: pickedOperator.operatorBusinessName,
           ),
           _ScopeChip(
@@ -709,16 +710,14 @@ String _selectedScopeLabel(AdminHierarchyScopeIntent scope) {
   }
 }
 
-IconData _scopeIcon(AdminHierarchyScopeType type) {
-  switch (type) {
-    case AdminHierarchyScopeType.business:
-      return Icons.business_outlined;
-    case AdminHierarchyScopeType.orgUnit:
-      return Icons.account_tree_outlined;
-    case AdminHierarchyScopeType.location:
-      return Icons.location_on_outlined;
-  }
-}
+IconData _scopeIcon(AdminHierarchyScopeType type) => switch (type) {
+      AdminHierarchyScopeType.business =>
+        scopeIcon(kind: ScopeEntityKind.business),
+      AdminHierarchyScopeType.orgUnit =>
+        scopeIcon(kind: ScopeEntityKind.orgUnit),
+      AdminHierarchyScopeType.location =>
+        scopeIcon(kind: ScopeEntityKind.location),
+    };
 
 /// Map the admin shell's working hierarchy scope onto the shared
 /// [RoleScope] the [CustomRoleValidator] understands, so the admin

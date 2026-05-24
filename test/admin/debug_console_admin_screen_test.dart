@@ -35,6 +35,7 @@ import 'package:forge_and_flow/admin/services/debug_console_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
+import 'package:forge_and_flow/theme/scope_icons.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
@@ -388,6 +389,80 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets(
+    'scope banner renders the canonical scope-entity glyph per scope tier '
+    '(location -> place, business -> apartment, org unit -> tree)',
+    (tester) async {
+      setLargeViewport(tester);
+
+      Future<void> pumpWithScope(AdminHierarchyScopeIntent scope) async {
+        final gateway = InMemoryDebugConsoleAdminGateway(
+          seed: <RequestLogEntry>[
+            seedEntry(id: 'req-scope', operatorId: 'op-scope'),
+          ],
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        );
+        await tester.pumpWidget(
+          wrap(
+            DebugConsoleAdminScreen(
+              gateway: gateway,
+              hierarchyScope: scope,
+              initialFilter: const RequestLogFilter(operatorId: 'op-scope'),
+              now: () => DateTime.utc(2026, 5, 3, 12),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      IconData bannerIcon() {
+        final icon = tester.widget<Icon>(
+          find.descendant(
+            of: find.byKey(const Key('admin_debug_console_scope_banner')),
+            matching: find.byType(Icon),
+          ),
+        );
+        return icon.icon!;
+      }
+
+      // Location scope -> canonical location glyph (place), not the legacy
+      // admin storefront_outlined.
+      await pumpWithScope(
+        const AdminHierarchyScopeIntent.location(
+          operatorId: 'op-scope',
+          locationId: 'loc-scope',
+          operatorName: 'Scope Co.',
+          locationName: 'Scope Location',
+          valueState: AdminHierarchyScopeValueState.locationOnly,
+        ),
+      );
+      expect(bannerIcon(), scopeIcon(kind: ScopeEntityKind.location));
+      expect(bannerIcon(), isNot(Icons.storefront_outlined));
+
+      // Business scope -> canonical business glyph (apartment), not the
+      // legacy admin business_outlined.
+      await pumpWithScope(
+        const AdminHierarchyScopeIntent.business(
+          operatorId: 'op-scope',
+          operatorName: 'Scope Co.',
+        ),
+      );
+      expect(bannerIcon(), scopeIcon(kind: ScopeEntityKind.business));
+      expect(bannerIcon(), isNot(Icons.business_outlined));
+
+      // Org-unit scope -> canonical generic org-unit glyph (account tree).
+      await pumpWithScope(
+        const AdminHierarchyScopeIntent.orgUnit(
+          operatorId: 'op-scope',
+          orgUnitId: 'ou-scope',
+          operatorName: 'Scope Co.',
+          orgUnitName: 'Region',
+        ),
+      );
+      expect(bannerIcon(), scopeIcon(kind: ScopeEntityKind.orgUnit));
+    },
+  );
 
   testWidgets('org-unit support logs cap expanded location filters', (
     tester,

@@ -28,6 +28,7 @@ import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admi
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/domain/models/inheritance_tree_node.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
+import 'package:forge_and_flow/theme/scope_icons.dart';
 
 void main() {
   setUp(() async {
@@ -150,5 +151,59 @@ void main() {
     );
     expect(find.byKey(const Key('inheritance_tree')), findsNothing);
     expect(find.byKey(const Key('admin_asa_scope_banner')), findsOneWidget);
+  });
+
+  testWidgets(
+      'scope banner renders the canonical scope-entity glyph per scope tier '
+      '(business -> apartment, location -> place)', (tester) async {
+    Future<void> pumpWithScope(AdminHierarchyScopeIntent scope) async {
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: buildGateway(),
+            actorUserId: 'demo-super-admin',
+            pickedOperator: picked,
+            auditScopeRootNode: null,
+            hierarchyScope: scope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    IconData bannerIcon() {
+      final icon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('admin_asa_scope_banner')),
+          matching: find.byType(Icon),
+        ),
+      );
+      return icon.icon!;
+    }
+
+    // Business scope -> canonical business glyph (apartment), not the
+    // legacy admin business_outlined.
+    await pumpWithScope(
+      const AdminHierarchyScopeIntent.business(
+        operatorId: kDemoDinerOperatorId,
+        operatorName: 'Demo Diner Co.',
+      ),
+    );
+    expect(bannerIcon(), scopeIcon(kind: ScopeEntityKind.business));
+    expect(bannerIcon(), isNot(Icons.business_outlined));
+
+    // Location scope -> canonical location glyph (place), not the legacy
+    // admin storefront_outlined.
+    await pumpWithScope(
+      const AdminHierarchyScopeIntent.location(
+        operatorId: kDemoDinerOperatorId,
+        locationId: kDemoDinerLocationToronto,
+        operatorName: 'Demo Diner Co.',
+        locationName: 'Toronto Yorkville',
+        valueState: AdminHierarchyScopeValueState.locationOnly,
+      ),
+    );
+    expect(bannerIcon(), scopeIcon(kind: ScopeEntityKind.location));
+    expect(bannerIcon(), isNot(Icons.storefront_outlined));
   });
 }

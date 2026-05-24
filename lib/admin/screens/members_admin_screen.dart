@@ -34,6 +34,7 @@ import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
@@ -1097,7 +1098,7 @@ class _PeopleAccessScopeCard extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: <Widget>[
           _ScopePill(
-            icon: Icons.business_outlined,
+            icon: scopeIcon(kind: ScopeEntityKind.business),
             label: pickedOperator.operatorBusinessName,
           ),
           _ScopePill(icon: Icons.tune_outlined, label: scopeLabel),

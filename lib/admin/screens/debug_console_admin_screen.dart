@@ -46,6 +46,7 @@ import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
@@ -944,10 +945,10 @@ class _ScopeBanner extends StatelessWidget {
         children: <Widget>[
           Icon(
             scope.isOrgUnitScope
-                ? Icons.account_tree_outlined
+                ? scopeIcon(kind: ScopeEntityKind.orgUnit)
                 : scope.isLocationScope
-                ? Icons.storefront_outlined
-                : Icons.business_outlined,
+                ? scopeIcon(kind: ScopeEntityKind.location)
+                : scopeIcon(kind: ScopeEntityKind.business),
             size: 16,
             color: accent,
           ),
