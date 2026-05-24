@@ -24,6 +24,14 @@ import 'widgets/admin_scope_picker.dart';
 
 const double _kCompactShellBreakpoint = 720;
 
+/// Fixed width of the wide-layout left side nav. Sized so the longest
+/// nav labels ("Vendor Applicability", "Roles & permissions") and the
+/// widest route badge ("Support + location repair") render in full
+/// rather than truncating with an ellipsis. The label column works out
+/// to roughly `_kSideNavWidth - 80` after the container, section-panel,
+/// nav-item, and icon insets.
+const double _kSideNavWidth = 280;
+
 /// UX-parity Slice C — the six per-business screens, in the order the
 /// approved mock renders them (`docs/_mockups/admin_unified_scope_sample.html`,
 /// the `PERBIZ` cluster). These routes are `visibleInNav: false` in
@@ -693,7 +701,7 @@ class _AdminSideNav extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: const Key('admin_side_nav'),
-      width: 220,
+      width: _kSideNavWidth,
       decoration: BoxDecoration(
         color: AppColors.backgroundMid,
         border: Border(

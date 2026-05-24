@@ -37,15 +37,15 @@ void main() {
 
   group('C-10 admin parity ownership copy', () {
     test('route labels support actions honestly', () {
-      expect(
-        routeById(kAdminDataAccuracyRouteId).badge,
-        'Support + location repair',
-      );
+      // Route-level nav badges were all removed as clutter (see loop note
+      // below). Ownership intent now lives in the subtitle copy, asserted
+      // throughout this test.
+      expect(routeById(kAdminDataAccuracyRouteId).badge, isNull);
       expect(
         routeById(kAdminDataAccuracyRouteId).subtitle,
         contains('super admins can apply audited location repairs'),
       );
-      expect(routeById(kAdminVendorApplicabilityRouteId).badge, 'Admin only');
+      expect(routeById(kAdminVendorApplicabilityRouteId).badge, isNull);
       expect(
         routeById(kAdminVendorApplicabilityRouteId).path,
         '/vendor-applicability',
@@ -54,10 +54,7 @@ void main() {
         routeById(kAdminVendorApplicabilityRouteId).subtitle,
         contains('choose which vendors can power wage, covers, and polling'),
       );
-      expect(
-        routeById(kAdminVendorIntegrationsRouteId).badge,
-        'Support + actions',
-      );
+      expect(routeById(kAdminVendorIntegrationsRouteId).badge, isNull);
       expect(
         routeById(kAdminVendorIntegrationsRouteId).subtitle,
         contains('super admins can connect, test, disconnect'),
@@ -67,7 +64,7 @@ void main() {
         contains('super admin repair routes are server-side'),
       );
 
-      expect(routeById(kAdminIntegrationsRouteId).badge, 'Global health');
+      expect(routeById(kAdminIntegrationsRouteId).badge, isNull);
       expect(
         routeById(kAdminIntegrationsRouteId).subtitle,
         contains('global provider health'),
@@ -86,11 +83,14 @@ void main() {
         kAdminDebugConsoleRouteId,
         kAdminObservabilityRouteId,
         // Lane B B2.2 — Default Role catalog admin editor is an
-        // ecosystem-only surface; same Admin-only badge contract.
+        // ecosystem-only surface; same admin-only ownership contract.
         kAdminDefaultRoleCatalogRouteId,
       ]) {
         final route = routeById(routeId);
-        expect(route.badge, 'Admin only', reason: routeId);
+        // Route-level nav badges were removed across the admin console as
+        // clutter: in an all-admin surface they added noise, not signal.
+        // Ownership stays honest via the subtitle copy asserted below.
+        expect(route.badge, isNull, reason: routeId);
         expect(route.subtitle, contains(adminOnlyCopy), reason: routeId);
       }
     });

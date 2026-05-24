@@ -273,9 +273,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Plans and limits',
     path: '/pricing',
     icon: Icons.tune_outlined,
-    section: AdminRouteSection.ai,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.ai,    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Review AI plans and usage limits.',
     builder: _buildPricing,
   ),
@@ -284,9 +282,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Knowledge base',
     path: '/corpus',
     icon: Icons.menu_book_outlined,
-    section: AdminRouteSection.ai,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.ai,    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Publish advisor knowledge content.',
     builder: _buildCorpus,
   ),
@@ -295,9 +291,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Connected services',
     path: '/integrations',
     icon: Icons.extension_outlined,
-    section: AdminRouteSection.serviceSetup,
-    badge: 'Global health',
-    subtitle:
+    section: AdminRouteSection.serviceSetup,    subtitle:
         'Review global provider health and platform service keys; operator edits live on Operator Web.',
     builder: _buildIntegrations,
   ),
@@ -306,9 +300,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System health',
     path: '/health',
     icon: Icons.monitor_heart_outlined,
-    section: AdminRouteSection.systemMonitoring,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.systemMonitoring,    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Run read-only system checks.',
     builder: _buildHealth,
   ),
@@ -317,9 +309,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Launch controls',
     path: '/feature-flags',
     icon: Icons.flag_outlined,
-    section: AdminRouteSection.serviceSetup,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.serviceSetup,    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Control staged features.',
     builder: _buildFeatureFlags,
   ),
@@ -328,9 +318,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Default roles',
     path: '/default-roles',
     icon: Icons.shield_outlined,
-    section: AdminRouteSection.serviceSetup,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.serviceSetup,    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. '
         'Edit the starter role catalog every business begins with.',
     builder: _buildDefaultRoleCatalog,
@@ -340,9 +328,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Support logs',
     path: '/debug',
     icon: Icons.bug_report_outlined,
-    section: AdminRouteSection.systemMonitoring,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.systemMonitoring,    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Inspect support-safe request details.',
     builder: _buildDebugConsole,
   ),
@@ -351,9 +337,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'AI Metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
-    section: AdminRouteSection.ai,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.ai,    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Review advisor usage, cost, and model activity.',
     builder: _buildObservability,
   ),
@@ -363,9 +347,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
         'Data accuracy', // UX-parity Slice C: operator-web nav label (screen header unchanged).
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,
-    badge: 'Support + location repair',
-    subtitle:
+    section: AdminRouteSection.operations,    subtitle:
         'Review effective covers, wages, and walk-ins by location; super admins can apply audited location repairs.',
     builder: _buildDataAccuracy,
     visibleInNav: false,
@@ -376,9 +358,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Vendor Applicability',
     path: '/vendor-applicability',
     icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.operations,    subtitle:
         'This surface is for F&F admins only - choose which vendors can power wage, covers, and polling settings.',
     builder: _buildVendorApplicability,
   ),
@@ -387,9 +367,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Polling Setup',
     path: '/polling-pricing',
     icon: Icons.payments_outlined,
-    section: AdminRouteSection.operations,
-    badge: 'Admin only',
-    subtitle:
+    section: AdminRouteSection.operations,    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Operator Web reads the published tier status.',
     builder: _buildPollingPricing,
     visibleInNav: false,
@@ -400,9 +378,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Vendor integrations',
     path: '/admin/vendor-integrations',
     icon: Icons.link_outlined,
-    section: AdminRouteSection.operations,
-    badge: 'Support + actions',
-    subtitle:
+    section: AdminRouteSection.operations,    subtitle:
         'Review location-scoped vendor connections; super admins can connect, test, disconnect, and inspect logs.',
     builder: _buildVendorIntegrations,
     visibleInNav: false,
