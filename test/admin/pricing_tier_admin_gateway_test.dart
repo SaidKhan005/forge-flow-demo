@@ -234,6 +234,127 @@ void main() {
     });
   });
 
+  group('InMemoryPricingTierAdminGateway — deleteUsageCap (Phase 2)', () {
+    UsageCapRow capRow({
+      String capId = 'cap-1',
+      String usageClass = 'advisor_qa',
+    }) {
+      final created = DateTime.utc(2026, 4, 1);
+      return UsageCapRow(
+        capId: capId,
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        usageClass: usageClass,
+        monthlyCapUsd: 50.0,
+        perInvocationCapUsd: 0.10,
+        staffId: null,
+        workflowId: null,
+        createdBy: null,
+        updatedBy: null,
+        createdAt: created,
+        updatedAt: created,
+      );
+    }
+
+    test('removes the matching cap by logical key', () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          bundle(caps: <UsageCapRow>[capRow()]),
+        ],
+      );
+      await gateway.deleteUsageCap(
+        const UsageCapDeleteCommand(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          usageClass: 'advisor_qa',
+          idempotencyKey: 'k-del-1',
+        ),
+      );
+      final list = await gateway.listOperators();
+      expect(list.single.caps, isEmpty);
+    });
+
+    test('removes by cap_id when supplied', () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          bundle(
+            caps: <UsageCapRow>[
+              capRow(capId: 'cap-keep', usageClass: 'advisor_qa'),
+              capRow(capId: 'cap-drop', usageClass: 'coach_qa'),
+            ],
+          ),
+        ],
+      );
+      await gateway.deleteUsageCap(
+        const UsageCapDeleteCommand(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          usageClass: 'coach_qa',
+          capId: 'cap-drop',
+          idempotencyKey: 'k-del-capid',
+        ),
+      );
+      final list = await gateway.listOperators();
+      expect(list.single.caps, hasLength(1));
+      expect(list.single.caps.single.capId, equals('cap-keep'));
+    });
+
+    test('404-style error when no matching cap exists', () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[bundle()],
+      );
+      Object? thrown;
+      try {
+        await gateway.deleteUsageCap(
+          const UsageCapDeleteCommand(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            usageClass: 'advisor_qa',
+            idempotencyKey: 'k-del-missing',
+          ),
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isA<PricingTierAdminGatewayError>());
+      expect(
+        (thrown! as PricingTierAdminGatewayError).errorCode,
+        equals('unknown_usage_cap'),
+      );
+    });
+
+    test('replayed delete under the same key is a no-op (idempotent)',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          bundle(caps: <UsageCapRow>[capRow()]),
+        ],
+      );
+      const command = UsageCapDeleteCommand(
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        usageClass: 'advisor_qa',
+        idempotencyKey: 'k-del-replay',
+      );
+      await gateway.deleteUsageCap(command);
+      // Second call with the same key must NOT throw 404 even though the
+      // row is already gone (mirrors the proxy's idempotent replay).
+      await gateway.deleteUsageCap(command);
+      final list = await gateway.listOperators();
+      expect(list.single.caps, isEmpty);
+    });
+
+    test('fetchSpendSummary returns an empty summary in demo (fallback path)',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[bundle()],
+      );
+      final summary = await gateway.fetchSpendSummary('op-1');
+      expect(summary.byLocationAndClass, isEmpty);
+      expect(summary.spendFor('loc-1', 'advisor_qa'), isNull);
+    });
+  });
+
   group('InMemoryPricingTierAdminGateway — applyTierTemplate', () {
     test('Premium template seeds advisor_qa cap and switches tier',
         () async {
@@ -528,6 +649,81 @@ void main() {
           req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
           equals('idem-http-apply'),
         );
+      },
+    );
+
+    test(
+      'deleteUsageCap DELETEs with Idempotency-Key header and logical-key '
+      'body',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{'deleted': true},
+          ),
+        );
+        final gateway = HttpPricingTierAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        await gateway.deleteUsageCap(
+          const UsageCapDeleteCommand(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            usageClass: 'advisor_qa',
+            idempotencyKey: 'idem-http-del',
+          ),
+        );
+        final req = captured.single;
+        expect(req.method, equals('DELETE'));
+        expect(req.uri.path, equals('/v1/admin/pricing/usage-caps'));
+        expect(
+          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+          equals('idem-http-del'),
+        );
+        expect(req.body['operator_id'], equals('op-1'));
+        expect(req.body['usage_class'], equals('advisor_qa'));
+        expect(req.body.containsKey('idempotency_key'), isFalse);
+      },
+    );
+
+    test(
+      'fetchSpendSummary GETs the spend-summary path and parses the rows',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{
+              'operator_id': 'op-1',
+              'spend': <Map<String, Object?>>[
+                <String, Object?>{
+                  'location_id': 'loc-1',
+                  'usage_class': 'advisor_qa',
+                  'spend_usd': 42.5,
+                },
+              ],
+            },
+          ),
+        );
+        final gateway = HttpPricingTierAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        final summary = await gateway.fetchSpendSummary('op-1');
+        final req = captured.single;
+        expect(req.method, equals('GET'));
+        expect(
+          req.uri.path,
+          equals('/v1/admin/pricing/operators/op-1/spend-summary'),
+        );
+        expect(summary.spendFor('loc-1', 'advisor_qa'), equals(42.5));
+        expect(summary.spendFor('loc-1', 'coach_qa'), isNull);
       },
     );
   });

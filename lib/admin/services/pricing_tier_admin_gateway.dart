@@ -63,6 +63,13 @@ abstract class PricingTierAdminGateway {
   Future<PricingOperatorBundle> applyTierTemplate(
     ApplyTierTemplateCommand command,
   );
+
+  /// Delete one usage cap. Phase 2 delete-a-limit affordance.
+  Future<void> deleteUsageCap(UsageCapDeleteCommand command);
+
+  /// Month-to-date spend per `(location, usage_class)` for one operator
+  /// (Phase 2 live spend-vs-cap figures).
+  Future<OperatorSpendSummary> fetchSpendSummary(String operatorId);
 }
 
 class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
@@ -137,6 +144,25 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
       jsonBody: command.toJson(),
     );
     return PricingOperatorBundle.fromJson(body);
+  }
+
+  @override
+  Future<void> deleteUsageCap(UsageCapDeleteCommand command) async {
+    await _send(
+      method: 'DELETE',
+      path: usageCapsPath,
+      idempotencyKey: command.idempotencyKey,
+      jsonBody: command.toJson(),
+    );
+  }
+
+  @override
+  Future<OperatorSpendSummary> fetchSpendSummary(String operatorId) async {
+    final body = await _send(
+      method: 'GET',
+      path: '$operatorsPrefix${Uri.encodeComponent(operatorId)}/spend-summary',
+    );
+    return OperatorSpendSummary.fromJson(body);
   }
 
   Future<Map<String, Object?>> _send({
@@ -365,6 +391,39 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     return result;
   }
 
+  @override
+  Future<void> deleteUsageCap(UsageCapDeleteCommand command) async {
+    if (_idempotentResults.containsKey(command.idempotencyKey)) return;
+    final bundle = _bundleOrThrow(command.operatorId);
+    final before = bundle.caps.length;
+    bundle.caps.removeWhere((c) {
+      if (command.capId != null) return c.capId == command.capId;
+      return c.locationId == command.locationId &&
+          c.usageClass == command.usageClass &&
+          c.staffId == command.staffId &&
+          c.workflowId == command.workflowId;
+    });
+    if (bundle.caps.length == before) {
+      throw const PricingTierAdminGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_usage_cap',
+        message: 'no matching usage limit to delete',
+      );
+    }
+    // Sentinel so a retried delete under the same key is a no-op.
+    _idempotentResults[command.idempotencyKey] = const _DeletedSentinel();
+  }
+
+  @override
+  Future<OperatorSpendSummary> fetchSpendSummary(String operatorId) async {
+    // The demo gateway has no `usage_logs`; month-to-date spend is not
+    // modeled here. Return an empty summary so the screen FALLS BACK to
+    // the observability envelope for demo spend figures (HP#2: demo
+    // mode keeps working without a live spend-summary endpoint).
+    _bundleOrThrow(operatorId);
+    return const OperatorSpendSummary(byLocationAndClass: <String, double>{});
+  }
+
   _MutableBundle _bundleOrThrow(String operatorId) {
     final bundle = _bundles[operatorId];
     if (bundle == null) {
@@ -414,6 +473,13 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     final hex = _idCounter.toRadixString(16).padLeft(12, '0');
     return '00000000-0000-4000-8000-$hex';
   }
+}
+
+/// Cache marker for a completed in-memory delete so a retried
+/// [InMemoryPricingTierAdminGateway.deleteUsageCap] under the same
+/// idempotency key is a no-op (mirrors the proxy's idempotent DELETE).
+class _DeletedSentinel {
+  const _DeletedSentinel();
 }
 
 class _MutableBundle {

@@ -4350,6 +4350,32 @@ abstract class PricingTierAdminProxyGateway {
     required String tierKey,
     required String adminReason,
   });
+
+  /// DELETE one cap row. Identified by [capId] when provided, else by
+  /// the logical key `(operator_id, location_id, usage_class, staff_id,
+  /// workflow_id)`. Returns `true` when a row was deleted, `false` when
+  /// no matching cap existed so the route can answer 404 honestly.
+  Future<bool> deleteUsageCap({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String usageClass,
+    String? staffId,
+    String? workflowId,
+    String? capId,
+    required String adminReason,
+  });
+
+  /// Month-to-date spend per `(location_id, usage_class)` for one
+  /// operator alongside the cap, reusing the cap-enforcement
+  /// `usage_logs` SUM(cost_usd)-for-period grain. Returns
+  /// `[{'location_id': ..., 'usage_class': ..., 'spend_usd': ...}]`, or
+  /// null when the operator was not found.
+  Future<List<Map<String, Object?>>?> monthToDateSpendSummary({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  });
 }
 
 /// Mobile operational sync gateway.
@@ -13465,6 +13491,10 @@ String? _integrationKeyKindForRoute(String path) {
 
 bool _isAdminPricingOperation(String path, String method) {
   if (method == 'GET' && path == adminPricingOperatorsPath) return true;
+  if (method == 'GET' && path.startsWith(adminPricingOperatorsPrefix)) {
+    // /operators/{id}/spend-summary — Phase 2 live spend-vs-cap read.
+    return path.endsWith('/spend-summary');
+  }
   if (method == 'PATCH' && path.startsWith(adminPricingOperatorsPrefix)) {
     return true;
   }
@@ -13473,6 +13503,9 @@ bool _isAdminPricingOperation(String path, String method) {
     return true;
   }
   if (method == 'PUT' && path == adminPricingUsageCapsPath) return true;
+  // Phase 2 — delete-a-limit. DELETE is gated by the write-method role
+  // set (`kFfPricingAdminWriteRoles`) the same way PUT/PATCH/POST are.
+  if (method == 'DELETE' && path == adminPricingUsageCapsPath) return true;
   return false;
 }
 
@@ -14151,6 +14184,39 @@ Future<void> _routePricingAdmin({
     return;
   }
 
+  // Phase 2 — GET /v1/admin/pricing/operators/{id}/spend-summary.
+  // Month-to-date spend per (location, usage_class) so the screen's
+  // spend-vs-cap bars show live figures. Read-only: no idempotency key
+  // (a GET is naturally idempotent).
+  if (method == 'GET' && path.startsWith(adminPricingOperatorsPrefix)) {
+    final tail = path.substring(adminPricingOperatorsPrefix.length);
+    final parts = tail.split('/');
+    if (parts.length != 2 ||
+        parts.any((p) => p.isEmpty) ||
+        parts[1] != 'spend-summary') {
+      _writeNotFound(response, request);
+      return;
+    }
+    final operatorId = Uri.decodeComponent(parts[0]);
+    final summary = await gateway.monthToDateSpendSummary(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      adminReason: '$reasonPrefix:spend_summary:$operatorId',
+    );
+    if (summary == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_operator',
+        'message': 'operator not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{
+      'operator_id': operatorId,
+      'spend': summary,
+    });
+    return;
+  }
+
   if (method == 'PATCH' && path.startsWith(adminPricingOperatorsPrefix)) {
     final tail = _pathSuffix(path, adminPricingOperatorsPrefix);
     if (tail == null || tail.contains('/')) {
@@ -14280,6 +14346,59 @@ Future<void> _routePricingAdmin({
               '$reasonPrefix:usage_caps:$operatorId:$locationId:$usageClass',
         );
         return (statusCode: 200, payload: <String, Object?>{'cap': cap});
+      },
+    );
+    return;
+  }
+
+  // Phase 2 — DELETE /v1/admin/pricing/usage-caps. Delete one cap by
+  // its surrogate cap_id when supplied, else by the logical key
+  // `(operator_id, location_id, usage_class, staff_id, workflow_id)`.
+  // Idempotent + audited like the upsert: a retried DELETE under the
+  // same Idempotency-Key collapses to one mutation + one audit row,
+  // and deleting an already-deleted cap answers 404 honestly.
+  if (method == 'DELETE' && path == adminPricingUsageCapsPath) {
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final capId = _optionalBodyString(body, 'cap_id');
+    // The logical key is required only when no cap_id is given.
+    final locationId = capId != null
+        ? _optionalBodyString(body, 'location_id')
+        : _requireBodyString(body, 'location_id');
+    final usageClass = capId != null
+        ? _optionalBodyString(body, 'usage_class')
+        : _requireBodyString(body, 'usage_class');
+    final staffId = _optionalBodyString(body, 'staff_id');
+    final workflowId = _optionalBodyString(body, 'workflow_id');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.pricing.delete_usage_cap',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final deleted = await gateway.deleteUsageCap(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          locationId: locationId ?? '',
+          usageClass: usageClass ?? '',
+          staffId: staffId,
+          workflowId: workflowId,
+          capId: capId,
+          adminReason:
+              '$reasonPrefix:usage_caps_delete:$operatorId:'
+              '${capId ?? '$locationId:$usageClass'}',
+        );
+        if (!deleted) {
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_usage_cap',
+              'message': 'no matching usage limit to delete',
+            },
+          );
+        }
+        return (statusCode: 200, payload: <String, Object?>{'deleted': true});
       },
     );
     return;

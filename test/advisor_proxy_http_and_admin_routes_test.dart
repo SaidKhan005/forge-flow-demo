@@ -3509,5 +3509,262 @@ void main() {
         });
       },
     );
+
+    // ── Phase 2 — delete-a-limit + live spend-summary. ──────────────
+
+    const superAdminClaims = ProxyJwtClaims(
+      userId: 'user_admin',
+      operatorId: 'op_admin',
+      locationId: 'loc_admin',
+      roles: <String>['super_admin'],
+    );
+
+    test('Phase 2 DELETE /v1/admin/pricing/usage-caps rejects ff_support (403)',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'DELETE',
+            ctx.baseUri.resolve(adminPricingUsageCapsPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'location_id': 'loc-1',
+              'usage_class': 'advisor_qa',
+            },
+          );
+          // DELETE is a write method, so the strict super_admin-only set
+          // applies (ff_support is read-only).
+          expect(response.statusCode, equals(403));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('permission_denied'));
+          expect(gateway.lastDeleteOperatorId, isNull);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 2 DELETE /v1/admin/pricing/usage-caps deletes by logical key',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()..deleteResult = true;
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'DELETE',
+            ctx.baseUri.resolve(adminPricingUsageCapsPath),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-delete-1',
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'location_id': 'loc-1',
+              'usage_class': 'advisor_qa',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['deleted'], isTrue);
+          expect(gateway.lastDeleteOperatorId, equals('op-1'));
+          expect(gateway.lastDeleteUsageClass, equals('advisor_qa'));
+          expect(gateway.lastReason, contains('admin.pricing.DELETE'));
+          expect(gateway.lastReason, contains('usage_caps_delete'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 2 DELETE answers 404 when no matching cap exists', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()..deleteResult = false;
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'DELETE',
+            ctx.baseUri.resolve(adminPricingUsageCapsPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'cap_id': '00000000-0000-4000-8000-00000000dead',
+            },
+          );
+          expect(response.statusCode, equals(404));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('unknown_usage_cap'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 2 DELETE without operator_id is a 400 input error', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(initialClaims: superAdminClaims);
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'DELETE',
+            ctx.baseUri.resolve(adminPricingUsageCapsPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{
+              'location_id': 'loc-1',
+              'usage_class': 'advisor_qa',
+            },
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('missing_operator_id'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 2 OPTIONS preflight allows DELETE for usage-caps', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final request = await ctx.client.openUrl(
+            'OPTIONS',
+            ctx.baseUri.resolve(adminPricingUsageCapsPath),
+          );
+          request.persistentConnection = false;
+          request.headers.set('Origin', 'https://admin.forgeflow.app');
+          request.headers.set('Access-Control-Request-Method', 'DELETE');
+          request.headers.set(
+            'Access-Control-Request-Headers',
+            'authorization,content-type,idempotency-key',
+          );
+          request.contentLength = 0;
+          final response = await request.close();
+          await response.drain<void>();
+          expect(response.statusCode, equals(HttpStatus.noContent));
+          final allowMethods =
+              response.headers.value('access-control-allow-methods') ?? '';
+          expect(allowMethods.toUpperCase(), contains('DELETE'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'Phase 2 GET .../operators/{id}/spend-summary returns the spend rows',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()
+            ..spendSummaryResult = const <Map<String, Object?>>[
+              <String, Object?>{
+                'location_id': 'loc-1',
+                'usage_class': 'advisor_qa',
+                'spend_usd': 42.5,
+              },
+            ];
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
+          );
+          try {
+            final response = await httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/spend-summary',
+              ),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['operator_id'], equals('op-1'));
+            final spend = (body['spend']! as List).cast<Map<String, Object?>>();
+            expect(spend.single['spend_usd'], equals(42.5));
+            expect(gateway.lastSpendSummaryOperatorId, equals('op-1'));
+            expect(gateway.lastReason, contains('admin.pricing.GET'));
+            expect(gateway.lastReason, contains('spend_summary'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('Phase 2 GET spend-summary admits ff_support (read-only)', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()
+          ..spendSummaryResult = const <Map<String, Object?>>[];
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-1/spend-summary',
+            ),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 2 GET spend-summary 404s for an unknown operator', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()..spendSummaryResult = null;
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-missing/spend-summary',
+            ),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(404));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('unknown_operator'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
   });
 }

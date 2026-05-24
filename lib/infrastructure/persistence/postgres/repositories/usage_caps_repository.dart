@@ -160,6 +160,123 @@ class UsageCapsRepository extends OperatorScopedRepository {
       return _capAdminRowFromMap(rows.single);
     }, reason: adminReason);
   }
+
+  /// DELETE one cap row by [capId] when provided, else by the post-flip
+  /// logical key
+  /// `(operator_id, billing_owner_org_unit_id, scoped_org_unit_id,
+  /// location_id, staff_id, workflow_id, usage_class)`. NULL
+  /// `staff_id` / `workflow_id` use `IS NOT DISTINCT FROM` so the
+  /// "all-staff" / "all-workflow" cap is matched the same way the cap
+  /// enforcement and upsert paths key it.
+  ///
+  /// Returns `true` when a row was deleted, `false` when no matching
+  /// row existed (so the route can answer 404 vs 200 honestly). Every
+  /// statement stays operator-scoped through `withSystem` with the
+  /// `operator_id` in the predicate; the surrogate PK is tenant-leading
+  /// `(operator_id, cap_id)` so a cross-tenant `cap_id` can never match.
+  Future<bool> deleteCap({
+    required String operatorId,
+    required String billingOwnerOrgUnitId,
+    required String scopedOrgUnitId,
+    required String locationId,
+    required String usageClass,
+    String? staffId,
+    String? workflowId,
+    String? capId,
+    required String adminReason,
+  }) {
+    return withSystem<bool>((exec) async {
+      final rows = capId != null
+          ? await exec.query(
+              'delete from usage_caps '
+              'where operator_id = @operator_id::uuid '
+              'and cap_id = @cap_id::uuid '
+              'returning cap_id::text as cap_id',
+              parameters: <String, Object?>{
+                'operator_id': operatorId,
+                'cap_id': capId,
+              },
+            )
+          : await exec.query(
+              'delete from usage_caps '
+              'where operator_id = @operator_id::uuid '
+              'and billing_owner_org_unit_id = @billing_owner::uuid '
+              'and scoped_org_unit_id = @scoped::uuid '
+              'and location_id = @location_id::uuid '
+              'and usage_class = @usage_class '
+              'and staff_id is not distinct from @staff_id::uuid '
+              'and workflow_id is not distinct from @workflow_id::uuid '
+              'returning cap_id::text as cap_id',
+              parameters: <String, Object?>{
+                'operator_id': operatorId,
+                'billing_owner': billingOwnerOrgUnitId,
+                'scoped': scopedOrgUnitId,
+                'location_id': locationId,
+                'usage_class': usageClass,
+                'staff_id': staffId,
+                'workflow_id': workflowId,
+              },
+            );
+      return rows.isNotEmpty;
+    }, reason: adminReason);
+  }
+
+  /// Month-to-date spend for one operator, grouped by
+  /// `(location_id, usage_class)`. Reuses the SAME `usage_logs`
+  /// `SUM(cost_usd)`-for-period grain the cap-enforcement pre-flight
+  /// uses (`l.period_start = date_trunc('month', now())`): `usage_logs`
+  /// is a MONTHLY rollup, so the finest honest grain is one calendar
+  /// month (Metric Honesty Doctrine — no fabricated daily numbers).
+  ///
+  /// The admin spend-vs-cap bars only need the coarse
+  /// `(location, usage_class)` axis, so staff / workflow rows fold into
+  /// the same bucket as the all-staff / all-workflow cap above them.
+  Future<List<UsageSpendByClassRow>> monthToDateSpendByClass({
+    required String operatorId,
+    required String adminReason,
+  }) {
+    return withSystem<List<UsageSpendByClassRow>>((exec) async {
+      final rows = await exec.query(
+        'select '
+        'location_id::text as location_id, '
+        'usage_class, '
+        'sum(cost_usd)::double precision as spend_usd '
+        'from public.usage_logs '
+        'where operator_id = @operator_id::uuid '
+        "and period_start = date_trunc('month', now()) "
+        'group by location_id, usage_class',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      return <UsageSpendByClassRow>[
+        for (final row in rows)
+          UsageSpendByClassRow(
+            locationId: row['location_id']! as String,
+            usageClass: row['usage_class']! as String,
+            spendUsd: _asDouble(row['spend_usd']),
+          ),
+      ];
+    }, reason: adminReason);
+  }
+}
+
+/// One `(location_id, usage_class)` month-to-date spend bucket from
+/// [UsageCapsRepository.monthToDateSpendByClass].
+class UsageSpendByClassRow {
+  const UsageSpendByClassRow({
+    required this.locationId,
+    required this.usageClass,
+    required this.spendUsd,
+  });
+
+  final String locationId;
+  final String usageClass;
+  final double spendUsd;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'location_id': locationId,
+    'usage_class': usageClass,
+    'spend_usd': spendUsd,
+  };
 }
 
 class UsageCapAdminRow {
