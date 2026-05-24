@@ -1,22 +1,40 @@
-// Phase 11A.UX.health (Slice 1) — health admin screen widget tests.
+// Phase 11A.UX.health (Slice 2) — health admin screen widget tests.
 //
 // Drives `HealthAdminScreen` against an `InMemoryHealthAdminGateway`
-// so the click path runs end-to-end without a backend or real
-// proxy. Slice 1 replaced the cluttered metric tile with a slim card:
-// a plain-English name, a single status pill, one line (curated
-// "meaning" when good, actionable next step otherwise), and a
-// collapsible Details disclosure. A global "Show technical details"
-// switch forces every card's Details open. Everything else on the
-// screen (manual run/confirm, header, scope notice, banners, priority
-// key, definitions card, dependencies strip, overall chip, three tabs)
-// is unchanged this slice and is still covered here.
+// so the click path runs end-to-end without a backend or real proxy.
+//
+// Slice 1 replaced the cluttered metric tile with a slim card: a
+// plain-English name, a single status pill, one line (curated "meaning"
+// when good, actionable next step otherwise), and a collapsible Details
+// disclosure. A global "Show technical details" switch forces every
+// card's Details open. Those behaviours are unchanged and still covered.
+//
+// Slice 2 adds a lead-with-the-answer summary as the FIRST element of
+// the body. It subsumes the old dependencies-unavailable banner, tier-1
+// failure banner, and overall-severity chip:
+//   * Red "Action needed" when a dependency probe fails, a 503 makes
+//     results stale, or a tier-1 metric is failing.
+//   * Amber "N things need attention" when only tier-2/3 checks warn.
+//   * Green "Everything looks good" otherwise.
+// When red or amber it lists every failing/needs-attention check across
+// all tabs; tapping a row jumps to that check's tab. Each tab shows a
+// count badge for its failing/needs-attention checks, and within a
+// section tiles are ordered problems-first (failing, then needs
+// attention, then good, then no-data). The third tab is renamed from
+// "Ecosystem" to "Behind the scenes".
 //
 // Coverage:
 //   * Initial render is manual-only and does not fetch.
 //   * Manual check carries the selected hierarchy scope to the gateway.
-//   * Confirmed manual fetch shows three tabs + the dependencies strip.
-//   * The 503 path renders the "Dependencies unavailable" banner.
-//   * A tier-1 metric fail still surfaces the red top-of-page banner.
+//   * Confirmed manual fetch shows three tabs + the dependencies strip,
+//     a green summary, and the "Behind the scenes" label (not
+//     "Ecosystem").
+//   * The 503 path and a tier-1 metric fail both render the summary's
+//     red "Action needed" state.
+//   * A tier-2 yellow shows the amber summary, lists the offending
+//     check in the triage list, and badges its tab.
+//   * Tapping a triage row jumps to that check's tab.
+//   * Problems-first ordering puts a failing tile before a green tile.
 //   * Manual refresh re-fetches; no auto-poll / no stacking in flight.
 //   * HONESTY: an `unknown` (producer-timeout) metric and a metric
 //     missing from the envelope both show the "No data" status pill
@@ -48,9 +66,8 @@ void main() {
 
   /// The Health screen is sized for a desktop admin console viewport.
   /// Default Flutter test viewport (800x600) is too small for the
-  /// tier-1 banner + dependencies strip + severity chip + tabs +
-  /// scrollable tab body to coexist; bump the test viewport so the
-  /// layout matches production.
+  /// summary + dependencies strip + tabs + scrollable tab body to
+  /// coexist; bump the test viewport so the layout matches production.
   void setLargeViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1440, 1024);
     tester.view.devicePixelRatio = 1;
@@ -79,6 +96,19 @@ void main() {
     return tester.widget<Text>(find.byKey(Key(key))).data!;
   }
 
+  /// The plain text shown by the summary headline.
+  String summaryHeadline(WidgetTester tester) =>
+      textByKey(tester, 'admin_health_summary_headline');
+
+  /// The index of the currently selected health tab, read straight off
+  /// the screen's own [TabController] via the keyed [TabBar].
+  int selectedTabIndex(WidgetTester tester) {
+    final bar = tester.widget<TabBar>(
+      find.byKey(const Key('admin_health_tabs')),
+    );
+    return bar.controller!.index;
+  }
+
   Future<void> showTechnicalDetails(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('admin_health_tech_toggle')));
     await tester.pumpAndSettle();
@@ -102,6 +132,7 @@ void main() {
     expect(gateway.fetchCount, equals(0));
     expect(find.byKey(const Key('admin_health_manual_prompt')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tabs')), findsNothing);
+    expect(find.byKey(const Key('admin_health_summary')), findsNothing);
   });
 
   testWidgets('manual check carries selected hierarchy scope to gateway', (
@@ -178,7 +209,13 @@ void main() {
       find.textContaining('App service', findRichText: true),
       findsWidgets,
     );
-    expect(find.textContaining('Ecosystem', findRichText: true), findsWidgets);
+    // The third tab + its definitions entry now read "Behind the scenes".
+    expect(
+      find.textContaining('Behind the scenes', findRichText: true),
+      findsWidgets,
+    );
+    // "Ecosystem" is gone from the screen entirely.
+    expect(find.text('Ecosystem'), findsNothing);
     expect(find.textContaining('Service checks'), findsWidgets);
     expect(
       find.textContaining(
@@ -201,16 +238,18 @@ void main() {
       find.byKey(const Key('admin_health_dependency_pgvector')),
       findsOneWidget,
     );
-    // The new global tech-details switch sits above the tabs.
+    // The global tech-details switch sits above the tabs.
     expect(
       find.byKey(const Key('admin_health_tech_toggle')),
       findsOneWidget,
     );
-    // The tier-1 banner is absent on a green envelope.
-    expect(find.byKey(const Key('admin_health_tier1_banner')), findsNothing);
+    // A green envelope leads with the calm "Everything looks good"
+    // summary (the old banners / overall chip are gone).
+    expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
+    expect(summaryHeadline(tester), equals('Everything looks good'));
     expect(
-      find.byKey(const Key('admin_health_dependencies_unavailable')),
-      findsNothing,
+      find.textContaining('All 3 checks passed.'),
+      findsOneWidget,
     );
   });
 
@@ -274,13 +313,12 @@ void main() {
       find.byKey(const Key('admin_health_refresh_button')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('admin_health_dependencies_unavailable')),
-      findsOneWidget,
-    );
+    // 503 → the summary leads with the red "Action needed" verdict.
+    expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
+    expect(summaryHeadline(tester), startsWith('Action needed'));
   });
 
-  testWidgets('tier-1 metric failure surfaces the red top-of-page banner', (
+  testWidgets('tier-1 metric failure surfaces the red Action needed summary', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -307,22 +345,20 @@ void main() {
     );
     await runHealthCheck(tester);
 
-    expect(find.byKey(const Key('admin_health_tier1_banner')), findsOneWidget);
+    expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
     expect(
-      find.text(
-        'Critical checks are failing. Fix the cause before relying on this environment.',
-      ),
-      findsOneWidget,
+      summaryHeadline(tester),
+      equals('Action needed: 1 critical check failing'),
     );
-    // The 503 banner stays absent — tier-1 failure is metric-level,
-    // not dependency-level.
+    // The failing tier-1 check is listed in the triage list (it lives in
+    // the "Behind the scenes" tab, not the default one).
     expect(
-      find.byKey(const Key('admin_health_dependencies_unavailable')),
-      findsNothing,
+      find.byKey(const Key('admin_health_attn_migration_apply_drift_count')),
+      findsOneWidget,
     );
   });
 
-  testWidgets('HTTP 503 path renders the dependencies-unavailable banner', (
+  testWidgets('HTTP 503 path renders the red Action needed summary', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -340,13 +376,16 @@ void main() {
     );
     await runHealthCheck(tester);
 
+    expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
+    // No tier-1 metric is failing on a green envelope, so the 503
+    // headline names the unavailable service rather than a count.
     expect(
-      find.byKey(const Key('admin_health_dependencies_unavailable')),
-      findsOneWidget,
+      summaryHeadline(tester),
+      equals('Action needed: a required service is unavailable'),
     );
   });
 
-  testWidgets('tier-2 yellow keeps the banner absent and surfaces a pill', (
+  testWidgets('tier-2 yellow shows an amber summary, triage row, and a badge', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -373,10 +412,28 @@ void main() {
     );
     await runHealthCheck(tester);
 
-    // Top-of-page tier-1 banner stays absent.
-    expect(find.byKey(const Key('admin_health_tier1_banner')), findsNothing);
-    // The Retrieval tab is selected by default; the rollup card is in
-    // the visible tab body. Its status pill reads "Needs attention".
+    // Amber state: a count + "needs attention", never "Action needed".
+    expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
+    expect(summaryHeadline(tester), isNot(startsWith('Action needed')));
+    expect(summaryHeadline(tester), equals('1 thing needs attention'));
+
+    // The offending check is listed in the cross-tab triage list.
+    expect(
+      find.byKey(const Key('admin_health_attn_rollup_freshness_per_grain')),
+      findsOneWidget,
+    );
+
+    // Its tab (Advisor data / retrieval, index 0) shows a "1" count badge.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('admin_health_tab_retrieval')),
+        matching: find.text('1'),
+      ),
+      findsOneWidget,
+    );
+
+    // The Retrieval tab is selected by default; the rollup card status
+    // pill reads "Needs attention".
     expect(
       textByKey(tester, 'admin_health_tile_rollup_freshness_per_grain_status'),
       equals('Needs attention'),
@@ -385,6 +442,101 @@ void main() {
     expect(
       textByKey(tester, 'admin_health_tile_rollup_freshness_per_grain_line'),
       startsWith('Next step:'),
+    );
+  });
+
+  testWidgets('tapping a triage row jumps to that check\'s tab', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    // Force a circuit-breaker fail. That metric lives in the App service
+    // (proxy) tab — index 1 — not the default Retrieval tab.
+    final json = _greenEnvelope();
+    (json['metrics']!
+        as Map<String, Object?>)['circuit_breaker_anthropic_state'] =
+        <String, Object?>{
+          'status': 'red',
+          'value': 'open',
+          'unit': 'state',
+          'description': 'breaker open',
+          'owner': 'B42',
+          'observed_at': '2026-05-02T12:00:00.000Z',
+          'metadata': <String, Object?>{'tier': 1},
+        };
+    final gateway = InMemoryHealthAdminGateway(envelope: json);
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await runHealthCheck(tester);
+
+    // Default selection is the first (Retrieval) tab.
+    expect(selectedTabIndex(tester), equals(0));
+
+    // The breaker is failing → it appears in the triage list. Tap it.
+    final row = find.byKey(
+      const Key('admin_health_attn_circuit_breaker_anthropic_state'),
+    );
+    expect(row, findsOneWidget);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+
+    // The screen animated to the App service tab (index 1).
+    expect(selectedTabIndex(tester), equals(1));
+  });
+
+  testWidgets('problems-first ordering puts a failing tile before a good one', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    // The "Advisor content freshness" section (Retrieval tab) holds two
+    // tiles: rollup_freshness_per_grain (authored first) and
+    // rollup_refresh_lag_seconds (authored second). Make the freshness
+    // tile good and the refresh-lag tile fail; the failing tile must
+    // sort ahead of the good one even though it was authored second.
+    final json = _greenEnvelope();
+    (json['metrics']! as Map<String, Object?>)['rollup_refresh_lag_seconds'] =
+        <String, Object?>{
+          'status': 'red',
+          'value': 99999,
+          'unit': 'seconds',
+          'description': 'refresh lag forced fail',
+          'owner': 'B45',
+          'observed_at': '2026-05-02T12:00:00.000Z',
+          'thresholds': <String, Object?>{'yellow': 3600, 'red': 14400},
+          'metadata': <String, Object?>{'tier': 2},
+        };
+    final gateway = InMemoryHealthAdminGateway(envelope: json);
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await runHealthCheck(tester);
+
+    final failing = tester.getTopLeft(
+      find.byKey(const Key('admin_health_tile_rollup_refresh_lag_seconds')),
+    );
+    final good = tester.getTopLeft(
+      find.byKey(const Key('admin_health_tile_rollup_freshness_per_grain')),
+    );
+    // Reading order: above, or to the left on the same row.
+    final failingPrecedes =
+        failing.dy < good.dy ||
+        (failing.dy == good.dy && failing.dx < good.dx);
+    expect(
+      failingPrecedes,
+      isTrue,
+      reason:
+          'failing tile should render before the good tile within the '
+          'section (failing=$failing, good=$good)',
     );
   });
 
@@ -510,10 +662,12 @@ void main() {
     );
     await runHealthCheck(tester);
 
-    expect(find.byKey(const Key('admin_health_tier1_banner')), findsNothing);
+    // A green envelope is calm: the summary is not in the red state.
+    expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
+    expect(summaryHeadline(tester), isNot(startsWith('Action needed')));
 
-    // Now seed an envelope with a tier-1 fail and confirm another
-    // manual check. The tier-1 banner should appear after the fetch.
+    // Now seed an envelope with a tier-1 fail and confirm another manual
+    // check. The summary should escalate to red after the fetch.
     final json = _greenEnvelope();
     (json['metrics']! as Map<String, Object?>)['azure_extensions_present'] =
         <String, Object?>{
@@ -529,7 +683,7 @@ void main() {
 
     await runHealthCheck(tester);
 
-    expect(find.byKey(const Key('admin_health_tier1_banner')), findsOneWidget);
+    expect(summaryHeadline(tester), startsWith('Action needed'));
   });
 
   testWidgets('manual health check does not auto-poll or stack in flight', (
