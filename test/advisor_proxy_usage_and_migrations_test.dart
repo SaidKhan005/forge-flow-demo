@@ -11,6 +11,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
@@ -672,6 +673,138 @@ void main() {
         equals('{"status":"ok","answer":"fake"}'),
       );
     });
+
+    test(
+      'AI Metrics: a cap refusal records exactly one usage_cap_events row '
+      'with operator/location/usage_class/query_class + snapshotted '
+      'cap_usd/attempted_usd and a SQL-derived business_date',
+      () async {
+        final pool = AccountingPostgresPool();
+        final store = PostgresProxyAccountingStore(
+          wrapper: TenantTransactionWrapper(pool),
+        );
+        final operator = defaultUuidOperatorContext();
+
+        // The fake cap-status row exposes a per-invocation cap of $2.00
+        // (`AccountingPostgresPool.query` for `public.usage_caps`). A
+        // 500-cent ($5.00) estimate exceeds it, so startRequest refuses.
+        final start = await store.startRequest(
+          idempotencyKey: 'idem-cap-refusal',
+          requestType: 'advisor_smoke',
+          operator: operator,
+          usageClass: 'advisor_qa',
+          telemetry: const ProxyUsageTelemetry(
+            queryClass: 'methodology_lookup',
+            cacheHit: false,
+            llmTier: 'haiku',
+            modelUsed: 'claude-haiku-4-5',
+          ),
+          estimate: const ProxyUsageChargeEstimate(
+            tokenCount: 123,
+            costCents: 500,
+          ),
+          now: DateTime.utc(2026, 4, 26, 12),
+        );
+
+        expect(start, isA<ProxyAccountingRefused>());
+
+        // Two transactions: the cap-check (committed, no reservation
+        // insert) and a SEPARATE best-effort cap-event transaction. The
+        // recorder runs AFTER the cap-check tx, so there is no nesting.
+        expect(pool.transactions, hasLength(2));
+        final capCheckTx = pool.transactions.first;
+        final capEventTx = pool.transactions[1];
+        expect(capCheckTx.committed, isTrue);
+        expect(capEventTx.committed, isTrue);
+        expect(capEventTx.rolledBack, isFalse);
+
+        // The cap-event tx ran inside tenant context (SET LOCAL operator +
+        // location) so the per-tenant RLS INSERT policy admits the row.
+        expect(
+          capEventTx.executedSql,
+          containsAll(<String>[
+            "select set_config('app.operator_id', @value, true)",
+            "select set_config('app.location_id', @value, true)",
+            "select set_config('app.user_id', @value, true)",
+          ]),
+        );
+
+        // Exactly one cap-event INSERT, and no reservation insert on a
+        // refusal (the request never reserved an idempotency row).
+        final capEventInserts = capEventTx.executeCalls
+            .where((c) => c.sql.contains('insert into public.usage_cap_events'))
+            .toList();
+        expect(capEventInserts, hasLength(1));
+        final insert = capEventInserts.single;
+
+        // business_date is derived in SQL from the location's timezone +
+        // business_day_rollover_hour (Time Guardrails) — not bound from
+        // Dart. The INSERT ... SELECT FROM public.locations carries the
+        // same projection as the Phase 8 denorm trigger.
+        expect(insert.sql, contains('from public.locations l'));
+        expect(insert.sql, contains('business_day_rollover_hour'));
+        expect(insert.sql, contains('at time zone'));
+        expect(insert.parameters.containsKey('business_date'), isFalse);
+
+        // Correct attribution + snapshotted amounts. The per-invocation
+        // cap ($2.00) tripped, so cap_usd = 2.0000 and attempted_usd =
+        // the single call's projected cost (5.0000). Both fixed-4 strings.
+        expect(insert.parameters['operator_id'], equals(operator.operatorId));
+        expect(insert.parameters['location_id'], equals(operator.locationId));
+        expect(insert.parameters['usage_class'], equals('advisor_qa'));
+        expect(insert.parameters['query_class'], equals('methodology_lookup'));
+        expect(insert.parameters['cap_usd'], equals('2.0000'));
+        expect(insert.parameters['attempted_usd'], equals('5.0000'));
+        expect(
+          insert.parameters['occurred_at'],
+          equals(DateTime.utc(2026, 4, 26, 12).toIso8601String()),
+        );
+      },
+    );
+
+    test(
+      'AI Metrics: a cap-event insert failure does NOT change the refusal '
+      '(still refuses, no throw escapes the hot path)',
+      () async {
+        // Pool whose cap-event INSERT throws. The cap-check path uses the
+        // standard fake responses (delegated), so the refusal is decided
+        // exactly as in the happy case; only the observability write fails.
+        final pool = _CapEventFailingPool();
+        final store = PostgresProxyAccountingStore(
+          wrapper: TenantTransactionWrapper(pool),
+        );
+        final operator = defaultUuidOperatorContext();
+
+        final start = await store.startRequest(
+          idempotencyKey: 'idem-cap-refusal-fail',
+          requestType: 'advisor_smoke',
+          operator: operator,
+          usageClass: 'advisor_qa',
+          telemetry: const ProxyUsageTelemetry(
+            queryClass: 'methodology_lookup',
+            cacheHit: false,
+            llmTier: 'haiku',
+            modelUsed: 'claude-haiku-4-5',
+          ),
+          estimate: const ProxyUsageChargeEstimate(
+            tokenCount: 123,
+            costCents: 500,
+          ),
+          now: DateTime.utc(2026, 4, 26, 12),
+        );
+
+        // The refusal is unchanged despite the logging-write failure: the
+        // call returns ProxyAccountingRefused and does NOT throw.
+        expect(start, isA<ProxyAccountingRefused>());
+        final refused = start as ProxyAccountingRefused;
+        expect(refused.capStatus.perInvocationExceeded, isTrue);
+
+        // The cap-event transaction was attempted (and rolled back by the
+        // wrapper when the INSERT threw), but the failure was swallowed.
+        expect(pool.capEventInsertAttempted, isTrue);
+        expect(pool.transactions.last.rolledBack, isTrue);
+      },
+    );
   });
 
 
@@ -1547,4 +1680,64 @@ void main() {
     });
   });
 
+}
+
+/// Pool whose `usage_cap_events` INSERT throws, used to prove the
+/// cap-event recorder is non-blocking: a logging-write failure must not
+/// change the refusal or escape the hot path. The cap-check path delegates
+/// to the same fake responses [AccountingPostgresTransaction] uses, so the
+/// refusal is decided exactly as in the happy case.
+class _CapEventFailingPool implements PostgresPool {
+  final transactions = <_CapEventFailingTransaction>[];
+  var capEventInsertAttempted = false;
+
+  @override
+  Future<PostgresTransaction> beginTransaction() async {
+    final tx = _CapEventFailingTransaction(this);
+    transactions.add(tx);
+    return tx;
+  }
+}
+
+class _CapEventFailingTransaction implements PostgresTransaction {
+  _CapEventFailingTransaction(this._pool);
+
+  final _CapEventFailingPool _pool;
+  final _delegate = AccountingPostgresTransaction();
+  var committed = false;
+  var rolledBack = false;
+
+  @override
+  Future<List<PostgresRow>> query(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) {
+    // Reuse the standard fake's cap-status / replay / reservation
+    // responses so the refusal decision is identical to the happy path.
+    return _delegate.query(sql, parameters: parameters);
+  }
+
+  @override
+  Future<int> execute(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    if (sql.contains('insert into public.usage_cap_events')) {
+      _pool.capEventInsertAttempted = true;
+      // Mirror a Postgres write failure on the observability INSERT.
+      throw StateError('simulated usage_cap_events insert failure');
+    }
+    // SET LOCAL config statements and any other writes pass through.
+    return _delegate.execute(sql, parameters: parameters);
+  }
+
+  @override
+  Future<void> commit() async {
+    committed = true;
+  }
+
+  @override
+  Future<void> rollback() async {
+    rolledBack = true;
+  }
 }
