@@ -156,7 +156,7 @@ void main() {
 
     final tabFinder = find.descendant(
       of: find.byKey(const Key('admin_corpus_tab_bar')),
-      matching: find.text('Relationship review'),
+      matching: find.text('Connections'),
     );
     await tester.tap(tabFinder);
     await tester.pumpAndSettle();
@@ -557,6 +557,60 @@ void main() {
         find.byKey(const Key('admin_corpus_action_error')),
         findsNothing,
         reason: 'no error banner should appear for a valid .txt upload',
+      );
+    },
+  );
+
+  // ── B2 tests: plain-English copy + icons + machine-ID disclosure ──
+
+  testWidgets(
+    'B2: technical-details disclosure exists and raw chunk ID not in primary label',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[
+          seedBundle(
+            versionId: 'v-b2',
+            summary: 'B2 plain-English check',
+            contentHash: 'deadbeef',
+          ),
+        ],
+      );
+      await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+
+      // The disclosure key must exist (machine IDs are behind it).
+      expect(
+        find.byKey(
+          const Key('admin_corpus_chunk_details_methodology_seed.md#000'),
+        ),
+        findsOneWidget,
+        reason: 'technical-details ExpansionTile must exist for chunk',
+      );
+
+      // Before opening the disclosure, raw IDs are not visible.
+      expect(
+        find.textContaining('methodology_seed.md#000'),
+        findsNothing,
+        reason: 'raw chunk ID must not appear in primary label before disclosure',
+      );
+      expect(
+        find.textContaining('sha256'),
+        findsNothing,
+        reason: 'sha256 label must not appear in primary label',
+      );
+
+      // The version-level technical-details disclosure also exists.
+      expect(
+        find.byKey(const Key('admin_corpus_version_details_v-b2')),
+        findsOneWidget,
+        reason: 'technical-details ExpansionTile must exist for version',
+      );
+
+      // Raw version ID not visible in primary label (check the detail panel).
+      expect(
+        find.text('v-b2'),
+        findsNothing,
+        reason: 'raw version ID must not appear outside the disclosure',
       );
     },
   );
