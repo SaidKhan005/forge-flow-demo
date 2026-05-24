@@ -548,6 +548,13 @@ List<RequestLogEntry> kDebugConsoleDemoEntries = <RequestLogEntry>[
       'response_summary':
           'Recommendation to investigate Saturday daypart staffing.',
     },
+    // P2: LLM request -> real proxy_request_stats telemetry present.
+    provider: 'anthropic',
+    modelId: 'claude-sonnet-4-6',
+    promptTokenCount: 1840,
+    completionTokenCount: 318,
+    costUsd: 0.0117,
+    actorUserId: '11111111-1111-4111-8111-111111111111',
   ),
   RequestLogEntry(
     requestId: 'req-00000000-0000-4000-8000-000000000a02',
@@ -564,6 +571,8 @@ List<RequestLogEntry> kDebugConsoleDemoEntries = <RequestLogEntry>[
       'error': 'usage_caps_breach',
     },
     fullContentOptInOn: true,
+    // P2: an errored LLM request -> no success stats row yet (P1b.2), so
+    // telemetry is honestly absent (null fallback path).
   ),
   RequestLogEntry(
     requestId: 'req-00000000-0000-4000-8000-000000000a03',
@@ -580,6 +589,13 @@ List<RequestLogEntry> kDebugConsoleDemoEntries = <RequestLogEntry>[
       'rows_returned': 28,
     },
     fullContentOptInOn: true,
+    // P2: LLM workflow planning request -> telemetry present, Haiku-served.
+    provider: 'anthropic',
+    modelId: 'claude-haiku-4-5',
+    promptTokenCount: 5120,
+    completionTokenCount: 742,
+    costUsd: 0.0061,
+    actorUserId: '22222222-2222-4222-8222-222222222222',
   ),
   RequestLogEntry(
     requestId: 'req-00000000-0000-4000-8000-000000000b01',
@@ -596,6 +612,9 @@ List<RequestLogEntry> kDebugConsoleDemoEntries = <RequestLogEntry>[
       'circuit_breaker': 'half_open',
     },
     fullContentOptInOn: false,
+    // P2: a timed-out LLM request. P1b writes a stats row only on success
+    // (failure/timeout telemetry is the queued P1b.2 slice), so this row
+    // honestly carries NO telemetry — exercising the null fallback path.
   ),
   RequestLogEntry(
     requestId: 'req-00000000-0000-4000-8000-000000000b02',
@@ -612,6 +631,13 @@ List<RequestLogEntry> kDebugConsoleDemoEntries = <RequestLogEntry>[
       'rows_returned': 5,
     },
     fullContentOptInOn: false,
+    // P2: LLM scheduling request on a second operator -> telemetry present.
+    provider: 'anthropic',
+    modelId: 'claude-haiku-4-5',
+    promptTokenCount: 2310,
+    completionTokenCount: 196,
+    costUsd: 0.0024,
+    actorUserId: '33333333-3333-4333-8333-333333333333',
   ),
   RequestLogEntry(
     requestId: 'req-00000000-0000-4000-8000-000000000c01',
@@ -631,6 +657,8 @@ List<RequestLogEntry> kDebugConsoleDemoEntries = <RequestLogEntry>[
       'actor_email': 'support@forgeflow.test',
     },
     fullContentOptInOn: true,
+    // P2: a support-help (non-LLM) request -> no model/tokens/cost stats row
+    // by design (plan §9.3). Telemetry stays null (honest empty path).
   ),
   RequestLogEntry(
     requestId: 'req-00000000-0000-4000-8000-000000000c02',
@@ -650,6 +678,7 @@ List<RequestLogEntry> kDebugConsoleDemoEntries = <RequestLogEntry>[
       'actor_email': 'support@forgeflow.test',
     },
     fullContentOptInOn: true,
+    // P2: a support-help (non-LLM) request -> telemetry honestly absent.
   ),
 ];
 
