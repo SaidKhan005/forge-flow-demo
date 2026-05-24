@@ -71,6 +71,123 @@ void main() {
     await pumpEventually(tester);
   }
 
+  // Canonical scope-entity icons: every business / org-unit / location row
+  // in the admin Business accounts surface (the shared left scope tree AND
+  // the right detail hierarchy) must resolve its glyph through the shared
+  // `scopeIcon` helper so the icon set matches operator-web and mobile.
+  //   business       -> Icons.apartment_outlined
+  //   location       -> Icons.place_outlined
+  //   org unit (region) -> Icons.public (sub-type glyph via unit_type)
+  testWidgets(
+    'scope tree + hierarchy detail render canonical scope-entity icons',
+    (tester) async {
+      useWideSurface(tester);
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[seedBundle()],
+      );
+      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-seed-1': <OrgUnitAdminNode>[
+            const OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'East Region',
+              operatorId: 'op-seed-1',
+              unitType: 'region',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-seed-1': <HierarchyLocationLeaf>[
+            const HierarchyLocationLeaf(
+              locationId: 'loc-seed-1',
+              name: 'HQ',
+              operatorId: 'op-seed-1',
+              orgUnitId: 'org-root',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            hierarchyGateway: hierarchyGateway,
+            actorUserId: 'demo-super-admin',
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      // The collapsed left tree shows the business row up front; selecting it
+      // expands its org-unit / location children AND opens the right detail
+      // pane, so every scope-entity row is in the tree at once.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_setup_scope_business_op-seed-1')),
+          matching: find.byIcon(Icons.apartment_outlined),
+        ),
+        findsOneWidget,
+        reason: 'scope-tree business row must use the canonical business glyph',
+      );
+
+      await selectBusinessScope(tester, 'op-seed-1');
+
+      // Left scope tree (now expanded): org unit -> canonical generic
+      // org-unit glyph (the tree resolver passes no unit_type), location ->
+      // place.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_setup_scope_org_unit_org-root')),
+          matching: find.byIcon(Icons.account_tree_outlined),
+        ),
+        findsOneWidget,
+        reason: 'scope-tree org-unit row uses the canonical org-unit glyph',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_setup_scope_location_loc-seed-1')),
+          matching: find.byIcon(Icons.place_outlined),
+        ),
+        findsOneWidget,
+        reason: 'scope-tree location row must use the canonical location glyph',
+      );
+
+      // Right detail hierarchy rows: business scope row -> apartment, the
+      // region org unit -> its canonical sub-type glyph (public, resolved via
+      // `org_units.unit_type`), the location -> place. The old admin glyphs
+      // (business_outlined / storefront_outlined) are gone.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_hierarchy_business_scope_row')),
+          matching: find.byIcon(Icons.apartment_outlined),
+        ),
+        findsOneWidget,
+        reason: 'detail business scope row must use the canonical glyph',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_hierarchy_org_unit_org-root')),
+          matching: find.byIcon(Icons.public),
+        ),
+        findsOneWidget,
+        reason: 'a region org unit must render its canonical sub-type glyph',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_hierarchy_location_loc-seed-1')),
+          matching: find.byIcon(Icons.place_outlined),
+        ),
+        findsOneWidget,
+        reason: 'detail location row must use the canonical location glyph',
+      );
+
+      // The pre-canonical admin glyphs are fully retired from this surface.
+      expect(find.byIcon(Icons.business_outlined), findsNothing);
+      expect(find.byIcon(Icons.storefront_outlined), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('operator AI plan selection is read-only while coming soon', (
     tester,
   ) async {

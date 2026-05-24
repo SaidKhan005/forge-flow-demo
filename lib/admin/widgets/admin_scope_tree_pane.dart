@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 import '../admin_route_handoff.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
@@ -162,7 +163,7 @@ class AdminScopeBusinessTreeCard extends StatelessWidget {
         children: [
           AdminScopeRow(
             key: Key('admin_setup_scope_business_${tree.operator.operatorId}'),
-            icon: Icons.business_outlined,
+            icon: scopeIcon(kind: ScopeEntityKind.business),
             label: tree.operator.businessName,
             detail: 'Business scope',
             selected: selectedScope?.cacheKey == businessScope.cacheKey,
@@ -204,7 +205,7 @@ class AdminScopeBusinessTreeCard extends StatelessWidget {
       rows.add(
         AdminScopeRow(
           key: Key('admin_setup_scope_org_unit_${unit.orgUnitId}'),
-          icon: Icons.account_tree_outlined,
+          icon: scopeIcon(kind: ScopeEntityKind.orgUnit),
           label: unit.name,
           detail: 'Org unit scope',
           selected: selectedScope?.cacheKey == scope.cacheKey,
@@ -239,7 +240,7 @@ class AdminScopeBusinessTreeCard extends StatelessWidget {
     );
     return AdminScopeRow(
       key: Key('admin_setup_scope_location_${location.locationId}'),
-      icon: Icons.storefront_outlined,
+      icon: scopeIcon(kind: ScopeEntityKind.location),
       label: location.name,
       detail: 'Location scope',
       selected: selectedScope?.cacheKey == scope.cacheKey,

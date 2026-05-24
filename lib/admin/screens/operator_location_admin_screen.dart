@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 import '../../utils/iana_timezones.dart';
 
 import '../admin_button_styles.dart';
@@ -1590,7 +1591,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                 const SizedBox(height: 16),
                 _HierarchyScopeRow(
                   key: const Key('admin_hierarchy_business_scope_row'),
-                  icon: Icons.business_outlined,
+                  icon: scopeIcon(kind: ScopeEntityKind.business),
                   label: widget.bundle.operator.businessName,
                   subtitle: 'Business scope',
                   selected:
@@ -1722,7 +1723,12 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         opacity: unit.isSuspended ? 0.6 : 1,
         child: _HierarchyScopeRow(
           key: Key('admin_hierarchy_org_unit_${unit.orgUnitId}'),
-          icon: Icons.account_tree_outlined,
+          // Canonical org-unit glyph keyed off the real `org_units.unit_type`
+          // (GAP A3): brand / region / district / location group each get
+          // their canonical sub-type glyph, and an unknown / null type falls
+          // back to the generic org-unit icon (identical to the prior
+          // hardcoded `Icons.account_tree_outlined`).
+          icon: scopeIconForUnitType(unit.unitType),
           label: unit.name,
           subtitle: unit.isSuspended
               ? (depth == 0 ? 'Suspended org unit' : 'Suspended branch')
@@ -1877,7 +1883,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
       opacity: isSuspended ? 0.55 : 1,
       child: _HierarchyScopeRow(
         key: Key('admin_hierarchy_location_${location.locationId}'),
-        icon: Icons.storefront_outlined,
+        icon: scopeIcon(kind: ScopeEntityKind.location),
         label: location.name,
         subtitle: isSuspended
             ? (isPrimary ? 'Suspended primary location' : 'Suspended location')
