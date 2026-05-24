@@ -260,6 +260,7 @@ class ProxyProductionBindings {
     required this.operatorBenchmarkOverridesGateway,
     required this.operatorBenchmarkOverridesAuditSink,
     required this.auditChainAnchorsGateway,
+    required this.adminAuditChainAnchorsGateway,
     required this.connectorBackfillJobsRouter,
     required this.vendorLifecycleRecentlyAvailableRouter,
     required this.vendorLifecycleNotificationDispatcher,
@@ -465,6 +466,15 @@ class ProxyProductionBindings {
   /// so the operator-web Audit Log screen can render an integrity
   /// badge.
   final AuditChainAnchorsGateway auditChainAnchorsGateway;
+
+  /// Admin audit-integrity badge — admin/cross-tenant anchor read
+  /// gateway. Backed by [PostgresAdminAuditChainAnchorsGateway]; the
+  /// route `GET /v1/admin/operators/:operatorId/audit-chain-anchors/
+  /// latest` reads ANOTHER tenant's most-recent anchor row through the
+  /// sanctioned `runAsSystem` admin-pool bypass (the dispatcher gates
+  /// the route to super_admin / ff_support first) so the admin Audit
+  /// screen can render the same integrity badge the operator sees.
+  final AdminAuditChainAnchorsGateway adminAuditChainAnchorsGateway;
 
   /// Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
   /// Backed by [ConnectorBackfillJobRepository]; per-tenant RLS rides
@@ -1733,6 +1743,17 @@ ProxyProductionBindings buildProxyProductionBindings(
     // strictly read-only.
     auditChainAnchorsGateway: PostgresAuditChainAnchorsGateway(
       tenantWrapper: tenantWrapper,
+    ),
+    // Admin audit-integrity badge — admin/cross-tenant anchor read
+    // gateway. Reads ANOTHER tenant's most-recent anchor row through
+    // the admin pool's sanctioned `runAsSystem` bypass (elevates to
+    // forge_admin + stamps the `app.bypass_rls_audit` marker for the
+    // duration of the read), mirroring how the admin business-timing
+    // resolution gateway reads cross-tenant data. The dispatcher gates
+    // the route to super_admin / ff_support before this runs; this
+    // binding is strictly read-only.
+    adminAuditChainAnchorsGateway: PostgresAdminAuditChainAnchorsGateway(
+      adminWrapper: adminWrapper,
     ),
     connectorBackfillJobsRouter: connectorBackfillJobsRouter,
     vendorLifecycleRecentlyAvailableRouter:
@@ -12089,6 +12110,75 @@ class PostgresAuditChainAnchorsGateway implements AuditChainAnchorsGateway {
             : null,
       );
     });
+  }
+}
+
+// ─── Admin audit-integrity badge — admin/cross-tenant anchor read ─────
+//
+// Production-grade [AdminAuditChainAnchorsGateway] backed by the admin
+// pool's sanctioned `runAsSystem` bypass. Reads the most-recent
+// `public.audit_chain_anchors` row for the URL-supplied operator using
+// the SAME single indexed lookup against `audit_chain_anchors_recent_idx`
+// (`(operator_id, chain_date desc)`) as [PostgresAuditChainAnchorsGateway].
+// The ONLY difference from the operator gateway is the transaction
+// scope: instead of the per-tenant `SET LOCAL app.operator_id` RLS
+// clamp (which would block reading another tenant's row), it runs
+// through `adminWrapper.runAsSystem` — the same sanctioned admin bypass
+// the admin business-timing resolution read uses
+// (`listCandidateProfilesForSystemLocation`). The bypass elevates the
+// transaction role to `forge_admin` and stamps the
+// `app.bypass_rls_audit` marker with [AdminAuditChainAnchorsRouter.
+// auditReason] for the duration of the read. The dispatcher gates the
+// route to super_admin / ff_support before this gateway is ever
+// reached; the `operator_id` is still bound into the SQL so the read
+// returns exactly one operator's row.
+class PostgresAdminAuditChainAnchorsGateway
+    implements AdminAuditChainAnchorsGateway {
+  PostgresAdminAuditChainAnchorsGateway({
+    required TenantTransactionWrapper adminWrapper,
+  }) : _adminWrapper = adminWrapper;
+
+  final TenantTransactionWrapper _adminWrapper;
+
+  @override
+  Future<AuditChainAnchorRow?> latestForOperatorAsSystem({
+    required String operatorId,
+    required String reason,
+  }) {
+    return _adminWrapper.runAsSystem<AuditChainAnchorRow?>((exec) async {
+      final rows = await exec.query(
+        'select chain_date, anchored_at, row_count, blob_uri, '
+        'last_anchor_blob_url, last_anchor_blob_at '
+        'from public.audit_chain_anchors '
+        'where operator_id = @operator_id::uuid '
+        'order by chain_date desc '
+        'limit 1',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final chainDate = row['chain_date'];
+      final anchoredAt = row['anchored_at'];
+      if (chainDate is! DateTime || anchoredAt is! DateTime) return null;
+      final rowCountRaw = row['row_count'];
+      final rowCount = rowCountRaw is num ? rowCountRaw.toInt() : 0;
+      final blobUri = row['blob_uri']?.toString() ?? '';
+      final lastAnchorBlobUrl = row['last_anchor_blob_url']?.toString();
+      final lastAnchorBlobAt = row['last_anchor_blob_at'];
+      return AuditChainAnchorRow(
+        chainDate: chainDate.toUtc(),
+        anchoredAt: anchoredAt.toUtc(),
+        rowCount: rowCount,
+        blobUri: blobUri,
+        lastAnchorBlobUrl:
+            (lastAnchorBlobUrl != null && lastAnchorBlobUrl.isNotEmpty)
+            ? lastAnchorBlobUrl
+            : null,
+        lastAnchorBlobAt: lastAnchorBlobAt is DateTime
+            ? lastAnchorBlobAt.toUtc()
+            : null,
+      );
+    }, reason: reason);
   }
 }
 

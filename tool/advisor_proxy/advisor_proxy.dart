@@ -216,14 +216,20 @@ export 'business_scope_routes.dart'
         businessScopesUsersPrefix;
 export 'audit_chain_anchors_routes.dart'
     show
+        AdminAuditChainAnchorsGateway,
+        AdminAuditChainAnchorsRouter,
         AuditChainAnchorRow,
         AuditChainAnchorStatus,
         AuditChainAnchorsGateway,
         AuditChainAnchorsRouteMatch,
         AuditChainAnchorsRouteResult,
         AuditChainAnchorsRouter,
+        adminAuditChainAnchorsOperatorIdOf,
+        adminAuditChainAnchorsPathPrefix,
         auditChainAnchorStatusWire,
         classifyAnchorStatus,
+        isAdminAuditChainAnchorsPath,
+        kAdminAuditChainAnchorRoles,
         operatorAuditChainAnchorsLatestPath;
 export 'star_target_routes.dart'
     show
@@ -6152,6 +6158,13 @@ Future<void> routeRequest(
   // returns a typed 503 so the Audit Log screen renders the unknown
   // badge state without crashing.
   AuditChainAnchorsGateway? auditChainAnchorsGateway,
+  // Admin audit-integrity badge — admin/cross-tenant anchor read
+  // gateway. Optional for tests and scaffold environments; when null
+  // the admin route returns a typed 503 so the admin Audit screen
+  // renders the unknown badge state without crashing. Reads ANOTHER
+  // tenant's anchor through the sanctioned `runAsSystem` admin bypass;
+  // the dispatcher gates the route to super_admin / ff_support first.
+  AdminAuditChainAnchorsGateway? adminAuditChainAnchorsGateway,
   // Lane B B11.1 - mobile→web auth handoff (mint + redeem) router.
   // Optional: when null the two routes return 503 so existing tests
   // do not need to plumb the router through every call site.
@@ -12741,6 +12754,71 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'operator_write_unavailable',
               'message': 'operator write is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Admin audit-integrity badge — admin/cross-tenant
+        // audit-chain-anchor read route. GET only, read-only, no
+        // Idempotency-Key. operatorId comes from the URL (the
+        // established admin cross-tenant convention) — gated to
+        // super_admin / ff_support ONLY, the SAME read gate as the
+        // admin business-timing routes (`kAdminAuditChainAnchorRoles`
+        // mirrors `kAdminBusinessTimingRoles`). The gateway reaches
+        // the sanctioned `runAsSystem` admin bypass server-side; an
+        // operator-scoped token can NEVER reach this branch (operator
+        // routes never match `/v1/admin/*`). The body shape +
+        // classifier are the SAME as the operator route so the admin
+        // badge cannot drift from the operator-web badge.
+        if (AdminAuditChainAnchorsRouter.matches(path, request.method)) {
+          if (adminAuditChainAnchorsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_audit_chain_anchors_not_configured',
+              'message':
+                  'admin audit chain anchors gateway is not installed; '
+                  'please retry',
+            });
+            return;
+          }
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+          if (!actor.roles.any(kAdminAuditChainAnchorRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'admin audit chain anchor read requires super_admin or '
+                  'ff_support role',
+              'required_roles': kAdminAuditChainAnchorRoles.toList(),
+            });
+            return;
+          }
+          final operatorId = adminAuditChainAnchorsOperatorIdOf(path)!;
+          try {
+            final router = AdminAuditChainAnchorsRouter(
+              gateway: adminAuditChainAnchorsGateway,
+              now: clock,
+            );
+            final result = await router.handle(operatorId: operatorId);
+            _writeJson(response, result.statusCode, result.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'admin_audit_chain_anchors',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_audit_chain_anchors_unavailable',
+              'message':
+                  'admin audit chain anchor lookup is unavailable; '
+                  'please retry',
             });
           }
           return;
