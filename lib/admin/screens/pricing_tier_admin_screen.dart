@@ -9,14 +9,18 @@
 //
 // Two views:
 //
-//   * Plans - a read-only laddered map of the six plans (Pilot,
-//     Starter, Premium, Elite, Pro, Enterprise): name, price, what it
-//     adds, included advisor cap, and a margin estimate. Read from the
-//     locked tier templates (`kPricingTierTemplates`) plus the
-//     reconciled presentation values (`kPricingPlanPresentations`).
-//     There is no pricing editor save path - editable pricing is
-//     Phase 3 (schema + proxy) and does not exist yet, so this view is
-//     read-only by construction.
+//   * Plans - a laddered map of the six plans (Pilot, Starter, Premium,
+//     Elite, Pro, Enterprise): name, price, what it adds, included
+//     advisor cap, and a margin estimate. Phase 3 makes plan pricing
+//     EDITABLE: the price / per-seat ramp / onboarding range read from
+//     the server `pricing_plan_catalog` via `GET /v1/admin/pricing/plans`
+//     (falling back to the hard-coded `kPricingPlanPresentations` +
+//     `buildFallbackPlanCatalog` when the call fails or in offline demo),
+//     and each card carries an "Edit pricing" button that saves through
+//     `PATCH /v1/admin/pricing/plans/{tier_key}` (idempotent + audited at
+//     the proxy). The "what it adds" copy + laddered accent still come
+//     from the static presentation. When `editingEnabled` is false the
+//     Edit buttons are hidden (the `ff_support` read-only walkthrough).
 //
 //   * Businesses - master/detail. The master is the business list with
 //     a health dot, this-month spend, and margin %. The detail shows a
@@ -132,6 +136,16 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   final Map<String, OperatorSpendSummary> _spendSummaries =
       <String, OperatorSpendSummary>{};
 
+  /// Phase 3 — live plan-pricing catalog keyed by tier_key, read from
+  /// `GET /v1/admin/pricing/plans`. When the call fails or returns empty
+  /// (offline demo, endpoint not deployed) this falls back to
+  /// [buildFallbackPlanCatalog] so the Plans map always paints. The map
+  /// is always populated (fallback at construction), then overwritten
+  /// with live rows on a successful load.
+  Map<String, PricingPlanCatalogEntry> _planCatalog = <String, PricingPlanCatalogEntry>{
+    for (final entry in buildFallbackPlanCatalog()) entry.tierKey: entry,
+  };
+
   /// Mints a fresh idempotency key per user action so a retried PATCH,
   /// PUT, or POST at the proxy collapses to one ledger row + one audit
   /// row in `admin_request_idempotency`.
@@ -161,10 +175,20 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       // read-only figures are unavailable. A failure here is swallowed
       // into a null envelope rather than blocking the whole screen.
       final observability = await _fetchObservability();
+      // Phase 3 — best-effort live plan-pricing catalog. A failure or an
+      // empty result keeps the hard-coded fallback already in
+      // `_planCatalog`, so the Plans map paints either way (HP#2: demo
+      // mode works offline). Never blocks the screen.
+      final planCatalog = await _fetchPlanCatalog();
       if (!mounted) return;
       setState(() {
         _bundles = bundles;
         _observability = observability;
+        if (planCatalog != null && planCatalog.isNotEmpty) {
+          _planCatalog = <String, PricingPlanCatalogEntry>{
+            for (final entry in planCatalog) entry.tierKey: entry,
+          };
+        }
         _loading = false;
         final visible = _visibleBundles;
         final preferredOperatorId = widget.hierarchyScope?.operatorId;
@@ -213,6 +237,38 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       // honest empty sentinel when the envelope is missing.
       return null;
     }
+  }
+
+  /// Phase 3 — pull the live plan-pricing catalog. Best-effort: any error
+  /// (endpoint not deployed, demo gateway, transient failure) returns null
+  /// so the caller keeps the hard-coded fallback. The in-memory demo
+  /// gateway returns a seeded catalog, so demo mode still shows editable
+  /// numbers offline.
+  Future<List<PricingPlanCatalogEntry>?> _fetchPlanCatalog() async {
+    try {
+      return await widget.gateway.listPlanCatalog();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Phase 3 — edit one plan's pricing. Opens the editor seeded with the
+  /// current catalog values, then saves through the gateway
+  /// (`PATCH /v1/admin/pricing/plans/{tier_key}`, idempotent + audited at
+  /// the proxy) and refreshes on success. A save error surfaces inline
+  /// via `_runAndRefresh`'s `_actionError` banner.
+  Future<void> _onEditPlanPricing(PricingPlanCatalogEntry entry) async {
+    final command = await showDialog<PricingPlanPricingUpdateCommand>(
+      context: context,
+      builder: (_) => _PlanPricingDialog(
+        entry: entry,
+        idempotencyKey: _nextIdempotencyKey(),
+      ),
+    );
+    if (command == null) return;
+    await _runAndRefresh(() async {
+      await widget.gateway.updatePlanPricing(command);
+    }, successHint: 'Plan pricing updated.');
   }
 
   /// Phase 2 — pull live month-to-date spend for one operator so the
@@ -391,7 +447,12 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       );
     }
     if (_view == _PricingView.plans) {
-      return const _PlansMapView(key: Key('admin_pricing_plans_view'));
+      return _PlansMapView(
+        key: const Key('admin_pricing_plans_view'),
+        catalog: _planCatalog,
+        editingEnabled: widget.editingEnabled,
+        onEditPlanPricing: _onEditPlanPricing,
+      );
     }
     return _buildBusinessesBody();
   }
@@ -813,7 +874,17 @@ class _Tab extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _PlansMapView extends StatelessWidget {
-  const _PlansMapView({super.key});
+  const _PlansMapView({
+    super.key,
+    required this.catalog,
+    required this.editingEnabled,
+    required this.onEditPlanPricing,
+  });
+
+  /// Live (or fallback) plan pricing keyed by tier_key.
+  final Map<String, PricingPlanCatalogEntry> catalog;
+  final bool editingEnabled;
+  final ValueChanged<PricingPlanCatalogEntry> onEditPlanPricing;
 
   @override
   Widget build(BuildContext context) {
@@ -842,14 +913,19 @@ class _PlansMapView extends StatelessWidget {
                   for (final template in kPricingTierTemplates)
                     SizedBox(
                       width: cardWidth,
-                      child: _PlanCard(template: template),
+                      child: _PlanCard(
+                        template: template,
+                        entry: catalog[template.tierKey],
+                        editingEnabled: editingEnabled,
+                        onEdit: onEditPlanPricing,
+                      ),
                     ),
                 ],
               );
             },
           ),
           const SizedBox(height: 14),
-          const _PlanMapFootnote(),
+          _PlanMapFootnote(editingEnabled: editingEnabled),
         ],
       ),
     );
@@ -857,33 +933,52 @@ class _PlansMapView extends StatelessWidget {
 }
 
 class _PlanMapFootnote extends StatelessWidget {
-  const _PlanMapFootnote();
+  const _PlanMapFootnote({required this.editingEnabled});
+
+  final bool editingEnabled;
 
   @override
   Widget build(BuildContext context) {
-    return const OperatorWebBanner(
+    return OperatorWebBanner(
       icon: Icons.info_outline,
-      message:
-          'Plan prices are read-only here. Editing the pricing catalog is a '
-          'later step. The dollar limits cap AI cost, not the subscription '
-          'price.',
+      message: editingEnabled
+          ? 'Plan prices come from the pricing catalog. Use "Edit pricing" on '
+                'a plan to change its monthly fee, per-seat ramp, or onboarding '
+                'range. The dollar limits in Businesses cap AI cost, not the '
+                'subscription price.'
+          : 'Plan prices come from the pricing catalog (view only). The dollar '
+                'limits in Businesses cap AI cost, not the subscription price.',
     );
   }
 }
 
 class _PlanCard extends StatelessWidget {
-  const _PlanCard({required this.template});
+  const _PlanCard({
+    required this.template,
+    required this.entry,
+    required this.editingEnabled,
+    required this.onEdit,
+  });
 
   final PricingTierTemplate template;
+
+  /// Live (or fallback) catalog pricing for this plan. Null only if the
+  /// catalog has no row for the key (should not happen — the fallback
+  /// always carries all six).
+  final PricingPlanCatalogEntry? entry;
+  final bool editingEnabled;
+  final ValueChanged<PricingPlanCatalogEntry> onEdit;
 
   @override
   Widget build(BuildContext context) {
     final presentation = findPricingPlanPresentation(template.tierKey);
     final advisorCap = _advisorCapUsd(template);
-    final monthly = presentation?.monthlyUsd;
-    final priceText = monthly == null
-        ? 'Custom'
-        : '\$${monthly.round()}';
+    // Price reads from the editable catalog entry; the static
+    // presentation supplies the laddered accent + "what it adds" copy.
+    final monthly = entry?.monthlyUsd ?? presentation?.monthlyUsd;
+    final priceText = monthly == null ? 'Custom' : '\$${monthly.round()}';
+    final seatText = _seatLine(entry, presentation);
+    final onboardingText = _onboardingLine(entry, presentation);
     return Container(
       key: Key('admin_pricing_plan_card_${template.tierKey}'),
       decoration: BoxDecoration(
@@ -923,7 +1018,7 @@ class _PlanCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            presentation?.seatLine ?? '',
+            seatText,
             style: AppTextStyles.mono11(color: AppColors.textMuted),
           ),
           const SizedBox(height: 9),
@@ -944,12 +1039,69 @@ class _PlanCard extends StatelessWidget {
           _MarginTag(label: presentation?.marginEstimate ?? ''),
           const SizedBox(height: 8),
           Text(
-            'Onboarding ${presentation?.onboardingRange ?? 'Custom'}',
+            'Onboarding $onboardingText',
             style: AppTextStyles.mono10(color: AppColors.textMuted),
           ),
+          if (editingEnabled && entry != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: Key('admin_pricing_plan_edit_${template.tierKey}'),
+                style: AdminButtonStyles.secondary(),
+                onPressed: () => onEdit(entry!),
+                icon: const Icon(Icons.edit_outlined, size: 15),
+                label: const Text('Edit pricing'),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Per-seat line built from the editable catalog entry, falling back to
+  /// the static presentation copy. No em dash (UX no-em-dash law): uses a
+  /// comma + "then" for the seat ramp.
+  static String _seatLine(
+    PricingPlanCatalogEntry? entry,
+    PricingPlanPresentation? presentation,
+  ) {
+    if (entry == null) return presentation?.seatLine ?? '';
+    final first = entry.firstSeatUsd;
+    if (first == null || first == 0) {
+      // No per-seat fee. Keep the static seat-line copy when present
+      // (e.g. "No seat fee.") so the card reads naturally.
+      return presentation?.seatLine ?? 'No seat fee.';
+    }
+    final band = entry.firstNSeats;
+    final additional = entry.additionalSeatUsd;
+    if (band != null && additional != null) {
+      return '${_money(first)}/seat first $band, then ${_money(additional)}.';
+    }
+    return '${_money(first)}/seat.';
+  }
+
+  /// Onboarding range line from the editable catalog entry, falling back
+  /// to the static presentation copy. Uses "to" for the range (no em
+  /// dash); a $0 range reads "self-serve".
+  static String _onboardingLine(
+    PricingPlanCatalogEntry? entry,
+    PricingPlanPresentation? presentation,
+  ) {
+    if (entry == null) return presentation?.onboardingRange ?? 'Custom';
+    final min = entry.onboardingMinUsd;
+    final max = entry.onboardingMaxUsd;
+    if (min == null && max == null) {
+      // Custom / unset. Prefer the static copy (e.g. "Custom" /
+      // "$0 (self-serve)") when it carries meaning.
+      return presentation?.onboardingRange ?? 'Custom';
+    }
+    if ((min ?? 0) == 0 && (max ?? 0) == 0) return r'$0 (self-serve)';
+    if (min != null && max != null) {
+      return '${_money(min)} to ${_money(max)}';
+    }
+    return _money(min ?? max);
   }
 
   static double? _advisorCapUsd(PricingTierTemplate template) {
@@ -1835,6 +1987,246 @@ class _SpendVsCapBar extends StatelessWidget {
 // Add / edit usage-limit dialog (cap upsert through the pricing gateway).
 // ---------------------------------------------------------------------------
 
+/// Phase 3 — edit one plan's pricing. Seeded with the current catalog
+/// values; an empty field clears the value to a genuine SQL NULL (e.g.
+/// Enterprise has no monthly price, no-seat plans have null seat fees),
+/// matching the nullable proxy body fields. Returns a
+/// [PricingPlanPricingUpdateCommand] on save, null on cancel.
+class _PlanPricingDialog extends StatefulWidget {
+  const _PlanPricingDialog({required this.entry, required this.idempotencyKey});
+
+  final PricingPlanCatalogEntry entry;
+
+  /// Per-action idempotency key minted by the screen.
+  final String idempotencyKey;
+
+  @override
+  State<_PlanPricingDialog> createState() => _PlanPricingDialogState();
+}
+
+class _PlanPricingDialogState extends State<_PlanPricingDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _monthly;
+  late final TextEditingController _firstNSeats;
+  late final TextEditingController _firstSeat;
+  late final TextEditingController _additionalSeat;
+  late final TextEditingController _onboardingMin;
+  late final TextEditingController _onboardingMax;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.entry;
+    _monthly = TextEditingController(text: _numText(e.monthlyUsd));
+    _firstNSeats = TextEditingController(
+      text: e.firstNSeats == null ? '' : '${e.firstNSeats}',
+    );
+    _firstSeat = TextEditingController(text: _numText(e.firstSeatUsd));
+    _additionalSeat = TextEditingController(text: _numText(e.additionalSeatUsd));
+    _onboardingMin = TextEditingController(text: _numText(e.onboardingMinUsd));
+    _onboardingMax = TextEditingController(text: _numText(e.onboardingMaxUsd));
+  }
+
+  /// Render a nullable money value as an editable string; null stays
+  /// blank so a blank field round-trips back to null on save.
+  static String _numText(double? value) {
+    if (value == null) return '';
+    // Whole numbers render without a trailing ".0"; fractional values
+    // keep two decimals so $5.50 stays $5.50.
+    if (value == value.roundToDouble()) return value.round().toString();
+    return value.toStringAsFixed(2);
+  }
+
+  @override
+  void dispose() {
+    _monthly.dispose();
+    _firstNSeats.dispose();
+    _firstSeat.dispose();
+    _additionalSeat.dispose();
+    _onboardingMin.dispose();
+    _onboardingMax.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName =
+        findPricingTierTemplate(widget.entry.tierKey)?.displayName ??
+        widget.entry.tierKey;
+    return OperatorWebDialog(
+      key: const Key('admin_pricing_plan_dialog'),
+      title: 'Edit $displayName pricing',
+      icon: Icons.payments_outlined,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_pricing_plan_cancel_button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_pricing_plan_submit_button'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Save'),
+        ),
+      ],
+      child: Flexible(
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    'Leave a field blank for "none" (for example a custom-contract plan has no monthly price, and a plan with no per-seat fee has blank seat fields).',
+                    style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  ),
+                ),
+                _LabelledField(
+                  label: 'Monthly fee (USD, blank for custom)',
+                  controller: _monthly,
+                  fieldKey: const Key('admin_pricing_plan_monthly'),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^[0-9]*\.?[0-9]*'),
+                    ),
+                  ],
+                  validator: _optionalDecimalValidator,
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: _LabelledField(
+                        label: 'First seats',
+                        controller: _firstNSeats,
+                        fieldKey: const Key('admin_pricing_plan_first_n_seats'),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        validator: _optionalIntValidator,
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: _LabelledField(
+                        label: 'First seat (USD)',
+                        controller: _firstSeat,
+                        fieldKey: const Key('admin_pricing_plan_first_seat'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^[0-9]*\.?[0-9]*'),
+                          ),
+                        ],
+                        validator: _optionalDecimalValidator,
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: _LabelledField(
+                        label: 'Added seat (USD)',
+                        controller: _additionalSeat,
+                        fieldKey: const Key(
+                          'admin_pricing_plan_additional_seat',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^[0-9]*\.?[0-9]*'),
+                          ),
+                        ],
+                        validator: _optionalDecimalValidator,
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: _LabelledField(
+                        label: 'Onboarding min (USD)',
+                        controller: _onboardingMin,
+                        fieldKey: const Key('admin_pricing_plan_onboarding_min'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^[0-9]*\.?[0-9]*'),
+                          ),
+                        ],
+                        validator: _optionalDecimalValidator,
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: _LabelledField(
+                        label: 'Onboarding max (USD)',
+                        controller: _onboardingMax,
+                        fieldKey: const Key('admin_pricing_plan_onboarding_max'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^[0-9]*\.?[0-9]*'),
+                          ),
+                        ],
+                        validator: _optionalDecimalValidator,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _onSubmit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    Navigator.of(context).pop(
+      PricingPlanPricingUpdateCommand(
+        tierKey: widget.entry.tierKey,
+        monthlyUsd: _parseNullableDouble(_monthly.text),
+        firstNSeats: _parseNullableInt(_firstNSeats.text),
+        firstSeatUsd: _parseNullableDouble(_firstSeat.text),
+        additionalSeatUsd: _parseNullableDouble(_additionalSeat.text),
+        onboardingMinUsd: _parseNullableDouble(_onboardingMin.text),
+        onboardingMaxUsd: _parseNullableDouble(_onboardingMax.text),
+        idempotencyKey: widget.idempotencyKey,
+      ),
+    );
+  }
+
+  static double? _parseNullableDouble(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return double.tryParse(trimmed);
+  }
+
+  static int? _parseNullableInt(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return int.tryParse(trimmed);
+  }
+}
+
 class _UsageCapDialog extends StatefulWidget {
   const _UsageCapDialog({
     required this.operatorId,
@@ -2211,6 +2603,27 @@ String? _decimalValidator(String? value) {
   if (value == null || value.trim().isEmpty) return 'Required';
   final parsed = double.tryParse(value.trim());
   if (parsed == null) return 'Enter a number';
+  if (parsed < 0) return 'Must be 0 or more';
+  return null;
+}
+
+/// Phase 3 — validator for a plan-pricing money field where blank is a
+/// valid "none" (genuine SQL NULL). A present value must be a
+/// non-negative number.
+String? _optionalDecimalValidator(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  final parsed = double.tryParse(value.trim());
+  if (parsed == null) return 'Enter a number';
+  if (parsed < 0) return 'Must be 0 or more';
+  return null;
+}
+
+/// Phase 3 — validator for the first-seat band size where blank is a
+/// valid "none". A present value must be a non-negative whole number.
+String? _optionalIntValidator(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  final parsed = int.tryParse(value.trim());
+  if (parsed == null) return 'Enter a whole number';
   if (parsed < 0) return 'Must be 0 or more';
   return null;
 }

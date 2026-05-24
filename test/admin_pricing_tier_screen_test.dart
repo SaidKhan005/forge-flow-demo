@@ -220,8 +220,8 @@ void main() {
         reason: 'plan card for $key',
       );
     }
-    // Plan map is read-only: no apply-template button and no add-limit
-    // button on the Plans tab.
+    // Plan map has no apply-template button and no add-limit button on
+    // the Plans tab (those live in Businesses).
     expect(
       find.byKey(const Key('admin_pricing_template_premium_button')),
       findsNothing,
@@ -231,6 +231,122 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets(
+    'Phase 3: Plans tab shows "Edit pricing" per card and saves a change',
+    (tester) async {
+      var counter = 0;
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[seedBundle()],
+      );
+      await tester.pumpWidget(
+        wrap(
+          PricingTierAdminScreen(
+            gateway: gateway,
+            idempotencyKeyFactory: () => 'k-plan-${counter++}',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Every plan card carries an Edit pricing button when editing is on.
+      final editPremium = find.byKey(
+        const Key('admin_pricing_plan_edit_premium'),
+      );
+      expect(editPremium, findsOneWidget);
+
+      await tester.ensureVisible(editPremium);
+      await tester.tap(editPremium);
+      await tester.pumpAndSettle();
+
+      // The editor opens seeded with the current catalog values.
+      expect(
+        find.byKey(const Key('admin_pricing_plan_dialog')),
+        findsOneWidget,
+      );
+      final monthlyField = find.byKey(
+        const Key('admin_pricing_plan_monthly'),
+      );
+      expect(monthlyField, findsOneWidget);
+      await tester.enterText(monthlyField, '275');
+      await tester.tap(
+        find.byKey(const Key('admin_pricing_plan_submit_button')),
+      );
+      await tester.pumpAndSettle();
+
+      // Saved through the gateway: the catalog now holds the new price and
+      // the card reflects it.
+      final plans = await gateway.listPlanCatalog();
+      expect(
+        plans.firstWhere((p) => p.tierKey == 'premium').monthlyUsd,
+        equals(275),
+      );
+    },
+  );
+
+  testWidgets('Phase 3: read-only mode hides the "Edit pricing" buttons', (
+    tester,
+  ) async {
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(gateway: gateway, editingEnabled: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_pricing_plans_view')), findsOneWidget);
+    // The cards still render, but with no edit affordance.
+    expect(
+      find.byKey(const Key('admin_pricing_plan_card_premium')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_pricing_plan_edit_premium')),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+    'Phase 3: Plans tab falls back to hard-coded pricing when the catalog '
+    'read fails',
+    (tester) async {
+      // A gateway whose listPlanCatalog throws stands in for the endpoint
+      // not being deployed / an offline failure. The screen must still
+      // paint all six plan cards from the hard-coded fallback.
+      final gateway = _ThrowingCatalogGateway(
+        seed: <PricingOperatorBundle>[seedBundle()],
+      );
+      await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_pricing_plans_view')),
+        findsOneWidget,
+      );
+      for (final key in const <String>[
+        'pilot',
+        'starter',
+        'premium',
+        'elite',
+        'pro',
+        'enterprise',
+      ]) {
+        expect(
+          find.byKey(Key('admin_pricing_plan_card_$key')),
+          findsOneWidget,
+          reason: 'fallback plan card for $key',
+        );
+      }
+      // The fallback still wires the edit affordance (editing defaults on).
+      expect(
+        find.byKey(const Key('admin_pricing_plan_edit_premium')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('spend-vs-cap bar joins observability cost telemetry to a cap', (
     tester,
@@ -703,4 +819,22 @@ void main() {
 
     expect(find.byKey(const Key('admin_pricing_action_error')), findsOneWidget);
   });
+}
+
+/// Test double whose plan-catalog read always fails, standing in for the
+/// `GET /v1/admin/pricing/plans` endpoint not being deployed yet or an
+/// offline failure. Everything else delegates to the in-memory gateway so
+/// the rest of the screen still works. Used to prove the Plans map falls
+/// back to the hard-coded presentations.
+class _ThrowingCatalogGateway extends InMemoryPricingTierAdminGateway {
+  _ThrowingCatalogGateway({super.seed});
+
+  @override
+  Future<List<PricingPlanCatalogEntry>> listPlanCatalog() async {
+    throw const PricingTierAdminGatewayError(
+      statusCode: 503,
+      errorCode: 'plans_unavailable',
+      message: 'plan catalog endpoint is not available',
+    );
+  }
 }
