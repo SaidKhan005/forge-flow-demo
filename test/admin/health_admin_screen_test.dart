@@ -41,6 +41,18 @@
 // scope. The scope is still sent to the gateway fetch for request
 // shaping; only the on-screen per-scope block is gone.
 //
+// Slice 6b declutters the duplicate header. The screen is only ever
+// mounted inside the admin scope-workspace pane, which already renders
+// the "System health" title, subtitle, and selected-scope line above it.
+// The screen's own `_Header` (a second title + subtitle + icon) was the
+// duplicate the operator flagged, so it is gone; a compact right-aligned
+// actions row (the single Run button keyed `admin_health_refresh_button`
+// + the "Last checked" stamp keyed `admin_health_last_refreshed`) renders
+// at the top of the body in every state. The big empty-state prompt card
+// (icon + facts panel + a second Run button) is replaced by a slim hint
+// (key `admin_health_manual_prompt`) with one line; the confirm dialog
+// still carries the Read-only / Timing / Results facts.
+//
 // Coverage:
 //   * Initial render is manual-only and does not fetch.
 //   * Manual check carries the selected hierarchy scope to the gateway.
@@ -154,6 +166,10 @@ void main() {
     expect(find.byKey(const Key('admin_health_manual_prompt')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tabs')), findsNothing);
     expect(find.byKey(const Key('admin_health_summary')), findsNothing);
+    // The duplicate header is gone: the admin workspace pane renders the
+    // "System health" title above the screen, so the screen itself must not
+    // render its own title when pumped standalone.
+    expect(find.text('System health'), findsNothing);
   });
 
   testWidgets('manual check carries selected hierarchy scope to gateway', (
@@ -428,7 +444,10 @@ void main() {
     await runHealthCheck(tester);
 
     expect(tester.takeException(), isNull);
-    expect(find.text('System health'), findsOneWidget);
+    // The screen no longer paints its own "System health" title (the admin
+    // workspace pane renders it above; this test pumps the screen
+    // standalone). The chrome that IS present is the compact actions row's
+    // Run button, which must stay readable on a narrow viewport.
     expect(
       find.byKey(const Key('admin_health_refresh_button')),
       findsOneWidget,

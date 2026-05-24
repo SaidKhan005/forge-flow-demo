@@ -39,7 +39,6 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_info_button.dart';
 import '../../widgets/console/console_screen_body.dart';
-import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
 import '../admin_route_handoff.dart';
@@ -331,7 +330,14 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             final showManualPrompt =
                 !_loading && _envelope == null && _loadError == null;
             final children = <Widget>[
-              _Header(
+              // The admin scope-workspace pane already renders the
+              // "System health" title, its subtitle, and the selected-scope
+              // line directly above this screen, so the screen no longer
+              // paints its own header (the duplicate the operator flagged as
+              // clutter). It keeps only a compact, right-aligned actions row
+              // carrying the single Run button + the "Last checked" stamp, in
+              // every state (empty, loading, loaded).
+              _HealthActionsRow(
                 lastRefreshed: _lastRefreshed,
                 onRunHealthCheck: _confirmAndRefresh,
                 loading: _loading || _refreshing,
@@ -374,8 +380,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
                     ),
                   ),
                 ),
-              if (showManualPrompt)
-                _ManualHealthPrompt(onRunHealthCheck: _confirmAndRefresh),
+              if (showManualPrompt) const _ManualHealthHint(),
             ];
             final column = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -851,8 +856,15 @@ class _HealthLegendInfo extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
+/// Compact, right-aligned actions row that replaces the screen's old
+/// `_Header`. The admin scope-workspace pane already shows the "System
+/// health" title + subtitle + selected-scope line above the screen, so
+/// this row carries no title, subtitle, or icon — only the single Run
+/// button and the "Last checked" stamp. It renders in every state. A
+/// `Wrap` (right-aligned) lets the stamp drop below the button instead of
+/// overflowing on a narrow viewport.
+class _HealthActionsRow extends StatelessWidget {
+  const _HealthActionsRow({
     required this.lastRefreshed,
     required this.onRunHealthCheck,
     required this.loading,
@@ -864,41 +876,30 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OperatorWebScreenHeader(
-      icon: Icons.health_and_safety_outlined,
-      title: 'System health',
-      subtitle:
-          'A read-only check of the advisor data, the app service, and the platform behind it.',
-      collapseBelowWidth: 640,
-      actions: <Widget>[
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 320),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AdminRunCheckButton(
-                key: const Key('admin_health_refresh_button'),
-                onPressed: () {
-                  onRunHealthCheck();
-                },
-                icon: Icons.health_and_safety_outlined,
-                label: 'Run system check',
-                loadingLabel: 'Running...',
-                loading: loading,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                lastRefreshed == null
-                    ? 'Last checked: -'
-                    : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
-                key: const Key('admin_health_last_refreshed'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-            ],
-          ),
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 6,
+      children: <Widget>[
+        Text(
+          lastRefreshed == null
+              ? 'Last checked: -'
+              : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
+          key: const Key('admin_health_last_refreshed'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+        AdminRunCheckButton(
+          key: const Key('admin_health_refresh_button'),
+          onPressed: () {
+            onRunHealthCheck();
+          },
+          icon: Icons.health_and_safety_outlined,
+          label: 'Run system check',
+          loadingLabel: 'Running...',
+          loading: loading,
         ),
       ],
     );
@@ -940,40 +941,44 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
   }
 }
 
-class _ManualHealthPrompt extends StatelessWidget {
-  const _ManualHealthPrompt({required this.onRunHealthCheck});
-
-  final Future<void> Function() onRunHealthCheck;
+/// Slim empty-state hint shown before the first check. The big prompt
+/// card (icon + facts panel + a second Run button) was removed as
+/// clutter: the confirm dialog already carries the Read-only / Timing /
+/// Results facts, and the compact actions row above already carries the
+/// single Run button. This is just a short bordered nudge so the empty
+/// state is not blank. Card styling matches the screen's other cards
+/// (`backgroundSurface`, `borderSubtle`, radius 6).
+class _ManualHealthHint extends StatelessWidget {
+  const _ManualHealthHint();
 
   @override
   Widget build(BuildContext context) {
-    return AdminRunCheckPrompt(
+    return Container(
       key: const Key('admin_health_manual_prompt'),
-      icon: Icons.health_and_safety_outlined,
-      title: 'Check system health',
-      description:
-          'Start with the current staging picture before investigating service or data issues.',
-      buttonLabel: 'Run system check',
-      onPressed: () {
-        onRunHealthCheck();
-      },
-      facts: const [
-        AdminRunCheckFact(
-          icon: Icons.visibility_outlined,
-          label: 'Read-only',
-          text: 'No settings or operator data are changed.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.account_tree_outlined,
-          label: 'Scope',
-          text: 'Dependency status, health signals, and producer freshness.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.schedule_outlined,
-          label: 'Timing',
-          text: 'Live staging checks can take 15-30 seconds.',
-        ),
-      ],
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Check system health',
+            style: AppTextStyles.body14(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Run a system check to see the latest status.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }
