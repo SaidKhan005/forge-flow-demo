@@ -33,6 +33,8 @@ class AdminSetupWorkspace extends StatefulWidget {
     this.onBackToBusinessAccounts,
     this.description,
     this.showWorkspaceHeader = true,
+    this.allowAllBusinessesScope = false,
+    this.allBusinessesBuilder,
   });
 
   final String functionTitle;
@@ -52,6 +54,17 @@ class AdminSetupWorkspace extends StatefulWidget {
   /// still rely on the shared header.
   final bool showWorkspaceHeader;
 
+  /// When true (and [allBusinessesBuilder] is provided), the scope picker
+  /// shows an additive "All businesses" option that opens the
+  /// platform-wide (cross-business) view. Opt-in and default off, so the
+  /// other setup surfaces that share this workspace are unaffected.
+  final bool allowAllBusinessesScope;
+
+  /// Builds the function pane for the "All businesses" selection. Receives
+  /// no hierarchy scope because the platform-wide view aggregates across
+  /// every business (the screen reads with `operator_id = null`).
+  final WidgetBuilder? allBusinessesBuilder;
+
   @override
   State<AdminSetupWorkspace> createState() => _AdminSetupWorkspaceState();
 }
@@ -62,6 +75,7 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
   final Set<String> _expandedOperatorIds = <String>{};
   AdminHierarchyScopeIntent? _selectedScope;
   String _search = '';
+  bool _allBusinessesSelected = false;
 
   @override
   void initState() {
@@ -107,9 +121,17 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
   void _selectScope(AdminHierarchyScopeIntent scope) {
     setState(() {
       _selectedScope = scope;
+      _allBusinessesSelected = false;
       _expandedOperatorIds.add(scope.operatorId);
     });
     widget.onScopeChanged?.call(scope);
+  }
+
+  void _selectAllBusinesses() {
+    setState(() {
+      _allBusinessesSelected = true;
+      _selectedScope = null;
+    });
   }
 
   void _toggleExpanded(String operatorId) {
@@ -135,6 +157,9 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
             final selection = selectedScope == null
                 ? null
                 : resolveAdminScopeSelection(trees, selectedScope);
+            final showAllBusinesses =
+                widget.allowAllBusinessesScope &&
+                widget.allBusinessesBuilder != null;
             final scopePane = AdminScopeTreePane(
               trees: trees.where(_matchesSearch).toList(growable: false),
               searchController: _searchController,
@@ -144,25 +169,39 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
               onSelectScope: _selectScope,
               onToggleExpanded: _toggleExpanded,
               forceExpanded: _search.isNotEmpty,
+              showAllBusinesses: showAllBusinesses,
+              allBusinessesSelected: _allBusinessesSelected,
+              onSelectAllBusinesses: _selectAllBusinesses,
             );
+            final Widget? functionChild;
+            if (_allBusinessesSelected && widget.allBusinessesBuilder != null) {
+              functionChild = KeyedSubtree(
+                key: const ValueKey<String>(
+                  'admin_setup_function_all_businesses',
+                ),
+                child: widget.allBusinessesBuilder!(context),
+              );
+            } else if (_selectedScope == null) {
+              functionChild = null;
+            } else {
+              functionChild = KeyedSubtree(
+                key: ValueKey<String>(
+                  'admin_setup_function_${_selectedScope!.cacheKey}',
+                ),
+                child: widget.functionBuilder(
+                  context,
+                  _selectedScope!,
+                  selection!,
+                ),
+              );
+            }
             final functionPane = _FunctionPane(
               title: widget.functionTitle,
               description: widget.description,
               selectedScope: _selectedScope,
               onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
               showWorkspaceHeader: widget.showWorkspaceHeader,
-              child: _selectedScope == null
-                  ? null
-                  : KeyedSubtree(
-                      key: ValueKey<String>(
-                        'admin_setup_function_${_selectedScope!.cacheKey}',
-                      ),
-                      child: widget.functionBuilder(
-                        context,
-                        _selectedScope!,
-                        selection!,
-                      ),
-                    ),
+              child: functionChild,
             );
             if (compact) {
               return DefaultTabController(
@@ -262,7 +301,7 @@ class _FunctionPane extends StatelessWidget {
                 _WorkspaceHeader(
                   title: title,
                   description: description,
-                  selectedScope: selectedScope!,
+                  selectedScope: selectedScope,
                   onBackToBusinessAccounts: onBackToBusinessAccounts,
                 ),
                 Expanded(child: child!),
@@ -283,7 +322,11 @@ class _WorkspaceHeader extends StatelessWidget {
 
   final String title;
   final String? description;
-  final AdminHierarchyScopeIntent selectedScope;
+
+  /// Null means the platform-wide "All businesses" selection (no single
+  /// hierarchy scope). The header then names the platform-wide view
+  /// instead of a specific business / org unit / location.
+  final AdminHierarchyScopeIntent? selectedScope;
   final VoidCallback? onBackToBusinessAccounts;
 
   @override
@@ -332,7 +375,9 @@ class _WorkspaceHeader extends StatelessWidget {
                 ],
                 const SizedBox(height: 6),
                 Text(
-                  'Selected ${selectedScope.scopeType.label.toLowerCase()} scope: ${selectedScope.displayLabel}',
+                  selectedScope == null
+                      ? 'Scope: All businesses (every business on the platform)'
+                      : 'Selected ${selectedScope!.scopeType.label.toLowerCase()} scope: ${selectedScope!.displayLabel}',
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
                 ),

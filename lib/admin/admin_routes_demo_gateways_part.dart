@@ -1,0 +1,994 @@
+part of 'admin_routes.dart';
+
+// Demo / share-preview / widget-test fallback gateways for the admin
+// console routes. Extracted from admin_routes.dart as a `part` (size-lint
+// slim-down, 2026-05-24) so privacy and the shared library scope are
+// preserved; AdminConsoleServicesScope (in admin_routes.dart) wires these
+// as the default gateways when no production gateway is injected.
+
+/// Fix #4 / S4 (G41 + G42) — shared seeded in-memory fallback for
+/// the READ-ONLY admin business-timing resolution gateway. Empty by
+/// default so the timing surfaces render their honest "no timing
+/// profile yet" state instead of fabricating values when no
+/// production [HttpAdminBusinessTimingResolutionGateway] is wired.
+final AdminBusinessTimingResolutionGateway _defaultTimingResolutionDemoGateway =
+    InMemoryAdminBusinessTimingResolutionGateway();
+
+/// Timing-editable parity — shared seeded in-memory fallback for the
+/// admin business-timing PROFILE WRITE gateway. Empty by default, so the
+/// admin Timing editor opens on the starter profile and the first Save
+/// creates a profile for the selected scope. A single shared instance
+/// (mirrors [_defaultTimingResolutionDemoGateway]) so demo / share-
+/// preview / widget-test paths see the same store across rebuilds when
+/// no production [HttpAdminBusinessTimingProfilesGateway] is wired.
+final AdminBusinessTimingProfilesGateway _defaultTimingProfilesDemoGateway =
+    InMemoryAdminBusinessTimingProfilesGateway();
+
+/// Demo gateway shared by walkthrough + admin shell when no
+/// production scope is mounted. Seeded with two fixture operators
+/// so the click path has something to show on first paint without
+/// asking the F&F admin to manually run onboarding.
+final OperatorLocationAdminGateway _defaultDemoGateway =
+    InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        OperatorAdminBundle(
+          operator: OperatorAdminRecord(
+            operatorId: '00000000-0000-4000-8000-000000000001',
+            businessName: 'Demo Diner Co.',
+            ownerEmail: 'owner@demo-diner.test',
+            subscriptionTier: 'pro',
+            preferredCurrency: 'CAD',
+            primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
+            suspendedAt: null,
+            createdAt: DateTime.utc(2026, 1, 12, 14, 30),
+            updatedAt: DateTime.utc(2026, 4, 1, 10, 0),
+          ),
+          locations: <LocationAdminRecord>[
+            LocationAdminRecord(
+              locationId: '00000000-0000-4000-8000-0000000000a1',
+              operatorId: '00000000-0000-4000-8000-000000000001',
+              name: 'Toronto Yorkville',
+              address: '123 Main St, Toronto, ON',
+              timezone: 'America/Toronto',
+              businessDayRolloverHour: 4,
+              createdAt: DateTime.utc(2026, 1, 12, 14, 30),
+              updatedAt: DateTime.utc(2026, 1, 12, 14, 30),
+            ),
+            LocationAdminRecord(
+              locationId: '00000000-0000-4000-8000-0000000000a2',
+              operatorId: '00000000-0000-4000-8000-000000000001',
+              name: 'Vancouver Robson',
+              address: '456 Robson St, Vancouver, BC',
+              timezone: 'America/Vancouver',
+              businessDayRolloverHour: 4,
+              createdAt: DateTime.utc(2026, 2, 1, 9, 0),
+              updatedAt: DateTime.utc(2026, 2, 1, 9, 0),
+            ),
+          ],
+        ),
+        OperatorAdminBundle(
+          operator: OperatorAdminRecord(
+            operatorId: '00000000-0000-4000-8000-000000000002',
+            businessName: 'Sunset Cafe Group',
+            ownerEmail: 'owner@sunset-cafe.test',
+            subscriptionTier: 'pilot',
+            preferredCurrency: 'USD',
+            primaryLocationId: '00000000-0000-4000-8000-0000000000b1',
+            suspendedAt: null,
+            createdAt: DateTime.utc(2026, 3, 5, 11, 0),
+            updatedAt: DateTime.utc(2026, 4, 18, 12, 0),
+          ),
+          locations: <LocationAdminRecord>[
+            LocationAdminRecord(
+              locationId: '00000000-0000-4000-8000-0000000000b1',
+              operatorId: '00000000-0000-4000-8000-000000000002',
+              name: 'Brooklyn Williamsburg',
+              address: '78 Bedford Ave, Brooklyn, NY',
+              timezone: 'America/New_York',
+              businessDayRolloverHour: 5,
+              createdAt: DateTime.utc(2026, 3, 5, 11, 0),
+              updatedAt: DateTime.utc(2026, 3, 5, 11, 0),
+            ),
+          ],
+        ),
+      ],
+    );
+
+/// 11A.2 fallback pricing gateway. Mirrors the two demo operators
+/// from `_defaultDemoGateway` so the walkthrough can hop between
+/// Operators and Pricing without a backing service. The Pilot operator
+/// (Sunset Cafe Group) starts with the locked Pilot template caps; the
+/// Pro operator (Demo Diner Co.) has no caps yet so the walkthrough
+/// exercises "Apply template" too.
+final PricingTierAdminGateway _defaultPricingDemoGateway =
+    InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        PricingOperatorBundle(
+          operatorId: '00000000-0000-4000-8000-000000000001',
+          businessName: 'Demo Diner Co.',
+          subscriptionTier: 'pro',
+          preferredCurrency: 'CAD',
+          primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
+          primaryLocationName: 'Toronto Yorkville',
+          suspended: false,
+          caps: <UsageCapRow>[],
+        ),
+        PricingOperatorBundle(
+          operatorId: '00000000-0000-4000-8000-000000000002',
+          businessName: 'Sunset Cafe Group',
+          subscriptionTier: 'pilot',
+          preferredCurrency: 'USD',
+          primaryLocationId: '00000000-0000-4000-8000-0000000000b1',
+          primaryLocationName: 'Brooklyn Williamsburg',
+          suspended: false,
+          caps: <UsageCapRow>[
+            UsageCapRow(
+              capId: '00000000-0000-4000-8000-0000000000c1',
+              operatorId: '00000000-0000-4000-8000-000000000002',
+              locationId: '00000000-0000-4000-8000-0000000000b1',
+              usageClass: 'advisor_qa',
+              monthlyCapUsd: 50.0,
+              perInvocationCapUsd: 0.10,
+              staffId: null,
+              workflowId: null,
+              createdBy: 'demo-super-admin',
+              updatedBy: 'demo-super-admin',
+              createdAt: DateTime.utc(2026, 3, 5, 11, 0),
+              updatedAt: DateTime.utc(2026, 4, 18, 12, 0),
+            ),
+          ],
+        ),
+      ],
+    );
+
+/// 11A.3a fallback corpus admin gateway. Seeded with two demo
+/// versions so the walkthrough has both a "current" and a "prior"
+/// row to render. Demo chunks live entirely in memory; the seed
+/// summary text doubles as the 11A.3a click-path script.
+final CorpusAdminGateway _defaultCorpusDemoGateway = InMemoryCorpusAdminGateway(
+  seed: <CorpusBundle>[
+    CorpusBundle(
+      version: CorpusVersionRef(
+        versionId: '00000000-0000-4000-9000-000000000001',
+        createdBy: 'demo-super-admin',
+        createdAt: DateTime.utc(2026, 1, 14, 9, 0),
+        summary: 'Initial methodology seed',
+        rollbackOf: null,
+        supersededAt: DateTime.utc(2026, 3, 1, 10, 0),
+        chunkCount: 2,
+      ),
+      chunks: <ChunkPreview>[
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#000',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology'],
+          snippet:
+              'Forge & Flow advisor methodology. Source-truth, '
+              'derived metrics, teaching summaries.',
+          estimatedTokens: 64,
+          riskLevel: 'standard',
+          contentSha256: 'a' * 64,
+          versionId: '00000000-0000-4000-9000-000000000001',
+          active: false,
+        ),
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#001',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
+          snippet:
+              'Sixty-day target cycles lock standards. Weekly plan '
+              'snapshots compare actuals against the locked target.',
+          estimatedTokens: 80,
+          riskLevel: 'standard',
+          contentSha256: 'b' * 64,
+          versionId: '00000000-0000-4000-9000-000000000001',
+          active: false,
+        ),
+      ],
+    ),
+    CorpusBundle(
+      version: CorpusVersionRef(
+        versionId: '00000000-0000-4000-9000-000000000002',
+        createdBy: 'demo-super-admin',
+        createdAt: DateTime.utc(2026, 3, 1, 10, 0),
+        summary: 'Added daypart guidance',
+        rollbackOf: null,
+        supersededAt: null,
+        chunkCount: 3,
+      ),
+      chunks: <ChunkPreview>[
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#000',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology'],
+          snippet:
+              'Forge & Flow advisor methodology. Source-truth, '
+              'derived metrics, teaching summaries.',
+          estimatedTokens: 64,
+          riskLevel: 'standard',
+          contentSha256: 'a' * 64,
+          versionId: '00000000-0000-4000-9000-000000000002',
+          active: true,
+        ),
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#001',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
+          snippet:
+              'Sixty-day target cycles lock standards. Weekly plan '
+              'snapshots compare actuals against the locked target.',
+          estimatedTokens: 80,
+          riskLevel: 'standard',
+          contentSha256: 'b' * 64,
+          versionId: '00000000-0000-4000-9000-000000000002',
+          active: true,
+        ),
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#002',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology', 'Daypart'],
+          snippet:
+              'Daypart guidance lives alongside whole-day truth, '
+              'never replacing it. 10.5 introduces the daypart split.',
+          estimatedTokens: 72,
+          riskLevel: 'standard',
+          contentSha256: 'c' * 64,
+          versionId: '00000000-0000-4000-9000-000000000002',
+          active: true,
+        ),
+      ],
+    ),
+  ],
+  actorUserId: 'demo-super-admin',
+);
+
+/// 11A.4 fallback integration gateway. Seeds Anthropic + Voyage with
+/// pre-rotated masked rows; Azure DB starts empty so the walkthrough
+/// can exercise the "no row yet → first rotation" path. The KMS
+/// stub is the same provider production would bind in pre-launch.
+final IntegrationAdminGateway _defaultIntegrationDemoGateway =
+    InMemoryIntegrationAdminGateway(
+      actorUserId: 'demo-super-admin',
+      seed: <ProviderKeyRow>[
+        ProviderKeyRow(
+          credentialId: '00000000-0000-4000-8000-0000000000d1',
+          keyKind: ProviderKeyKind.anthropic,
+          maskedValue: 'sk-a***Q9aB',
+          kmsSecretName: 'kms://stub/seed-anthropic',
+          createdBy: 'demo-super-admin',
+          updatedBy: 'demo-super-admin',
+          rotatedAt: DateTime.utc(2026, 4, 1, 14, 0),
+        ),
+        ProviderKeyRow(
+          credentialId: '00000000-0000-4000-8000-0000000000d2',
+          keyKind: ProviderKeyKind.voyage,
+          maskedValue: 'pa-v***RtZx',
+          kmsSecretName: 'kms://stub/seed-voyage',
+          createdBy: 'demo-super-admin',
+          updatedBy: 'demo-super-admin',
+          rotatedAt: DateTime.utc(2026, 4, 5, 9, 30),
+        ),
+      ],
+    );
+
+/// F.1 fallback health gateway. Seeded with the demo envelope from
+/// `health_admin_gateway.dart` so the walkthrough renders all three
+/// tabs with realistic green/yellow signals and exercises the
+/// dependencies strip without a live proxy.
+final HealthAdminGateway _defaultHealthDemoGateway = InMemoryHealthAdminGateway(
+  envelope: kHealthAdminDemoEnvelope,
+);
+
+/// 11A.6 fallback observability gateway. Seeded with the demo
+/// envelope from `observability_admin_gateway.dart`; the click path
+/// renders cost telemetry, dormancy, margin, cap events, graph, and
+/// Cloud Run sections without the production cost / dormancy proxy
+/// endpoints having to be live.
+final ObservabilityAdminGateway _defaultObservabilityDemoGateway =
+    InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+
+/// 11A.7 fallback feature flags gateway. Seeds the launch flag
+/// catalog so the demo walkthrough can exercise the toggle and
+/// destructive-confirmation paths end-to-end. Mirrors the rows
+/// landed by the launch migrations:
+///
+///   * `audit_logs_cutover_enabled` (destructive) - B.2 cutover flag.
+///   * `kms_real_provider_<kind>_enabled` (destructive) - per-lane
+///     KMS rollout gates.
+///   * `advisor_enabled` (standard) - example launch flag for the
+///     advisor surface.
+final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
+    InMemoryFeatureFlagsAdminGateway(
+      actorUserId: 'demo-super-admin',
+      seed: <FeatureFlagAdminRow>[
+        FeatureFlagAdminRow(
+          flagId: '00000000-0000-4000-8000-0000000000f1',
+          flagName: 'audit_logs_cutover_enabled',
+          operatorId: null,
+          locationId: null,
+          enabled: true,
+          kind: kFeatureFlagKindDestructive,
+          description:
+              'Routes sign-in and admin changes into the permanent audit log. '
+              'Turn off only for a rollback.',
+          updatedBy: 'demo-super-admin',
+          createdAt: DateTime.utc(2026, 5, 1, 10, 0),
+          updatedAt: DateTime.utc(2026, 5, 1, 10, 0),
+        ),
+        FeatureFlagAdminRow(
+          flagId: '00000000-0000-4000-8000-0000000000f2',
+          flagName: 'kms_real_provider_anthropic_enabled',
+          operatorId: null,
+          locationId: null,
+          enabled: false,
+          kind: kFeatureFlagKindDestructive,
+          description:
+              'Uses secure cloud storage for Anthropic service keys instead '
+              'of demo storage.',
+          updatedBy: 'demo-super-admin',
+          createdAt: DateTime.utc(2026, 5, 2, 2, 0),
+          updatedAt: DateTime.utc(2026, 5, 2, 2, 0),
+        ),
+        FeatureFlagAdminRow(
+          flagId: '00000000-0000-4000-8000-0000000000f3',
+          flagName: 'kms_real_provider_voyage_enabled',
+          operatorId: null,
+          locationId: null,
+          enabled: false,
+          kind: kFeatureFlagKindDestructive,
+          description:
+              'Uses secure cloud storage for Voyage service keys instead of '
+              'demo storage.',
+          updatedBy: 'demo-super-admin',
+          createdAt: DateTime.utc(2026, 5, 2, 2, 0),
+          updatedAt: DateTime.utc(2026, 5, 2, 2, 0),
+        ),
+        FeatureFlagAdminRow(
+          flagId: '00000000-0000-4000-8000-0000000000f4',
+          flagName: 'advisor_enabled',
+          operatorId: null,
+          locationId: null,
+          enabled: true,
+          kind: kFeatureFlagKindStandard,
+          description:
+              'Controls whether the advisor experience is available in the '
+              'app.',
+          updatedBy: 'demo-super-admin',
+          createdAt: DateTime.utc(2026, 5, 1, 10, 0),
+          updatedAt: DateTime.utc(2026, 5, 1, 10, 0),
+        ),
+      ],
+    );
+
+/// 11A.5 fallback debug console gateway. Seeded with the per-operator
+/// request log demo (mixed operators / usage_class / status / opt-ins)
+/// so the walkthrough exercises filters, search, live-tail, and the
+/// full-content opt-in paths without hitting the proxy.
+final DebugConsoleAdminGateway _defaultDebugConsoleDemoGateway =
+    InMemoryDebugConsoleAdminGateway(
+      seed: kDebugConsoleDemoEntries,
+      optInSeed: kDebugConsoleDemoOptIns,
+    );
+
+/// Lane B B2.2 fallback Default Role catalog admin gateway. The
+/// in-memory implementation persists nothing across runs; the
+/// walkthrough lands on the genesis state (no current version) so the
+/// click path exercises the empty-state copy + the first-publish flow
+/// end-to-end without the Cloud Run admin proxy.
+final DefaultRoleCatalogAdminGateway _defaultRoleCatalogAdminDemoGateway =
+    InMemoryDefaultRoleCatalogAdminGateway();
+
+/// Phase 8 spine-bridge Lane .C fallback data accuracy + polling/pricing
+/// admin gateway. Mirrors the two demo operators on `_defaultDemoGateway`
+/// so the walkthrough hops between Operators / Data Accuracy / Polling
+/// & Pricing without a backing service. Tier definitions are baked from
+/// `kDemoStandardTierDefinition` / `kDemoPremiumTierDefinition` /
+/// `kDemoCustomTierDefinition`. One illustrative tier change request
+/// drives the Tab 2 Card 4 demo path. Demo Diner Co. → Toronto Yorkville
+/// is pre-seeded with a historical admin override so the per-location
+/// Data Accuracy audit panel shows a real audit row (RP-15 admin-undo
+/// path) instead of the "0 events / No admin overrides recorded yet."
+/// empty state.
+final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway = () {
+  const dinerOperatorId = '00000000-0000-4000-8000-000000000001';
+  const yorkvilleLocationId = '00000000-0000-4000-8000-0000000000a1';
+  const yorkvilleSettingsKey = '$dinerOperatorId/$yorkvilleLocationId';
+  final overrideAppliedAt = DateTime.utc(2026, 5, 10, 14, 17);
+  return InMemoryDataAccuracyAdminGateway(
+    operatorLocations: const <OperatorLocationRef>[
+      OperatorLocationRef(
+        operatorId: dinerOperatorId,
+        businessName: 'Demo Diner Co.',
+        locationId: yorkvilleLocationId,
+        locationName: 'Toronto Yorkville',
+      ),
+      OperatorLocationRef(
+        operatorId: dinerOperatorId,
+        businessName: 'Demo Diner Co.',
+        locationId: '00000000-0000-4000-8000-0000000000a2',
+        locationName: 'Vancouver Robson',
+      ),
+      OperatorLocationRef(
+        operatorId: '00000000-0000-4000-8000-000000000002',
+        businessName: 'Sunset Cafe Group',
+        locationId: '00000000-0000-4000-8000-0000000000b1',
+        locationName: 'Brooklyn Williamsburg',
+      ),
+    ],
+    initialSettings: <String, DataAccuracySettings>{
+      yorkvilleSettingsKey: DataAccuracySettings(
+        settingId: 'demo-setting-$yorkvilleSettingsKey',
+        operatorId: dinerOperatorId,
+        locationId: yorkvilleLocationId,
+        // Per-Daypart V1 Slice R5 (Gap 27/36): covers source keyed by
+        // service period. Lunch = manual; dinner / late_night fall
+        // through to the vendor default via coversSourceFor.
+        coversSourcePerServicePeriod: const <String, CoversSource>{
+          'lunch': CoversSource.manual,
+        },
+        coversManualEntries: const <String, Map<String, int>>{},
+        wageSource: WageSource.manualMix,
+        createdAt: DateTime.utc(2026, 5, 1, 9),
+        updatedAt: overrideAppliedAt,
+        updatedBy: 'support@forgeflow.app',
+      ),
+    },
+    initialTierDefinitions: <PollingTierKey, TierDefinition>{
+      PollingTierKey.standard: kDemoStandardTierDefinition(),
+      PollingTierKey.premium: kDemoPremiumTierDefinition(),
+      PollingTierKey.custom: kDemoCustomTierDefinition(),
+    },
+    initialChangeRequests: <TierChangeRequest>[
+      TierChangeRequest(
+        requestId: 'demo-change-request-1',
+        operatorRef: const OperatorLocationRef(
+          operatorId: dinerOperatorId,
+          businessName: 'Demo Diner Co.',
+          locationId: yorkvilleLocationId,
+          locationName: 'Toronto Yorkville',
+        ),
+        currentTier: PollingTierKey.standard,
+        requestedTier: PollingTierKey.premium,
+        operatorNote: 'We need tighter mid-service awareness on dinner volume.',
+        submittedAt: DateTime.utc(2026, 5, 4, 14, 30),
+        status: TierChangeRequestStatus.pending,
+      ),
+    ],
+    initialAuditLog: <DataAccuracyAdminAuditEvent>[
+      DataAccuracyAdminAuditEvent(
+        eventId: 'demo-audit-rp15-1',
+        eventType: 'admin.data_accuracy.override',
+        occurredAt: overrideAppliedAt,
+        actorUserId: 'support@forgeflow.app',
+        operatorId: dinerOperatorId,
+        locationId: yorkvilleLocationId,
+        diff: const <String, Object?>{
+          'service_period_key': 'lunch',
+          'covers_source': <String, Object?>{'from': 'vendor', 'to': 'manual'},
+          'wage_source': <String, Object?>{
+            'from': 'vendor',
+            'to': 'manual_mix',
+          },
+        },
+        reasonNote:
+            'Operator reported Toast lunch covers drift; switching to '
+            'manual entry while the integration is investigated.',
+        actorDisplayName: 'F&F Support',
+        actorRole: 'Forge & Flow admin',
+        actorEmail: 'support@forgeflow.app',
+      ),
+    ],
+  );
+}();
+
+// Realistic demo seed for vendor_applicability — mirrors what an F&F super
+// admin would have populated by the time staging/prod is in steady state. All
+// 17 supported vendors (POS x7, labor x6, reservation x4) appear at least
+// once per applicable kind, with metadata that matches the per-kind schemas
+// in lib/services/settings/applicability_metadata_schemas.dart. operator_id
+// stays NULL — these are global F&F-admin defaults; per-operator overrides
+// would land as separate rows from the admin upsert flow.
+final VendorApplicabilityAdminGateway _defaultVendorApplicabilityDemoGateway =
+    _InMemoryVendorApplicabilityAdminGateway(
+      seed: _seedVendorApplicabilityRows(),
+    );
+
+List<VendorApplicabilityAdminRow> _seedVendorApplicabilityRows() {
+  final seededAt = DateTime.utc(2026, 5, 13, 15);
+  final rows = <VendorApplicabilityAdminRow>[];
+
+  VendorApplicabilityAdminRow row({
+    required String id,
+    required String settingKind,
+    required String settingKey,
+    required String vendorSlug,
+    required bool enabled,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) {
+    return VendorApplicabilityAdminRow(
+      id: id,
+      operatorId: null,
+      settingKind: settingKind,
+      settingKey: settingKey,
+      vendorSlug: vendorSlug,
+      enabled: enabled,
+      metadata: metadata,
+      effectiveFrom: seededAt,
+      effectiveUntil: null,
+      createdAt: seededAt,
+      createdBy: 'demo-super-admin',
+    );
+  }
+
+  // -- Wage --------------------------------------------------------------
+  // Labor vendors are eligible wage sources; POS vendors with payroll
+  // add-ons (Toast, Square) are also eligible. Other POS show as disabled
+  // so the screen demonstrates both the enabled and disabled states.
+  rows.addAll(<VendorApplicabilityAdminRow>[
+    row(
+      id: 'demo-va-wage-adp',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'adp',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'job_code',
+        'requires_job_code': true,
+        'vendor_field': 'gross_wages',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-agendrix',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'agendrix',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'job_code',
+        'requires_job_code': true,
+      },
+    ),
+    row(
+      id: 'demo-va-wage-humanity',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'humanity',
+      enabled: true,
+      metadata: const <String, Object?>{'authority_basis': 'vendor_pay_rate'},
+    ),
+    row(
+      id: 'demo-va-wage-push-operations',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'push_operations',
+      enabled: true,
+      metadata: const <String, Object?>{'authority_basis': 'vendor_pay_rate'},
+    ),
+    row(
+      id: 'demo-va-wage-quickbooks-time',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'quickbooks_time',
+      enabled: true,
+      metadata: const <String, Object?>{'authority_basis': 'vendor_pay_rate'},
+    ),
+    row(
+      id: 'demo-va-wage-seven-shifts',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'seven_shifts',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'job_code',
+        'requires_job_code': true,
+      },
+    ),
+    row(
+      id: 'demo-va-wage-toast',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'toast',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'vendor_pay_rate',
+        'vendor_field': 'gross_wages',
+        'notes': 'Requires Toast Payroll add-on.',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-square',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'square',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'vendor_pay_rate',
+        'notes': 'Requires Square Payroll subscription.',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-clover',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'clover',
+      enabled: false,
+      metadata: const <String, Object?>{
+        'authority_basis': 'manual_mapping',
+        'notes': 'Clover labor module not certified for wage authority.',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-oracle-micros-simphony',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'oracle_micros_simphony',
+      enabled: false,
+      metadata: const <String, Object?>{
+        'authority_basis': 'manual_mapping',
+        'notes': 'Simphony exports rates only; not approved as wage source.',
+      },
+    ),
+  ]);
+
+  // -- Covers ------------------------------------------------------------
+  // Reservation vendors track real guest counts (all_covers); POS vendors
+  // approximate covers from dine-in checks (dine_in_only) with voids
+  // excluded so service-period totals do not double-count.
+  rows.addAll(<VendorApplicabilityAdminRow>[
+    row(
+      id: 'demo-va-covers-libro',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'libro',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'all_covers',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-opentable',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'opentable',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'all_covers',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-sevenrooms',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'sevenrooms',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'all_covers',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-tock',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'tock',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'all_covers',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-toast',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'toast',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-square',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'square',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-clover',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'clover',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-aloha-ncr-voyix',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'aloha_ncr_voyix',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-lightspeed-lsk',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'lightspeed_lsk',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-revel',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'revel',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-oracle-micros-simphony',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'oracle_micros_simphony',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+  ]);
+
+  // -- Polling -----------------------------------------------------------
+  // Every supported vendor lands on the standard polling tier by default.
+  // Toast also has a premium-tier override row so the screen demonstrates
+  // multi-setting_key grouping (production typically has tiered overrides
+  // for high-volume operators).
+  const standardPollingVendors = <String>[
+    'adp',
+    'agendrix',
+    'aloha_ncr_voyix',
+    'clover',
+    'humanity',
+    'libro',
+    'lightspeed_lsk',
+    'opentable',
+    'oracle_micros_simphony',
+    'push_operations',
+    'quickbooks_time',
+    'revel',
+    'seven_shifts',
+    'sevenrooms',
+    'square',
+    'toast',
+    'tock',
+  ];
+  for (final vendor in standardPollingVendors) {
+    rows.add(
+      row(
+        id: 'demo-va-polling-standard-${vendor.replaceAll('_', '-')}',
+        settingKind: 'polling',
+        settingKey: 'standard',
+        vendorSlug: vendor,
+        enabled: true,
+        metadata: const <String, Object?>{'tier_key': 'standard'},
+      ),
+    );
+  }
+  rows.add(
+    row(
+      id: 'demo-va-polling-premium-toast',
+      settingKind: 'polling',
+      settingKey: 'premium',
+      vendorSlug: 'toast',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'tier_key': 'premium',
+        'polling_seconds_override': 60,
+      },
+    ),
+  );
+
+  return rows;
+}
+
+class _InMemoryVendorApplicabilityAdminGateway
+    implements VendorApplicabilityAdminGateway {
+  _InMemoryVendorApplicabilityAdminGateway({
+    required Iterable<VendorApplicabilityAdminRow> seed,
+  }) : _rows = seed.toList(growable: true);
+
+  final List<VendorApplicabilityAdminRow> _rows;
+  int _sequence = 0;
+
+  @override
+  Future<List<VendorApplicabilityAdminRow>> list({
+    VendorApplicabilityAdminFilter filter =
+        const VendorApplicabilityAdminFilter(),
+  }) async {
+    return _rows
+        .where((row) {
+          if (filter.operatorId != null &&
+              row.operatorId != filter.operatorId) {
+            return false;
+          }
+          if (filter.settingKind != null &&
+              row.settingKind != filter.settingKind) {
+            return false;
+          }
+          if (filter.settingKey != null &&
+              row.settingKey != filter.settingKey) {
+            return false;
+          }
+          if (filter.vendorSlug != null &&
+              row.vendorSlug != filter.vendorSlug) {
+            return false;
+          }
+          if (filter.currentOnly && row.effectiveUntil != null) return false;
+          return true;
+        })
+        .toList(growable: false);
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow> upsert(
+    VendorApplicabilityUpsertCommand command,
+  ) async {
+    final now = DateTime.now().toUtc();
+    for (var i = 0; i < _rows.length; i++) {
+      final row = _rows[i];
+      if (row.operatorId == command.operatorId &&
+          row.settingKind == command.settingKind &&
+          row.settingKey == command.settingKey &&
+          row.vendorSlug == command.vendorSlug &&
+          row.effectiveUntil == null) {
+        _rows[i] = _copyRow(row, effectiveUntil: now);
+      }
+    }
+    _sequence += 1;
+    final row = VendorApplicabilityAdminRow(
+      id: 'demo-va-row-$_sequence',
+      operatorId: command.operatorId,
+      settingKind: command.settingKind,
+      settingKey: command.settingKey,
+      vendorSlug: command.vendorSlug,
+      enabled: command.enabled,
+      metadata: command.metadata,
+      effectiveFrom: command.effectiveFrom ?? now,
+      effectiveUntil: null,
+      createdAt: now,
+      createdBy: 'demo-super-admin',
+    );
+    _rows.add(row);
+    return row;
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow?> end(
+    VendorApplicabilityEndCommand command,
+  ) async {
+    final until = command.effectiveUntil ?? DateTime.now().toUtc();
+    for (var i = 0; i < _rows.length; i++) {
+      final row = _rows[i];
+      if (row.operatorId == command.operatorId &&
+          row.settingKind == command.settingKind &&
+          row.settingKey == command.settingKey &&
+          row.vendorSlug == command.vendorSlug &&
+          row.effectiveUntil == null) {
+        final ended = _copyRow(row, effectiveUntil: until);
+        _rows[i] = ended;
+        return ended;
+      }
+    }
+    return null;
+  }
+
+  VendorApplicabilityAdminRow _copyRow(
+    VendorApplicabilityAdminRow row, {
+    DateTime? effectiveUntil,
+  }) {
+    return VendorApplicabilityAdminRow(
+      id: row.id,
+      operatorId: row.operatorId,
+      settingKind: row.settingKind,
+      settingKey: row.settingKey,
+      vendorSlug: row.vendorSlug,
+      enabled: row.enabled,
+      metadata: row.metadata,
+      effectiveFrom: row.effectiveFrom,
+      effectiveUntil: effectiveUntil,
+      createdAt: row.createdAt,
+      createdBy: row.createdBy,
+    );
+  }
+}
+
+/// Phase 11A.12 - cross-operator Members + Invites demo gateway.
+/// Seeded from `kDemoMembersByOperator` / `kDemoInvitesByOperator`
+/// (same demo identities the .C / 11A.1 walkthroughs use) so a F&F
+/// admin can sign in, pick an operator, and exercise filter chips +
+/// row actions + the invite flow without a live proxy.
+final MembersAdminGateway _defaultMembersAdminDemoGateway =
+    InMemoryMembersAdminGateway(
+      membersByOperator: kDemoMembersByOperator(),
+      invitesByOperator: kDemoInvitesByOperator(),
+    );
+
+/// Phase 11A.13 - Roles + Hierarchy + Sessions demo gateway. Reuses
+/// the operators on the Members demo so the walkthrough can hop
+/// straight from the Members surface into Roles / Hierarchy /
+/// Sessions for the same operator.
+final RolesHierarchySessionsAdminGateway
+_defaultRolesHierarchySessionsAdminDemoGateway =
+    InMemoryRolesHierarchySessionsAdminGateway(
+      rolesByOperator: kDemoRolesByOperator(),
+      orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      locationsByOperator: kDemoHierarchyLocationsByOperator(),
+      sessionsByOperator: kDemoSessionsByOperator(),
+    );
+
+/// Phase 11A.14 - Audited support actions demo gateway. Seeded with
+/// the audit-log entries + members fixture from
+/// `kDemoAuditLogByOperator` / `kDemoSupportActionsMembersByOperator`
+/// so the walkthrough can hop straight from any prior 11W / 11A
+/// operator-scoped surface into the audit-log + support-actions
+/// surface for the same operator.
+final AuditedSupportActionsAdminGateway
+_defaultAuditedSupportActionsAdminDemoGateway =
+    InMemoryAuditedSupportActionsAdminGateway(
+      auditLogByOperator: kDemoAuditLogByOperator(),
+      membersByOperator: kDemoSupportActionsMembersByOperator(),
+    );
+
+/// Audit fix-first #2 (G2) — seeded in-memory admin Active Sessions
+/// gateway shared by the kDemoMode / share-preview walkthrough when no
+/// live `AdminSessionsGateway` is wired. Lets the My Account Active
+/// Sessions card render its list + revoke + sign-out-everywhere click
+/// path without the Cloud Run admin proxy.
+final AdminSessionsGateway _defaultAdminSessionsDemoGateway =
+    InMemoryAdminSessionsGateway();
+
+/// Audit fix-first #7 (cross-surface parity finding G4) — seeded
+/// in-memory admin Security gateway shared by the kDemoMode /
+/// share-preview walkthrough when no live `AdminSecurityGateway` is
+/// wired. Seeded with NO enrolled factor so the walkthrough exercises
+/// the enroll → confirm path (and the recovery + password-change
+/// paths) without the Cloud Run admin proxy.
+final AdminSecurityGateway _defaultAdminSecurityDemoGateway =
+    InMemoryAdminSecurityGateway();
+
+/// X-G71 — seeded in-memory admin notification-preferences gateway
+/// shared by the kDemoMode / share-preview walkthrough when no live
+/// `AdminNotificationPreferencesGateway` is wired. Seeded EMPTY so
+/// every catalog row renders at its default channels until the admin
+/// toggles one (the walkthrough exercises the toggle + save click path
+/// without the Cloud Run admin proxy).
+final AdminNotificationPreferencesGateway
+_defaultAdminNotificationPreferencesDemoGateway =
+    InMemoryAdminNotificationPreferencesGateway();
