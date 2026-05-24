@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**69 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605230900_phase_slice_e_admin_hierarchy_keys.sql`;
+**70 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605240000_ai_metrics_usage_cap_events.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 

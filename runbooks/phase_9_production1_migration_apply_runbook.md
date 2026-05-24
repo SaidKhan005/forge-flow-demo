@@ -7,11 +7,16 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605240000_ai_metrics_usage_cap_events.sql`
+(AI Metrics: append-only `usage_cap_events` fact table recording one row per
+cap-breach refusal the proxy declines, operator-scoped + RLS-ready, for a
+later admin "AI Metrics" / Observability "Limit hits" panel; producer write
+path and read panel land in later slices, no consumer yet). The prior cutoff
 `202605230900_phase_slice_e_admin_hierarchy_keys.sql`
 (Slice E: five DORMANT `admin.hierarchy.*` permission-key catalog rows
 seeded and granted to `super_admin` + `ff_support` for a later
 "Business accounts" admin hierarchy-mutation gate; no consumer yet).
-The prior cutoff `202605201100_operator_account_contact_fields.sql`
+The earlier cutoff `202605201100_operator_account_contact_fields.sql`
 (operator account contact defaults: real Business-level contact email and
 phone columns that Brand, Region, District, Location group, and Location
 account overrides can inherit). The earlier cutoff

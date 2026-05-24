@@ -152,11 +152,15 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605230900_phase_slice_e_admin_hierarchy_keys.sql`
+`202605240000_ai_metrics_usage_cap_events.sql`
+(AI Metrics: append-only operator-scoped `usage_cap_events` fact table, one
+cap-breach refusal per row, for a later admin "AI Metrics" / Observability
+"Limit hits" panel; producer + read panel land later, no consumer yet),
+preceded by `202605230900_phase_slice_e_admin_hierarchy_keys.sql`
 (Slice E: five DORMANT `admin.hierarchy.*` permission-key catalog rows
 seeded and granted to `super_admin` + `ff_support` for a later
-"Business accounts" admin hierarchy-mutation gate, no consumer yet),
-preceded by `202605201100_operator_account_contact_fields.sql`
+"Business accounts" admin hierarchy-mutation gate, no consumer yet) and
+`202605201100_operator_account_contact_fields.sql`
 (operator account contact defaults), including the Brand hierarchy layer,
 org-unit account override table, Data Accuracy reset grant, prior projection
 retry evidence hardening migration, Data
