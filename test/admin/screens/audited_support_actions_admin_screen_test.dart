@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/audited_support_actions_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
+import 'package:forge_and_flow/admin/services/admin_audit_chain_anchors_gateway.dart';
 import 'package:forge_and_flow/admin/services/audited_support_actions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_audited_support_actions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
@@ -1027,17 +1028,111 @@ void main() {
     });
   });
 
-  group('zero em dashes in operator-facing literals', () {
-    testWidgets('rendered text never contains an em dash', (tester) async {
+  group('audit-chain integrity badge', () {
+    testWidgets('renders the healthy badge for a healthy snapshot', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
+      final now = DateTime.utc(2026, 5, 7, 6);
+      final anchorsGateway = InMemoryAdminAuditChainAnchorsGateway(
+        snapshot: AdminAuditChainAnchorSnapshot(
+          status: AdminAuditChainAnchorStatus.healthy,
+          anchoredAt: now.subtract(const Duration(hours: 4)),
+          lastAnchorBlobAt: now.subtract(const Duration(hours: 4)),
+          chainDate: DateTime.utc(2026, 5, 6),
+        ),
+      );
       await tester.pumpWidget(
         wrap(
           AuditedSupportActionsAdminScreen(
             gateway: gateway,
+            anchorsGateway: anchorsGateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            anchorBadgeClock: () => now,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      expect(
+        find.byKey(const Key('admin_audit_log_integrity_badge')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_audit_log_integrity_badge_healthy_title'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Audit chain healthy'), findsOneWidget);
+      expect(
+        find.text('Anchored at 02:00 UTC. Last anchor 4 hours ago.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'null gateway renders the neutral unknown state; screen still renders',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = buildDemoGateway();
+        await tester.pumpWidget(
+          wrap(
+            AuditedSupportActionsAdminScreen(
+              gateway: gateway,
+              // No anchorsGateway → null → neutral unknown, never crash.
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+            ),
+          ),
+        );
+        await pumpEventually(tester);
+
+        // Badge renders the neutral unknown state.
+        expect(
+          find.byKey(const Key('admin_audit_log_integrity_badge')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('admin_audit_log_integrity_badge_unknown_title'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Audit chain status unknown'), findsOneWidget);
+        // The rest of the screen still renders (no crash on null gateway).
+        expect(
+          find.byKey(const Key('admin_audited_support_actions_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('admin_asa_actions_panel')),
+          findsOneWidget,
+        );
+      },
+    );
+  });
+
+  group('zero em dashes in operator-facing literals', () {
+    testWidgets('rendered text never contains an em dash', (tester) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      // Wire a healthy anchor gateway so the integrity badge's copy is
+      // also swept for em dashes in this render.
+      final anchorsGateway = InMemoryAdminAuditChainAnchorsGateway(
+        clock: () => DateTime.utc(2026, 5, 7, 6),
+      );
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            anchorsGateway: anchorsGateway,
             actorUserId: 'demo-super-admin',
             pickedOperator: demoPick(),
             editingEnabled: false,
+            anchorBadgeClock: () => DateTime.utc(2026, 5, 7, 6),
           ),
         ),
       );

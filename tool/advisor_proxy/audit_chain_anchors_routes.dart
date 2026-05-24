@@ -72,6 +72,42 @@ import 'dart:async';
 const String operatorAuditChainAnchorsLatestPath =
     '/v1/operator/audit-chain-anchors/latest';
 
+/// Prefix the admin cross-tenant anchor route lives under. Format:
+/// `/v1/admin/operators/<operatorId>/audit-chain-anchors/latest`.
+const String adminAuditChainAnchorsPathPrefix = '/v1/admin/operators/';
+
+/// Suffix on the admin path: everything after the operatorId segment.
+const String _kAdminAnchorsSegment = 'audit-chain-anchors';
+const String _kAdminAnchorsLatestSegment = 'latest';
+
+/// Roles permitted to read another tenant's audit-chain-anchor health.
+/// Mirrors `kAdminBusinessTimingRoles` so the admin cross-tenant read
+/// gate is identical to the existing admin business-timing surface.
+const Set<String> kAdminAuditChainAnchorRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+
+/// Parsed `operatorId` for the admin anchor route, or null when [path]
+/// is not that route. The operatorId comes from the URL path segment
+/// (the established admin cross-tenant convention), never the JWT.
+String? adminAuditChainAnchorsOperatorIdOf(String path) {
+  if (!path.startsWith(adminAuditChainAnchorsPathPrefix)) return null;
+  final tail = path.substring(adminAuditChainAnchorsPathPrefix.length);
+  final parts = tail.split('/');
+  // <operatorId>/audit-chain-anchors/latest
+  if (parts.length != 3) return null;
+  if (parts[1] != _kAdminAnchorsSegment) return null;
+  if (parts[2] != _kAdminAnchorsLatestSegment) return null;
+  final operatorId = Uri.decodeComponent(parts[0]);
+  if (operatorId.trim().isEmpty) return null;
+  return operatorId;
+}
+
+/// True when [path] + [method] is the admin anchor route. GET only.
+bool isAdminAuditChainAnchorsPath(String path) =>
+    adminAuditChainAnchorsOperatorIdOf(path) != null;
+
 /// Status the screen renders. Server-side classification keeps the
 /// rule set in one place so the badge cannot drift from the route.
 enum AuditChainAnchorStatus { healthy, delayed, failed, unknown }
@@ -192,6 +228,92 @@ class AuditChainAnchorsRouter {
       operatorId: operatorId,
       locationId: locationId,
       userId: userId,
+    );
+    if (row == null) {
+      return AuditChainAnchorsRouteResult(
+        statusCode: 200,
+        body: <String, Object?>{
+          'operator_id': operatorId,
+          'anchor': null,
+        },
+      );
+    }
+    final status = classifyAnchorStatus(row, now: _now());
+    return AuditChainAnchorsRouteResult(
+      statusCode: 200,
+      body: <String, Object?>{
+        'operator_id': operatorId,
+        'anchor': <String, Object?>{
+          'chain_date': _formatDate(row.chainDate.toUtc()),
+          'anchored_at': row.anchoredAt.toUtc().toIso8601String(),
+          'row_count': row.rowCount,
+          'blob_uri': row.blobUri,
+          'last_anchor_blob_url': row.lastAnchorBlobUrl,
+          'last_anchor_blob_at':
+              row.lastAnchorBlobAt?.toUtc().toIso8601String(),
+          'status': auditChainAnchorStatusWire(status),
+        },
+      },
+    );
+  }
+}
+
+/// Admin/cross-tenant analogue of [AuditChainAnchorsGateway]. The admin
+/// console reads ANOTHER tenant's most-recent anchor row, so the
+/// implementation MUST run through the sanctioned system-scope bypass
+/// (`runAsSystem` on the admin pool) rather than the per-tenant RLS
+/// clamp the operator gateway uses — exactly like the admin
+/// business-timing resolution gateway's `resolveForLocationAsSystem`.
+/// The dispatcher gates this to super_admin / ff_support before any
+/// implementation runs. Tests pass a fake.
+abstract class AdminAuditChainAnchorsGateway {
+  /// Returns the most-recent anchor for [operatorId] (taken from the
+  /// URL, not a JWT), or null when none has been recorded yet.
+  /// [reason] is the audit-attribution string stamped on the
+  /// system-scope transaction (the `app.bypass_rls_audit` marker).
+  Future<AuditChainAnchorRow?> latestForOperatorAsSystem({
+    required String operatorId,
+    required String reason,
+  });
+}
+
+/// Read-only ADMIN cross-tenant router for `audit_chain_anchors`.
+/// Mirrors [AdminBusinessTimingRouter.handleResolution] in
+/// `admin_business_timing_routes.dart`: the operatorId comes from the
+/// URL (the established admin cross-tenant convention); the dispatcher
+/// has already verified the actor holds a super_admin / ff_support
+/// role before [handle] runs; the read flows through the sanctioned
+/// `runAsSystem` admin bypass. Returns the SAME
+/// `{operator_id, anchor: null | {...}}` body shape and the SAME
+/// shared [classifyAnchorStatus] classifier as the operator route, so
+/// the admin badge cannot drift from the operator-web badge.
+class AdminAuditChainAnchorsRouter {
+  AdminAuditChainAnchorsRouter({
+    required AdminAuditChainAnchorsGateway gateway,
+    DateTime Function()? now,
+  })  : _gateway = gateway,
+        _now = now ?? DateTime.now;
+
+  final AdminAuditChainAnchorsGateway _gateway;
+  final DateTime Function() _now;
+
+  /// Audit-attribution string stamped on every system-scope read.
+  static const String auditReason = 'admin.audit_chain_anchors.latest_read';
+
+  /// True when the route + method matches (GET on the admin path).
+  static bool matches(String path, String method) {
+    if (method != 'GET') return false;
+    return isAdminAuditChainAnchorsPath(path);
+  }
+
+  /// Handles one matched request. [operatorId] is parsed from the URL
+  /// by the dispatcher and threaded in; this router never reads a JWT.
+  Future<AuditChainAnchorsRouteResult> handle({
+    required String operatorId,
+  }) async {
+    final row = await _gateway.latestForOperatorAsSystem(
+      operatorId: operatorId,
+      reason: auditReason,
     );
     if (row == null) {
       return AuditChainAnchorsRouteResult(

@@ -53,6 +53,7 @@ import 'screens/support_operator_view_admin_screen.dart';
 import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/admin_account_gateway.dart';
+import 'services/admin_audit_chain_anchors_gateway.dart';
 import 'services/admin_business_timing_profiles_gateway.dart';
 import 'services/admin_business_timing_resolution_gateway.dart';
 import 'services/admin_business_timing_resolution_projection.dart';
@@ -2141,6 +2142,12 @@ Widget _buildAuditedSupportActions(BuildContext context) {
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
     context,
   );
+  // Admin audit-integrity badge — READ-ONLY anchor gateway. Null in
+  // demo / share-preview / widget tests → the badge renders the neutral
+  // "unknown" state and the screen still renders.
+  final anchorsGateway = AdminConsoleServicesScope.auditChainAnchorsGatewayOf(
+    context,
+  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   final initialScope = handoff?.effectiveHierarchyScope;
@@ -2182,6 +2189,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
             key: ValueKey<String>('asa-${selectedScope.cacheKey}'),
             gateway: gateway,
             sessionsGateway: sessionsGateway,
+            anchorsGateway: anchorsGateway,
             actorUserId: actorUserId,
             pickedOperator: picked,
             editingEnabled: canEdit,
@@ -2727,6 +2735,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.membersAdminGateway,
     this.rolesHierarchySessionsAdminGateway,
     this.auditedSupportActionsAdminGateway,
+    this.auditChainAnchorsGateway,
     this.adminAccountGateway,
     this.adminNotificationPreferencesGateway,
     this.adminSessionsGateway,
@@ -2835,6 +2844,18 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// gateway. Optional; the default fallback is the seeded in-memory
   /// gateway used by the kDemoMode walkthrough.
   final AuditedSupportActionsAdminGateway? auditedSupportActionsAdminGateway;
+
+  /// Admin audit-integrity badge — READ-ONLY admin/cross-tenant
+  /// audit-chain-anchor gateway (consumes the admin route
+  /// `GET /v1/admin/operators/:operatorId/audit-chain-anchors/latest`).
+  /// Production binds the HTTP-backed
+  /// [HttpAdminAuditChainAnchorsGateway] here; demo / share-preview /
+  /// widget tests leave it null so the admin Audit screen's integrity
+  /// badge renders the neutral "unknown" state (never crashes). Unlike
+  /// the other admin gateways this accessor returns null rather than a
+  /// seeded demo gateway, because the badge's honest no-gateway posture
+  /// IS the unknown state.
+  final AdminAuditChainAnchorsGateway? auditChainAnchorsGateway;
 
   /// Wave 2 W-3 — self-service admin account gateway. Production
   /// binds the HTTP-backed gateway here; demo / widget-test paths
@@ -3037,6 +3058,19 @@ class AdminConsoleServicesScope extends InheritedWidget {
         _defaultAuditedSupportActionsAdminDemoGateway;
   }
 
+  /// Admin audit-integrity badge — resolve the READ-ONLY admin
+  /// audit-chain-anchor gateway. Returns null (no seeded demo
+  /// fallback) when the scope was not provided one, so the badge
+  /// renders the neutral "unknown" state in demo / share-preview /
+  /// widget-test paths. The screen never crashes on a null gateway.
+  static AdminAuditChainAnchorsGateway? auditChainAnchorsGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.auditChainAnchorsGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -3109,6 +3143,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
           oldWidget.rolesHierarchySessionsAdminGateway ||
       auditedSupportActionsAdminGateway !=
           oldWidget.auditedSupportActionsAdminGateway ||
+      auditChainAnchorsGateway != oldWidget.auditChainAnchorsGateway ||
       adminAccountGateway != oldWidget.adminAccountGateway ||
       adminNotificationPreferencesGateway !=
           oldWidget.adminNotificationPreferencesGateway ||

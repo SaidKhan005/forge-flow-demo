@@ -47,6 +47,7 @@ import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
 import 'admin/services/admin_account_gateway.dart';
+import 'admin/services/admin_audit_chain_anchors_gateway.dart';
 import 'admin/services/admin_business_timing_profiles_gateway.dart';
 import 'admin/services/admin_business_timing_resolution_gateway.dart';
 import 'admin/services/admin_http_timeout.dart';
@@ -362,6 +363,17 @@ Future<void> main() async {
         : _resolveAdminBusinessTimingProfilesGateway(
             authBinding.authClient,
           );
+    // Admin audit-integrity badge — admin cross-tenant
+    // audit-chain-anchor read gateway. Same admin proxy base URI +
+    // Firebase ID-token bearer the resolution sibling uses; demo /
+    // share-preview leave it null so `admin_routes.dart` passes null to
+    // the audit screen and the integrity badge renders the neutral
+    // "unknown" state (never crashes).
+    final adminAuditChainAnchorsGateway = gateway == null
+        ? null
+        : _resolveAdminAuditChainAnchorsGateway(
+            authBinding.authClient,
+          );
     final adminApp = AdminConsoleApp(
       authSource: source,
       sharePreviewMode: _kAdminSharePreview,
@@ -396,6 +408,7 @@ Future<void> main() async {
             adminNotificationPreferencesGateway,
         timingResolutionGateway: adminBusinessTimingResolutionGateway,
         timingProfilesGateway: adminBusinessTimingProfilesGateway,
+        auditChainAnchorsGateway: adminAuditChainAnchorsGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -948,6 +961,32 @@ AdminBusinessTimingProfilesGateway? _resolveAdminBusinessTimingProfilesGateway(
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpAdminBusinessTimingProfilesGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// Admin audit-integrity badge — admin cross-tenant audit-chain-anchor
+/// READ gateway. Lives on the SAME admin proxy base URI as the other
+/// admin surfaces with the Firebase ID-token bearer the sibling
+/// `_resolve*` resolvers use; demo / share-preview return null so
+/// `admin_routes.dart` passes null to the audit screen and the
+/// integrity badge renders the neutral "unknown" state. Byte-mirrors
+/// `_resolveAdminBusinessTimingResolutionGateway`. The proxy resolves
+/// the actor from the verified bearer token and gates the route to
+/// super_admin / ff_support, then reads ANOTHER tenant's anchor row
+/// through the sanctioned `runAsSystem` admin bypass (no new backend
+/// route beyond the one this slice adds).
+AdminAuditChainAnchorsGateway? _resolveAdminAuditChainAnchorsGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpAdminAuditChainAnchorsGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );

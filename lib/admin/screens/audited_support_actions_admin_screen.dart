@@ -50,8 +50,10 @@ import '../../theme/scope_icons.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
+import '../services/admin_audit_chain_anchors_gateway.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_audit_log_integrity_badge.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
@@ -68,6 +70,7 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.canIssuePairedErasure = false,
     this.canExportAuditLog = false,
     this.sessionsGateway,
+    this.anchorsGateway,
     this.hierarchyScope,
     this.auditScopeRootNode,
     this.idempotencyKeyFactory,
@@ -75,11 +78,20 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.onBackToBusinessAccounts,
     this.graceWindowClock,
     this.graceWindowTickInterval = const Duration(minutes: 1),
+    this.anchorBadgeClock,
   });
 
   final AuditedSupportActionsAdminGateway gateway;
   final String actorUserId;
   final OperatorPickerResult pickedOperator;
+
+  /// Admin audit-integrity badge — READ-ONLY admin/cross-tenant
+  /// audit-chain-anchor gateway for the selected operator. When null
+  /// (demo / share-preview without a live anchor gateway wired, or any
+  /// test that omits it) the badge renders the neutral "unknown" state
+  /// and the screen still renders, exactly like the operator-web
+  /// null-gateway fallback. Never crashes on a null gateway.
+  final AdminAuditChainAnchorsGateway? anchorsGateway;
 
   /// Mirrors the 11A.12 / 11A.13 pattern: when false, every mutate
   /// affordance is hidden. The gateway also throws
@@ -145,6 +157,13 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   @visibleForTesting
   final Duration graceWindowTickInterval;
 
+  /// Admin audit-integrity badge — reference "now" for the badge's
+  /// "last anchor N hours ago" age label. Widget tests pin this so the
+  /// healthy-snapshot age label is deterministic; production leaves it
+  /// null and the badge falls back to `DateTime.now()`.
+  @visibleForTesting
+  final DateTime Function()? anchorBadgeClock;
+
   @override
   State<AuditedSupportActionsAdminScreen> createState() =>
       _AuditedSupportActionsAdminScreenState();
@@ -174,6 +193,17 @@ class _AuditedSupportActionsAdminScreenState
   /// drives the scope banner copy, identical to the prior read-only
   /// banner behaviour.
   AdminHierarchyScopeIntent? _activeScope;
+
+  /// Admin audit-integrity badge — most-recent anchor snapshot for the
+  /// selected operator. Null while loading or when no gateway is wired
+  /// (the badge renders the neutral "unknown" state in both cases).
+  AdminAuditChainAnchorSnapshot? _anchorSnapshot;
+  bool _anchorLoading = false;
+  bool _anchorTransientError = false;
+
+  /// Monotonic generation guard so a stale anchor read (after the
+  /// operator changes) cannot overwrite a newer one.
+  int _anchorGeneration = 0;
 
   void _onAuditScopeNodeTap(InheritanceTreeNode node) {
     final operatorId = widget.pickedOperator.operatorId;
@@ -236,6 +266,7 @@ class _AuditedSupportActionsAdminScreenState
     super.initState();
     _activeScope = widget.hierarchyScope;
     _refresh();
+    _loadAnchorBadge();
   }
 
   @override
@@ -245,6 +276,57 @@ class _AuditedSupportActionsAdminScreenState
     // the in-screen picker selection so the banner stays consistent.
     if (oldWidget.hierarchyScope != widget.hierarchyScope) {
       _activeScope = widget.hierarchyScope;
+    }
+    // Admin audit-integrity badge — re-read when the selected operator
+    // or the wired gateway changes so the badge follows the operator
+    // the admin switched to.
+    if (oldWidget.pickedOperator.operatorId !=
+            widget.pickedOperator.operatorId ||
+        oldWidget.anchorsGateway != widget.anchorsGateway) {
+      _loadAnchorBadge();
+    }
+  }
+
+  /// Admin audit-integrity badge — loads the most-recent anchor for the
+  /// selected operator. A null gateway leaves the snapshot null so the
+  /// badge renders the neutral "unknown" state (never crashes). Any
+  /// gateway error maps to the neutral "unavailable" state rather than
+  /// "failed", so a transient proxy outage does not alarm the admin.
+  Future<void> _loadAnchorBadge() async {
+    final gateway = widget.anchorsGateway;
+    final generation = ++_anchorGeneration;
+    if (gateway == null) {
+      if (!mounted) return;
+      setState(() {
+        _anchorSnapshot = null;
+        _anchorLoading = false;
+        _anchorTransientError = false;
+      });
+      return;
+    }
+    setState(() {
+      _anchorLoading = true;
+      _anchorTransientError = false;
+    });
+    try {
+      final snapshot = await gateway.latest(
+        operatorId: widget.pickedOperator.operatorId,
+      );
+      if (!mounted || generation != _anchorGeneration) return;
+      setState(() {
+        _anchorSnapshot = snapshot;
+        _anchorLoading = false;
+        _anchorTransientError = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _anchorGeneration) return;
+      setState(() {
+        _anchorSnapshot = const AdminAuditChainAnchorSnapshot(
+          status: AdminAuditChainAnchorStatus.unknown,
+        );
+        _anchorLoading = false;
+        _anchorTransientError = true;
+      });
     }
   }
 
@@ -578,6 +660,18 @@ class _AuditedSupportActionsAdminScreenState
                 '${widget.pickedOperator.operatorBusinessName}: audit '
                 'history, active sessions, and gated support actions.',
             actions: _buildHeaderActions(),
+          ),
+          const SizedBox(height: 14),
+          // Admin audit-integrity badge — "log is intact" chain-anchor
+          // freshness for the selected operator. Fed by the optional
+          // anchors gateway; a null gateway leaves the snapshot null so
+          // the badge renders the neutral "unknown" state and the
+          // screen still renders (never crashes).
+          AdminAuditLogIntegrityBadge(
+            snapshot: _anchorSnapshot,
+            isLoading: _anchorLoading,
+            transientError: _anchorTransientError,
+            now: widget.anchorBadgeClock?.call(),
           ),
           const SizedBox(height: 14),
           if (!widget.editingEnabled)
