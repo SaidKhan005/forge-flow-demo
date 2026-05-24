@@ -94,9 +94,19 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
       if (normalizedKey != null) {
         filter += 'and setting_key = @setting_key ';
       }
-      if (enabledOnly) {
-        filter += 'and enabled = true ';
-      }
+      // The enabled filter is applied to the WINNER (after precedence
+      // ranking), never inside `visible`. Ranking picks the most
+      // specific current row per (setting_kind, setting_key,
+      // vendor_slug): operator-specific beats global, then latest
+      // effective_from. Filtering enabled before ranking would let a
+      // globally-enabled row win when a more-specific operator row had
+      // enabled=false, silently ignoring the operator-level block.
+      // Applying it to `rn = 1` means a per-operator disabled row
+      // suppresses a globally-enabled vendor, while a per-operator
+      // enabled row still overrides a globally-disabled one.
+      final winnerFilter = enabledOnly
+          ? 'where rn = 1 and enabled = true '
+          : 'where rn = 1 ';
       final rows = await exec.query(
         'with visible as ('
         'select $_selectList '
@@ -113,7 +123,7 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
         ') '
         'select $_selectList '
         'from ranked '
-        'where rn = 1 '
+        '$winnerFilter'
         'order by setting_key, vendor_slug',
         parameters: params,
       );

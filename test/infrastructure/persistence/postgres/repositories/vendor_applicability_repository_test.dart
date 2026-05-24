@@ -135,16 +135,131 @@ void main() {
           contains('operator_id is null or operator_id = @operator_id::uuid'),
         );
         expect(selectSql, contains('effective_until is null'));
-        expect(selectSql, contains('enabled = true'));
         expect(selectSql, contains('row_number() over'));
         expect(
           selectSql,
           contains('partition by setting_kind, setting_key, vendor_slug'),
         );
+        // Precedence-fix: the enabled filter is applied to the WINNER
+        // (final `where rn = 1` step), never inside the `visible` CTE.
+        // If it were in `visible`, a per-operator enabled=false row
+        // would be dropped before ranking and a globally-enabled row
+        // would silently win, ignoring the operator-level block.
+        expect(selectSql, contains('where rn = 1 and enabled = true'));
+        final visibleCte = selectSql.substring(
+          selectSql.indexOf('with visible as ('),
+          selectSql.indexOf('), ranked as ('),
+        );
+        expect(visibleCte, isNot(contains('enabled = true')));
         expect(tx.operations.last.parameters['setting_kind'], 'wage');
         expect(tx.operations.last.parameters['setting_key'], 'tip_credit');
       },
     );
+
+    test(
+      'enabledOnly: false applies no enabled filter and keeps rn = 1',
+      () async {
+        final pool = _RecordingPostgresPool();
+        final repository = VendorApplicabilityRepository(
+          TenantTransactionWrapper(pool),
+        );
+
+        await repository.listCurrentForOperator(
+          operatorId: operatorId,
+          locationId: locationId,
+          actorUserId: adminUserId,
+          settingKind: 'covers',
+        );
+
+        final selectSql = pool.transactions.single.operations.last.sql;
+        expect(selectSql, contains('where rn = 1'));
+        expect(selectSql, isNot(contains('enabled = true')));
+      },
+    );
+
+    test('operator enabled=false hides a globally enabled vendor when '
+        'enabledOnly is true (block precedence)', () async {
+      final now = DateTime.utc(2026, 5, 13, 12);
+      final pool = _SeededPostgresPool(<Map<String, Object?>>[
+        // Global default: covers from toast is allowed everywhere.
+        _vaRow(
+          id: 'global-toast',
+          operatorId: null,
+          settingKind: 'covers',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now,
+        ),
+        // Operator-specific block: this operator may NOT use toast
+        // covers. With the old (broken) filter this row was dropped
+        // before ranking, so the global row won and toast leaked.
+        _vaRow(
+          id: 'operator-toast-block',
+          operatorId: operatorId,
+          settingKind: 'covers',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: false,
+          effectiveFrom: now.add(const Duration(hours: 1)),
+        ),
+      ]);
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final rows = await repository.listCurrentForOperator(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: adminUserId,
+        settingKind: 'covers',
+        enabledOnly: true,
+      );
+
+      // The operator-level disabled row wins precedence and is then
+      // filtered out by `enabled = true`, so toast is hidden.
+      expect(rows.map((r) => r.vendorSlug), isNot(contains('toast')));
+      expect(rows, isEmpty);
+    });
+
+    test('operator enabled=true overrides a globally disabled vendor when '
+        'enabledOnly is true', () async {
+      final now = DateTime.utc(2026, 5, 13, 12);
+      final pool = _SeededPostgresPool(<Map<String, Object?>>[
+        _vaRow(
+          id: 'global-sevenrooms-off',
+          operatorId: null,
+          settingKind: 'covers',
+          settingKey: 'default',
+          vendorSlug: 'sevenrooms',
+          enabled: false,
+          effectiveFrom: now,
+        ),
+        _vaRow(
+          id: 'operator-sevenrooms-on',
+          operatorId: operatorId,
+          settingKind: 'covers',
+          settingKey: 'default',
+          vendorSlug: 'sevenrooms',
+          enabled: true,
+          effectiveFrom: now.add(const Duration(hours: 1)),
+        ),
+      ]);
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final rows = await repository.listCurrentForOperator(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: adminUserId,
+        settingKind: 'covers',
+        enabledOnly: true,
+      );
+
+      expect(rows.map((r) => r.vendorSlug), contains('sevenrooms'));
+      expect(rows.single.operatorId, operatorId);
+    });
 
     test('schema validation fails before opening a transaction', () async {
       final pool = _RecordingPostgresPool();
@@ -302,4 +417,132 @@ class _RecordingPostgresTransaction implements PostgresTransaction {
           parameters['created_by'] ?? '11111111-1111-4111-8111-111111111111',
     };
   }
+}
+
+/// Builds a seeded `vendor_applicability` row map for [_SeededPostgresPool].
+/// `operatorId == null` models a global default row.
+Map<String, Object?> _vaRow({
+  required String id,
+  required String? operatorId,
+  required String settingKind,
+  required String settingKey,
+  required String vendorSlug,
+  required bool enabled,
+  required DateTime effectiveFrom,
+  DateTime? effectiveUntil,
+}) {
+  return <String, Object?>{
+    'id': id,
+    'operator_id': operatorId,
+    'setting_kind': settingKind,
+    'setting_key': settingKey,
+    'vendor_slug': vendorSlug,
+    'enabled': enabled,
+    'metadata': '{}',
+    'effective_from': effectiveFrom,
+    'effective_until': effectiveUntil,
+    'created_at': effectiveFrom,
+    'created_by': '11111111-1111-4111-8111-111111111111',
+  };
+}
+
+/// Pool that backs [listCurrentForOperator] with an in-memory table so
+/// the precedence + winner-side enabled filter can be proven
+/// behaviorally (the [_RecordingPostgresPool] only records SQL and
+/// cannot return query-shaped rows). The transaction evaluates the
+/// exact ranking the repository SQL expresses: filter to visible rows,
+/// rank operator-specific-then-latest, keep `rn = 1`, then drop
+/// non-enabled winners only when the SQL carries the winner-side
+/// `enabled = true` predicate.
+class _SeededPostgresPool implements PostgresPool {
+  _SeededPostgresPool(this.rows);
+
+  final List<Map<String, Object?>> rows;
+
+  @override
+  Future<PostgresTransaction> beginTransaction() async {
+    return _SeededPostgresTransaction(rows);
+  }
+}
+
+class _SeededPostgresTransaction implements PostgresTransaction {
+  _SeededPostgresTransaction(this.rows);
+
+  final List<Map<String, Object?>> rows;
+
+  @override
+  Future<List<PostgresRow>> query(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    // SET LOCAL / set_config probes and any non-select return no rows.
+    if (!sql.contains('from ranked')) return const <PostgresRow>[];
+
+    final operatorId = parameters['operator_id'] as String?;
+    final settingKind = parameters['setting_kind'] as String?;
+    final settingKey = parameters['setting_key'] as String?;
+
+    // `visible` CTE predicate.
+    final visible = rows.where((row) {
+      final rowOperator = row['operator_id'] as String?;
+      if (!(rowOperator == null || rowOperator == operatorId)) return false;
+      if (settingKind != null && row['setting_kind'] != settingKind) {
+        return false;
+      }
+      if (row['effective_until'] != null) return false;
+      if (settingKey != null && row['setting_key'] != settingKey) return false;
+      return true;
+    }).toList();
+
+    // Partition by (setting_kind, setting_key, vendor_slug); rank
+    // operator-specific (0) before global (1), then latest
+    // effective_from; keep rn = 1.
+    final byKey = <String, List<Map<String, Object?>>>{};
+    for (final row in visible) {
+      final key =
+          '${row['setting_kind']}|${row['setting_key']}|${row['vendor_slug']}';
+      (byKey[key] ??= <Map<String, Object?>>[]).add(row);
+    }
+    final winners = <Map<String, Object?>>[];
+    for (final group in byKey.values) {
+      group.sort((a, b) {
+        final aSpecific = (a['operator_id'] as String?) == operatorId ? 0 : 1;
+        final bSpecific = (b['operator_id'] as String?) == operatorId ? 0 : 1;
+        if (aSpecific != bSpecific) return aSpecific.compareTo(bSpecific);
+        final aFrom = a['effective_from'] as DateTime;
+        final bFrom = b['effective_from'] as DateTime;
+        return bFrom.compareTo(aFrom); // effective_from desc
+      });
+      winners.add(group.first);
+    }
+
+    // Winner-side `enabled = true` filter (only when SQL carries it).
+    final enabledOnly = sql.contains('and enabled = true');
+    final result =
+        winners.where((row) => !enabledOnly || row['enabled'] == true).toList()
+          ..sort((a, b) {
+            final keyCmp = (a['setting_key'] as String).compareTo(
+              b['setting_key'] as String,
+            );
+            if (keyCmp != 0) return keyCmp;
+            return (a['vendor_slug'] as String).compareTo(
+              b['vendor_slug'] as String,
+            );
+          });
+    return result.map((row) => Map<String, Object?>.from(row)).toList();
+  }
+
+  @override
+  Future<int> execute(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    return 0;
+  }
+
+  @override
+  Future<void> commit() async {}
+
+  @override
+  Future<void> rollback() async {}
 }

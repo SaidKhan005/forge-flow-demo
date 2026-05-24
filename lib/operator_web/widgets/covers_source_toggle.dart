@@ -41,6 +41,8 @@ class CoversSourceToggle extends StatelessWidget {
     required this.servicePeriods,
     required this.onChanged,
     required this.bundle,
+    this.applicableCoversVendorSlugs = const <String>[],
+    this.vendorApplicabilityBound = false,
   });
 
   final DataAccuracySettings settings;
@@ -52,6 +54,19 @@ class CoversSourceToggle extends StatelessWidget {
 
   final void Function(String servicePeriodId, CoversSource source) onChanged;
   final VendorConnectionsBundle? bundle;
+
+  /// Admin allow-list of vendor slugs cleared for the `covers` setting
+  /// kind (enabled + current rows), read by the screen from
+  /// `/v1/operator/vendor-applicability?setting_kind=covers`. Mirrors
+  /// the wage card's `applicableWageVendorSlugs`. Empty when no
+  /// applicability gateway is wired.
+  final Iterable<String> applicableCoversVendorSlugs;
+
+  /// Whether the admin allow-list is enforced (true only when the
+  /// applicability gateway is wired). When false, the vendor-backed
+  /// covers chips fall back to the capability check alone. Mirrors the
+  /// wage card's `vendorApplicabilityBound`.
+  final bool vendorApplicabilityBound;
 
   @override
   Widget build(BuildContext context) {
@@ -92,6 +107,8 @@ class CoversSourceToggle extends StatelessWidget {
                 ),
                 sourceMetadata: settings.coversSourceSourceFor(period.id),
                 bundle: bundle,
+                applicableCoversVendorSlugs: applicableCoversVendorSlugs,
+                vendorApplicabilityBound: vendorApplicabilityBound,
                 onChanged: (source) => onChanged(period.id, source),
               ),
               if (period != servicePeriods.last) const SizedBox(height: 10),
@@ -113,6 +130,8 @@ class _PeriodRow extends StatelessWidget {
     required this.source,
     required this.sourceMetadata,
     required this.bundle,
+    required this.applicableCoversVendorSlugs,
+    required this.vendorApplicabilityBound,
     required this.onChanged,
   });
 
@@ -120,6 +139,8 @@ class _PeriodRow extends StatelessWidget {
   final CoversSource source;
   final DataAccuracySettingSource? sourceMetadata;
   final VendorConnectionsBundle? bundle;
+  final Iterable<String> applicableCoversVendorSlugs;
+  final bool vendorApplicabilityBound;
   final ValueChanged<CoversSource> onChanged;
 
   @override
@@ -158,11 +179,22 @@ class _PeriodRow extends StatelessWidget {
                         ),
                         label: _sourceLabel(option),
                         selected: option == source,
-                        enabled: coversSourceOptionApplies(option, bundle),
-                        disabledReason: coversSourceDisabledReason(
-                          option,
-                          bundle,
+                        enabled: coversSourceOptionSelectable(
+                          source: option,
+                          bundle: bundle,
+                          vendorApplicabilityBound: vendorApplicabilityBound,
+                          applicableCoversVendorSlugs:
+                              applicableCoversVendorSlugs,
                         ),
+                        disabledReason:
+                            coversSourceDisabledReasonWithApplicability(
+                              source: option,
+                              bundle: bundle,
+                              vendorApplicabilityBound:
+                                  vendorApplicabilityBound,
+                              applicableCoversVendorSlugs:
+                                  applicableCoversVendorSlugs,
+                            ),
                         onTap: () => onChanged(option),
                       ),
                   ],
@@ -170,10 +202,20 @@ class _PeriodRow extends StatelessWidget {
               ),
             ],
           ),
-          if (!coversSourceOptionApplies(source, bundle)) ...[
+          if (!coversSourceOptionSelectable(
+            source: source,
+            bundle: bundle,
+            vendorApplicabilityBound: vendorApplicabilityBound,
+            applicableCoversVendorSlugs: applicableCoversVendorSlugs,
+          )) ...[
             const SizedBox(height: 6),
             Text(
-              coversSourceDisabledReason(source, bundle) ??
+              coversSourceDisabledReasonWithApplicability(
+                    source: source,
+                    bundle: bundle,
+                    vendorApplicabilityBound: vendorApplicabilityBound,
+                    applicableCoversVendorSlugs: applicableCoversVendorSlugs,
+                  ) ??
                   'This source does not apply to the current integrations.',
               key: Key('covers_source_disabled_reason_${period.id}'),
               style: AppTextStyles.body12(color: AppColors.textMuted),

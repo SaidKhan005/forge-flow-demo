@@ -265,6 +265,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   List<WebVendorApplicabilityRow> _wageApplicabilityRows =
       const <WebVendorApplicabilityRow>[];
   int _wageApplicabilityLoadGeneration = 0;
+  List<WebVendorApplicabilityRow> _coversApplicabilityRows =
+      const <WebVendorApplicabilityRow>[];
+  int _coversApplicabilityLoadGeneration = 0;
 
   // Keyed `data_accuracy_service_period_settings` rows (server-owned;
   // mobile mirrors them through operational sync). The screen reads
@@ -307,6 +310,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       .map((row) => row.vendorSlug)
       .toList(growable: false);
 
+  List<String> get _applicableCoversVendorSlugs => _coversApplicabilityRows
+      .map((row) => row.vendorSlug)
+      .toList(growable: false);
+
   @override
   void initState() {
     super.initState();
@@ -321,6 +328,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _loadTierStatus();
     _loadSettings();
     _loadWageApplicability();
+    _loadCoversApplicability();
     _loadServicePeriodSettings();
     _loadServicePeriods();
   }
@@ -434,6 +442,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _wageApplicabilityLoading = widget.vendorApplicabilityGateway != null;
         _wageApplicabilityError = null;
         _wageApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _coversApplicabilityRows = const <WebVendorApplicabilityRow>[];
         _servicePeriodsLoading = widget.dataAccuracyGateway != null;
         _servicePeriodLoadError = null;
         _servicePeriodSaveError = null;
@@ -444,6 +453,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       _loadTierStatus();
       _loadSettings();
       _loadWageApplicability();
+      _loadCoversApplicability();
       _loadServicePeriodSettings();
       _loadServicePeriods();
     }
@@ -526,6 +536,40 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _wageApplicabilityLoading = false;
         _wageApplicabilityError =
             'Could not load wage vendor applicability: $error';
+      });
+    }
+  }
+
+  // Mirrors [_loadWageApplicability] for the `covers` setting kind. The
+  // allow-list gates the vendor-backed covers chips (POS covers,
+  // reservations + walk-ins) on top of the existing capability check;
+  // it cannot loosen the capability check, so the read is additive.
+  // On error the rows stay empty, which mirrors wage: the vendor-backed
+  // covers options stay restricted rather than silently re-opening.
+  Future<void> _loadCoversApplicability() async {
+    final gateway = widget.vendorApplicabilityGateway;
+    if (gateway == null) return;
+    final generation = ++_coversApplicabilityLoadGeneration;
+    try {
+      final rows = await gateway.list(settingKind: 'covers');
+      final currentEnabled =
+          rows
+              .where(
+                (row) =>
+                    row.settingKind == 'covers' &&
+                    row.enabled &&
+                    row.effectiveUntil == null,
+              )
+              .toList(growable: false)
+            ..sort((a, b) => a.vendorSlug.compareTo(b.vendorSlug));
+      if (!mounted || generation != _coversApplicabilityLoadGeneration) return;
+      setState(() {
+        _coversApplicabilityRows = currentEnabled;
+      });
+    } catch (_) {
+      if (!mounted || generation != _coversApplicabilityLoadGeneration) return;
+      setState(() {
+        _coversApplicabilityRows = const <WebVendorApplicabilityRow>[];
       });
     }
   }
@@ -1208,6 +1252,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             servicePeriods: _servicePeriods,
             onChanged: _handleCoversSourceChanged,
             bundle: _bundle,
+            vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
+            applicableCoversVendorSlugs: _applicableCoversVendorSlugs,
           ),
           if (_showAnyFallbackCard) ...[
             const SizedBox(height: 18),
