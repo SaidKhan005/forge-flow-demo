@@ -42,6 +42,7 @@ import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
 import '../widgets/admin_run_check_controls.dart';
 import '../widgets/admin_scope_notice_adapter.dart';
+import 'health_admin_copy.dart';
 import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 
 /// One tile entry in a tab section.
@@ -229,6 +230,12 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
   String? _loadError;
   DateTime? _lastRefreshed;
 
+  /// Global "Show technical details" switch. When on, every metric
+  /// card's Details disclosure renders expanded so a support engineer
+  /// can read measured values, thresholds, source, and owner at a
+  /// glance. Off by default so the operator sees the calm card face.
+  bool _showTechDetails = false;
+
   DateTime _clockNow() => (widget.now ?? DateTime.now)();
 
   @override
@@ -399,6 +406,11 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
           const SizedBox(height: 12),
           _OverallSeverityChip(envelope: envelope),
           const SizedBox(height: 12),
+          _TechDetailsToggle(
+            value: _showTechDetails,
+            onChanged: (next) => setState(() => _showTechDetails = next),
+          ),
+          const SizedBox(height: 12),
           TabBar(
             key: const Key('admin_health_tabs'),
             controller: _tabs,
@@ -424,6 +436,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
                     key: Key('admin_health_tab_body_${tab.keySuffix}'),
                     tab: tab,
                     envelope: envelope,
+                    showTechDetails: _showTechDetails,
                   ),
               ],
             ),
@@ -933,11 +946,51 @@ class _OverallSeverityChip extends StatelessWidget {
   }
 }
 
+class _TechDetailsToggle extends StatelessWidget {
+  const _TechDetailsToggle({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    // Right-aligned, but the label is Flexible so it ellipsizes instead
+    // of overflowing on a narrow (mobile-width) admin viewport.
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: <Widget>[
+        Flexible(
+          child: Text(
+            'Show technical details',
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Switch(
+          key: const Key('admin_health_tech_toggle'),
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: AppColors.sunsetDark,
+        ),
+      ],
+    );
+  }
+}
+
 class _TabBody extends StatelessWidget {
-  const _TabBody({super.key, required this.tab, required this.envelope});
+  const _TabBody({
+    super.key,
+    required this.tab,
+    required this.envelope,
+    required this.showTechDetails,
+  });
 
   final _TabSpec tab;
   final HealthEnvelope envelope;
+  final bool showTechDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -954,6 +1007,7 @@ class _TabBody extends StatelessWidget {
               ),
               section: section,
               envelope: envelope,
+              showTechDetails: showTechDetails,
             ),
         ],
       ),
@@ -962,10 +1016,16 @@ class _TabBody extends StatelessWidget {
 }
 
 class _Section extends StatelessWidget {
-  const _Section({super.key, required this.section, required this.envelope});
+  const _Section({
+    super.key,
+    required this.section,
+    required this.envelope,
+    required this.showTechDetails,
+  });
 
   final _SectionSpec section;
   final HealthEnvelope envelope;
+  final bool showTechDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -978,10 +1038,13 @@ class _Section extends StatelessWidget {
           runSpacing: 12,
           children: <Widget>[
             for (final tile in section.tiles)
-              _MetricTile(
+              _MetricCard(
+                // Card identity stays keyed by metric key so later
+                // slices and tests locate it the same way.
                 key: Key('admin_health_tile_${tile.metricKey}'),
                 tile: tile,
                 metric: envelope.metrics[tile.metricKey],
+                showTechDetails: showTechDetails,
               ),
           ],
         ),
@@ -990,25 +1053,50 @@ class _Section extends StatelessWidget {
   }
 }
 
-class _MetricTile extends StatelessWidget {
-  const _MetricTile({super.key, required this.tile, required this.metric});
+/// Slim per-metric card. Face shows the plain-English name, one status
+/// pill, and a single line: the curated "meaning" when good, or the
+/// actionable next step when not. Everything technical (measured value,
+/// healthy range, checked time, source, owner) lives in a collapsible
+/// Details disclosure that the global "Show technical details" switch
+/// can force open.
+class _MetricCard extends StatefulWidget {
+  const _MetricCard({
+    super.key,
+    required this.tile,
+    required this.metric,
+    required this.showTechDetails,
+  });
 
   final _TileSpec tile;
   final HealthMetric? metric;
+  final bool showTechDetails;
 
   @override
+  State<_MetricCard> createState() => _MetricCardState();
+}
+
+class _MetricCardState extends State<_MetricCard> {
+  @override
   Widget build(BuildContext context) {
-    final m = metric;
+    final m = widget.metric;
     final severity = m?.status ?? HealthSeverity.unknown;
     final tier = m?.tier ?? 3;
-    final chipColor = _tierChipColor(tier, severity);
-    final value = _metricDisplayValue(m);
-    final unit = m?.unit ?? '';
-    final threshold = m?.thresholdCaption;
-    final observed = m?.observedAt;
-    final source = _metricSourceLabel(m);
-    final owner = _metricOwnerLabel(m);
-    final remediation = _metricRemediation(m, tier, severity);
+    final metricKey = widget.tile.metricKey;
+    final name = healthMetricName(
+      metricKey,
+      fallback: _healthMetricLabel(metricKey),
+    );
+    final pillLabel = _statusPillLabel(m, severity);
+    final pillColor = _statusPillColor(m, severity);
+    // Good metrics show the calm "what this means" line; everything
+    // else (warning / failing / no-data / missing) shows the existing
+    // actionable next step so the operator always sees what to do.
+    final faceLine = (m != null && severity == HealthSeverity.green)
+        ? healthMetricMeaning(metricKey, fallback: m.description)
+        : _metricRemediation(m, tier, severity);
+    final faceColor = (m != null && severity == HealthSeverity.green)
+        ? AppColors.textSecondary
+        : _remediationColor(severity);
 
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 240, maxWidth: 360),
@@ -1030,75 +1118,32 @@ class _MetricTile extends StatelessWidget {
               children: <Widget>[
                 Expanded(
                   child: Text(
-                    tile.shortLabel ?? _healthMetricLabel(tile.metricKey),
+                    name,
                     style: AppTextStyles.uiLabel(color: AppColors.textPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                _TierChip(
-                  key: Key('admin_health_tile_${tile.metricKey}_chip'),
-                  tier: tier,
-                  severity: severity,
-                  color: chipColor,
+                const SizedBox(width: 8),
+                _StatusPill(
+                  keyName: 'admin_health_tile_${metricKey}_status',
+                  label: pillLabel,
+                  color: pillColor,
                 ),
               ],
             ),
             const SizedBox(height: 6),
             Text(
-              unit.isEmpty || value == 'No value yet' ? value : '$value $unit',
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Producer state: ${_severityLabel(severity)}',
-              key: Key('admin_health_tile_${tile.metricKey}_state'),
-              style: AppTextStyles.body12(color: AppColors.textSecondary),
-            ),
-            if (m != null && m.description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                m.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.body12(color: AppColors.textSecondary),
-              ),
-            ],
-            if (threshold != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'limits: $threshold',
-                style: AppTextStyles.mono8(color: AppColors.textMuted),
-              ),
-            ],
-            const SizedBox(height: 4),
-            Text(
-              'Source: $source',
-              key: Key('admin_health_tile_${tile.metricKey}_source'),
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Owner: $owner',
-              key: Key('admin_health_tile_${tile.metricKey}_owner'),
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              observed == null
-                  ? 'Checked: no data'
-                  : 'Checked: ${adminHumanDateTime(observed)}',
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              remediation,
-              key: Key('admin_health_tile_${tile.metricKey}_remediation'),
+              faceLine,
+              key: Key('admin_health_tile_${metricKey}_line'),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body12(color: _remediationColor(severity)),
+              style: AppTextStyles.body12(color: faceColor),
+            ),
+            const SizedBox(height: 4),
+            _MetricDetails(
+              metricKey: metricKey,
+              metric: m,
+              forceExpanded: widget.showTechDetails,
             ),
           ],
         ),
@@ -1107,21 +1152,23 @@ class _MetricTile extends StatelessWidget {
   }
 }
 
-class _TierChip extends StatelessWidget {
-  const _TierChip({
-    super.key,
-    required this.tier,
-    required this.severity,
+/// Small rounded status chip with a leading dot. Honesty-critical: the
+/// label and colour come straight from [_statusPillLabel] /
+/// [_statusPillColor], which never present unknown or missing signals
+/// as good.
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.keyName,
+    required this.label,
     required this.color,
   });
 
-  final int tier;
-  final HealthSeverity severity;
+  final String keyName;
+  final String label;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final label = '${_tierLabel(tier)}: ${_compactSeverityLabel(severity)}';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -1129,7 +1176,141 @@ class _TierChip extends StatelessWidget {
         border: Border.all(color: color, width: 1),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(label, style: AppTextStyles.chipLabel(color: color)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            key: Key(keyName),
+            style: AppTextStyles.chipLabel(color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Per-card "Details" disclosure. Collapsed by default; the global
+/// "Show technical details" switch forces every card open via
+/// [forceExpanded]. This is the one place monospace values are allowed.
+class _MetricDetails extends StatelessWidget {
+  const _MetricDetails({
+    required this.metricKey,
+    required this.metric,
+    required this.forceExpanded,
+  });
+
+  final String metricKey;
+  final HealthMetric? metric;
+  final bool forceExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = metric;
+    final measured = _metricMeasuredValue(m);
+    final healthyRange = _healthyRangeCaption(m);
+    final observed = m?.observedAt;
+    final source = _metricSourceLabel(m);
+    final owner = _metricOwnerLabel(m);
+
+    final rows = <Widget>[
+      _DetailRow(
+        keyName: 'admin_health_tile_${metricKey}_measured',
+        label: 'Measured',
+        value: measured,
+      ),
+      if (healthyRange != null)
+        _DetailRow(
+          keyName: 'admin_health_tile_${metricKey}_range',
+          label: 'Healthy range',
+          value: healthyRange,
+        ),
+      _DetailRow(
+        keyName: 'admin_health_tile_${metricKey}_checked',
+        label: 'Checked',
+        value: observed == null
+            ? 'No data'
+            : adminHumanDateTime(observed),
+      ),
+      _DetailRow(
+        keyName: 'admin_health_tile_${metricKey}_source',
+        label: 'Source',
+        value: source,
+      ),
+      _DetailRow(
+        keyName: 'admin_health_tile_${metricKey}_owner',
+        label: 'Owner',
+        value: owner,
+      ),
+    ];
+
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      // The ValueKey embeds `forceExpanded` so flipping the global
+      // switch rebuilds the tile with a fresh key, resetting its own
+      // expand state to `initiallyExpanded`. The switch therefore always
+      // wins; a card the user opened by hand re-syncs on the next flip,
+      // which keeps the behaviour simple and predictable.
+      child: ExpansionTile(
+        key: ValueKey('admin_health_tile_${metricKey}_details_$forceExpanded'),
+        initiallyExpanded: forceExpanded,
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 4),
+        visualDensity: VisualDensity.compact,
+        dense: true,
+        title: Text(
+          'Details',
+          style: AppTextStyles.body12(
+            color: AppColors.sunsetDark,
+          ).copyWith(fontWeight: FontWeight.w700),
+        ),
+        children: rows,
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.keyName,
+    required this.label,
+    required this.value,
+  });
+
+  final String keyName;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 96,
+            child: Text(
+              label,
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              key: Key(keyName),
+              style: AppTextStyles.mono12(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1183,24 +1364,98 @@ String _severityLabel(HealthSeverity severity) {
   }
 }
 
-String _compactSeverityLabel(HealthSeverity severity) {
+/// Status pill label. Honesty-critical: a missing metric (`null`) or an
+/// `unknown` status is "No data", never "Good".
+String _statusPillLabel(HealthMetric? metric, HealthSeverity severity) {
+  if (metric == null) return 'No data';
   switch (severity) {
     case HealthSeverity.green:
       return 'Good';
     case HealthSeverity.yellow:
-      return 'Check';
+      return 'Needs attention';
     case HealthSeverity.red:
-      return 'Fail';
+      return 'Failing';
     case HealthSeverity.unknown:
       return 'No data';
   }
 }
 
-String _metricDisplayValue(HealthMetric? metric) {
-  if (metric == null || metric.value == null) return 'No value yet';
-  final value = metric.displayValue;
-  if (value == '-' || value.trim().isEmpty) return 'No value yet';
-  return value;
+/// Status pill colour. Mirrors [_statusPillLabel]: a missing metric or
+/// `unknown` status is neutral, never positive (green).
+Color _statusPillColor(HealthMetric? metric, HealthSeverity severity) {
+  if (metric == null) return AppColors.neutral;
+  return _severityColor(severity);
+}
+
+/// Measured value for the Details block: value + unit in plain words.
+/// Booleans render as "yes"/"no"; a metric with no value shows the `—`
+/// empty-state sentinel (allowed by the UX no-em-dash law), never "0".
+String _metricMeasuredValue(HealthMetric? metric) {
+  if (metric == null) return '—';
+  final raw = metric.value;
+  if (raw == null) return '—';
+  final String shown;
+  if (raw is bool) {
+    shown = raw ? 'yes' : 'no';
+  } else {
+    final display = metric.displayValue;
+    if (display.trim().isEmpty || display == '-') return '—';
+    shown = display;
+  }
+  final unit = metric.unit.trim();
+  // Boolean and bare-state metrics read better without a trailing unit
+  // noun ("yes", not "yes boolean"; "closed", not "closed state").
+  if (raw is bool || unit.isEmpty || unit == 'boolean' || unit == 'state') {
+    return shown;
+  }
+  return '$shown $unit';
+}
+
+/// One-line plain-English healthy range derived from `thresholds`.
+/// Returns null when the metric carries no thresholds (the Details row
+/// is then omitted). Direction is inferred from the unit: latency, lag,
+/// counts, and rates are higher-is-worse; recall and cache-hit ratios
+/// are lower-is-worse.
+String? _healthyRangeCaption(HealthMetric? metric) {
+  if (metric == null) return null;
+  final thresholds = metric.thresholds;
+  if (thresholds.isEmpty) return null;
+  final yellow = thresholds['yellow'];
+  final red = thresholds['red'];
+
+  if (_lowerIsWorse(metric.key)) {
+    final parts = <String>[];
+    if (yellow != null) parts.add('Warns under $yellow');
+    if (red != null) parts.add('fails under $red');
+    if (parts.isEmpty) return null;
+    return _capitaliseFirst(parts.join(', '));
+  }
+
+  // Higher-is-worse (the common case): warn/fail "over" the threshold.
+  final parts = <String>[];
+  if (yellow != null) parts.add('Warns over $yellow');
+  if (red != null) {
+    // A red-only count threshold (e.g. drift {red: 1}) reads as a hard
+    // floor: "Fails at 1 or more".
+    parts.add(yellow == null ? 'Fails at $red or more' : 'fails over $red');
+  }
+  if (parts.isEmpty) return null;
+  return _capitaliseFirst(parts.join(', '));
+}
+
+/// Metrics where a lower reading is the unhealthy direction (recall and
+/// cache-hit ratios). Everything else (latency, lag, counts, error
+/// rates) is higher-is-worse.
+bool _lowerIsWorse(String key) {
+  return key == 'vector_recall' ||
+      key == 'prompt_cache_hit_rate' ||
+      key == 'response_cache_hit_rate' ||
+      key == 'semantic_cache_hit_rate';
+}
+
+String _capitaliseFirst(String text) {
+  if (text.isEmpty) return text;
+  return text[0].toUpperCase() + text.substring(1);
 }
 
 String _metricSourceLabel(HealthMetric? metric) {
@@ -1374,19 +1629,4 @@ String _healthMetricLabel(String key) {
     'cloud_run_instance_count' => 'Hosting instances',
     _ => key.replaceAll('_', ' ').trim(),
   };
-}
-
-/// Tier coloring rule from the F.1 prompt:
-///   * Tier 1 fail → red chip.
-///   * Tier 2 fail → yellow chip.
-///   * Tier 3 fail → grey/neutral chip (informational).
-///   * Healthy chips reflect the metric's own severity (green or
-///     unknown).
-Color _tierChipColor(int tier, HealthSeverity severity) {
-  if (severity == HealthSeverity.green) return AppColors.positive;
-  if (severity == HealthSeverity.unknown) return AppColors.neutral;
-  // Failing severity: route through tier ladder per F.1 prompt.
-  if (tier == 1) return AppColors.negative;
-  if (tier == 2) return AppColors.warning;
-  return AppColors.neutral;
 }
