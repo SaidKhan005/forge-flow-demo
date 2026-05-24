@@ -1,0 +1,138 @@
+﻿<!DOCTYPE html><html><head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <!-- QA harness only — see _qa_polyfill.js. Forces visibility=visible
+       and replaces requestAnimationFrame so Flutter Web paints inside a
+       headless Electron Chromium that would otherwise pause rAF. Not
+       shipped to production. -->
+  <script src="_qa_polyfill.js"></script>
+
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'wasm-unsafe-eval' 'sha256-LEIgqV9+9hWnNcFZ7vYClnAB0Fj6CI1idm4CgGmnQ5g=' https://www.gstatic.com https://*.firebaseapp.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    img-src 'self' data: blob: https:;
+    font-src 'self' data: https://fonts.gstatic.com;
+    connect-src 'self' https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://*.forgeflow.app https://*.run.app;
+    frame-src 'self' https://*.firebaseapp.com;
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self';
+    upgrade-insecure-requests;
+  ">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <!-- A7: no-referrer policy prevents magic-link tokens embedded in the
+       URL from leaking via Referer headers to third-party resources
+       (fonts, analytics, images) loaded by this page. -->
+  <meta name="referrer" content="no-referrer">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <!-- Neutral pre-mount fallback. Each Flutter entrypoint's MaterialApp(title: ...)
+       sets document.title post-mount (operator-web -> "Forge & Flow - Operator Web
+       Console"; admin -> "Forge & Flow - Operations Console"); mobile flavors
+       likewise. The static <title> here is only visible during the brief
+       pre-mount window, so it stays surface-neutral. -->
+  <title>Forge &amp; Flow</title>
+  <link rel="manifest" href="manifest.json">
+  <style id="splash-screen-style">
+    html {
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      background-color: #F8EDE6;
+          background-size: 100% 100%;
+    }
+
+    .center {
+      margin: 0;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      -ms-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+    }
+
+    .contain {
+      display:block;
+      width:100%; height:100%;
+      object-fit: contain;
+    }
+
+    .stretch {
+      display:block;
+      width:100%; height:100%;
+    }
+
+    .cover {
+      display:block;
+      width:100%; height:100%;
+      object-fit: cover;
+    }
+
+    .bottom {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      -ms-transform: translate(-50%, 0);
+      transform: translate(-50%, 0);
+    }
+
+    .bottomLeft {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+    }
+
+    .bottomRight {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+    }
+  </style>
+  <script id="splash-screen-script">
+    function removeSplashFromWeb() {
+      document.getElementById("splash")?.remove();
+      document.getElementById("splash-branding")?.remove();
+      document.body.style.background = "transparent";
+    }
+  </script>
+  <!-- Flutter Web injects its own <meta name="viewport"> on every page load
+       and warns in the console if one is already present. Mobile-style
+       `user-scalable=no` is also wrong for the desktop consoles. Intentionally
+       omitted; Flutter writes the correct tag itself. -->
+</head>
+<body>
+  <picture id="splash">
+      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
+      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
+      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
+  </picture>
+  <script type="module" src="forge_flow_web_bootstrap.js"></script>
+
+
+</body></html>

@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vendor Applicability — friendly redesign mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#F8EDE6; --bg-mid:#EFE8E0; --surface:#FFFFFF; --glow:#F2ECE4;
+    --sunset:#CC7A3E; --sunset-dark:#9A5C2A;
+    --peacock:#0E8080; --peacock-dark:#0A6060; --ocean:#14B4AC;
+    --text:#2C2C2C; --text-2:#5A524A; --muted:#5E564E;
+    --border:#DDD6CC; --positive:#256B29; --negative:#C62828; --warning:#997000;
+    --r-card:10px; --r-small:6px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{font-family:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg-deep);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+  svg{display:block}
+  /* ── top bar ───────────────────────────────────────────── */
+  header.bar{background:linear-gradient(180deg,var(--bg-deep),rgba(248,237,230,.85));border-bottom:1px solid rgba(221,214,204,.7);display:flex;align-items:center;gap:14px;padding:14px 22px;}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .mark{width:38px;height:38px;border-radius:999px;background:radial-gradient(circle at 30% 30%,#E8A87C,var(--sunset) 55%,var(--sunset-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;box-shadow:0 2px 6px rgba(154,92,42,.35)}
+  .brand .t1{font-size:18px;font-weight:700}
+  .brand .t2{font-size:11px;font-weight:600;color:var(--sunset-dark);letter-spacing:.4px}
+  .spacer{flex:1}
+  .who-chip{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--text-2);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 12px}
+  .who-chip .badge{font-size:10px;font-weight:700;border-radius:999px;padding:2px 8px;background:rgba(204,122,62,.13);color:var(--sunset-dark)}
+  .note-strip{background:rgba(204,122,62,.07);border-bottom:1px solid rgba(204,122,62,.22);color:var(--sunset-dark);font-size:12px;padding:6px 22px;display:flex;gap:8px;align-items:center}
+
+  /* ── frame ─────────────────────────────────────────────── */
+  .frame{max-width:1120px;margin:0 auto;padding:22px 26px 80px}
+  .page-h{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+  .page-h .pic{width:34px;height:34px;border-radius:9px;background:rgba(204,122,62,.12);color:var(--sunset-dark);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .page-h h1{margin:0;font-size:22px;font-weight:700}
+  .page-h p{margin:4px 0 0;font-size:13.5px;color:var(--text-2);max-width:780px;line-height:1.5}
+
+  .banner{display:flex;gap:11px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:13px 15px;margin-bottom:16px;font-size:13px;color:var(--text-2);line-height:1.5}
+  .banner .bic{color:var(--peacock-dark);flex:0 0 auto;margin-top:1px}
+  .banner b{color:var(--text)}
+
+  /* ── tabs ──────────────────────────────────────────────── */
+  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:5px;margin-bottom:14px;width:fit-content}
+  .tab{padding:9px 20px;border-radius:7px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border:1px solid transparent}
+  .tab:hover{color:var(--text)}
+  .tab.sel{background:rgba(204,122,62,.12);border-color:rgba(204,122,62,.4);color:var(--sunset-dark)}
+
+  /* ── toolbar ───────────────────────────────────────────── */
+  .toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:13px 16px;margin-bottom:14px}
+  .toolbar .q{flex:1;min-width:240px;font-size:14px;color:var(--text);font-weight:600}
+  .switch{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2);cursor:pointer;user-select:none}
+  .track{width:38px;height:22px;border-radius:999px;background:var(--border);position:relative;transition:background .15s;flex:0 0 auto}
+  .track::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:999px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+  .switch.on .track{background:var(--sunset)} .switch.on .track::after{left:18px}
+  .icon-btn{width:36px;height:36px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-2);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .icon-btn:hover{border-color:var(--sunset);color:var(--sunset-dark)}
+  .btn{border:none;border-radius:8px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;background:var(--sunset);color:#fff;display:inline-flex;align-items:center;gap:7px;font-family:inherit}
+  .btn:hover{background:var(--sunset-dark)}
+  .btn.sec{background:transparent;color:var(--sunset-dark);border:1px solid var(--sunset)} .btn.sec:hover{background:rgba(204,122,62,.08)}
+  .btn.ghost{background:transparent;color:var(--text-2);border:1px solid var(--border)} .btn.ghost:hover{background:var(--glow)}
+  .btn.sm{padding:6px 11px;font-size:12px}
+
+  /* ── card + table ──────────────────────────────────────── */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:0 3px 10px rgba(44,44,44,.035);overflow:hidden;margin-bottom:16px}
+  .card-h{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 12px;border-bottom:1px solid var(--border);gap:12px}
+  .card-h .ttl{font-size:14.5px;font-weight:700}
+  .card-h .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);font-weight:600;padding:11px 18px;background:var(--glow)}
+  td{padding:14px 18px;border-top:1px solid var(--border);font-size:13.5px;color:var(--text-2);vertical-align:middle}
+  tr:hover td{background:rgba(242,236,228,.5)}
+  .vname{font-weight:600;color:var(--text);font-size:14px}
+  .cat{font-size:10.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;border-radius:999px;padding:2px 8px;margin-left:8px;border:1px solid var(--border);color:var(--muted);background:var(--glow)}
+  .cat.pos{color:var(--peacock-dark);border-color:rgba(14,128,128,.4);background:rgba(14,128,128,.10)}
+  .cat.labor{color:var(--sunset-dark);border-color:rgba(204,122,62,.4);background:rgba(204,122,62,.10)}
+  .cat.reservation{color:var(--warning);border-color:rgba(153,112,0,.4);background:rgba(153,112,0,.10)}
+  .pill{font-size:11.5px;font-weight:600;border-radius:999px;padding:3px 11px;white-space:nowrap;display:inline-block}
+  .pill.on{background:rgba(37,107,41,.13);color:var(--positive)}
+  .pill.off{background:var(--glow);color:var(--muted);border:1px solid var(--border)}
+  .scope-chip{font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:6px}
+  .scope-chip.global{color:var(--peacock-dark);font-weight:600}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .dchip{font-size:11.5px;border-radius:999px;padding:3px 9px;background:var(--glow);border:1px solid var(--border);color:var(--text-2)}
+  .acts{display:flex;gap:6px}
+  details.hist{margin-bottom:24px}
+  details.hist>summary{cursor:pointer;list-style:none;font-size:13px;color:var(--peacock-dark);font-weight:600;padding:10px 2px;display:flex;align-items:center;gap:8px}
+  details.hist>summary::-webkit-details-marker{display:none}
+  details.hist td{color:var(--muted)}
+  details.hist .vname{color:var(--muted)}
+
+  /* ── dialog ────────────────────────────────────────────── */
+  .overlay{position:fixed;inset:0;background:rgba(44,44,44,.42);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:60}
+  .overlay.show{display:flex}
+  .dialog{width:100%;max-width:580px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:0 20px 50px rgba(44,44,44,.25);overflow:hidden}
+  .d-h{display:flex;align-items:center;gap:10px;padding:18px 20px 14px;border-bottom:1px solid var(--border)}
+  .d-h .dic{color:var(--sunset-dark)}
+  .d-h h2{margin:0;font-size:18px;font-weight:700;flex:1}
+  .d-h .x{cursor:pointer;color:var(--muted);width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px}
+  .d-h .x:hover{background:var(--glow)}
+  .d-body{padding:18px 20px;max-height:62vh;overflow:auto}
+  .field{margin-bottom:16px}
+  .field>label{display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px}
+  .field .help{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.45}
+  select,input[type=text],textarea{width:100%;font-family:inherit;font-size:14px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;outline:none}
+  select:focus,input:focus,textarea:focus{border-color:var(--sunset);box-shadow:0 0 0 3px rgba(204,122,62,.14)}
+  textarea{resize:vertical;min-height:54px}
+  .req::after{content:" *";color:var(--negative)}
+  /* segmented */
+  .seg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content}
+  .seg button{font-family:inherit;font-size:13px;font-weight:600;padding:9px 16px;border:none;background:var(--surface);color:var(--text-2);cursor:pointer;border-right:1px solid var(--border)}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:rgba(204,122,62,.12);color:var(--sunset-dark)}
+  /* yes/no */
+  .yn{display:flex;gap:8px}
+  .yn button{font-family:inherit;font-size:13px;font-weight:600;padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-2);cursor:pointer}
+  .yn button.on{background:rgba(204,122,62,.12);border-color:var(--sunset);color:var(--sunset-dark)}
+  /* radios */
+  .radio{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:8px}
+  .radio.on{border-color:var(--sunset);background:rgba(204,122,62,.06)}
+  .radio .dot{width:18px;height:18px;border-radius:999px;border:2px solid var(--border);flex:0 0 auto;margin-top:1px;position:relative}
+  .radio.on .dot{border-color:var(--sunset-dark)}
+  .radio.on .dot::after{content:"";position:absolute;inset:3px;border-radius:999px;background:var(--sunset-dark)}
+  .radio .rt{font-size:13.5px;font-weight:600;color:var(--text)} .radio .rs{font-size:12px;color:var(--muted);margin-top:2px}
+  /* selectable chips (service periods) */
+  .selchips{display:flex;gap:8px;flex-wrap:wrap}
+  .selchip{font-size:13px;border-radius:999px;padding:7px 14px;border:1px solid var(--border);background:var(--surface);color:var(--text-2);cursor:pointer;user-select:none}
+  .selchip.on{background:rgba(204,122,62,.12);border-color:var(--sunset);color:var(--sunset-dark);font-weight:600}
+  /* stepper */
+  .stepper{display:flex;align-items:center;gap:0;width:fit-content;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .stepper button{width:40px;height:40px;border:none;background:var(--surface);color:var(--sunset-dark);font-size:18px;cursor:pointer;border-right:1px solid var(--border)}
+  .stepper button:last-child{border-right:none;border-left:1px solid var(--border)}
+  .stepper .val{padding:0 16px;font-weight:700;font-size:15px;min-width:84px;text-align:center}
+  .stepper .unit{font-weight:500;color:var(--muted);font-size:13px}
+  /* advanced raw json */
+  details.adv{border:1px dashed var(--border);border-radius:8px;background:var(--glow);margin-top:4px}
+  details.adv>summary{cursor:pointer;list-style:none;font-size:12.5px;font-weight:600;color:var(--text-2);padding:11px 13px;display:flex;align-items:center;gap:8px}
+  details.adv>summary::-webkit-details-marker{display:none}
+  details.adv .advbody{padding:0 13px 13px}
+  details.adv pre{margin:0;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:11px;color:var(--text);white-space:pre-wrap;word-break:break-word}
+  details.adv .advnote{font-size:11px;color:var(--muted);margin:8px 0 0;line-height:1.45}
+  .d-f{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--border);background:var(--glow)}
+  .hidden{display:none !important}
+  .subhead{font-size:12px;font-weight:700;color:var(--text-2);margin:2px 0 12px;padding-top:13px;border-top:1px solid var(--border)}
+  .subhead span{font-weight:500;color:var(--muted)}
+  .legend{font-size:11.5px;color:var(--muted);margin:0 0 22px;line-height:1.6;border-top:1px dashed var(--border);padding-top:14px}
+  .legend b{color:var(--text-2)}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <div class="mark">F&amp;F</div>
+    <div>
+      <div class="t1">Forge &amp; Flow</div>
+      <div class="t2">ADMIN CONSOLE · MOCKUP</div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="who-chip"><span class="badge">SUPER ADMIN</span> Vanessa</div>
+</header>
+<div class="note-strip">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+  Preview only. Buttons, dropdowns, and tabs are clickable to show the idea. Nothing here saves.
+</div>
+
+<div class="frame">
+
+  <div class="page-h">
+    <div class="pic">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    </div>
+    <div>
+      <h1>Vendor Applicability</h1>
+      <p>Choose which connected vendors operators are allowed to use for pay rates, guest counts, and data refresh. Operators still pick their own vendor: this just controls what they are allowed to pick.</p>
+    </div>
+  </div>
+
+  <div class="banner">
+    <svg class="bic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+    <div><b>This is a permission list.</b> Turning a vendor on here lets operators choose it for pay rates, guest counts, or data refresh. It does not choose the vendor for them, and nothing is ever deleted: every change is kept as dated history with a reason.</div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab sel" data-kind="wage">Pay rates</div>
+    <div class="tab" data-kind="covers">Guest counts</div>
+    <div class="tab" data-kind="polling">Data refresh</div>
+  </div>
+
+  <div class="toolbar">
+    <div class="q" id="question"></div>
+    <div class="switch" id="showAll" title="Show every vendor, not just the ones that fit this setting">
+      <div class="track"></div><span>Show all vendors</span>
+    </div>
+    <div class="icon-btn" title="Refresh">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+    </div>
+    <button class="btn" id="addBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+      Add vendor
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="card-h">
+      <div><div class="ttl">Current rules</div><div class="sub" id="curSub"></div></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Vendor</th><th>Allowed</th><th>Applies to</th><th>Details</th><th>Since</th><th></th></tr>
+      </thead>
+      <tbody id="curBody"></tbody>
+    </table>
+  </div>
+
+  <details class="hist">
+    <summary>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+      <span id="histLabel"></span>
+    </summary>
+    <div class="card" style="margin-top:8px">
+      <table>
+        <thead>
+          <tr><th>Vendor</th><th>Allowed</th><th>Applies to</th><th>Details</th><th>In force</th></tr>
+        </thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+  </details>
+
+  <p class="legend">
+    <b>How to read this:</b> &nbsp;<b>Allowed</b> = operators can pick this vendor for the setting. &nbsp;
+    <b>Applies to</b> = every operator (global default) or one named operator. &nbsp;
+    <b>Details</b> = a plain summary of how this vendor's data is used (the techy version lives under "Advanced"). &nbsp;
+    <b>Since</b> = when this version took effect.
+  </p>
+
+</div>
+
+<!-- ── editor dialog ─────────────────────────────────────── -->
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <div class="d-h">
+      <svg class="dic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      <h2 id="dTitle">Add vendor</h2>
+      <div class="x" id="dClose">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </div>
+    </div>
+    <div class="d-body">
+
+      <div class="field">
+        <label class="req">Vendor</label>
+        <select id="fVendor"></select>
+        <div class="help" id="vendorHelp"></div>
+      </div>
+
+      <div class="field">
+        <label>Can operators use this vendor here?</label>
+        <div class="yn" id="fAllowed">
+          <button data-v="true" class="on">Yes, allow it</button>
+          <button data-v="false">No, block it</button>
+        </div>
+        <div class="help">This is the main switch. "Yes" lets operators pick this vendor for this setting; "No" hides it from them.</div>
+      </div>
+
+      <div class="field">
+        <label>Applies to</label>
+        <div class="radio on" data-scope="global">
+          <div class="dot"></div>
+          <div><div class="rt">All operators</div><div class="rs">The global default. Use this unless one operator needs something different.</div></div>
+        </div>
+        <div class="radio" data-scope="operator">
+          <div class="dot"></div>
+          <div><div class="rt">One specific operator</div><div class="rs">An override just for the operator you pick.</div></div>
+        </div>
+        <select id="fOperator" class="hidden" style="margin-top:8px">
+          <option value="barrio_legado">Barrio Legado</option>
+          <option value="north_star_hospitality">North Star Hospitality</option>
+          <option value="coastline_group">Coastline Group</option>
+          <option value="maple_room_co">Maple Room Co.</option>
+        </select>
+      </div>
+
+      <!-- per-kind fields injected here -->
+      <div id="kindFields"></div>
+
+      <div class="field">
+        <label>Notes (optional)</label>
+        <textarea id="fNotes" placeholder="Anything a teammate should know about this rule."></textarea>
+      </div>
+
+      <div class="field">
+        <label class="req">Why are you making this change?</label>
+        <textarea id="fReason" placeholder="Saved to the audit log, e.g. Enabling Toast covers for the spring launch."></textarea>
+      </div>
+
+      <details class="adv">
+        <summary>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6 2 12l6 6M16 6l6 6-6 6"/></svg>
+          Advanced: raw JSON (for power users)
+        </summary>
+        <div class="advbody">
+          <pre class="mono" id="rawjson">{}</pre>
+          <p class="advnote">This is the same "metadata" field as before, generated from your choices above. Power users can still edit it by hand, and it is where any brand-new field lands before the form learns about it.</p>
+        </div>
+      </details>
+
+      <div class="field" style="margin-top:16px;margin-bottom:0">
+        <details class="adv">
+          <summary>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+            Advanced: named variant (setting key)
+          </summary>
+          <div class="advbody">
+            <input type="text" id="fKey" value="default" />
+            <p class="advnote">Leave as <b>default</b> unless this setting has several named variants. Hidden from the normal flow on purpose.</p>
+          </div>
+        </details>
+      </div>
+
+    </div>
+    <div class="d-f">
+      <button class="btn ghost" id="dCancel">Cancel</button>
+      <button class="btn" id="dSave">Save rule</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const VENDORS = [
+  {id:'aloha_ncr_voyix', name:'Aloha (NCR Voyix)', cat:'pos', covers:true, poll:false},
+  {id:'clover', name:'Clover', cat:'pos', covers:false, poll:false},
+  {id:'lightspeed_lsk', name:'Lightspeed Restaurant K-Series', cat:'pos', covers:true, poll:false},
+  {id:'oracle_micros_simphony', name:'Oracle MICROS Simphony', cat:'pos', covers:true, poll:true},
+  {id:'revel', name:'Revel Systems', cat:'pos', covers:true, poll:false},
+  {id:'square', name:'Square', cat:'pos', covers:false, poll:false},
+  {id:'toast', name:'Toast', cat:'pos', covers:true, poll:false},
+  {id:'libro', name:'Libro Reserve', cat:'reservation', covers:false, poll:false},
+  {id:'opentable', name:'OpenTable', cat:'reservation', covers:false, poll:false},
+  {id:'sevenrooms', name:'SevenRooms', cat:'reservation', covers:false, poll:false},
+  {id:'tock', name:'Tock', cat:'reservation', covers:false, poll:false},
+  {id:'adp', name:'ADP Workforce Now / Workforce Manager', cat:'labor', covers:false, poll:false},
+  {id:'agendrix', name:'Agendrix', cat:'labor', covers:false, poll:true},
+  {id:'humanity', name:'Humanity', cat:'labor', covers:false, poll:true},
+  {id:'push_operations', name:'Push Operations', cat:'labor', covers:false, poll:true},
+  {id:'quickbooks_time', name:'QuickBooks Time', cat:'labor', covers:false, poll:true},
+  {id:'seven_shifts', name:'7shifts', cat:'labor', covers:false, poll:false},
+];
+
+const KIND = {
+  wage: {
+    noun: 'pay rates',
+    question: 'Which vendors can supply pay rates?',
+    vendorHelp: 'Pay rates come from your scheduling or payroll vendor, so the list shows those. Flip "Show all vendors" to see everything.',
+    filter: v => v.cat === 'labor',
+    rows: [
+      {v:'seven_shifts', allowed:true, scope:'All operators', global:true, details:['Rate set per role','Needs a role'], since:'May 13, 2026'},
+      {v:'adp', allowed:true, scope:'Barrio Legado', global:false, details:["Uses the vendor's own rates"], since:'May 02, 2026'},
+      {v:'humanity', allowed:false, scope:'All operators', global:true, details:['Custom rate list'], since:'Apr 20, 2026'},
+    ],
+    history: [
+      {v:'seven_shifts', allowed:true, scope:'All operators', global:true, details:['Custom rate list'], inforce:'Feb 01 to May 13, 2026'},
+    ],
+  },
+  covers: {
+    noun: 'guest counts',
+    question: 'Which vendors can supply guest counts?',
+    vendorHelp: 'Guest counts come from a till/POS that reports them or a reservation app, so the list shows those. Flip "Show all vendors" to see everything.',
+    filter: v => v.cat === 'reservation' || (v.cat === 'pos' && v.covers),
+    rows: [
+      {v:'toast', allowed:true, scope:'All operators', global:true, details:['Every guest','Lunch, Dinner','Skips voided checks'], since:'May 13, 2026'},
+      {v:'opentable', allowed:true, scope:'Barrio Legado: North Loop', global:false, details:['Dine-in guests only'], since:'May 09, 2026'},
+    ],
+    history: [
+      {v:'toast', allowed:true, scope:'All operators', global:true, details:['Dine-in guests only','Lunch'], inforce:'Jan 10 to May 13, 2026'},
+    ],
+  },
+  polling: {
+    noun: 'data refresh',
+    question: 'Which vendors do we check on a schedule, and how often?',
+    vendorHelp: "Only vendors that don't send updates on their own need a schedule, so only those appear here. Flip \"Show all vendors\" to see everything.",
+    filter: v => v.poll,
+    rows: [
+      {v:'oracle_micros_simphony', allowed:true, scope:'All operators', global:true, details:['Normal schedule'], since:'May 13, 2026'},
+      {v:'quickbooks_time', allowed:true, scope:'Barrio Legado', global:false, details:['Custom schedule','Every 15 min'], since:'May 11, 2026'},
+    ],
+    history: [],
+  },
+};
+
+const PERIODS = [
+  {id:'breakfast', label:'Breakfast'},
+  {id:'brunch', label:'Brunch'},
+  {id:'lunch', label:'Lunch'},
+  {id:'happy_hour', label:'Happy hour'},
+  {id:'dinner', label:'Dinner'},
+  {id:'late_night', label:'Late night'},
+];
+
+let kind = 'wage';
+let showAll = false;
+const vById = Object.fromEntries(VENDORS.map(v => [v.id, v]));
+
+/* ── table rendering ─────────────────────────────── */
+function rowHtml(r, withInforce){
+  const v = vById[r.v];
+  const allowed = r.allowed
+    ? '<span class="pill on">Allowed</span>'
+    : '<span class="pill off">Blocked</span>';
+  const scope = r.global
+    ? '<span class="scope-chip global">All operators</span>'
+    : '<span class="scope-chip">'+r.scope+'</span>';
+  const chips = '<div class="chips">'+r.details.map(d=>'<span class="dchip">'+d+'</span>').join('')+'</div>';
+  const last = withInforce
+    ? '<td>'+r.inforce+'</td>'
+    : '<td>'+r.since+'</td><td><div class="acts">'
+      + '<button class="btn ghost sm">Edit</button>'
+      + (r.allowed?'<button class="btn ghost sm">End</button>':'')
+      + '</div></td>';
+  return '<tr><td><span class="vname">'+v.name+'</span><span class="cat '+v.cat+'">'+v.cat+'</span></td>'
+    + '<td>'+allowed+'</td><td>'+scope+'</td><td>'+chips+'</td>'+last+'</tr>';
+}
+function renderTables(){
+  const k = KIND[kind];
+  document.getElementById('curBody').innerHTML = k.rows.map(r=>rowHtml(r,false)).join('');
+  document.getElementById('curSub').textContent = k.rows.length+' rule'+(k.rows.length===1?'':'s')+' in force for this setting';
+  const h = k.history;
+  document.getElementById('histLabel').textContent = h.length
+    ? 'Show history ('+h.length+' earlier version'+(h.length===1?'':'s')+')'
+    : 'Show history (none yet)';
+  document.getElementById('histBody').innerHTML = h.length
+    ? h.map(r=>rowHtml(r,true)).join('')
+    : '<tr><td colspan="5" style="color:var(--muted)">No earlier versions for this setting yet.</td></tr>';
+}
+
+/* ── vendor dropdown (filtered vs all) ───────────── */
+function fillVendorSelect(){
+  const k = KIND[kind];
+  const list = showAll ? VENDORS : VENDORS.filter(k.filter);
+  const sel = document.getElementById('fVendor');
+  sel.innerHTML = list.map(v=>'<option value="'+v.id+'">'+v.name+'</option>').join('');
+  const note = showAll
+    ? 'Showing all 17 connected vendors. Some may not be able to serve this setting.'
+    : k.vendorHelp + ' Flip "Show all vendors" to see every vendor.';
+  document.getElementById('vendorHelp').textContent = note;
+}
+
+/* ── per-kind fields in the dialog ───────────────── */
+function kindFieldsHtml(){
+  const intro = t => '<div class="subhead">'+t+'</div>';
+  if(kind==='wage') return intro('Optional details <span>· skip these and we use a sensible default</span>') + `
+    <div class="field">
+      <label>How should we work out each person's pay rate?</label>
+      <select id="m_authority">
+        <option value="job_code">By their role: everyone in a role shares one rate you set (e.g. all Servers = $16/hr)</option>
+        <option value="vendor_pay_rate">From the vendor: use each person's real pay rate already in the connected system</option>
+        <option value="manual_mapping">From a rate list I set up myself</option>
+      </select>
+      <div class="help">This is how labor cost gets worked out when this vendor is the source.</div>
+    </div>
+    <div class="field">
+      <label>Only count shifts that have a role filled in?</label>
+      <div class="yn" data-key="requires_job_code">
+        <button data-v="true" class="on">Yes</button>
+        <button data-v="false">No</button>
+      </div>
+      <div class="help">Avoids guessing a rate when a shift has no role attached.</div>
+    </div>`;
+  if(kind==='covers') return intro('Optional details <span>· skip these and we use a sensible default</span>') + `
+    <div class="field">
+      <label>Which guests should this vendor count?</label>
+      <select id="m_filter">
+        <option value="all_covers">Every guest</option>
+        <option value="dine_in_only">Dine-in guests only (skip takeout and delivery)</option>
+        <option value="exclude_cancelled">Everyone except cancelled bookings</option>
+      </select>
+      <div class="help">A "cover" just means one guest served.</div>
+    </div>
+    <div class="field">
+      <label>Which parts of the day does this apply to?</label>
+      <div class="selchips" id="m_periods">
+        ${PERIODS.map(p=>'<div class="selchip'+(['lunch','dinner'].includes(p.id)?' on':'')+'" data-id="'+p.id+'">'+p.label+'</div>').join('')}
+      </div>
+      <div class="help">Pick the dayparts these counts cover. Leave them all off to apply to the whole day.</div>
+    </div>
+    <div class="field">
+      <label>Leave out voided checks?</label>
+      <div class="yn" data-key="exclude_voids">
+        <button data-v="true" class="on">Yes</button>
+        <button data-v="false">No</button>
+      </div>
+      <div class="help">A voided check is one that was cancelled or rung up by mistake.</div>
+    </div>`;
+  if(kind==='polling') return intro('How often should we check this vendor?') + `
+    <div class="field">
+      <label>Check frequency</label>
+      <div class="seg" id="m_tier">
+        <button data-v="standard" class="on">Normal</button>
+        <button data-v="premium">Faster</button>
+        <button data-v="custom">Custom</button>
+      </div>
+      <div class="help">Some vendors don't send us updates on their own, so we check them on a timer. "Normal" and "Faster" use our presets.</div>
+    </div>
+    <div class="field hidden" id="customWrap">
+      <label>Check this vendor every</label>
+      <div class="stepper">
+        <button id="stepDown">&minus;</button>
+        <span class="val"><span id="stepVal">15</span> <span class="unit">min</span></span>
+        <button id="stepUp">+</button>
+      </div>
+      <div class="help">Anywhere from 1 minute to 24 hours.</div>
+    </div>`;
+  return '';
+}
+
+/* ── raw JSON preview built from the friendly fields ── */
+function collectMeta(){
+  const meta = {};
+  if(kind==='wage'){
+    meta.authority_basis = val('#m_authority');
+    meta.requires_job_code = ynVal('[data-key=requires_job_code]');
+  } else if(kind==='covers'){
+    meta.cover_filter = val('#m_filter');
+    const sp = [...document.querySelectorAll('#m_periods .selchip.on')].map(c=>c.dataset.id);
+    if(sp.length) meta.service_periods = sp;
+    meta.exclude_voids = ynVal('[data-key=exclude_voids]');
+  } else if(kind==='polling'){
+    const t = segVal('#m_tier');
+    meta.tier_key = t;
+    if(t==='custom'){
+      const min = parseInt(document.getElementById('stepVal').textContent,10);
+      meta.polling_seconds_override = min*60;
+    }
+  }
+  const notes = document.getElementById('fNotes').value.trim();
+  if(notes) meta.notes = notes;
+  return meta;
+}
+function refreshJson(){
+  try{ document.getElementById('rawjson').textContent = JSON.stringify(collectMeta(), null, 2); }catch(e){}
+}
+function val(sel){ const e=document.querySelector(sel); return e?e.value:null; }
+function ynVal(sel){ const e=document.querySelector(sel+' .on'); return e?e.dataset.v==='true':null; }
+function segVal(sel){ const e=document.querySelector(sel+' .on'); return e?e.dataset.v:null; }
+
+/* ── dialog open/close ───────────────────────────── */
+function openDialog(){
+  document.getElementById('dTitle').textContent = 'Add a vendor for ' + KIND[kind].noun;
+  fillVendorSelect();
+  document.getElementById('kindFields').innerHTML = kindFieldsHtml();
+  wireKindFields();
+  refreshJson();
+  document.getElementById('overlay').classList.add('show');
+}
+function closeDialog(){ document.getElementById('overlay').classList.remove('show'); }
+
+/* ── wiring ──────────────────────────────────────── */
+function wireKindFields(){
+  document.querySelectorAll('#kindFields .yn').forEach(g=>{
+    g.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      g.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); refreshJson();
+    });
+  });
+  const seg = document.getElementById('m_tier');
+  if(seg){
+    seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      document.getElementById('customWrap').classList.toggle('hidden', b.dataset.v!=='custom');
+      refreshJson();
+    });
+    let v=15;
+    const show=()=>document.getElementById('stepVal').textContent=v;
+    document.getElementById('stepUp').onclick=()=>{v=Math.min(1440,v+5);show();refreshJson();};
+    document.getElementById('stepDown').onclick=()=>{v=Math.max(1,v-5);show();refreshJson();};
+  }
+  document.querySelectorAll('#m_periods .selchip').forEach(c=>c.onclick=()=>{c.classList.toggle('on');refreshJson();});
+  const auth=document.getElementById('m_authority'); if(auth) auth.onchange=refreshJson;
+  const filt=document.getElementById('m_filter'); if(filt) filt.onchange=refreshJson;
+  document.getElementById('fNotes').oninput=refreshJson;
+}
+
+document.querySelectorAll('#tabs .tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('#tabs .tab').forEach(x=>x.classList.remove('sel'));
+  t.classList.add('sel');
+  kind = t.dataset.kind;
+  document.getElementById('question').textContent = KIND[kind].question;
+  renderTables();
+});
+document.getElementById('showAll').onclick=function(){
+  showAll=!showAll; this.classList.toggle('on',showAll);
+  if(document.getElementById('overlay').classList.contains('show')) fillVendorSelect();
+};
+document.getElementById('addBtn').onclick=openDialog;
+document.getElementById('dClose').onclick=closeDialog;
+document.getElementById('dCancel').onclick=closeDialog;
+document.getElementById('dSave').onclick=closeDialog;
+document.getElementById('overlay').onclick=function(e){ if(e.target===this) closeDialog(); };
+document.querySelectorAll('#fAllowed button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#fAllowed button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+});
+document.querySelectorAll('.radio[data-scope]').forEach(r=>r.onclick=()=>{
+  document.querySelectorAll('.radio[data-scope]').forEach(x=>x.classList.remove('on'));
+  r.classList.add('on');
+  document.getElementById('fOperator').classList.toggle('hidden', r.dataset.scope!=='operator');
+});
+
+/* init */
+document.getElementById('question').textContent = KIND[kind].question;
+renderTables();
+</script>
+</body>
+</html>
