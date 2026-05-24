@@ -20,9 +20,11 @@ void main() {
         );
 
         final row = await repository.upsert(
-          settingKind: 'wage',
-          settingKey: 'tip_credit',
-          vendorSlug: 'toast',
+          scope: const VendorApplicabilityScope(
+            settingKind: 'wage',
+            settingKey: 'tip_credit',
+            vendorSlug: 'toast',
+          ),
           enabled: true,
           metadata: const <String, Object?>{'authority_basis': 'job_code'},
           effectiveFrom: effectiveFrom,
@@ -75,10 +77,12 @@ void main() {
       );
 
       final row = await repository.end(
-        operatorId: operatorId,
-        settingKind: 'covers',
-        settingKey: 'covers',
-        vendorSlug: 'sevenrooms',
+        scope: const VendorApplicabilityScope(
+          operatorId: operatorId,
+          settingKind: 'covers',
+          settingKey: 'covers',
+          vendorSlug: 'sevenrooms',
+        ),
         effectiveUntil: effectiveUntil,
         adminReason: 'test.vendor_applicability.end',
       );
@@ -134,23 +138,43 @@ void main() {
           selectSql,
           contains('operator_id is null or operator_id = @operator_id::uuid'),
         );
+        // The `visible` CTE now also filters on location: only
+        // location-null or location-matching rows are admitted.
+        expect(
+          selectSql,
+          contains('location_id is null or location_id = @location_id::uuid'),
+        );
         expect(selectSql, contains('effective_until is null'));
         expect(selectSql, contains('row_number() over'));
         expect(
           selectSql,
           contains('partition by setting_kind, setting_key, vendor_slug'),
         );
+        // 3-way precedence ranking: location-match (0) beats
+        // operator-level (1) beats global (2), then effective_from desc.
+        expect(
+          selectSql,
+          contains('when location_id = @location_id::uuid then 0'),
+        );
+        expect(
+          selectSql,
+          contains('when operator_id = @operator_id::uuid then 1'),
+        );
         // Precedence-fix: the enabled filter is applied to the WINNER
         // (final `where rn = 1` step), never inside the `visible` CTE.
-        // If it were in `visible`, a per-operator enabled=false row
-        // would be dropped before ranking and a globally-enabled row
-        // would silently win, ignoring the operator-level block.
+        // If it were in `visible`, a more-specific enabled=false row
+        // would be dropped before ranking and a less-specific
+        // enabled row would silently win, ignoring the block.
         expect(selectSql, contains('where rn = 1 and enabled = true'));
         final visibleCte = selectSql.substring(
           selectSql.indexOf('with visible as ('),
           selectSql.indexOf('), ranked as ('),
         );
         expect(visibleCte, isNot(contains('enabled = true')));
+        // The location filter lives in `visible`, before ranking.
+        expect(visibleCte, contains('location_id is null or location_id'));
+        expect(tx.operations.last.parameters['operator_id'], operatorId);
+        expect(tx.operations.last.parameters['location_id'], locationId);
         expect(tx.operations.last.parameters['setting_kind'], 'wage');
         expect(tx.operations.last.parameters['setting_key'], 'tip_credit');
       },
@@ -261,6 +285,410 @@ void main() {
       expect(rows.single.operatorId, operatorId);
     });
 
+    test('location-scoped row beats operator-level beats global for the '
+        'same vendor', () async {
+      final now = DateTime.utc(2026, 5, 13, 12);
+      final pool = _SeededPostgresPool(<Map<String, Object?>>[
+        // Global default.
+        _vaRow(
+          id: 'global-toast',
+          operatorId: null,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now,
+        ),
+        // Operator-level override (location null), later effective_from.
+        _vaRow(
+          id: 'operator-toast',
+          operatorId: operatorId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now.add(const Duration(hours: 1)),
+        ),
+        // Location-specific row, EARLIER effective_from than the
+        // operator-level row: precedence must still pick this row because
+        // location beats operator regardless of effective_from.
+        _vaRow(
+          id: 'location-toast',
+          operatorId: operatorId,
+          locationId: locationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now.subtract(const Duration(hours: 1)),
+        ),
+      ]);
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final rows = await repository.listCurrentForOperator(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: adminUserId,
+        settingKind: 'polling',
+      );
+
+      expect(rows, hasLength(1));
+      expect(rows.single.id, 'location-toast');
+      expect(rows.single.locationId, locationId);
+    });
+
+    test('operator-level beats global when no location-scoped row exists '
+        'for the asked location', () async {
+      final now = DateTime.utc(2026, 5, 13, 12);
+      final otherLocationId = '99999999-9999-4999-8999-999999999999';
+      final pool = _SeededPostgresPool(<Map<String, Object?>>[
+        _vaRow(
+          id: 'global-toast',
+          operatorId: null,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now,
+        ),
+        _vaRow(
+          id: 'operator-toast',
+          operatorId: operatorId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now.add(const Duration(hours: 1)),
+        ),
+        // A location-scoped row for a DIFFERENT location must be ignored
+        // when reading for `locationId`.
+        _vaRow(
+          id: 'other-location-toast',
+          operatorId: operatorId,
+          locationId: otherLocationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: false,
+          effectiveFrom: now.add(const Duration(hours: 2)),
+        ),
+      ]);
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final rows = await repository.listCurrentForOperator(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: adminUserId,
+        settingKind: 'polling',
+      );
+
+      expect(rows, hasLength(1));
+      expect(rows.single.id, 'operator-toast');
+      expect(rows.single.locationId, isNull);
+    });
+
+    test('latest effective_from wins among rows at the same precedence '
+        'level (tie-break)', () async {
+      final now = DateTime.utc(2026, 5, 13, 12);
+      final pool = _SeededPostgresPool(<Map<String, Object?>>[
+        // Two location-specific rows for the same scope/vendor; the
+        // later effective_from must win the tie-break. (Both current in
+        // this fake; production uniqueness forbids two current rows, but
+        // the ranking still proves the order-by.)
+        _vaRow(
+          id: 'location-toast-older',
+          operatorId: operatorId,
+          locationId: locationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now,
+        ),
+        _vaRow(
+          id: 'location-toast-newer',
+          operatorId: operatorId,
+          locationId: locationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now.add(const Duration(hours: 5)),
+        ),
+      ]);
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final rows = await repository.listCurrentForOperator(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: adminUserId,
+        settingKind: 'polling',
+      );
+
+      expect(rows, hasLength(1));
+      expect(rows.single.id, 'location-toast-newer');
+    });
+
+    test('location-scoped enabled=false hides a vendor that an '
+        'operator-level (or global) row enables', () async {
+      final now = DateTime.utc(2026, 5, 13, 12);
+      final pool = _SeededPostgresPool(<Map<String, Object?>>[
+        // Global enables toast polling.
+        _vaRow(
+          id: 'global-toast',
+          operatorId: null,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now,
+        ),
+        // Operator-level also enables it.
+        _vaRow(
+          id: 'operator-toast',
+          operatorId: operatorId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: true,
+          effectiveFrom: now.add(const Duration(hours: 1)),
+        ),
+        // Location-specific BLOCK: this location may NOT use toast.
+        // Precedence picks this row; the winner-side enabled filter then
+        // drops it, so toast is hidden for this location.
+        _vaRow(
+          id: 'location-toast-block',
+          operatorId: operatorId,
+          locationId: locationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+          enabled: false,
+          effectiveFrom: now.add(const Duration(hours: 2)),
+        ),
+      ]);
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final rows = await repository.listCurrentForOperator(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: adminUserId,
+        settingKind: 'polling',
+        enabledOnly: true,
+      );
+
+      expect(rows.map((r) => r.vendorSlug), isNot(contains('toast')));
+      expect(rows, isEmpty);
+    });
+
+    test('backward compat: with only global/operator rows and a locationId '
+        'passed, results match pre-location behavior', () async {
+      final now = DateTime.utc(2026, 5, 13, 12);
+      final pool = _SeededPostgresPool(<Map<String, Object?>>[
+        // Global disables, operator enables (location_id null on both) —
+        // exactly the pre-location precedence case.
+        _vaRow(
+          id: 'global-sevenrooms-off',
+          operatorId: null,
+          settingKind: 'covers',
+          settingKey: 'default',
+          vendorSlug: 'sevenrooms',
+          enabled: false,
+          effectiveFrom: now,
+        ),
+        _vaRow(
+          id: 'operator-sevenrooms-on',
+          operatorId: operatorId,
+          settingKind: 'covers',
+          settingKey: 'default',
+          vendorSlug: 'sevenrooms',
+          enabled: true,
+          effectiveFrom: now.add(const Duration(hours: 1)),
+        ),
+      ]);
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final rows = await repository.listCurrentForOperator(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: adminUserId,
+        settingKind: 'covers',
+        enabledOnly: true,
+      );
+
+      // Identical to the existing no-location precedence test: the
+      // operator-level enabled row wins over the globally-disabled one.
+      expect(rows.map((r) => r.vendorSlug), contains('sevenrooms'));
+      expect(rows.single.operatorId, operatorId);
+      expect(rows.single.locationId, isNull);
+    });
+
+    test('upsert threads location_id into the temporal close and the '
+        'insert', () async {
+      final pool = _RecordingPostgresPool();
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final row = await repository.upsert(
+        scope: const VendorApplicabilityScope(
+          operatorId: operatorId,
+          locationId: locationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+        ),
+        enabled: true,
+        createdBy: adminUserId,
+        adminReason: 'test.vendor_applicability.upsert_location',
+      );
+
+      expect(row.locationId, locationId);
+      final tx = pool.transactions.single;
+      final closeOperation = tx.operations.firstWhere(
+        (operation) =>
+            operation.sql.contains('update public.vendor_applicability'),
+      );
+      // Temporal close targets the same (operator, location) scope.
+      expect(
+        closeOperation.sql,
+        contains('location_id is not distinct from @location_id::uuid'),
+      );
+      expect(closeOperation.parameters['location_id'], locationId);
+      final insertOperation = tx.operations.firstWhere(
+        (operation) =>
+            operation.sql.contains('insert into public.vendor_applicability'),
+      );
+      expect(insertOperation.sql, contains('location_id'));
+      expect(insertOperation.parameters['location_id'], locationId);
+    });
+
+    test('end threads location_id into the temporal close', () async {
+      final pool = _RecordingPostgresPool();
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      final row = await repository.end(
+        scope: const VendorApplicabilityScope(
+          operatorId: operatorId,
+          locationId: locationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+        ),
+        adminReason: 'test.vendor_applicability.end_location',
+      );
+
+      expect(row, isNotNull);
+      expect(row!.locationId, locationId);
+      final closeOperation = pool.transactions.single.operations.firstWhere(
+        (operation) =>
+            operation.sql.contains('update public.vendor_applicability'),
+      );
+      expect(
+        closeOperation.sql,
+        contains('location_id is not distinct from @location_id::uuid'),
+      );
+      expect(closeOperation.parameters['location_id'], locationId);
+    });
+
+    test('listAdmin filters by location_id when provided', () async {
+      final pool = _RecordingPostgresPool();
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      await repository.listAdmin(
+        operatorId: operatorId,
+        locationId: locationId,
+        adminReason: 'test.vendor_applicability.list_admin_location',
+      );
+
+      final selectSql = pool.transactions.single.operations.last.sql;
+      expect(
+        selectSql,
+        contains('location_id is not distinct from @location_id::uuid'),
+      );
+      expect(
+        pool.transactions.single.operations.last.parameters['location_id'],
+        locationId,
+      );
+    });
+
+    test('listAdmin omits the location filter when no location is given', () {
+      final pool = _RecordingPostgresPool();
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      return repository
+          .listAdmin(
+            operatorId: operatorId,
+            adminReason: 'test.vendor_applicability.list_admin_no_location',
+          )
+          .then((_) {
+            final selectSql = pool.transactions.single.operations.last.sql;
+            expect(
+              selectSql,
+              isNot(
+                contains('location_id is not distinct from @location_id::uuid'),
+              ),
+            );
+          });
+    });
+
+    test('VendorApplicabilityRow round-trips location_id through fromRow '
+        'and toJson', () {
+      final now = DateTime.utc(2026, 5, 13, 17);
+      final row = VendorApplicabilityRow.fromRow(<String, Object?>{
+        'id': '44444444-4444-4444-8444-444444444444',
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'setting_kind': 'polling',
+        'setting_key': 'default',
+        'vendor_slug': 'toast',
+        'enabled': true,
+        'metadata': '{}',
+        'effective_from': now,
+        'effective_until': null,
+        'created_at': now,
+        'created_by': adminUserId,
+      });
+
+      expect(row.locationId, locationId);
+      expect(row.toJson()['location_id'], locationId);
+
+      // A null location_id (operator-level / global row) round-trips too.
+      final nullLocationRow = VendorApplicabilityRow.fromRow(<String, Object?>{
+        'id': '44444444-4444-4444-8444-444444444444',
+        'operator_id': operatorId,
+        'location_id': null,
+        'setting_kind': 'polling',
+        'setting_key': 'default',
+        'vendor_slug': 'toast',
+        'enabled': true,
+        'metadata': '{}',
+        'effective_from': now,
+        'effective_until': null,
+        'created_at': now,
+        'created_by': adminUserId,
+      });
+      expect(nullLocationRow.locationId, isNull);
+      expect(nullLocationRow.toJson().containsKey('location_id'), isTrue);
+      expect(nullLocationRow.toJson()['location_id'], isNull);
+    });
+
     test('schema validation fails before opening a transaction', () async {
       final pool = _RecordingPostgresPool();
       final repository = VendorApplicabilityRepository(
@@ -269,9 +697,11 @@ void main() {
 
       expect(
         () => repository.upsert(
-          settingKind: 'wage',
-          settingKey: 'tip_credit',
-          vendorSlug: 'toast',
+          scope: const VendorApplicabilityScope(
+            settingKind: 'wage',
+            settingKey: 'tip_credit',
+            vendorSlug: 'toast',
+          ),
           enabled: true,
           metadata: const <String, Object?>{'eav_escape_hatch': true},
           createdBy: adminUserId,
@@ -291,9 +721,11 @@ void main() {
         );
 
         final row = await repository.upsert(
-          settingKind: 'covers',
-          settingKey: 'covers_source',
-          vendorSlug: 'sevenrooms',
+          scope: const VendorApplicabilityScope(
+            settingKind: 'covers',
+            settingKey: 'covers_source',
+            vendorSlug: 'sevenrooms',
+          ),
           enabled: true,
           metadata: const <String, Object?>{
             'cover_filter': 'all_covers',
@@ -320,9 +752,11 @@ void main() {
 
       expect(
         () => repository.upsert(
-          settingKind: 'covers',
-          settingKey: 'covers_source',
-          vendorSlug: 'sevenrooms',
+          scope: const VendorApplicabilityScope(
+            settingKind: 'covers',
+            settingKey: 'covers_source',
+            vendorSlug: 'sevenrooms',
+          ),
           enabled: true,
           metadata: const <String, Object?>{
             'service_periods': <String>['../brunch'],
@@ -405,6 +839,7 @@ class _RecordingPostgresTransaction implements PostgresTransaction {
     return <String, Object?>{
       'id': '44444444-4444-4444-8444-444444444444',
       'operator_id': parameters['operator_id'],
+      'location_id': parameters['location_id'],
       'setting_kind': parameters['setting_kind'],
       'setting_key': parameters['setting_key'],
       'vendor_slug': parameters['vendor_slug'],
@@ -420,7 +855,8 @@ class _RecordingPostgresTransaction implements PostgresTransaction {
 }
 
 /// Builds a seeded `vendor_applicability` row map for [_SeededPostgresPool].
-/// `operatorId == null` models a global default row.
+/// `operatorId == null` models a global default row; `locationId == null`
+/// models an operator-level (or global) row.
 Map<String, Object?> _vaRow({
   required String id,
   required String? operatorId,
@@ -429,11 +865,13 @@ Map<String, Object?> _vaRow({
   required String vendorSlug,
   required bool enabled,
   required DateTime effectiveFrom,
+  String? locationId,
   DateTime? effectiveUntil,
 }) {
   return <String, Object?>{
     'id': id,
     'operator_id': operatorId,
+    'location_id': locationId,
     'setting_kind': settingKind,
     'setting_key': settingKey,
     'vendor_slug': vendorSlug,
@@ -479,13 +917,19 @@ class _SeededPostgresTransaction implements PostgresTransaction {
     if (!sql.contains('from ranked')) return const <PostgresRow>[];
 
     final operatorId = parameters['operator_id'] as String?;
+    final locationId = parameters['location_id'] as String?;
     final settingKind = parameters['setting_kind'] as String?;
     final settingKey = parameters['setting_key'] as String?;
 
-    // `visible` CTE predicate.
+    // `visible` CTE predicate: admit global (operator_id null),
+    // operator-level (operator_id match, location_id null), and
+    // location-specific (operator_id match, location_id match) rows;
+    // exclude rows scoped to a different location.
     final visible = rows.where((row) {
       final rowOperator = row['operator_id'] as String?;
       if (!(rowOperator == null || rowOperator == operatorId)) return false;
+      final rowLocation = row['location_id'] as String?;
+      if (!(rowLocation == null || rowLocation == locationId)) return false;
       if (settingKind != null && row['setting_kind'] != settingKind) {
         return false;
       }
@@ -494,20 +938,26 @@ class _SeededPostgresTransaction implements PostgresTransaction {
       return true;
     }).toList();
 
-    // Partition by (setting_kind, setting_key, vendor_slug); rank
-    // operator-specific (0) before global (1), then latest
-    // effective_from; keep rn = 1.
+    // Partition by (setting_kind, setting_key, vendor_slug); rank by the
+    // 3-way precedence case (location-match 0, operator-level 1, global
+    // 2), then latest effective_from; keep rn = 1.
     final byKey = <String, List<Map<String, Object?>>>{};
     for (final row in visible) {
       final key =
           '${row['setting_kind']}|${row['setting_key']}|${row['vendor_slug']}';
       (byKey[key] ??= <Map<String, Object?>>[]).add(row);
     }
+    int precedence(Map<String, Object?> row) {
+      if ((row['location_id'] as String?) == locationId) return 0;
+      if ((row['operator_id'] as String?) == operatorId) return 1;
+      return 2;
+    }
+
     final winners = <Map<String, Object?>>[];
     for (final group in byKey.values) {
       group.sort((a, b) {
-        final aSpecific = (a['operator_id'] as String?) == operatorId ? 0 : 1;
-        final bSpecific = (b['operator_id'] as String?) == operatorId ? 0 : 1;
+        final aSpecific = precedence(a);
+        final bSpecific = precedence(b);
         if (aSpecific != bSpecific) return aSpecific.compareTo(bSpecific);
         final aFrom = a['effective_from'] as DateTime;
         final bFrom = b['effective_from'] as DateTime;
