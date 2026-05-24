@@ -91,6 +91,11 @@ import 'auth_step_up_routes.dart';
 import 'health_operation_budget.dart';
 import 'log.dart';
 import 'business_scope_routes.dart';
+// AI Metrics — append-only cap-refusal event recorder (write path for
+// `public.usage_cap_events`; SQL + business_date derivation live here so
+// the monolith only carries the minimal best-effort call at the refusal
+// site). See `cap_event_recorder_part.dart`.
+import 'cap_event_recorder_part.dart' show CapEventRecorder;
 import 'connector_backfill_jobs_routes.dart';
 import 'demo_mode_master_switch_routes.dart';
 import 'mobile_push_notifications.dart';
@@ -3540,10 +3545,18 @@ abstract class ProxyAccountingStore {
 }
 
 class PostgresProxyAccountingStore implements ProxyAccountingStore {
-  PostgresProxyAccountingStore({required TenantTransactionWrapper wrapper})
-    : _wrapper = wrapper;
+  PostgresProxyAccountingStore({
+    required TenantTransactionWrapper wrapper,
+    CapEventRecorder? capEventRecorder,
+  }) : _wrapper = wrapper,
+       // Best-effort recorder for the "Limit hits" panel. Defaults to one
+       // built from the same tenant wrapper; tests inject a fake to assert
+       // the refusal-only insert + the non-blocking guarantee.
+       _capEventRecorder =
+           capEventRecorder ?? CapEventRecorder(wrapper: wrapper);
 
   final TenantTransactionWrapper _wrapper;
+  final CapEventRecorder _capEventRecorder;
 
   @override
   Future<ProxyAccountingStartResult> startRequest({
@@ -3554,7 +3567,7 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
     required ProxyUsageTelemetry telemetry,
     required ProxyUsageChargeEstimate estimate,
     required DateTime now,
-  }) {
+  }) async {
     final ctx = _tenantContextFor(operator);
     final params = _usageParameters(
       idempotencyKey: idempotencyKey,
@@ -3566,7 +3579,7 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
       now: now,
     );
 
-    return _wrapper.runInTenantContext(ctx, (exec) async {
+    final result = await _wrapper.runInTenantContext(ctx, (exec) async {
       final existingReplay = await _lookupReplay(exec, params);
       if (existingReplay != null) return existingReplay;
 
@@ -3594,6 +3607,30 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
 
       return ProxyAccountingReserved(capStatus: capStatus);
     });
+
+    // AI Metrics "Limit hits": record the refusal into the append-only
+    // `public.usage_cap_events` ledger AFTER the decision is made and the
+    // cap-check transaction has committed (its own transaction, so no
+    // nesting). `recordRefusal` is best-effort and NEVER throws, so this
+    // cannot change the refusal, the response, or the allow/replay
+    // latency. Only the refusal branch records; allow/replay return above.
+    if (result is ProxyAccountingRefused) {
+      final cap = result.capStatus;
+      await _capEventRecorder.recordRefusal(
+        operatorId: operator.operatorId,
+        locationId: operator.locationId,
+        userId: operator.userId,
+        usageClass: usageClass,
+        queryClass: telemetry.queryClass,
+        perInvocationExceeded: cap.perInvocationExceeded,
+        perInvocationCapCents: cap.perInvocationCapCents,
+        monthlyCapCents: cap.monthlyCapCents,
+        monthlyUsedCents: cap.monthlyUsedCents,
+        estimatedCostCents: cap.estimatedCostCents,
+        occurredAt: now,
+      );
+    }
+    return result;
   }
 
   @override
