@@ -463,7 +463,7 @@ void main() {
     expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
     expect(
       summaryHeadline(tester),
-      equals('Action needed: 1 critical check failing'),
+      equals('Action needed: 1 critical check is failing'),
     );
     // The failing tier-1 check is listed in the triage list (it lives in
     // the "Behind the scenes" tab, not the default one).
