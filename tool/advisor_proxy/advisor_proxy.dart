@@ -72,6 +72,9 @@ import 'package:forge_and_flow/services/auth/user_pii_erasure_service.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
+// Slice A2 — corpus retrieval service (A1 domain service called from the
+// new /v1/advisor/retrieve route; handler lives in the part file).
+import 'package:forge_and_flow/services/corpus_retrieval_service.dart';
 import 'package:forge_and_flow/utils/iana_timezones.dart';
 import 'package:path/path.dart' as p;
 import 'package:pointycastle/pointycastle.dart' as pc;
@@ -323,6 +326,10 @@ export 'admin_default_role_catalog_routes.dart'
 // behavior byte-identical (no routing/shape/status/idempotency/RLS/
 // auth/SQL change). See `tool/advisor_proxy_size_lint.dart`.
 part 'admin_route_group_part.dart';
+// Advisor Knowledge Activation — Slice A2: POST /v1/advisor/retrieve.
+// All handler logic lives in this sibling part file; monolith gets only
+// this declaration + a minimal path-match dispatch in routeRequest.
+part 'advisor_retrieve_route_group_part.dart';
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
@@ -8984,6 +8991,10 @@ Future<void> routeRequest(
   // back-compat with existing tests + scaffolds. When null the per-request
   // DB check is skipped and only the JWT claim version gate applies.
   PermissionVersionChecker? permissionVersionChecker,
+  // Slice A2 — corpus vector retrieval service. Optional: when null the
+  // POST /v1/advisor/retrieve route returns 503 so existing tests do not
+  // need to plumb the service through every call site.
+  CorpusRetrievalService? corpusRetrievalService,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -15973,6 +15984,59 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'wage_role_rows_unavailable',
               'message': 'wage row write is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Slice A2 — POST /v1/advisor/retrieve. Corpus vector search for a
+        // pre-computed 1024-dim query embedding. Read-only; no rerank (A3),
+        // no answer generation (A4), no text→embedding (A2b). Handler lives
+        // entirely in advisor_retrieve_route_group_part.dart.
+        if (request.method == 'POST' && path == advisorRetrievePath) {
+          if (corpusRetrievalService == null) {
+            _writeJson(response, 503, const <String, Object?>{
+              'error': 'corpus_retrieval_not_configured',
+              'message':
+                  'route requires a CorpusRetrievalService to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+          try {
+            await _handleAdvisorRetrieve(
+              request: request,
+              response: response,
+              body: body,
+              retrievalService: corpusRetrievalService,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'advisor_retrieve',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, const <String, Object?>{
+              'error': 'corpus_retrieval_unavailable',
+              'message': 'corpus retrieval is unavailable; please retry',
             });
           }
           return;
