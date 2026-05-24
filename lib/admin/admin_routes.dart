@@ -1832,6 +1832,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         editingEnabled: canEdit,
         canEditSeededRoles: canEditSeededRoles,
         initialScope: selectedScope,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
 
@@ -1863,7 +1864,8 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
   }
 
   return AdminSetupWorkspace(
-    functionTitle: 'Access',
+    functionTitle: 'Roles & permissions',
+    showWorkspaceHeader: false,
     description:
         'Review hierarchy, roles, permission policy, and active sessions for the selected scope.',
     operatorGateway: operatorGateway,
