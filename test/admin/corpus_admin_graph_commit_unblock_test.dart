@@ -56,9 +56,11 @@ void main() {
   }
 
   Future<void> openGraphCandidatesTab(WidgetTester tester) async {
+    // The Graph-candidates tab was renamed "Relationship review" ->
+    // "Connections" in #1263; tap the current label.
     final tabFinder = find.descendant(
       of: find.byKey(const Key('admin_corpus_tab_bar')),
-      matching: find.text('Relationship review'),
+      matching: find.text('Connections'),
     );
     await tester.tap(tabFinder);
     await tester.pumpAndSettle();

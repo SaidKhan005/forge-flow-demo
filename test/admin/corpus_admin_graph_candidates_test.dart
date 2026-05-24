@@ -138,15 +138,16 @@ void main() {
     );
   }
 
-  /// Switches to the "Graph candidates" tab. The Tab widget keys are
-  /// scoped inside the TabBar and not directly findable through
+  /// Switches to the "Connections" tab (the Graph-candidates tab,
+  /// renamed from "Relationship review" in #1263). The Tab widget keys
+  /// are scoped inside the TabBar and not directly findable through
   /// `find.byKey()` (Flutter's TabBar wraps each child in its own
-  /// internal builder), so we tap the tab label text instead — the
+  /// internal builder), so we tap the tab label text instead: the
   /// TabBar guarantees that text is unique within the bar.
   Future<void> openGraphCandidatesTab(WidgetTester tester) async {
     final tabFinder = find.descendant(
       of: find.byKey(const Key('admin_corpus_tab_bar')),
-      matching: find.text('Relationship review'),
+      matching: find.text('Connections'),
     );
     await tester.tap(tabFinder);
     await tester.pumpAndSettle();
@@ -169,14 +170,14 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('admin_corpus_tab_bar')),
-        matching: find.text('Content versions'),
+        matching: find.text('Knowledge'),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: find.byKey(const Key('admin_corpus_tab_bar')),
-        matching: find.text('Relationship review'),
+        matching: find.text('Connections'),
       ),
       findsOneWidget,
     );
