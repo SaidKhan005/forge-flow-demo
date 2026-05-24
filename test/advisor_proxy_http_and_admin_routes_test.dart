@@ -51,6 +51,10 @@ void main() {
       bool trustProxyAuditHeaders = false,
       ProxyRequestLogPolicy requestLogPolicy =
           const ProxyRequestLogPolicy.metaOnly(),
+      // P1b — optional clock override so a test can drive a measurable
+      // wall-clock for proxy_request_stats.latency_ms. Defaults to the
+      // fixed instant the rest of the suite relies on.
+      DateTime Function()? now,
     }) async {
       verifier = SettableVerifier();
       final guard = ProxyRequestGuard(verifier: verifier);
@@ -70,7 +74,7 @@ void main() {
             firebaseAdminAuthClient: firebaseAdminAuthClient,
             trustProxyAuditHeaders: trustProxyAuditHeaders,
             requestLogPolicy: requestLogPolicy,
-            now: () => DateTime.utc(2026, 4, 26, 12),
+            now: now ?? () => DateTime.utc(2026, 4, 26, 12),
           );
         } catch (_) {
           try {
@@ -1012,6 +1016,220 @@ void main() {
           await shutDown();
         }
       });
+    });
+
+    // ── P1b — proxy_request_stats writer (Support logs, plan §12) ────────
+    //
+    // The completion step hands a ProxyRequestStats payload to
+    // completeRequest. These tests pin, end-to-end through routeRequest:
+    //   * one stats row per real request, with the measured latency_ms,
+    //     real result_status='success', actor uuid, request_id
+    //     correlation, provider/model id, and the same token/cost the
+    //     usage-log write used;
+    //   * NO duplicate stats row on an idempotency replay;
+    //   * a graceful cache/refusal degradation still writes a 'success'
+    //     stats row with zero provider tokens;
+    //   * the writer fires for every LLM usage class (one shared
+    //     completion path), not just the advisor_qa default.
+
+    test('GET /v1/advisor-smoke writes one proxy_request_stats row with '
+        'measured latency, real status, actor, request_id, model + cost', () async {
+      await withRealHttp(() async {
+        final store = InMemoryAccountingStore.open();
+        final llm = RecordingLlmProvider();
+        // Advancing clock: each clock() read steps +250ms so the measured
+        // wall-clock latency between the post-validation anchor and
+        // completion is strictly positive (the rest of the suite uses a
+        // fixed instant, which would measure 0).
+        var tick = DateTime.utc(2026, 4, 26, 12);
+        DateTime advancingNow() {
+          final value = tick;
+          tick = tick.add(const Duration(milliseconds: 250));
+          return value;
+        }
+
+        await spinUpServer(
+          accountingStore: store,
+          llmProvider: llm,
+          now: advancingNow,
+        );
+        try {
+          verifier.claims = defaultUuidProxyClaims();
+          final response = await httpGet(
+            client,
+            baseUri
+                .resolve(advisorSmokePath)
+                .replace(
+                  queryParameters: const <String, String>{
+                    'subscription_tier': 'premium',
+                    'tokens': '40',
+                    'cost_cents': '9',
+                  },
+                ),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{'Idempotency-Key': 'idem-stats'},
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(store.completeCalls, equals(1));
+          expect(store.recordedStats, hasLength(1));
+
+          final stats = store.lastStats!;
+          expect(stats.usageClass, equals('advisor_qa'));
+          expect(stats.resultStatus, equals('success'));
+          // request_id correlation: the value the reservation surfaced.
+          expect(
+            stats.requestId,
+            equals(store.reservedRequestIds['idem-stats']),
+          );
+          expect(stats.requestId, isNotNull);
+          // actor = the acting human user's UUID from the verified scope.
+          expect(
+            stats.actorUserId,
+            equals('11111111-1111-4111-8111-111111111111'),
+          );
+          // premium tier routes to sonnet; provider derived from model id.
+          expect(stats.modelId, equals('claude-sonnet-4-6'));
+          expect(stats.provider, equals('anthropic'));
+          expect(stats.modelVersion, isNull);
+          // RecordingLlmProvider returns outputTokens=12; input estimate 40.
+          expect(stats.promptTokenCount, equals(40));
+          expect(stats.completionTokenCount, equals(12));
+          // cost = final estimate (9 + provider 1) cents -> $0.10.
+          expect(stats.costUsd, closeTo(0.10, 1e-9));
+          // measured wall-clock latency is strictly positive.
+          expect(stats.latencyMs, isNotNull);
+          expect(stats.latencyMs! > 0, isTrue);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke idempotent replay writes NO duplicate '
+        'proxy_request_stats row', () async {
+      await withRealHttp(() async {
+        final store = InMemoryAccountingStore.open();
+        final llm = RecordingLlmProvider();
+        await spinUpServer(accountingStore: store, llmProvider: llm);
+        try {
+          verifier.claims = defaultUuidProxyClaims();
+          final uri = baseUri.resolve(advisorSmokePath);
+          final first = await httpGet(
+            client,
+            uri,
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-stats-replay',
+            },
+          );
+          final second = await httpGet(
+            client,
+            uri,
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-stats-replay',
+            },
+          );
+
+          expect(first.statusCode, equals(200));
+          expect(second.statusCode, equals(200));
+          final replay = jsonDecode(second.body) as Map<String, Object?>;
+          expect(replay['idempotent_replay'], isTrue);
+          // The replay early-returns before completeRequest, so exactly one
+          // completion and one stats row exist across the two calls.
+          expect(store.completeCalls, equals(1));
+          expect(store.recordedStats, hasLength(1));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke degraded (breaker-open) path still writes a '
+        'success stats row with zero provider tokens', () async {
+      await withRealHttp(() async {
+        final store = InMemoryAccountingStore.open();
+        final llm = RecordingLlmProvider();
+        final breaker = CircuitBreaker(providerId: 'anthropic')
+          ..recordFailure(FailureKind.unknown)
+          ..recordFailure(FailureKind.unknown)
+          ..recordFailure(FailureKind.unknown);
+        final pipeline = AdvisorRequestPipeline(
+          breaker: breaker,
+          cache: const AlwaysMissAdvisorResponseCache(),
+        );
+        await spinUpServer(
+          accountingStore: store,
+          llmProvider: llm,
+          advisorRequestPipeline: pipeline,
+        );
+        try {
+          verifier.claims = defaultUuidProxyClaims();
+          final response = await httpGet(
+            client,
+            baseUri.resolve(advisorSmokePath),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-stats-degraded',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          expect(store.recordedStats, hasLength(1));
+          final stats = store.lastStats!;
+          // The request itself completed (graceful refusal), so the proxy
+          // outcome is a success; no provider call -> zero tokens, $0 cost.
+          expect(stats.resultStatus, equals('success'));
+          expect(stats.promptTokenCount, equals(0));
+          expect(stats.completionTokenCount, equals(0));
+          expect(stats.costUsd, closeTo(0.0, 1e-9));
+          expect(llm.completeCalls, equals(0));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke writes proxy_request_stats for every LLM '
+        'usage class via the one shared completion path', () async {
+      // advisor_qa / coach_qa / wf_pl / wf_schedule all funnel through the
+      // same accounting completion; the writer keys off the usage_class
+      // parameter, not a per-class handler.
+      for (final usageClass in const <String>[
+        'advisor_qa',
+        'coach_qa',
+        'wf_pl',
+        'wf_schedule',
+      ]) {
+        await withRealHttp(() async {
+          final store = InMemoryAccountingStore.open();
+          final llm = RecordingLlmProvider();
+          await spinUpServer(accountingStore: store, llmProvider: llm);
+          try {
+            verifier.claims = defaultUuidProxyClaims();
+            final response = await httpGet(
+              client,
+              baseUri
+                  .resolve(advisorSmokePath)
+                  .replace(
+                    queryParameters: <String, String>{
+                      'usage_class': usageClass,
+                    },
+                  ),
+              authorization: 'Bearer fake.token',
+              headers: <String, String>{
+                'Idempotency-Key': 'idem-class-$usageClass',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            expect(store.recordedStats, hasLength(1));
+            expect(store.lastStats!.usageClass, equals(usageClass));
+            expect(store.lastStats!.resultStatus, equals('success'));
+          } finally {
+            await shutDown();
+          }
+        });
+      }
     });
 
     test(
