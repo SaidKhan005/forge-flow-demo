@@ -8335,6 +8335,44 @@ abstract class DebugConsoleAdminProxyGateway {
   });
 }
 
+/// The calendar-month bucket the `usage_logs`-backed cost surfaces
+/// aggregate over.
+///
+/// `public.usage_logs` is a MONTHLY rollup — every row's `period_start`
+/// is `date_trunc('month', ...)`, so the finest honest cost grain is one
+/// whole calendar month. The only meaningful selections are therefore
+/// the current month or the immediately preceding one; 24h / 7d /
+/// arbitrary-date windows would have to fabricate daily data and are
+/// intentionally NOT offered (Metric Honesty Doctrine). [offsetMonths]
+/// is the number of whole months to subtract from the current
+/// `date_trunc('month', now())` lower bound (0 = current, 1 = previous).
+enum ObservabilityMonth {
+  current(0),
+  previous(1);
+
+  const ObservabilityMonth(this.offsetMonths);
+
+  /// Whole months to subtract from `date_trunc('month', now())` to reach
+  /// this bucket's lower bound.
+  final int offsetMonths;
+}
+
+/// Parses the `month=` query value into an [ObservabilityMonth].
+///
+/// `current` and `previous` map to their enum cases; ANY other value —
+/// missing, blank, or garbage — clamps to [ObservabilityMonth.current].
+/// The cost surfaces are never silently left unfiltered, and an unknown
+/// value can never widen the window beyond a single honest month.
+ObservabilityMonth parseObservabilityMonth(String? raw) {
+  switch (raw?.trim().toLowerCase()) {
+    case 'previous':
+      return ObservabilityMonth.previous;
+    case 'current':
+    default:
+      return ObservabilityMonth.current;
+  }
+}
+
 abstract class ObservabilityAdminProxyGateway {
   Future<Map<String, Object?>> fetch({
     required String actorUserId,
@@ -8344,6 +8382,7 @@ abstract class ObservabilityAdminProxyGateway {
     String? operatorId,
     String? locationId,
     List<String>? locationIds,
+    ObservabilityMonth month,
   });
 }
 
