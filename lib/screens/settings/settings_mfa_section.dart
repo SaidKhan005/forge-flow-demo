@@ -4,6 +4,8 @@
 // passes a proxy-backed MfaOperationsGateway; demo/test paths may explicitly
 // allow the in-memory fallback.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -113,6 +115,15 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   _EnrollmentStage _enrollStage = _EnrollmentStage.idle;
   TotpEnrollmentSetup? _pendingSetup;
 
+  // One caller-stable idempotency key per enroll attempt, minted when
+  // begin starts and reused on the matching confirm so a retried
+  // confirm replays against the same proxy `proxy_requests` UNIQUE row
+  // (CLAUDE.md Proxy & API Conventions: every proxy write is
+  // idempotent). A fresh enroll attempt mints a new key. Stored
+  // alongside `_pendingSetup`; cleared whenever the setup is cleared.
+  String? _pendingIdempotencyKey;
+  int _idempotencyCounter = 0;
+
   @override
   void initState() {
     super.initState();
@@ -140,6 +151,17 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
             ? DemoMfaOperationsGateway()
             : const _UnavailableMfaOperationsGateway());
     _actor = widget.actor ?? kDemoMfaActorContext;
+  }
+
+  // Mirrors the admin My-account shape
+  // (`'<prefix>-<action>-<ts36>-<rand36>-<counter>'`,
+  // `Random.secure().nextInt(0x7fffffff)`) so begin + confirm of one
+  // enroll attempt carry one stable key. No `1 << 32`.
+  String _mintIdempotencyKey(String action) {
+    _idempotencyCounter += 1;
+    final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
+    return 'mobile-settings-mfa-$action-$ts-$r-$_idempotencyCounter';
   }
 
   @override
@@ -185,6 +207,9 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   }
 
   Future<void> _onBeginEnrollment() async {
+    // Mint one key for the whole begin -> confirm action chain. A fresh
+    // enroll attempt always mints a new key here.
+    final enrollKey = _mintIdempotencyKey('enroll');
     setState(() {
       _busyEnroll = true;
       _errorCode = null;
@@ -200,6 +225,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           authorizationIdToken: _actor.authorizationIdToken,
           userEmail: _actor.userEmail,
           issuerName: _actor.issuerName,
+          idempotencyKey: enrollKey,
         ),
       );
       if (!mounted) return;
@@ -207,6 +233,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
         _busyEnroll = false;
         _enrollStage = _EnrollmentStage.scanning;
         _pendingSetup = setup;
+        _pendingIdempotencyKey = enrollKey;
         _codeController.clear();
       });
     } on MfaOperationRejected catch (rejected) {
@@ -246,6 +273,9 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           factorId: pending.factorId,
           oneTimeCode: code,
           issuerName: _actor.issuerName,
+          // Reuse the begin key so a retried confirm replays the SAME
+          // proxy_requests UNIQUE row instead of minting a fresh write.
+          idempotencyKey: _pendingIdempotencyKey ?? '',
         ),
       );
       if (!mounted) return;
@@ -253,6 +283,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
         _busyEnroll = false;
         _enrollStage = _EnrollmentStage.idle;
         _pendingSetup = null;
+        _pendingIdempotencyKey = null;
         _codeController.clear();
         _optimisticFactors = _mergeOptimisticFactor(
           MfaFactorSummary(
@@ -280,6 +311,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
     setState(() {
       _enrollStage = _EnrollmentStage.idle;
       _pendingSetup = null;
+      _pendingIdempotencyKey = null;
       _codeController.clear();
       _errorCode = null;
       _errorMessage = null;
@@ -1022,10 +1054,17 @@ class DemoMfaOperationsGateway implements MfaOperationsGateway {
   final List<MfaRemovalRequestSummary> _removalRequests =
       <MfaRemovalRequestSummary>[];
 
+  /// Additive capture of the begin / confirm commands this demo gateway
+  /// received. Lets walkthrough + tests observe the caller-stable
+  /// idempotency keys without changing demo behavior.
+  final List<MfaTotpBeginCommand> beginCommands = <MfaTotpBeginCommand>[];
+  final List<MfaTotpConfirmCommand> confirmCommands = <MfaTotpConfirmCommand>[];
+
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment(
     MfaTotpBeginCommand command,
   ) async {
+    beginCommands.add(command);
     if (_factors.isNotEmpty) {
       throw const MfaOperationRejected(
         code: 'mfa_factor_already_enrolled',
@@ -1045,6 +1084,7 @@ class DemoMfaOperationsGateway implements MfaOperationsGateway {
   Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
     MfaTotpConfirmCommand command,
   ) async {
+    confirmCommands.add(command);
     const factorId = 'demo-totp-factor';
     _factors
       ..clear()

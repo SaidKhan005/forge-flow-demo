@@ -83,6 +83,95 @@ void main() {
     });
 
     test(
+      'begin and confirm forward the caller idempotency key as a header',
+      () async {
+        final fake = _FakeMfaHttpClient(
+          response: const ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'factor_id': 'factor-session-1',
+              'secret_base32': 'JBSWY3DPEHPK3PXP',
+              'otp_auth_url': 'otpauth://totp/Forge:user@example.test',
+            },
+          ),
+        );
+        final gateway = ProxyMfaOperationsGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        await gateway.beginTotpEnrollment(
+          const MfaTotpBeginCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            userEmail: 'user@example.test',
+            issuerName: 'Forge & Flow',
+            idempotencyKey: 'enroll-key-1',
+          ),
+        );
+        expect(
+          fake.posts.single.headers['Idempotency-Key'],
+          equals('enroll-key-1'),
+        );
+
+        await gateway.confirmTotpEnrollment(
+          const MfaTotpConfirmCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            factorId: 'factor-session-1',
+            oneTimeCode: '123456',
+            issuerName: 'Forge & Flow',
+            idempotencyKey: 'enroll-key-1',
+          ),
+        );
+        // Same key reused on confirm (one stable key per enroll chain).
+        expect(
+          fake.posts.last.headers['Idempotency-Key'],
+          equals('enroll-key-1'),
+        );
+      },
+    );
+
+    test(
+      'begin without an idempotency key omits the header (server-side path)',
+      () async {
+        final fake = _FakeMfaHttpClient(
+          response: const ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'factor_id': 'factor-session-1',
+              'secret_base32': 'JBSWY3DPEHPK3PXP',
+              'otp_auth_url': 'otpauth://totp/Forge:user@example.test',
+            },
+          ),
+        );
+        final gateway = ProxyMfaOperationsGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        await gateway.beginTotpEnrollment(
+          const MfaTotpBeginCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            userEmail: 'user@example.test',
+            issuerName: 'Forge & Flow',
+          ),
+        );
+
+        expect(
+          fake.posts.single.headers.containsKey('Idempotency-Key'),
+          isFalse,
+        );
+      },
+    );
+
+    test(
       'non-200 response maps to MfaOperationRejected with retry metadata',
       () async {
         final retryAt = DateTime.utc(2026, 4, 28, 12, 1);

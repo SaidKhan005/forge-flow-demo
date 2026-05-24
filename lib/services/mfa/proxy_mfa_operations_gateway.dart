@@ -39,7 +39,7 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
     final response = await _post(totpBeginPath, <String, Object?>{
       'user_email': command.userEmail,
       'issuer_name': command.issuerName,
-    });
+    }, idempotencyKey: _idempotencyKeyOrNull(command.idempotencyKey));
     _expectStatus(response, 200);
     final factorId = _readString(response.body['factor_id']);
     final secretBase32 = _readString(response.body['secret_base32']);
@@ -169,7 +169,7 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
       'factor_id': command.factorId,
       'one_time_code': command.oneTimeCode,
       'issuer_name': command.issuerName,
-    });
+    }, idempotencyKey: _idempotencyKeyOrNull(command.idempotencyKey));
     _expectStatus(response, 200);
     final factorId = _readString(response.body['factor_id']);
     if (factorId == null) {
@@ -179,6 +179,14 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
       );
     }
     return MfaTotpConfirmCompleted(factorId: factorId);
+  }
+
+  /// Normalizes a command's idempotency key: a blank key (the
+  /// server-side default) yields `null` so the `Idempotency-Key` header
+  /// stays absent, while a real caller-minted key is trimmed and sent.
+  static String? _idempotencyKeyOrNull(String idempotencyKey) {
+    final trimmed = idempotencyKey.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   Future<ProxyAuthOperationsResponse> _post(
