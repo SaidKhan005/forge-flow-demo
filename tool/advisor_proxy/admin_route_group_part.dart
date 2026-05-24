@@ -393,6 +393,13 @@ Future<void> _routeObservabilityAdmin({
     min: 1,
     max: 100,
   );
+  // `usage_logs` is a monthly rollup, so the only honest cost windows
+  // are the current calendar month and the immediately preceding one.
+  // `parseObservabilityMonth` maps `current`/`previous` to their enum
+  // cases and clamps a missing or unrecognized value to `current` — an
+  // unknown `month=` value can never widen the cost surfaces beyond one
+  // honest month.
+  final month = parseObservabilityMonth(params['month']);
   final payload = await gateway.fetch(
     actorUserId: actorUserId,
     adminReason: 'admin.observability.GET:$actorUserId:fetch',
@@ -401,6 +408,7 @@ Future<void> _routeObservabilityAdmin({
     operatorId: _nonBlankString(params['operator_id']),
     locationId: scopedLocationId,
     locationIds: scopedLocationIds.isEmpty ? null : scopedLocationIds,
+    month: month,
   );
   _writeJson(response, 200, payload);
 }

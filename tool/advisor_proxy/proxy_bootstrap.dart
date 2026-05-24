@@ -9617,6 +9617,7 @@ class RepositoryObservabilityAdminProxyGateway
     String? operatorId,
     String? locationId,
     List<String>? locationIds,
+    ObservabilityMonth month = ObservabilityMonth.current,
   }) {
     return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
       final asOf = _now().toUtc();
@@ -9627,12 +9628,24 @@ class RepositoryObservabilityAdminProxyGateway
             ? null
             : locationIds,
       };
+      // `usage_logs`-backed cost producers also carry the month bound.
+      // `@month_offset` is the number of whole months to subtract from
+      // `date_trunc('month', now())` to reach the selected bucket's lower
+      // edge (0 = current, 1 = previous). It is added ONLY here — the
+      // non-cost producers below keep the bare `scopeParams` because the
+      // executor's named-SQL binding rejects an unreferenced parameter,
+      // and "month" does not meaningfully apply to dormancy / cap-events
+      // / graph / Cloud Run / projection retries anyway.
+      final costScopeParams = <String, Object?>{
+        ...scopeParams,
+        'month_offset': month.offsetMonths,
+      };
       final costRows = await exec.query(
         _observabilityCostTelemetrySql,
         parameters: <String, Object?>{
           'query_class': queryClassFilter,
           'limit': costTelemetryLimit,
-          ...scopeParams,
+          ...costScopeParams,
         },
       );
       final costTotal = costRows.isEmpty
@@ -9640,21 +9653,21 @@ class RepositoryObservabilityAdminProxyGateway
           : _adminInt(costRows.first['total_count']);
       final cacheRows = await exec.query(
         _observabilityCacheHitSql,
-        parameters: scopeParams,
+        parameters: costScopeParams,
       );
       final modelRows = await exec.query(
         _observabilityModelMixSql,
-        parameters: scopeParams,
+        parameters: costScopeParams,
       );
       final batchRows = await exec.query(
         _observabilityBatchShareSql,
-        parameters: scopeParams,
+        parameters: costScopeParams,
       );
       final topExpensiveRows = await exec.query(
         _observabilityTopExpensiveSql,
         parameters: <String, Object?>{
           'axis_limit': _topExpensiveAxisLimit,
-          ...scopeParams,
+          ...costScopeParams,
         },
       );
       final dormancyRows = await exec.query(
@@ -10039,7 +10052,10 @@ with rows as (
     max(o.business_name) as business_name
   from public.usage_logs l
   join public.operators o on o.operator_id = l.operator_id
-  where l.period_start >= date_trunc('month', now() - interval '30 days')
+  where l.period_start
+        >= date_trunc('month', now()) - (@month_offset::int * interval '1 month')
+    and l.period_start
+        < date_trunc('month', now()) - ((@month_offset::int - 1) * interval '1 month')
     and (@query_class::text is null or l.query_class = @query_class)
     and (@operator_id::uuid is null or l.operator_id = @operator_id::uuid)
     and (@location_id::uuid is null or l.location_id = @location_id::uuid)
@@ -10071,8 +10087,9 @@ limit @limit::int
 /// `period_start` is `date_trunc('month', ...)`, so the finest cost
 /// grain available is one calendar month. There is NO per-day cost
 /// signal, so honest `1d` / `7d` rolling windows cannot be produced.
-/// This producer therefore computes spend for the CURRENT month only
-/// and maps every row onto the `30d` window the consumer model
+/// This producer therefore computes spend for ONE whole calendar month
+/// — the bucket selected by `@month_offset` (0 = current, 1 = previous)
+/// — and maps every row onto the `30d` window the consumer model
 /// (`TopExpensiveEntry`) already understands. The gateway leaves the
 /// `1d` and `7d` windows empty rather than inventing daily numbers
 /// (Metric Honesty Doctrine).
@@ -10103,7 +10120,10 @@ with scoped as (
     o.business_name
   from public.usage_logs l
   join public.operators o on o.operator_id = l.operator_id
-  where l.period_start >= date_trunc('month', now())
+  where l.period_start
+        >= date_trunc('month', now()) - (@month_offset::int * interval '1 month')
+    and l.period_start
+        < date_trunc('month', now()) - ((@month_offset::int - 1) * interval '1 month')
     and (@operator_id::uuid is null or l.operator_id = @operator_id::uuid)
     and (@location_id::uuid is null or l.location_id = @location_id::uuid)
     and (
@@ -10257,7 +10277,10 @@ select
     0
   ) as hit_rate
 from public.usage_logs
-where period_start >= date_trunc('month', now() - interval '30 days')
+where period_start
+      >= date_trunc('month', now()) - (@month_offset::int * interval '1 month')
+  and period_start
+      < date_trunc('month', now()) - ((@month_offset::int - 1) * interval '1 month')
   and (@operator_id::uuid is null or operator_id = @operator_id::uuid)
   and (@location_id::uuid is null or location_id = @location_id::uuid)
   and (
@@ -10293,7 +10316,10 @@ select
     0
   ) as sonnet_share
 from public.usage_logs
-where period_start >= date_trunc('month', now() - interval '30 days')
+where period_start
+      >= date_trunc('month', now()) - (@month_offset::int * interval '1 month')
+  and period_start
+      < date_trunc('month', now()) - ((@month_offset::int - 1) * interval '1 month')
   and (@operator_id::uuid is null or operator_id = @operator_id::uuid)
   and (@location_id::uuid is null or location_id = @location_id::uuid)
   and (
@@ -10314,7 +10340,10 @@ select
     0
   ) as batch_share
 from public.usage_logs
-where period_start >= date_trunc('month', now() - interval '30 days')
+where period_start
+      >= date_trunc('month', now()) - (@month_offset::int * interval '1 month')
+  and period_start
+      < date_trunc('month', now()) - ((@month_offset::int - 1) * interval '1 month')
   and (@operator_id::uuid is null or operator_id = @operator_id::uuid)
   and (@location_id::uuid is null or location_id = @location_id::uuid)
   and (

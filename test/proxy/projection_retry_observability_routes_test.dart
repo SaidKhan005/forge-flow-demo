@@ -38,6 +38,10 @@ void main() {
               <String>['loc-a', 'loc-b'],
             ]),
           );
+          // No `month=` param → the route clamps to the current month.
+          expect(gateway.months, equals(<ObservabilityMonth>[
+            ObservabilityMonth.current,
+          ]));
 
           final projectionRetries =
               response.body['projection_retries'] as Map<String, Object?>;
@@ -93,6 +97,65 @@ void main() {
           await ctx.server.close(force: true);
         }
       });
+    });
+  });
+
+  group('observability admin route month= parsing', () {
+    // `usage_logs` is a monthly rollup, so the only honest cost windows
+    // are the current and the immediately preceding calendar month. The
+    // route maps `current`/`previous` through and clamps everything else
+    // (missing, blank, garbage, mixed-case typos) to `current`.
+    Future<ObservabilityMonth> recordedMonthFor(String? monthQuery) async {
+      return _withRealHttp(() async {
+        final gateway = _RecordingObservabilityGateway();
+        final ctx = await _spinUp(
+          gateway: gateway,
+          claims: const ProxyJwtClaims(
+            userId: 'support-user',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final uri = monthQuery == null
+              ? ctx.baseUri.resolve(adminObservabilityPath)
+              : ctx.baseUri.resolve('$adminObservabilityPath?month=$monthQuery');
+          final response = await _httpGet(ctx.client, uri);
+          expect(response.statusCode, equals(200));
+          expect(gateway.calls, equals(1));
+          return gateway.months.single;
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    }
+
+    test('month=current maps to current', () async {
+      expect(await recordedMonthFor('current'), ObservabilityMonth.current);
+    });
+
+    test('month=previous maps to previous', () async {
+      expect(await recordedMonthFor('previous'), ObservabilityMonth.previous);
+    });
+
+    test('missing month clamps to current', () async {
+      expect(await recordedMonthFor(null), ObservabilityMonth.current);
+    });
+
+    test('blank month clamps to current', () async {
+      expect(await recordedMonthFor(''), ObservabilityMonth.current);
+    });
+
+    test('garbage month clamps to current (never a wider window)', () async {
+      expect(await recordedMonthFor('24h'), ObservabilityMonth.current);
+      expect(await recordedMonthFor('7d'), ObservabilityMonth.current);
+      expect(await recordedMonthFor('last-quarter'), ObservabilityMonth.current);
+    });
+
+    test('mixed-case PREVIOUS still maps to previous', () async {
+      expect(await recordedMonthFor('PREVIOUS'), ObservabilityMonth.previous);
     });
   });
 }
@@ -155,6 +218,7 @@ class _RecordingObservabilityGateway implements ObservabilityAdminProxyGateway {
   final operatorIds = <String?>[];
   final locationIds = <String?>[];
   final locationIdLists = <List<String>?>[];
+  final months = <ObservabilityMonth>[];
 
   @override
   Future<Map<String, Object?>> fetch({
@@ -165,12 +229,14 @@ class _RecordingObservabilityGateway implements ObservabilityAdminProxyGateway {
     String? operatorId,
     String? locationId,
     List<String>? locationIds,
+    ObservabilityMonth month = ObservabilityMonth.current,
   }) async {
     calls += 1;
     actorUserIds.add(actorUserId);
     operatorIds.add(operatorId);
     this.locationIds.add(locationId);
     locationIdLists.add(locationIds);
+    months.add(month);
     return <String, Object?>{
       'as_of': '2026-05-19T12:00:00.000Z',
       'contract': 'admin_observability.v1',

@@ -53,12 +53,48 @@ class ObservabilityAdminGatewayError implements Exception {
       'ObservabilityAdminGatewayError($statusCode/$errorCode): $message';
 }
 
+/// The time bucket the cost surfaces aggregate over.
+///
+/// `usage_logs` is a MONTHLY rollup (each row's `period_start` is
+/// `date_trunc('month', ...)`), so the only HONEST choices are a whole
+/// calendar month: the current one or the immediately preceding one.
+/// There is NO per-day cost signal, so 24h / 7d / arbitrary-date ranges
+/// are intentionally NOT offered (Metric Honesty Doctrine). The wire
+/// value is the lowercase enum name (`current` / `previous`).
+enum ObservabilityMonth {
+  /// `period_start` falls in the current calendar month.
+  current,
+
+  /// `period_start` falls in the immediately preceding calendar month.
+  previous,
+}
+
+/// Maps an [ObservabilityMonth] to its `month=` query value.
+extension ObservabilityMonthWire on ObservabilityMonth {
+  String get wireValue {
+    switch (this) {
+      case ObservabilityMonth.current:
+        return 'current';
+      case ObservabilityMonth.previous:
+        return 'previous';
+    }
+  }
+}
+
 /// Bounded request shape for the observability fetch. Cost telemetry
 /// is the only large surface, so the gateway exposes a server-side
 /// [costTelemetryLimit] (clamped to
 /// [kObservabilityCostTelemetryLimit] by the proxy) and an optional
 /// [queryClassFilter] so the operator can scope the cost table to a
 /// single `query_class`. The other surfaces are small by construction.
+///
+/// [month] selects the calendar-month bucket for the `usage_logs`-backed
+/// cost surfaces (cost telemetry, top spenders, cache-hit, model-mix,
+/// batch share). It defaults to [ObservabilityMonth.current]. Because
+/// `usage_logs` is a monthly rollup, only `current` and `previous` are
+/// meaningful; finer windows are intentionally absent (see
+/// [ObservabilityMonth]). The non-cost surfaces (cap-event recent list,
+/// dormancy, graph, Cloud Run, projection retries) ignore [month].
 @immutable
 class ObservabilityFetchRequest {
   const ObservabilityFetchRequest({
@@ -67,6 +103,7 @@ class ObservabilityFetchRequest {
     this.operatorId,
     this.locationId,
     this.locationIds = const <String>{},
+    this.month = ObservabilityMonth.current,
   });
 
   final int costTelemetryLimit;
@@ -74,11 +111,13 @@ class ObservabilityFetchRequest {
   final String? operatorId;
   final String? locationId;
   final Set<String> locationIds;
+  final ObservabilityMonth month;
 
   Map<String, String> toQueryParameters() {
     return <String, String>{
       'cost_telemetry_limit':
           '${costTelemetryLimit.clamp(1, kObservabilityCostTelemetryLimit)}',
+      'month': month.wireValue,
       if (queryClassFilter != null && queryClassFilter!.isNotEmpty)
         'query_class': queryClassFilter!,
       if (operatorId != null && operatorId!.isNotEmpty)
