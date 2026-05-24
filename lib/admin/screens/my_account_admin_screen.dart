@@ -1855,9 +1855,13 @@ class _AdminActiveSessionsDialogState
 
 /// The "Audit log" card, mirroring the operator-web My account Audit
 /// log card: a "View audit log" button. On admin the button navigates
-/// to the full account Audit log page (AccountAuditLogAdminScreen) via
-/// [MyAccountAdminScreen.onOpenAuditLog]; that page reads the same
-/// self-scoped `GET /v1/auth/audit-log` events.
+/// (via [MyAccountAdminScreen.onOpenAuditLog]) to the existing
+/// "Security, audit, and sessions" surface, where the admin picks a
+/// business and reviews its audit history, active sessions, and
+/// support actions. The admin's OWN sign-in / password / two-factor
+/// history lives in the Security card's "Recent sign-in activity"
+/// above, so this card is a jump-off to the business audit, not a
+/// second copy of the personal history.
 class _AdminAuditLogCard extends StatelessWidget {
   const _AdminAuditLogCard({this.onOpenAuditLog});
 
@@ -1872,8 +1876,10 @@ class _AdminAuditLogCard extends StatelessWidget {
       cardKey: const Key('admin_my_account_audit_log_card'),
       title: 'Audit log',
       headerExplainer:
-          'The audit log shows sign-in, password, two-factor sign-in, and '
-          'profile events for your admin account.',
+          'Open the audit log to review activity, active sessions, and '
+          'support actions for a business you choose. You pick a business '
+          'first, then see its full audit history. Your own sign-in '
+          'history is in Security, under Recent sign-in activity.',
       child: Align(
         alignment: Alignment.centerLeft,
         child: SizedBox(
