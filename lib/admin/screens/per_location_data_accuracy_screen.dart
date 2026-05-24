@@ -1,13 +1,37 @@
 // Phase 8 spine-bridge Lane .C - F&F Ops Console "Data Accuracy" tab.
 //
-// Tab 1 of the per-location data accuracy admin surface. Operator
-// picks covers source per daypart + wage source on their own web
-// console (Lane .B); this screen is the cross-operator view F&F
-// support uses to inspect / override those settings + audit the
-// trail.
+// Admin-web UX parity: this screen is a faithful, scope-driven replica
+// of the operator-web data-accuracy data-SOURCE controls
+// (`lib/operator_web/screens/data_accuracy_screen.dart`) for the
+// selected location, edited the web way (inline toggles / cards, not
+// the old pop-up dialogs). The admin scope selector (the
+// `AdminSetupWorkspace` scope-tree pane) drives it: a single location
+// scope edits THAT location; a business / org-unit scope shows a
+// "pick a location" surface for the primary section (data accuracy is
+// per-location, exactly like operator-web, which always works on one
+// location).
+//
+// The multi-location override table ([PerLocationDataAccuracyTable])
+// and the audit-history panel ([DataAccuracyAuditHistoryPanel]) are
+// KEPT below the primary surface as clearly-labelled SECONDARY admin
+// extras (the table is how an admin repairs many locations at once).
+//
+// Out-of-scope by design (operator-only / admin-elsewhere): no
+// polling-tier request flow (admin manages tiers in Polling Setup /
+// Plans) and no wage-RATE editing (admin stays view-only on wage
+// rates). Only the data-SOURCE controls (which source feeds covers /
+// wages, walk-in handling) are in scope here.
 //
 // Authority: docs/contracts/data_accuracy_settings_contract.md,
-// "Tab 1: Data Accuracy (per-location overrides)" section.
+// "Tab 1: Data Accuracy (per-location overrides)" section;
+// memory/admin_web_ux_parity.md.
+//
+// Reuses operator-web's PURE PRESENTATIONAL data-accuracy widgets
+// (`CoversSourceToggle`, `WageSourceToggle`, `WalkInHandlingCard`,
+// `CoversManualEntryCard` — Flutter + theme + domain models only, no
+// operator-web session / gateway) wired to the admin
+// [DataAccuracyAdminGateway] via their `onChanged` callbacks. Same
+// reuse precedent as the Timing slice's `ServicePeriodEditor`.
 //
 // Symmetric with [PollingAndPricingAdminScreen] (Tab 2) - both ride
 // the [DataAccuracyAdminGateway] so the demo + production wiring are
@@ -17,8 +41,12 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/console/console_screen_body.dart';
+import '../../widgets/console/console_screen_header.dart';
+import '../../widgets/console/console_surface.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
+import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/service_period_definition_resolver.dart';
 import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
@@ -26,9 +54,16 @@ import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
-import '../widgets/admin_scope_notice_adapter.dart';
-import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
-import '../widgets/admin_hierarchy_scope_prompt.dart';
+// Reuse operator-web's PURE PRESENTATIONAL data-accuracy widgets (each
+// imports only Flutter + theme + domain/integration models + the
+// shared console kit — NO operator-web session / gateway), so the
+// admin primary surface renders byte-identical source controls to
+// operator-web. Sanctioned by the slice guardrail allowing reuse of
+// dependency-free web sub-widgets.
+import 'package:forge_and_flow/operator_web/widgets/covers_manual_entry_card.dart';
+import 'package:forge_and_flow/operator_web/widgets/covers_source_toggle.dart';
+import 'package:forge_and_flow/operator_web/widgets/walk_in_handling_card.dart';
+import 'package:forge_and_flow/operator_web/widgets/wage_source_toggle.dart';
 import '../widgets/data_accuracy_audit_history_panel.dart';
 import '../widgets/per_location_data_accuracy_table.dart';
 
@@ -81,7 +116,6 @@ class _PerLocationDataAccuracyScreenState
       const <DataAccuracyAdminAuditEvent>[];
   late AdminHierarchyScopeIntent? _scope = _decoratedInitialScope;
   AdminHierarchyScopeIntent? _lastHandoffScope;
-  bool _showScopePrompt = false;
   int _refreshGeneration = 0;
 
   AdminHierarchyScopeIntent? get _rawInitialScope =>
@@ -113,7 +147,6 @@ class _PerLocationDataAccuracyScreenState
       _lastHandoffScope = handoffScope;
       if (handoffScope != null) {
         _scope = _decorateScope(handoffScope);
-        _showScopePrompt = false;
       }
     }
   }
@@ -124,7 +157,6 @@ class _PerLocationDataAccuracyScreenState
     if (widget.initialScope != oldWidget.initialScope ||
         widget.initialHierarchyScope != oldWidget.initialHierarchyScope) {
       _scope = _decoratedInitialScope;
-      _showScopePrompt = false;
     } else if (widget.editingEnabled != oldWidget.editingEnabled &&
         _scope != null) {
       _scope = _decorateScope(_scope!);
@@ -245,50 +277,20 @@ class _PerLocationDataAccuracyScreenState
     return Container(
       key: const Key('admin_data_accuracy_screen'),
       color: AppColors.backgroundDeep,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.showPageHeader ||
-              !widget.editingEnabled ||
-              _actionError != null)
-            Padding(
-              // Pinned header + banners keep operator-web edge insets; the
-              // scrollable body below carries its own OperatorWebScreenBody
-              // padding so it is not double-padded. Header gating unchanged.
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (widget.showPageHeader) ...[
-                    AdminPageHeader(
-                      title: 'Covers and Wage Data Accuracy',
-                      subtitle: widget.editingEnabled
-                          ? 'Review effective covers, wages, walk-ins, and audit history by location. Super admins can apply audited location repairs.'
-                          : 'Review effective covers, wages, walk-ins, and audit history by location. Normal operator edits stay in Operator Web; location repair actions are hidden for this role.',
-                      leading: widget.onBackToBusinessAccounts == null
-                          ? null
-                          : AdminBusinessAccountsBackButton(
-                              onPressed: widget.onBackToBusinessAccounts,
-                            ),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                  if (!widget.editingEnabled)
-                    const _ReadOnlyBanner(
-                      key: Key('admin_data_accuracy_readonly_banner'),
-                    ),
-                  if (_actionError != null)
-                    _ErrorBanner(
-                      key: const Key('admin_data_accuracy_action_error'),
-                      message: _actionError!,
-                    ),
-                ],
-              ),
-            ),
-          Expanded(child: _buildBody()),
-        ],
-      ),
+      child: _buildBody(),
     );
+  }
+
+  List<Widget> _buildHeaderActions() {
+    final children = <Widget>[];
+    if (widget.onBackToBusinessAccounts != null) {
+      children.add(
+        AdminBusinessAccountsBackButton(
+          onPressed: widget.onBackToBusinessAccounts,
+        ),
+      );
+    }
+    return children;
   }
 
   List<DataAccuracyAdminRow> get _visibleRows {
@@ -319,28 +321,6 @@ class _PerLocationDataAccuracyScreenState
         .toList(growable: false);
   }
 
-  String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
-
-  /// Mirrors PR #485's `admin_timing_scope_inheritance_notice` gate
-  /// (`admin_timing_setup_screen.dart:164-182`): at a non-location
-  /// scope where exactly one location lives under the scope, return
-  /// that location's name so the inheritance-notice card can warn the
-  /// F&F admin that the displayed value is effectively a single-
-  /// location pull. Returns null when the scope is itself a location,
-  /// or when the count of covered locations is not exactly one.
-  String? get _singleCoveredLocationName {
-    final scope = _scope;
-    if (scope == null || scope.isLocationScope) return null;
-    final visible = _visibleRows;
-    final scopeIds = widget.scopeLocationIds;
-    final coveredCount = (scopeIds != null && scopeIds.isNotEmpty)
-        ? scopeIds.length
-        : visible.length;
-    if (coveredCount != 1) return null;
-    if (visible.isEmpty) return null;
-    return visible.first.operatorRef.locationName;
-  }
-
   bool _includesOperatorLocation(
     AdminHierarchyScopeIntent? scope, {
     required String operatorId,
@@ -360,54 +340,36 @@ class _PerLocationDataAccuracyScreenState
     );
   }
 
-  List<AdminHierarchyScopeIntent> get _availableScopes {
-    final selectedOperatorId = _scope?.operatorId;
-    final scopesByKey = <String, AdminHierarchyScopeIntent>{};
-
-    void add(AdminHierarchyScopeIntent scope) {
-      final decorated = _decorateScope(scope);
-      scopesByKey.putIfAbsent(decorated.cacheKey, () => decorated);
-    }
-
-    final selected = _scope;
-    if (selected != null) {
-      add(selected);
-    }
+  /// The single data-accuracy row backing the selected LOCATION scope,
+  /// or null when no location is pinned (business / org-unit scope, or
+  /// the location has no row yet). The primary web-style surface edits
+  /// exactly this row, mirroring operator-web (always one location).
+  DataAccuracyAdminRow? get _selectedLocationRow {
+    final scope = _scope;
+    if (scope == null || !scope.isLocationScope) return null;
+    final locationId = scope.locationId;
+    if (locationId == null || locationId.isEmpty) return null;
     for (final row in _rows) {
-      final ref = row.operatorRef;
-      if (selectedOperatorId != null && ref.operatorId != selectedOperatorId) {
-        continue;
+      if (row.operatorRef.operatorId == scope.operatorId &&
+          row.operatorRef.locationId == locationId) {
+        return row;
       }
-      add(
-        AdminHierarchyScopeIntent.business(
-          operatorId: ref.operatorId,
-          operatorName: ref.businessName,
-        ),
-      );
-      add(
-        AdminHierarchyScopeIntent.location(
-          operatorId: ref.operatorId,
-          locationId: ref.locationId,
-          operatorName: ref.businessName,
-          locationName: ref.locationName,
-        ),
-      );
     }
-    return scopesByKey.values.toList(growable: false);
+    return null;
   }
 
-  void _selectScope(AdminHierarchyScopeIntent scope) {
-    setState(() {
-      _scope = _decorateScope(scope);
-      _showScopePrompt = false;
-    });
-  }
-
-  void _clearScope() {
-    setState(() {
-      _scope = null;
-      _showScopePrompt = false;
-    });
+  /// Resolver-ordered service periods for the selected location's row.
+  /// Falls back to the canonical demo definitions when the row has no
+  /// configured periods yet, so the covers cards always render an
+  /// honest period set (mirrors operator-web's loader fallback).
+  List<ServicePeriodDefinition> _servicePeriodsForRow(
+    DataAccuracyAdminRow row,
+  ) {
+    final configured = row.configuredServicePeriods;
+    final defs = configured.isNotEmpty
+        ? configured
+        : ServicePeriodDefinitionResolver.demoDefinitions;
+    return ServicePeriodDefinitionResolver.ordered(defs);
   }
 
   Widget _buildBody() {
@@ -424,77 +386,50 @@ class _PerLocationDataAccuracyScreenState
         ),
       );
     }
-    if (_loadError != null) {
-      return _ErrorBanner(
-        key: const Key('admin_data_accuracy_load_error'),
-        message: _loadError!,
-      );
-    }
     return OperatorWebScreenBody(
+      scrollKey: const Key('admin_data_accuracy_screen_body'),
       maxContentWidth: 1120,
-      // Top inset is owned by the pinned header block above when the page
-      // header shows; when it is gated off (scope-pane mount) the body owns
-      // the top inset so content is not flush against the pane edge.
-      padding: EdgeInsets.fromLTRB(24, widget.showPageHeader ? 0 : 24, 24, 32),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.showScopeControls && _showScopePrompt)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: AdminHierarchyScopePrompt(
-                surfaceName: 'Covers and Wage Data Accuracy',
-                selectedScope: _scope,
-                scopes: _availableScopes,
-                onScopeSelected: _selectScope,
-                onCancel: () => setState(() => _showScopePrompt = false),
-              ),
+          OperatorWebScreenHeader(
+            icon: Icons.fact_check_outlined,
+            title: 'Data accuracy',
+            subtitle:
+                'Set where covers and labor dollars come from for the '
+                'selected location.',
+            actions: _buildHeaderActions(),
+          ),
+          const SizedBox(height: 14),
+          if (!widget.editingEnabled) ...[
+            const _ReadOnlyBanner(
+              key: Key('admin_data_accuracy_readonly_banner'),
             ),
-          if (widget.showScopeControls && _scope != null)
-            AdminHierarchyScopeBanner(
-              scope: _scope!,
-              surfaceName: 'covers and wage data accuracy',
-              onChangeScope: () =>
-                  setState(() => _showScopePrompt = !_showScopePrompt),
-              onClear: _clearScope,
+            const SizedBox(height: 4),
+          ],
+          if (_loadError != null) ...[
+            _ErrorBanner(
+              key: const Key('admin_data_accuracy_load_error'),
+              message: _loadError!,
             ),
-          if (widget.showScopeControls && _scopeRestrictionCopy != null)
-            HierarchyScopeNotice(
-              keyName: 'admin_data_accuracy_scope_notice',
-              selectedScope: adminScopeLevel(_scope!.scopeType),
-              scopeName: _scope!.displayLabel,
-              effectiveValueSummary:
-                  'Covers and wage data accuracy for the selected scope. '
-                  'Repairs are applied per location.',
-              backendOnlyHelpTitle: 'How this scope applies',
-              backendOnlyExplainer: _scopeRestrictionCopy!,
+            const SizedBox(height: 4),
+          ],
+          if (_actionError != null) ...[
+            _ErrorBanner(
+              key: const Key('admin_data_accuracy_action_error'),
+              message: _actionError!,
             ),
-          if (_singleCoveredLocationName != null)
-            // Mirrors the inheritance notice landed in PR #485 for the
-            // Timing tile (`admin_timing_scope_inheritance_notice`).
-            // Fires at business/org_unit scope when the scope covers a
-            // single location, so the F&F admin knows the displayed
-            // covers and wage data is effectively a single-location pull
-            // even though the selected scope is "broader" (HP #11 —
-            // hierarchy honesty). See B1.a in
-            // docs/archive/_execution/lane_b_features/03_execution_slices.md.
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Container(
-                key: const Key('admin_data_accuracy_scope_inheritance_notice'),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.cardGlow,
-                  border: Border.all(color: AppColors.borderSubtle, width: 1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'This scope only covers $_singleCoveredLocationName. Adjusting data accuracy here is equivalent to a per-location change. There are no other locations under this scope to inherit from.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-              ),
-            ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 4),
+          ],
+          // PRIMARY: web-style single-location source controls.
+          _buildPrimarySection(),
+          const SizedBox(height: 30),
+          // SECONDARY (admin extras): the multi-location override table
+          // + audit history. Kept available at any scope so an admin can
+          // repair many locations at once.
+          _AdminExtrasHeading(),
+          const SizedBox(height: 14),
           PerLocationDataAccuracyTable(
             rows: _visibleRows,
             editingEnabled: _locationMutationEnabled,
@@ -508,11 +443,275 @@ class _PerLocationDataAccuracyScreenState
     );
   }
 
+  /// PRIMARY web-style surface. At a location scope, renders the
+  /// operator-web data-SOURCE controls (covers source per service
+  /// period, wage source, walk-in handling, manual covers preview) for
+  /// that location. At a business / org-unit scope (or no scope),
+  /// renders a friendly "pick a location" surface, exactly like
+  /// operator-web / the admin vendor screen which always work on one
+  /// location.
+  Widget _buildPrimarySection() {
+    final scope = _scope;
+    final row = _selectedLocationRow;
+    if (scope == null || !scope.isLocationScope || row == null) {
+      return _PickLocationSurface(
+        key: const Key('admin_data_accuracy_pick_location'),
+        scope: scope,
+      );
+    }
+
+    final settings = row.settings;
+    final periods = _servicePeriodsForRow(row);
+    final locationLabel = row.operatorRef.locationName;
+    final mutationEnabled = _locationMutationEnabled;
+
+    final section = Column(
+      key: const Key('admin_data_accuracy_primary_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _SourceSummaryCard(
+          locationLabel: locationLabel,
+          businessName: row.operatorRef.businessName,
+        ),
+        const SizedBox(height: 22),
+        const _DataAccuracySectionHeading(title: 'Labor'),
+        const SizedBox(height: 14),
+        // Reused PURE operator-web wage SOURCE toggle. `bundle: null`
+        // means "no live vendor bundle on the admin row" so every
+        // source option stays selectable (admin cannot inspect the
+        // operator's live connections from this cross-tenant row). No
+        // wage-RATE editor / wage-authority calculator is wired here
+        // (admin stays view-only on rates).
+        WageSourceToggle(
+          value: settings.wageSource,
+          onChanged: (next) => _onWebWageSourceChanged(row, next),
+          bundle: null,
+          source: settings.wageSourceSource,
+        ),
+        const SizedBox(height: 30),
+        const _DataAccuracySectionHeading(title: 'Covers'),
+        const SizedBox(height: 14),
+        // Reused PURE operator-web covers-source toggle (one row per
+        // configured service period).
+        CoversSourceToggle(
+          settings: settings,
+          servicePeriods: periods,
+          onChanged: (periodId, next) =>
+              _onWebCoversSourceChanged(row, periodId, next),
+          bundle: null,
+        ),
+        if (_anyPeriodManual(settings, periods)) ...[
+          const SizedBox(height: 18),
+          // Manual daily covers numbers are operator/manager operational
+          // data entered in their own app, not an admin SOURCE setting.
+          // The card renders (web-style) so the surface matches, but it
+          // is a read-only preview here with an honest note.
+          const _ManualCoversNote(),
+          const SizedBox(height: 12),
+          AbsorbPointer(
+            child: Opacity(
+              opacity: 0.65,
+              child: CoversManualEntryCard(
+                businessDateIso: _todayIso,
+                yesterdayBusinessDateIso: _yesterdayIso(_todayIso),
+                settings: settings,
+                servicePeriods: periods,
+                onEnterCovers: (_, __) {},
+                onCopyYesterday: (_) {},
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 30),
+        const _DataAccuracySectionHeading(title: 'Walk-ins'),
+        const SizedBox(height: 14),
+        // Reused PURE operator-web walk-in handling card. Only the MODE
+        // (a source-style setting) is wired to the gateway; the daily
+        // count fields stay read-only (operator operational data).
+        AbsorbPointer(
+          absorbing: !mutationEnabled,
+          child: Opacity(
+            opacity: mutationEnabled ? 1 : 0.65,
+            child: WalkInHandlingCard(
+              mode: _widgetWalkInModeFromDomain(settings.walkInHandlingMode),
+              onModeChanged: (next) => _onWebWalkInModeChanged(row, next),
+              businessDateIso: _todayIso,
+              dailyWalkInCount: settings.dailyWalkInCountFor(_todayIso),
+              onDailyWalkInCountChanged: (_) {},
+              servicePeriods: periods,
+              source: settings.walkInHandlingModeSource,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (mutationEnabled) return section;
+    // ff_support read-only: block every write affordance in the primary
+    // surface while leaving the controls visible (the secondary table /
+    // audit still render below at full opacity).
+    return AbsorbPointer(child: Opacity(opacity: 0.65, child: section));
+  }
+
+  bool _anyPeriodManual(
+    DataAccuracySettings settings,
+    List<ServicePeriodDefinition> periods,
+  ) {
+    for (final period in periods) {
+      if (settings.coversSourceFor(period.id) == CoversSource.manual) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ── Web-style inline write handlers ──────────────────────────────
+  //
+  // Each fires `overrideDataAccuracy` (the SAME method the table's
+  // dialog edit calls) after prompting for the server-required
+  // admin_reason, so the inline web controls keep the exact audit
+  // semantics of the legacy dialog path (HP: every admin write carries
+  // a reason note).
+
+  Future<void> _onWebCoversSourceChanged(
+    DataAccuracyAdminRow row,
+    String servicePeriodId,
+    CoversSource next,
+  ) async {
+    if (!_locationMutationEnabled) return;
+    if (row.settings.coversSourceFor(servicePeriodId) == next) return;
+    final reason = await _promptAdminReason();
+    if (reason == null) return;
+    await _applyOverride(
+      row,
+      reasonNote: reason,
+      coversSourcePerServicePeriod: <String, CoversSource>{
+        servicePeriodId: next,
+      },
+    );
+  }
+
+  Future<void> _onWebWageSourceChanged(
+    DataAccuracyAdminRow row,
+    WageSource next,
+  ) async {
+    if (!_locationMutationEnabled) return;
+    if (row.settings.wageSource == next) return;
+    final reason = await _promptAdminReason();
+    if (reason == null) return;
+    await _applyOverride(row, reasonNote: reason, wageSource: next);
+  }
+
+  Future<void> _onWebWalkInModeChanged(
+    DataAccuracyAdminRow row,
+    WalkInHandlingMode next,
+  ) async {
+    if (!_locationMutationEnabled) return;
+    final domainNext = _domainWalkInModeFromWidget(next);
+    if (row.settings.walkInHandlingMode == domainNext) return;
+    final reason = await _promptAdminReason();
+    if (reason == null) return;
+    await _applyOverride(
+      row,
+      reasonNote: reason,
+      walkInHandlingMode: domainNext,
+    );
+  }
+
+  Future<void> _applyOverride(
+    DataAccuracyAdminRow row, {
+    required String reasonNote,
+    Map<String, CoversSource>? coversSourcePerServicePeriod,
+    WageSource? wageSource,
+    DataAccuracyWalkInHandlingMode? walkInHandlingMode,
+  }) async {
+    setState(() => _actionError = null);
+    try {
+      await widget.gateway.overrideDataAccuracy(
+        operatorId: row.operatorRef.operatorId,
+        locationId: row.operatorRef.locationId,
+        coversSourcePerServicePeriod: coversSourcePerServicePeriod,
+        wageSource: wageSource,
+        walkInHandlingMode: walkInHandlingMode,
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        reasonNote: reasonNote,
+      );
+      await _refresh();
+    } on DataAccuracyAdminForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Override failed: $error');
+    }
+  }
+
+  /// admin_reason capture dialog. Mirrors the Timing screen's reason
+  /// prompt (`_AdminTimingReasonDialog`): blocks empty submissions and
+  /// returns the trimmed reason on confirm, null on cancel.
+  Future<String?> _promptAdminReason() async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => const _AdminDataAccuracyReasonDialog(),
+    );
+    final trimmed = reason?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
   bool get _locationMutationEnabled {
     return _scopePolicy.allowsLocationMutation(
       _scope,
       editingEnabled: widget.editingEnabled,
     );
+  }
+}
+
+/// Today's business date in restaurant-local terms. The admin row does
+/// not carry a business-day clock, so the manual covers preview + the
+/// walk-in card use a stable string; the values shown are read-only
+/// here regardless (admins set the SOURCE, not the daily numbers).
+String get _todayIso {
+  final now = DateTime.now();
+  return '${now.year.toString().padLeft(4, '0')}-'
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
+}
+
+String _yesterdayIso(String today) {
+  final t = DateTime.parse(today);
+  final y = t.subtract(const Duration(days: 1));
+  return '${y.year.toString().padLeft(4, '0')}-'
+      '${y.month.toString().padLeft(2, '0')}-'
+      '${y.day.toString().padLeft(2, '0')}';
+}
+
+/// Maps the domain walk-in handling mode to the operator-web card's
+/// widget enum (same mapping operator-web's screen uses privately).
+WalkInHandlingMode _widgetWalkInModeFromDomain(
+  DataAccuracyWalkInHandlingMode mode,
+) {
+  switch (mode) {
+    case DataAccuracyWalkInHandlingMode.reservationsOnly:
+      return WalkInHandlingMode.reservationsOnly;
+    case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
+      return WalkInHandlingMode.walkInsAddedToReservations;
+    case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
+      return WalkInHandlingMode.walkInsTrackedSeparately;
+  }
+}
+
+DataAccuracyWalkInHandlingMode _domainWalkInModeFromWidget(
+  WalkInHandlingMode mode,
+) {
+  switch (mode) {
+    case WalkInHandlingMode.reservationsOnly:
+      return DataAccuracyWalkInHandlingMode.reservationsOnly;
+    case WalkInHandlingMode.walkInsAddedToReservations:
+      return DataAccuracyWalkInHandlingMode.walkInsAddedToReservations;
+    case WalkInHandlingMode.walkInsTrackedSeparately:
+      return DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately;
   }
 }
 
@@ -1158,6 +1357,226 @@ String _walkInHandlingLabel(DataAccuracyWalkInHandlingMode mode) {
       return 'Add walk-ins';
     case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
       return 'Track separately';
+  }
+}
+
+/// Friendly "pick a location" surface for the PRIMARY section at a
+/// business / org-unit scope (or no scope). Mirrors the admin Vendor
+/// screen's location-required panel: data accuracy is per-location, so
+/// the web-style source controls need a single location pinned. The
+/// secondary table below still works at any scope.
+class _PickLocationSurface extends StatelessWidget {
+  const _PickLocationSurface({super.key, required this.scope});
+
+  final AdminHierarchyScopeIntent? scope;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = scope;
+    final subtitle = selected == null
+        ? 'Pick a location in Business accounts to set where its covers and '
+              'labor dollars come from.'
+        : 'You selected ${selected.displayLabel}. Data accuracy is set one '
+              'location at a time, so pick a location in Business accounts to '
+              'edit its covers and labor sources. The location table below '
+              'still lets you review and repair every location under this '
+              'scope.';
+    return OperatorWebPanel(
+      key: const Key('admin_data_accuracy_pick_location_panel'),
+      title: 'Pick a location to set up data accuracy',
+      subtitle: subtitle,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(
+            Icons.place_outlined,
+            size: 18,
+            color: AppColors.sunsetDark,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Covers source, labor source, and walk-in handling are '
+              'per-location settings. Choose a single location to edit them '
+              'the same way the operator does in their own console.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small read-only summary at the top of the primary surface so the
+/// admin always sees which location the source controls write to.
+class _SourceSummaryCard extends StatelessWidget {
+  const _SourceSummaryCard({
+    required this.locationLabel,
+    required this.businessName,
+  });
+
+  final String locationLabel;
+  final String businessName;
+
+  @override
+  Widget build(BuildContext context) {
+    return OperatorWebPanel(
+      key: const Key('admin_data_accuracy_source_summary'),
+      title: 'Editing this location',
+      subtitle:
+          'Changes apply to this location only. Each save records a reason '
+          'in the operator audit log.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          AdminDetailRow(label: 'Business', value: businessName),
+          AdminDetailRow(label: 'Location', value: locationLabel),
+        ],
+      ),
+    );
+  }
+}
+
+/// Heading for the main vertical groupings ("Labor", "Covers",
+/// "Walk-ins"). Mirrors operator-web's `_DataAccuracySectionHeading`.
+class _DataAccuracySectionHeading extends StatelessWidget {
+  const _DataAccuracySectionHeading({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: AppTextStyles.display16(color: AppColors.textPrimary),
+    );
+  }
+}
+
+/// Labelled divider introducing the SECONDARY admin extras (the
+/// multi-location table + audit history) below the primary surface.
+class _AdminExtrasHeading extends StatelessWidget {
+  const _AdminExtrasHeading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const Key('admin_data_accuracy_extras_heading'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'All locations and audit history',
+          style: AppTextStyles.display16(color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Admin extras: review every location under the selected scope, '
+          'repair several at once, and see the audit trail. The controls '
+          'above edit the single selected location the web way.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+      ],
+    );
+  }
+}
+
+/// Honest note above the (read-only) manual covers preview: admins set
+/// the SOURCE; the daily manual numbers are entered by the operator or
+/// a location manager in their own app.
+class _ManualCoversNote extends StatelessWidget {
+  const _ManualCoversNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return const OperatorWebBanner(
+      key: Key('admin_data_accuracy_manual_covers_note'),
+      icon: Icons.info_outline,
+      message:
+          'A service period is set to manual covers. The operator or a '
+          'location manager types the daily numbers in their own app. This '
+          'preview is read-only here.',
+    );
+  }
+}
+
+/// admin_reason capture dialog for inline source edits. Mirrors the
+/// Timing screen's `_AdminTimingReasonDialog` (blocks empty
+/// submissions; returns the trimmed reason on confirm, null on cancel)
+/// so every web-style write keeps the server-required reason note.
+class _AdminDataAccuracyReasonDialog extends StatefulWidget {
+  const _AdminDataAccuracyReasonDialog();
+
+  @override
+  State<_AdminDataAccuracyReasonDialog> createState() =>
+      _AdminDataAccuracyReasonDialogState();
+}
+
+class _AdminDataAccuracyReasonDialogState
+    extends State<_AdminDataAccuracyReasonDialog> {
+  final TextEditingController _reasonController = TextEditingController();
+  bool _violated = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  void _onSubmit() {
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _violated = true);
+      return;
+    }
+    Navigator.of(context).pop(reason);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OperatorWebDialog(
+      key: const Key('admin_data_accuracy_reason_dialog'),
+      title: 'Reason for data accuracy change',
+      maxWidth: 460,
+      showCloseButton: false,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_data_accuracy_reason_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_data_accuracy_reason_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Confirm'),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'The operator will see this reason in their audit log. Write a '
+            'short, plain-English note about why you are changing where their '
+            'covers or labor dollars come from.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_data_accuracy_reason_field'),
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _violated ? 'Add a reason before continuing.' : null,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

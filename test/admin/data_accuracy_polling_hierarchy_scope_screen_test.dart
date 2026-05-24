@@ -72,7 +72,8 @@ void main() {
   }
 
   testWidgets(
-    'Covers and Wage Data Accuracy business scope reviews location rows only',
+    'Covers and Wage Data Accuracy business scope shows pick-a-location for '
+    'the primary surface but still lists scoped rows in the table',
     (tester) async {
       useWideViewport(tester);
       const businessScope = AdminHierarchyScopeIntent.business(
@@ -92,42 +93,35 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // Web-style replica parity: data accuracy is per-location, so a
+      // business scope shows the friendly "pick a location" surface for the
+      // PRIMARY section instead of the web source controls.
       expect(
-        find.byKey(const Key('admin_hierarchy_scope_banner')),
+        find.byKey(const Key('admin_data_accuracy_pick_location')),
         findsOneWidget,
       );
       expect(
-        find.text('Showing covers and wage data accuracy for business scope'),
-        findsOneWidget,
+        find.byKey(const Key('admin_data_accuracy_primary_section')),
+        findsNothing,
       );
-      expect(find.text('Set at this scope'), findsOneWidget);
-      expect(find.text('Effective: Business scope'), findsOneWidget);
-      expect(find.text('Review selected scope'), findsWidgets);
-      // The structured scope notice keeps the restriction guidance inside its
-      // "Section details" expander (collapsed by default). Expand it, then
-      // assert the same copy is present verbatim.
-      await tester.tap(
-        find.byKey(const Key('admin_data_accuracy_scope_notice_details_toggle')),
-      );
-      await tester.pumpAndSettle();
       expect(
-        find.textContaining('Pick a location row to apply'),
+        find.byKey(const Key('data_accuracy_covers_source_card')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('data_accuracy_wage_source_card')),
+        findsNothing,
+      );
+
+      // SECONDARY admin extras still render: the table lists the scoped
+      // operator-1 locations (and excludes operator-2's location).
+      expect(
+        find.byKey(const Key('admin_data_accuracy_table')),
         findsOneWidget,
       );
       expect(find.text('Toronto Yorkville'), findsOneWidget);
       expect(find.text('Vancouver Robson'), findsOneWidget);
       expect(find.text('Brooklyn Williamsburg'), findsNothing);
-      expect(
-        find.byKey(const Key('admin_data_accuracy_scope_override')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_data_accuracy_edit_op-1_loc-1a')),
-        findsNothing,
-      );
-      expect(find.text('Visible locations'), findsNothing);
-      expect(find.text('Manual covers'), findsNothing);
-      expect(find.text('Forecast covers'), findsNothing);
     },
   );
 
@@ -193,41 +187,55 @@ void main() {
     },
   );
 
-  testWidgets('Data Accuracy location scope keeps location edit behavior', (
-    tester,
-  ) async {
-    useWideViewport(tester);
-    const locationScope = AdminHierarchyScopeIntent.location(
-      operatorId: 'op-1',
-      locationId: 'loc-1a',
-      operatorName: 'Demo Diner Co.',
-      locationName: 'Toronto Yorkville',
-    );
+  testWidgets(
+    'Data Accuracy location scope renders the web-style primary controls '
+    'and keeps the secondary table edit behavior',
+    (tester) async {
+      useWideViewport(tester);
+      const locationScope = AdminHierarchyScopeIntent.location(
+        operatorId: 'op-1',
+        locationId: 'loc-1a',
+        operatorName: 'Demo Diner Co.',
+        locationName: 'Toronto Yorkville',
+      );
 
-    await tester.pumpWidget(
-      wrap(
-        PerLocationDataAccuracyScreen(
-          gateway: gateway(),
-          actorUserId: 'demo-super-admin',
-          initialHierarchyScope: locationScope,
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: locationScope,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Location only'), findsOneWidget);
-    expect(find.text('Effective: Per-location overrides'), findsOneWidget);
-    expect(find.text('Location controls'), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_data_accuracy_scope_notice')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_data_accuracy_edit_op-1_loc-1a')),
-      findsOneWidget,
-    );
-    expect(find.text('Vancouver Robson'), findsNothing);
-  });
+      // PRIMARY web-style source controls render for the selected location.
+      expect(
+        find.byKey(const Key('admin_data_accuracy_primary_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('data_accuracy_covers_source_card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('data_accuracy_wage_source_card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_data_accuracy_pick_location')),
+        findsNothing,
+      );
+
+      // SECONDARY admin table still offers the per-location override edit.
+      expect(
+        find.byKey(const Key('admin_data_accuracy_edit_op-1_loc-1a')),
+        findsOneWidget,
+      );
+      expect(find.text('Vancouver Robson'), findsNothing);
+    },
+  );
 
   testWidgets(
     'Polling Setup org-unit scope exposes selected-scope assignment',
@@ -457,8 +465,16 @@ void main() {
     );
   }
 
+  // Web-style replica parity: the data-accuracy screen no longer hosts the
+  // in-screen inheritance notice / scope banner (the AdminSetupWorkspace
+  // scope-tree pane owns scope selection now). At a business / org-unit
+  // scope the PRIMARY surface shows the friendly pick-a-location panel
+  // because data accuracy is per-location, exactly like operator-web. The
+  // Polling tile keeps the inheritance notice (its screen is unchanged), so
+  // the shared single-location fixtures below stay in use.
   testWidgets(
-    'Data Accuracy business scope with single covered location shows inheritance notice',
+    'Data Accuracy business scope shows pick-a-location for the primary '
+    'surface (single covered location)',
     (tester) async {
       useWideViewport(tester);
       const businessScope = AdminHierarchyScopeIntent.business(
@@ -478,18 +494,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
+        find.byKey(const Key('admin_data_accuracy_pick_location')),
         findsOneWidget,
       );
       expect(
-        find.textContaining('This scope only covers Calgary Kensington'),
-        findsOneWidget,
+        find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
+        findsNothing,
       );
     },
   );
 
   testWidgets(
-    'Data Accuracy org-unit scope with single covered location shows inheritance notice',
+    'Data Accuracy org-unit scope shows pick-a-location for the primary '
+    'surface (single covered location)',
     (tester) async {
       useWideViewport(tester);
       const orgScope = AdminHierarchyScopeIntent.orgUnit(
@@ -512,18 +529,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
+        find.byKey(const Key('admin_data_accuracy_pick_location')),
         findsOneWidget,
       );
       expect(
-        find.textContaining('This scope only covers Toronto Yorkville'),
-        findsOneWidget,
+        find.byKey(const Key('data_accuracy_covers_source_card')),
+        findsNothing,
       );
     },
   );
 
   testWidgets(
-    'Data Accuracy multi-covered scope suppresses inheritance notice',
+    'Data Accuracy multi-covered scope shows pick-a-location, no inheritance '
+    'notice',
     (tester) async {
       useWideViewport(tester);
       const businessScope = AdminHierarchyScopeIntent.business(
@@ -543,39 +561,49 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
+        find.byKey(const Key('admin_data_accuracy_pick_location')),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
         findsNothing,
       );
     },
   );
 
-  testWidgets('Data Accuracy location scope suppresses inheritance notice', (
-    tester,
-  ) async {
-    useWideViewport(tester);
-    const locationScope = AdminHierarchyScopeIntent.location(
-      operatorId: 'op-1',
-      locationId: 'loc-1a',
-      operatorName: 'Demo Diner Co.',
-      locationName: 'Toronto Yorkville',
-    );
+  testWidgets(
+    'Data Accuracy location scope renders the primary surface, no inheritance '
+    'notice',
+    (tester) async {
+      useWideViewport(tester);
+      const locationScope = AdminHierarchyScopeIntent.location(
+        operatorId: 'op-1',
+        locationId: 'loc-1a',
+        operatorName: 'Demo Diner Co.',
+        locationName: 'Toronto Yorkville',
+      );
 
-    await tester.pumpWidget(
-      wrap(
-        PerLocationDataAccuracyScreen(
-          gateway: gateway(),
-          actorUserId: 'demo-super-admin',
-          initialHierarchyScope: locationScope,
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: locationScope,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
-      findsNothing,
-    );
-  });
+      expect(
+        find.byKey(const Key('admin_data_accuracy_primary_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets(
     'Polling business scope with single covered location shows inheritance notice',

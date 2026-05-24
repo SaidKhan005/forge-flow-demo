@@ -1261,11 +1261,13 @@ Widget _buildDataAccuracy(BuildContext context) {
     final operatorScope = selectedScope.toOperatorLocationScope();
     if (source == null) {
       return PerLocationDataAccuracyScreen(
+        key: ValueKey<String>('data-accuracy-${selectedScope.cacheKey}'),
         gateway: gateway,
         actorUserId: 'demo-super-admin',
         initialScope: operatorScope,
         initialHierarchyScope: selectedScope,
         scopeLocationIds: selection.locationIds,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
         showPageHeader: false,
         showScopeControls: false,
       );
@@ -1278,12 +1280,14 @@ Widget _buildDataAccuracy(BuildContext context) {
         final session = state is AdminAuthAuthenticated ? state.session : null;
         final canEdit = _isAdminSuperAdmin(session);
         return PerLocationDataAccuracyScreen(
+          key: ValueKey<String>('data-accuracy-${selectedScope.cacheKey}'),
           gateway: gateway,
           actorUserId: session?.uid ?? 'unknown',
           editingEnabled: canEdit,
           initialScope: operatorScope,
           initialHierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
+          onBackToBusinessAccounts: onBackToBusinessAccounts,
           showPageHeader: false,
           showScopeControls: false,
         );
@@ -1293,6 +1297,7 @@ Widget _buildDataAccuracy(BuildContext context) {
 
   return AdminSetupWorkspace(
     functionTitle: 'Covers and Wage Data Accuracy',
+    showWorkspaceHeader: false,
     description:
         'Review covers, wage data, vendor filters, and audit history for the selected scope.',
     operatorGateway: operatorGateway,
