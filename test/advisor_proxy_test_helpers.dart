@@ -80,6 +80,35 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
   double? lastPlanUpdateMonthlyUsd;
   int? lastPlanUpdateFirstNSeats;
 
+  // Plans & Limits V1 Phase 4a — Pilot trial start + convert.
+  Map<String, Object?>? startPilotResult = <String, Object?>{
+    'operator': <String, Object?>{
+      'operator_id': 'op-1',
+      'subscription_tier': 'pilot',
+      'trial_mode': true,
+      'trial_expires_at': '2026-05-30T12:00:00.000Z',
+    },
+    'caps': <Map<String, Object?>>[],
+  };
+  String? lastStartPilotOperatorId;
+  int? lastStartPilotTrialDays;
+  int startPilotCalls = 0;
+
+  TrialConversionOutcome convertTrialResult = const TrialConversionOutcome(
+    operatorFound: true,
+    converted: true,
+    bundle: <String, Object?>{
+      'operator': <String, Object?>{
+        'operator_id': 'op-1',
+        'subscription_tier': 'starter',
+        'trial_mode': false,
+        'trial_expires_at': null,
+      },
+      'caps': <Map<String, Object?>>[],
+    },
+  );
+  String? lastConvertTrialOperatorId;
+
   @override
   Future<List<Map<String, Object?>>> listOperatorsWithCaps({
     required String actorUserId,
@@ -200,6 +229,33 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
     lastPlanUpdateMonthlyUsd = monthlyUsd;
     lastPlanUpdateFirstNSeats = firstNSeats;
     return planUpdateResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> startPilotTrial({
+    required String actorUserId,
+    required String operatorId,
+    required int trialDays,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastStartPilotOperatorId = operatorId;
+    lastStartPilotTrialDays = trialDays;
+    startPilotCalls += 1;
+    return startPilotResult;
+  }
+
+  @override
+  Future<TrialConversionOutcome> convertTrialToStarter({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastConvertTrialOperatorId = operatorId;
+    return convertTrialResult;
   }
 }
 

@@ -35,6 +35,7 @@ class OperatorsRepository extends OperatorScopedRepository {
         'select operator_id::text as operator_id, business_name, '
         'owner_email, subscription_tier, preferred_currency, '
         'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
         'suspended_at, created_at, updated_at '
         'from operators '
         'order by business_name asc',
@@ -56,6 +57,7 @@ class OperatorsRepository extends OperatorScopedRepository {
         'select operator_id::text as operator_id, business_name, '
         'owner_email, subscription_tier, preferred_currency, '
         'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
         'suspended_at, created_at, updated_at '
         'from operators '
         'where operator_id = @operator_id::uuid '
@@ -94,6 +96,7 @@ class OperatorsRepository extends OperatorScopedRepository {
         'returning operator_id::text as operator_id, business_name, '
         'owner_email, subscription_tier, preferred_currency, '
         'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
         'suspended_at, created_at, updated_at',
         parameters: <String, Object?>{
           'business_name': businessName,
@@ -134,6 +137,7 @@ class OperatorsRepository extends OperatorScopedRepository {
         'returning operator_id::text as operator_id, business_name, '
         'owner_email, subscription_tier, preferred_currency, '
         'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
         'suspended_at, created_at, updated_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
@@ -164,6 +168,7 @@ class OperatorsRepository extends OperatorScopedRepository {
         'returning operator_id::text as operator_id, business_name, '
         'owner_email, subscription_tier, preferred_currency, '
         'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
         'suspended_at, created_at, updated_at',
         parameters: <String, Object?>{'operator_id': operatorId},
       );
@@ -187,11 +192,124 @@ class OperatorsRepository extends OperatorScopedRepository {
         'returning operator_id::text as operator_id, business_name, '
         'owner_email, subscription_tier, preferred_currency, '
         'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
         'suspended_at, created_at, updated_at',
         parameters: <String, Object?>{'operator_id': operatorId},
       );
       if (rows.isEmpty) return null;
       return _operatorAdminRowFromMap(rows.single);
+    }, reason: adminReason);
+  }
+
+  /// Plans & Limits V1 Phase 4a — start a Pilot free trial on a real
+  /// operator. Sets `subscription_tier = 'pilot'`, `trial_mode = true`,
+  /// and `trial_expires_at = now() + ([trialDays] || ' days')::interval`
+  /// in one statement so the row never lands in a state the
+  /// `operators_trial_expiry_consistency_check` would reject. Returns
+  /// the updated row, or `null` when the operator does not exist.
+  ///
+  /// Idempotent in effect: re-running for an operator already on the
+  /// Pilot trial rewrites the same tier + flag and refreshes the expiry
+  /// to `now() + trialDays` (a retried provisioning call lands the same
+  /// observable state). The proxy layer additionally collapses retries
+  /// under an `Idempotency-Key` so a replay returns the cached response
+  /// without re-touching the row.
+  ///
+  /// HP #2: this only flips the trial FLAG + tier on a REAL operator
+  /// row. It does NOT seed sample data and does NOT create any `demo_*`
+  /// table. Sample-data seeding for the preview is a writer-side
+  /// (client SQLite) concern handled separately; see the start-pilot
+  /// route handler note in `advisor_proxy.dart`.
+  Future<OperatorAdminRow?> startPilotTrial({
+    required String operatorId,
+    required int trialDays,
+    required String adminReason,
+  }) {
+    return withSystem<OperatorAdminRow?>((exec) async {
+      final rows = await exec.query(
+        'update operators set '
+        "subscription_tier = 'pilot', "
+        'trial_mode = true, '
+        "trial_expires_at = now() + (@trial_days::text || ' days')::interval, "
+        'updated_at = now() '
+        'where operator_id = @operator_id::uuid '
+        'returning operator_id::text as operator_id, business_name, '
+        'owner_email, subscription_tier, preferred_currency, '
+        'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
+        'suspended_at, created_at, updated_at',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'trial_days': trialDays,
+        },
+      );
+      if (rows.isEmpty) return null;
+      return _operatorAdminRowFromMap(rows.single);
+    }, reason: adminReason);
+  }
+
+  /// Plans & Limits V1 Phase 4a — convert a Pilot trial to Starter. This
+  /// is the "real POS / labor connector succeeded" conversion: it clears
+  /// the trial flag (`trial_mode = false`, `trial_expires_at = null`) and
+  /// moves `subscription_tier` from `'pilot'` to `'starter'` in one
+  /// statement. To stay safe + idempotent it only promotes a row that is
+  /// CURRENTLY on the Pilot trial (`trial_mode = true and
+  /// subscription_tier = 'pilot'`); a non-trial / already-converted row
+  /// is left untouched so a replay is a no-op.
+  ///
+  /// Returns a [TrialConversionResult] discriminating three outcomes so
+  /// the route can answer honestly: operator missing (404), converted
+  /// (200), or not-on-trial / already-converted (200, no-op).
+  Future<TrialConversionResult> convertTrialToStarter({
+    required String operatorId,
+    required String adminReason,
+  }) {
+    return withSystem<TrialConversionResult>((exec) async {
+      // Conditional UPDATE: only a row on the Pilot trial is promoted.
+      final updatedRows = await exec.query(
+        'update operators set '
+        "subscription_tier = 'starter', "
+        'trial_mode = false, '
+        'trial_expires_at = null, '
+        'updated_at = now() '
+        'where operator_id = @operator_id::uuid '
+        "and trial_mode = true and subscription_tier = 'pilot' "
+        'returning operator_id::text as operator_id, business_name, '
+        'owner_email, subscription_tier, preferred_currency, '
+        'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
+        'suspended_at, created_at, updated_at',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (updatedRows.isNotEmpty) {
+        return TrialConversionResult(
+          status: TrialConversionStatus.converted,
+          operator: _operatorAdminRowFromMap(updatedRows.single),
+        );
+      }
+      // No row promoted: distinguish "operator does not exist" (404)
+      // from "operator exists but was not on the trial" (no-op 200).
+      final existing = await exec.query(
+        'select operator_id::text as operator_id, business_name, '
+        'owner_email, subscription_tier, preferred_currency, '
+        'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
+        'suspended_at, created_at, updated_at '
+        'from operators '
+        'where operator_id = @operator_id::uuid '
+        'limit 1',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (existing.isEmpty) {
+        return const TrialConversionResult(
+          status: TrialConversionStatus.operatorNotFound,
+          operator: null,
+        );
+      }
+      return TrialConversionResult(
+        status: TrialConversionStatus.notOnTrial,
+        operator: _operatorAdminRowFromMap(existing.single),
+      );
     }, reason: adminReason);
   }
 
@@ -314,6 +432,7 @@ class OperatorsRepository extends OperatorScopedRepository {
         'returning operator_id::text as operator_id, business_name, '
         'owner_email, subscription_tier, preferred_currency, '
         'primary_location_id::text as primary_location_id, '
+        'trial_mode, trial_expires_at, '
         'suspended_at, created_at, updated_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
@@ -336,6 +455,26 @@ class OperatorsRepository extends OperatorScopedRepository {
 
 String _businessDayStartLocalFromHour(int hour) =>
     '${hour.toString().padLeft(2, '0')}:00';
+
+/// Outcome of [OperatorsRepository.convertTrialToStarter]. Lets the
+/// proxy route answer honestly without re-querying: a missing operator
+/// is a 404; a converted or already-converted/not-on-trial operator is
+/// a 200 (the latter a no-op so retries + already-paid operators stay
+/// safe).
+enum TrialConversionStatus { converted, notOnTrial, operatorNotFound }
+
+/// Result bundle for [OperatorsRepository.convertTrialToStarter].
+/// [operator] is the post-update row when [status] is `converted`, the
+/// untouched row when `notOnTrial`, and `null` when `operatorNotFound`.
+class TrialConversionResult {
+  const TrialConversionResult({
+    required this.status,
+    required this.operator,
+  });
+
+  final TrialConversionStatus status;
+  final OperatorAdminRow? operator;
+}
 
 /// Compact bundle returned by [OperatorsRepository.onboardOperatorAtomically].
 /// Carries only the rows the proxy handler needs to JSON-encode for
@@ -412,6 +551,8 @@ class OperatorAdminRow {
     required this.subscriptionTier,
     required this.preferredCurrency,
     required this.primaryLocationId,
+    required this.trialMode,
+    required this.trialExpiresAt,
     required this.suspendedAt,
     required this.createdAt,
     required this.updatedAt,
@@ -423,6 +564,16 @@ class OperatorAdminRow {
   final String subscriptionTier;
   final String preferredCurrency;
   final String? primaryLocationId;
+
+  /// Plans & Limits V1 Phase 4 — Pilot free-trial flag. TRUE while the
+  /// operator is on the $0 Pilot free preview; FALSE for every paid /
+  /// converted / non-trial operator. The trial FLAG on a real operator
+  /// (HP #2: not a second demo mode, not a `demo_*` table).
+  final bool trialMode;
+
+  /// UTC instant the Pilot trial lapses. NULL when not on a trial.
+  final DateTime? trialExpiresAt;
+
   final DateTime? suspendedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -434,6 +585,8 @@ class OperatorAdminRow {
     'subscription_tier': subscriptionTier,
     'preferred_currency': preferredCurrency,
     'primary_location_id': primaryLocationId,
+    'trial_mode': trialMode,
+    'trial_expires_at': trialExpiresAt?.toUtc().toIso8601String(),
     'suspended_at': suspendedAt?.toUtc().toIso8601String(),
     'created_at': createdAt.toUtc().toIso8601String(),
     'updated_at': updatedAt.toUtc().toIso8601String(),
@@ -448,6 +601,8 @@ OperatorAdminRow _operatorAdminRowFromMap(PostgresRow row) {
     subscriptionTier: row['subscription_tier']! as String,
     preferredCurrency: row['preferred_currency']! as String,
     primaryLocationId: row['primary_location_id'] as String?,
+    trialMode: (row['trial_mode'] as bool?) ?? false,
+    trialExpiresAt: _toDateTime(row['trial_expires_at']),
     suspendedAt: _toDateTime(row['suspended_at']),
     createdAt: _toDateTime(row['created_at'])!,
     updatedAt: _toDateTime(row['updated_at'])!,

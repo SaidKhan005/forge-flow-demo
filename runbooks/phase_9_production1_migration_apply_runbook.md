@@ -7,6 +7,11 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605241600_plans_and_limits_phase4_operator_trial_mode.sql`
+(Plans & Limits V1 Phase 4a Pilot free-trial flag: adds `trial_mode` +
+`trial_expires_at` to the tenant-root `public.operators` table — the
+per-operator trial FLAG, NOT a demo_* table; see the migration list below),
+preceded by
 `202605241500_create_proxy_request_stats.sql`
 (P1a' Support logs telemetry storage: creates the stats-only
 `public.proxy_request_stats` table — per-AI-request tokens / cost / latency /
@@ -360,6 +365,14 @@ Current known post-cutoff staging additions:
   DEFINER, forge_admin EXECUTE only, `FOR UPDATE SKIP LOCKED`) is scheduled
   daily at 03:30 UTC via pg_cron for 30-day retention. Schema + RLS; build-only,
   gated on explicit operator approval before any apply.
+- `db/migrations/202605241600_plans_and_limits_phase4_operator_trial_mode.sql`
+  adds the Pilot free-trial flag to the tenant-root `public.operators` table:
+  `trial_mode boolean not null default false` + `trial_expires_at timestamptz`,
+  plus a CHECK that an expiry exists iff `trial_mode` is true. Per-operator
+  trial FLAG (NOT a `demo_*` table, NOT a second demo mode — HP #2); inherits
+  the existing operators RLS (no new policy). Set by the start-pilot path;
+  cleared by the conversion path when real POS/labor data connects. Schema;
+  build-only, gated on explicit operator approval before any apply.
 
 Migration drift automation:
 

@@ -4308,5 +4308,362 @@ void main() {
         }
       });
     });
+
+    // ── Phase 4a — Pilot free-trial start + convert. ────────────────
+    // HP #2: these routes flip the trial FLAG + tier on a REAL operator.
+    // No `demo_*` table, no parallel demo seeder. The route forwards the
+    // real operator id straight to the gateway (which mutates the real
+    // `operators` row); there is no demo-scope substitution anywhere on
+    // the path.
+
+    test('Phase 4a POST .../operators/{id}/start-pilot forwards id + '
+        'default trial days', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-real-1/start-pilot',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(200), reason: response.body);
+          // HP #2 — the REAL operator id reaches the gateway verbatim;
+          // no demo-scope id substitution.
+          expect(gateway.lastStartPilotOperatorId, equals('op-real-1'));
+          // Omitted trial_days defaults to the named 30-day constant.
+          expect(gateway.lastStartPilotTrialDays, equals(30));
+          expect(gateway.lastReason, contains('start_pilot:op-real-1'));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final operator = body['operator']! as Map<String, Object?>;
+          expect(operator['subscription_tier'], equals('pilot'));
+          expect(operator['trial_mode'], isTrue);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../start-pilot honors an explicit trial_days',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-1/start-pilot',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'trial_days': 14},
+          );
+          expect(response.statusCode, equals(200), reason: response.body);
+          expect(gateway.lastStartPilotTrialDays, equals(14));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../start-pilot rejects ff_support (403, write)',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-1/start-pilot',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(403));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('permission_denied'));
+          // Write rejection lists the super_admin-only write set.
+          final required = (body['required_roles']! as List).cast<String>();
+          expect(required, equals(<String>['super_admin']));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../start-pilot rejects an out-of-range trial_days '
+        '(400)', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-1/start-pilot',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'trial_days': 0},
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('invalid_trial_days'));
+          // The gateway is never reached when validation rejects.
+          expect(gateway.lastStartPilotOperatorId, isNull);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../start-pilot 404s for an unknown operator',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()..startPilotResult = null;
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-missing/start-pilot',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(404));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('unknown_operator'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../start-pilot accepts an Idempotency-Key on '
+        'replay', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          Future<int> call() async {
+            final response = await httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/start-pilot',
+              ),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-start-pilot-1',
+              body: const <String, Object?>{'trial_days': 30},
+            );
+            return response.statusCode;
+          }
+
+          final first = await call();
+          final second = await call();
+          expect(first, equals(200));
+          // The route admits the Idempotency-Key header on both calls.
+          // This harness wires no idempotency store, so the proxy cannot
+          // collapse the replay (mirrors the Phase 3 plan-pricing
+          // idempotency test above); deeper reserve->complete collapsing
+          // is covered by the admin-idempotency store tests. The key
+          // point here: the route forwarded the work both times without a
+          // 4xx for the header itself.
+          expect(second, anyOf(equals(200), equals(409)));
+          expect(gateway.startPilotCalls, greaterThanOrEqualTo(1));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../operators/{id}/convert-trial forwards id + '
+        'reports converted', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-real-2/convert-trial',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(200), reason: response.body);
+          expect(gateway.lastConvertTrialOperatorId, equals('op-real-2'));
+          expect(gateway.lastReason, contains('convert_trial:op-real-2'));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['converted'], isTrue);
+          final operator = body['operator']! as Map<String, Object?>;
+          expect(operator['subscription_tier'], equals('starter'));
+          expect(operator['trial_mode'], isFalse);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../convert-trial reports converted=false for a '
+        'non-trial operator (200 no-op)', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()
+          ..convertTrialResult = const TrialConversionOutcome(
+            operatorFound: true,
+            converted: false,
+            bundle: <String, Object?>{
+              'operator': <String, Object?>{
+                'operator_id': 'op-1',
+                'subscription_tier': 'starter',
+                'trial_mode': false,
+              },
+              'caps': <Map<String, Object?>>[],
+            },
+          );
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-1/convert-trial',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['converted'], isFalse);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../convert-trial 404s for an unknown operator',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()
+          ..convertTrialResult = const TrialConversionOutcome.notFound();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-missing/convert-trial',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(404));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('unknown_operator'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a POST .../convert-trial rejects ff_support (403, write)',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-1/convert-trial',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(403));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 4a unknown operator action under the pricing prefix 404s',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(initialClaims: superAdminClaims);
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-1/bogus-action',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(404));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
   });
 }

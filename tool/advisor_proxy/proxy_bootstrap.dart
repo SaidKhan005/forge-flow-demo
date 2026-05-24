@@ -5582,6 +5582,8 @@ class RepositoryPricingTierAdminProxyGateway
             'primary_location_name': op.primaryLocationId == null
                 ? null
                 : locationNamesById[op.primaryLocationId],
+            'trial_mode': op.trialMode,
+            'trial_expires_at': op.trialExpiresAt?.toUtc().toIso8601String(),
             'suspended': op.suspendedAt != null,
           },
           'caps': <Map<String, Object?>>[
@@ -5872,6 +5874,80 @@ class RepositoryPricingTierAdminProxyGateway
     return updated.toJson();
   }
 
+  @override
+  Future<Map<String, Object?>?> startPilotTrial({
+    required String actorUserId,
+    required String operatorId,
+    required int trialDays,
+    required String adminReason,
+  }) async {
+    final updated = await _operators.startPilotTrial(
+      operatorId: operatorId,
+      trialDays: trialDays,
+      adminReason: adminReason,
+    );
+    if (updated == null) return null;
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: updated.operatorId,
+      locationId: updated.primaryLocationId,
+      eventType: 'operator.trial.pilot_started',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'subscription_tier': updated.subscriptionTier,
+        'trial_mode': updated.trialMode,
+        'trial_days': trialDays,
+        'trial_expires_at': updated.trialExpiresAt?.toUtc().toIso8601String(),
+      },
+    );
+    return _bundleFor(updated, adminReason: adminReason);
+  }
+
+  @override
+  Future<TrialConversionOutcome> convertTrialToStarter({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    final result = await _operators.convertTrialToStarter(
+      operatorId: operatorId,
+      adminReason: adminReason,
+    );
+    switch (result.status) {
+      case TrialConversionStatus.operatorNotFound:
+        return const TrialConversionOutcome.notFound();
+      case TrialConversionStatus.converted:
+        final operator = result.operator!;
+        await _audit(
+          actorUserId: actorUserId,
+          operatorId: operator.operatorId,
+          locationId: operator.primaryLocationId,
+          eventType: 'operator.trial.converted',
+          adminReason: adminReason,
+          payload: <String, Object?>{
+            'subscription_tier': operator.subscriptionTier,
+            'trial_mode': operator.trialMode,
+          },
+        );
+        return TrialConversionOutcome(
+          operatorFound: true,
+          converted: true,
+          bundle: await _bundleFor(operator, adminReason: adminReason),
+        );
+      case TrialConversionStatus.notOnTrial:
+        // No-op: operator exists but was not on the Pilot trial (already
+        // converted, or never a trial). Return the untouched bundle with
+        // converted=false so the route answers 200 without re-mutating
+        // or emitting a spurious conversion audit row.
+        final operator = result.operator!;
+        return TrialConversionOutcome(
+          operatorFound: true,
+          converted: false,
+          bundle: await _bundleFor(operator, adminReason: adminReason),
+        );
+    }
+  }
+
   Future<Map<String, Object?>> _bundleFor(
     OperatorAdminRow operator, {
     required String adminReason,
@@ -5897,6 +5973,8 @@ class RepositoryPricingTierAdminProxyGateway
         'primary_location_name': operator.primaryLocationId == null
             ? null
             : locationNamesById[operator.primaryLocationId],
+        'trial_mode': operator.trialMode,
+        'trial_expires_at': operator.trialExpiresAt?.toUtc().toIso8601String(),
         'suspended': operator.suspendedAt != null,
       },
       'caps': <Map<String, Object?>>[for (final cap in caps) cap.toJson()],
