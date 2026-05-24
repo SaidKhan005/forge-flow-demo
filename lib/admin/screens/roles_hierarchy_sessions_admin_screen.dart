@@ -501,7 +501,7 @@ class _RolesHierarchySessionsAdminScreenState
           children: <Widget>[
             OperatorWebScreenHeader(
               icon: Icons.account_tree_outlined,
-              title: 'Team access',
+              title: 'Roles & permissions',
               subtitle:
                   '${widget.pickedOperator.operatorBusinessName}: role policy, '
                   'and location hierarchy. Active sessions moved to Security/audit/sessions.',
