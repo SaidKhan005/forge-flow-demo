@@ -443,6 +443,177 @@ void main() {
     expect(operators.single.caps.single.monthlyCapUsd, equals(300.0));
   });
 
+  testWidgets('delete limit confirms then removes the cap', (tester) async {
+    final cap = seedCap(operatorId: 'op-del', locationId: 'loc-del');
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-del',
+          primaryLocationId: 'loc-del',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    final deleteKey = Key('admin_pricing_cap_delete_${cap.capId}');
+    await tester.ensureVisible(find.byKey(deleteKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(deleteKey));
+    await tester.pumpAndSettle();
+
+    // A confirm dialog guards the destructive delete.
+    expect(
+      find.byKey(const Key('admin_pricing_confirm_dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('admin_pricing_confirm_ok')));
+    await tester.pumpAndSettle();
+
+    final operators = await gateway.listOperators();
+    expect(operators.single.caps, isEmpty);
+  });
+
+  testWidgets('delete limit cancel leaves the cap in place', (tester) async {
+    final cap = seedCap(operatorId: 'op-keep', locationId: 'loc-keep');
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-keep',
+          primaryLocationId: 'loc-keep',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    final deleteKey = Key('admin_pricing_cap_delete_${cap.capId}');
+    await tester.ensureVisible(find.byKey(deleteKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(deleteKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_pricing_confirm_cancel')));
+    await tester.pumpAndSettle();
+
+    final operators = await gateway.listOperators();
+    expect(operators.single.caps, hasLength(1));
+  });
+
+  testWidgets('spend-vs-cap bar prefers the live spend-summary figure', (
+    tester,
+  ) async {
+    final cap = seedCap(
+      operatorId: 'op-live',
+      locationId: 'loc-live',
+      usageClass: 'advisor_qa',
+      monthly: 200.0,
+    );
+    // A gateway whose spend-summary reports $150 used for the cap; the
+    // observability envelope reports a DIFFERENT figure ($50). The bar
+    // must show the live spend-summary value, not the fallback.
+    final gateway = _LiveSpendGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-live',
+          primaryLocationId: 'loc-live',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+      summaryLines: <UsageCapSpendLine>[
+        const UsageCapSpendLine(
+          locationId: 'loc-live',
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 200.0,
+          monthlyUsedUsd: 150.0,
+        ),
+      ],
+    );
+    final observability = observabilityFor(
+      'op-live',
+      costTelemetry: <Map<String, Object?>>[
+        <String, Object?>{
+          'operator_id': 'op-live',
+          'location_id': 'loc-live',
+          'usage_class': 'advisor_qa',
+          'query_class': 'advisor_qa',
+          'total_usd': 50.0,
+          'request_count': 100,
+        },
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          observabilityGateway: observability,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    // Live $150 against the $200 cap = 75% (NOT the $50 fallback = 25%).
+    expect(find.text('\$150 / \$200 this month'), findsOneWidget);
+    expect(find.text('75%'), findsWidgets);
+    expect(find.text('\$50 / \$200 this month'), findsNothing);
+  });
+
+  testWidgets('spend-vs-cap bar falls back when spend-summary is empty', (
+    tester,
+  ) async {
+    // The default InMemory gateway returns zero-spend summary lines, so
+    // a present-but-zero line must NOT mask the observability fallback.
+    // (The fallback path is what keeps demo mode working.)
+    final cap = seedCap(
+      operatorId: 'op-fb',
+      locationId: 'loc-fb',
+      usageClass: 'advisor_qa',
+      monthly: 200.0,
+    );
+    final gateway = _LiveSpendGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-fb',
+          primaryLocationId: 'loc-fb',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+      // No summary line for this cap identity at all -> fall back.
+      summaryLines: const <UsageCapSpendLine>[],
+    );
+    final observability = observabilityFor(
+      'op-fb',
+      costTelemetry: <Map<String, Object?>>[
+        <String, Object?>{
+          'operator_id': 'op-fb',
+          'location_id': 'loc-fb',
+          'usage_class': 'advisor_qa',
+          'query_class': 'advisor_qa',
+          'total_usd': 50.0,
+          'request_count': 100,
+        },
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          observabilityGateway: observability,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    // Falls back to the observability $50 / $200 = 25%.
+    expect(find.text('\$50 / \$200 this month'), findsOneWidget);
+    expect(find.text('25%'), findsWidgets);
+  });
+
   testWidgets(
     'editingEnabled: false hides templates, add, and edit affordances',
     (tester) async {
@@ -478,6 +649,10 @@ void main() {
       );
       expect(
         find.byKey(Key('admin_pricing_cap_edit_${cap.capId}')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(Key('admin_pricing_cap_delete_${cap.capId}')),
         findsNothing,
       );
     },
@@ -614,4 +789,27 @@ void main() {
 
     expect(find.byKey(const Key('admin_pricing_action_error')), findsOneWidget);
   });
+}
+
+/// In-memory pricing gateway that also serves a fixed
+/// [OperatorSpendSummary] from `fetchSpendSummary`, so the screen's
+/// live-spend-vs-fallback behaviour is testable without a backend.
+/// Production wires the HTTP gateway; demo wires the plain in-memory
+/// gateway (zero-spend summary) which exercises the fallback path.
+class _LiveSpendGateway extends InMemoryPricingTierAdminGateway {
+  _LiveSpendGateway({
+    required super.seed,
+    required this.summaryLines,
+  });
+
+  final List<UsageCapSpendLine> summaryLines;
+
+  @override
+  Future<OperatorSpendSummary> fetchSpendSummary(String operatorId) async {
+    return OperatorSpendSummary(
+      operatorId: operatorId,
+      asOf: DateTime.utc(2026, 5, 3, 12),
+      lines: summaryLines,
+    );
+  }
 }

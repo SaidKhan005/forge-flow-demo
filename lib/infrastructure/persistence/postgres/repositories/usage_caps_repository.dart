@@ -160,6 +160,176 @@ class UsageCapsRepository extends OperatorScopedRepository {
       return _capAdminRowFromMap(rows.single);
     }, reason: adminReason);
   }
+
+  /// DELETE one cap row, identified EITHER by [capId] (the 9.0Σ.g
+  /// surrogate) OR by the full logical key `(operator_id, location_id,
+  /// usage_class, staff_id, workflow_id)`. The org-unit axes are
+  /// resolved against the operator's root `org_units` row exactly as
+  /// [upsertCap] resolves them on write, so the delete targets the same
+  /// "corp pays for corp scope" identity the admin pricing screen
+  /// created. `is not distinct from` matches the
+  /// `usage_caps_two_slot_uq` UNIQUE NULLS NOT DISTINCT semantics so a
+  /// NULL `staff_id` / `workflow_id` ("all staff" / "all workflows")
+  /// cap is matched correctly. Returns the number of rows deleted (0 or
+  /// 1) so the proxy can return an idempotent no-op 200 when nothing
+  /// matched.
+  Future<int> deleteCap({
+    required String operatorId,
+    String? capId,
+    String? billingOwnerOrgUnitId,
+    String? scopedOrgUnitId,
+    String? locationId,
+    String? usageClass,
+    String? staffId,
+    String? workflowId,
+    required String adminReason,
+  }) {
+    return withSystem<int>((exec) async {
+      if (capId != null) {
+        // Tenant-leading: operator_id is part of the surrogate PK
+        // `(operator_id, cap_id)`, so scoping the delete to both keeps
+        // cross-tenant misuse impossible even by cap_id.
+        final rows = await exec.query(
+          'delete from usage_caps '
+          'where operator_id = @operator_id::uuid '
+          'and cap_id = @cap_id::uuid '
+          'returning cap_id::text as cap_id',
+          parameters: <String, Object?>{
+            'operator_id': operatorId,
+            'cap_id': capId,
+          },
+        );
+        return rows.length;
+      }
+      final rows = await exec.query(
+        'delete from usage_caps '
+        'where operator_id = @operator_id::uuid '
+        'and billing_owner_org_unit_id = @billing_owner::uuid '
+        'and scoped_org_unit_id = @scoped::uuid '
+        'and location_id = @location_id::uuid '
+        'and usage_class = @usage_class '
+        'and staff_id is not distinct from @staff_id::uuid '
+        'and workflow_id is not distinct from @workflow_id::uuid '
+        'returning cap_id::text as cap_id',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'billing_owner': billingOwnerOrgUnitId,
+          'scoped': scopedOrgUnitId,
+          'location_id': locationId,
+          'usage_class': usageClass,
+          'staff_id': staffId,
+          'workflow_id': workflowId,
+        },
+      );
+      return rows.length;
+    }, reason: adminReason);
+  }
+
+  /// Month-to-date spend per cap identity for one operator, LEFT JOINed
+  /// to the matching `usage_caps` row. Rolls `usage_logs.cost_usd` up
+  /// per `(location_id, usage_class, staff_id, workflow_id)` for
+  /// `period_start = date_trunc('month', now())` — the identical
+  /// SUM-for-period semantics the cap-enforcement `capStatusSelect`
+  /// path uses (usage is upserted at finer dimensions per row; summing
+  /// within the cap identity is what "spend vs cap" means). A FULL
+  /// OUTER JOIN surfaces both caps with no usage yet (spend 0) and
+  /// usage with no cap (cap null), so the admin bars are honest about
+  /// each. Ordered deterministically for a stable render.
+  Future<List<UsageCapSpendRow>> spendSummaryForOperator({
+    required String operatorId,
+    required String adminReason,
+  }) {
+    return withSystem<List<UsageCapSpendRow>>((exec) async {
+      final rows = await exec.query(
+        'with monthly_actuals as ('
+        '  select '
+        '    location_id, usage_class, staff_id, workflow_id, '
+        '    sum(cost_usd) as monthly_used_usd '
+        '  from usage_logs '
+        '  where operator_id = @operator_id::uuid '
+        "    and period_start = date_trunc('month', now()) "
+        '  group by location_id, usage_class, staff_id, workflow_id'
+        ') '
+        'select '
+        '  coalesce(c.location_id, a.location_id)::text as location_id, '
+        '  coalesce(c.usage_class, a.usage_class) as usage_class, '
+        '  coalesce(c.staff_id, a.staff_id)::text as staff_id, '
+        '  coalesce(c.workflow_id, a.workflow_id)::text as workflow_id, '
+        '  c.cap_id::text as cap_id, '
+        '  c.monthly_cap_usd as monthly_cap_usd, '
+        '  c.per_invocation_cap_usd as per_invocation_cap_usd, '
+        '  coalesce(a.monthly_used_usd, 0) as monthly_used_usd '
+        'from usage_caps c '
+        'full outer join monthly_actuals a '
+        '  on a.location_id = c.location_id '
+        '  and a.usage_class = c.usage_class '
+        '  and a.staff_id is not distinct from c.staff_id '
+        '  and a.workflow_id is not distinct from c.workflow_id '
+        'where c.operator_id = @operator_id::uuid '
+        '   or c.operator_id is null '
+        'order by location_id asc nulls last, usage_class asc nulls last',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      return <UsageCapSpendRow>[
+        for (final row in rows) _capSpendRowFromMap(row),
+      ];
+    }, reason: adminReason);
+  }
+}
+
+/// One row of the month-to-date spend-summary: a cap identity, the
+/// rolled-up `monthly_used_usd`, and (when a cap is set) its
+/// `monthly_cap_usd` / `per_invocation_cap_usd`. [monthlyCapUsd] is
+/// null when usage exists for an identity with no cap row, so the admin
+/// bar shows the honest empty sentinel instead of a phantom \$0 cap.
+class UsageCapSpendRow {
+  const UsageCapSpendRow({
+    required this.locationId,
+    required this.usageClass,
+    required this.staffId,
+    required this.workflowId,
+    required this.capId,
+    required this.monthlyCapUsd,
+    required this.perInvocationCapUsd,
+    required this.monthlyUsedUsd,
+  });
+
+  final String locationId;
+  final String usageClass;
+  final String? staffId;
+  final String? workflowId;
+  final String? capId;
+  final double? monthlyCapUsd;
+  final double? perInvocationCapUsd;
+  final double monthlyUsedUsd;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'location_id': locationId,
+    'usage_class': usageClass,
+    'staff_id': staffId,
+    'workflow_id': workflowId,
+    'cap_id': capId,
+    'monthly_cap_usd': monthlyCapUsd,
+    'per_invocation_cap_usd': perInvocationCapUsd,
+    'monthly_used_usd': monthlyUsedUsd,
+  };
+}
+
+UsageCapSpendRow _capSpendRowFromMap(PostgresRow row) {
+  return UsageCapSpendRow(
+    locationId: row['location_id']! as String,
+    usageClass: row['usage_class']! as String,
+    staffId: row['staff_id'] as String?,
+    workflowId: row['workflow_id'] as String?,
+    capId: row['cap_id'] as String?,
+    monthlyCapUsd: row['monthly_cap_usd'] == null
+        ? null
+        : _asDouble(row['monthly_cap_usd']),
+    perInvocationCapUsd: row['per_invocation_cap_usd'] == null
+        ? null
+        : _asDouble(row['per_invocation_cap_usd']),
+    monthlyUsedUsd: _asDouble(row['monthly_used_usd']),
+  );
 }
 
 class UsageCapAdminRow {
