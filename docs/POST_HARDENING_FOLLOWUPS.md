@@ -31,9 +31,9 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**71 migrations pending Production1 apply** (chronological). The queue now
+**72 migrations pending Production1 apply** (chronological). The queue now
 runs through
-`202605241500_create_proxy_request_stats.sql`;
+`202605241600_plans_and_limits_phase4_operator_trial_mode.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -112,8 +112,9 @@ Production1 apply.
 | `202605240900_plans_and_limits_phase0_subscription_tier_check.sql` | Plans & Limits V1 Phase 0 subscription_tier CHECK. Backfills legacy `operators.subscription_tier = 'launch'` to `'pilot'`, relaxes the column default to `'pilot'`, and adds a CHECK pinning the column to the six operator-approved tiers (pilot/starter/premium/elite/pro/enterprise). | code-ready |
 | `202605241000_advisor_conversation_log_request_correlation_and_retention.sql` | P1a Support logs telemetry groundwork. Adds a NULLABLE `request_id` uuid correlation key (advisory join onto `proxy_requests.request_id`, intentionally no FK) + operator-leading `(operator_id, location_id, request_id)` join index to `advisor_conversation_log`, and makes retention real: cluster-wide `advisor_conversation_log_purge_expired()` (SECURITY DEFINER, forge_admin EXECUTE only, `FOR UPDATE SKIP LOCKED`) scheduled daily 03:15 UTC via pg_cron. NEVER purges `legal_hold` or `retention_class='permanent'` rows. Schema + RLS-adjacent; gated on operator approval. | code-ready |
 | `202605241500_create_proxy_request_stats.sql` | P1a' Support logs telemetry storage. Creates `public.proxy_request_stats` (stats-only per-AI-request telemetry: tokens / cost / latency / outcome / provider+model ids + `actor_user_id` uuid + advisory `request_id` correlation to `proxy_requests`; NO message content, NO `business_date`). Operator-scoped fact table (composite `locations` FK, wrapper-based per-tenant RLS, operator-leading indexes); cluster-wide `proxy_request_stats_purge_expired()` (SECURITY DEFINER, forge_admin EXECUTE only, `FOR UPDATE SKIP LOCKED`) scheduled daily 03:30 UTC via pg_cron for 30-day retention. Schema + RLS; gated on operator approval. | code-ready |
+| `202605241600_plans_and_limits_phase4_operator_trial_mode.sql` | Plans & Limits V1 Phase 4a Pilot free-trial flag. Adds `trial_mode boolean not null default false` + `trial_expires_at timestamptz` to the tenant-root `public.operators` table, plus a CHECK that an expiry exists iff `trial_mode` is true. Per-operator trial FLAG (NOT a `demo_*` table, NOT a second demo mode — HP #2); inherits the existing operators RLS (no new policy). Set by the start-pilot path; cleared by the conversion path when real POS/labor data connects. Schema; gated on operator approval. | code-ready |
 
-**Action:** apply all 71 in next Production1 event per
+**Action:** apply all 72 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

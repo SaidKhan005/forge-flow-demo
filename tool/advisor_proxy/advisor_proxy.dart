@@ -4520,6 +4520,19 @@ const Set<String> kProxyPricingTierTemplateKeys = <String>{
   'enterprise',
 };
 
+/// Plans & Limits V1 Phase 4a — default Pilot free-trial window in days.
+/// The start-pilot route sets `operators.trial_expires_at = now() + this
+/// many days` when the request omits an explicit `trial_days`. 30 days is
+/// the standard free-preview window from the reconciled pricing model
+/// (`docs/phases/phase_11a/phase_11a_decision_register.md`).
+const int kPilotTrialDefaultDays = 30;
+
+/// Plans & Limits V1 Phase 4a — upper bound on an explicitly-requested
+/// Pilot trial window so a caller cannot provision an unbounded trial.
+/// One year is generous for a free preview; anything longer should be a
+/// deliberate plan/pricing decision, not a trial flag.
+const int kPilotTrialMaxDays = 365;
+
 /// Validation error raised by [PricingTierAdminProxyGateway]
 /// implementations when a request is rejected for business reasons
 /// (e.g. operator missing a primary_location_id). The proxy
@@ -4645,6 +4658,64 @@ abstract class PricingTierAdminProxyGateway {
     required double? onboardingMaxUsd,
     required String adminReason,
   });
+
+  /// Plans & Limits V1 Phase 4a — start a Pilot free trial on a real
+  /// operator. Sets `subscription_tier = 'pilot'`, `trial_mode = true`,
+  /// and `trial_expires_at = now() + [trialDays] days`. Returns the
+  /// post-update operator bundle (same shape as [updateOperatorTier]),
+  /// or null when the operator was not found so the route answers 404.
+  ///
+  /// HP #2: this only flips the trial FLAG + tier on a REAL operator. It
+  /// does NOT seed sample data and does NOT create any `demo_*` table —
+  /// Pilot is a trial flag on a real operator, not a second demo mode.
+  /// Sample-data seeding for the preview is a writer-side (client
+  /// SQLite) concern handled separately (see the route handler note).
+  Future<Map<String, Object?>?> startPilotTrial({
+    required String actorUserId,
+    required String operatorId,
+    required int trialDays,
+    required String adminReason,
+  });
+
+  /// Plans & Limits V1 Phase 4a — convert a Pilot trial to Starter (the
+  /// "real POS / labor connector succeeded" conversion). Clears the
+  /// trial flag (`trial_mode = false`, `trial_expires_at = null`) and
+  /// moves `subscription_tier` from `'pilot'` to `'starter'`. Idempotent:
+  /// only an operator currently on the Pilot trial is promoted; a
+  /// non-trial / already-converted operator is a no-op.
+  ///
+  /// Returns a [TrialConversionOutcome] discriminating three cases so
+  /// the route answers honestly: operator missing (404), converted
+  /// (200), or already-converted / not-on-trial (200, no-op).
+  Future<TrialConversionOutcome> convertTrialToStarter({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  });
+}
+
+/// Wire-level outcome of [PricingTierAdminProxyGateway.convertTrialToStarter].
+/// Decouples the proxy abstraction from the repository's
+/// `TrialConversionResult` so test fakes do not need to import the
+/// persistence layer. [bundle] is the post-update operator bundle when
+/// [converted] is true OR when the operator already off-trial (no-op);
+/// null only when the operator was not found.
+class TrialConversionOutcome {
+  const TrialConversionOutcome({
+    required this.operatorFound,
+    required this.converted,
+    required this.bundle,
+  });
+
+  /// Convenience constructor: operator not found (route → 404).
+  const TrialConversionOutcome.notFound()
+    : operatorFound = false,
+      converted = false,
+      bundle = null;
+
+  final bool operatorFound;
+  final bool converted;
+  final Map<String, Object?>? bundle;
 }
 
 /// Mobile operational sync gateway.
@@ -14690,6 +14761,108 @@ Future<void> _routePricingAdmin({
     }
     final operatorId = Uri.decodeComponent(parts[0]);
     final action = Uri.decodeComponent(parts[1]);
+
+    // Plans & Limits V1 Phase 4a — start a Pilot free trial on a real
+    // operator. Sets subscription_tier='pilot', trial_mode=true,
+    // trial_expires_at=now()+trial_days. Idempotent (Idempotency-Key) +
+    // audited (operator.trial.pilot_started). Write-gated (super_admin)
+    // by the same method-scoped gate as apply-template above.
+    //
+    // HP #2: this route only flips the trial FLAG + tier on a REAL
+    // operator. It deliberately does NOT seed sample preview data. The
+    // existing demo seeders (`_seedDemoDataFromReplay`) are client-side
+    // SQLite, hardcoded to `DemoScope.restaurantId`, and unreachable
+    // from this Postgres proxy; seeding sample data under a real
+    // operator from the proxy would require either a forbidden parallel
+    // server-side seeder or a large client-seeder refactor + a
+    // proxy->client trigger. Per the HP #2 doctrine (demo is a
+    // writer-side switch, same tables/reads/UI) the preview sample-data
+    // seeding belongs on the client/writer side and is wired in a
+    // follow-up slice; this route provisions the trial flag only.
+    if (action == 'start-pilot') {
+      final trialDays = _optionalBodyInt(body, 'trial_days') ??
+          kPilotTrialDefaultDays;
+      if (trialDays < 1 || trialDays > kPilotTrialMaxDays) {
+        throw _AdminInputError(
+          statusCode: 400,
+          code: 'invalid_trial_days',
+          message:
+              'trial_days must be an integer between 1 and '
+              '$kPilotTrialMaxDays',
+        );
+      }
+      await _runAdminIdempotent(
+        response: response,
+        store: idempotencyStore,
+        idempotencyKey: idempotencyKey,
+        requestType: 'admin.pricing.start_pilot',
+        actorUserId: actorUserId,
+        requestBody: body,
+        compute: () async {
+          final result = await gateway.startPilotTrial(
+            actorUserId: actorUserId,
+            operatorId: operatorId,
+            trialDays: trialDays,
+            adminReason: '$reasonPrefix:start_pilot:$operatorId',
+          );
+          if (result == null) {
+            return (
+              statusCode: 404,
+              payload: <String, Object?>{
+                'error': 'unknown_operator',
+                'message': 'operator not found',
+              },
+            );
+          }
+          return (statusCode: 200, payload: result);
+        },
+      );
+      return;
+    }
+
+    // Plans & Limits V1 Phase 4a — convert a Pilot trial to Starter (the
+    // "real POS / labor connector succeeded" conversion). Clears the
+    // trial flag + moves pilot->starter. Idempotent + audited
+    // (operator.trial.converted). An operator not on the trial is a 200
+    // no-op (already converted / never a trial); a missing operator is
+    // a 404. If a connector-success hook is added later it can call the
+    // same gateway method directly; this explicit endpoint is the V1
+    // conversion seam.
+    if (action == 'convert-trial') {
+      await _runAdminIdempotent(
+        response: response,
+        store: idempotencyStore,
+        idempotencyKey: idempotencyKey,
+        requestType: 'admin.pricing.convert_trial',
+        actorUserId: actorUserId,
+        requestBody: body,
+        compute: () async {
+          final outcome = await gateway.convertTrialToStarter(
+            actorUserId: actorUserId,
+            operatorId: operatorId,
+            adminReason: '$reasonPrefix:convert_trial:$operatorId',
+          );
+          if (!outcome.operatorFound) {
+            return (
+              statusCode: 404,
+              payload: <String, Object?>{
+                'error': 'unknown_operator',
+                'message': 'operator not found',
+              },
+            );
+          }
+          return (
+            statusCode: 200,
+            payload: <String, Object?>{
+              'converted': outcome.converted,
+              if (outcome.bundle != null) ...outcome.bundle!,
+            },
+          );
+        },
+      );
+      return;
+    }
+
     if (action != 'apply-template') {
       _writeNotFound(response, request);
       return;

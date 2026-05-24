@@ -53,6 +53,8 @@ PostgresRow _operatorRow({
   String subscriptionTier = 'pro',
   String preferredCurrency = 'USD',
   String? primaryLocationId,
+  bool trialMode = false,
+  DateTime? trialExpiresAt,
   DateTime? suspendedAt,
 }) {
   return <String, Object?>{
@@ -62,6 +64,8 @@ PostgresRow _operatorRow({
     'subscription_tier': subscriptionTier,
     'preferred_currency': preferredCurrency,
     'primary_location_id': primaryLocationId,
+    'trial_mode': trialMode,
+    'trial_expires_at': trialExpiresAt,
     'suspended_at': suspendedAt,
     'created_at': _instant(10),
     'updated_at': _instant(11),
@@ -338,6 +342,157 @@ void main() {
         (s) => s.contains('update operators'),
       );
       expect(updateSql, contains('suspended_at = null'));
+    });
+  });
+
+  group('OperatorsRepository.startPilotTrial (Plans & Limits Phase 4a)', () {
+    test('one UPDATE sets tier=pilot + trial_mode=true + '
+        'trial_expires_at=now()+interval, scoped by operator_id', () async {
+      final expiry = _instant(12);
+      final pool = _OperatorsPool(
+        startPilotRows: <PostgresRow>[
+          _operatorRow(
+            operatorId: _opA,
+            subscriptionTier: 'pilot',
+            trialMode: true,
+            trialExpiresAt: expiry,
+          ),
+        ],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final row = await repo.startPilotTrial(
+        operatorId: _opA,
+        trialDays: 30,
+        adminReason: 'admin.pricing.start_pilot',
+      );
+      expect(row, isNotNull);
+      expect(row!.subscriptionTier, equals('pilot'));
+      expect(row.trialMode, isTrue);
+      expect(row.trialExpiresAt, equals(expiry));
+
+      final tx = pool.transactions.single;
+      // Exactly one UPDATE; the load-bearing SQL: tier->pilot, flag true,
+      // expiry computed in-DB from now() + a parameterized day interval.
+      final updateSql = tx.executedSql.firstWhere(
+        (s) => s.contains('update operators set'),
+      );
+      expect(updateSql, contains("subscription_tier = 'pilot'"));
+      expect(updateSql, contains('trial_mode = true'));
+      expect(
+        updateSql,
+        contains("trial_expires_at = now() + (@trial_days::text || ' days')"),
+        reason: 'expiry must be computed in-DB so it is server-clock UTC',
+      );
+      expect(updateSql, contains('where operator_id = @operator_id::uuid'));
+      // HP #4 — the write is operator-scoped; no demo-restaurant id.
+      final params = tx.parameters.firstWhere(
+        (p) => p.containsKey('trial_days'),
+      );
+      expect(params['operator_id'], equals(_opA));
+      expect(params['trial_days'], equals(30));
+      expect(tx.commitCount, equals(1));
+    });
+
+    test('returns null when the operator does not exist', () async {
+      final pool = _OperatorsPool(startPilotRows: const <PostgresRow>[]);
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final row = await repo.startPilotTrial(
+        operatorId: _opA,
+        trialDays: 30,
+        adminReason: 'admin.pricing.start_pilot',
+      );
+      expect(row, isNull);
+    });
+  });
+
+  group('OperatorsRepository.convertTrialToStarter (Plans & Limits Phase '
+      '4a)', () {
+    test('conditional UPDATE promotes a trial operator: clears the flag, '
+        'pilot->starter, guarded by trial_mode=true and tier=pilot',
+        () async {
+      final pool = _OperatorsPool(
+        convertUpdateRows: <PostgresRow>[
+          _operatorRow(
+            operatorId: _opA,
+            subscriptionTier: 'starter',
+            trialMode: false,
+          ),
+        ],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final result = await repo.convertTrialToStarter(
+        operatorId: _opA,
+        adminReason: 'admin.pricing.convert_trial',
+      );
+      expect(result.status, equals(TrialConversionStatus.converted));
+      expect(result.operator!.subscriptionTier, equals('starter'));
+      expect(result.operator!.trialMode, isFalse);
+
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (s) => s.contains('update operators set'),
+      );
+      expect(updateSql, contains("subscription_tier = 'starter'"));
+      expect(updateSql, contains('trial_mode = false'));
+      expect(updateSql, contains('trial_expires_at = null'));
+      // The WHERE guard is the safety: only a row currently on the
+      // Pilot trial is promoted (idempotent, never touches paid rows).
+      expect(
+        updateSql,
+        contains("and trial_mode = true and subscription_tier = 'pilot'"),
+      );
+      // Converted via the UPDATE RETURNING — no fallback SELECT issued.
+      expect(
+        tx.executedSql.where((s) => s.contains('from operators')),
+        isEmpty,
+      );
+      expect(tx.commitCount, equals(1));
+    });
+
+    test('non-trial operator: UPDATE matches nothing, fallback SELECT '
+        'finds the row -> notOnTrial (no-op 200)', () async {
+      final pool = _OperatorsPool(
+        convertUpdateRows: const <PostgresRow>[],
+        // The fallback SELECT mirrors findById's SQL, so it is routed to
+        // findByIdRows: an operator already on Starter (not on trial).
+        findByIdRows: <PostgresRow>[
+          _operatorRow(
+            operatorId: _opA,
+            subscriptionTier: 'starter',
+            trialMode: false,
+          ),
+        ],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final result = await repo.convertTrialToStarter(
+        operatorId: _opA,
+        adminReason: 'admin.pricing.convert_trial',
+      );
+      expect(result.status, equals(TrialConversionStatus.notOnTrial));
+      expect(result.operator!.subscriptionTier, equals('starter'));
+
+      final tx = pool.transactions.single;
+      // The fallback SELECT ran because the conditional UPDATE matched
+      // nothing.
+      expect(
+        tx.executedSql.where((s) => s.contains('from operators')),
+        hasLength(1),
+      );
+    });
+
+    test('missing operator: UPDATE + fallback SELECT both empty -> '
+        'operatorNotFound (404)', () async {
+      final pool = _OperatorsPool(
+        convertUpdateRows: const <PostgresRow>[],
+        findByIdRows: const <PostgresRow>[],
+      );
+      final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+      final result = await repo.convertTrialToStarter(
+        operatorId: _opA,
+        adminReason: 'admin.pricing.convert_trial',
+      );
+      expect(result.status, equals(TrialConversionStatus.operatorNotFound));
+      expect(result.operator, isNull);
     });
   });
 
@@ -760,6 +915,8 @@ class _OperatorsPool implements PostgresPool {
     this.findByIdRows = const <PostgresRow>[],
     this.insertedOperatorRows = const <PostgresRow>[],
     this.updatedOperatorRows = const <PostgresRow>[],
+    this.startPilotRows = const <PostgresRow>[],
+    this.convertUpdateRows = const <PostgresRow>[],
     this.onboardOperatorInsertRows = const <PostgresRow>[],
     this.onboardRootOrgUnitRows = const <PostgresRow>[],
     this.onboardLocationRows = const <PostgresRow>[],
@@ -772,6 +929,15 @@ class _OperatorsPool implements PostgresPool {
   final List<PostgresRow> findByIdRows;
   final List<PostgresRow> insertedOperatorRows;
   final List<PostgresRow> updatedOperatorRows;
+
+  /// Plans & Limits V1 Phase 4a — start-pilot UPDATE RETURNING rows.
+  final List<PostgresRow> startPilotRows;
+
+  /// Plans & Limits V1 Phase 4a — convert-trial conditional UPDATE
+  /// RETURNING rows. When empty the repo falls back to a SELECT (routed
+  /// to [findByIdRows]).
+  final List<PostgresRow> convertUpdateRows;
+
   final List<PostgresRow> onboardOperatorInsertRows;
   final List<PostgresRow> onboardRootOrgUnitRows;
   final List<PostgresRow> onboardLocationRows;
@@ -788,6 +954,8 @@ class _OperatorsPool implements PostgresPool {
       findByIdRows: findByIdRows,
       insertedOperatorRows: insertedOperatorRows,
       updatedOperatorRows: updatedOperatorRows,
+      startPilotRows: startPilotRows,
+      convertUpdateRows: convertUpdateRows,
       onboardOperatorInsertRows: onboardOperatorInsertRows,
       onboardRootOrgUnitRows: onboardRootOrgUnitRows,
       onboardLocationRows: onboardLocationRows,
@@ -807,6 +975,8 @@ class _OperatorsTransaction extends PostgresTransaction {
     required this.findByIdRows,
     required this.insertedOperatorRows,
     required this.updatedOperatorRows,
+    required this.startPilotRows,
+    required this.convertUpdateRows,
     required this.onboardOperatorInsertRows,
     required this.onboardRootOrgUnitRows,
     required this.onboardLocationRows,
@@ -819,6 +989,8 @@ class _OperatorsTransaction extends PostgresTransaction {
   final List<PostgresRow> findByIdRows;
   final List<PostgresRow> insertedOperatorRows;
   final List<PostgresRow> updatedOperatorRows;
+  final List<PostgresRow> startPilotRows;
+  final List<PostgresRow> convertUpdateRows;
   final List<PostgresRow> onboardOperatorInsertRows;
   final List<PostgresRow> onboardRootOrgUnitRows;
   final List<PostgresRow> onboardLocationRows;
@@ -905,6 +1077,26 @@ class _OperatorsTransaction extends PostgresTransaction {
     }
     if (isOnboardOperatorUpdate) {
       return onboardFinalOperatorRows;
+    }
+    // Plans & Limits V1 Phase 4a — convert-trial conditional UPDATE
+    // (SET trial_mode = false + subscription_tier = 'starter', guarded
+    // by `where ... trial_mode = true and subscription_tier = 'pilot'`).
+    // Checked FIRST because the convert SQL contains BOTH `trial_mode =
+    // false` (SET) and `trial_mode = true` (WHERE); only the SET-side
+    // `trial_mode = false` uniquely identifies it vs the start-pilot
+    // UPDATE below.
+    if (isOperatorUpdate &&
+        sql.contains('trial_mode = false') &&
+        sql.contains("subscription_tier = 'starter'")) {
+      return convertUpdateRows;
+    }
+    // Plans & Limits V1 Phase 4a — start-pilot UPDATE (SET trial_mode =
+    // true + subscription_tier = 'pilot'). Routed before the generic
+    // operator UPDATE.
+    if (isOperatorUpdate &&
+        sql.contains('trial_mode = true') &&
+        sql.contains("subscription_tier = 'pilot'")) {
+      return startPilotRows;
     }
     if (isOperatorInsert) {
       return insertedOperatorRows;

@@ -125,6 +125,13 @@ Do not re-open stale findings unless the repo regresses:
   advisory `request_id` correlation to `proxy_requests`; NO content, NO
   business_date) with wrapper-based per-tenant RLS, operator-leading indexes,
   and a cluster-wide 30-day pg_cron purge (schema + RLS; gated on operator
+  approval). Plans & Limits V1 Phase 4a then advances the cutoff to
+  `202605241600_plans_and_limits_phase4_operator_trial_mode.sql`, which adds the
+  Pilot free-trial flag to the tenant-root `public.operators` table
+  (`trial_mode boolean not null default false` + `trial_expires_at timestamptz`,
+  plus a CHECK that an expiry exists iff trial_mode is true) — a per-operator
+  trial FLAG, NOT a `demo_*` table and NOT a second demo mode (HP #2); inherits
+  the existing operators RLS, no new policy (schema; gated on operator
   approval). The Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron

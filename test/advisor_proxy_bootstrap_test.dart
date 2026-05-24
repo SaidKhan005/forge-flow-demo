@@ -685,6 +685,138 @@ void main() {
       expect(auditRepository.events.single.actorKind, equals('forge_admin'));
     });
 
+    test('RepositoryPricingTierAdminProxyGateway startPilotTrial forwards '
+        'to the operators repo + audits operator.trial.pilot_started '
+        '(forge_admin)', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final operators = _StubOperatorsRepository(
+        startPilotRow: _stubOperatorRow(
+          subscriptionTier: 'pilot',
+          trialMode: true,
+        ),
+      );
+      final gateway = RepositoryPricingTierAdminProxyGateway(
+        operatorsRepository: operators,
+        locationsRepository: _StubLocationsRepository(),
+        usageCapsRepository: _StubUsageCapsRepository(),
+        orgUnitsRepository: _StubOrgUnitsRepository(),
+        planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        auditRepository: auditRepository,
+      );
+
+      final bundle = await gateway.startPilotTrial(
+        actorUserId: 'admin-user',
+        operatorId: 'op-real-1',
+        trialDays: 30,
+        adminReason: 'start a pilot trial',
+      );
+
+      // HP #2 — the gateway provisions the trial on a REAL operator via
+      // the operators repository; no demo seeder, no demo-scope id.
+      expect(operators.lastStartPilotOperatorId, equals('op-real-1'));
+      expect(operators.lastStartPilotTrialDays, equals(30));
+      expect(bundle, isNotNull);
+      // Exactly one audit row, the trial-start event, attributed to the
+      // F&F admin actor kind.
+      expect(auditRepository.events, hasLength(1));
+      expect(
+        auditRepository.events.single.eventType,
+        equals('operator.trial.pilot_started'),
+      );
+      expect(auditRepository.events.single.actorKind, equals('forge_admin'));
+    });
+
+    test('RepositoryPricingTierAdminProxyGateway startPilotTrial returns '
+        'null + emits NO audit for an unknown operator', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final gateway = RepositoryPricingTierAdminProxyGateway(
+        operatorsRepository: _StubOperatorsRepository(startPilotRow: null),
+        locationsRepository: _StubLocationsRepository(),
+        usageCapsRepository: _StubUsageCapsRepository(),
+        orgUnitsRepository: _StubOrgUnitsRepository(),
+        planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        auditRepository: auditRepository,
+      );
+
+      final bundle = await gateway.startPilotTrial(
+        actorUserId: 'admin-user',
+        operatorId: 'op-missing',
+        trialDays: 30,
+        adminReason: 'start a pilot trial',
+      );
+      expect(bundle, isNull);
+      expect(auditRepository.events, isEmpty);
+    });
+
+    test('RepositoryPricingTierAdminProxyGateway convertTrialToStarter '
+        'audits operator.trial.converted (forge_admin) only when it '
+        'actually converts', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final operators = _StubOperatorsRepository(
+        convertResult: TrialConversionResult(
+          status: TrialConversionStatus.converted,
+          operator: _stubOperatorRow(
+            subscriptionTier: 'starter',
+            trialMode: false,
+          ),
+        ),
+      );
+      final gateway = RepositoryPricingTierAdminProxyGateway(
+        operatorsRepository: operators,
+        locationsRepository: _StubLocationsRepository(),
+        usageCapsRepository: _StubUsageCapsRepository(),
+        orgUnitsRepository: _StubOrgUnitsRepository(),
+        planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        auditRepository: auditRepository,
+      );
+
+      final outcome = await gateway.convertTrialToStarter(
+        actorUserId: 'admin-user',
+        operatorId: 'op-real-2',
+        adminReason: 'convert the trial',
+      );
+      expect(operators.lastConvertOperatorId, equals('op-real-2'));
+      expect(outcome.operatorFound, isTrue);
+      expect(outcome.converted, isTrue);
+      expect(auditRepository.events, hasLength(1));
+      expect(
+        auditRepository.events.single.eventType,
+        equals('operator.trial.converted'),
+      );
+      expect(auditRepository.events.single.actorKind, equals('forge_admin'));
+    });
+
+    test('RepositoryPricingTierAdminProxyGateway convertTrialToStarter is a '
+        'no-op (no audit) for a non-trial operator', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final gateway = RepositoryPricingTierAdminProxyGateway(
+        operatorsRepository: _StubOperatorsRepository(
+          convertResult: TrialConversionResult(
+            status: TrialConversionStatus.notOnTrial,
+            operator: _stubOperatorRow(
+              subscriptionTier: 'starter',
+              trialMode: false,
+            ),
+          ),
+        ),
+        locationsRepository: _StubLocationsRepository(),
+        usageCapsRepository: _StubUsageCapsRepository(),
+        orgUnitsRepository: _StubOrgUnitsRepository(),
+        planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        auditRepository: auditRepository,
+      );
+
+      final outcome = await gateway.convertTrialToStarter(
+        actorUserId: 'admin-user',
+        operatorId: 'op-1',
+        adminReason: 'convert the trial',
+      );
+      expect(outcome.operatorFound, isTrue);
+      expect(outcome.converted, isFalse);
+      // No-op conversion emits no conversion audit row.
+      expect(auditRepository.events, isEmpty);
+    });
+
     test('RepositoryCorpusAdminProxyGateway records '
         'actor_kind=forge_admin on listVersions', () async {
       final auditRepository = _RecordingSystemAuditRepository();
@@ -884,6 +1016,8 @@ OperatorAdminRow _operatorRow() {
     subscriptionTier: 'launch',
     preferredCurrency: 'CAD',
     primaryLocationId: 'loc-1',
+    trialMode: false,
+    trialExpiresAt: null,
     suspendedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -1150,7 +1284,21 @@ const String _kCorpusManifestPath =
     'docs/Knowledge_graph_docs/corpus_manifest.yaml';
 
 class _StubOperatorsRepository extends OperatorsRepository {
-  _StubOperatorsRepository() : super(_dummyTenantWrapper());
+  _StubOperatorsRepository({
+    this.startPilotRow,
+    this.convertResult,
+  }) : super(_dummyTenantWrapper());
+
+  /// Canned row returned by [startPilotTrial]; null simulates "operator
+  /// not found".
+  final OperatorAdminRow? startPilotRow;
+
+  /// Canned outcome returned by [convertTrialToStarter].
+  final TrialConversionResult? convertResult;
+
+  String? lastStartPilotOperatorId;
+  int? lastStartPilotTrialDays;
+  String? lastConvertOperatorId;
 
   @override
   Future<List<OperatorAdminRow>> listOperators({
@@ -1158,6 +1306,51 @@ class _StubOperatorsRepository extends OperatorsRepository {
   }) async {
     return const <OperatorAdminRow>[];
   }
+
+  @override
+  Future<OperatorAdminRow?> startPilotTrial({
+    required String operatorId,
+    required int trialDays,
+    required String adminReason,
+  }) async {
+    lastStartPilotOperatorId = operatorId;
+    lastStartPilotTrialDays = trialDays;
+    return startPilotRow;
+  }
+
+  @override
+  Future<TrialConversionResult> convertTrialToStarter({
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    lastConvertOperatorId = operatorId;
+    return convertResult ??
+        const TrialConversionResult(
+          status: TrialConversionStatus.operatorNotFound,
+          operator: null,
+        );
+  }
+}
+
+OperatorAdminRow _stubOperatorRow({
+  String operatorId = 'op-1',
+  String subscriptionTier = 'pilot',
+  bool trialMode = true,
+  String? primaryLocationId,
+}) {
+  return OperatorAdminRow(
+    operatorId: operatorId,
+    businessName: 'Stub Op',
+    ownerEmail: 'owner@example.com',
+    subscriptionTier: subscriptionTier,
+    preferredCurrency: 'USD',
+    primaryLocationId: primaryLocationId,
+    trialMode: trialMode,
+    trialExpiresAt: trialMode ? DateTime.utc(2026, 5, 30, 12) : null,
+    suspendedAt: null,
+    createdAt: DateTime.utc(2026, 4, 30, 10),
+    updatedAt: DateTime.utc(2026, 4, 30, 11),
+  );
 }
 
 class _StubLocationsRepository extends LocationsRepository {
