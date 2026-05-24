@@ -306,7 +306,27 @@ class _VendorApplicabilityAdminScreenState
                   onRefresh: _refresh,
                 ),
                 const SizedBox(height: 12),
-                Expanded(child: _buildBody()),
+                // White surface tile behind the body so the main content
+                // matches the tab bar and toolbar tiles (gold-standard
+                // operator-web treatment) instead of sitting on the bare
+                // page background. Flat Container (not OperatorWebPanel) so
+                // the table keeps the bounded height its internal scroll
+                // needs; see _buildBody.
+                Expanded(
+                  child: Container(
+                    key: const Key('admin_vendor_applicability_body_surface'),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundSurface,
+                      border: Border.all(
+                        color: AppColors.borderSubtle,
+                        width: 1,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: _buildBody(),
+                  ),
+                ),
               ],
             ),
           ),
@@ -337,12 +357,13 @@ class _VendorApplicabilityAdminScreenState
       return const _EmptyState();
     }
     // The table fills the remaining pane height and scrolls internally
-    // (bidirectional). It is intentionally NOT wrapped in an
-    // OperatorWebPanel: the panel renders its body in a non-flex Column,
-    // which removes the bounded height the vertical scroll view needs and
-    // overflows the fixed-height function pane at the 800x600 widget-test
-    // viewport. The shared-kit adoption lands on the header, banners, and
-    // dialogs, matching the Launch controls sibling's body treatment.
+    // (bidirectional). The caller wraps this body in a flat surface tile (a
+    // plain Container that passes its bounded constraints straight through),
+    // NOT an OperatorWebPanel: the panel renders its body in a non-flex
+    // Column, which would remove the bounded height the vertical scroll view
+    // needs and overflow the function pane at small (800x600) widget-test
+    // viewports. The flat tile gives the gold-standard white surface without
+    // that overflow.
     return Scrollbar(
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
