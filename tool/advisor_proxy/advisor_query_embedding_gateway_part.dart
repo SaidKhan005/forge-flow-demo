@@ -57,12 +57,38 @@ const String _kVoyageQueryInputType = 'query';
 /// may wrap this in a [DependencyTimeoutException] catcher.
 const Duration _kDefaultVoyageRequestTimeout = Duration(seconds: 30);
 
+/// Result of one [AdvisorQueryEmbeddingGateway.embedQuery] call.
+///
+/// Carries both the embedding vector AND the provider-reported input
+/// token count so the route can meter the Voyage spend by class
+/// (HP #9: AI cost metered by class).  [totalTokens] is parsed from the
+/// Voyage response `usage.total_tokens`; embeddings have no output token
+/// stream, so the whole count is billed as input tokens.
+class AdvisorQueryEmbeddingResult {
+  const AdvisorQueryEmbeddingResult({
+    required this.embedding,
+    required this.totalTokens,
+  });
+
+  /// The query embedding — exactly `dimensions` doubles.
+  final List<double> embedding;
+
+  /// Provider-reported total tokens consumed by the embedding call,
+  /// parsed from the Voyage response `usage.total_tokens`.  Used as the
+  /// INPUT-token count when computing cost via the Voyage rate.  Zero
+  /// when the provider omits the field (cost then computes to 0 cents —
+  /// fail-open so a malformed-but-2xx response never blocks retrieval).
+  final int totalTokens;
+}
+
 /// Abstract seam so [AdvisorQueryEmbeddingGateway] is testable without
 /// depending on [VoyageHttpQueryEmbeddingGateway].
 abstract class AdvisorQueryEmbeddingGateway {
   /// Embed [queryText] via the configured provider.
   ///
-  /// Returns a list of exactly [dimensions] doubles.
+  /// Returns an [AdvisorQueryEmbeddingResult] whose `embedding` is a list
+  /// of exactly [dimensions] doubles and whose `totalTokens` is the
+  /// provider-reported token count for the call (HP #9 metering input).
   ///
   /// Throws [AdvisorQueryEmbeddingException] on provider error
   /// (non-2xx status, malformed response, timeout, network error).
@@ -70,7 +96,7 @@ abstract class AdvisorQueryEmbeddingGateway {
   /// HP #7: [apiKey] is a server-side secret.  Implementations MUST
   /// NOT log it, return it to the client, or store it beyond the
   /// duration of a single call.
-  Future<List<double>> embedQuery({
+  Future<AdvisorQueryEmbeddingResult> embedQuery({
     required String apiKey,
     required String model,
     required int dimensions,
@@ -112,7 +138,7 @@ class VoyageHttpQueryEmbeddingGateway implements AdvisorQueryEmbeddingGateway {
   final Duration _timeout;
 
   @override
-  Future<List<double>> embedQuery({
+  Future<AdvisorQueryEmbeddingResult> embedQuery({
     required String apiKey,
     required String model,
     required int dimensions,
@@ -195,8 +221,9 @@ class VoyageHttpQueryEmbeddingGateway implements AdvisorQueryEmbeddingGateway {
       );
     }
 
+    final List<double> vector;
     try {
-      return embedding
+      vector = embedding
           .map<double>((e) => (e as num).toDouble())
           .toList(growable: false);
     } catch (_) {
@@ -204,5 +231,26 @@ class VoyageHttpQueryEmbeddingGateway implements AdvisorQueryEmbeddingGateway {
         'Voyage embedding response contained non-numeric values',
       );
     }
+
+    // HP #9 metering input: parse the provider-reported token usage so the
+    // route can charge the Voyage cost class from REAL tokens (not a
+    // heuristic). Voyage returns `{"usage": {"total_tokens": <int>}}`.
+    // Embeddings have no output stream, so total_tokens IS the billable
+    // input count. Fail-open: a missing / malformed `usage` block yields 0
+    // (cost computes to 0 cents) rather than blocking an otherwise-valid
+    // 2xx retrieval — the dimension check above already guards the vector.
+    final usage = decoded['usage'];
+    var totalTokens = 0;
+    if (usage is Map<String, Object?>) {
+      final rawTotal = usage['total_tokens'];
+      if (rawTotal is num) {
+        totalTokens = rawTotal.toInt();
+      }
+    }
+
+    return AdvisorQueryEmbeddingResult(
+      embedding: vector,
+      totalTokens: totalTokens < 0 ? 0 : totalTokens,
+    );
   }
 }

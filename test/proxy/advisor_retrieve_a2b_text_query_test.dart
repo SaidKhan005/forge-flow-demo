@@ -27,9 +27,10 @@ import 'package:forge_and_flow/domain/models/retrieved_chunk.dart';
 import 'package:forge_and_flow/domain/repositories/corpus_retrieval_repository.dart';
 import 'package:forge_and_flow/domain/services/advisor_provider_constants.dart';
 import 'package:forge_and_flow/services/corpus_retrieval_service.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
-import '../../tool/advisor_proxy/advisor_query_embedding_gateway_part.dart';
 import '../advisor_proxy_test_helpers.dart';
 
 // ── Fakes ──────────────────────────────────────────────────────────────────────
@@ -73,17 +74,24 @@ class _EmbedCall {
 }
 
 /// Fake embedding gateway that records calls and returns a canned
-/// 1024-dim vector.  The [apiKey] parameter is accepted but NOT
-/// stored so no test code can accidentally assert on the key value.
+/// 1024-dim vector plus a configurable provider token count.  The
+/// [apiKey] parameter is accepted but NOT stored so no test code can
+/// accidentally assert on the key value.
 class _FakeEmbeddingGateway implements AdvisorQueryEmbeddingGateway {
-  _FakeEmbeddingGateway({List<double>? vector})
+  _FakeEmbeddingGateway({List<double>? vector, this.totalTokens = 7})
       : _vector = vector ?? List<double>.filled(1024, 0.42);
 
   final List<double> _vector;
+
+  /// Provider-reported token count returned in every result. Lets a test
+  /// pin the exact tokens so it can assert cost is computed from THIS
+  /// count, not a hardcoded constant.
+  final int totalTokens;
+
   final List<_EmbedCall> calls = <_EmbedCall>[];
 
   @override
-  Future<List<double>> embedQuery({
+  Future<AdvisorQueryEmbeddingResult> embedQuery({
     required String apiKey,
     // HP #7: key accepted but NOT captured.
     required String model,
@@ -95,7 +103,10 @@ class _FakeEmbeddingGateway implements AdvisorQueryEmbeddingGateway {
       dimensions: dimensions,
       queryText: queryText,
     ));
-    return List<double>.from(_vector);
+    return AdvisorQueryEmbeddingResult(
+      embedding: List<double>.from(_vector),
+      totalTokens: totalTokens,
+    );
   }
 }
 
@@ -106,7 +117,7 @@ class _ThrowingEmbeddingGateway implements AdvisorQueryEmbeddingGateway {
   final String message;
 
   @override
-  Future<List<double>> embedQuery({
+  Future<AdvisorQueryEmbeddingResult> embedQuery({
     required String apiKey,
     required String model,
     required int dimensions,
@@ -114,6 +125,82 @@ class _ThrowingEmbeddingGateway implements AdvisorQueryEmbeddingGateway {
   }) async {
     throw AdvisorQueryEmbeddingException(message);
   }
+}
+
+/// One captured [ProxyAccountingStore.commitUsageLog] call.
+class _CommitCall {
+  const _CommitCall({
+    required this.operatorId,
+    required this.locationId,
+    required this.usageClass,
+    required this.tokenCount,
+    required this.costCents,
+    required this.modelUsed,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String usageClass;
+  final int tokenCount;
+  final int costCents;
+  final String modelUsed;
+}
+
+/// Accounting-store fake that records EVERY `commitUsageLog` call (the
+/// shared `InMemoryAccountingStore` keeps only the last). The A2b.1
+/// metering tests find the `voyage_query_embedding` commit and assert its
+/// attribution + token-derived cost. `startRequest` / `completeRequest`
+/// are unused by the retrieve route (it meters via `commitUsageLog`
+/// only), so they are minimal no-ops.
+class _RecordingAccountingStore implements ProxyAccountingStore {
+  final List<_CommitCall> commits = <_CommitCall>[];
+
+  @override
+  Future<void> commitUsageLog({
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) async {
+    commits.add(_CommitCall(
+      operatorId: operator.operatorId,
+      locationId: operator.locationId,
+      usageClass: usageClass,
+      tokenCount: estimate.tokenCount,
+      costCents: estimate.costCents,
+      modelUsed: telemetry.modelUsed,
+    ));
+  }
+
+  @override
+  Future<ProxyAccountingStartResult> startRequest({
+    required String idempotencyKey,
+    required String requestType,
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) async {
+    return const ProxyAccountingReserved(
+      capStatus: ProxyCapStatus(
+        usageClass: 'unused',
+        monthlyCapCents: 0,
+        monthlyUsedCents: 0,
+        perInvocationCapCents: 0,
+        estimatedCostCents: 0,
+      ),
+    );
+  }
+
+  @override
+  Future<void> completeRequest({
+    required OperatorContext operator,
+    required String idempotencyKey,
+    required Map<String, Object?> responsePayload,
+    required DateTime now,
+  }) async {}
 }
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
@@ -463,6 +550,298 @@ void main() {
     });
   });
 
+  // ── A2b.1 — HP #9 Voyage embedding cost metering ─────────────────────────
+
+  group('POST /v1/advisor/retrieve (A2b.1 — Voyage cost metering)', () {
+    Future<T> withRealHttp<T>(Future<T> Function() body) async {
+      final saved = HttpOverrides.current;
+      HttpOverrides.global = null;
+      try {
+        return await body();
+      } finally {
+        HttpOverrides.global = saved;
+      }
+    }
+
+    late HttpServer server;
+    late HttpClient client;
+    late Uri baseUri;
+    late SettableVerifier verifier;
+
+    // Distinct operator/location so the metering attribution assertion
+    // proves the recorded row carries THIS caller's scope.
+    const meterOperatorId = 'op_meter_777';
+    const meterLocationId = 'loc_meter_999';
+
+    Future<void> spinUp({
+      required CorpusRetrievalService retrievalService,
+      AdvisorQueryEmbeddingGateway? embeddingGateway,
+      String? voyageApiKey,
+      ProxyUsageGuard? usageGuard,
+      ProxyAccountingStore? accountingStore,
+    }) async {
+      verifier = SettableVerifier();
+      verifier.claims = const ProxyJwtClaims(
+        userId: 'user_meter',
+        operatorId: meterOperatorId,
+        locationId: meterLocationId,
+        roles: <String>['advisor.read'],
+      );
+      final guard = ProxyRequestGuard(verifier: verifier);
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        try {
+          await routeRequest(
+            request,
+            guard,
+            corpusRetrievalService: retrievalService,
+            corpusQueryEmbeddingGateway: embeddingGateway,
+            voyageApiKeyForRetrieval: voyageApiKey,
+            usageGuard: usageGuard,
+            accountingStore: accountingStore,
+          );
+        } catch (_) {
+          try {
+            request.response.statusCode = 500;
+            await request.response.close();
+          } catch (_) {/* ignore */}
+        }
+      });
+      client = HttpClient();
+      baseUri = Uri.parse('http://${server.address.host}:${server.port}');
+    }
+
+    Future<void> shutDown() async {
+      client.close(force: true);
+      await server.close(force: true);
+    }
+
+    ProxyUsageGuard openGuard() => ProxyUsageGuard(
+          store: FixedSnapshotProxyUsageStore(
+            snapshot: UsageSnapshot(
+              requestsThisMinute: 0,
+              costCentsThisMonth: 0,
+              minuteBucketStart: DateTime.utc(2026, 5, 24, 12, 0),
+              monthBucketStart: DateTime.utc(2026, 5, 1),
+            ),
+          ),
+          tierResolver: const FixedLaunchTierResolver(),
+        );
+
+    // ── (a) text query records cost under the Voyage usage class,
+    //        attributed to the caller's operator/location ──────────────────
+    test('text query records a voyage_query_embedding usage_log attributed '
+        'to the caller operator/location', () async {
+      await withRealHttp(() async {
+        final repo = _FakeCorpusRepo(
+          stubbedChunks: <RetrievedChunk>[_chunk('c1', 0.9)],
+        );
+        // 1,000,000 tokens -> at 12 cents/MTok the cost is exactly 12 cents,
+        // a clean integer that proves the rate wiring end-to-end.
+        final gateway = _FakeEmbeddingGateway(totalTokens: 1000000);
+        final accounting = _RecordingAccountingStore();
+        await spinUp(
+          retrievalService: CorpusRetrievalService(repository: repo),
+          embeddingGateway: gateway,
+          voyageApiKey: 'sk-key',
+          usageGuard: openGuard(),
+          accountingStore: accounting,
+        );
+        try {
+          final response = await httpPost(
+            client,
+            baseUri.resolve(advisorRetrievePath),
+            authorization: 'Bearer token',
+            body: <String, Object?>{'query': 'How do I improve CPLH?'},
+          );
+          expect(response.statusCode, equals(200));
+
+          // Exactly one commit, under the Voyage cost class, attributed
+          // to the caller's operator + location.
+          expect(accounting.commits, hasLength(1));
+          final commit = accounting.commits.single;
+          expect(commit.usageClass, equals(kVoyageQueryEmbeddingUsageClass));
+          expect(commit.usageClass, equals('voyage_query_embedding'));
+          expect(commit.operatorId, equals(meterOperatorId));
+          expect(commit.locationId, equals(meterLocationId));
+          expect(
+            commit.modelUsed,
+            equals(AdvisorProviderConstants.voyageEmbeddingModelId),
+          );
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    // ── (b) cost is computed from the Voyage-returned token count,
+    //        not a hardcoded constant ───────────────────────────────────────
+    test('recorded cost is derived from the provider-returned token count, '
+        'scaling with it (not a hardcoded constant)', () async {
+      await withRealHttp(() async {
+        // Two different token counts must yield two different recorded
+        // token_counts AND costs (proving derivation, not a constant).
+        // 1,000,000 tokens -> 12 cents; 2,000,000 tokens -> 24 cents.
+        Future<_CommitCall> commitForTokens(int tokens) async {
+          final repo = _FakeCorpusRepo();
+          final gateway = _FakeEmbeddingGateway(totalTokens: tokens);
+          final accounting = _RecordingAccountingStore();
+          await spinUp(
+            retrievalService: CorpusRetrievalService(repository: repo),
+            embeddingGateway: gateway,
+            voyageApiKey: 'sk-key',
+            accountingStore: accounting,
+          );
+          try {
+            final response = await httpPost(
+              client,
+              baseUri.resolve(advisorRetrievePath),
+              authorization: 'Bearer token',
+              body: <String, Object?>{'query': 'q'},
+            );
+            expect(response.statusCode, equals(200));
+            expect(accounting.commits, hasLength(1));
+            return accounting.commits.single;
+          } finally {
+            await shutDown();
+          }
+        }
+
+        final low = await commitForTokens(1000000);
+        final high = await commitForTokens(2000000);
+
+        // token_count carries the ACTUAL provider count.
+        expect(low.tokenCount, equals(1000000));
+        expect(high.tokenCount, equals(2000000));
+
+        // Cost = tokens * 12 cents / 1,000,000 (Voyage voyage-4-large rate).
+        expect(low.costCents, equals(12));
+        expect(high.costCents, equals(24));
+
+        // Different token counts -> different cost: it is DERIVED, not fixed.
+        expect(high.costCents, isNot(equals(low.costCents)));
+
+        // Cross-check directly against the registry so the test fails if the
+        // rate ever changes without updating the expectation.
+        final rate = LlmCostRateRegistry.rateFor(
+          AdvisorProviderConstants.voyageEmbeddingModelId,
+        )!;
+        expect(
+          low.costCents,
+          equals(rate.costCentsFor(inputTokens: 1000000, outputTokens: 0)),
+        );
+      });
+    });
+
+    // ── (c) pre-computed embedding path records NO Voyage cost ───────────────
+    test('pre-computed query_embedding path records NO voyage cost', () async {
+      await withRealHttp(() async {
+        final repo = _FakeCorpusRepo(
+          stubbedChunks: <RetrievedChunk>[_chunk('c2', 0.7)],
+        );
+        final gateway = _FakeEmbeddingGateway(totalTokens: 5000);
+        final accounting = _RecordingAccountingStore();
+        await spinUp(
+          retrievalService: CorpusRetrievalService(repository: repo),
+          embeddingGateway: gateway,
+          voyageApiKey: 'sk-key',
+          usageGuard: openGuard(),
+          accountingStore: accounting,
+        );
+        try {
+          final response = await httpPost(
+            client,
+            baseUri.resolve(advisorRetrievePath),
+            authorization: 'Bearer token',
+            body: <String, Object?>{'query_embedding': _zero1024()},
+          );
+          expect(response.statusCode, equals(200));
+          // No provider call on the pre-computed path -> no Voyage spend.
+          expect(gateway.calls, isEmpty);
+          expect(accounting.commits, isEmpty);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    // ── (d) over-budget operator is refused (cap-check wired) ────────────────
+    test('over-budget operator is refused 402 before the Voyage call', () async {
+      await withRealHttp(() async {
+        final repo = _FakeCorpusRepo();
+        final gateway = _FakeEmbeddingGateway(totalTokens: 1000);
+        final accounting = _RecordingAccountingStore();
+        // Force the monthly cost cap to be already reached.
+        final exhaustedGuard = ProxyUsageGuard(
+          store: FixedSnapshotProxyUsageStore(
+            snapshot: UsageSnapshot(
+              requestsThisMinute: 0,
+              costCentsThisMonth: PolicyTier.launch.maxMonthlyCostCents,
+              minuteBucketStart: DateTime.utc(2026, 5, 24, 12, 0),
+              monthBucketStart: DateTime.utc(2026, 5, 1),
+            ),
+          ),
+          tierResolver: const FixedLaunchTierResolver(),
+        );
+        await spinUp(
+          retrievalService: CorpusRetrievalService(repository: repo),
+          embeddingGateway: gateway,
+          voyageApiKey: 'sk-key',
+          usageGuard: exhaustedGuard,
+          accountingStore: accounting,
+        );
+        try {
+          final response = await httpPost(
+            client,
+            baseUri.resolve(advisorRetrievePath),
+            authorization: 'Bearer token',
+            body: <String, Object?>{'query': 'expensive question'},
+          );
+          expect(response.statusCode, equals(402));
+          final decoded = jsonDecode(response.body) as Map<String, Object?>;
+          expect(decoded['error'], equals('monthly_cap_reached'));
+          // Refused BEFORE the provider call -> no embed, no cost recorded.
+          expect(gateway.calls, isEmpty);
+          expect(accounting.commits, isEmpty);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    // ── (e) key never leaks even on the metered path ─────────────────────────
+    test('metered text-query path never leaks the Voyage key', () async {
+      await withRealHttp(() async {
+        const secretKey = 'voyage-METERED-SECRET-KEY-999';
+        final repo = _FakeCorpusRepo(
+          stubbedChunks: <RetrievedChunk>[_chunk('c1', 0.9)],
+        );
+        final gateway = _FakeEmbeddingGateway(totalTokens: 100);
+        final accounting = _RecordingAccountingStore();
+        await spinUp(
+          retrievalService: CorpusRetrievalService(repository: repo),
+          embeddingGateway: gateway,
+          voyageApiKey: secretKey,
+          usageGuard: openGuard(),
+          accountingStore: accounting,
+        );
+        try {
+          final response = await httpPost(
+            client,
+            baseUri.resolve(advisorRetrievePath),
+            authorization: 'Bearer token',
+            body: <String, Object?>{'query': 'test'},
+          );
+          expect(response.body, isNot(contains(secretKey)));
+          // The recorded telemetry must not carry the key either.
+          expect(accounting.commits.single.modelUsed, isNot(contains(secretKey)));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+  });
+
   // ── Unit tests for VoyageHttpQueryEmbeddingGateway ────────────────────────
 
   group('VoyageHttpQueryEmbeddingGateway', () {
@@ -505,6 +884,60 @@ void main() {
       final first = data.first as Map<String, Object?>;
       final embedding = first['embedding'] as List<Object?>;
       expect(embedding, hasLength(1024));
+    });
+
+    // A2b.1: the gateway lifts `usage.total_tokens` into the result so the
+    // route can meter from the real provider count.
+    test('parses usage.total_tokens into the result totalTokens', () async {
+      final vector = List<double>.generate(1024, (i) => i / 1024.0);
+      final mock = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'data': <Map<String, Object?>>[
+              <String, Object?>{'index': 0, 'embedding': vector},
+            ],
+            'usage': <String, Object?>{'total_tokens': 137},
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = VoyageHttpQueryEmbeddingGateway(httpClient: mock);
+      final result = await gateway.embedQuery(
+        apiKey: 'sk-key',
+        model: AdvisorProviderConstants.voyageEmbeddingModelId,
+        dimensions: AdvisorProviderConstants.voyageEmbeddingDimensions,
+        queryText: 'how do I improve CPLH?',
+      );
+      expect(result.embedding, hasLength(1024));
+      expect(result.totalTokens, equals(137));
+    });
+
+    // Fail-open: a 2xx response missing the usage block yields 0 tokens
+    // (cost computes to 0) rather than throwing and blocking retrieval.
+    test('missing usage block yields totalTokens 0 (fail-open)', () async {
+      final vector = List<double>.filled(1024, 0.1);
+      final mock = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'data': <Map<String, Object?>>[
+              <String, Object?>{'index': 0, 'embedding': vector},
+            ],
+            // no `usage` key
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = VoyageHttpQueryEmbeddingGateway(httpClient: mock);
+      final result = await gateway.embedQuery(
+        apiKey: 'sk-key',
+        model: AdvisorProviderConstants.voyageEmbeddingModelId,
+        dimensions: AdvisorProviderConstants.voyageEmbeddingDimensions,
+        queryText: 'q',
+      );
+      expect(result.embedding, hasLength(1024));
+      expect(result.totalTokens, equals(0));
     });
   });
 }
