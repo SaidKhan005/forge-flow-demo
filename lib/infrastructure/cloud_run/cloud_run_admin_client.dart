@@ -31,6 +31,75 @@ import 'package:http/http.dart' as http;
 
 import '../../services/auth/firebase_admin_auth_client.dart';
 
+/// Current serving capacity of a single Cloud Run service, as reported
+/// by the Cloud Run Admin API v2 `GET service` endpoint.
+///
+/// This is a READ-only snapshot used (by a later slice) to populate the
+/// AI Metrics "Hosting" panel. The fields map onto the Cloud Run Admin
+/// v2 `Service` resource:
+///  - [minInstances] / [maxInstances] come from
+///    `template.scaling.{minInstanceCount,maxInstanceCount}` — the
+///    *configured* autoscaling bounds. Cloud Run omits a field when it
+///    is zero/default, so either may be null when the service relies on
+///    platform defaults.
+///  - [servingRevisionId] is `latestReadyRevision` — the revision Cloud
+///    Run is currently routing 100%-latest traffic to. Null when the
+///    service has no ready revision yet.
+///  - [activeInstanceCount] is NOT a field on the v2 `Service` resource
+///    (instance counts are an operational/monitoring signal, surfaced
+///    via Cloud Monitoring, not the Admin API). It is parsed defensively
+///    from an `observedInstanceCount`-style field when one is present
+///    and is otherwise null. Callers must treat null as "unknown", not
+///    "zero" (Metric Honesty Doctrine).
+class CloudRunServiceCapacity {
+  const CloudRunServiceCapacity({
+    required this.serviceName,
+    this.activeInstanceCount,
+    this.minInstances,
+    this.maxInstances,
+    this.servingRevisionId,
+  });
+
+  /// The Cloud Run service this snapshot describes (the short service
+  /// id, e.g. `forge-flow-advisor-proxy`, parsed from the resource
+  /// `name`).
+  final String serviceName;
+
+  /// Number of instances currently serving, or null when Cloud Run did
+  /// not report it (the v2 `Service` resource does not always carry an
+  /// instance count — see class doc). Null means "unknown".
+  final int? activeInstanceCount;
+
+  /// Configured minimum instance count (`template.scaling.
+  /// minInstanceCount`), or null when not set (platform default).
+  final int? minInstances;
+
+  /// Configured maximum instance count (`template.scaling.
+  /// maxInstanceCount`), or null when not set (platform default).
+  final int? maxInstances;
+
+  /// The currently-serving (latest ready) revision id, or null when the
+  /// service has no ready revision yet.
+  final String? servingRevisionId;
+
+  @override
+  String toString() =>
+      'CloudRunServiceCapacity(service: $serviceName, '
+      'active: $activeInstanceCount, min: $minInstances, '
+      'max: $maxInstances, servingRevision: $servingRevisionId)';
+}
+
+/// READ-only contract for fetching the current capacity of a Cloud Run
+/// service. Kept separate from [CloudRunAdminClient] (the write/restart
+/// seam) so read callers depend only on this narrow abstraction and
+/// tests can supply a fake without an HTTP client.
+abstract class CloudRunCapacityReader {
+  /// Fetch the current [CloudRunServiceCapacity] for the configured
+  /// service. Throws [CloudRunAdminError] on a non-200 response, a
+  /// timeout, or a malformed body.
+  Future<CloudRunServiceCapacity> readServiceCapacity();
+}
+
 /// Cloud Run Admin client contract. The launch product only needs
 /// "force a new revision" — a full Cloud Run management surface is
 /// out of scope.
@@ -61,9 +130,11 @@ class CloudRunAdminError implements Exception {
 }
 
 /// Production implementation: PATCHes the Cloud Run service via the
-/// Cloud Run Admin API v2. Changing `template.labels` is enough to
-/// trigger a new revision.
-class HttpCloudRunAdminClient implements CloudRunAdminClient {
+/// Cloud Run Admin API v2 (write seam) and GETs the same service to
+/// read its current capacity (read seam). Changing `template.labels` is
+/// enough to trigger a new revision.
+class HttpCloudRunAdminClient
+    implements CloudRunAdminClient, CloudRunCapacityReader {
   HttpCloudRunAdminClient({
     required String projectId,
     required String region,
@@ -179,6 +250,129 @@ class HttpCloudRunAdminClient implements CloudRunAdminClient {
     return operationName;
   }
 
+  @override
+  Future<CloudRunServiceCapacity> readServiceCapacity() async {
+    // Cloud Run Admin API v2 GET service. Same host/auth/transport as
+    // [forceNewRevision]; no new credentials. We request only the
+    // fields we parse via a field mask to keep the payload small and
+    // the parse intent explicit.
+    final uri = Uri.https(
+      'run.googleapis.com',
+      '/v2/projects/$_projectId/locations/$_region/services/$_serviceName',
+      <String, String>{
+        'readMask':
+            'name,latestReadyRevision,template.scaling',
+      },
+    );
+
+    final token = await _accessTokenProvider.accessToken();
+
+    http.Response response;
+    try {
+      response = await _httpClient
+          .get(
+            uri,
+            headers: <String, String>{
+              'Authorization': 'Bearer $token',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw CloudRunAdminError(
+        message: 'cloud_run_get_timeout',
+        statusCode: null,
+      );
+    }
+
+    if (response.statusCode != 200) {
+      throw CloudRunAdminError(
+        message: _decodeErrorMessage(response.body) ?? 'request_failed',
+        statusCode: response.statusCode,
+      );
+    }
+
+    return _parseServiceCapacity(response.body, response.statusCode);
+  }
+
+  /// Parse the Cloud Run Admin v2 `GET service` response body into a
+  /// [CloudRunServiceCapacity]. Throws [CloudRunAdminError] when the
+  /// body is empty or not a JSON object; individual capacity fields are
+  /// parsed leniently (a missing/odd field becomes null rather than an
+  /// error) so a healthy service with only platform-default scaling
+  /// still yields a usable snapshot.
+  CloudRunServiceCapacity _parseServiceCapacity(String body, int statusCode) {
+    if (body.isEmpty) {
+      throw CloudRunAdminError(
+        message: 'cloud_run_get_response_empty',
+        statusCode: statusCode,
+      );
+    }
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } catch (_) {
+      throw CloudRunAdminError(
+        message: 'cloud_run_get_response_malformed',
+        statusCode: statusCode,
+      );
+    }
+    if (decoded is! Map) {
+      throw CloudRunAdminError(
+        message: 'cloud_run_get_response_malformed',
+        statusCode: statusCode,
+      );
+    }
+
+    final template = decoded['template'];
+    final scaling = template is Map ? template['scaling'] : null;
+    final scalingMap = scaling is Map ? scaling : const <Object?, Object?>{};
+
+    return CloudRunServiceCapacity(
+      serviceName: _shortServiceName(decoded['name']) ?? _serviceName,
+      activeInstanceCount: _asInt(
+        // Not a documented field on the v2 Service resource, but parsed
+        // defensively in case a future readMask / API revision surfaces
+        // it. Stays null (== "unknown") otherwise.
+        decoded['observedInstanceCount'] ??
+            (template is Map ? template['observedInstanceCount'] : null),
+      ),
+      minInstances: _asInt(scalingMap['minInstanceCount']),
+      maxInstances: _asInt(scalingMap['maxInstanceCount']),
+      servingRevisionId:
+          _shortRevisionName(decoded['latestReadyRevision']),
+    );
+  }
+
+  /// Coerce a JSON number/numeric-string into an int, or null. Cloud
+  /// Run may serialize int64 fields as JSON strings, so accept both.
+  static int? _asInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  /// Cloud Run returns the service `name` as the full resource path
+  /// (`projects/<p>/locations/<r>/services/<service>`). Return just the
+  /// trailing service id; null when absent/malformed.
+  static String? _shortServiceName(Object? name) {
+    if (name is! String || name.isEmpty) return null;
+    final idx = name.lastIndexOf('/');
+    final short = idx >= 0 ? name.substring(idx + 1) : name;
+    return short.isEmpty ? null : short;
+  }
+
+  /// `latestReadyRevision` is a full resource path
+  /// (`projects/<p>/locations/<r>/services/<s>/revisions/<rev>`). Return
+  /// just the trailing revision id; null when absent/malformed.
+  static String? _shortRevisionName(Object? name) {
+    if (name is! String || name.isEmpty) return null;
+    final idx = name.lastIndexOf('/');
+    final short = idx >= 0 ? name.substring(idx + 1) : name;
+    return short.isEmpty ? null : short;
+  }
+
   /// Extract the long-running operation `name` from a successful
   /// Cloud Run Admin v2 PATCH response. Returns null when the body
   /// is missing or malformed.
@@ -220,11 +414,25 @@ class HttpCloudRunAdminClient implements CloudRunAdminClient {
 ///  - lanes that don't need a Cloud Run restart (e.g. `azure_db`),
 ///    where the Postgres connection pool will pick up the rotated
 ///    secret on the next reconnect.
-class NoOpCloudRunAdminClient implements CloudRunAdminClient {
-  const NoOpCloudRunAdminClient();
+///
+/// Also satisfies [CloudRunCapacityReader] with an all-unknown capacity
+/// snapshot, so a caller that has no live Cloud Run target (tests,
+/// local, non-GCP lanes) reads a truthful "unknown" rather than a
+/// fabricated zero (Metric Honesty Doctrine).
+class NoOpCloudRunAdminClient
+    implements CloudRunAdminClient, CloudRunCapacityReader {
+  const NoOpCloudRunAdminClient({String serviceName = 'no-op-cloud-run'})
+      : _serviceName = serviceName;
+
+  final String _serviceName;
 
   @override
   Future<String> forceNewRevision({required String reason}) async {
     return 'no-op-cloud-run:$reason';
+  }
+
+  @override
+  Future<CloudRunServiceCapacity> readServiceCapacity() async {
+    return CloudRunServiceCapacity(serviceName: _serviceName);
   }
 }

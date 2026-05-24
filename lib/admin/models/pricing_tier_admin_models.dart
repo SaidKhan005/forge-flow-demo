@@ -365,6 +365,136 @@ const List<PricingTierTemplate> kPricingTierTemplates = <PricingTierTemplate>[
   ),
 ];
 
+/// Read-only presentation metadata for one plan in the laddered plan
+/// map. The concrete USD caps + the canonical plan keys/names stay in
+/// [kPricingTierTemplates] (the proxy-recognised source of truth); this
+/// table layers the human-facing price line, per-seat line, "what it
+/// adds" summary, margin estimate, and onboarding range from the
+/// reconciled pricing model in
+/// `docs/phases/phase_11a/phase_11a_decision_register.md`
+/// ("Reconciled pricing model (2026-05-24)") and the operator-approved
+/// mockup `docs/_mockups/admin_plans_and_limits_redesign.html`.
+///
+/// This is display-only. There is no editable pricing catalog yet (that
+/// is Phase 3, schema + proxy), so nothing here is wired to a save path
+/// and the plan map renders read-only.
+@immutable
+class PricingPlanPresentation {
+  const PricingPlanPresentation({
+    required this.tierKey,
+    required this.monthlyUsd,
+    required this.priceLine,
+    required this.seatLine,
+    required this.includes,
+    required this.marginEstimate,
+    required this.onboardingRange,
+    required this.ladderFraction,
+  });
+
+  /// Matches [PricingTierTemplate.tierKey].
+  final String tierKey;
+
+  /// Headline monthly price in USD, or null for a custom contract
+  /// (Enterprise) so the map renders "Custom" instead of a number.
+  final double? monthlyUsd;
+
+  /// One-line price summary as the operator should read it
+  /// (e.g. `$250/mo plus $5/seat`). Plain English, no em dash.
+  final String priceLine;
+
+  /// Per-seat / onboarding-context line shown under the price.
+  final String seatLine;
+
+  /// "What it adds" relative to the plan below it.
+  final String includes;
+
+  /// Margin estimate copy from the gross-margin sanity check.
+  final String marginEstimate;
+
+  /// Onboarding fee range copy.
+  final String onboardingRange;
+
+  /// 0 to 1 fill used to draw the laddered accent bar in the plan map.
+  final double ladderFraction;
+}
+
+/// Laddered plan presentation, lowest to highest. Order mirrors
+/// [kPricingTierTemplates]. Values are the reconciled 2026-05-24 model.
+const List<PricingPlanPresentation> kPricingPlanPresentations =
+    <PricingPlanPresentation>[
+      PricingPlanPresentation(
+        tierKey: 'pilot',
+        monthlyUsd: 0,
+        priceLine: 'Free preview on sample data',
+        seatLine: 'No seat fee. Self-serve onboarding.',
+        includes:
+            'KPI dashboard on sample data plus the AI advisor. '
+            'Connect real data to go live.',
+        marginEstimate: 'Free trial',
+        onboardingRange: r'$0 (self-serve)',
+        ladderFraction: 0.28,
+      ),
+      PricingPlanPresentation(
+        tierKey: 'starter',
+        monthlyUsd: 250,
+        priceLine: r'$250/mo',
+        seatLine: 'No seat fee.',
+        includes: 'KPI dashboard, reporting, and the manager chatbot.',
+        marginEstimate: 'About 95% margin',
+        onboardingRange: r'$500 to $1,000',
+        ladderFraction: 0.42,
+      ),
+      PricingPlanPresentation(
+        tierKey: 'premium',
+        monthlyUsd: 250,
+        priceLine: r'$250/mo plus $5/seat',
+        seatLine: r'$5/seat first 20, then $3.',
+        includes: 'Everything in Starter, plus the LMS and scoreboard.',
+        marginEstimate: 'About 93% margin',
+        onboardingRange: r'$750 to $2,000',
+        ladderFraction: 0.56,
+      ),
+      PricingPlanPresentation(
+        tierKey: 'elite',
+        monthlyUsd: 250,
+        priceLine: r'$250/mo plus $10/$5 seat',
+        seatLine: r'$10/seat first 20, then $5.',
+        includes: 'Everything in Premium, plus staff coaching and SOPs.',
+        marginEstimate: 'About 78% margin',
+        onboardingRange: r'$1,500 to $3,500',
+        ladderFraction: 0.7,
+      ),
+      PricingPlanPresentation(
+        tierKey: 'pro',
+        monthlyUsd: 500,
+        priceLine: r'$500/mo plus $15/$8 seat',
+        seatLine: r'$15/seat first 20, then $8. Includes 100 workflow runs.',
+        includes: 'Everything in Elite, plus the workflow catalog.',
+        marginEstimate: 'About 75% margin',
+        onboardingRange: r'$2,500 to $5,000',
+        ladderFraction: 0.84,
+      ),
+      PricingPlanPresentation(
+        tierKey: 'enterprise',
+        monthlyUsd: null,
+        priceLine: 'Custom contract',
+        seatLine: 'Per-contract seats and SLA.',
+        includes: 'Everything in Pro, plus custom workflows and SLA.',
+        marginEstimate: '80% or more margin',
+        onboardingRange: 'Custom',
+        ladderFraction: 1.0,
+      ),
+    ];
+
+/// Resolve plan presentation by [tierKey]; null for unknown keys.
+PricingPlanPresentation? findPricingPlanPresentation(String tierKey) {
+  final normalized = tierKey.trim().toLowerCase();
+  for (final p in kPricingPlanPresentations) {
+    if (p.tierKey == normalized) return p;
+  }
+  return null;
+}
+
 /// The set of tier keys that the proxy will accept on
 /// `apply-template`. Used for client + server validation.
 final Set<String> kPricingTierTemplateKeys = <String>{

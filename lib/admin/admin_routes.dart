@@ -76,6 +76,7 @@ import 'services/pricing_tier_admin_gateway.dart';
 import 'services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'services/vendor_applicability_admin_gateway.dart';
 import 'widgets/admin_setup_workspace.dart';
+import 'widgets/corpus_upload_dialog.dart';
 import '../domain/models/data_accuracy_settings.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../domain/models/inheritance_tree_node.dart';
@@ -637,6 +638,22 @@ Widget _buildOperators(BuildContext context) {
                 ),
               );
             },
+      // A DELIBERATE business / org-unit / location pick in the left scope
+      // tree emits a hierarchyScope intent (staying on the operators route,
+      // so no navigation). The shell flips its "business chosen" latch on a
+      // hierarchyScope-carrying intent, activating the per-business sidebar
+      // cluster. The on-load seed (`onSelectOperatorScope`) carries only an
+      // operatorLocationScope, so it never activates the cluster.
+      onChooseBusinessScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminOperatorsRouteId,
+                  hierarchyScope: scope,
+                ),
+              );
+            },
     );
   }
 
@@ -935,6 +952,12 @@ class _SupportOperatorViewRouteShellState
 
 Widget _buildPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.pricingTierGatewayOf(context);
+  // Plans & Limits V1 (Phase 1) reads spend / margin / cap-breach
+  // figures from the existing observability gateway (read-only). In
+  // demo this returns the seeded envelope keyed by the same demo
+  // operators; no new backend route is added.
+  final observabilityGateway =
+      AdminConsoleServicesScope.observabilityGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   return _buildScopedAdminWorkspace(
     context: context,
@@ -946,6 +969,7 @@ Widget _buildPricing(BuildContext context) {
       if (source == null) {
         return PricingTierAdminScreen(
           gateway: gateway,
+          observabilityGateway: observabilityGateway,
           hierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
         );
@@ -962,6 +986,7 @@ Widget _buildPricing(BuildContext context) {
           );
           return PricingTierAdminScreen(
             gateway: gateway,
+            observabilityGateway: observabilityGateway,
             editingEnabled: canEdit,
             hierarchyScope: selectedScope,
             scopeLocationIds: selection.locationIds,
@@ -1000,9 +1025,18 @@ Widget _buildCorpus(BuildContext context) {
     functionBuilder: (context, selectedScope, selection) {
       final targetOperatorId = selectedScope.operatorId;
       final targetLocationId = selectedScope.locationId;
+      // B1 — wire the real file-picker dialog as the upload picker.
+      // Production (source != null) and demo (source == null) both use
+      // [showCorpusUploadDialog]; the dialog internally renders a
+      // "Use sample file" affordance when `kDemoMode` is true so the
+      // demo walkthrough click-path runs without a real file on disk.
+      // The old paste-markdown `_defaultDemoPicker` in the screen remains
+      // as a fallback but is no longer reached from this wiring.
+      final CorpusUploadPicker uploadPicker = showCorpusUploadDialog;
       if (source == null) {
         return CorpusAdminScreen(
           gateway: gateway,
+          uploadPicker: uploadPicker,
           targetOperatorId: targetOperatorId,
           targetLocationId: targetLocationId,
         );
@@ -1016,6 +1050,7 @@ Widget _buildCorpus(BuildContext context) {
           return CorpusAdminScreen(
             gateway: gateway,
             editingEnabled: canEdit,
+            uploadPicker: uploadPicker,
             targetOperatorId: targetOperatorId,
             targetLocationId: targetLocationId,
           );
@@ -3037,7 +3072,7 @@ final OperatorLocationAdminGateway _defaultDemoGateway =
             operatorId: '00000000-0000-4000-8000-000000000001',
             businessName: 'Demo Diner Co.',
             ownerEmail: 'owner@demo-diner.test',
-            subscriptionTier: 'launch',
+            subscriptionTier: 'pro',
             preferredCurrency: 'CAD',
             primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
             suspendedAt: null,
@@ -3097,16 +3132,17 @@ final OperatorLocationAdminGateway _defaultDemoGateway =
 
 /// 11A.2 fallback pricing gateway. Mirrors the two demo operators
 /// from `_defaultDemoGateway` so the walkthrough can hop between
-/// Operators and Pricing without a backing service. Pilot operator
-/// starts with the locked Pilot template caps; the launch operator
-/// has no caps yet so the walkthrough exercises "Apply template" too.
+/// Operators and Pricing without a backing service. The Pilot operator
+/// (Sunset Cafe Group) starts with the locked Pilot template caps; the
+/// Pro operator (Demo Diner Co.) has no caps yet so the walkthrough
+/// exercises "Apply template" too.
 final PricingTierAdminGateway _defaultPricingDemoGateway =
     InMemoryPricingTierAdminGateway(
       seed: <PricingOperatorBundle>[
         PricingOperatorBundle(
           operatorId: '00000000-0000-4000-8000-000000000001',
           businessName: 'Demo Diner Co.',
-          subscriptionTier: 'launch',
+          subscriptionTier: 'pro',
           preferredCurrency: 'CAD',
           primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
           primaryLocationName: 'Toronto Yorkville',
