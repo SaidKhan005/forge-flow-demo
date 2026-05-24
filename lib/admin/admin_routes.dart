@@ -2589,6 +2589,7 @@ Widget _buildMyAccount(BuildContext context) {
   final securityGateway = AdminConsoleServicesScope.adminSecurityGatewayOf(
     context,
   );
+  final handoff = AdminRouteHandoff.maybeOf(context);
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
     initialData: source.current,
@@ -2601,6 +2602,19 @@ Widget _buildMyAccount(BuildContext context) {
           accountGateway: accountGateway,
           sessionsGateway: sessionsGateway,
           securityGateway: securityGateway,
+          // "View audit log" opens the existing "Security, audit, and
+          // sessions" surface (the admin analog of the ops business
+          // audit log). It is per-business, so the admin picks a
+          // business there; the admin's OWN sign-in/password/2FA
+          // history stays in the Security card's "Recent sign-in
+          // activity" above.
+          onOpenAuditLog: handoff == null
+              ? null
+              : () => handoff.onSelectRoute(
+                  AdminRouteIntent(
+                    routeId: kAdminAuditedSupportActionsRouteId,
+                  ),
+                ),
         );
       }
       return const _MyAccountUnauthenticatedFallback();

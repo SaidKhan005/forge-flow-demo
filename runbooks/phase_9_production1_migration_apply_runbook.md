@@ -7,12 +7,14 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605241100_plans_and_limits_phase3_pricing_plan_catalog.sql`
-(Plans & Limits V1 Phase 3: adds the GLOBAL, no-RLS `pricing_plan_catalog`
-table — one editable row per plan, monthly fee + per-seat ramp + onboarding
-range — seeded from the reconciled pricing model; admin-pool BYPASSRLS posture
-like `default_role_catalog_versions`; build-only, gated on explicit operator
-approval). The prior cutoff
+`202605241500_create_proxy_request_stats.sql`
+(P1a' Support logs telemetry storage: creates the stats-only
+`public.proxy_request_stats` table — per-AI-request tokens / cost / latency /
+outcome / provider+model ids + `actor_user_id` + advisory `request_id`
+correlation to `proxy_requests`, NO content, NO business_date; operator-scoped
+with wrapper-based RLS, operator-leading indexes, and a cluster-wide 30-day
+pg_cron purge at 03:30 UTC; schema + RLS, build-only, gated on operator
+approval), preceded by
 `202605241000_advisor_conversation_log_request_correlation_and_retention.sql`
 (P1a Support logs telemetry groundwork: adds a NULLABLE `request_id` uuid
 correlation key + operator-leading join index to `advisor_conversation_log`,
@@ -348,17 +350,16 @@ Current known post-cutoff staging additions:
   deletes rows where `legal_hold = true` or `retention_class = 'permanent'`.
   Schema-touching + RLS-adjacent groundwork for the Support logs redesign;
   code-ready and gated on explicit operator approval before any apply.
-- `db/migrations/202605241100_plans_and_limits_phase3_pricing_plan_catalog.sql`
-  adds the GLOBAL, platform-wide `pricing_plan_catalog` table (one row per
-  plan: tier_key PK CHECK-pinned to the six locked keys, monthly_usd, the
-  first-N / first-seat / additional-seat per-seat ramp, onboarding min/max,
-  updated_at TIMESTAMPTZ + updated_by). No operator_id and no RLS policy —
-  plan pricing is identical for every operator, so the table follows the
-  admin-pool BYPASSRLS posture of `default_role_catalog_versions` (REVOKE all
-  from public, SELECT to service_role, full DML to forge_admin). Seeds the six
-  plans from the reconciled pricing model (`on conflict do nothing` so a
-  re-apply never clobbers a later admin price edit). Schema-touching;
-  code-ready and gated on explicit operator approval before any apply.
+- `db/migrations/202605241500_create_proxy_request_stats.sql` creates the
+  stats-only `public.proxy_request_stats` table (per-AI-request telemetry:
+  tokens / cost / latency / outcome / provider+model ids + `actor_user_id`
+  uuid + an advisory `request_id` correlation to `public.proxy_requests`; NO
+  message content, NO `business_date`). Operator-scoped fact table with a
+  composite `locations` FK, wrapper-based per-tenant RLS, and operator-leading
+  indexes; a cluster-wide `proxy_request_stats_purge_expired()` (SECURITY
+  DEFINER, forge_admin EXECUTE only, `FOR UPDATE SKIP LOCKED`) is scheduled
+  daily at 03:30 UTC via pg_cron for 30-day retention. Schema + RLS; build-only,
+  gated on explicit operator approval before any apply.
 
 Migration drift automation:
 

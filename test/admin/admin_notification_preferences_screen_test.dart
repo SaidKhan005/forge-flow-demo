@@ -65,6 +65,32 @@ void main() {
       }
     });
 
+    testWidgets('event rows use the ops-style info button (no inline subcopy)',
+        (tester) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final gateway = InMemoryAdminNotificationPreferencesGateway();
+      await tester.pumpWidget(
+        wrap(AdminNotificationPreferencesScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+
+      // A coming-soon row carries the info button and no inline subcopy:
+      // the description + state detail live in the popover, matching the
+      // operator-web Notifications screen.
+      expect(
+        find.byKey(const Key(
+          'admin_notification_preferences_state_info_notif.shift.stale',
+        )),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key(
+          'admin_notification_preferences_subcopy_notif.shift.stale',
+        )),
+        findsNothing,
+      );
+    });
+
     testWidgets('toggling an available channel saves through the gateway',
         (tester) async {
       await sizeViewport(tester, const Size(1280, 1600));

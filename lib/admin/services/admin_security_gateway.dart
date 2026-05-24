@@ -161,6 +161,139 @@ class AdminSecurityRecoveryRequested {
   final String? requestId;
 }
 
+/// One account audit / sign-in history row projected from
+/// `GET /v1/auth/audit-log`. Mirrors the operator-web
+/// `WebSecurityLoginHistoryEntry` shape so the admin My Account
+/// surface reads identically.
+@immutable
+class AdminSecurityAuditEntry {
+  const AdminSecurityAuditEntry({
+    required this.eventId,
+    required this.eventType,
+    required this.friendlyLabel,
+    required this.occurredAt,
+    this.deviceLabel,
+    this.userAgent,
+    this.geoCity,
+    this.geoCountry,
+  });
+
+  final String eventId;
+  final String eventType;
+
+  /// Human-readable label projected from [eventType] so an unmapped
+  /// future event type still reads naturally.
+  final String friendlyLabel;
+  final DateTime occurredAt;
+  final String? deviceLabel;
+  final String? userAgent;
+  final String? geoCity;
+  final String? geoCountry;
+}
+
+/// Snapshot of the admin's projected audit rows, newest first.
+@immutable
+class AdminSecurityAuditListed {
+  const AdminSecurityAuditListed({required this.entries});
+
+  final List<AdminSecurityAuditEntry> entries;
+}
+
+/// 90-day cap for the admin "Recent sign-in activity" projection.
+/// Mirrors the operator-web `kWebSecurityLoginHistoryWindow`.
+const Duration kAdminSignInHistoryWindow = Duration(days: 90);
+
+/// Security-relevant event prefixes for the sign-in history filter.
+/// Duplicated from the operator-web Security gateway (kept inside
+/// `lib/admin/` so the admin build never imports `lib/operator_web/`).
+/// When the proxy adds a security event type, both sides update.
+const Set<String> kAdminSignInHistoryEventPrefixes = <String>{
+  'auth.session.',
+  'auth.password.',
+  'auth.mfa.',
+  'auth.session_',
+  'auth.password_',
+  'auth.mfa_',
+  'auth.all_sessions_',
+  'auth.signed_in',
+  'auth.signed_out',
+  'auth.login_',
+  'auth.user.password_',
+  'auth.user.mfa_',
+  'mfa_factor_revocation_',
+};
+
+/// True iff [eventType] belongs to the admin sign-in history
+/// projection (the security-relevant subset).
+bool adminIsSignInHistoryEvent(String eventType) {
+  for (final prefix in kAdminSignInHistoryEventPrefixes) {
+    if (eventType == prefix || eventType.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+/// Friendly label projection. Mirrors the operator-web
+/// `webSecurityFriendlyLabelFor` mapping so the two surfaces read the
+/// same. The screen renders the result verbatim.
+String adminAuditFriendlyLabelFor(String eventType) {
+  switch (eventType) {
+    case 'auth.signed_in':
+    case 'auth.session.login':
+    case 'auth.user.signed_in':
+      return 'Signed in';
+    case 'auth.session.refresh':
+      return 'Session refreshed';
+    case 'auth.session_revoked':
+    case 'auth.session.revoked':
+      return 'Session signed out';
+    case 'auth.all_sessions_revoked':
+      return 'Signed out of all devices';
+    case 'auth.password_changed':
+    case 'auth.password.change':
+    case 'auth.user.password_changed':
+      return 'Password changed';
+    case 'auth.password_reset_requested':
+    case 'auth.password.reset_requested':
+      return 'Password reset requested';
+    case 'auth.password_reset_confirmed':
+    case 'auth.password.reset_confirmed':
+      return 'Password reset completed';
+    case 'auth.mfa_totp_enrolled':
+    case 'auth.mfa.totp_enrolled':
+      return 'Authenticator added';
+    case 'auth.mfa_totp_enroll_failed':
+    case 'auth.mfa.totp_enroll_failed':
+      return 'Authenticator setup failed';
+    case 'auth.mfa_factor_removed':
+    case 'auth.mfa.factor_removed':
+    case 'auth.user.mfa_factor_removed':
+      return 'Authenticator removed';
+    case 'auth.mfa_recovery_requested':
+    case 'auth.mfa.recovery_requested':
+    case 'auth.user.mfa_recovery_requested':
+      return 'Authenticator recovery requested';
+    case 'auth.login_failed':
+      return 'Sign-in attempt failed';
+    case 'mfa_factor_revocation_initiated':
+      return 'Authenticator removal scheduled';
+    case 'mfa_factor_revocation_completed':
+      return 'Authenticator removal completed';
+    case 'mfa_factor_revocation_cancelled':
+      return 'Authenticator removal cancelled';
+  }
+  final tail = eventType.contains('.')
+      ? eventType.substring(eventType.lastIndexOf('.') + 1)
+      : eventType;
+  if (tail.isEmpty) return eventType;
+  final words = tail.split('_');
+  final first = words.first;
+  final rest = words.skip(1).join(' ');
+  final head = first.isEmpty
+      ? ''
+      : first.substring(0, 1).toUpperCase() + first.substring(1);
+  return rest.isEmpty ? head : '$head $rest';
+}
+
 /// Self-service Security surface for the F&F admin console. Every
 /// method targets the SIGNED-IN admin (the proxy resolves the actor
 /// from the verified bearer token); [requestMfaRecovery] is the one
@@ -204,6 +337,12 @@ abstract class AdminSecurityGateway {
     String? reason,
     required String idempotencyKey,
   });
+
+  /// Lists the signed-in admin's recent SECURITY events (sign-ins,
+  /// password changes, authenticator events) via
+  /// `GET /v1/auth/audit-log`, capped at the last 90 days. Mirrors the
+  /// operator-web Security "Recent sign-in activity" projection.
+  Future<AdminSecurityAuditListed> listSignInHistory();
 }
 
 /// Production HTTP implementation. Constructor shape + bearer source +
@@ -235,6 +374,7 @@ class HttpAdminSecurityGateway implements AdminSecurityGateway {
   static const String mfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
   static const String mfaRecoveryRequestPath = '/v1/auth/mfa/recovery/request';
   static const String passwordChangePath = '/v1/auth/password/change';
+  static const String auditLogPath = '/v1/auth/audit-log';
 
   @override
   Future<AdminSecurityFactorsListed> listFactors() async {
@@ -376,6 +516,64 @@ class HttpAdminSecurityGateway implements AdminSecurityGateway {
     return AdminSecurityRecoveryRequested(
       queued: queued is bool ? queued : true,
       requestId: _readNonBlank(parsed['request_id']),
+    );
+  }
+
+  /// Lists the admin's own recent sign-in history via
+  /// `GET /v1/auth/audit-log`. The proxy resolves the actor from the
+  /// verified bearer token, so the admin's own events come back
+  /// automatically; the result is projected to the Security-relevant
+  /// sign-in subset and capped at the 90-day window.
+  @override
+  Future<AdminSecurityAuditListed> listSignInHistory() async {
+    final since = _now().toUtc().subtract(kAdminSignInHistoryWindow);
+    final uri = baseUri.resolve(auditLogPath).replace(
+      queryParameters: <String, String>{
+        'from': since.toIso8601String(),
+        'limit': '200',
+      },
+    );
+    final token = await bearerTokenProvider();
+    final request = http.Request('GET', uri)
+      ..headers['authorization'] = 'Bearer $token'
+      ..headers['accept'] = 'application/json';
+    final body = await _dispatch(request, expectStatuses: const <int>[200]);
+    final raw = body['entries'] ?? body['events'];
+    if (raw is! List) {
+      throw const AdminSecurityGatewayError(
+        statusCode: 502,
+        errorCode: 'malformed_response',
+        message: 'admin audit-log proxy returned an incomplete response',
+      );
+    }
+    final out = <AdminSecurityAuditEntry>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      final json = Map<String, Object?>.from(entry);
+      final eventType = _readNonBlank(json['event_type']);
+      if (eventType == null) continue;
+      if (!adminIsSignInHistoryEvent(eventType)) continue;
+      final occurredAtRaw = _readNonBlank(json['occurred_at']) ??
+          _readNonBlank(json['created_at']);
+      if (occurredAtRaw == null) continue;
+      final occurredAt = DateTime.parse(occurredAtRaw).toUtc();
+      if (occurredAt.isBefore(since)) continue;
+      out.add(
+        AdminSecurityAuditEntry(
+          eventId: _readNonBlank(json['event_id']) ?? occurredAtRaw,
+          eventType: eventType,
+          friendlyLabel: adminAuditFriendlyLabelFor(eventType),
+          occurredAt: occurredAt,
+          deviceLabel: _readNonBlank(json['device_label']),
+          userAgent: _readNonBlank(json['user_agent']),
+          geoCity: _readNonBlank(json['geo_city']),
+          geoCountry: _readNonBlank(json['geo_country']),
+        ),
+      );
+    }
+    out.sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    return AdminSecurityAuditListed(
+      entries: List<AdminSecurityAuditEntry>.unmodifiable(out),
     );
   }
 
@@ -593,5 +791,44 @@ class InMemoryAdminSecurityGateway implements AdminSecurityGateway {
       queued: true,
       requestId: 'demo-recovery-request-1',
     );
+  }
+
+  @override
+  Future<AdminSecurityAuditListed> listSignInHistory() async =>
+      AdminSecurityAuditListed(entries: _seedSignInHistory());
+
+  /// Deterministic in-memory sign-in history rows so the demo /
+  /// share-preview walkthrough renders the "Recent sign-in activity"
+  /// list without a backend.
+  List<AdminSecurityAuditEntry> _seedSignInHistory() {
+    final now = _now().toUtc();
+    final all = <AdminSecurityAuditEntry>[
+      AdminSecurityAuditEntry(
+        eventId: 'demo-evt-1',
+        eventType: 'auth.signed_in',
+        friendlyLabel: adminAuditFriendlyLabelFor('auth.signed_in'),
+        occurredAt: now.subtract(const Duration(hours: 2)),
+        deviceLabel: 'Chrome on macOS',
+        geoCity: 'Toronto',
+        geoCountry: 'Canada',
+      ),
+      AdminSecurityAuditEntry(
+        eventId: 'demo-evt-2',
+        eventType: 'auth.password_changed',
+        friendlyLabel: adminAuditFriendlyLabelFor('auth.password_changed'),
+        occurredAt: now.subtract(const Duration(days: 6)),
+        deviceLabel: 'Chrome on macOS',
+      ),
+      AdminSecurityAuditEntry(
+        eventId: 'demo-evt-3',
+        eventType: 'auth.mfa_totp_enrolled',
+        friendlyLabel: adminAuditFriendlyLabelFor('auth.mfa_totp_enrolled'),
+        occurredAt: now.subtract(const Duration(days: 40)),
+        deviceLabel: 'Chrome on macOS',
+      ),
+    ];
+    final sorted = all.toList()
+      ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    return List<AdminSecurityAuditEntry>.unmodifiable(sorted);
   }
 }

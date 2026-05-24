@@ -31,6 +31,16 @@
 // (any dependency failure is already called out by the red summary). The
 // content stays centered and capped at the shared operator-web width.
 //
+// Slice 4 drops the verbose hierarchy scope notice (the "Where this
+// applies" pill / "Section details" expander / source / effective-value
+// block). System health is platform-wide: the proxy `/health` envelope
+// carries no operator/tenant/scope identifiers per
+// docs/contracts/proxy_health_contract.md, so a per-scope block does not
+// belong. When a hierarchy scope is selected, one short muted line
+// (key `admin_health_platform_note`) states the checks do not change per
+// scope. The scope is still sent to the gateway fetch for request
+// shaping; only the on-screen per-scope block is gone.
+//
 // Coverage:
 //   * Initial render is manual-only and does not fetch.
 //   * Manual check carries the selected hierarchy scope to the gateway.
@@ -168,13 +178,26 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
+    // The verbose hierarchy scope notice was removed (System health is
+    // platform-wide: the /health envelope carries no scope identifiers per
+    // docs/contracts/proxy_health_contract.md). One short muted platform
+    // note renders in its place; the old notice is gone from the tree.
+    expect(
+      find.byKey(const Key('admin_health_scope_notice')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_health_platform_note')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('admin_health_confirm_run')));
     await tester.pump();
 
+    // Scope still flows to the gateway fetch (request shaping is unchanged);
+    // only the on-screen per-scope block was dropped.
     expect(gateway.fetchCount, equals(1));
     expect(gateway.requests.single.operatorId, equals('op-a'));
     expect(gateway.requests.single.locationId, isNull);
@@ -282,6 +305,11 @@ void main() {
     expect(summaryHeadline(tester), equals('Everything looks good'));
     expect(
       find.textContaining('All 3 checks passed.'),
+      findsOneWidget,
+    );
+    // The all-good sub-line now also carries the last-checked phrase.
+    expect(
+      find.text('All 3 checks passed. Last checked just now.'),
       findsOneWidget,
     );
   });
@@ -440,13 +468,88 @@ void main() {
     expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
     expect(
       summaryHeadline(tester),
-      equals('Action needed: 1 critical check failing'),
+      equals('Action needed: 1 critical check is failing'),
     );
     // The failing tier-1 check is listed in the triage list (it lives in
     // the "Behind the scenes" tab, not the default one).
     expect(
       find.byKey(const Key('admin_health_attn_migration_apply_drift_count')),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('only a failing tier-1 card shows the blocking tag', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final json = _greenEnvelope();
+    // A failing critical (tier-1) check, in the "Behind the scenes" tab.
+    (json['metrics']! as Map<String, Object?>)['migration_apply_drift_count'] =
+        <String, Object?>{
+          'status': 'red',
+          'value': 4,
+          'unit': 'count',
+          'description': 'tier-1 forced fail',
+          'owner': 'B42',
+          'observed_at': '2026-05-02T12:00:00.000Z',
+          'thresholds': <String, Object?>{'red': 1},
+          'metadata': <String, Object?>{'tier': 1},
+        };
+    // A failing tier-2 check in the default (Advisor data) tab. It is red
+    // but NOT critical, so it must NOT carry a blocking tag.
+    (json['metrics']! as Map<String, Object?>)['rollup_refresh_lag_seconds'] =
+        <String, Object?>{
+          'status': 'red',
+          'value': 99999,
+          'unit': 'seconds',
+          'description': 'tier-2 forced fail',
+          'owner': 'B45',
+          'observed_at': '2026-05-02T12:00:00.000Z',
+          'thresholds': <String, Object?>{'yellow': 3600, 'red': 14400},
+          'metadata': <String, Object?>{'tier': 2},
+        };
+    final gateway = InMemoryHealthAdminGateway(envelope: json);
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await runHealthCheck(tester);
+
+    // Default (Advisor data) tab is selected. The tier-2 red card and a
+    // plain green card are both mounted here and neither is blocking.
+    expect(
+      find.byKey(
+        const Key('admin_health_tile_rollup_refresh_lag_seconds_blocking'),
+      ),
+      findsNothing,
+      reason: 'a failing tier-2 (non-critical) check must not be blocking',
+    );
+    expect(
+      find.byKey(
+        const Key('admin_health_tile_rollup_freshness_per_grain_blocking'),
+      ),
+      findsNothing,
+      reason: 'a green check must not be blocking',
+    );
+
+    // Jump to the failing tier-1 check via its triage row (it lives in the
+    // "Behind the scenes" tab, not the default one).
+    await tester.tap(
+      find.byKey(const Key('admin_health_attn_migration_apply_drift_count')),
+    );
+    await tester.pumpAndSettle();
+
+    // The critical card now carries the blocking tag.
+    expect(
+      find.byKey(
+        const Key('admin_health_tile_migration_apply_drift_count_blocking'),
+      ),
+      findsOneWidget,
+      reason: 'a failing tier-1 (critical) check must show the blocking tag',
     );
   });
 

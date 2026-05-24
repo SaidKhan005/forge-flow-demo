@@ -70,6 +70,7 @@ class MyAccountAdminScreen extends StatefulWidget {
     this.sessionsGateway,
     this.securityGateway,
     this.now,
+    this.onOpenAuditLog,
   });
 
   final AdminAuthSession session;
@@ -103,6 +104,12 @@ class MyAccountAdminScreen extends StatefulWidget {
   /// Test seam for the freshness clock so widget tests can pin a
   /// deterministic "last signed in" relative label.
   final DateTime Function()? now;
+
+  /// When non-null, the "Audit log" card's "View audit log" button
+  /// navigates to the full account Audit log page. The admin shell
+  /// wires this through AdminRouteHandoff; a screen mounted without a
+  /// shell (older widget tests) leaves it null and the button disabled.
+  final VoidCallback? onOpenAuditLog;
 
   @override
   State<MyAccountAdminScreen> createState() => _MyAccountAdminScreenState();
@@ -143,7 +150,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
   // same HIGH case G60 flagged for operator-web, fixed by #855).
   static String _mintIdentityIdempotencyKey() {
     final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
     return 'admin-self-profile-$ts-$r';
   }
 
@@ -180,37 +187,57 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return OperatorWebScreenBody(
-      scrollKey: const Key('admin_my_account_screen'),
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _AdminAccountHeader(),
-          const SizedBox(height: 18),
-          _AdminIdentityCard(
-            session: widget.session,
-            displayNameOverride: _displayNameOverride,
-            emailOverride: _emailOverride,
-            onEditIdentity:
-                widget.accountGateway == null ? null : _handleEditIdentity,
-            identityToast: _identityToast,
+    // Mirror the operator-web My account screen card-for-card:
+    // Identity -> Security (password + recent sign-in activity) ->
+    // Two-factor sign-in -> Active sessions -> Audit log. The
+    // LayoutBuilder drives the identity card's 2-column wrap at the
+    // same 800px breakpoint the ops Profile card uses.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoColumnProfile = constraints.maxWidth >= 800;
+        return OperatorWebScreenBody(
+          scrollKey: const Key('admin_my_account_screen'),
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _AdminAccountHeader(),
+              const SizedBox(height: 18),
+              _AdminIdentityCard(
+                session: widget.session,
+                twoColumn: twoColumnProfile,
+                displayNameOverride: _displayNameOverride,
+                emailOverride: _emailOverride,
+                onEditIdentity:
+                    widget.accountGateway == null ? null : _handleEditIdentity,
+                identityToast: _identityToast,
+              ),
+              const SizedBox(height: 14),
+              _AdminSecurityCard(
+                gateway: widget.securityGateway,
+                now: widget.now,
+              ),
+              const SizedBox(height: 14),
+              _AdminTwoFactorCard(
+                session: widget.session,
+                gateway: widget.securityGateway,
+                now: widget.now,
+              ),
+              const SizedBox(height: 14),
+              _AdminActiveSessionsCard(
+                session: widget.session,
+                onSignOut: () => widget.authSource.signOut(),
+                gateway: widget.sessionsGateway,
+                now: widget.now,
+              ),
+              const SizedBox(height: 14),
+              _AdminAuditLogCard(
+                onOpenAuditLog: widget.onOpenAuditLog,
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          _AdminSecurityCard(
-            session: widget.session,
-            gateway: widget.securityGateway,
-            now: widget.now,
-          ),
-          const SizedBox(height: 14),
-          _AdminActiveSessionsCard(
-            session: widget.session,
-            onSignOut: () => widget.authSource.signOut(),
-            gateway: widget.sessionsGateway,
-            now: widget.now,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -234,30 +261,51 @@ class _AdminAccountCard extends StatelessWidget {
     required this.cardKey,
     required this.title,
     this.headerExplainer,
+    this.statusBadge,
     required this.child,
   });
 
   final Key cardKey;
   final String title;
   final String? headerExplainer;
+
+  /// Optional status pill rendered in the card header trailing slot,
+  /// beside the info button. Mirrors the operator-web `_SectionCard`
+  /// `statusBadge` (e.g. the two-factor "On" / "Not set up" pill so the
+  /// status reads in the header exactly like the ops My account cards).
+  final Widget? statusBadge;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final explainer = headerExplainer;
+    final help = explainer == null
+        ? null
+        : OperatorWebInfoButton(
+            title: title,
+            tooltip: title,
+            body: Text(
+              explainer,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          );
+    final Widget? trailing;
+    if (help == null && statusBadge == null) {
+      trailing = null;
+    } else if (statusBadge == null) {
+      trailing = help;
+    } else if (help == null) {
+      trailing = statusBadge;
+    } else {
+      trailing = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[help, const SizedBox(width: 8), statusBadge!],
+      );
+    }
     return OperatorWebPanel(
       key: cardKey,
       title: title,
-      trailing: explainer == null
-          ? null
-          : OperatorWebInfoButton(
-              title: title,
-              tooltip: title,
-              body: Text(
-                explainer,
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ),
+      trailing: trailing,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
       child: child,
     );
@@ -283,31 +331,29 @@ class _AdminAccountField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Field chrome matches the operator-web `_ProfileField`: a muted
+    // mono11 label over a body13 value. Inter-field spacing is managed
+    // by the parent card (no built-in padding) so the identity card can
+    // stack or 2-column-wrap exactly like the ops Profile card.
     final helperText = helper;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-          ),
-          const SizedBox(height: 4),
-          valueWidget ??
-              Text(
-                value,
-                style: AppTextStyles.body14(color: AppColors.textPrimary),
-              ),
-          if (helperText != null) ...[
-            const SizedBox(height: 4),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: AppTextStyles.mono11(color: AppColors.textMuted)),
+        const SizedBox(height: 4),
+        valueWidget ??
             Text(
-              helperText,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
+              value,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
             ),
-          ],
+        if (helperText != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            helperText,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
         ],
-      ),
+      ],
     );
   }
 }
@@ -317,6 +363,7 @@ class _AdminAccountField extends StatelessWidget {
 class _AdminIdentityCard extends StatelessWidget {
   const _AdminIdentityCard({
     required this.session,
+    required this.twoColumn,
     this.displayNameOverride,
     this.emailOverride,
     this.onEditIdentity,
@@ -324,6 +371,11 @@ class _AdminIdentityCard extends StatelessWidget {
   });
 
   final AdminAuthSession session;
+
+  /// When true (wide viewport, at the same 800px breakpoint the ops
+  /// Profile card uses), the identity fields wrap into two columns so
+  /// the card reads exactly like the operator-web Profile card.
+  final bool twoColumn;
 
   /// Wave 2 W-3 — local override after a successful self-edit so the
   /// UI reflects the new values without waiting for a re-sign-in.
@@ -351,34 +403,56 @@ class _AdminIdentityCard extends StatelessWidget {
         : 'Your sign-in details for the Forge & Flow admin console. '
               'Use Edit identity to change your display name or sign-in '
               'email. Changing your email signs you out.';
+    final fields = <Widget>[
+      _AdminAccountField(label: 'Display name', value: displayName),
+      _AdminAccountField(label: 'Email', value: email),
+      _AdminAccountField(
+        label: 'Role',
+        value: _readableAdminRole(session.roles),
+        valueWidget: Row(
+          key: const Key('admin_my_account_role_badge'),
+          children: [
+            _AdminRoleChip(label: _readableAdminRole(session.roles)),
+          ],
+        ),
+      ),
+      _AdminAccountField(
+        label: 'Scope',
+        value: 'Global: cross-operator',
+        helper:
+            'Admin console access is global. You can see and support '
+            'every business on Forge & Flow.',
+      ),
+    ];
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_identity_card'),
       title: 'Identity',
       headerExplainer: explainer,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _AdminAccountField(label: 'Display name', value: displayName),
-          _AdminAccountField(label: 'Email', value: email),
-          _AdminAccountField(
-            label: 'Role',
-            value: _readableAdminRole(session.roles),
-            valueWidget: Row(
-              key: const Key('admin_my_account_role_badge'),
+          if (twoColumn)
+            Wrap(
+              key: const Key('admin_my_account_identity_two_column'),
+              spacing: 24,
+              runSpacing: 14,
               children: [
-                _AdminRoleChip(label: _readableAdminRole(session.roles)),
+                for (final field in fields) SizedBox(width: 280, child: field),
+              ],
+            )
+          else
+            Column(
+              key: const Key('admin_my_account_identity_single_column'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < fields.length; i++) ...[
+                  fields[i],
+                  if (i != fields.length - 1) const SizedBox(height: 14),
+                ],
               ],
             ),
-          ),
-          _AdminAccountField(
-            label: 'Scope',
-            value: 'Global: cross-operator',
-            helper:
-                'Admin console access is global. You can see and support '
-                'every business on Forge & Flow.',
-          ),
           if (onEditIdentity != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerLeft,
               child: SizedBox(
@@ -406,33 +480,9 @@ class _AdminIdentityCard extends StatelessWidget {
           ],
           if (identityToast != null) ...[
             const SizedBox(height: 10),
-            Container(
-              key: const Key('admin_my_account_identity_toast'),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.positive.withValues(alpha: 0.10),
-                border: Border.all(
-                  color: AppColors.positive.withValues(alpha: 0.45),
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.check_circle_outline,
-                    size: 16,
-                    color: AppColors.positive,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      identityToast!,
-                      style: AppTextStyles.body13(color: AppColors.positive),
-                    ),
-                  ),
-                ],
-              ),
+            _AdminConfirmToast(
+              toastKey: const Key('admin_my_account_identity_toast'),
+              message: identityToast!,
             ),
           ],
         ],
@@ -475,26 +525,25 @@ class _AdminRoleChip extends StatelessWidget {
 
 // ─── Security ───────────────────────────────────────────────────────
 
-class _AdminSecurityCard extends StatefulWidget {
-  const _AdminSecurityCard({
-    required this.session,
-    this.gateway,
-    this.now,
-  });
+// ─── Two-factor sign-in ─────────────────────────────────────────────
+
+/// MFA as its own card, mirroring the operator-web My account layout
+/// (a dedicated "Two-factor sign-in" card with the status pill in the
+/// card header). With a [gateway] it renders the working self-service
+/// surface (enroll / recover); without one it degrades to the
+/// read-only "changes at next sign-in" posture.
+class _AdminTwoFactorCard extends StatefulWidget {
+  const _AdminTwoFactorCard({required this.session, this.gateway, this.now});
 
   final AdminAuthSession session;
-
-  /// Audit fix-first #7 (G4). When non-null, the card renders the
-  /// working self-service surface. Null degrades to the legacy
-  /// read-only posture (older fixtures / builds without the gateway).
   final AdminSecurityGateway? gateway;
   final DateTime Function()? now;
 
   @override
-  State<_AdminSecurityCard> createState() => _AdminSecurityCardState();
+  State<_AdminTwoFactorCard> createState() => _AdminTwoFactorCardState();
 }
 
-class _AdminSecurityCardState extends State<_AdminSecurityCard> {
+class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
   bool _loading = false;
   String? _loadError;
   AdminSecurityFactorsListed? _factors;
@@ -504,10 +553,9 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
   Timer? _toastTimer;
   static const Duration _kToastVisibleDuration = Duration(seconds: 4);
 
-  // Stable idempotency keys: one key per logical user action, minted
-  // when the user starts the action and reused on every retry of that
-  // SAME action so the proxy's `proxy_requests` UNIQUE replay returns
-  // the original 2xx (no fresh-key-per-call G60 bug).
+  // Stable idempotency keys: one key per logical user action, reused on
+  // every retry of that SAME action so the proxy `proxy_requests`
+  // UNIQUE replay returns the original 2xx (no fresh-key-per-call bug).
   int _idempotencyCounter = 0;
 
   @override
@@ -527,8 +575,8 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
   String _mintIdempotencyKey(String action) {
     _idempotencyCounter += 1;
     final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
-    return 'admin-my-account-security-$action-$ts-$r-$_idempotencyCounter';
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
+    return 'admin-my-account-2fa-$action-$ts-$r-$_idempotencyCounter';
   }
 
   void _showToast(String message) {
@@ -586,7 +634,7 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
       );
       return;
     }
-    // One stable key for the whole enroll → confirm action chain.
+    // One stable key for the whole enroll -> confirm action chain.
     final actionKey = _mintIdempotencyKey('enroll');
     AdminSecurityTotpEnrollment enrollment;
     try {
@@ -615,22 +663,6 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
     }
   }
 
-  Future<void> _handleChangePassword() async {
-    final gateway = widget.gateway;
-    if (gateway == null) return;
-    final changed = await showDialog<bool>(
-      context: context,
-      builder: (_) => _AdminChangePasswordDialog(
-        gateway: gateway,
-        idempotencyKey: _mintIdempotencyKey('password'),
-      ),
-    );
-    if (!mounted) return;
-    if (changed == true) {
-      _showToast('Password updated.');
-    }
-  }
-
   Future<void> _handleRecovery() async {
     final gateway = widget.gateway;
     if (gateway == null) return;
@@ -655,188 +687,584 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
   Widget build(BuildContext context) {
     final lastFresh = widget.session.lastFreshAuthAt;
     final hasGateway = widget.gateway != null;
-    if (!hasGateway) {
-      return _buildReadOnly(lastFresh);
-    }
     final factors = _factors;
     final enrolled = factors?.hasEnrolledFactor ?? false;
-    final mfaLabel = factors == null
-        ? (lastFresh == null ? 'Unknown' : 'Checking...')
-        : (enrolled ? 'On' : 'Not set up');
-    final mfaColor = factors == null
-        ? AppColors.textMuted
-        : (enrolled ? AppColors.positive : AppColors.sunsetDark);
+    final String mfaLabel;
+    final Color mfaColor;
+    if (!hasGateway) {
+      mfaLabel = lastFresh == null ? 'Unknown' : 'On';
+      mfaColor = lastFresh == null ? AppColors.textMuted : AppColors.positive;
+    } else if (factors == null) {
+      mfaLabel = lastFresh == null ? 'Unknown' : 'Checking...';
+      mfaColor = AppColors.textMuted;
+    } else {
+      mfaLabel = enrolled ? 'On' : 'Not set up';
+      mfaColor = enrolled ? AppColors.positive : AppColors.sunsetDark;
+    }
+    return _AdminAccountCard(
+      cardKey: const Key('admin_my_account_two_factor_card'),
+      title: 'Two-factor sign-in',
+      headerExplainer:
+          'Two-factor sign-in means a one-time code is required at every '
+          'sign-in, in addition to your password. We require it for every '
+          'Forge & Flow admin.',
+      statusBadge: _AdminStatusBadge(
+        key: const Key('admin_my_account_mfa_status'),
+        label: mfaLabel,
+        color: mfaColor,
+      ),
+      child: hasGateway ? _buildLive(factors, enrolled) : _buildReadOnly(),
+    );
+  }
+
+  Widget _buildLive(AdminSecurityFactorsListed? factors, bool enrolled) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_loading && factors == null) ...[
+          const LinearProgressIndicator(
+            minHeight: 2,
+            color: AppColors.sunsetDark,
+            backgroundColor: AppColors.borderSubtle,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (_loadError != null) ...[
+          _AdminInlineError(
+            key: const Key('admin_my_account_security_load_error'),
+            message: _loadError!,
+            onRetry: _loading ? null : _loadFactors,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (factors != null && !enrolled)
+          _AdminActionRow(
+            actionKey: const Key('admin_my_account_mfa_enroll_button'),
+            header: 'Set up your authenticator app',
+            body:
+                'Add an authenticator app so every sign-in asks for a '
+                'one-time code in addition to your password. Some sensitive '
+                'admin actions stay locked until you do.',
+            buttonLabel: 'Set up authenticator app',
+            onPressed: _handleEnroll,
+          ),
+        if (factors != null && enrolled)
+          _AdminActionRow(
+            actionKey: const Key('admin_my_account_mfa_recovery_button'),
+            header: 'Two-factor sign-in is on',
+            body:
+                'An authenticator app is protecting your account. If you lose '
+                'access to it, start recovery and we will email the account '
+                'on file with the next step.',
+            buttonLabel: 'Lost your authenticator?',
+            onPressed: _handleRecovery,
+          ),
+        if (_toast != null) ...[
+          const SizedBox(height: 10),
+          _AdminConfirmToast(
+            toastKey: const Key('admin_my_account_two_factor_toast'),
+            message: _toast!,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildReadOnly() {
+    return _AdminReadOnlyNote(
+      key: const Key('admin_my_account_two_factor_readonly_note'),
+      icon: Icons.info_outline,
+      message:
+          'Changes to two-factor sign-in happen the next time you sign in to '
+          'the admin console. Use the sign-in page to update them.',
+    );
+  }
+}
+
+// ─── Security (password + recent sign-in activity) ──────────────────
+
+/// The "Security" card: change password + recent sign-in activity,
+/// mirroring the operator-web My account Security card. The activity
+/// list reuses the self-scoped `GET /v1/auth/audit-log` route via
+/// [AdminSecurityGateway.listSignInHistory].
+class _AdminSecurityCard extends StatefulWidget {
+  const _AdminSecurityCard({this.gateway, this.now});
+
+  final AdminSecurityGateway? gateway;
+  final DateTime Function()? now;
+
+  @override
+  State<_AdminSecurityCard> createState() => _AdminSecurityCardState();
+}
+
+class _AdminSecurityCardState extends State<_AdminSecurityCard> {
+  String? _passwordToast;
+  Timer? _passwordToastTimer;
+  static const Duration _kToastVisibleDuration = Duration(seconds: 4);
+  int _idempotencyCounter = 0;
+
+  List<AdminSecurityAuditEntry> _history = const <AdminSecurityAuditEntry>[];
+  bool _historyLoading = false;
+  String? _historyError;
+  int _historyGeneration = 0;
+  _AdminHistoryWindow _historyWindow = _AdminHistoryWindow.last90Days;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.gateway != null) {
+      unawaited(_loadHistory());
+    }
+  }
+
+  @override
+  void dispose() {
+    _passwordToastTimer?.cancel();
+    super.dispose();
+  }
+
+  String _mintIdempotencyKey(String action) {
+    _idempotencyCounter += 1;
+    final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
+    return 'admin-my-account-security-$action-$ts-$r-$_idempotencyCounter';
+  }
+
+  DateTime _now() => (widget.now?.call() ?? DateTime.now()).toUtc();
+
+  Future<void> _handleChangePassword() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AdminChangePasswordDialog(
+        gateway: gateway,
+        idempotencyKey: _mintIdempotencyKey('password'),
+      ),
+    );
+    if (!mounted) return;
+    if (changed == true) {
+      _passwordToastTimer?.cancel();
+      setState(() => _passwordToast = 'Password updated.');
+      _passwordToastTimer = Timer(_kToastVisibleDuration, () {
+        if (!mounted) return;
+        setState(() => _passwordToast = null);
+      });
+    }
+  }
+
+  Future<void> _loadHistory() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final generation = ++_historyGeneration;
+    setState(() {
+      _historyLoading = true;
+      _historyError = null;
+    });
+    try {
+      final listed = await gateway.listSignInHistory();
+      if (!mounted || generation != _historyGeneration) return;
+      setState(() {
+        _history = listed.entries;
+        _historyLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _historyGeneration) return;
+      setState(() {
+        _historyLoading = false;
+        _historyError =
+            'Could not load recent sign-in activity. Refresh this section or '
+            'try again in a moment.';
+      });
+    }
+  }
+
+  List<AdminSecurityAuditEntry> _filteredHistory() {
+    final cutoff = _now().subtract(_historyWindow.duration);
+    return _history
+        .where((e) => !e.occurredAt.toUtc().isBefore(cutoff))
+        .toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasGateway = widget.gateway != null;
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_security_card'),
       title: 'Security',
       headerExplainer:
-          'Two-factor sign-in is required for every Forge & Flow admin. '
-          'Set up your authenticator app, change your password, or '
-          'recover access, all from here.',
+          'A strong password and recent sign-in activity help protect your '
+          'admin account. Password changes may ask you to sign in again.',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _AdminActionRow(
+            actionKey: const Key('admin_my_account_change_password_button'),
+            header: 'Change password',
+            body:
+                'You will be asked for your current password, then your new '
+                'password twice. Use at least 12 characters with a number '
+                'and a symbol.',
+            buttonLabel: 'Change password',
+            onPressed: hasGateway ? _handleChangePassword : null,
+            tooltip: hasGateway
+                ? null
+                : 'Connect your admin account to change your password from '
+                      'here.',
+          ),
+          if (_passwordToast != null) ...[
+            const SizedBox(height: 10),
+            _AdminConfirmToast(
+              toastKey: const Key('admin_my_account_password_toast'),
+              message: _passwordToast!,
+            ),
+          ],
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: AppColors.borderSubtle),
+          const SizedBox(height: 14),
+          _AdminLoginHistorySection(
+            hasGateway: hasGateway,
+            entries: _filteredHistory(),
+            loading: _historyLoading,
+            errorMessage: _historyError,
+            window: _historyWindow,
+            onWindowChanged: (next) => setState(() => _historyWindow = next),
+            onRetry: _loadHistory,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Shared action row + recent sign-in activity ────────────────────
+
+/// Header + explainer + outlined action button, mirroring the
+/// operator-web `_ActionRow` so the admin Security / Two-factor cards
+/// present their primary actions identically.
+class _AdminActionRow extends StatelessWidget {
+  const _AdminActionRow({
+    required this.actionKey,
+    required this.header,
+    required this.body,
+    required this.buttonLabel,
+    required this.onPressed,
+    this.tooltip,
+  });
+
+  final Key actionKey;
+  final String header;
+  final String body;
+  final String buttonLabel;
+  final VoidCallback? onPressed;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = SizedBox(
+      height: 38,
+      child: OutlinedButton(
+        key: actionKey,
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.sunsetDark,
+          disabledForegroundColor: AppColors.textMuted,
+          side: BorderSide(
+            color: onPressed == null
+                ? AppColors.borderSubtle
+                : AppColors.sunsetDark,
+            width: 1,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          textStyle: AppTextStyles.mono14(
+            color: AppColors.sunsetDark,
+            weight: FontWeight.w600,
+          ),
+        ),
+        child: Text(buttonLabel),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(header, style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+        const SizedBox(height: 4),
+        Text(body, style: AppTextStyles.body13(color: AppColors.textPrimary)),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: tooltip == null
+              ? button
+              : Tooltip(message: tooltip!, child: button),
+        ),
+      ],
+    );
+  }
+}
+
+/// Time window for the recent sign-in activity filter. Mirrors the
+/// operator-web `_SecurityHistoryWindow`.
+enum _AdminHistoryWindow { last7Days, last30Days, last90Days }
+
+extension _AdminHistoryWindowMeta on _AdminHistoryWindow {
+  Duration get duration {
+    switch (this) {
+      case _AdminHistoryWindow.last7Days:
+        return const Duration(days: 7);
+      case _AdminHistoryWindow.last30Days:
+        return const Duration(days: 30);
+      case _AdminHistoryWindow.last90Days:
+        return const Duration(days: 90);
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case _AdminHistoryWindow.last7Days:
+        return 'Last 7 days';
+      case _AdminHistoryWindow.last30Days:
+        return 'Last 30 days';
+      case _AdminHistoryWindow.last90Days:
+        return 'Last 90 days';
+    }
+  }
+
+  String get filterKey {
+    switch (this) {
+      case _AdminHistoryWindow.last7Days:
+        return 'last_7';
+      case _AdminHistoryWindow.last30Days:
+        return 'last_30';
+      case _AdminHistoryWindow.last90Days:
+        return 'last_90';
+    }
+  }
+}
+
+/// Recent sign-in activity list, mirroring the operator-web
+/// `_LoginHistorySection` (title + explainer + 7/30/90 filter chips +
+/// rows / loading / empty / error states).
+class _AdminLoginHistorySection extends StatelessWidget {
+  const _AdminLoginHistorySection({
+    required this.hasGateway,
+    required this.entries,
+    required this.loading,
+    required this.errorMessage,
+    required this.window,
+    required this.onWindowChanged,
+    required this.onRetry,
+  });
+
+  final bool hasGateway;
+  final List<AdminSecurityAuditEntry> entries;
+  final bool loading;
+  final String? errorMessage;
+  final _AdminHistoryWindow window;
+  final ValueChanged<_AdminHistoryWindow> onWindowChanged;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const Key('admin_my_account_login_history_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Recent sign-in activity',
+          style: AppTextStyles.mono14(
+            color: AppColors.textPrimary,
+            weight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Sign-ins, password changes, and authenticator events on your '
+          'admin account, capped at the last 90 days. If you see something '
+          'you do not recognise, change your password and review your '
+          'authenticators.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final w in _AdminHistoryWindow.values)
+              _AdminWindowChip(
+                keyName:
+                    'admin_my_account_login_history_filter_${w.filterKey}',
+                label: w.label,
+                selected: w == window,
+                onTap: () => onWindowChanged(w),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (!hasGateway)
+          const _AdminInlineState(
+            stateKey: Key('admin_my_account_login_history_disconnected'),
+            icon: Icons.history,
+            message:
+                'Recent sign-in activity will appear here once your admin '
+                'account is connected.',
+          )
+        else if (loading)
+          const _AdminInlineState(
+            stateKey: Key('admin_my_account_login_history_loading'),
+            icon: Icons.sync,
+            message: 'Loading recent sign-in activity...',
+          )
+        else if (errorMessage != null)
+          _AdminInlineError(
+            key: const Key('admin_my_account_login_history_error'),
+            message: errorMessage!,
+            onRetry: onRetry,
+          )
+        else if (entries.isEmpty)
+          const _AdminInlineState(
+            stateKey: Key('admin_my_account_login_history_empty'),
+            icon: Icons.history,
+            message: 'No sign-in activity in this window.',
+          )
+        else
+          for (var i = 0; i < entries.length; i++) ...[
+            _AdminLoginHistoryRow(entry: entries[i]),
+            if (i != entries.length - 1) const SizedBox(height: 10),
+          ],
+      ],
+    );
+  }
+}
+
+class _AdminWindowChip extends StatelessWidget {
+  const _AdminWindowChip({
+    required this.keyName,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String keyName;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      key: Key(keyName),
+      label: Text(label),
+      selected: selected,
+      labelStyle: AppTextStyles.mono11(
+        color: selected ? AppColors.sunsetDark : AppColors.textSecondary,
+      ),
+      selectedColor: AppColors.sunset.withValues(alpha: 0.15),
+      backgroundColor: AppColors.backgroundSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+        side: BorderSide(
+          color: selected ? AppColors.sunsetDark : AppColors.borderSubtle,
+          width: 1,
+        ),
+      ),
+      onSelected: (_) => onTap(),
+    );
+  }
+}
+
+class _AdminLoginHistoryRow extends StatelessWidget {
+  const _AdminLoginHistoryRow({required this.entry});
+
+  final AdminSecurityAuditEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key('admin_my_account_login_history_row_${entry.eventId}'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _AdminAccountField(
-            label: 'Two-factor sign-in',
-            value: mfaLabel,
-            valueWidget: Row(
-              key: const Key('admin_my_account_mfa_status'),
+          const Icon(Icons.history, size: 18, color: AppColors.sunsetDark),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _AdminStatusBadge(label: mfaLabel, color: mfaColor),
+                Text(
+                  entry.friendlyLabel,
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _metaLine(entry),
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                ),
               ],
             ),
-            helper: factors == null
-                ? 'Checking your authenticator app status...'
-                : enrolled
-                    ? 'An authenticator app is enrolled on your account.'
-                    : 'You have not set up an authenticator app yet. Some '
-                        'sensitive admin actions stay locked until you do.',
           ),
-          if (_loadError != null) ...[
-            const SizedBox(height: 6),
-            _AdminInlineError(
-              key: const Key('admin_my_account_security_load_error'),
-              message: _loadError!,
-              onRetry: _loading ? null : _loadFactors,
-            ),
-          ],
-          const SizedBox(height: 10),
-          if (factors != null && !enrolled)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                height: 38,
-                child: FilledButton.icon(
-                  key: const Key('admin_my_account_mfa_enroll_button'),
-                  onPressed: _handleEnroll,
-                  icon: const Icon(Icons.add_moderator_outlined, size: 16),
-                  label: const Text('Set up authenticator app'),
-                ),
-              ),
-            ),
-          if (factors != null && enrolled)
-            _AdminReadOnlyNote(
-              key: const Key('admin_my_account_mfa_enrolled_note'),
-              icon: Icons.verified_user_outlined,
-              message:
-                  'Your authenticator app is active. To replace a lost '
-                  'authenticator, use "Lost your authenticator?" below.',
-            ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              SizedBox(
-                height: 38,
-                child: OutlinedButton.icon(
-                  key: const Key('admin_my_account_change_password_button'),
-                  onPressed: _handleChangePassword,
-                  icon: const Icon(Icons.password_outlined, size: 16),
-                  label: const Text('Change password'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.sunsetDark,
-                    side: const BorderSide(color: AppColors.sunsetDark),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                  ),
-                ),
-              ),
-              SizedBox(
-                height: 38,
-                child: TextButton.icon(
-                  key: const Key('admin_my_account_mfa_recovery_button'),
-                  onPressed: _handleRecovery,
-                  icon: const Icon(Icons.lock_reset_outlined, size: 16),
-                  label: const Text('Lost your authenticator?'),
-                ),
-              ),
-            ],
-          ),
-          if (_toast != null) ...[
-            const SizedBox(height: 10),
-            Container(
-              key: const Key('admin_my_account_security_toast'),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.positive.withValues(alpha: 0.10),
-                border: Border.all(
-                  color: AppColors.positive.withValues(alpha: 0.45),
-                  width: 1,
-                ),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.check_circle_outline,
-                    size: 16,
-                    color: AppColors.positive,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _toast!,
-                      style: AppTextStyles.body13(color: AppColors.positive),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _buildReadOnly(DateTime? lastFresh) {
-    final mfaLabel = lastFresh == null ? 'Unknown' : 'On';
-    final mfaHelper = lastFresh == null
-        ? 'We could not confirm two-factor sign-in from this session. Sign '
-              'in again from the admin sign-in page to refresh.'
-        : 'Your last two-factor sign-in check happened '
-              '${_formatRelative(lastFresh, widget.now)}.';
-    return _AdminAccountCard(
-      cardKey: const Key('admin_my_account_security_card'),
-      title: 'Security',
-      headerExplainer:
-          'Two-factor sign-in is required for every Forge & Flow admin. '
-          'Changes to your two-factor sign-in factors happen from the '
-          'admin sign-in page during your next sign-in.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _AdminAccountField(
-            label: 'Two-factor sign-in',
-            value: mfaLabel,
-            valueWidget: Row(
-              key: const Key('admin_my_account_mfa_status'),
-              children: [
-                _AdminStatusBadge(
-                  label: mfaLabel,
-                  color: lastFresh == null
-                      ? AppColors.textMuted
-                      : AppColors.positive,
-                ),
-              ],
-            ),
-            helper: mfaHelper,
+  static String _metaLine(AdminSecurityAuditEntry entry) {
+    final geo = <String>[
+      if (entry.geoCity != null && entry.geoCity!.isNotEmpty) entry.geoCity!,
+      if (entry.geoCountry != null && entry.geoCountry!.isNotEmpty)
+        entry.geoCountry!,
+    ].join(', ');
+    final parts = <String>[
+      _formatAdminAuditStamp(entry.occurredAt),
+      if (entry.deviceLabel != null && entry.deviceLabel!.isNotEmpty)
+        entry.deviceLabel!,
+      if (geo.isNotEmpty) geo,
+    ];
+    return parts.join(' / ');
+  }
+}
+
+/// Inline icon + message row for loading / empty / disconnected
+/// states. Mirrors the operator-web `_AccountInlineState`.
+class _AdminInlineState extends StatelessWidget {
+  const _AdminInlineState({
+    required this.stateKey,
+    required this.icon,
+    required this.message,
+  });
+
+  final Key stateKey;
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: stateKey,
+      children: [
+        Icon(icon, size: 16, color: AppColors.textMuted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
-          const SizedBox(height: 4),
-          _AdminReadOnlyNote(
-            key: const Key('admin_my_account_security_readonly_note'),
-            icon: Icons.info_outline,
-            message:
-                'Changes to two-factor sign-in factors and password happen '
-                'the next time you sign in to the admin console. Use the '
-                'sign-in page to update them.',
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+String _formatAdminAuditStamp(DateTime value) {
+  final utc = value.toUtc();
+  return '${utc.year}-${_twoDigits(utc.month)}-${_twoDigits(utc.day)} '
+      '${_twoDigits(utc.hour)}:${_twoDigits(utc.minute)} UTC';
 }
 
 class _AdminInlineError extends StatelessWidget {
@@ -885,7 +1313,7 @@ class _AdminInlineError extends StatelessWidget {
 }
 
 class _AdminStatusBadge extends StatelessWidget {
-  const _AdminStatusBadge({required this.label, required this.color});
+  const _AdminStatusBadge({super.key, required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -943,9 +1371,56 @@ class _AdminReadOnlyNote extends StatelessWidget {
   }
 }
 
+/// Positive (green) confirmation toast shared by the Identity and
+/// Security cards. Mirrors the operator-web My account success toast
+/// (a check icon + body13 positive copy in a tinted rounded box).
+class _AdminConfirmToast extends StatelessWidget {
+  const _AdminConfirmToast({required this.toastKey, required this.message});
+
+  final Key toastKey;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: toastKey,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.positive.withValues(alpha: 0.10),
+        border: Border.all(
+          color: AppColors.positive.withValues(alpha: 0.45),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.check_circle_outline,
+            size: 16,
+            color: AppColors.positive,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.positive),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Active sessions ────────────────────────────────────────────────
 
-class _AdminActiveSessionsCard extends StatefulWidget {
+/// The "Active sessions" card. Mirrors the operator-web My account
+/// card: a minimal card whose "Manage active sessions here" button
+/// opens a popup that lists every signed-in admin session with
+/// per-session sign-out plus sign-out-everywhere. (Operator chose the
+/// ops popup pattern; the admin-only richer controls live inside it.)
+class _AdminActiveSessionsCard extends StatelessWidget {
   const _AdminActiveSessionsCard({
     required this.session,
     required this.onSignOut,
@@ -955,20 +1430,71 @@ class _AdminActiveSessionsCard extends StatefulWidget {
 
   final AdminAuthSession session;
   final VoidCallback onSignOut;
+  final AdminSessionsGateway? gateway;
+  final DateTime Function()? now;
 
-  /// Audit fix-first #2 (G2). When non-null, the card loads the
-  /// admin's own session list and offers per-row revoke +
-  /// sign-out-everywhere. Null degrades to the legacy single-session
-  /// + local sign-out posture.
+  Future<void> _openManageDialog(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (_) => _AdminActiveSessionsDialog(
+        session: session,
+        onSignOut: onSignOut,
+        gateway: gateway,
+        now: now,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _AdminAccountCard(
+      cardKey: const Key('admin_my_account_active_sessions_card'),
+      title: 'Active sessions',
+      headerExplainer:
+          'Review browsers and devices signed in to your admin account. '
+          'This device stays signed in when you sign out the others.',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: const Key('admin_my_account_active_sessions_manage'),
+          onPressed: () => _openManageDialog(context),
+          icon: const Icon(Icons.devices_other_outlined, size: 16),
+          label: const Text('Manage active sessions here'),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.sunsetDark,
+            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            alignment: Alignment.centerLeft,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The active-sessions management popup. Holds the session list +
+/// per-session revoke + sign-out-everywhere + local sign-out, all
+/// inside the shared [OperatorWebDialog] chrome (ops popup parity).
+class _AdminActiveSessionsDialog extends StatefulWidget {
+  const _AdminActiveSessionsDialog({
+    required this.session,
+    required this.onSignOut,
+    this.gateway,
+    this.now,
+  });
+
+  final AdminAuthSession session;
+  final VoidCallback onSignOut;
   final AdminSessionsGateway? gateway;
   final DateTime Function()? now;
 
   @override
-  State<_AdminActiveSessionsCard> createState() =>
-      _AdminActiveSessionsCardState();
+  State<_AdminActiveSessionsDialog> createState() =>
+      _AdminActiveSessionsDialogState();
 }
 
-class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
+class _AdminActiveSessionsDialogState
+    extends State<_AdminActiveSessionsDialog> {
   bool _loading = false;
   String? _loadError;
   List<AdminSessionEntry>? _sessions;
@@ -996,7 +1522,7 @@ class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
   String _mintIdempotencyKey(String action) {
     _idempotencyCounter += 1;
     final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
     return 'admin-my-account-sessions-$action-$ts-$r-$_idempotencyCounter';
   }
 
@@ -1020,8 +1546,7 @@ class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
       final listed = await gateway.listOwnSessions();
       if (!mounted) return;
       setState(() {
-        _sessions =
-            listed.where((s) => s.isActive).toList(growable: false);
+        _sessions = listed.where((s) => s.isActive).toList(growable: false);
         _loading = false;
       });
     } catch (error) {
@@ -1067,14 +1592,21 @@ class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
       );
       if (!mounted) return;
       // Every session (including this one) + the Firebase refresh
-      // tokens are revoked server-side. Route through the local
-      // sign-out so the gate returns to the sign-in card immediately.
+      // tokens are revoked server-side. Close the popup, then route
+      // through the local sign-out so the gate returns to the sign-in
+      // card immediately.
+      Navigator.of(context).pop();
       widget.onSignOut();
     } catch (error) {
       if (!mounted) return;
       setState(() => _signingOutEverywhere = false);
       _showToast(_friendly(error));
     }
+  }
+
+  void _handleLocalSignOut() {
+    Navigator.of(context).pop();
+    widget.onSignOut();
   }
 
   String _friendly(Object error) {
@@ -1092,172 +1624,66 @@ class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
 
   @override
   Widget build(BuildContext context) {
-    final lastFresh = widget.session.lastFreshAuthAt;
-    final lastSignedInHelper = lastFresh == null
-        ? 'Sign-in time is not available for this session.'
-        : 'Signed in ${_formatRelative(lastFresh, widget.now)}.';
     final hasGateway = widget.gateway != null;
-    return _AdminAccountCard(
-      cardKey: const Key('admin_my_account_active_sessions_card'),
+    return OperatorWebDialog(
+      key: const Key('admin_my_account_active_sessions_dialog'),
       title: 'Active sessions',
-      headerExplainer: hasGateway
-          ? 'Every place you are currently signed in to the admin console. '
-                'Sign out a single session, or sign out everywhere if you '
-                'think your account is at risk.'
-          : 'This is where you are currently signed in to the admin '
-                'console. Use the sign-out button to end this session.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            key: const Key('admin_my_account_current_session_row'),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundDeep,
-              border: Border.all(color: AppColors.borderSubtle, width: 1),
+      icon: Icons.devices_other_outlined,
+      maxWidth: 560,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_my_account_active_sessions_dialog_close'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+        OutlinedButton.icon(
+          key: const Key('admin_my_account_sign_out_button'),
+          onPressed: _handleLocalSignOut,
+          icon: const Icon(Icons.logout_outlined, size: 16),
+          label: const Text('Sign out of this session'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.sunsetDark,
+            side: const BorderSide(color: AppColors.sunsetDark),
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.laptop_mac_outlined,
-                  size: 18,
-                  color: AppColors.sunsetDark,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'This admin console session',
-                        style: AppTextStyles.mono15(
-                          color: AppColors.textPrimary,
-                          weight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        lastSignedInHelper,
-                        style: AppTextStyles.body13(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _AdminStatusBadge(
-                  label: 'This device',
-                  color: AppColors.positive,
-                ),
-              ],
+          ),
+        ),
+        if (hasGateway)
+          OutlinedButton.icon(
+            key: const Key('admin_my_account_sign_out_everywhere_button'),
+            onPressed: _signingOutEverywhere ? null : _signOutEverywhere,
+            icon: _signingOutEverywhere
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.shield_moon_outlined, size: 16),
+            label: Text(
+              _signingOutEverywhere
+                  ? 'Signing out everywhere...'
+                  : 'Sign out everywhere',
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.negative,
+              side: const BorderSide(color: AppColors.negative),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
             ),
           ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildCurrentSessionRow(),
           if (hasGateway) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             _buildSessionsList(),
-          ],
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              height: 40,
-              child: OutlinedButton.icon(
-                key: const Key('admin_my_account_sign_out_button'),
-                onPressed: widget.onSignOut,
-                icon: const Icon(Icons.logout_outlined, size: 16),
-                label: const Text('Sign out of this session'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.sunsetDark,
-                  side: const BorderSide(color: AppColors.sunsetDark),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  textStyle: AppTextStyles.mono14(
-                    color: AppColors.sunsetDark,
-                    weight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (hasGateway) ...[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                height: 40,
-                child: OutlinedButton.icon(
-                  key: const Key('admin_my_account_sign_out_everywhere_button'),
-                  onPressed:
-                      _signingOutEverywhere ? null : _signOutEverywhere,
-                  icon: _signingOutEverywhere
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.shield_moon_outlined, size: 16),
-                  label: Text(
-                    _signingOutEverywhere
-                        ? 'Signing out everywhere...'
-                        : 'Sign out everywhere',
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.negative,
-                    side: const BorderSide(color: AppColors.negative),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    textStyle: AppTextStyles.mono14(
-                      color: AppColors.negative,
-                      weight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (_toast != null) ...[
-              const SizedBox(height: 10),
-              Container(
-                key: const Key('admin_my_account_sessions_toast'),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.peacock.withValues(alpha: 0.10),
-                  border: Border.all(
-                    color: AppColors.peacock.withValues(alpha: 0.45),
-                    width: 1,
-                  ),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      size: 16,
-                      color: AppColors.peacockDark,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _toast!,
-                        style: AppTextStyles.body13(
-                          color: AppColors.peacockDark,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ] else ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             _AdminReadOnlyNote(
               key: const Key('admin_my_account_sessions_readonly_note'),
               icon: Icons.info_outline,
@@ -1267,6 +1693,84 @@ class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
                   'you suspect a session needs to be revoked.',
             ),
           ],
+          if (_toast != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              key: const Key('admin_my_account_sessions_toast'),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.peacock.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.peacock.withValues(alpha: 0.45),
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: AppColors.peacockDark,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _toast!,
+                      style: AppTextStyles.body13(color: AppColors.peacockDark),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentSessionRow() {
+    final lastFresh = widget.session.lastFreshAuthAt;
+    final lastSignedInHelper = lastFresh == null
+        ? 'Sign-in time is not available for this session.'
+        : 'Signed in ${_formatRelative(lastFresh, widget.now)}.';
+    return Container(
+      key: const Key('admin_my_account_current_session_row'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.laptop_mac_outlined,
+            size: 18,
+            color: AppColors.sunsetDark,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This admin console session',
+                  style: AppTextStyles.mono15(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  lastSignedInHelper,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          _AdminStatusBadge(label: 'This device', color: AppColors.positive),
         ],
       ),
     );
@@ -1299,11 +1803,7 @@ class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
-              Icons.error_outline,
-              size: 16,
-              color: AppColors.negative,
-            ),
+            const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -1328,20 +1828,83 @@ class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
         style: AppTextStyles.body13(color: AppColors.textSecondary),
       );
     }
-    return Column(
-      key: const Key('admin_my_account_sessions_list'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final entry in sessions) ...[
-          _AdminSessionRow(
-            entry: entry,
-            now: widget.now,
-            revoking: _revoking.contains(entry.sessionId),
-            onRevoke: () => _revokeSession(entry),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 280),
+      child: SingleChildScrollView(
+        child: Column(
+          key: const Key('admin_my_account_sessions_list'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final entry in sessions) ...[
+              _AdminSessionRow(
+                entry: entry,
+                now: widget.now,
+                revoking: _revoking.contains(entry.sessionId),
+                onRevoke: () => _revokeSession(entry),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Audit log ──────────────────────────────────────────────────────
+
+/// The "Audit log" card, mirroring the operator-web My account Audit
+/// log card: a "View audit log" button. On admin the button navigates
+/// (via [MyAccountAdminScreen.onOpenAuditLog]) to the existing
+/// "Security, audit, and sessions" surface, where the admin picks a
+/// business and reviews its audit history, active sessions, and
+/// support actions. The admin's OWN sign-in / password / two-factor
+/// history lives in the Security card's "Recent sign-in activity"
+/// above, so this card is a jump-off to the business audit, not a
+/// second copy of the personal history.
+class _AdminAuditLogCard extends StatelessWidget {
+  const _AdminAuditLogCard({this.onOpenAuditLog});
+
+  /// When non-null, the button navigates to the full Audit log page.
+  /// Null (a screen mounted without a shell, e.g. older widget tests)
+  /// renders the button disabled.
+  final VoidCallback? onOpenAuditLog;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AdminAccountCard(
+      cardKey: const Key('admin_my_account_audit_log_card'),
+      title: 'Audit log',
+      headerExplainer:
+          'Open the audit log to review activity, active sessions, and '
+          'support actions for a business you choose. You pick a business '
+          'first, then see its full audit history. Your own sign-in '
+          'history is in Security, under Recent sign-in activity.',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          height: 38,
+          child: OutlinedButton.icon(
+            key: const Key('admin_my_account_audit_log_link'),
+            onPressed: onOpenAuditLog,
+            icon: const Icon(Icons.history, size: 16),
+            label: const Text('View audit log'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.sunsetDark,
+              disabledForegroundColor: AppColors.textMuted,
+              side: BorderSide(
+                color: onOpenAuditLog == null
+                    ? AppColors.borderSubtle
+                    : AppColors.sunsetDark,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+            ),
           ),
-          const SizedBox(height: 8),
-        ],
-      ],
+        ),
+      ),
     );
   }
 }

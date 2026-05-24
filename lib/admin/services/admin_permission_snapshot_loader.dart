@@ -147,7 +147,7 @@ class HttpAdminPermissionSnapshotLoader implements AdminPermissionSnapshotLoader
   static final math.Random _readOnlyRandom = math.Random.secure();
   static String _readOnlyIdempotencyKey() {
     final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = _readOnlyRandom.nextInt(1 << 32).toRadixString(36);
+    final r = _readOnlyRandom.nextInt(0x7fffffff).toRadixString(36);
     return 'admin-permission-snapshot-$ts-$r';
   }
 }
