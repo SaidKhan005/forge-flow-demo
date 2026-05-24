@@ -152,7 +152,12 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605230900_phase_slice_e_admin_hierarchy_keys.sql`
+`202605240900_plans_and_limits_phase0_subscription_tier_check.sql`
+(Plans & Limits V1 Phase 0: backfills the legacy
+`operators.subscription_tier = 'launch'` placeholder to `'pilot'`, relaxes the
+column default to `'pilot'`, and adds a CHECK pinning the column to the six
+operator-approved tiers pilot/starter/premium/elite/pro/enterprise),
+preceded by `202605230900_phase_slice_e_admin_hierarchy_keys.sql`
 (Slice E: five DORMANT `admin.hierarchy.*` permission-key catalog rows
 seeded and granted to `super_admin` + `ff_support` for a later
 "Business accounts" admin hierarchy-mutation gate, no consumer yet),
