@@ -103,6 +103,18 @@
         "docs/_mockups"
       ],
       "port": 8190
+    },
+    {
+      "name": "mockup-charming",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8191",
+        "--directory",
+        "C:\\Git Local Repos\\forge_flow_demo\\.claude\\worktrees\\charming-carson-0b2ab2\\docs\\_mockups"
+      ],
+      "port": 8191
     }
   ]
 }
