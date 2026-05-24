@@ -51,6 +51,11 @@ import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/domain/services/graceful_refusal_response.dart';
 import 'package:forge_and_flow/domain/services/llm_provider.dart';
+// Slice A3 — only `RerankCandidate` is used in the monolith's library
+// scope (the retrieve route part builds the candidate pool from chunks).
+// The rerank gateway itself owns the provider/result plumbing.
+import 'package:forge_and_flow/domain/services/rerank_provider.dart'
+    show RerankCandidate;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart'
     show PostgresPoolGaugeSnapshot;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
@@ -131,6 +136,15 @@ export 'advisor_query_embedding_gateway_part.dart'
         AdvisorQueryEmbeddingException,
         AdvisorQueryEmbeddingResult,
         VoyageHttpQueryEmbeddingGateway;
+// Slice A3 — server-side Voyage rerank gateway types exported so
+// proxy_bootstrap.dart and main.dart can construct the production gateway
+// by importing advisor_proxy.dart only (no extra import of the sibling file).
+export 'advisor_rerank_gateway_part.dart'
+    show
+        AdvisorRerankGateway,
+        AdvisorRerankException,
+        AdvisorRerankResult,
+        VoyageHttpRerankGateway;
 export 'log.dart'
     show
         LogSeverity,
@@ -352,6 +366,17 @@ import 'advisor_query_embedding_gateway_part.dart'
         AdvisorQueryEmbeddingGateway,
         AdvisorQueryEmbeddingException,
         AdvisorQueryEmbeddingResult;
+
+// Advisor Knowledge Activation — Slice A3: server-side Voyage rerank
+// gateway. Standalone file (not a `part`) so its own imports (dart:io,
+// dart:convert, package:http, the rerank domain types) do not land in the
+// monolith's import space. `VoyageHttpRerankGateway` is re-exported above
+// (for proxy_bootstrap / main.dart) but NOT imported here — it is not used
+// inside the monolith or its `part` files; the abstract interface,
+// exception, and result type are the only types the retrieve route needs,
+// plus `RerankCandidate` to build the candidate pool from chunks.
+import 'advisor_rerank_gateway_part.dart'
+    show AdvisorRerankGateway, AdvisorRerankException, AdvisorRerankResult;
 
 // chore(advisor-proxy) size refactor: cohesive admin route group
 // (corpus / debug-console / observability / feature-flags /
