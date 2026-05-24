@@ -252,7 +252,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     id: kAdminOperatorsRouteId,
     title: 'Business accounts',
     path: '/operators',
-    icon: Icons.business_outlined,
+    // canonical business icon (mirrors scopeIcon(business)); const literal because kAdminRoutes is const
+    icon: Icons.apartment_outlined,
     section: AdminRouteSection.operations,
     subtitle:
         'Find a business, review setup, and drill into locations, team, access, audit, and data controls.',

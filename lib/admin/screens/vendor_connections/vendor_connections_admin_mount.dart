@@ -339,7 +339,8 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           const Icon(
-                            Icons.storefront_outlined,
+                            // canonical location icon (mirrors scopeIcon(location)); this empty state illustrates a LOCATION
+                            Icons.place_outlined,
                             size: 20,
                             color: AppColors.textMuted,
                           ),
