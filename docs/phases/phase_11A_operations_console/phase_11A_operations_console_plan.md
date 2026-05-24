@@ -152,6 +152,11 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
+`202605241500_create_proxy_request_stats.sql`
+(P1a' Support logs telemetry storage: creates the stats-only
+`public.proxy_request_stats` table with wrapper-based per-tenant RLS,
+operator-leading indexes, and a cluster-wide 30-day pg_cron purge; NO message
+content, NO business_date — see POST_HARDENING_FOLLOWUPS), preceded by
 `202605241000_advisor_conversation_log_request_correlation_and_retention.sql`
 (P1a Support logs telemetry groundwork: adds a NULLABLE `request_id` uuid
 correlation key + operator-leading `(operator_id, location_id, request_id)`
