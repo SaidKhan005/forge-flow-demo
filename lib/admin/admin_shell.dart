@@ -687,6 +687,12 @@ class _AdminSideNav extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Operator-approved IA: Business accounts is pinned at the very
+            // top (the entry point for picking a business), the per-business
+            // cluster sits directly below it, then the standing sections.
+            // The Operations section renders WITHOUT Business accounts so the
+            // row appears exactly once.
+            ..._buildPinnedBusinessAccounts(context),
             ..._buildPerBusinessCluster(context),
             for (final section in _sections) ..._buildSection(context, section),
           ],
@@ -695,24 +701,22 @@ class _AdminSideNav extends StatelessWidget {
     );
   }
 
-  /// UX-parity Slice C — the scope-gated per-business cluster. Absent
-  /// until a business/location scope is active; the existing Business
-  /// accounts drill-in remains the entry point. Headed by the selected
-  /// business name and listing the six per-business screens with
-  /// operator-web vocabulary, each routing through the shell's existing
-  /// `onSelect` -> `_selectIntent` path, which carries the active scope
-  /// forward (it preserves `_hierarchyScope` when an intent omits one).
-  List<Widget> _buildPerBusinessCluster(BuildContext context) {
-    final activeScope = scope;
-    if (activeScope == null) return const <Widget>[];
-    final clusterRoutes = _resolvePerBusinessClusterRoutes(routes);
-    if (clusterRoutes.isEmpty) return const <Widget>[];
-    final businessName = _businessClusterLabel(activeScope);
+  /// Operator-approved IA — the Business accounts row pinned at the top of
+  /// the wide side nav. Rendered outside [_buildSection] so it leads the
+  /// nav; [_buildSection] then excludes it from the Operations panel so it
+  /// is never duplicated. Keeps the standing `admin_nav_item_operators`
+  /// item key so existing selectors and the compact nav stay aligned.
+  List<Widget> _buildPinnedBusinessAccounts(BuildContext context) {
+    final route = routes.firstWhere(
+      (route) => route.id == kAdminOperatorsRouteId,
+      orElse: () => routes.first,
+    );
+    if (route.id != kAdminOperatorsRouteId) return const <Widget>[];
     return <Widget>[
       Padding(
+        key: const Key('admin_nav_business_accounts_pinned'),
         padding: const EdgeInsets.only(bottom: 12),
         child: DecoratedBox(
-          key: const Key('admin_nav_per_business_cluster'),
           decoration: BoxDecoration(
             color: AppColors.sunset.withValues(alpha: 0.055),
             border: Border.all(
@@ -722,25 +726,115 @@ class _AdminSideNav extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _PerBusinessClusterHeader(businessName: businessName),
-                const SizedBox(height: 8),
-                for (final route in clusterRoutes)
-                  _NavItem(
-                    key: Key('admin_nav_cluster_item_${route.id}'),
-                    route: route,
-                    selected: route.id == activeRouteId,
-                    onTap: () => onSelect(route.id),
-                  ),
-              ],
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+            child: _NavItem(
+              key: Key('admin_nav_item_${route.id}'),
+              route: route,
+              selected: route.id == selectedRouteId,
+              onTap: () => onSelect(route.id),
             ),
           ),
         ),
       ),
     ];
+  }
+
+  /// The per-business cluster of the six scope-aware screens. Operator-
+  /// approved IA: the cluster is ALWAYS visible so the per-business
+  /// surfaces are discoverable.
+  ///
+  /// - When a business/location scope is active, the cluster is headed by
+  ///   the selected business name and its six rows are live, each routing
+  ///   through the shell's existing `onSelect` -> `_selectIntent` path,
+  ///   which carries the active scope forward (it preserves
+  ///   `_hierarchyScope` when an intent omits one).
+  /// - When NO business is picked yet, the same six rows render in a muted,
+  ///   inactive state under a "Pick a business first" hint. They do not open
+  ///   the per-business screens and do not auto-select a business; tapping a
+  ///   row (or the hint) routes to Business accounts so the operator chooses
+  ///   a business there. This preserves the deliberate-choice scope model.
+  List<Widget> _buildPerBusinessCluster(BuildContext context) {
+    final clusterRoutes = _resolvePerBusinessClusterRoutes(routes);
+    if (clusterRoutes.isEmpty) return const <Widget>[];
+    final activeScope = scope;
+    return activeScope == null
+        ? _buildInactivePerBusinessCluster(clusterRoutes)
+        : _buildActivePerBusinessCluster(activeScope, clusterRoutes);
+  }
+
+  /// The active cluster: live rows headed by the selected business name.
+  List<Widget> _buildActivePerBusinessCluster(
+    AdminHierarchyScopeIntent activeScope,
+    List<AdminRoute> clusterRoutes,
+  ) {
+    final businessName = _businessClusterLabel(activeScope);
+    return <Widget>[
+      _clusterShell(
+        key: const Key('admin_nav_per_business_cluster'),
+        children: <Widget>[
+          _PerBusinessClusterHeader(businessName: businessName),
+          const SizedBox(height: 8),
+          for (final route in clusterRoutes)
+            _NavItem(
+              key: Key('admin_nav_cluster_item_${route.id}'),
+              route: route,
+              selected: route.id == activeRouteId,
+              onTap: () => onSelect(route.id),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  /// The inactive cluster shown before a business is picked: the same six
+  /// rows, muted and non-navigating, under a "Pick a business first" hint.
+  /// Every row (and the hint) routes to Business accounts via `onSelect`.
+  List<Widget> _buildInactivePerBusinessCluster(
+    List<AdminRoute> clusterRoutes,
+  ) {
+    void goToBusinessAccounts() => onSelect(kAdminOperatorsRouteId);
+    return <Widget>[
+      _clusterShell(
+        key: const Key('admin_nav_per_business_cluster_inactive'),
+        children: <Widget>[
+          _PerBusinessClusterInactiveHint(onTap: goToBusinessAccounts),
+          const SizedBox(height: 8),
+          for (final route in clusterRoutes)
+            _NavItem(
+              key: Key('admin_nav_cluster_item_${route.id}'),
+              route: route,
+              selected: false,
+              enabled: false,
+              onTap: goToBusinessAccounts,
+            ),
+        ],
+      ),
+    ];
+  }
+
+  /// The sunset-tinted container both cluster states share.
+  Widget _clusterShell({required Key key, required List<Widget> children}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DecoratedBox(
+        key: key,
+        decoration: BoxDecoration(
+          color: AppColors.sunset.withValues(alpha: 0.055),
+          border: Border.all(
+            color: AppColors.sunset.withValues(alpha: 0.18),
+            width: 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+    );
   }
 
   /// The business name shown as the cluster header. Falls back to a plain
@@ -753,7 +847,13 @@ class _AdminSideNav extends StatelessWidget {
   List<Widget> _buildSection(BuildContext context, _NavSectionMeta section) {
     final sectionRoutes = routes
         .where(
-          (route) => route.section == section.section && route.visibleInNav,
+          (route) =>
+              route.section == section.section &&
+              route.visibleInNav &&
+              // Business accounts is pinned at the top by
+              // [_buildPinnedBusinessAccounts]; exclude it here so the
+              // Operations panel never duplicates the row.
+              route.id != kAdminOperatorsRouteId,
         )
         .toList(growable: false);
     if (sectionRoutes.isEmpty) return const <Widget>[];
@@ -835,6 +935,68 @@ class _PerBusinessClusterHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Hint row shown atop the per-business cluster before a business is
+/// picked. Reads "Pick a business first" in a muted style and is tappable:
+/// tapping it routes to Business accounts (the place to choose a business),
+/// matching the inactive cluster rows below it. Plain-English, no em dash.
+class _PerBusinessClusterInactiveHint extends StatelessWidget {
+  const _PerBusinessClusterInactiveHint({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Pick a business first',
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          key: const Key('admin_nav_per_business_cluster_inactive_hint'),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
+            child: Row(
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.sunset.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Icons.business_outlined,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Pick a business first',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 16,
+                  color: AppColors.textMuted,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -969,18 +1131,32 @@ class _NavItem extends StatelessWidget {
     required this.route,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
   });
 
   final AdminRoute route;
   final bool selected;
   final VoidCallback onTap;
 
+  /// When false, the row renders in a muted "inactive" state (no selected
+  /// highlight, muted icon/label) used by the per-business cluster before a
+  /// business is picked. The row stays tappable: tapping it routes to
+  /// Business accounts so the operator can choose a business there.
+  final bool enabled;
+
   @override
   Widget build(BuildContext context) {
+    final highlighted = enabled && selected;
+    final Color iconColor = !enabled
+        ? AppColors.textMuted
+        : (selected ? AppColors.sunsetDark : AppColors.textSecondary);
+    final Color titleColor = !enabled
+        ? AppColors.textMuted
+        : (selected ? AppColors.textPrimary : AppColors.textSecondary);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
-        color: selected
+        color: highlighted
             ? AppColors.sunset.withValues(alpha: 0.10)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(6),
@@ -992,7 +1168,7 @@ class _NavItem extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: selected
+                color: highlighted
                     ? AppColors.sunset.withValues(alpha: 0.55)
                     : Colors.transparent,
                 width: 1,
@@ -1000,13 +1176,7 @@ class _NavItem extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(
-                  route.icon,
-                  size: 18,
-                  color: selected
-                      ? AppColors.sunsetDark
-                      : AppColors.textSecondary,
-                ),
+                Icon(route.icon, size: 18, color: iconColor),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -1017,20 +1187,16 @@ class _NavItem extends StatelessWidget {
                         route.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.body14(
-                          color: selected
-                              ? AppColors.textPrimary
-                              : AppColors.textSecondary,
-                        ),
+                        style: AppTextStyles.body14(color: titleColor),
                       ),
-                      if (route.badge != null) ...[
+                      if (enabled && route.badge != null) ...[
                         const SizedBox(height: 4),
                         _NavRouteBadge(routeId: route.id, label: route.badge!),
                       ],
                     ],
                   ),
                 ),
-                if (route.placeholder)
+                if (enabled && route.placeholder)
                   Text(
                     'Coming soon',
                     style: AppTextStyles.chipLabel(color: AppColors.textMuted),
