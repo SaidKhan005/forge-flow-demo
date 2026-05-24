@@ -343,11 +343,6 @@ abstract class AdminSecurityGateway {
   /// `GET /v1/auth/audit-log`, capped at the last 90 days. Mirrors the
   /// operator-web Security "Recent sign-in activity" projection.
   Future<AdminSecurityAuditListed> listSignInHistory();
-
-  /// Lists the signed-in admin's recent account audit events (the
-  /// fuller set behind the My Account "Audit log" card) via the same
-  /// `GET /v1/auth/audit-log` route.
-  Future<AdminSecurityAuditListed> listAccountAuditLog();
 }
 
 /// Production HTTP implementation. Constructor shape + bearer source +
@@ -524,22 +519,13 @@ class HttpAdminSecurityGateway implements AdminSecurityGateway {
     );
   }
 
+  /// Lists the admin's own recent sign-in history via
+  /// `GET /v1/auth/audit-log`. The proxy resolves the actor from the
+  /// verified bearer token, so the admin's own events come back
+  /// automatically; the result is projected to the Security-relevant
+  /// sign-in subset and capped at the 90-day window.
   @override
-  Future<AdminSecurityAuditListed> listSignInHistory() =>
-      _listAuditLog(securityOnly: true);
-
-  @override
-  Future<AdminSecurityAuditListed> listAccountAuditLog() =>
-      _listAuditLog(securityOnly: false);
-
-  /// Shared GET against `/v1/auth/audit-log`. The proxy resolves the
-  /// actor from the verified bearer token, so the admin's own events
-  /// come back automatically. [securityOnly] applies the sign-in
-  /// history filter; the audit-log card passes `false` for the fuller
-  /// set. Both cap at the 90-day window.
-  Future<AdminSecurityAuditListed> _listAuditLog({
-    required bool securityOnly,
-  }) async {
+  Future<AdminSecurityAuditListed> listSignInHistory() async {
     final since = _now().toUtc().subtract(kAdminSignInHistoryWindow);
     final uri = baseUri.resolve(auditLogPath).replace(
       queryParameters: <String, String>{
@@ -566,7 +552,7 @@ class HttpAdminSecurityGateway implements AdminSecurityGateway {
       final json = Map<String, Object?>.from(entry);
       final eventType = _readNonBlank(json['event_type']);
       if (eventType == null) continue;
-      if (securityOnly && !adminIsSignInHistoryEvent(eventType)) continue;
+      if (!adminIsSignInHistoryEvent(eventType)) continue;
       final occurredAtRaw = _readNonBlank(json['occurred_at']) ??
           _readNonBlank(json['created_at']);
       if (occurredAtRaw == null) continue;
@@ -809,18 +795,12 @@ class InMemoryAdminSecurityGateway implements AdminSecurityGateway {
 
   @override
   Future<AdminSecurityAuditListed> listSignInHistory() async =>
-      AdminSecurityAuditListed(entries: _seedAuditEntries(securityOnly: true));
+      AdminSecurityAuditListed(entries: _seedSignInHistory());
 
-  @override
-  Future<AdminSecurityAuditListed> listAccountAuditLog() async =>
-      AdminSecurityAuditListed(entries: _seedAuditEntries(securityOnly: false));
-
-  /// Deterministic in-memory rows so the demo / share-preview
-  /// walkthrough renders the "Recent sign-in activity" list and the
-  /// "Audit log" popup without a backend. The `profile_updated` row is
-  /// intentionally NOT a security event, so it shows only in the
-  /// fuller audit-log set, demonstrating the two projections differ.
-  List<AdminSecurityAuditEntry> _seedAuditEntries({required bool securityOnly}) {
+  /// Deterministic in-memory sign-in history rows so the demo /
+  /// share-preview walkthrough renders the "Recent sign-in activity"
+  /// list without a backend.
+  List<AdminSecurityAuditEntry> _seedSignInHistory() {
     final now = _now().toUtc();
     final all = <AdminSecurityAuditEntry>[
       AdminSecurityAuditEntry(
@@ -841,25 +821,13 @@ class InMemoryAdminSecurityGateway implements AdminSecurityGateway {
       ),
       AdminSecurityAuditEntry(
         eventId: 'demo-evt-3',
-        eventType: 'auth.user.profile_updated',
-        friendlyLabel: adminAuditFriendlyLabelFor('auth.user.profile_updated'),
-        occurredAt: now.subtract(const Duration(days: 12)),
-        deviceLabel: 'Chrome on macOS',
-      ),
-      AdminSecurityAuditEntry(
-        eventId: 'demo-evt-4',
         eventType: 'auth.mfa_totp_enrolled',
         friendlyLabel: adminAuditFriendlyLabelFor('auth.mfa_totp_enrolled'),
         occurredAt: now.subtract(const Duration(days: 40)),
         deviceLabel: 'Chrome on macOS',
       ),
     ];
-    final filtered = securityOnly
-        ? all
-            .where((e) => adminIsSignInHistoryEvent(e.eventType))
-            .toList(growable: false)
-        : all;
-    final sorted = filtered.toList()
+    final sorted = all.toList()
       ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
     return List<AdminSecurityAuditEntry>.unmodifiable(sorted);
   }
