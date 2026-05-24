@@ -1599,6 +1599,15 @@ ProxyProductionBindings buildProxyProductionBindings(
       adminWrapper: adminWrapper,
       cloudRunServiceName: config.cloudRunServiceName,
       cloudRunRevision: Platform.environment['K_REVISION'],
+      // READ-only Cloud Run capacity reader for the "Hosting" surface.
+      // Reuses the shared OAuth token provider (no new credentials).
+      // Returns a NoOp all-unknown reader unless all three GCP env vars
+      // are set, so non-GCP / dev contexts read an honest "unknown" and
+      // the surface stays empty.
+      cloudRunCapacityReader: _buildCloudRunCapacityReader(
+        config: config,
+        accessTokenProvider: kmsTokenProvider,
+      ),
     ),
     // HARD-C — Postgres-backed gate for the supplemental admin CORS
     // allow-list. main.dart awaits this once during bootstrap before
@@ -9579,15 +9588,24 @@ class RepositoryObservabilityAdminProxyGateway
     required TenantTransactionWrapper adminWrapper,
     String? cloudRunServiceName,
     String? cloudRunRevision,
+    CloudRunCapacityReader? cloudRunCapacityReader,
     DateTime Function()? now,
   }) : _adminWrapper = adminWrapper,
        _cloudRunServiceName = cloudRunServiceName,
        _cloudRunRevision = cloudRunRevision,
+       // Defaults to an all-unknown NoOp reader so every existing
+       // construction site (and test) keeps working unchanged and the
+       // surface stays honestly empty until a live Cloud Run target is
+       // wired. The NoOp reader reports a placeholder service name and
+       // null counts, which the emit rule treats as "no usable row".
+       _cloudRunCapacityReader =
+           cloudRunCapacityReader ?? const NoOpCloudRunAdminClient(),
        _now = now ?? DateTime.now;
 
   final TenantTransactionWrapper _adminWrapper;
   final String? _cloudRunServiceName;
   final String? _cloudRunRevision;
+  final CloudRunCapacityReader _cloudRunCapacityReader;
   final DateTime Function() _now;
 
   @override
@@ -9668,6 +9686,20 @@ class RepositoryObservabilityAdminProxyGateway
           'limit': _projectionRetryDeadLetterLimit,
         },
       );
+
+      // Cloud Run "Hosting" capacity. This is a READ-only external GCP
+      // call, independent of the admin DB transaction above. It MUST NOT
+      // break the endpoint: a missing GCP scope on staging, a timeout, or
+      // any other failure is caught and degrades to an honest empty
+      // surface rather than propagating. We also never fabricate a count:
+      // the consumer model coerces a null instance/min/max to 0 and the
+      // screen renders "0 active" / "0-0 instances", so a row is emitted
+      // ONLY when the reader returns a fully-known snapshot (all of
+      // active/min/max non-null). The default NoOp reader returns
+      // all-null counts and therefore yields no row, leaving `cloud_run`
+      // honestly empty + listed in `neutral_empty_surfaces` (Metric
+      // Honesty Doctrine: null == unknown, never 0).
+      final cloudRunRows = await _readCloudRunRows();
 
       return <String, Object?>{
         'as_of': asOf.toIso8601String(),
@@ -9769,19 +9801,86 @@ class RepositoryObservabilityAdminProxyGateway
           },
         },
         'route_latency': const <Map<String, Object?>>[],
-        'cloud_run': const <Map<String, Object?>>[],
+        'cloud_run': cloudRunRows,
         'producer_notes': <String, Object?>{
           'cloud_run_service_name': _cloudRunServiceName,
           'cloud_run_revision': _cloudRunRevision,
-          'neutral_empty_surfaces': const <String>[
+          // `cloud_run` is only advertised as neutral-empty when no row
+          // was produced (no live reader / unknown capacity). Once a real
+          // capacity row is emitted the surface is no longer empty.
+          'neutral_empty_surfaces': <String>[
             'margins',
             'cap_events',
             'route_latency',
-            'cloud_run',
+            if (cloudRunRows.isEmpty) 'cloud_run',
           ],
         },
       };
     }, reason: adminReason);
+  }
+
+  /// Read the configured Cloud Run service capacity and map it onto the
+  /// `cloud_run` surface rows. Returns an empty list (honest "no usable
+  /// data") when:
+  ///   * the reader throws (e.g. no `run.services.get` scope on staging,
+  ///     a timeout, or a malformed body) — caught here so the endpoint
+  ///     still returns successfully, or
+  ///   * the snapshot does not carry a fully-known instance/min/max
+  ///     triple. The consumer model coerces a null count to 0 and the
+  ///     screen renders it verbatim ("0 active", "0-0 instances"), so a
+  ///     partial snapshot would fabricate a phantom zero. Per the Metric
+  ///     Honesty Doctrine we leave the surface empty instead.
+  ///
+  /// The default NoOp reader returns all-null counts, so the default
+  /// (no live Cloud Run target) path yields an empty list and the surface
+  /// stays honestly empty — byte-identical to the pre-wire behavior.
+  Future<List<Map<String, Object?>>> _readCloudRunRows() async {
+    final CloudRunServiceCapacity capacity;
+    try {
+      capacity = await _cloudRunCapacityReader.readServiceCapacity();
+    } catch (_) {
+      // Any read failure (missing GCP scope, timeout, malformed body,
+      // network error) degrades to an honest empty surface. The error is
+      // intentionally swallowed: the rest of the observability envelope
+      // (cost, dormancy, graph, projection retries) must still return.
+      return const <Map<String, Object?>>[];
+    }
+
+    final activeInstanceCount = capacity.activeInstanceCount;
+    final minInstances = capacity.minInstances;
+    final maxInstances = capacity.maxInstances;
+
+    // Emit ONLY when every numeric field the consumer renders is known.
+    // A null in any of them would be coerced to 0 downstream and shown as
+    // a real count, which the Metric Honesty Doctrine forbids. When the
+    // triple is incomplete we surface nothing (the deploy-time GCP scope
+    // follow-up covers lighting these up).
+    if (activeInstanceCount == null ||
+        minInstances == null ||
+        maxInstances == null) {
+      return const <Map<String, Object?>>[];
+    }
+
+    // Prefer the reader's serving revision; fall back to the gateway's
+    // configured revision (the `K_REVISION` echoed in producer_notes) so
+    // the "Hosting" advanced details always names a revision. The service
+    // name prefers the gateway's configured name (the canonical id the
+    // admin recognizes) over the reader's parsed value.
+    final serviceName = (_cloudRunServiceName != null &&
+            _cloudRunServiceName.isNotEmpty)
+        ? _cloudRunServiceName
+        : capacity.serviceName;
+    final revisionId = capacity.servingRevisionId ?? _cloudRunRevision ?? '';
+
+    return <Map<String, Object?>>[
+      <String, Object?>{
+        'service_name': serviceName,
+        'instance_count': activeInstanceCount,
+        'revision_id': revisionId,
+        'min_instances': minInstances,
+        'max_instances': maxInstances,
+      },
+    ];
   }
 }
 
@@ -11498,6 +11597,39 @@ List<String> resolveAdminCorsAllowList(
 /// so the rotation handler still runs end-to-end without a live
 /// Cloud Run service.
 CloudRunAdminClient _buildCloudRunAdminClient({
+  required ProxyConfig config,
+  required OAuthAccessTokenProvider accessTokenProvider,
+}) {
+  final projectId = config.gcpProjectId;
+  final region = config.cloudRunRegion;
+  final serviceName = config.cloudRunServiceName;
+  if (projectId == null || region == null || serviceName == null) {
+    return const NoOpCloudRunAdminClient();
+  }
+  return HttpCloudRunAdminClient(
+    projectId: projectId,
+    region: region,
+    serviceName: serviceName,
+    accessTokenProvider: accessTokenProvider,
+  );
+}
+
+/// Build the READ-only Cloud Run capacity reader for the observability
+/// "Hosting" surface.
+///
+/// Production wires [HttpCloudRunAdminClient] (which also implements
+/// [CloudRunCapacityReader] via a `GET service` call) when all three GCP
+/// env vars are set — the SAME host/auth/transport as the rotation write
+/// client, so no new credentials are introduced. Dev / non-GCP contexts
+/// get a [NoOpCloudRunAdminClient] that reads an all-unknown snapshot, so
+/// the surface stays honestly empty rather than fabricating zeros.
+///
+/// NOTE: live instance counts require the deploy-time service account to
+/// hold `run.services.get`. Until that scope is granted the GET returns a
+/// non-200 (or omits the operational instance count), the reader throws
+/// or yields an incomplete snapshot, and the producer leaves `cloud_run`
+/// honestly empty.
+CloudRunCapacityReader _buildCloudRunCapacityReader({
   required ProxyConfig config,
   required OAuthAccessTokenProvider accessTokenProvider,
 }) {
