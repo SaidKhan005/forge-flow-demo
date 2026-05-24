@@ -22,13 +22,25 @@ abstract class OperatorWebAccountMfaFreshnessGate {
 }
 
 abstract class OperatorWebAccountActions {
+  /// Begins TOTP enrollment. [idempotencyKey], when supplied, is the
+  /// caller-stable key for the WHOLE enroll attempt (begin + confirm).
+  /// The My Account screen mints ONE key per enroll button press and
+  /// passes the SAME key to both [beginAccountMfaEnrollment] and the
+  /// matching [confirmAccountMfaEnrollment] so a retried confirm replays
+  /// (proxy `proxy_requests` UNIQUE guard). Null preserves the legacy
+  /// fresh-random-key-per-call behavior unchanged.
   Future<MfaEnrollmentArtifact> beginAccountMfaEnrollment({
     required String email,
+    String? idempotencyKey,
   });
 
+  /// Confirms TOTP enrollment. Pass the SAME [idempotencyKey] the paired
+  /// [beginAccountMfaEnrollment] used so a retry of this confirm replays
+  /// rather than mints a new key. Null = legacy per-call key.
   Future<void> confirmAccountMfaEnrollment({
     required String enrollmentId,
     required String oneTimeCode,
+    String? idempotencyKey,
   });
 
   Future<void> changeAccountPassword({

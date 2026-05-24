@@ -172,6 +172,7 @@ class _FakeAccountActions extends OperatorWebAccountActions
   @override
   Future<MfaEnrollmentArtifact> beginAccountMfaEnrollment({
     required String email,
+    String? idempotencyKey,
   }) {
     throw UnimplementedError();
   }
@@ -188,6 +189,7 @@ class _FakeAccountActions extends OperatorWebAccountActions
   Future<void> confirmAccountMfaEnrollment({
     required String enrollmentId,
     required String oneTimeCode,
+    String? idempotencyKey,
   }) {
     throw UnimplementedError();
   }
@@ -197,6 +199,7 @@ class _LocalOnlyAccountActions extends OperatorWebAccountActions {
   @override
   Future<MfaEnrollmentArtifact> beginAccountMfaEnrollment({
     required String email,
+    String? idempotencyKey,
   }) {
     throw UnimplementedError();
   }
@@ -213,6 +216,7 @@ class _LocalOnlyAccountActions extends OperatorWebAccountActions {
   Future<void> confirmAccountMfaEnrollment({
     required String enrollmentId,
     required String oneTimeCode,
+    String? idempotencyKey,
   }) {
     throw UnimplementedError();
   }

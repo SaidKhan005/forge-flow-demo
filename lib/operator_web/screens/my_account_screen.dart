@@ -226,11 +226,20 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   Future<void> _handleEnrollMfa() async {
     if (!_canWriteAccount) return;
     final actions = widget.actions;
+    // G60 — ONE caller-stable key per enroll attempt, reused across the
+    // begin AND confirm writes so a retried confirm replays the proxy
+    // `proxy_requests` UNIQUE guard (distinct key per fresh button press;
+    // mirrors admin 2FA enroll). See OperatorWebAccountActions docs.
+    final enrollIdempotencyKey =
+        OperatorWebProxyClient.mintActionChainIdempotencyKey(
+          'account-mfa-enroll',
+        );
     MfaEnrollmentArtifact? artifact;
     if (actions != null) {
       try {
         artifact = await actions.beginAccountMfaEnrollment(
           email: widget.session.email,
+          idempotencyKey: enrollIdempotencyKey,
         );
       } catch (error) {
         if (!mounted) return;
@@ -246,11 +255,14 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       builder: (_) => _MfaEnrollDialog(
         operatorEmail: widget.session.email,
         artifact: artifact,
+        // Same key the begin used; the dialog hands it back on confirm.
+        idempotencyKey: enrollIdempotencyKey,
         onConfirm: actions == null || artifact == null
             ? null
-            : (code) => actions.confirmAccountMfaEnrollment(
+            : (code, idempotencyKey) => actions.confirmAccountMfaEnrollment(
                 enrollmentId: artifact!.enrollmentId,
                 oneTimeCode: code,
+                idempotencyKey: idempotencyKey,
               ),
       ),
     );
@@ -1872,235 +1884,6 @@ class _MfaManageDialog extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MfaEnrollDialog extends StatefulWidget {
-  const _MfaEnrollDialog({
-    required this.operatorEmail,
-    this.artifact,
-    this.onConfirm,
-  });
-
-  final String operatorEmail;
-  final MfaEnrollmentArtifact? artifact;
-  final Future<void> Function(String code)? onConfirm;
-
-  @override
-  State<_MfaEnrollDialog> createState() => _MfaEnrollDialogState();
-}
-
-class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
-  final _codeController = TextEditingController();
-  String? _error;
-  bool _submitting = false;
-
-  // Demo otpauth URI for the post-sign-in Account-screen MFA
-  // enrollment walkthrough. The live source swaps in a real proxy
-  // enrollment id.
-  static const String _demoQrUri =
-      'otpauth://totp/Forge%20%26%20Flow:demo?'
-      'secret=JBSWY3DPEHPK3PXP&issuer=Forge%20%26%20Flow';
-  static const String _demoSharedSecret = 'JBSWY3DPEHPK3PXP';
-
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _confirm() async {
-    if (_submitting) return;
-    final code = _codeController.text.trim();
-    final liveConfirm = widget.onConfirm;
-    if (liveConfirm == null && code != '123456') {
-      setState(
-        () => _error =
-            'That code did not match. Codes refresh every 30 seconds. '
-            'If your authenticator app shows a different code now, type '
-            'the new one and try again.',
-      );
-      return;
-    }
-    if (liveConfirm != null) {
-      setState(() {
-        _submitting = true;
-        _error = null;
-      });
-      try {
-        await liveConfirm(code);
-      } catch (error) {
-        if (!mounted) return;
-        setState(() {
-          _submitting = false;
-          _error = 'Could not verify that code: $error';
-        });
-        return;
-      }
-      if (!mounted) return;
-    }
-    Navigator.of(context).pop(true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final email = widget.operatorEmail.isEmpty
-        ? 'this account'
-        : widget.operatorEmail;
-    final qrUri = widget.artifact?.totpQrUri ?? _demoQrUri;
-    final sharedSecret = widget.artifact?.totpSharedSecret ?? _demoSharedSecret;
-    return Dialog(
-      key: const Key('mfa_enroll_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Turn on two-factor sign-in',
-                      style: AppTextStyles.display20(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Open your authenticator app, scan this code, then type the '
-                      '6-digit code it shows you below.',
-                      style: AppTextStyles.body13(color: AppColors.textPrimary),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      key: const Key('mfa_enroll_dialog_qr'),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardGlow,
-                        border: Border.all(
-                          color: AppColors.borderSubtle,
-                          width: 1,
-                        ),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Center(
-                            child: QrImageView(
-                              data: qrUri,
-                              version: QrVersions.auto,
-                              size: 148,
-                              backgroundColor: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(
-                                'Shared secret:',
-                                style: AppTextStyles.mono11(
-                                  color: AppColors.textMuted,
-                                ),
-                              ),
-                              SelectableText(
-                                sharedSecret,
-                                style: AppTextStyles.mono12(
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Issuer: Forge & Flow • Account: $email',
-                            style: AppTextStyles.body12(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      key: const Key('mfa_enroll_dialog_code_field'),
-                      controller: _codeController,
-                      autofocus: true,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      onSubmitted: (_) => _confirm(),
-                      decoration: const InputDecoration(
-                        labelText: '6-digit code',
-                        border: OutlineInputBorder(),
-                        counterText: '',
-                      ),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _error!,
-                        style: AppTextStyles.body13(color: AppColors.negative),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          key: const Key('mfa_enroll_dialog_cancel'),
-                          onPressed: _submitting
-                              ? null
-                              : () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          key: const Key('mfa_enroll_dialog_confirm'),
-                          onPressed: _submitting ? null : _confirm,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.sunset,
-                            foregroundColor: AppColors.backgroundSurface,
-                          ),
-                          child: _submitting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('Verify and turn on'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: IconButton(
-                key: const Key('mfa_enroll_dialog_close'),
-                tooltip: 'Close',
-                onPressed: _submitting
-                    ? null
-                    : () => Navigator.of(context).pop(false),
-                icon: const Icon(Icons.close),
-              ),
-            ),
-          ],
         ),
       ),
     );
