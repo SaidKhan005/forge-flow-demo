@@ -10,6 +10,7 @@ enum OperatorSubscriptionTier {
   pilot,
   starter,
   premium,
+  elite,
   pro,
   enterprise;
 
@@ -22,6 +23,8 @@ enum OperatorSubscriptionTier {
         return starter;
       case 'premium':
         return premium;
+      case 'elite':
+        return elite;
       case 'pro':
         return pro;
       case 'enterprise':

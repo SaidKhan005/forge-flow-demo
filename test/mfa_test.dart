@@ -44,8 +44,20 @@ void main() {
       expect(OperatorSubscriptionTier.pilot.requiresStaffMfa, isFalse);
       expect(OperatorSubscriptionTier.starter.requiresStaffMfa, isFalse);
       expect(OperatorSubscriptionTier.premium.requiresStaffMfa, isFalse);
+      expect(OperatorSubscriptionTier.elite.requiresStaffMfa, isFalse);
       expect(OperatorSubscriptionTier.pro.requiresStaffMfa, isFalse);
       expect(OperatorSubscriptionTier.enterprise.requiresStaffMfa, isFalse);
+    });
+
+    test('fromKey round-trips the elite tier', () {
+      expect(
+        OperatorSubscriptionTier.fromKey('elite'),
+        equals(OperatorSubscriptionTier.elite),
+      );
+      expect(
+        OperatorSubscriptionTier.fromKey('  ELITE '),
+        equals(OperatorSubscriptionTier.elite),
+      );
     });
   });
 

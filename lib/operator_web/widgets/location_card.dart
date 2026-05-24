@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 
 /// Summary card for one [TeamOrgLocationEntry]. The optional Move
 /// trailing button is wired only when [onMove] is supplied; read-only
@@ -39,8 +40,8 @@ class LocationCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          const Icon(
-            Icons.place_outlined,
+          Icon(
+            scopeIcon(kind: ScopeEntityKind.location),
             size: 18,
             color: AppColors.sunsetDark,
           ),

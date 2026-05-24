@@ -26,6 +26,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 import 'hierarchy_map_picker.dart';
 
 /// Inline hierarchy picker for invite + grant dialogs.
@@ -250,8 +251,8 @@ class _SingleLocationRow extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          const Icon(
-            Icons.place_outlined,
+          Icon(
+            scopeIcon(kind: ScopeEntityKind.location),
             size: 16,
             color: AppColors.sunsetDark,
           ),
