@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 import '../admin_button_styles.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/members_admin_gateway.dart';
@@ -83,7 +84,7 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
                   AdminStatItem(
                     label: 'Business',
                     value: pickedOperator.operatorBusinessName,
-                    icon: Icons.business_outlined,
+                    icon: scopeIcon(kind: ScopeEntityKind.business),
                     tone: AppColors.sunset,
                   ),
                   AdminStatItem(
