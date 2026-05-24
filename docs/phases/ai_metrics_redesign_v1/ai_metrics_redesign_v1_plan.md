@@ -1,8 +1,23 @@
 # AI Metrics Redesign V1 — End-to-End Implementation Plan
 
-Status: PLANNED (awaiting execution go) · Created 2026-05-24 · Owner: orchestrator
+Status: DONE (shipped 2026-05-24) · Created 2026-05-24 · Owner: orchestrator
 Surface: admin console "AI Metrics" (Observability) screen, route `/observability`
 (`lib/admin/screens/observability_admin_screen.dart`).
+
+Completion record (2026-05-24, all verified on origin/master):
+- Backend producers merged: `usage_cap_events` table + hot-path write
+  (Limit hits), top spenders, hosting (Cloud Run capacity read), limit-hits
+  read, and the monthly cost window (current | previous month).
+- Screen redesign merged (PR #1281): 7 tabs to 4 (Money / Customers /
+  Reliability / Knowledge), hero cards, cost donut, bar charts, plain-English
+  labels, manual-run posture preserved, honest empty states (root
+  `Key('admin_observability_screen')` + "AI Metrics" title kept).
+- "All businesses" platform scope merged (PR #1292): additive opt-in picker
+  row in `AdminSetupWorkspace` (default off; other setup surfaces unaffected)
+  plus an `admin_routes.dart` demo-gateway part-file slim-down.
+- Parked by design: "Losing money" margin waits on the subscription pricing
+  catalog owned by the Plans and limits workstream; AI Metrics shows an
+  honest "Not available yet" until it lands, then consumes it.
 
 Authority: this plan defers to CLAUDE.md, `docs/contracts/core_app_architecture.md`,
 the Metric Honesty Doctrine, HP#11 (hierarchy scope), and the standard workflow in
