@@ -31,6 +31,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_app.dart';
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
@@ -39,6 +40,7 @@ import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.da
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
 import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
+import 'package:forge_and_flow/theme/app_theme.dart';
 
 import '_test_helpers/widget_pump_helpers.dart';
 import 'admin_operator_location_test_helpers.dart';
@@ -593,7 +595,7 @@ void main() {
 
     await selectBusinessScope(tester, 'op-seed-1');
 
-    final rootMoveButton = tester.widget<IconButton>(
+    final rootMoveButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_hierarchy_org_unit_move_org-root')),
     );
     expect(rootMoveButton.onPressed, isNull);
@@ -686,7 +688,7 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      final rootSuspend = tester.widget<IconButton>(
+      final rootSuspend = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_org-root')),
       );
       expect(rootSuspend.onPressed, isNull);
@@ -877,7 +879,7 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      final primaryDelete = tester.widget<IconButton>(
+      final primaryDelete = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_location_remove_loc-primary')),
       );
       expect(primaryDelete.onPressed, isNull);
@@ -1074,4 +1076,263 @@ void main() {
     // picked; in read-only mode it is absent regardless.
     expect(find.byKey(const Key('admin_operator_edit_button')), findsNothing);
   });
+
+  // ---------------------------------------------------------------------------
+  // 2026-05-24 — Business accounts pick activates the sidebar cluster.
+  //
+  // Selecting a business in the LEFT scope tree must notify the shell with a
+  // hierarchyScope (which flips the shell's "business chosen" latch so the
+  // per-business sidebar cluster activates), while the on-load seed must NOT
+  // (the cluster stays "Pick a business first" until a real pick).
+  // ---------------------------------------------------------------------------
+  testWidgets(
+    'selecting a business in the scope tree emits a hierarchyScope intent '
+    'while the on-load seed emits only an operator-location scope',
+    (tester) async {
+      useWideSurface(tester);
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[
+          seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
+          seedBundle(operatorId: 'op-2', businessName: 'Beta Bistro'),
+        ],
+      );
+      final chosenScopes = <AdminHierarchyScopeIntent>[];
+      final seededScopes = <AdminOperatorLocationScopeIntent>[];
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            onChooseBusinessScope: chosenScopes.add,
+            onSelectOperatorScope: seededScopes.add,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      // On load the screen seeds the shell scope (so the top bar shows the
+      // first business) WITHOUT activating the cluster: only the
+      // operator-location seed fires; the cluster-activating hierarchyScope
+      // callback has NOT been called.
+      expect(
+        chosenScopes,
+        isEmpty,
+        reason: 'the on-load seed must not activate the sidebar cluster',
+      );
+      expect(
+        seededScopes,
+        isNotEmpty,
+        reason: 'the on-load seed still syncs the shell operator scope',
+      );
+
+      // A deliberate business pick in the left tree emits a hierarchyScope
+      // carrying the picked business, which is what flips the shell latch.
+      await selectBusinessScope(tester, 'op-2');
+
+      expect(chosenScopes, isNotEmpty);
+      final picked = chosenScopes.last;
+      expect(picked.operatorId, equals('op-2'));
+      expect(picked.scopeType, equals(AdminHierarchyScopeType.business));
+    },
+  );
+
+  testWidgets(
+    'selecting a location node in the scope tree also emits a hierarchyScope '
+    'intent for the owning business',
+    (tester) async {
+      useWideSurface(tester);
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[seedBundle(operatorId: 'op-1')],
+      );
+      // A hierarchy gateway so the location leaf renders under its org unit
+      // in the LEFT tree (without one, a location carrying a non-null
+      // parentOrgUnitId is neither "unassigned" nor under a rendered org
+      // unit, so the leaf row would not appear).
+      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-1': const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'Demo Diner Co.',
+              operatorId: 'op-1',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-1': const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: 'loc-seed-1',
+              name: 'HQ',
+              operatorId: 'op-1',
+              orgUnitId: 'org-root',
+            ),
+          ],
+        },
+      );
+      final chosenScopes = <AdminHierarchyScopeIntent>[];
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            hierarchyGateway: hierarchyGateway,
+            onChooseBusinessScope: chosenScopes.add,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+      expect(chosenScopes, isEmpty);
+
+      // Expand the business, then pick its location leaf.
+      await selectBusinessScope(tester, 'op-1');
+      chosenScopes.clear();
+      final locationRow = find.byKey(
+        const Key('admin_setup_scope_location_loc-seed-1'),
+      );
+      await tester.ensureVisible(locationRow);
+      await pumpEventually(tester);
+      await tester.tap(locationRow);
+      await pumpEventually(tester);
+
+      expect(chosenScopes, isNotEmpty);
+      final picked = chosenScopes.last;
+      expect(picked.operatorId, equals('op-1'));
+      expect(picked.locationId, equals('loc-seed-1'));
+      expect(picked.scopeType, equals(AdminHierarchyScopeType.location));
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // 2026-05-24 — hierarchy tree actions are labeled buttons (not icon-only).
+  // ---------------------------------------------------------------------------
+  testWidgets(
+    'hierarchy tree actions render as labeled buttons with the destructive '
+    'ones in the danger style, keeping their existing keys',
+    (tester) async {
+      useWideSurface(tester);
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[seedBundle()],
+      );
+      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-seed-1': const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'Demo Diner Co.',
+              operatorId: 'op-seed-1',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: 'org-east',
+              name: 'East district',
+              operatorId: 'op-seed-1',
+              parentOrgUnitId: 'org-root',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-seed-1': const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: 'loc-seed-1',
+              name: 'HQ',
+              operatorId: 'op-seed-1',
+              orgUnitId: 'org-east',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            hierarchyGateway: hierarchyGateway,
+            actorUserId: 'demo-super-admin',
+            idempotencyKeyFactory: () => 'idem-labeled-buttons',
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await selectBusinessScope(tester, 'op-seed-1');
+
+      // The org-unit and location action controls now read as words: their
+      // concise labels render as visible text in the tree.
+      for (final label in <String>[
+        'Add child',
+        'Move',
+        'Suspend',
+        'Edit',
+        'Make primary',
+        'Delete',
+        'Remove',
+      ]) {
+        expect(
+          find.text(label),
+          findsWidgets,
+          reason: 'tree action "$label" must render as a labeled button',
+        );
+      }
+
+      // Each labeled action is an OutlinedButton (the `.icon` factory builds
+      // an OutlinedButton subclass, so resolve via key + cast). Confirm the
+      // keyed control IS an OutlinedButton and the concise label text is a
+      // descendant of it.
+      void expectLabeledButton(Key key, String label) {
+        expect(
+          tester.widget<OutlinedButton>(find.byKey(key)),
+          isA<OutlinedButton>(),
+        );
+        expect(
+          find.descendant(of: find.byKey(key), matching: find.text(label)),
+          findsOneWidget,
+          reason: '$key must show the "$label" label',
+        );
+      }
+
+      expectLabeledButton(
+        const Key('admin_hierarchy_org_unit_add_child_org-east'),
+        'Add child',
+      );
+      expectLabeledButton(
+        const Key('admin_location_edit_loc-seed-1'),
+        'Edit',
+      );
+      expectLabeledButton(
+        const Key('admin_location_make_primary_loc-seed-1'),
+        'Make primary',
+      );
+
+      // Destructive actions use the danger (negative) secondary style.
+      Color? foregroundOf(Key key) {
+        final button = tester.widget<OutlinedButton>(find.byKey(key));
+        return button.style?.foregroundColor?.resolve(<WidgetState>{});
+      }
+
+      expect(
+        foregroundOf(const Key('admin_hierarchy_org_unit_delete_org-east')),
+        equals(AppColors.negative),
+        reason: 'Delete org unit must use the danger style',
+      );
+      expect(
+        foregroundOf(const Key('admin_location_remove_loc-seed-1')),
+        equals(AppColors.negative),
+        reason: 'Remove location must use the danger style',
+      );
+
+      // Existing widget keys still resolve (tests + selectors keep working).
+      for (final key in <Key>[
+        const Key('admin_hierarchy_org_unit_add_child_org-east'),
+        const Key('admin_hierarchy_org_unit_move_org-east'),
+        const Key('admin_hierarchy_org_unit_suspend_org-east'),
+        const Key('admin_hierarchy_org_unit_delete_org-east'),
+        const Key('admin_location_move_loc-seed-1'),
+        const Key('admin_location_suspend_loc-seed-1'),
+        const Key('admin_location_edit_loc-seed-1'),
+        const Key('admin_location_make_primary_loc-seed-1'),
+        const Key('admin_location_remove_loc-seed-1'),
+      ]) {
+        expect(find.byKey(key), findsOneWidget, reason: '$key must resolve');
+      }
+
+      // No regressions: the tree rows did not overflow at the wide width.
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

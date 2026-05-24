@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/scope_icons.dart';
 import 'location_card.dart';
 
 typedef OrgUnitAddChildRequester = void Function(TeamOrgUnitEntry parent);
@@ -259,16 +260,10 @@ class _OrgUnitNode extends StatelessWidget {
     );
   }
 
-  static IconData _iconFor(String unitType) {
-    return switch (unitType) {
-      'corp' => Icons.apartment,
-      'brand' => Icons.sell_outlined,
-      'region' => Icons.public,
-      'district' => Icons.map_outlined,
-      'location_group' => Icons.layers_outlined,
-      _ => Icons.account_tree_outlined,
-    };
-  }
+  // Canonical hierarchy-scope glyphs live in lib/theme/scope_icons.dart.
+  // The operator-wide `'corp'` root renders as the Business tier.
+  static IconData _iconFor(String unitType) =>
+      scopeIconForUnitType(unitType);
 
   static String _unitTypeLabel(String unitType) {
     return switch (unitType) {

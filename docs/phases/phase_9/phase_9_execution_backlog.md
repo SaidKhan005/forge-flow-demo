@@ -99,13 +99,13 @@ Do not re-open stale findings unless the repo regresses:
   `202605230900_phase_slice_e_admin_hierarchy_keys.sql`, an additive seed of
   five DORMANT `admin.hierarchy.*` permission-key catalog rows (granted to
   `super_admin` + `ff_support`) for a later "Business accounts" admin
-  hierarchy-mutation gate; no consumer wires them yet. The AI Metrics
-  cap-events slice then advances the shared migration cutoff to
-  `202605240000_ai_metrics_usage_cap_events.sql`, an append-only operator-scoped
-  `usage_cap_events` fact table recording one cap-breach refusal per row
-  (operator-leading indexes, wrapper-only RLS, append-only grants) for a later
-  admin "AI Metrics" / Observability "Limit hits" panel; producer and read
-  panel land in later slices, no consumer wires it yet. The Hardening Wave B3 audit-anchor
+  hierarchy-mutation gate; no consumer wires them yet. Plans & Limits V1
+  Phase 0 then advances the shared migration cutoff to
+  `202605240900_plans_and_limits_phase0_subscription_tier_check.sql`, which
+  backfills the legacy `operators.subscription_tier = 'launch'` placeholder to
+  `'pilot'`, relaxes the column default to `'pilot'`, and adds a CHECK pinning
+  the column to the six operator-approved tiers (pilot/starter/premium/elite/
+  pro/enterprise). The Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
   schedule registration for `forge_audit_anchor_daily` at `0 2 * * *` UTC; the
