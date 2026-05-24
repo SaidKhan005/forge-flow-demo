@@ -7,11 +7,17 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605230900_phase_slice_e_admin_hierarchy_keys.sql`
+`202605240900_b10_1_vendor_applicability_location_scope.sql`
+(B10.1 vendor_applicability location scope: adds a nullable `location_id`
+with a location-requires-operator CHECK and a composite FK to `locations`,
+plus location-leading current/history indexes that still lead with
+`operator_id`; the operator-keyed RLS policy is re-asserted unchanged.
+Foundation only; no proxy/admin/operator-web/worker change). The prior
+cutoff `202605230900_phase_slice_e_admin_hierarchy_keys.sql`
 (Slice E: five DORMANT `admin.hierarchy.*` permission-key catalog rows
 seeded and granted to `super_admin` + `ff_support` for a later
 "Business accounts" admin hierarchy-mutation gate; no consumer yet).
-The prior cutoff `202605201100_operator_account_contact_fields.sql`
+The earlier cutoff `202605201100_operator_account_contact_fields.sql`
 (operator account contact defaults: real Business-level contact email and
 phone columns that Brand, Region, District, Location group, and Location
 account overrides can inherit). The earlier cutoff

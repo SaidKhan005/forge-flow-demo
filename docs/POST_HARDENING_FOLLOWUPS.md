@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**69 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605230900_phase_slice_e_admin_hierarchy_keys.sql`;
+**70 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605240900_b10_1_vendor_applicability_location_scope.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -107,8 +107,9 @@ Production1 apply.
 | `202605201000_org_unit_account_overrides.sql` | Org-unit account overrides. Adds contact/currency/locale/timezone overrides for Brand, Region, District, and Location group scopes, inherited by child locations. | code-ready |
 | `202605201100_operator_account_contact_fields.sql` | Operator account contact defaults. Adds real Business-level contact email and phone columns so lower scopes inherit from the Business row instead of a missing server field. | code-ready |
 | `202605230900_phase_slice_e_admin_hierarchy_keys.sql` | Slice E admin.hierarchy.* keys. Additive seed of five DORMANT permission-key catalog rows (`admin.hierarchy.create/move/rename/suspend/delete`), granted to `super_admin` + `ff_support`; suspend + delete carry `requires_mfa = true`. For a later F&F "Business accounts" admin hierarchy-mutation gate; no consumer wired yet. | code-ready |
+| `202605240900_b10_1_vendor_applicability_location_scope.sql` | B10.1 vendor_applicability location scope. Adds a nullable `location_id` (CHECK: location requires operator; composite FK to `locations`), location-leading current/history indexes (operator_id still leads), and re-asserts the operator-keyed RLS policy unchanged. Foundation only: read precedence becomes location > operator > global; proxy/admin/operator-web/worker unchanged. | code-ready |
 
-**Action:** apply all 69 in next Production1 event per
+**Action:** apply all 70 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
