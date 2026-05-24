@@ -637,6 +637,22 @@ Widget _buildOperators(BuildContext context) {
                 ),
               );
             },
+      // A DELIBERATE business / org-unit / location pick in the left scope
+      // tree emits a hierarchyScope intent (staying on the operators route,
+      // so no navigation). The shell flips its "business chosen" latch on a
+      // hierarchyScope-carrying intent, activating the per-business sidebar
+      // cluster. The on-load seed (`onSelectOperatorScope`) carries only an
+      // operatorLocationScope, so it never activates the cluster.
+      onChooseBusinessScope: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminOperatorsRouteId,
+                  hierarchyScope: scope,
+                ),
+              );
+            },
     );
   }
 

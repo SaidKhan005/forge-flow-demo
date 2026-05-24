@@ -398,7 +398,7 @@ void main() {
     await pumpEventually(tester);
     await selectBusiness(tester, operatorId: 'op-x');
 
-    final removeButton = tester.widget<IconButton>(
+    final removeButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_location_remove_loc-x')),
     );
     expect(removeButton.onPressed, isNull);
