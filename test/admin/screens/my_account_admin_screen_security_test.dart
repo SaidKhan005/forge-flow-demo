@@ -59,7 +59,7 @@ void main() {
     );
 
     expect(
-      find.byKey(const Key('admin_my_account_security_readonly_note')),
+      find.byKey(const Key('admin_my_account_two_factor_readonly_note')),
       findsOneWidget,
     );
     expect(
@@ -88,12 +88,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Working surface — NOT the read-only note.
+    // Working surface — NOT the read-only note. MFA is now its own
+    // "Two-factor sign-in" card (ops parity); the enroll CTA lives
+    // there and Change password lives in the Security card.
     expect(
-      find.byKey(const Key('admin_my_account_security_readonly_note')),
+      find.byKey(const Key('admin_my_account_two_factor_readonly_note')),
       findsNothing,
     );
     expect(find.text('Not set up'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_my_account_two_factor_card')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('admin_my_account_mfa_enroll_button')),
       findsOneWidget,
@@ -102,9 +108,11 @@ void main() {
       find.byKey(const Key('admin_my_account_change_password_button')),
       findsOneWidget,
     );
+    // Recovery ("Lost your authenticator?") is offered only once a
+    // factor is enrolled — there is nothing to recover before then.
     expect(
       find.byKey(const Key('admin_my_account_mfa_recovery_button')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -127,9 +135,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('admin_my_account_mfa_enroll_button')),
-    );
+    final enroll = find.byKey(const Key('admin_my_account_mfa_enroll_button'));
+    await tester.ensureVisible(enroll);
+    await tester.tap(enroll);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_enroll_mfa_dialog')), findsOneWidget);
@@ -147,7 +155,7 @@ void main() {
     expect(find.byKey(const Key('admin_enroll_mfa_dialog')), findsNothing);
     expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
     expect(
-      find.byKey(const Key('admin_my_account_security_toast')),
+      find.byKey(const Key('admin_my_account_two_factor_toast')),
       findsOneWidget,
     );
     // begin + confirm share ONE caller-stable key (no G60 bug).
@@ -174,9 +182,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('admin_my_account_mfa_enroll_button')),
-    );
+    final enroll = find.byKey(const Key('admin_my_account_mfa_enroll_button'));
+    await tester.ensureVisible(enroll);
+    await tester.tap(enroll);
     await tester.pumpAndSettle();
 
     // Wrong-length code → InMemory gateway throws → dialog shows the
@@ -200,7 +208,7 @@ void main() {
     await tester.pumpAndSettle();
     expect((await gateway.listFactors()).hasEnrolledFactor, isFalse);
     expect(
-      find.byKey(const Key('admin_my_account_security_toast')),
+      find.byKey(const Key('admin_my_account_two_factor_toast')),
       findsNothing,
     );
   });
