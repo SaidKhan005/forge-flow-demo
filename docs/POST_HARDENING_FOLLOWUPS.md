@@ -31,8 +31,13 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**71 migrations pending Production1 apply** (chronological). The queue now
+**72 migrations pending Production1 apply** (chronological). The queue now
 runs through
+`202605241100_plans_and_limits_phase3_pricing_plan_catalog.sql` (Plans &
+Limits V1 Phase 3: adds the GLOBAL, no-RLS `pricing_plan_catalog` table —
+one editable row per plan — seeded from the reconciled pricing model;
+admin-pool BYPASSRLS posture like `default_role_catalog_versions`), preceded
+by
 `202605241000_advisor_conversation_log_request_correlation_and_retention.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
