@@ -47,6 +47,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
@@ -208,8 +209,9 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
                 twoColumn: twoColumnProfile,
                 displayNameOverride: _displayNameOverride,
                 emailOverride: _emailOverride,
-                onEditIdentity:
-                    widget.accountGateway == null ? null : _handleEditIdentity,
+                onEditIdentity: widget.accountGateway == null
+                    ? null
+                    : _handleEditIdentity,
                 identityToast: _identityToast,
               ),
               const SizedBox(height: 14),
@@ -231,9 +233,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
                 now: widget.now,
               ),
               const SizedBox(height: 14),
-              _AdminAuditLogCard(
-                onOpenAuditLog: widget.onOpenAuditLog,
-              ),
+              _AdminAuditLogCard(onOpenAuditLog: widget.onOpenAuditLog),
             ],
           ),
         );
@@ -393,8 +393,9 @@ class _AdminIdentityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final resolvedDisplay = displayNameOverride ?? session.displayName;
     final resolvedEmail = emailOverride ?? session.email;
-    final displayName =
-        resolvedDisplay.isEmpty ? 'Not on file' : resolvedDisplay;
+    final displayName = resolvedDisplay.isEmpty
+        ? 'Not on file'
+        : resolvedDisplay;
     final email = resolvedEmail.isEmpty ? 'Not on file' : resolvedEmail;
     final explainer = onEditIdentity == null
         ? 'Your sign-in details for the Forge & Flow admin console. '
@@ -411,9 +412,7 @@ class _AdminIdentityCard extends StatelessWidget {
         value: _readableAdminRole(session.roles),
         valueWidget: Row(
           key: const Key('admin_my_account_role_badge'),
-          children: [
-            _AdminRoleChip(label: _readableAdminRole(session.roles)),
-          ],
+          children: [_AdminRoleChip(label: _readableAdminRole(session.roles))],
         ),
       ),
       _AdminAccountField(
@@ -1092,8 +1091,7 @@ class _AdminLoginHistorySection extends StatelessWidget {
           children: [
             for (final w in _AdminHistoryWindow.values)
               _AdminWindowChip(
-                keyName:
-                    'admin_my_account_login_history_filter_${w.filterKey}',
+                keyName: 'admin_my_account_login_history_filter_${w.filterKey}',
                 label: w.label,
                 selected: w == window,
                 onTap: () => onWindowChanged(w),
@@ -1268,11 +1266,7 @@ String _formatAdminAuditStamp(DateTime value) {
 }
 
 class _AdminInlineError extends StatelessWidget {
-  const _AdminInlineError({
-    super.key,
-    required this.message,
-    this.onRetry,
-  });
+  const _AdminInlineError({super.key, required this.message, this.onRetry});
 
   final String message;
   final VoidCallback? onRetry;
@@ -1313,7 +1307,11 @@ class _AdminInlineError extends StatelessWidget {
 }
 
 class _AdminStatusBadge extends StatelessWidget {
-  const _AdminStatusBadge({super.key, required this.label, required this.color});
+  const _AdminStatusBadge({
+    super.key,
+    required this.label,
+    required this.color,
+  });
 
   final String label;
   final Color color;
@@ -1803,7 +1801,11 @@ class _AdminActiveSessionsDialogState
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
+            const Icon(
+              Icons.error_outline,
+              size: 16,
+              color: AppColors.negative,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -1929,8 +1931,9 @@ class _AdminSessionRow extends StatelessWidget {
       if (entry.geoCountry != null) entry.geoCountry!,
     ];
     final lastSeen = 'Last active ${_formatRelative(entry.lastSeenAt, now)}';
-    final subtitle =
-        whereParts.isEmpty ? lastSeen : '$lastSeen · ${whereParts.join(', ')}';
+    final subtitle = whereParts.isEmpty
+        ? lastSeen
+        : '$lastSeen · ${whereParts.join(', ')}';
     return Container(
       key: Key('admin_my_account_session_row_${entry.sessionId}'),
       padding: const EdgeInsets.all(10),
@@ -1968,9 +1971,7 @@ class _AdminSessionRow extends StatelessWidget {
           SizedBox(
             height: 32,
             child: OutlinedButton(
-              key: Key(
-                'admin_my_account_session_revoke_${entry.sessionId}',
-              ),
+              key: Key('admin_my_account_session_revoke_${entry.sessionId}'),
               onPressed: revoking ? null : onRevoke,
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.negative,
@@ -2054,8 +2055,7 @@ class _AdminEditIdentityDialog extends StatefulWidget {
       _AdminEditIdentityDialogState();
 }
 
-class _AdminEditIdentityDialogState
-    extends State<_AdminEditIdentityDialog> {
+class _AdminEditIdentityDialogState extends State<_AdminEditIdentityDialog> {
   late final TextEditingController _displayNameController;
   late final TextEditingController _emailController;
   bool _confirmEmailChange = false;
@@ -2093,8 +2093,7 @@ class _AdminEditIdentityDialogState
   bool get _displayNameChanged =>
       _trimmedDisplayName() != widget.currentDisplayName.trim();
   bool get _emailChanged =>
-      _trimmedEmail().toLowerCase() !=
-      widget.currentEmail.trim().toLowerCase();
+      _trimmedEmail().toLowerCase() != widget.currentEmail.trim().toLowerCase();
   bool get _hasChange => _displayNameChanged || _emailChanged;
 
   bool get _canSave {
@@ -2133,8 +2132,7 @@ class _AdminEditIdentityDialogState
         idempotencyKey: widget.idempotencyKey,
       );
       if (!mounted) return;
-      Navigator.of(context)
-          .pop(_AdminEditIdentityResult(patched: patched));
+      Navigator.of(context).pop(_AdminEditIdentityResult(patched: patched));
     } on AdminAccountGatewayError catch (error) {
       if (!mounted) return;
       setState(() {
@@ -2178,8 +2176,7 @@ class _AdminEditIdentityDialogState
       actions: <Widget>[
         TextButton(
           key: const Key('admin_edit_identity_cancel'),
-          onPressed:
-              _submitting ? null : () => Navigator.of(context).pop(),
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
         FilledButton(
@@ -2199,8 +2196,10 @@ class _AdminEditIdentityDialogState
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 16),
-          Text('Display name',
-              style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+          Text(
+            'Display name',
+            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+          ),
           const SizedBox(height: 4),
           TextField(
             key: const Key('admin_edit_identity_display_name_field'),
@@ -2212,17 +2211,17 @@ class _AdminEditIdentityDialogState
             ),
           ),
           const SizedBox(height: 12),
-          Text('Email',
-              style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+          Text(
+            'Email',
+            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+          ),
           const SizedBox(height: 4),
           TextField(
             key: const Key('admin_edit_identity_email_field'),
             controller: _emailController,
             enabled: !_submitting,
             keyboardType: TextInputType.emailAddress,
-            inputFormatters: [
-              FilteringTextInputFormatter.deny(RegExp(r'\s')),
-            ],
+            inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
               isDense: true,
@@ -2244,19 +2243,18 @@ class _AdminEditIdentityDialogState
                 children: [
                   Checkbox(
                     key: const Key(
-                        'admin_edit_identity_email_confirm_checkbox'),
+                      'admin_edit_identity_email_confirm_checkbox',
+                    ),
                     value: _confirmEmailChange,
                     onChanged: _submitting
                         ? null
-                        : (v) => setState(
-                            () => _confirmEmailChange = v ?? false),
+                        : (v) =>
+                              setState(() => _confirmEmailChange = v ?? false),
                   ),
                   Expanded(
                     child: Text(
                       'Confirm you want to change your sign-in email.',
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
                 ],
@@ -2350,7 +2348,8 @@ class _AdminEnrollMfaDialogState extends State<_AdminEnrollMfaDialog> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = error is AdminSecurityGatewayError &&
+        _error =
+            error is AdminSecurityGatewayError &&
                 error.message.trim().isNotEmpty
             ? error.message.trim()
             : 'That code did not match. Try the next one your app shows.';
@@ -2367,84 +2366,113 @@ class _AdminEnrollMfaDialogState extends State<_AdminEnrollMfaDialog> {
         constraints: const BoxConstraints(maxWidth: 480),
         child: Padding(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Set up your authenticator app',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Open your authenticator app, add a new account, and either '
-                'scan the setup link or paste the secret below. Then enter '
-                'the 6-digit code your app shows.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 14),
-              Text('Setup link',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
-              const SizedBox(height: 4),
-              SelectableText(
-                widget.enrollment.otpAuthUrl,
-                key: const Key('admin_enroll_mfa_otpauth'),
-                style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 10),
-              Text('Secret',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
-              const SizedBox(height: 4),
-              SelectableText(
-                widget.enrollment.secretBase32,
-                key: const Key('admin_enroll_mfa_secret'),
-                style: AppTextStyles.body14(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 16),
-              Text('6-digit code',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
-              const SizedBox(height: 4),
-              TextField(
-                key: const Key('admin_enroll_mfa_code_field'),
-                controller: _codeController,
-                enabled: !_submitting,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  isDense: true,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Set up your authenticator app',
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
-              ),
-              if (_error != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Open your authenticator app, add a new account, and either '
+                  'scan the QR code below or paste the secret. Then enter the '
+                  '6-digit code your app shows.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 14),
+                Center(
+                  child: Container(
+                    key: const Key('admin_enroll_mfa_qr'),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(
+                        color: AppColors.borderSubtle,
+                        width: 1,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: QrImageView(
+                      data: widget.enrollment.otpAuthUrl,
+                      version: QrVersions.auto,
+                      size: 148,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Setup link',
+                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  widget.enrollment.otpAuthUrl,
+                  key: const Key('admin_enroll_mfa_otpauth'),
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
                 const SizedBox(height: 10),
-                _AdminDialogError(
-                  key: const Key('admin_enroll_mfa_error'),
-                  message: _error!,
+                Text(
+                  'Secret',
+                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  widget.enrollment.secretBase32,
+                  key: const Key('admin_enroll_mfa_secret'),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '6-digit code',
+                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+                ),
+                const SizedBox(height: 4),
+                TextField(
+                  key: const Key('admin_enroll_mfa_code_field'),
+                  controller: _codeController,
+                  enabled: !_submitting,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 10),
+                  _AdminDialogError(
+                    key: const Key('admin_enroll_mfa_error'),
+                    message: _error!,
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      key: const Key('admin_enroll_mfa_cancel'),
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      key: const Key('admin_enroll_mfa_confirm'),
+                      onPressed: _canSubmit ? _confirm : null,
+                      child: Text(_submitting ? 'Confirming...' : 'Confirm'),
+                    ),
+                  ],
                 ),
               ],
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    key: const Key('admin_enroll_mfa_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('admin_enroll_mfa_confirm'),
-                    onPressed: _canSubmit ? _confirm : null,
-                    child: Text(_submitting ? 'Confirming...' : 'Confirm'),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -2694,7 +2722,8 @@ class _AdminMfaRecoveryDialogState extends State<_AdminMfaRecoveryDialog> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = error is AdminSecurityGatewayError &&
+        _error =
+            error is AdminSecurityGatewayError &&
                 error.message.trim().isNotEmpty
             ? error.message.trim()
             : 'We could not start recovery. Try again in a moment.';
@@ -2728,8 +2757,10 @@ class _AdminMfaRecoveryDialogState extends State<_AdminMfaRecoveryDialog> {
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 16),
-              Text('Account email',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+              Text(
+                'Account email',
+                style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+              ),
               const SizedBox(height: 4),
               TextField(
                 key: const Key('admin_mfa_recovery_email_field'),
@@ -2836,4 +2867,3 @@ class _AdminDialogError extends StatelessWidget {
     );
   }
 }
-
