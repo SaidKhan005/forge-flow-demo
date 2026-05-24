@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import '../../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/console/console_screen_body.dart';
+import '../../../widgets/console/console_surface.dart';
 import '../../admin_route_handoff.dart';
 import '../../widgets/admin_business_accounts_back_button.dart';
 import '../../widgets/admin_responsive_layout.dart';
@@ -95,14 +97,21 @@ class _VendorConnectionsAdminMountState
 
   @override
   Widget build(BuildContext context) {
-    final body = _buildBody();
+    // Embedded inside AdminSetupWorkspace (the per-operator screen): the
+    // workspace already supplies the page header, scope context, and
+    // back button, so the body mirrors the operator-web Vendor
+    // integrations screen — a centered, max-width body holding the
+    // shared widget inside a single surface card with its own header
+    // suppressed. The standalone Scaffold path below is retained for
+    // legacy / direct callers (and is the path the widget tests cover).
     if (widget.embedded) {
       return ColoredBox(
         key: const Key('admin_vendor_connections_screen'),
         color: AppColors.backgroundDeep,
-        child: body,
+        child: _buildEmbeddedWebBody(),
       );
     }
+    final body = _buildBody();
     return Scaffold(
       key: const Key('admin_vendor_connections_screen'),
       appBar: AppBar(
@@ -117,6 +126,117 @@ class _VendorConnectionsAdminMountState
         title: const Text('Vendor integrations'),
       ),
       body: body,
+    );
+  }
+
+  /// Operator-web-parity body for the embedded (per-operator workspace)
+  /// path. Centered, max-width content; the shared widget sits inside a
+  /// single surface card with its own header off (the workspace header
+  /// titles the page). Mirrors `vendor_connections_screen.dart`.
+  Widget _buildEmbeddedWebBody() {
+    final scope = _activeScope;
+    final location = _VendorConnectionsLocationScope.from(
+      scope: scope,
+      fallbackOperatorId: widget.operatorId,
+      fallbackLocationId: widget.locationId,
+      fallbackLocationName: widget.locationName,
+    );
+    final Widget content;
+    if (location == null) {
+      content = _embeddedLocationRequiredPanel(scope);
+    } else if (widget.gateway == null) {
+      content = _embeddedNotWiredPanel(location.locationName);
+    } else {
+      content = _embeddedVendorCard(location);
+    }
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_vendor_connections_screen_body'),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[content],
+      ),
+    );
+  }
+
+  Widget _embeddedVendorCard(_VendorConnectionsLocationScope location) {
+    return DecoratedBox(
+      key: const Key('admin_vendor_connections_widget_host'),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: VendorConnectionsWidget(
+        key: ValueKey<String>(
+          'admin_vendor_connections_widget_'
+          '${location.operatorId}_${location.locationId}',
+        ),
+        operatorId: location.operatorId,
+        locationId: location.locationId,
+        locationNameOverride: location.locationName,
+        gateway: widget.gateway,
+        canMutate: widget.canMutate,
+        showHeader: false,
+      ),
+    );
+  }
+
+  Widget _embeddedLocationRequiredPanel(AdminHierarchyScopeIntent? scope) {
+    final selectedScopeLabel = scope == null
+        ? 'No hierarchy scope selected'
+        : '${scope.scopeType.label}: ${scope.displayLabel}';
+    return OperatorWebPanel(
+      key: const Key('admin_vendor_connections_location_required'),
+      title: 'Choose a location',
+      subtitle:
+          'Vendor setup is location-only. Business and org-unit scopes narrow '
+          'the hierarchy context, but connect, test, disconnect, and sync-log '
+          'controls need a specific location.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          AdminDetailRow(label: 'Selected scope', value: selectedScopeLabel),
+          const AdminDetailRow(
+            label: 'Edit controls',
+            value: 'Location required',
+          ),
+          const AdminDetailRow(
+            label: 'Global services',
+            value: 'Connected services remains separate',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _embeddedNotWiredPanel(String locationName) {
+    return OperatorWebPanel(
+      key: const Key('admin_vendor_connections_not_wired'),
+      title: 'Lifecycle actions are not live',
+      subtitle:
+          'Connect, test, disconnect, and sync-log actions are not exposed '
+          'from this admin route in preview. This page is intentionally '
+          'read-only rather than showing demo vendor data. The live provider '
+          'summary stays available in Connected services.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          AdminDetailRow(label: 'Location', value: locationName),
+          const AdminDetailRow(
+            label: 'Current admin status',
+            value: 'Not routed',
+          ),
+          const AdminDetailRow(
+            label: 'Safe live view',
+            value: 'Connected services',
+          ),
+          const AdminDetailRow(
+            label: 'Mutation state',
+            value: 'Disabled until backend bindings exist',
+          ),
+        ],
+      ),
     );
   }
 

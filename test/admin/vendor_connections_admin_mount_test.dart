@@ -241,4 +241,120 @@ void main() {
     expect(posTop, lessThan(laborTop));
     expect(laborTop, lessThan(reservationTop));
   });
+
+  testWidgets(
+    'embedded location scope mounts the shared widget in the web body '
+    'without the in-body scope-context box',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        wrap(
+          VendorConnectionsAdminMount(
+            operatorId: 'op-1',
+            selectedScope: locationScope,
+            gateway: InMemoryVendorConnectionsGateway(),
+            embedded: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_connections_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_vendor_connections_screen_body')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_vendor_connections_widget_host')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('vendor_connections_section_pos')),
+        findsOneWidget,
+      );
+      // The workspace header owns scope display in the embedded path, so
+      // the legacy in-body scope-context box is intentionally dropped.
+      expect(
+        find.byKey(const Key('admin_vendor_connections_scope_context')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_vendor_connections_location_required')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'embedded location scope without a gateway shows the web-style '
+    'not-wired panel',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          const VendorConnectionsAdminMount(
+            operatorId: 'op-1',
+            selectedScope: locationScope,
+            embedded: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_connections_screen_body')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_vendor_connections_not_wired')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('vendor_connections_section_pos')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'embedded business scope shows the web-style location-required panel',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          VendorConnectionsAdminMount(
+            operatorId: 'op-1',
+            selectedScope: businessScope,
+            gateway: InMemoryVendorConnectionsGateway(),
+            embedded: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_connections_screen_body')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_vendor_connections_location_required')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_vendor_connections_scope_context')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('vendor_connections_section_pos')),
+        findsNothing,
+      );
+    },
+  );
 }
