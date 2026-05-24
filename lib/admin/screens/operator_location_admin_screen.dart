@@ -54,6 +54,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.onOpenAuditSupport,
     this.onOpenSecurityAuditSessionsScope,
     this.onSelectOperatorScope,
+    this.onChooseBusinessScope,
     this.selectedParentOrgUnitId,
     this.selectedParentOrgUnitLabel,
     this.editingEnabled = true,
@@ -91,6 +92,18 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   final ValueChanged<AdminHierarchyScopeIntent>?
   onOpenSecurityAuditSessionsScope;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onSelectOperatorScope;
+
+  /// Fired when the operator DELIBERATELY picks a business / org unit /
+  /// location node in the LEFT shared scope tree (or any genuinely
+  /// user-initiated selection), as opposed to the on-load seed that
+  /// auto-highlights the first business. The shell uses this to flip its
+  /// "a business has been chosen" latch so the per-business sidebar
+  /// cluster activates. It carries the picked [AdminHierarchyScopeIntent]
+  /// so the shell can light the cluster header with the business name and
+  /// keep the top-bar picker in sync. The on-load seed path
+  /// ([_notifyOperatorScope] from [_refresh]) NEVER calls this, so the
+  /// cluster stays "Pick a business first" until a real pick happens.
+  final ValueChanged<AdminHierarchyScopeIntent>? onChooseBusinessScope;
   final bool editingEnabled;
   final String actorUserId;
 
@@ -233,11 +246,16 @@ class _OperatorLocationAdminScreenState
 
   /// Handles a pick from the LEFT shared scope tree. Any node (business
   /// / org unit / location) resolves to its owning business for the
-  /// right detail pane, drives the selected hierarchy scope, and (when
-  /// the owning business changes) notifies the shell through the SAME
-  /// `onSelectOperatorScope` path the screen already used on operator
-  /// switch, so the shell scope, sidebar cluster, and top toggle stay
-  /// in sync.
+  /// right detail pane, drives the selected hierarchy scope, and — because
+  /// this is a DELIBERATE, user-initiated pick (never the on-load seed) —
+  /// notifies the shell so the sidebar per-business cluster activates and
+  /// the top-bar picker stays in sync.
+  ///
+  /// The cluster activation depends on the shell receiving an intent that
+  /// carries a `hierarchyScope` (see `admin_shell.dart`
+  /// `_intentChoosesBusinessScope`); the on-load seed
+  /// ([_notifyOperatorScope] from [_refresh]) emits only an
+  /// operatorLocationScope, so it never activates the cluster.
   void _selectScopeFromTree(AdminHierarchyScopeIntent scope) {
     final operatorChanged = _selectedOperatorId != scope.operatorId;
     setState(() {
@@ -247,7 +265,17 @@ class _OperatorLocationAdminScreenState
       _actionError = null;
       _actionEmailConflicts = const <AdminEmailConflictUsage>[];
     });
-    if (operatorChanged) {
+    final chooseBusinessScope = widget.onChooseBusinessScope;
+    if (chooseBusinessScope != null) {
+      // Carries a hierarchyScope to the shell, which both flips the
+      // "business chosen" latch (cluster activates) AND syncs the
+      // operator-location scope (the shell derives it from the hierarchy
+      // scope), so the separate operator-scope notify is not needed here.
+      chooseBusinessScope(scope);
+    } else if (operatorChanged) {
+      // Backward-compatible fallback for callers that wire only the
+      // operator-scope notify (e.g. older hosts / tests): keep the prior
+      // behavior of syncing the shell scope when the business changes.
       _notifyOperatorScope(_selected);
     }
   }
@@ -1483,25 +1511,6 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     );
   }
 
-  Widget _hierarchyIconButton({
-    required Key key,
-    required String tooltip,
-    required IconData icon,
-    required VoidCallback? onPressed,
-    Color? color,
-  }) {
-    return IconButton(
-      key: key,
-      tooltip: tooltip,
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      color: color,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-      visualDensity: VisualDensity.compact,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
@@ -1738,21 +1747,23 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           ),
           trailing: widget.editingEnabled && widget.gateway != null
               ? Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
-                    _hierarchyIconButton(
-                      key: Key(
+                    _HierarchyActionButton(
+                      buttonKey: Key(
                         'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
                       ),
+                      label: 'Add child',
                       tooltip: 'Add child org unit',
                       onPressed: () => _onAddChildOrgUnit(unit),
                       icon: Icons.add,
                     ),
-                    _hierarchyIconButton(
-                      key: Key(
+                    _HierarchyActionButton(
+                      buttonKey: Key(
                         'admin_hierarchy_org_unit_move_${unit.orgUnitId}',
                       ),
+                      label: 'Move',
                       tooltip: unit.parentOrgUnitId == null
                           ? 'Business root stays at business level'
                           : 'Move org unit',
@@ -1761,12 +1772,13 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                           : () => _onMoveOrgUnit(unit),
                       icon: Icons.drive_file_move_outlined,
                     ),
-                    _hierarchyIconButton(
-                      key: Key(
+                    _HierarchyActionButton(
+                      buttonKey: Key(
                         unit.isSuspended
                             ? 'admin_hierarchy_org_unit_reactivate_${unit.orgUnitId}'
                             : 'admin_hierarchy_org_unit_suspend_${unit.orgUnitId}',
                       ),
+                      label: unit.isSuspended ? 'Reactivate' : 'Suspend',
                       tooltip: unit.parentOrgUnitId == null
                           ? 'Business root cannot be suspended'
                           : unit.isSuspended
@@ -1779,10 +1791,11 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                           ? Icons.play_circle_outline
                           : Icons.pause_circle_outline,
                     ),
-                    _hierarchyIconButton(
-                      key: Key(
+                    _HierarchyActionButton(
+                      buttonKey: Key(
                         'admin_hierarchy_org_unit_delete_${unit.orgUnitId}',
                       ),
+                      label: 'Delete',
                       tooltip: unit.parentOrgUnitId == null
                           ? 'Business root cannot be deleted'
                           : 'Delete org unit',
@@ -1790,7 +1803,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                           ? null
                           : () => _onDeleteOrgUnit(unit),
                       icon: Icons.delete_outline,
-                      color: AppColors.negative,
+                      destructive: true,
                     ),
                   ],
                 )
@@ -1892,11 +1905,14 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         ),
         trailing: widget.editingEnabled
             ? Wrap(
-                spacing: 4,
-                runSpacing: 4,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
-                  _hierarchyIconButton(
-                    key: Key('admin_location_move_${location.locationId}'),
+                  _HierarchyActionButton(
+                    buttonKey: Key(
+                      'admin_location_move_${location.locationId}',
+                    ),
+                    label: 'Move',
                     tooltip: 'Move location',
                     onPressed:
                         widget.gateway == null ||
@@ -1910,12 +1926,13 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                           ),
                     icon: Icons.drive_file_move_outlined,
                   ),
-                  _hierarchyIconButton(
-                    key: Key(
+                  _HierarchyActionButton(
+                    buttonKey: Key(
                       isSuspended
                           ? 'admin_location_reactivate_${location.locationId}'
                           : 'admin_location_suspend_${location.locationId}',
                     ),
+                    label: isSuspended ? 'Reactivate' : 'Suspend',
                     tooltip: isSuspended
                         ? 'Reactivate location'
                         : 'Suspend location',
@@ -1929,24 +1946,31 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                         ? Icons.play_circle_outline
                         : Icons.pause_circle_outline,
                   ),
-                  _hierarchyIconButton(
-                    key: Key('admin_location_edit_${location.locationId}'),
+                  _HierarchyActionButton(
+                    buttonKey: Key(
+                      'admin_location_edit_${location.locationId}',
+                    ),
+                    label: 'Edit',
                     tooltip: 'Edit location',
                     onPressed: () => widget.onEditLocation(location),
                     icon: Icons.edit_outlined,
                   ),
-                  _hierarchyIconButton(
-                    key: Key(
+                  _HierarchyActionButton(
+                    buttonKey: Key(
                       'admin_location_make_primary_${location.locationId}',
                     ),
+                    label: 'Make primary',
                     tooltip: 'Make primary location',
                     onPressed: isPrimary
                         ? null
                         : () => widget.onSetPrimary(location),
                     icon: Icons.star_outline,
                   ),
-                  _hierarchyIconButton(
-                    key: Key('admin_location_remove_${location.locationId}'),
+                  _HierarchyActionButton(
+                    buttonKey: Key(
+                      'admin_location_remove_${location.locationId}',
+                    ),
+                    label: 'Remove',
                     tooltip: widget.gateway == null
                         ? 'Remove location'
                         : 'Delete location',
@@ -1954,7 +1978,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                         ? null
                         : () => _onDeleteHierarchyLocation(location),
                     icon: Icons.delete_outline,
-                    color: AppColors.negative,
+                    destructive: true,
                   ),
                 ],
               )
@@ -2398,8 +2422,14 @@ class _HierarchyScopeRow extends StatelessWidget {
             ),
             child: LayoutBuilder(
               builder: (context, constraints) {
+                // Labeled action buttons are wider than the former icons, so
+                // they stack onto their own full-width row below the label
+                // until the row is wide enough to hold them inline. When
+                // inline, the trailing area is `Flexible` so its `Wrap`
+                // receives a bounded width and flows onto extra lines rather
+                // than overflowing the row.
                 final compactActions =
-                    trailing != null && constraints.maxWidth < 320;
+                    trailing != null && constraints.maxWidth < 520;
                 final labelRow = Row(
                   children: [
                     Icon(icon, size: 17, color: AppColors.textSecondary),
@@ -2437,7 +2467,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                       ),
                     if (trailing != null && !compactActions) ...[
                       const SizedBox(width: 8),
-                      trailing!,
+                      Flexible(child: trailing!),
                     ],
                   ],
                 );
@@ -2447,7 +2477,9 @@ class _HierarchyScopeRow extends StatelessWidget {
                   children: [
                     labelRow,
                     const SizedBox(height: 8),
-                    Align(alignment: Alignment.centerRight, child: trailing!),
+                    // Full-width so the trailing `Wrap` wraps the buttons
+                    // across the row instead of overflowing to the right.
+                    SizedBox(width: double.infinity, child: trailing!),
                   ],
                 );
               },
@@ -2461,6 +2493,49 @@ class _HierarchyScopeRow extends StatelessWidget {
 
 class _OperatorActionButton extends StatelessWidget {
   const _OperatorActionButton({
+    required this.buttonKey,
+    required this.label,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.destructive = false,
+  });
+
+  final Key buttonKey;
+  final String label;
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: OutlinedButton.icon(
+        key: buttonKey,
+        onPressed: onPressed,
+        style: destructive
+            ? AdminButtonStyles.dangerSecondary()
+            : AdminButtonStyles.secondary(),
+        icon: Icon(icon, size: 14),
+        label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
+      ),
+    );
+  }
+}
+
+/// Labeled action button for the location-hierarchy tree rows (add child
+/// org unit, move, suspend/reactivate, delete, edit location, make
+/// primary, remove). Replaces the former icon-only `_hierarchyIconButton`
+/// so the tree controls read as words, mirroring `_OperatorActionButton`.
+/// Destructive actions (delete / remove) use the danger style. The same
+/// widget `key` and `tooltip` the icon button carried are preserved so
+/// existing selectors and hover hints keep working. `softWrap: false`
+/// keeps each label on one line; the surrounding `Wrap` flows the buttons
+/// onto additional rows when the trailing area is narrow.
+class _HierarchyActionButton extends StatelessWidget {
+  const _HierarchyActionButton({
     required this.buttonKey,
     required this.label,
     required this.icon,
