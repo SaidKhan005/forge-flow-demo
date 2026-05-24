@@ -84,9 +84,10 @@ class FanoutUser {
   /// to the user's primary or active location.
   final String locationId;
 
-  /// User's role keys (e.g. `operator_owner`, `operator_admin`,
-  /// `operator_manager`, `location_manager`). Used to evaluate
-  /// [NotificationRoleGate] from the catalog.
+  /// User's v2 role keys (e.g. `operator_owner`,
+  /// `operator_general_manager`, `location_manager`, `supervisor`).
+  /// Retired v1 keys such as `operator_admin` and `operator_manager`
+  /// do not satisfy notification gates.
   final Set<String> roles;
 
   /// Optional email address for the email channel. When absent the
@@ -101,8 +102,8 @@ class FanoutUser {
 /// Reads the directory of users in an operator. Production binds
 /// this to a Postgres query joining `users` + `user_roles` filtered
 /// to active grants for the operator; tests pin a fixed list.
-typedef NotificationOperatorUserDirectory = Future<List<FanoutUser>>
-    Function({required String operatorId});
+typedef NotificationOperatorUserDirectory =
+    Future<List<FanoutUser>> Function({required String operatorId});
 
 /// Reads `notification_preferences` rows for an operator + event.
 /// Returns every row regardless of `enabled`; the fanout applies
@@ -205,15 +206,13 @@ class FanoutEmailPayload {
 /// `MobilePushOutboxRepository.enqueue` (which has the
 /// `(operator_id, dedupe_key)` UNIQUE so the fanout stays
 /// idempotent on retry). Tests pass an in-memory fake.
-typedef NotificationPushDispatchSeam = Future<void> Function(
-  FanoutPushPayload payload,
-);
+typedef NotificationPushDispatchSeam =
+    Future<void> Function(FanoutPushPayload payload);
 
 /// Email dispatch seam. Production binds this to a Postgres INSERT
 /// against `email_outbox`. Tests pass an in-memory fake.
-typedef NotificationEmailDispatchSeam = Future<void> Function(
-  FanoutEmailPayload payload,
-);
+typedef NotificationEmailDispatchSeam =
+    Future<void> Function(FanoutEmailPayload payload);
 
 /// Structured-log emitter seam for the fanout's per-channel failure
 /// path. Production binds this to the proxy's [log] function so
@@ -226,11 +225,12 @@ typedef NotificationEmailDispatchSeam = Future<void> Function(
 /// fields: fields)`. The seam exists (rather than calling [log]
 /// directly) so the B3 hot-fix test plan can assert the swallow site
 /// fires a structured log line on every email-side dispatch failure.
-typedef NotificationFanoutLogSeam = void Function(
-  LogSeverity severity,
-  String event, {
-  Map<String, Object?> fields,
-});
+typedef NotificationFanoutLogSeam =
+    void Function(
+      LogSeverity severity,
+      String event, {
+      Map<String, Object?> fields,
+    });
 
 /// Default [NotificationFanoutLogSeam] - emits via the proxy's
 /// structured [log] function. Production callers may omit the seam
@@ -323,14 +323,14 @@ class NotificationFanoutOutcome {
   final int skipped;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'event_key': eventKey,
-        'users_considered': usersConsidered,
-        'users_gated': usersGated,
-        'push_dispatched': pushDispatched,
-        'email_dispatched': emailDispatched,
-        'inbox_dispatched': inboxDispatched,
-        'skipped': skipped,
-      };
+    'event_key': eventKey,
+    'users_considered': usersConsidered,
+    'users_gated': usersGated,
+    'push_dispatched': pushDispatched,
+    'email_dispatched': emailDispatched,
+    'inbox_dispatched': inboxDispatched,
+    'skipped': skipped,
+  };
 }
 
 /// Generic multi-channel notification fanout. Pure orchestrator;
@@ -345,20 +345,20 @@ class NotificationEventFanout {
     NotificationPushDispatchSeam? inboxDispatch,
     NotificationFanoutLogSeam logSeam = defaultNotificationFanoutLogSeam,
     List<NotificationCatalogEntry> catalog = kNotificationCatalog,
-  })  : _preferenceReadSeam = preferenceReadSeam,
-        _userDirectory = userDirectory,
-        _pushDispatch = pushDispatch,
-        _emailDispatch = emailDispatch,
-        // Inbox dispatch reuses the push seam by default. Production
-        // binds both to the same `MobilePushOutboxRepository.enqueue`;
-        // the fanout sets `routesToInbox = true` on the inbox payload
-        // so the mobile-side FCM handler can route into
-        // `app_notifications` rather than firing a system push.
-        _inboxDispatch = inboxDispatch ?? pushDispatch,
-        _logSeam = logSeam,
-        _catalogByKey = <String, NotificationCatalogEntry>{
-          for (final entry in catalog) entry.eventKey: entry,
-        };
+  }) : _preferenceReadSeam = preferenceReadSeam,
+       _userDirectory = userDirectory,
+       _pushDispatch = pushDispatch,
+       _emailDispatch = emailDispatch,
+       // Inbox dispatch reuses the push seam by default. Production
+       // binds both to the same `MobilePushOutboxRepository.enqueue`;
+       // the fanout sets `routesToInbox = true` on the inbox payload
+       // so the mobile-side FCM handler can route into
+       // `app_notifications` rather than firing a system push.
+       _inboxDispatch = inboxDispatch ?? pushDispatch,
+       _logSeam = logSeam,
+       _catalogByKey = <String, NotificationCatalogEntry>{
+         for (final entry in catalog) entry.eventKey: entry,
+       };
 
   final NotificationPreferenceReadSeam _preferenceReadSeam;
   final NotificationOperatorUserDirectory _userDirectory;
@@ -430,8 +430,7 @@ class NotificationEventFanout {
       operatorId: operatorId,
       eventKey: envelope.eventKey,
     );
-    final preferencesByUser =
-        _indexPreferencesByUser(preferenceRows);
+    final preferencesByUser = _indexPreferencesByUser(preferenceRows);
 
     var pushDispatched = 0;
     var emailDispatched = 0;
@@ -445,7 +444,8 @@ class NotificationEventFanout {
         continue;
       }
 
-      final userPrefs = preferencesByUser[user.userId] ?? const <_PrefKey, bool>{};
+      final userPrefs =
+          preferencesByUser[user.userId] ?? const <_PrefKey, bool>{};
       final channels = _resolveEnabledChannelsForUser(
         catalog: entry,
         userPrefs: userPrefs,
@@ -675,10 +675,11 @@ class NotificationEventFanout {
     for (final row in rows) {
       final byKey = out.putIfAbsent(row.userId, () => <_PrefKey, bool>{});
       byKey[_PrefKey(
-        channel: row.channel,
-        scopeKind: row.scopeKind,
-        scopeId: row.scopeId,
-      )] = row.enabled;
+            channel: row.channel,
+            scopeKind: row.scopeKind,
+            scopeId: row.scopeId,
+          )] =
+          row.enabled;
     }
     return out;
   }
