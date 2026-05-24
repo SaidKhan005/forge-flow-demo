@@ -547,8 +547,11 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
   String? _loadError;
   AdminSecurityFactorsListed? _factors;
 
-  // Auto-clearing confirmation toast.
+  // Auto-clearing confirmation toast. [_toastIsError] flips the toast
+  // to the negative (red) tone so a fail-closed gateway error can never
+  // be mistaken for a success confirmation.
   String? _toast;
+  bool _toastIsError = false;
   Timer? _toastTimer;
   static const Duration _kToastVisibleDuration = Duration(seconds: 4);
 
@@ -578,17 +581,35 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
     return 'admin-my-account-2fa-$action-$ts-$r-$_idempotencyCounter';
   }
 
-  void _showToast(String message) {
+  void _showToast(String message) => _showToastInternal(message, isError: false);
+
+  /// Negative (red) toast for a fail-closed gateway error.
+  void _showErrorToast(String message) =>
+      _showToastInternal(message, isError: true);
+
+  void _showToastInternal(String message, {required bool isError}) {
     _toastTimer?.cancel();
-    setState(() => _toast = message);
+    setState(() {
+      _toast = message;
+      _toastIsError = isError;
+    });
     _toastTimer = Timer(_kToastVisibleDuration, () {
       if (!mounted) return;
       setState(() => _toast = null);
     });
   }
 
+  DateTime _now() => (widget.now?.call() ?? DateTime.now()).toUtc();
+
   String _friendly(Object error) {
     if (error is AdminSecurityGatewayError) {
+      // Mirror operator-web's freshness gate: a "sign in again" remedy
+      // rather than a generic error when the proxy demands a fresh
+      // step-up before a security-sensitive change.
+      if (error.requiresFreshSignIn) {
+        return 'Please sign in again before changing two-factor sign-in. '
+            'This protects your account settings.';
+      }
       if (error.statusCode == 408) {
         return 'The admin console timed out reaching the security service. '
             'Try again in a moment.';
@@ -682,6 +703,63 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
     }
   }
 
+  /// Schedules a 24-hour delayed removal of the enrolled authenticator,
+  /// mirroring operator-web's manage -> confirm -> request flow. Fails
+  /// closed: on any gateway error we show the red error/toast and leave
+  /// the factor enrolled.
+  Future<void> _handleRequestRemoval(AdminSecurityMfaFactor factor) async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _AdminTurnOffMfaDialog(),
+    );
+    if (!mounted || confirmed != true) return;
+    // One stable key per logical request action, reused on retry so the
+    // proxy idempotency replay returns the original outcome.
+    final key = _mintIdempotencyKey('revoke');
+    try {
+      await gateway.requestFactorRemoval(
+        factorId: factor.factorId,
+        idempotencyKey: key,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showErrorToast(_friendly(error));
+      return;
+    }
+    if (!mounted) return;
+    await _loadFactors();
+    if (!mounted) return;
+    _showToast(
+      'Two-factor sign-in will turn off after a 24-hour wait. You can '
+      'cancel any time before then.',
+    );
+  }
+
+  /// Cancels the pending removal so two-factor sign-in stays on. Fails
+  /// closed: on any gateway error we show the red error/toast and leave
+  /// the pending request in place.
+  Future<void> _handleCancelRemoval(AdminSecurityMfaRemoval removal) async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final key = _mintIdempotencyKey('cancel-removal');
+    try {
+      await gateway.cancelFactorRemoval(
+        requestId: removal.requestId,
+        idempotencyKey: key,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showErrorToast(_friendly(error));
+      return;
+    }
+    if (!mounted) return;
+    await _loadFactors();
+    if (!mounted) return;
+    _showToast('Removal cancelled. Two-factor sign-in stays on.');
+  }
+
   @override
   Widget build(BuildContext context) {
     final lastFresh = widget.session.lastFreshAuthAt;
@@ -747,26 +825,62 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
             buttonLabel: 'Set up authenticator app',
             onPressed: _handleEnroll,
           ),
-        if (factors != null && enrolled)
-          _AdminActionRow(
-            actionKey: const Key('admin_my_account_mfa_recovery_button'),
-            header: 'Two-factor sign-in is on',
-            body:
-                'An authenticator app is protecting your account. If you lose '
-                'access to it, start recovery and we will email the account '
-                'on file with the next step.',
-            buttonLabel: 'Lost your authenticator?',
-            onPressed: _handleRecovery,
-          ),
+        if (factors != null && enrolled) ..._buildEnrolled(factors),
         if (_toast != null) ...[
           const SizedBox(height: 10),
-          _AdminConfirmToast(
-            toastKey: const Key('admin_my_account_two_factor_toast'),
-            message: _toast!,
-          ),
+          if (_toastIsError)
+            _AdminDialogError(
+              key: const Key('admin_my_account_two_factor_toast'),
+              message: _toast!,
+            )
+          else
+            _AdminConfirmToast(
+              toastKey: const Key('admin_my_account_two_factor_toast'),
+              message: _toast!,
+            ),
         ],
       ],
     );
+  }
+
+  /// Enrolled-state body. Always offers recovery; adds either the
+  /// "Turn off two-factor sign-in" action (no pending removal) or the
+  /// pending/scheduled state + "Cancel removal" (a removal is in
+  /// flight). Mirrors operator-web's enrolled -> removalRequested
+  /// stages on the simpler admin card.
+  List<Widget> _buildEnrolled(AdminSecurityFactorsListed factors) {
+    final pending = factors.pendingRemoval;
+    final primaryFactor = factors.factors.first;
+    return <Widget>[
+      _AdminActionRow(
+        actionKey: const Key('admin_my_account_mfa_recovery_button'),
+        header: 'Two-factor sign-in is on',
+        body:
+            'An authenticator app is protecting your account. If you lose '
+            'access to it, start recovery and we will email the account '
+            'on file with the next step.',
+        buttonLabel: 'Lost your authenticator?',
+        onPressed: _handleRecovery,
+      ),
+      const SizedBox(height: 16),
+      if (pending == null)
+        _AdminActionRow(
+          actionKey: const Key('admin_my_account_mfa_turn_off_button'),
+          header: 'Turn off two-factor sign-in',
+          body:
+              'We wait 24 hours before turning off two-factor sign-in so '
+              'that if someone got into your account, you have time to '
+              'stop them. You may be asked to sign in again first.',
+          buttonLabel: 'Turn off two-factor sign-in',
+          onPressed: () => _handleRequestRemoval(primaryFactor),
+        )
+      else
+        _AdminMfaRemovalPending(
+          executeAfter: pending.executeAfter,
+          now: _now(),
+          onCancel: () => _handleCancelRemoval(pending),
+        ),
+    ];
   }
 
   Widget _buildReadOnly() {
@@ -999,6 +1113,95 @@ class _AdminActionRow extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Pending two-factor removal state. Mirrors operator-web's
+/// `removalRequested` stage: a "turns off in" countdown headline, the
+/// 24-hour-wait explainer, the scheduled UTC date, and a "Cancel
+/// removal" action that keeps two-factor sign-in on.
+class _AdminMfaRemovalPending extends StatelessWidget {
+  const _AdminMfaRemovalPending({
+    required this.executeAfter,
+    required this.now,
+    required this.onCancel,
+  });
+
+  final DateTime executeAfter;
+  final DateTime now;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = _formatRemaining(executeAfter, now);
+    return Container(
+      key: const Key('admin_my_account_mfa_removal_pending'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.sunset.withValues(alpha: 0.06),
+        border: Border.all(
+          color: AppColors.sunset.withValues(alpha: 0.35),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Turning off two-factor sign-in',
+            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Two-factor sign-in turns off in $remaining unless you cancel. '
+            'We wait 24 hours so that if someone got into your account, you '
+            'have time to stop them.',
+            style: AppTextStyles.body13(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Scheduled for ${_formatAdminAuditStamp(executeAfter)}',
+            key: const Key('admin_my_account_mfa_removal_scheduled'),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              height: 38,
+              child: OutlinedButton(
+                key: const Key('admin_my_account_mfa_cancel_removal_button'),
+                onPressed: onCancel,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.sunsetDark,
+                  side: const BorderSide(color: AppColors.sunsetDark, width: 1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  textStyle: AppTextStyles.mono14(
+                    color: AppColors.sunsetDark,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+                child: const Text('Cancel removal'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatRemaining(DateTime executeAfter, DateTime now) {
+    final remaining = executeAfter.toUtc().difference(now.toUtc());
+    if (remaining.inMicroseconds <= 0) return 'less than a minute';
+    final hours = remaining.inHours;
+    final minutes = remaining.inMinutes.remainder(60);
+    if (hours > 0) return '${hours}h ${minutes}m';
+    final roundedMinutes = remaining.inMinutes < 1 ? 1 : remaining.inMinutes;
+    return '${roundedMinutes}m';
   }
 }
 
@@ -2800,6 +3003,72 @@ class _AdminMfaRecoveryDialogState extends State<_AdminMfaRecoveryDialog> {
                     child: Text(
                       _submitting ? 'Requesting...' : 'Request recovery',
                     ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Confirm dialog for turning off two-factor sign-in. Mirrors the
+/// operator-web `_handleRequestMfaRemoval` confirm copy + flow: we wait
+/// 24 hours, and the admin may be asked to sign in again. Pops `true`
+/// to proceed with scheduling the delayed removal, `false`/null to keep
+/// two-factor sign-in on.
+class _AdminTurnOffMfaDialog extends StatelessWidget {
+  const _AdminTurnOffMfaDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      key: const Key('admin_mfa_turn_off_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Turn off two-factor sign-in?',
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'We wait 24 hours before turning off two-factor sign-in so '
+                'that if someone got into your account, you have time to '
+                'stop them. You may be asked to sign in again before the '
+                'request is accepted.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 18),
+              // Wrap (not Row) so the longer "Keep two-factor sign-in
+              // on" + "Request removal" labels flow to a second line on
+              // a narrow dialog instead of overflowing.
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  TextButton(
+                    key: const Key('admin_mfa_turn_off_cancel'),
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Keep two-factor sign-in on'),
+                  ),
+                  FilledButton(
+                    key: const Key('admin_mfa_turn_off_confirm'),
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.negative,
+                      foregroundColor: AppColors.backgroundSurface,
+                    ),
+                    child: const Text('Request removal'),
                   ),
                 ],
               ),
