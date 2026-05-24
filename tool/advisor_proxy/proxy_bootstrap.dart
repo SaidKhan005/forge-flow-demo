@@ -9632,6 +9632,13 @@ class RepositoryObservabilityAdminProxyGateway
         _observabilityBatchShareSql,
         parameters: scopeParams,
       );
+      final topExpensiveRows = await exec.query(
+        _observabilityTopExpensiveSql,
+        parameters: <String, Object?>{
+          'axis_limit': _topExpensiveAxisLimit,
+          ...scopeParams,
+        },
+      );
       final dormancyRows = await exec.query(
         _observabilityDormancySql,
         parameters: <String, Object?>{
@@ -9700,11 +9707,21 @@ class RepositoryObservabilityAdminProxyGateway
               'target_share': 0.50,
             },
         ],
-        // These surfaces intentionally stay empty until their durable
-        // producers exist. Empty lists keep the dashboard neutral rather
-        // than showing synthetic top-N, revenue, cap-event, route, or
-        // Cloud Run instance confidence.
-        'top_expensive': const <Map<String, Object?>>[],
+        // Top spenders for the CURRENT month, per axis (operator /
+        // staff / workflow). `usage_logs` is a monthly rollup, so each
+        // row is mapped onto the `30d` window the consumer understands;
+        // the `1d` / `7d` windows are intentionally left empty rather
+        // than fabricated from non-existent daily data. See
+        // `_observabilityTopExpensiveSql` / `_topExpensiveRowJson`.
+        //
+        // The remaining surfaces below (margins, cap_events,
+        // route_latency, cloud_run) intentionally stay empty until
+        // their durable producers exist. Empty lists keep the
+        // dashboard neutral rather than showing synthetic revenue,
+        // cap-event, route, or Cloud Run instance confidence.
+        'top_expensive': <Map<String, Object?>>[
+          for (final row in topExpensiveRows) _topExpensiveRowJson(row),
+        ],
         'dormancy': <Map<String, Object?>>[
           for (final row in dormancyRows)
             <String, Object?>{
@@ -9757,7 +9774,6 @@ class RepositoryObservabilityAdminProxyGateway
           'cloud_run_service_name': _cloudRunServiceName,
           'cloud_run_revision': _cloudRunRevision,
           'neutral_empty_surfaces': const <String>[
-            'top_expensive',
             'margins',
             'cap_events',
             'route_latency',
@@ -9932,6 +9948,107 @@ from rows cross join counted
 order by rows.total_usd desc, rows.request_count desc
 limit @limit::int
 ''';
+
+/// Top-N expensive spenders per axis.
+///
+/// DATA-GRANULARITY LIMITATION (binding — do not "fix" by fabricating
+/// daily rows): `public.usage_logs` is a MONTHLY rollup. Each row's
+/// `period_start` is `date_trunc('month', ...)`, so the finest cost
+/// grain available is one calendar month. There is NO per-day cost
+/// signal, so honest `1d` / `7d` rolling windows cannot be produced.
+/// This producer therefore computes spend for the CURRENT month only
+/// and maps every row onto the `30d` window the consumer model
+/// (`TopExpensiveEntry`) already understands. The gateway leaves the
+/// `1d` and `7d` windows empty rather than inventing daily numbers
+/// (Metric Honesty Doctrine).
+///
+/// Three axes are produced, each ranked by `sum(cost_usd)` descending
+/// and capped at [_topExpensiveAxisLimit] rows:
+///   - `operator`  — grouped by `operator_id`; label = `business_name`.
+///   - `staff`     — grouped by `staff_id`; label = the staff id text
+///                   (there is no staff name table reachable here).
+///   - `workflow`  — grouped by `workflow_id`; label = the workflow id
+///                   text (no workflow name table reachable here).
+/// The `staff` / `workflow` axes drop NULL-id rows: a usage row with
+/// no staff (or workflow) attribution cannot be a "top staff spender".
+///
+/// Honors the cross-operator predicate
+/// `(@operator_id::uuid is null or l.operator_id = @operator_id::uuid)`
+/// so the "All businesses" admin view (operator_id IS NULL) aggregates
+/// across every operator, mirroring the sibling cost / cache / model
+/// producers above.
+const String _observabilityTopExpensiveSql = '''
+with scoped as (
+  select
+    l.operator_id,
+    l.staff_id,
+    l.workflow_id,
+    l.cost_usd,
+    l.request_count,
+    o.business_name
+  from public.usage_logs l
+  join public.operators o on o.operator_id = l.operator_id
+  where l.period_start >= date_trunc('month', now())
+    and (@operator_id::uuid is null or l.operator_id = @operator_id::uuid)
+    and (@location_id::uuid is null or l.location_id = @location_id::uuid)
+    and (
+      @location_ids::text[] is null
+      or l.location_id::text = any(@location_ids::text[])
+    )
+),
+by_operator as (
+  select
+    'operator' as axis,
+    operator_id::text as operator_id,
+    null::text as staff_id,
+    null::text as workflow_id,
+    max(business_name) as label,
+    sum(cost_usd)::double precision as total_usd,
+    sum(request_count)::bigint as request_count
+  from scoped
+  group by operator_id
+  order by total_usd desc, request_count desc
+  limit @axis_limit::int
+),
+by_staff as (
+  select
+    'staff' as axis,
+    operator_id::text as operator_id,
+    staff_id::text as staff_id,
+    null::text as workflow_id,
+    staff_id::text as label,
+    sum(cost_usd)::double precision as total_usd,
+    sum(request_count)::bigint as request_count
+  from scoped
+  where staff_id is not null
+  group by operator_id, staff_id
+  order by total_usd desc, request_count desc
+  limit @axis_limit::int
+),
+by_workflow as (
+  select
+    'workflow' as axis,
+    operator_id::text as operator_id,
+    null::text as staff_id,
+    workflow_id::text as workflow_id,
+    workflow_id::text as label,
+    sum(cost_usd)::double precision as total_usd,
+    sum(request_count)::bigint as request_count
+  from scoped
+  where workflow_id is not null
+  group by operator_id, workflow_id
+  order by total_usd desc, request_count desc
+  limit @axis_limit::int
+)
+select * from by_operator
+union all
+select * from by_staff
+union all
+select * from by_workflow
+''';
+
+/// Per-axis row cap for the Top-N expensive list (~10 rows per axis).
+const int _topExpensiveAxisLimit = 10;
 
 const int _projectionRetryRecentLimit = 25;
 const int _projectionRetryDeadLetterLimit = 25;
@@ -10187,6 +10304,30 @@ Map<String, Object?> _costTelemetryRowJson(PostgresRow row) {
     'total_usd': _adminDouble(row['total_usd']),
     'request_count': _adminInt(row['request_count']),
     'business_name': row['business_name']?.toString(),
+  };
+}
+
+/// Maps one `_observabilityTopExpensiveSql` row to the consumer model
+/// (`TopExpensiveEntry`) shape. Every row is tagged with the `30d`
+/// window: `usage_logs` is a monthly rollup, so current-month spend is
+/// the honest unit and `30d` is the window the model already exposes.
+/// The `1d` / `7d` windows are intentionally never emitted by this
+/// producer (no per-day cost signal exists; see
+/// [_observabilityTopExpensiveSql]). `label` falls back to the id text
+/// when no `business_name` is present (the staff / workflow axes have
+/// no name table).
+Map<String, Object?> _topExpensiveRowJson(PostgresRow row) {
+  final axis = row['axis']?.toString() ?? 'operator';
+  final label = row['label']?.toString();
+  return <String, Object?>{
+    'window': '30d',
+    'axis': axis,
+    'label': (label == null || label.isEmpty) ? '' : label,
+    'total_usd': _adminDouble(row['total_usd']),
+    'request_count': _adminInt(row['request_count']),
+    'operator_id': row['operator_id']?.toString(),
+    'staff_id': row['staff_id']?.toString(),
+    'workflow_id': row['workflow_id']?.toString(),
   };
 }
 
