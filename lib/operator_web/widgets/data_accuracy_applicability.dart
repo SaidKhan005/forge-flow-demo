@@ -129,3 +129,73 @@ String? coversSourceDisabledReason(
       return null;
   }
 }
+
+/// Whether a covers [source] is selectable once the admin allow-list is
+/// taken into account. Mirrors [wageVendorOptionSelectable]: it ANDs the
+/// existing capability check ([coversSourceOptionApplies]) with "the
+/// relevant connected vendor is in [applicableCoversVendorSlugs]". The
+/// allow-list is consulted only for the two vendor-backed sources:
+///   * `vendor` (POS covers)  -> gated by the connected POS vendor id.
+///   * `reservationPlusWalkin` -> gated by the connected reservation
+///     vendor id.
+/// `forecast` and `manual` are Forge & Flow-computed / operator-typed and
+/// are never gated by the allow-list. When [vendorApplicabilityBound] is
+/// false (no applicability gateway wired) the allow-list is not enforced
+/// and only the capability check applies, so this can only further
+/// restrict the existing behavior, never loosen it.
+bool coversSourceOptionSelectable({
+  required CoversSource source,
+  required VendorConnectionsBundle? bundle,
+  required bool vendorApplicabilityBound,
+  required Iterable<String> applicableCoversVendorSlugs,
+}) {
+  if (!coversSourceOptionApplies(source, bundle)) return false;
+  if (!vendorApplicabilityBound) return true;
+  switch (source) {
+    case CoversSource.vendor:
+      final posVendorId = bundle?.posConnection?.vendorId;
+      return applicableCoversVendorSlugs.contains(posVendorId);
+    case CoversSource.reservationPlusWalkin:
+      final reservationVendorId = bundle?.reservationConnection?.vendorId;
+      return applicableCoversVendorSlugs.contains(reservationVendorId);
+    case CoversSource.forecast:
+    case CoversSource.manual:
+      return true;
+  }
+}
+
+/// Disabled-reason copy for a covers [source] once the admin allow-list
+/// is taken into account. Defers to [coversSourceDisabledReason] for the
+/// capability-level reasons (no POS, POS without covers, no reservation
+/// vendor); adds an allow-list reason only when the vendor is connected
+/// and capable but Forge & Flow has not cleared it for this setting.
+/// Plain English, operator-web vocabulary ("covers", "vendor covers",
+/// "reservations + walk-ins"); no em dashes.
+String? coversSourceDisabledReasonWithApplicability({
+  required CoversSource source,
+  required VendorConnectionsBundle? bundle,
+  required bool vendorApplicabilityBound,
+  required Iterable<String> applicableCoversVendorSlugs,
+}) {
+  final capabilityReason = coversSourceDisabledReason(source, bundle);
+  if (capabilityReason != null) return capabilityReason;
+  if (!vendorApplicabilityBound) return null;
+  switch (source) {
+    case CoversSource.vendor:
+      final pos = bundle?.posConnection;
+      if (pos != null && !applicableCoversVendorSlugs.contains(pos.vendorId)) {
+        return '${pos.displayName} is not cleared by Forge & Flow for vendor covers yet. Use forecast, manual, or reservations plus walk-ins.';
+      }
+      return null;
+    case CoversSource.reservationPlusWalkin:
+      final reservation = bundle?.reservationConnection;
+      if (reservation != null &&
+          !applicableCoversVendorSlugs.contains(reservation.vendorId)) {
+        return '${reservation.displayName} is not cleared by Forge & Flow for reservations + walk-ins yet. Use forecast or manual.';
+      }
+      return null;
+    case CoversSource.forecast:
+    case CoversSource.manual:
+      return null;
+  }
+}

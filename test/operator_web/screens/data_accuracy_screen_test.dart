@@ -1512,7 +1512,12 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(applicabilityGateway.calls, equals(<String>['wage']));
+        // The screen now reads both the wage and covers allow-lists
+        // through the same gateway (covers wiring mirrors wage).
+        expect(
+          applicabilityGateway.calls,
+          containsAll(<String>['wage', 'covers']),
+        );
         expect(
           find.byKey(const Key('wage_source_vendor_applicability_status')),
           findsOneWidget,
@@ -1648,6 +1653,312 @@ void main() {
         expect(saves, isEmpty);
       },
     );
+  });
+
+  // Covers vendor applicability binding — mirrors the wage binding.
+  // When the applicability gateway is wired, the vendor-backed covers
+  // chips (POS covers + reservations + walk-ins) are gated by the admin
+  // `covers` allow-list on top of the existing capability check. The
+  // gating is strictly additive: it can only further restrict, never
+  // loosen, what the capability check already allows. `forecast` and
+  // `manual` are never gated by the allow-list.
+  group('DataAccuracyScreen covers vendor applicability binding', () {
+    // Toast exposes covers, so the capability check passes for the
+    // `vendor` option; this isolates the admin allow-list as the only
+    // remaining gate.
+    final coversPeriods = <ServicePeriodDefinition>[
+      servicePeriodDefinition(id: 'dinner', label: 'Dinner', sortOrder: 1),
+    ];
+
+    bool chipEnabled(WidgetTester tester, Key chipKey) {
+      final inkWell = tester.widget<InkWell>(find.byKey(chipKey));
+      return inkWell.onTap != null;
+    }
+
+    testWidgets(
+      'connected POS not in covers allow-list disables the Vendor chip '
+      'with a clear reason',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1200));
+        // Allow-list clears a DIFFERENT POS (lightspeed), not the
+        // connected one (toast), so toast covers must be blocked.
+        final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+          ..rows = <WebVendorApplicabilityRow>[
+            _vendorApplicabilityRow(
+              id: 'covers-lightspeed',
+              vendorSlug: 'lightspeed',
+              enabled: true,
+              settingKind: 'covers',
+            ),
+          ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'toast',
+                    displayName: 'Toast',
+                    category: VendorCategory.pos,
+                  ),
+                ),
+              ),
+              vendorApplicabilityGateway: applicabilityGateway,
+              servicePeriodsLoader: () async => coversPeriods,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          applicabilityGateway.calls,
+          containsAll(<String>['wage', 'covers']),
+        );
+        final vendorChip = find.byKey(
+          const Key('covers_source_chip_dinner_vendor'),
+        );
+        await tester.ensureVisible(vendorChip);
+        await tester.pumpAndSettle();
+        expect(
+          chipEnabled(tester, const Key('covers_source_chip_dinner_vendor')),
+          isFalse,
+        );
+        // The disabled-reason copy names the connected POS and stays in
+        // operator-web vocabulary (covers / vendor covers).
+        expect(
+          find.textContaining(
+            'Toast is not cleared by Forge & Flow for vendor covers yet',
+          ),
+          findsOneWidget,
+        );
+        // forecast + manual are never gated by the allow-list.
+        expect(
+          chipEnabled(tester, const Key('covers_source_chip_dinner_forecast')),
+          isTrue,
+        );
+        expect(
+          chipEnabled(tester, const Key('covers_source_chip_dinner_manual')),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets('connected POS in covers allow-list enables the Vendor chip', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+        ..rows = <WebVendorApplicabilityRow>[
+          _vendorApplicabilityRow(
+            id: 'covers-toast',
+            vendorSlug: 'toast',
+            enabled: true,
+            settingKind: 'covers',
+          ),
+        ];
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: gatewayWithBundle(
+              ownerSession,
+              bundleFor(
+                session: ownerSession,
+                pos: row(
+                  vendorId: 'toast',
+                  displayName: 'Toast',
+                  category: VendorCategory.pos,
+                ),
+              ),
+            ),
+            vendorApplicabilityGateway: applicabilityGateway,
+            servicePeriodsLoader: () async => coversPeriods,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final vendorChip = find.byKey(
+        const Key('covers_source_chip_dinner_vendor'),
+      );
+      await tester.ensureVisible(vendorChip);
+      await tester.pumpAndSettle();
+      expect(
+        chipEnabled(tester, const Key('covers_source_chip_dinner_vendor')),
+        isTrue,
+      );
+    });
+
+    testWidgets(
+      'reservations + walk-ins chip is gated by the reservation vendor '
+      'allow-list',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1400));
+        // Reservation vendor (opentable) is connected but only the POS
+        // (toast) is cleared for covers, so reservations + walk-ins must
+        // be blocked while POS covers stays enabled.
+        final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+          ..rows = <WebVendorApplicabilityRow>[
+            _vendorApplicabilityRow(
+              id: 'covers-toast',
+              vendorSlug: 'toast',
+              enabled: true,
+              settingKind: 'covers',
+            ),
+          ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'toast',
+                    displayName: 'Toast',
+                    category: VendorCategory.pos,
+                  ),
+                  reservation: row(
+                    vendorId: 'opentable',
+                    displayName: 'OpenTable',
+                    category: VendorCategory.reservation,
+                  ),
+                ),
+              ),
+              vendorApplicabilityGateway: applicabilityGateway,
+              servicePeriodsLoader: () async => coversPeriods,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final reservationChip = find.byKey(
+          const Key('covers_source_chip_dinner_reservation_plus_walkin'),
+        );
+        await tester.ensureVisible(reservationChip);
+        await tester.pumpAndSettle();
+        // Reservation vendor not cleared -> disabled; POS covers cleared
+        // -> enabled. Proves the per-source gating uses the matching
+        // connected vendor.
+        expect(
+          chipEnabled(
+            tester,
+            const Key('covers_source_chip_dinner_reservation_plus_walkin'),
+          ),
+          isFalse,
+        );
+        expect(
+          chipEnabled(tester, const Key('covers_source_chip_dinner_vendor')),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets(
+      'reservations + walk-ins chip enables when its vendor is cleared',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1400));
+        final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+          ..rows = <WebVendorApplicabilityRow>[
+            _vendorApplicabilityRow(
+              id: 'covers-opentable',
+              vendorSlug: 'opentable',
+              enabled: true,
+              settingKind: 'covers',
+            ),
+          ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  reservation: row(
+                    vendorId: 'opentable',
+                    displayName: 'OpenTable',
+                    category: VendorCategory.reservation,
+                  ),
+                ),
+              ),
+              vendorApplicabilityGateway: applicabilityGateway,
+              servicePeriodsLoader: () async => coversPeriods,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final reservationChip = find.byKey(
+          const Key('covers_source_chip_dinner_reservation_plus_walkin'),
+        );
+        await tester.ensureVisible(reservationChip);
+        await tester.pumpAndSettle();
+        expect(
+          chipEnabled(
+            tester,
+            const Key('covers_source_chip_dinner_reservation_plus_walkin'),
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets('with no applicability gateway the allow-list is not enforced '
+        '(capability check only)', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      // No vendorApplicabilityGateway -> vendorApplicabilityBound is
+      // false -> Toast (capability ok) stays enabled even though no
+      // allow-list cleared it. Proves the gating is purely additive.
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: gatewayWithBundle(
+              ownerSession,
+              bundleFor(
+                session: ownerSession,
+                pos: row(
+                  vendorId: 'toast',
+                  displayName: 'Toast',
+                  category: VendorCategory.pos,
+                ),
+              ),
+            ),
+            servicePeriodsLoader: () async => coversPeriods,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final vendorChip = find.byKey(
+        const Key('covers_source_chip_dinner_vendor'),
+      );
+      await tester.ensureVisible(vendorChip);
+      await tester.pumpAndSettle();
+      expect(
+        chipEnabled(tester, const Key('covers_source_chip_dinner_vendor')),
+        isTrue,
+      );
+    });
   });
 
   // Doc 1 keyed-data-accuracy-write — operator-web screen wires the
