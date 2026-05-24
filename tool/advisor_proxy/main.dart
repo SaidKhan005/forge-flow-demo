@@ -2230,6 +2230,12 @@ Future<void> _runProxy(List<String> args) async {
             // audit_chain_anchors_not_configured.
             auditChainAnchorsGateway:
                 productionBindings.auditChainAnchorsGateway,
+            // Admin audit-integrity badge — admin/cross-tenant anchor
+            // read gateway for the admin Audit screen integrity badge.
+            // Without this binding the admin route returns 503
+            // admin_audit_chain_anchors_not_configured.
+            adminAuditChainAnchorsGateway:
+                productionBindings.adminAuditChainAnchorsGateway,
             // Wave W2.D - operator-scoped read of
             // `connector_backfill_jobs`. Without this binding the
             // route returns 503 connector_backfill_jobs_router_not_configured.
