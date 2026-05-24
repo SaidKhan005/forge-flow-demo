@@ -1120,7 +1120,151 @@ void main() {
     },
   );
 
-  testWidgets('per-business cluster is absent when no business is selected', (
+  testWidgets(
+    'per-business cluster renders inactive when no business is selected',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(AdminShell(session: superAdmin, authSource: source)),
+      );
+      await pumpEventually(tester);
+
+      // Operator-approved IA: with no scope the cluster is ALWAYS present,
+      // but in its inactive form — the active (business-name) header is
+      // absent and the "Pick a business first" hint stands in its place.
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster_inactive')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster_header')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_nav_per_business_cluster_inactive_hint'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Pick a business first'), findsOneWidget);
+
+      // All six per-business rows still render (so they are discoverable),
+      // just inactive — they remain present even without a scope.
+      for (final routeId in kAdminPerBusinessClusterRouteIds) {
+        expect(
+          find.byKey(Key('admin_nav_cluster_item_$routeId')),
+          findsOneWidget,
+          reason: 'inactive cluster row $routeId must still be present',
+        );
+      }
+      expect(find.byKey(const Key('admin_nav_item_operators')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'tapping an inactive cluster row routes to Business accounts without '
+    'opening the per-business screen or auto-selecting a business',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          AdminShell(
+            session: superAdmin,
+            authSource: source,
+            // Start somewhere other than Business accounts so the tap has an
+            // observable effect (the operators surface appears).
+            initialRouteId: kAdminHealthRouteId,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      final teamRow = find.byKey(
+        Key('admin_nav_cluster_item_$kAdminMembersRouteId'),
+      );
+      await tester.ensureVisible(teamRow);
+      await pumpEventually(tester);
+      await tester.tap(teamRow);
+      await pumpEventually(tester);
+
+      // Lands on Business accounts (the choose-a-business entry point), NOT
+      // the Team members screen, and no business was auto-selected (cluster
+      // stays inactive).
+      expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+      expect(find.byKey(const Key('admin_members_screen')), findsNothing);
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster_inactive')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'tapping the inactive cluster hint routes to Business accounts',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          AdminShell(
+            session: superAdmin,
+            authSource: source,
+            initialRouteId: kAdminHealthRouteId,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      final hint = find.byKey(
+        const Key('admin_nav_per_business_cluster_inactive_hint'),
+      );
+      await tester.ensureVisible(hint);
+      await pumpEventually(tester);
+      await tester.tap(hint);
+      await pumpEventually(tester);
+
+      expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Business accounts is pinned as the first wide-nav entry', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 1000);
@@ -1138,23 +1282,35 @@ void main() {
     );
     await pumpEventually(tester);
 
-    // With no scope, the cluster, its header, and its rows are all absent;
-    // the existing Business-accounts drill-in remains the entry point.
+    // The pinned Business accounts container is the topmost nav block:
+    // above the per-business cluster and above every section panel.
+    final pinnedTop = tester
+        .getTopLeft(
+          find.byKey(const Key('admin_nav_business_accounts_pinned')),
+        )
+        .dy;
     expect(
-      find.byKey(const Key('admin_nav_per_business_cluster')),
-      findsNothing,
+      pinnedTop,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('admin_nav_per_business_cluster_inactive')),
+            )
+            .dy,
+      ),
     );
     expect(
-      find.byKey(const Key('admin_nav_per_business_cluster_header')),
-      findsNothing,
+      pinnedTop,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('admin_nav_section_panel_operations')),
+            )
+            .dy,
+      ),
     );
-    for (final routeId in kAdminPerBusinessClusterRouteIds) {
-      expect(
-        find.byKey(Key('admin_nav_cluster_item_$routeId')),
-        findsNothing,
-        reason: 'cluster row $routeId must be hidden without a scope',
-      );
-    }
+    // Business accounts appears exactly once in the wide nav (pinned, not
+    // duplicated inside the Operations section).
     expect(find.byKey(const Key('admin_nav_item_operators')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
