@@ -10127,18 +10127,39 @@ from (
     pr.operator_id::text as operator_id,
     pr.location_id::text as location_id,
     pr.usage_class,
-    case
-      when pr.response_payload is null then 'unknown'
-      else 'success'
-    end as status,
+    -- P2 (Support logs, plan §12): prefer the REAL outcome recorded by the
+    -- P1b proxy writer in proxy_request_stats; fall back to the derived
+    -- ledger status when no stats row exists (failed / pre-P1b / non-LLM
+    -- requests). Keeps the `status` wire key honestly populated either way.
+    coalesce(
+      prs.result_status,
+      case
+        when pr.response_payload is null then 'unknown'
+        else 'success'
+      end
+    ) as status,
     pr.created_at as started_at,
-    greatest(
-      0,
-      floor(
-        extract(epoch from (coalesce(pr.updated_at, pr.created_at) - pr.created_at))
-        * 1000
-      )
-    )::int as latency_ms,
+    -- P2: prefer the MEASURED latency from proxy_request_stats; fall back to
+    -- the derived row-lifetime (updated_at - created_at) when absent so the
+    -- `latency_ms` wire key stays populated.
+    coalesce(
+      prs.latency_ms,
+      greatest(
+        0,
+        floor(
+          extract(epoch from (coalesce(pr.updated_at, pr.created_at) - pr.created_at))
+          * 1000
+        )
+      )::int
+    ) as latency_ms,
+    -- P2: real per-request telemetry from proxy_request_stats. NULL (never 0)
+    -- when no stats row exists — the Dart projection emits honest-null keys.
+    prs.provider as provider,
+    prs.model_id as model_id,
+    prs.prompt_token_count as prompt_token_count,
+    prs.completion_token_count as completion_token_count,
+    prs.cost_usd as cost_usd,
+    prs.actor_user_id::text as actor_user_id,
     jsonb_build_object(
       'request_type', pr.request_type,
       'response_recorded', pr.response_payload is not null,
@@ -10153,6 +10174,12 @@ from (
       else null
     end as full_content
   from public.proxy_requests pr
+  -- P2: 1:1 advisory correlation on the tenant-leading key. P1b is
+  -- idempotent (one stats row per request), so this never fans out.
+  left join public.proxy_request_stats prs
+    on prs.operator_id = pr.operator_id
+   and prs.location_id = pr.location_id
+   and prs.request_id = pr.request_id
   left join public.feature_flags ff
     on ff.flag_name = 'debug_console_full_content_enabled'
    and ff.operator_id = pr.operator_id
@@ -10190,18 +10217,34 @@ select
   pr.operator_id::text as operator_id,
   pr.location_id::text as location_id,
   pr.usage_class,
-  case
-    when pr.response_payload is null then 'unknown'
-    else 'success'
-  end as status,
+  -- P2 (Support logs, plan §12): real outcome from proxy_request_stats with
+  -- the derived ledger status as the honest fallback (mirrors the list SQL).
+  coalesce(
+    prs.result_status,
+    case
+      when pr.response_payload is null then 'unknown'
+      else 'success'
+    end
+  ) as status,
   pr.created_at as started_at,
-  greatest(
-    0,
-    floor(
-      extract(epoch from (coalesce(pr.updated_at, pr.created_at) - pr.created_at))
-      * 1000
-    )
-  )::int as latency_ms,
+  -- P2: measured latency with the derived row-lifetime as the fallback.
+  coalesce(
+    prs.latency_ms,
+    greatest(
+      0,
+      floor(
+        extract(epoch from (coalesce(pr.updated_at, pr.created_at) - pr.created_at))
+        * 1000
+      )
+    )::int
+  ) as latency_ms,
+  -- P2: real per-request telemetry; NULL (never 0) when no stats row exists.
+  prs.provider as provider,
+  prs.model_id as model_id,
+  prs.prompt_token_count as prompt_token_count,
+  prs.completion_token_count as completion_token_count,
+  prs.cost_usd as cost_usd,
+  prs.actor_user_id::text as actor_user_id,
   jsonb_build_object(
     'request_type', pr.request_type,
     'response_recorded', pr.response_payload is not null,
@@ -10216,6 +10259,11 @@ select
     else null
   end as full_content
 from public.proxy_requests pr
+-- P2: 1:1 advisory correlation on the tenant-leading key (P1b idempotent).
+left join public.proxy_request_stats prs
+  on prs.operator_id = pr.operator_id
+ and prs.location_id = pr.location_id
+ and prs.request_id = pr.request_id
 left join public.feature_flags ff
   on ff.flag_name = 'debug_console_full_content_enabled'
  and ff.operator_id = pr.operator_id
@@ -10227,6 +10275,19 @@ $limitClause
 ''';
 
 Map<String, Object?> _debugRequestRowJson(PostgresRow row) {
+  // P2 (Support logs, plan §12): the real proxy_request_stats columns are
+  // surfaced as NEW nullable keys, emitted ONLY when the LEFT JOIN matched a
+  // stats row. A missing stats row (failed / pre-P1b / non-LLM request) leaves
+  // every prs-sourced key absent rather than fabricating a 0 — the screen (P3)
+  // renders the honest "not recorded" sentinel. `status` and `latency_ms`
+  // stay populated unconditionally because the SQL coalesces them onto the
+  // derived ledger values when no stats row exists (wire contract preserved).
+  final provider = _adminStringOrNull(row['provider']);
+  final modelId = _adminStringOrNull(row['model_id']);
+  final promptTokenCount = _adminIntOrNull(row['prompt_token_count']);
+  final completionTokenCount = _adminIntOrNull(row['completion_token_count']);
+  final costUsd = _adminDoubleOrNull(row['cost_usd']);
+  final actorUserId = _adminStringOrNull(row['actor_user_id']);
   return <String, Object?>{
     'request_id': row['request_id']?.toString() ?? '',
     'idempotency_key': row['idempotency_key']?.toString() ?? '',
@@ -10236,6 +10297,13 @@ Map<String, Object?> _debugRequestRowJson(PostgresRow row) {
     'status': row['status']?.toString() ?? 'unknown',
     'started_at': _adminIso(row['started_at']),
     'latency_ms': _adminInt(row['latency_ms']),
+    if (provider != null) 'provider': provider,
+    if (modelId != null) 'model_id': modelId,
+    if (promptTokenCount != null) 'prompt_token_count': promptTokenCount,
+    if (completionTokenCount != null)
+      'completion_token_count': completionTokenCount,
+    if (costUsd != null) 'cost_usd': costUsd,
+    if (actorUserId != null) 'actor_user_id': actorUserId,
     'request_meta': _adminJsonObject(row['request_meta']),
     'full_content_opt_in': row['full_content_opt_in'] == true,
     if (row['full_content'] != null)
@@ -10908,6 +10976,31 @@ double _adminDouble(Object? value) {
   if (value is double) return value;
   if (value is num) return value.toDouble();
   return double.tryParse(value?.toString() ?? '') ?? 0.0;
+}
+
+// P2 (Support logs, plan §12): null-PRESERVING coercions for the new
+// proxy_request_stats columns. Unlike `_adminInt` / `_adminDouble`, a null /
+// unparseable value returns null (never 0) so an absent stats column is
+// rendered as an honest "not recorded" sentinel rather than a phantom zero
+// (Metric Honesty Doctrine).
+int? _adminIntOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
+}
+
+double? _adminDoubleOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString());
+}
+
+String? _adminStringOrNull(Object? value) {
+  if (value == null) return null;
+  final text = value.toString();
+  return text.isEmpty ? null : text;
 }
 
 Map<String, Object?> _adminJsonObject(Object? value) {

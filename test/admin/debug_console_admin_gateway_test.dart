@@ -484,5 +484,247 @@ void main() {
         equals('00000000-0000-4000-8000-000000000001'),
       );
     });
+
+    // P2 (Support logs, plan §12): the projection now LEFT JOINs
+    // proxy_request_stats, so some demo rows carry real telemetry and the
+    // non-LLM / failed rows honestly carry none. The demo must exercise both
+    // paths so the screen (P3) renders the "not recorded" sentinel honestly.
+    test('some demo rows carry P2 telemetry and some leave it null', () {
+      final withTelemetry = kDebugConsoleDemoEntries
+          .where((e) => e.modelId != null)
+          .toList();
+      final withoutTelemetry = kDebugConsoleDemoEntries
+          .where((e) => e.modelId == null)
+          .toList();
+      // Both paths are represented (honest-empty + populated).
+      expect(withTelemetry, isNotEmpty);
+      expect(withoutTelemetry, isNotEmpty);
+      // A populated row carries the full telemetry set (no half-filled rows).
+      for (final e in withTelemetry) {
+        expect(e.provider, isNotNull);
+        expect(e.modelId, isNotNull);
+        expect(e.promptTokenCount, isNotNull);
+        expect(e.completionTokenCount, isNotNull);
+        expect(e.costUsd, isNotNull);
+        expect(e.actorUserId, isNotNull);
+      }
+    });
+
+    test('support-help demo rows honestly carry no telemetry (non-LLM)', () {
+      const supportClasses = <String>{'relationship_review', 'account_help'};
+      final supportRows = kDebugConsoleDemoEntries
+          .where((e) => supportClasses.contains(e.usageClass))
+          .toList();
+      expect(supportRows, isNotEmpty);
+      for (final e in supportRows) {
+        expect(e.modelId, isNull);
+        expect(e.provider, isNull);
+        expect(e.promptTokenCount, isNull);
+        expect(e.completionTokenCount, isNull);
+        expect(e.costUsd, isNull);
+      }
+    });
+  });
+
+  group('RequestLogEntry JSON round-trip (P2 telemetry)', () {
+    test('fromJson parses the proxy_request_stats telemetry fields', () {
+      final entry = RequestLogEntry.fromJson(<String, Object?>{
+        'request_id': 'req-1',
+        'idempotency_key': 'idem-1',
+        'operator_id': 'op-1',
+        'location_id': 'loc-1',
+        'usage_class': 'advisor_qa',
+        'status': 'success',
+        'started_at': '2026-05-03T11:58:12.000Z',
+        'latency_ms': 412,
+        'request_meta': <String, Object?>{'route': '/v1/advisor/answer'},
+        'full_content_opt_in': true,
+        'provider': 'anthropic',
+        'model_id': 'claude-sonnet-4-6',
+        'prompt_token_count': 1840,
+        'completion_token_count': 318,
+        'cost_usd': 0.0117,
+        'actor_user_id': '11111111-1111-4111-8111-111111111111',
+      });
+
+      expect(entry.provider, equals('anthropic'));
+      expect(entry.modelId, equals('claude-sonnet-4-6'));
+      expect(entry.promptTokenCount, equals(1840));
+      expect(entry.completionTokenCount, equals(318));
+      expect(entry.costUsd, closeTo(0.0117, 1e-9));
+      expect(
+        entry.actorUserId,
+        equals('11111111-1111-4111-8111-111111111111'),
+      );
+      // Real measured latency / status still flow through unchanged.
+      expect(entry.latencyMs, equals(412));
+      expect(entry.status, equals(RequestLogStatus.success));
+    });
+
+    test('fromJson leaves telemetry null when the keys are absent', () {
+      final entry = RequestLogEntry.fromJson(<String, Object?>{
+        'request_id': 'req-2',
+        'idempotency_key': 'idem-2',
+        'operator_id': 'op-1',
+        'location_id': 'loc-1',
+        'usage_class': 'account_help',
+        'status': 'success',
+        'started_at': '2026-05-03T11:25:04.000Z',
+        'latency_ms': 344,
+        'request_meta': <String, Object?>{'route': '/v1/admin/support'},
+        'full_content_opt_in': true,
+      });
+
+      // No proxy_request_stats row => honest nulls (never 0).
+      expect(entry.provider, isNull);
+      expect(entry.modelId, isNull);
+      expect(entry.promptTokenCount, isNull);
+      expect(entry.completionTokenCount, isNull);
+      expect(entry.costUsd, isNull);
+      expect(entry.actorUserId, isNull);
+      // The derived wire fields stay populated.
+      expect(entry.latencyMs, equals(344));
+      expect(entry.status, equals(RequestLogStatus.success));
+    });
+
+    test('fromJson coerces numeric token/cost values from strings', () {
+      // The proxy serializes numerics as JSON numbers, but be tolerant of a
+      // stringified numeric (e.g. a numeric(…) cast surfaced as text).
+      final entry = RequestLogEntry.fromJson(<String, Object?>{
+        'request_id': 'req-3',
+        'idempotency_key': 'idem-3',
+        'operator_id': 'op-1',
+        'usage_class': 'wf_pl',
+        'status': 'success',
+        'started_at': '2026-05-03T11:50:33.000Z',
+        'latency_ms': 8420,
+        'prompt_token_count': '5120',
+        'completion_token_count': '742',
+        'cost_usd': '0.0061',
+      });
+      expect(entry.promptTokenCount, equals(5120));
+      expect(entry.completionTokenCount, equals(742));
+      expect(entry.costUsd, closeTo(0.0061, 1e-9));
+    });
+
+    test('toJson round-trips the telemetry fields and omits null keys', () {
+      final populated = RequestLogEntry(
+        requestId: 'req-1',
+        idempotencyKey: 'idem-1',
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        usageClass: 'advisor_qa',
+        status: RequestLogStatus.success,
+        startedAt: _fixedStart,
+        latencyMs: 412,
+        requestMeta: const <String, Object?>{'route': '/v1/advisor/answer'},
+        fullContentOptInOn: true,
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-6',
+        promptTokenCount: 1840,
+        completionTokenCount: 318,
+        costUsd: 0.0117,
+        actorUserId: '11111111-1111-4111-8111-111111111111',
+      );
+      final json = populated.toJson();
+      expect(json['provider'], equals('anthropic'));
+      expect(json['model_id'], equals('claude-sonnet-4-6'));
+      expect(json['prompt_token_count'], equals(1840));
+      expect(json['completion_token_count'], equals(318));
+      expect(json['cost_usd'], closeTo(0.0117, 1e-9));
+      expect(
+        json['actor_user_id'],
+        equals('11111111-1111-4111-8111-111111111111'),
+      );
+
+      // Re-parsing reproduces the same entry (round-trip stable).
+      final reparsed = RequestLogEntry.fromJson(json);
+      expect(reparsed.provider, equals(populated.provider));
+      expect(reparsed.modelId, equals(populated.modelId));
+      expect(reparsed.promptTokenCount, equals(populated.promptTokenCount));
+      expect(
+        reparsed.completionTokenCount,
+        equals(populated.completionTokenCount),
+      );
+      expect(reparsed.costUsd, closeTo(populated.costUsd!, 1e-9));
+      expect(reparsed.actorUserId, equals(populated.actorUserId));
+
+      // A bare entry omits every telemetry key (honest-empty wire shape).
+      final bare = RequestLogEntry(
+        requestId: 'req-2',
+        idempotencyKey: 'idem-2',
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        usageClass: 'account_help',
+        status: RequestLogStatus.success,
+        startedAt: _fixedStart,
+        latencyMs: 344,
+        requestMeta: const <String, Object?>{},
+        fullContentOptInOn: false,
+      );
+      final bareJson = bare.toJson();
+      expect(bareJson.containsKey('provider'), isFalse);
+      expect(bareJson.containsKey('model_id'), isFalse);
+      expect(bareJson.containsKey('prompt_token_count'), isFalse);
+      expect(bareJson.containsKey('completion_token_count'), isFalse);
+      expect(bareJson.containsKey('cost_usd'), isFalse);
+      expect(bareJson.containsKey('actor_user_id'), isFalse);
+    });
+  });
+
+  group('HttpDebugConsoleAdminGateway P2 telemetry parse', () {
+    test('parses telemetry fields from a list-response body', () async {
+      final gateway = HttpDebugConsoleAdminGateway(
+        baseUri: Uri.parse('https://admin-proxy.test'),
+        bearerTokenProvider: () async => 'token',
+        httpClient: http_testing.MockClient((http.Request request) async {
+          return http.Response(
+            '{"requests":[{'
+            '"request_id":"req-1","idempotency_key":"idem-1",'
+            '"operator_id":"op-1","location_id":"loc-1",'
+            '"usage_class":"advisor_qa","status":"success",'
+            '"started_at":"2026-05-03T11:58:12.000Z","latency_ms":412,'
+            '"request_meta":{"route":"/v1/advisor/answer"},'
+            '"full_content_opt_in":true,'
+            '"provider":"anthropic","model_id":"claude-sonnet-4-6",'
+            '"prompt_token_count":1840,"completion_token_count":318,'
+            '"cost_usd":0.0117,'
+            '"actor_user_id":"11111111-1111-4111-8111-111111111111"'
+            '},{'
+            '"request_id":"req-2","idempotency_key":"idem-2",'
+            '"operator_id":"op-1","location_id":"loc-1",'
+            '"usage_class":"account_help","status":"success",'
+            '"started_at":"2026-05-03T11:25:04.000Z","latency_ms":344,'
+            '"request_meta":{},"full_content_opt_in":true'
+            '}]}',
+            200,
+          );
+        }),
+      );
+
+      final rows = await gateway.listRequests(const RequestLogFilter());
+      expect(rows, hasLength(2));
+
+      final llm = rows.firstWhere((e) => e.requestId == 'req-1');
+      expect(llm.provider, equals('anthropic'));
+      expect(llm.modelId, equals('claude-sonnet-4-6'));
+      expect(llm.promptTokenCount, equals(1840));
+      expect(llm.completionTokenCount, equals(318));
+      expect(llm.costUsd, closeTo(0.0117, 1e-9));
+      expect(
+        llm.actorUserId,
+        equals('11111111-1111-4111-8111-111111111111'),
+      );
+
+      final support = rows.firstWhere((e) => e.requestId == 'req-2');
+      expect(support.provider, isNull);
+      expect(support.modelId, isNull);
+      expect(support.promptTokenCount, isNull);
+      expect(support.completionTokenCount, isNull);
+      expect(support.costUsd, isNull);
+      expect(support.actorUserId, isNull);
+    });
   });
 }
+
+final DateTime _fixedStart = DateTime.utc(2026, 5, 3, 11, 58, 12);
