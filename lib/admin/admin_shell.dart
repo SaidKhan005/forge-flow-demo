@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import '../auth/permission_keys.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
-import 'admin_button_styles.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
 import 'services/operator_location_admin_gateway.dart';
@@ -453,8 +452,8 @@ class _AdminHeaderBar extends StatelessWidget {
               ClipOval(
                 child: Image.asset(
                   'assets/images/forge_flow_splash_icon.png',
-                  width: 32,
-                  height: 32,
+                  width: 40,
+                  height: 40,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -476,7 +475,7 @@ class _AdminHeaderBar extends StatelessWidget {
                       Text(
                         'Admin Console',
                         overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.uiLabel(
+                        style: AppTextStyles.mono10(
                           color: AppColors.sunsetDark,
                         ),
                       ),
@@ -523,21 +522,35 @@ class _AdminHeaderBar extends StatelessWidget {
                   ),
                 )
               else
-                OutlinedButton.icon(
-                  key: const Key('admin_header_signout'),
-                  style: AdminButtonStyles.secondary(
-                    foregroundColor: AppColors.textSecondary,
-                    borderColor: AppColors.borderSubtle,
-                    minWidth: 116,
-                    minHeight: 44,
+                Tooltip(
+                  message:
+                      'Sign out: ends this session and returns to the '
+                      'welcome screen.',
+                  child: TextButton.icon(
+                    key: const Key('admin_header_signout'),
+                    onPressed: onSignOut,
+                    icon: const Icon(
+                      Icons.logout_outlined,
+                      size: 22,
+                      color: AppColors.textSecondary,
+                    ),
+                    label: Text(
+                      'Sign out',
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      foregroundColor: AppColors.textSecondary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
                   ),
-                  onPressed: onSignOut,
-                  icon: const Icon(
-                    Icons.logout_outlined,
-                    size: 18,
-                    color: AppColors.textSecondary,
-                  ),
-                  label: const Text('Sign out'),
                 ),
             ],
           ),
@@ -603,7 +616,7 @@ class _RolePill extends StatelessWidget {
       ),
       child: Text(
         roleLabel,
-        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
+        style: AppTextStyles.mono8(color: AppColors.peacockDark),
       ),
     );
   }
@@ -621,7 +634,7 @@ class _IdentityChip extends StatelessWidget {
       label,
       key: const Key('admin_header_identity'),
       overflow: TextOverflow.ellipsis,
-      style: AppTextStyles.mono11(color: AppColors.textSecondary),
+      style: AppTextStyles.mono14(color: AppColors.textSecondary),
     );
   }
 }

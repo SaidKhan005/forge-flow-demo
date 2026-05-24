@@ -178,11 +178,11 @@ void main() {
       expect(scope.operatorName, 'Demo Diner Co.');
       expect(scope.locationName, 'Vancouver Robson');
 
-      // Trigger label now reflects the selection.
-      expect(
-        find.text('Demo Diner Co. · Vancouver Robson'),
-        findsOneWidget,
-      );
+      // Trigger now reflects the selection across its two label lines
+      // (business on the primary line, location on the helper line),
+      // matching operator-web's large-trigger layout.
+      expect(find.text('Demo Diner Co.'), findsOneWidget);
+      expect(find.text('Vancouver Robson'), findsOneWidget);
     },
   );
 
@@ -206,7 +206,8 @@ void main() {
     expect(captured, hasLength(1));
     expect(captured.single.isBusinessScope, isTrue);
     expect(captured.single.operatorId, 'op-sunset');
-    expect(find.text('Sunset Cafe Group · All locations'), findsOneWidget);
+    expect(find.text('Sunset Cafe Group'), findsOneWidget);
+    expect(find.text('All locations'), findsOneWidget);
   });
 
   testWidgets('demo banner renders only under sharePreviewMode: true', (
@@ -234,6 +235,65 @@ void main() {
       find.byType(AdminDemoBanner),
     );
     expect(renderBox.size, Size.zero);
+  });
+
+  testWidgets('Recent section shows at most two rows', (tester) async {
+    // The "Choose business" dialog (title + search + businesses + the
+    // Recent section) is taller than the 800x600 default test surface,
+    // which is shorter than any real admin browser window. Give it a
+    // realistic window so the dialog lays out without a viewport-only
+    // overflow.
+    tester.view.physicalSize = const Size(1024, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(pickerHost(seededGateway(), onSelected: (_) {}));
+    await tester.pumpAndSettle();
+
+    Future<void> openOverlay() async {
+      await tester.tap(find.byKey(const Key('admin_scope_picker_trigger')));
+      await tester.pumpAndSettle();
+    }
+
+    // Pick three DISTINCT scopes in sequence. Each pick closes the
+    // overlay and pushes onto the session-scoped recents list.
+    await openOverlay();
+    await tester.tap(
+      find.byKey(const Key('admin_scope_picker_business_op-sunset')),
+    );
+    await tester.pumpAndSettle();
+
+    await openOverlay();
+    await tester.tap(
+      find.byKey(const Key('admin_scope_picker_expander_op-diner')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('admin_scope_picker_location_loc-van')),
+    );
+    await tester.pumpAndSettle();
+
+    await openOverlay();
+    await tester.tap(
+      find.byKey(const Key('admin_scope_picker_business_op-diner')),
+    );
+    await tester.pumpAndSettle();
+
+    // Re-open: the Recent section is present but capped to the two most
+    // recent distinct scopes even though three were just picked.
+    await openOverlay();
+    expect(find.text('Recent'), findsOneWidget);
+    final recentRows = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key as ValueKey<String>).value.startsWith(
+            'admin_scope_picker_recent_',
+          ),
+    );
+    expect(recentRows, findsNWidgets(2));
   });
 }
 

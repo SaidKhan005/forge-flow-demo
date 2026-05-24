@@ -33,8 +33,10 @@ import '../services/operator_location_admin_gateway.dart';
 /// spans many businesses.
 const int _kBusinessListCap = 8;
 
-/// How many recently-picked scopes to remember per session.
-const int _kRecentScopesCap = 4;
+/// How many recently-picked scopes to remember and surface per session.
+/// Capped at 2 so the "Recent" section stays a quick two-row shortcut,
+/// not a second list competing with the full businesses list below it.
+const int _kRecentScopesCap = 2;
 
 /// Collapsed top-bar trigger + search-first overlay for choosing the
 /// admin's working scope (business → optional location). Stateful so it
@@ -120,9 +122,13 @@ class _AdminScopePickerState extends State<AdminScopePicker> {
   }
 }
 
-/// Collapsed control rendered in the header. Shows the current
-/// "Managing: business and location" value once a scope is picked, or an
-/// "All businesses" resting state before then.
+/// Collapsed control rendered in the header. Mirrors operator-web's large
+/// management-scope trigger (`HierarchyMapPicker` with `largeTrigger:
+/// true`): a tall control showing a "Managing" label, the current
+/// business on the primary line, and the location / "All locations"
+/// helper beneath it. Functionally it still opens the admin "Choose
+/// business" overlay (operator-web opens an inline tree popover), but the
+/// resting appearance matches the operator-web top bar.
 class _AdminScopeTrigger extends StatelessWidget {
   const _AdminScopeTrigger({
     required this.scope,
@@ -137,7 +143,7 @@ class _AdminScopeTrigger extends StatelessWidget {
   /// Below this assigned width the trigger drops the label + chevron and
   /// shows just the icon, so a width-squeezed header never renders a
   /// broken sliver of text.
-  static const double _kLabelWidthFloor = 140;
+  static const double _kLabelWidthFloor = 150;
 
   @override
   Widget build(BuildContext context) {
@@ -147,18 +153,22 @@ class _AdminScopeTrigger extends StatelessWidget {
             !compact && constraints.maxWidth >= _kLabelWidthFloor;
         return Material(
           key: const Key('admin_scope_picker_trigger'),
-          color: AppColors.backgroundSurface,
+          color: AppColors.backgroundSurface.withValues(alpha: 0.88),
           borderRadius: BorderRadius.circular(8),
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(8),
             child: Container(
               // minWidth stays 0 so the trigger sizes to its content and
-              // can shrink inside the header's Flexible.
-              constraints: BoxConstraints(maxWidth: showLabel ? 320 : 64),
+              // can shrink inside the header's Flexible. minHeight matches
+              // operator-web's large trigger so the two bars line up.
+              constraints: BoxConstraints(
+                maxWidth: showLabel ? 360 : 60,
+                minHeight: showLabel ? 64 : 44,
+              ),
               padding: EdgeInsets.symmetric(
-                horizontal: showLabel ? 12 : 10,
-                vertical: 8,
+                horizontal: showLabel ? 14 : 10,
+                vertical: showLabel ? 10 : 8,
               ),
               decoration: BoxDecoration(
                 border: Border.all(color: AppColors.borderSubtle, width: 1),
@@ -167,19 +177,19 @@ class _AdminScopeTrigger extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  const Icon(
-                    Icons.place_outlined,
-                    size: 18,
+                  Icon(
+                    _adminScopeTriggerIcon(scope),
+                    size: showLabel ? 20 : 18,
                     color: AppColors.sunsetDark,
                   ),
                   if (showLabel) ...<Widget>[
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Flexible(child: _AdminScopeTriggerLabel(scope: scope)),
                     const SizedBox(width: 8),
                     const Icon(
-                      Icons.expand_more,
-                      size: 16,
-                      color: AppColors.textMuted,
+                      Icons.arrow_drop_down,
+                      size: 18,
+                      color: AppColors.textSecondary,
                     ),
                   ],
                 ],
@@ -192,7 +202,8 @@ class _AdminScopeTrigger extends StatelessWidget {
   }
 }
 
-/// The two-line "Managing / value" label inside the trigger.
+/// The three-line "Managing / business / location" label inside the
+/// trigger, matching operator-web's large-trigger label stack.
 class _AdminScopeTriggerLabel extends StatelessWidget {
   const _AdminScopeTriggerLabel({required this.scope});
 
@@ -200,9 +211,11 @@ class _AdminScopeTriggerLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final value = adminScopeTriggerValueLabel(scope);
+    final primary = adminScopeTriggerPrimaryLabel(scope);
+    final helper = adminScopeTriggerHelperLabel(scope);
     return Column(
       mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
@@ -210,15 +223,23 @@ class _AdminScopeTriggerLabel extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           softWrap: false,
-          style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+          style: AppTextStyles.mono8(color: AppColors.textMuted),
         ),
+        const SizedBox(height: 2),
         Text(
-          value,
+          primary,
           key: const Key('admin_scope_picker_trigger_label'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           softWrap: false,
-          style: AppTextStyles.body14(color: AppColors.textPrimary),
+          style: AppTextStyles.display16(color: AppColors.textPrimary),
+        ),
+        Text(
+          helper,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false,
+          style: AppTextStyles.body12(color: AppColors.textSecondary),
         ),
       ],
     );
@@ -237,6 +258,36 @@ String adminScopeTriggerValueLabel(AdminHierarchyScopeIntent? scope) {
     return businessLabel;
   }
   return '$businessLabel · All locations';
+}
+
+/// The big primary line in the large trigger: the selected business
+/// name, or the "All businesses" resting state. Mirrors operator-web's
+/// large-trigger primary label.
+String adminScopeTriggerPrimaryLabel(AdminHierarchyScopeIntent? scope) {
+  if (scope == null) return 'All businesses';
+  final business = (scope.operatorName ?? '').trim();
+  return business.isEmpty ? 'Selected business' : business;
+}
+
+/// The helper sub-line under the primary label: the location name for a
+/// location scope, "All locations" for a business-wide scope, or a
+/// resting hint before anything is picked. Mirrors operator-web's
+/// scope-kind helper line. Plain English, no em dash.
+String adminScopeTriggerHelperLabel(AdminHierarchyScopeIntent? scope) {
+  if (scope == null) return 'Pick a business to manage';
+  if (scope.isLocationScope) {
+    final location = (scope.locationName ?? '').trim();
+    return location.isEmpty ? 'Location' : location;
+  }
+  return 'All locations';
+}
+
+/// Trigger icon mirroring operator-web's `_iconForKind`: a building for a
+/// business-wide scope (and the resting state), a place pin for a
+/// location scope.
+IconData _adminScopeTriggerIcon(AdminHierarchyScopeIntent? scope) {
+  if (scope != null && scope.isLocationScope) return Icons.place_outlined;
+  return Icons.apartment_outlined;
 }
 
 /// Overlay body: search field, recents, capped business list, and (once
