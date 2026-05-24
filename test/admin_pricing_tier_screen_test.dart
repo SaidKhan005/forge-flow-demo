@@ -1,12 +1,21 @@
-// Phase 11A.2 — Pricing tier admin screen widget tests.
+// Plans & Limits V1 (Phase 1) — admin Plans & limits screen widget
+// tests.
 //
-// Drives the screen against an `InMemoryPricingTierAdminGateway` so
-// the click path runs end-to-end without a backend. Coverage:
+// Drives the rebuilt screen against an
+// `InMemoryPricingTierAdminGateway` (+ an
+// `InMemoryObservabilityAdminGateway` for the read-only spend / margin
+// / cap-breach figures) so the click path runs end-to-end without a
+// backend. The screen opens on the read-only "Plans" tab; the
+// master/detail business list lives behind the "Businesses" tab, so
+// most tests switch to it first via [openBusinessesTab]. Coverage:
 //
-//   * Initial render lists every seeded operator with cap rows.
+//   * Plans tab renders the laddered six-plan map (read-only).
+//   * Businesses tab lists every seeded operator with a margin % and
+//     spend joined from observability.
 //   * Empty state renders when no operators are seeded.
 //   * Apply-template flow seeds Premium cap rows.
-//   * Inline edit flow rewrites a usage cap.
+//   * Inline edit flow rewrites a usage cap (use case is a dropdown).
+//   * Spend-vs-cap bar joins observability cost telemetry to a cap.
 //   * Read-only mode (`editingEnabled: false`) hides every mutate
 //     affordance — exercised by the `ff_support` walkthrough.
 
@@ -18,6 +27,7 @@ import 'package:forge_and_flow/admin/admin_auth_gate.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/models/pricing_tier_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/pricing_tier_admin_screen.dart';
+import 'package:forge_and_flow/admin/services/observability_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/pricing_tier_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -29,6 +39,38 @@ void main() {
     theme: AppTheme.themeData,
     home: child,
   );
+
+  Future<void> openBusinessesTab(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('admin_pricing_tab_businesses')));
+    await tester.pumpAndSettle();
+  }
+
+  ObservabilityAdminGateway observabilityFor(
+    String operatorId, {
+    double revenueUsd = 250.0,
+    double costUsd = 40.0,
+    List<Map<String, Object?>> costTelemetry = const <Map<String, Object?>>[],
+    List<Map<String, Object?>> capEvents = const <Map<String, Object?>>[],
+  }) {
+    return InMemoryObservabilityAdminGateway(
+      envelope: <String, Object?>{
+        'as_of': '2026-05-03T12:00:00.000Z',
+        'contract': 'admin_observability.v1',
+        'schema_version': 1,
+        'cost_telemetry': costTelemetry,
+        'margins': <Map<String, Object?>>[
+          <String, Object?>{
+            'operator_id': operatorId,
+            'business_name': 'Seed Cafe',
+            'subscription_tier': 'starter',
+            'revenue_usd': revenueUsd,
+            'cost_usd': costUsd,
+          },
+        ],
+        'cap_events': capEvents,
+      },
+    );
+  }
 
   Future<void> chooseWorkspaceBusinessScope(WidgetTester tester) async {
     final option = find.byKey(
@@ -43,6 +85,16 @@ void main() {
         .evaluate()
         .isNotEmpty) {
       await tester.tap(find.widgetWithText(Tab, 'Plans and limits'));
+      await tester.pumpAndSettle();
+    }
+    // The rebuilt screen opens on the read-only Plans tab; the
+    // business master/detail (and its edit affordances) live behind
+    // the Businesses tab.
+    if (find
+        .byKey(const Key('admin_pricing_tab_businesses'))
+        .evaluate()
+        .isNotEmpty) {
+      await tester.tap(find.byKey(const Key('admin_pricing_tab_businesses')));
       await tester.pumpAndSettle();
     }
   }
@@ -89,7 +141,7 @@ void main() {
     );
   }
 
-  testWidgets('renders one row per seeded operator with cap counts', (
+  testWidgets('Businesses tab lists one row per seeded operator', (
     tester,
   ) async {
     final gateway = InMemoryPricingTierAdminGateway(
@@ -102,10 +154,25 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          observabilityGateway: observabilityFor('op-2'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
+    // Opens on the read-only Plans tab.
+    expect(find.byKey(const Key('admin_pricing_plans_view')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_pricing_plan_card_starter')),
+      findsOneWidget,
+    );
+
+    await openBusinessesTab(tester);
     expect(find.byKey(const Key('admin_pricing_row_op-1')), findsOneWidget);
     expect(find.byKey(const Key('admin_pricing_row_op-2')), findsOneWidget);
     expect(find.text('Alpha Cafe'), findsWidgets);
@@ -129,6 +196,91 @@ void main() {
     expect(find.text('cap-op-2_advisor_qa'), findsOneWidget);
   });
 
+  testWidgets('Plans tab renders the laddered six-plan map (read-only)', (
+    tester,
+  ) async {
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_pricing_plans_view')), findsOneWidget);
+    for (final key in const <String>[
+      'pilot',
+      'starter',
+      'premium',
+      'elite',
+      'pro',
+      'enterprise',
+    ]) {
+      expect(
+        find.byKey(Key('admin_pricing_plan_card_$key')),
+        findsOneWidget,
+        reason: 'plan card for $key',
+      );
+    }
+    // Plan map is read-only: no apply-template button and no add-limit
+    // button on the Plans tab.
+    expect(
+      find.byKey(const Key('admin_pricing_template_premium_button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_pricing_add_cap_button')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('spend-vs-cap bar joins observability cost telemetry to a cap', (
+    tester,
+  ) async {
+    final cap = seedCap(
+      operatorId: 'op-spend',
+      locationId: 'loc-spend',
+      usageClass: 'advisor_qa',
+      monthly: 200.0,
+    );
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-spend',
+          primaryLocationId: 'loc-spend',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+    );
+    final observability = observabilityFor(
+      'op-spend',
+      revenueUsd: 250.0,
+      costUsd: 50.0,
+      costTelemetry: <Map<String, Object?>>[
+        <String, Object?>{
+          'operator_id': 'op-spend',
+          'location_id': 'loc-spend',
+          'usage_class': 'advisor_qa',
+          'query_class': 'advisor_qa',
+          'total_usd': 50.0,
+          'request_count': 100,
+        },
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          observabilityGateway: observability,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    // $50 spent against a $200 cap = 25%.
+    expect(find.text('\$50 / \$200 this month'), findsOneWidget);
+    expect(find.text('25%'), findsWidgets);
+  });
+
   testWidgets('stacks master/detail panes on compact widths', (tester) async {
     tester.view.physicalSize = const Size(520, 720);
     tester.view.devicePixelRatio = 1;
@@ -150,6 +302,7 @@ void main() {
     );
     await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
 
     expect(
       find.byKey(const Key('admin_pricing_operator_list')),
@@ -168,6 +321,7 @@ void main() {
     final gateway = InMemoryPricingTierAdminGateway();
     await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
 
     expect(find.byKey(const Key('admin_pricing_empty')), findsOneWidget);
     expect(find.text('No operators on file'), findsOneWidget);
@@ -183,10 +337,14 @@ void main() {
     );
     await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
 
-    await tester.tap(
-      find.byKey(const Key('admin_pricing_template_premium_button')),
+    final premiumButton = find.byKey(
+      const Key('admin_pricing_template_premium_button'),
     );
+    await tester.ensureVisible(premiumButton);
+    await tester.pumpAndSettle();
+    await tester.tap(premiumButton);
     await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('admin_pricing_confirm_dialog')),
@@ -215,6 +373,7 @@ void main() {
     );
     await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
 
     final editKey = Key('admin_pricing_cap_edit_${cap.capId}');
     await tester.ensureVisible(find.byKey(editKey));
@@ -223,6 +382,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_pricing_cap_dialog')), findsOneWidget);
+    // Use case is a fixed dropdown when editing; only the cap amount
+    // changes.
     await tester.enterText(
       find.byKey(const Key('admin_pricing_cap_monthly')),
       '125.00',
@@ -232,6 +393,54 @@ void main() {
 
     final operators = await gateway.listOperators();
     expect(operators.single.caps.single.monthlyCapUsd, equals(125.0));
+  });
+
+  testWidgets('add limit uses a friendly use-case dropdown', (tester) async {
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(operatorId: 'op-add', primaryLocationId: 'loc-add'),
+      ],
+    );
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    final addButton = find.byKey(const Key('admin_pricing_add_cap_button'));
+    await tester.ensureVisible(addButton);
+    await tester.pumpAndSettle();
+    await tester.tap(addButton);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_pricing_cap_dialog')), findsOneWidget);
+    // The use-case field is a dropdown over the four known classes, shown
+    // by their friendly labels (default selection is "Advisor answers").
+    expect(
+      find.byKey(const Key('admin_pricing_cap_usage_class')),
+      findsOneWidget,
+    );
+    expect(find.text('Advisor answers'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('admin_pricing_cap_usage_class')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Coaching help').last);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('admin_pricing_cap_monthly')),
+      '300.00',
+    );
+    await tester.enterText(
+      find.byKey(const Key('admin_pricing_cap_per_invocation')),
+      '0.20',
+    );
+    await tester.tap(find.byKey(const Key('admin_pricing_cap_submit_button')));
+    await tester.pumpAndSettle();
+
+    final operators = await gateway.listOperators();
+    expect(operators.single.caps, hasLength(1));
+    // The friendly label maps back to the raw class id on submit.
+    expect(operators.single.caps.single.usageClass, equals('coach_qa'));
+    expect(operators.single.caps.single.monthlyCapUsd, equals(300.0));
   });
 
   testWidgets(
@@ -251,11 +460,14 @@ void main() {
         wrap(PricingTierAdminScreen(gateway: gateway, editingEnabled: false)),
       );
       await tester.pumpAndSettle();
+      await openBusinessesTab(tester);
 
       expect(
         find.byKey(const Key('admin_pricing_readonly_banner')),
         findsOneWidget,
       );
+      // No plan presets card (Change plan) when read-only, so no
+      // apply-template button.
       expect(
         find.byKey(const Key('admin_pricing_add_cap_button')),
         findsNothing,
@@ -274,6 +486,13 @@ void main() {
   testWidgets(
     'admin shell with ff_support source renders pricing in read-only mode',
     (tester) async {
+      // Tall surface so the full admin nav + the master/detail
+      // affordances are on-screen for the shell click path.
+      tester.view.physicalSize = const Size(1280, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final pricingGateway = InMemoryPricingTierAdminGateway(
         seed: <PricingOperatorBundle>[
           seedBundle(
@@ -325,6 +544,13 @@ void main() {
   testWidgets(
     'admin shell with super_admin source renders pricing with edit affordances',
     (tester) async {
+      // Tall surface so the full admin nav + the master/detail
+      // affordances are on-screen for the shell click path.
+      tester.view.physicalSize = const Size(1280, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final pricingGateway = InMemoryPricingTierAdminGateway(
         seed: <PricingOperatorBundle>[
           seedBundle(
@@ -374,10 +600,14 @@ void main() {
     );
     await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
 
-    await tester.tap(
-      find.byKey(const Key('admin_pricing_template_pilot_button')),
+    final pilotButton = find.byKey(
+      const Key('admin_pricing_template_pilot_button'),
     );
+    await tester.ensureVisible(pilotButton);
+    await tester.pumpAndSettle();
+    await tester.tap(pilotButton);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('admin_pricing_confirm_ok')));
     await tester.pumpAndSettle();
