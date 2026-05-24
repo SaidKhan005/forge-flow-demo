@@ -70,9 +70,12 @@ void main() {
         final neutralEmpty =
             producerNotes['neutral_empty_surfaces'] as List<Object?>;
         expect(neutralEmpty.contains('cloud_run'), isFalse);
-        // The other genuinely-empty surfaces stay advertised.
+        // The other genuinely-empty surfaces stay advertised. `cap_events`
+        // is no longer here: it is now a live producer (reads
+        // public.usage_cap_events) that happens to have no rows until the
+        // write-side refusal hook lands in a later slice.
         expect(neutralEmpty.contains('margins'), isTrue);
-        expect(neutralEmpty.contains('cap_events'), isTrue);
+        expect(neutralEmpty.contains('cap_events'), isFalse);
         expect(neutralEmpty.contains('route_latency'), isTrue);
       },
     );

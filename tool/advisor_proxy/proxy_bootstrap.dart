@@ -9664,6 +9664,13 @@ class RepositoryObservabilityAdminProxyGateway
           ...scopeParams,
         },
       );
+      final capEventRows = await exec.query(
+        _observabilityCapEventsSql,
+        parameters: <String, Object?>{
+          'limit': _capEventsLimit,
+          ...scopeParams,
+        },
+      );
       final graphRows = await exec.query(_observabilityGraphSql);
       final graphRow = graphRows.isEmpty
           ? const <String, Object?>{}
@@ -9746,11 +9753,19 @@ class RepositoryObservabilityAdminProxyGateway
         // than fabricated from non-existent daily data. See
         // `_observabilityTopExpensiveSql` / `_topExpensiveRowJson`.
         //
-        // The remaining surfaces below (margins, cap_events,
-        // route_latency, cloud_run) intentionally stay empty until
-        // their durable producers exist. Empty lists keep the
-        // dashboard neutral rather than showing synthetic revenue,
-        // cap-event, route, or Cloud Run instance confidence.
+        // The remaining surfaces below (margins, route_latency,
+        // cloud_run) intentionally stay empty until their durable
+        // producers exist. Empty lists keep the dashboard neutral
+        // rather than showing synthetic revenue, route, or Cloud Run
+        // instance confidence.
+        //
+        // `cap_events` IS now produced (see `_observabilityCapEventsSql`):
+        // it projects recent rows from `public.usage_cap_events` (the
+        // append-only cap-refusal ledger). The WRITE side — recording
+        // refusals INTO that table from the proxy's cap-refusal hot path
+        // — is a SEPARATE later slice. Until it lands the table has no
+        // rows, so this surface honestly renders "no limit hits"; no row
+        // is fabricated.
         'top_expensive': <Map<String, Object?>>[
           for (final row in topExpensiveRows) _topExpensiveRowJson(row),
         ],
@@ -9767,7 +9782,9 @@ class RepositoryObservabilityAdminProxyGateway
             },
         ],
         'margins': const <Map<String, Object?>>[],
-        'cap_events': const <Map<String, Object?>>[],
+        'cap_events': <Map<String, Object?>>[
+          for (final row in capEventRows) _capEventRowJson(row),
+        ],
         'graph': <String, Object?>{
           'approved_node_count': _adminInt(graphRow['approved_node_count']),
           'approved_edge_count': _adminInt(graphRow['approved_edge_count']),
@@ -9810,7 +9827,6 @@ class RepositoryObservabilityAdminProxyGateway
           // capacity row is emitted the surface is no longer empty.
           'neutral_empty_surfaces': <String>[
             'margins',
-            'cap_events',
             'route_latency',
             if (cloudRunRows.isEmpty) 'cloud_run',
           ],
@@ -10336,6 +10352,61 @@ order by last_active_at asc nulls first, o.business_name asc
 limit 200
 ''';
 
+/// Hard cap on the number of recent cap-refusal events the "Limit hits"
+/// panel renders in one envelope. The panel shows the most recent
+/// refusals (ordered by `occurred_at` desc); a higher cap would only
+/// add older rows the operator rarely scrolls to. Matches the small
+/// fixed window the other operator-scoped lists use.
+const int _capEventsLimit = 50;
+
+/// Recent cap-refusal events for the "Limit hits" panel.
+///
+/// READ-ONLY projection of `public.usage_cap_events` — the append-only
+/// ledger written one row per provider call the proxy REFUSED for
+/// exceeding a `usage_caps` spend cap. This producer owns ONLY the read
+/// path. The WRITE path (the proxy's cap-refusal hot path recording a
+/// row here) is a SEPARATE later slice; until it lands this table has no
+/// rows, so the panel honestly shows "no limit hits". No row is
+/// fabricated here.
+///
+/// `business_name` is joined from `public.operators` so the panel can
+/// label each refusal with the operator's business name without a
+/// second lookup. `staff_id` / `workflow_id` are intentionally NOT
+/// selected: the `usage_cap_events` table carries no such columns (a
+/// refusal is attributed to an (operator, location) only), and the
+/// consumer model (`CapEvent`) leaves them null when absent.
+///
+/// Honors the cross-operator predicate
+/// `(@operator_id::uuid is null or e.operator_id = @operator_id::uuid)`
+/// (the `usage_cap_events` ledger is aliased `e`) so the "All
+/// businesses" admin view (operator_id IS NULL) aggregates across every
+/// operator, and the per-location scope params (`@location_id` /
+/// `@location_ids`), mirroring the sibling cost / dormancy /
+/// top_expensive producers above. Ordered by `occurred_at` desc and
+/// capped at [_capEventsLimit] rows.
+const String _observabilityCapEventsSql = '''
+select
+  e.event_id::text as event_id,
+  e.occurred_at as occurred_at,
+  e.operator_id::text as operator_id,
+  e.location_id::text as location_id,
+  e.usage_class,
+  e.query_class,
+  e.cap_usd::double precision as cap_usd,
+  e.attempted_usd::double precision as attempted_usd,
+  o.business_name
+from public.usage_cap_events e
+join public.operators o on o.operator_id = e.operator_id
+where (@operator_id::uuid is null or e.operator_id = @operator_id::uuid)
+  and (@location_id::uuid is null or e.location_id = @location_id::uuid)
+  and (
+    @location_ids::text[] is null
+    or e.location_id::text = any(@location_ids::text[])
+  )
+order by e.occurred_at desc
+limit @limit::int
+''';
+
 const String _observabilityGraphSql = '''
 with active_nodes as (
   select *
@@ -10427,6 +10498,29 @@ Map<String, Object?> _topExpensiveRowJson(PostgresRow row) {
     'operator_id': row['operator_id']?.toString(),
     'staff_id': row['staff_id']?.toString(),
     'workflow_id': row['workflow_id']?.toString(),
+  };
+}
+
+/// Maps one `_observabilityCapEventsSql` row to the consumer model
+/// (`CapEvent`) JSON shape. `occurred_at` is a NOT-NULL `timestamptz`
+/// on `public.usage_cap_events`, so it always resolves to a real
+/// instant via [_adminIso] (no null sentinel). `cap_usd` /
+/// `attempted_usd` are non-negative numerics snapshotted at refusal
+/// time. `location_id` is always present on the table but emitted as a
+/// nullable field to match the consumer model, which treats it as
+/// optional. `staff_id` / `workflow_id` are not emitted: the table has
+/// no such columns.
+Map<String, Object?> _capEventRowJson(PostgresRow row) {
+  return <String, Object?>{
+    'event_id': row['event_id']?.toString() ?? '',
+    'occurred_at': _adminIso(row['occurred_at']),
+    'operator_id': row['operator_id']?.toString() ?? '',
+    'business_name': row['business_name']?.toString() ?? '',
+    'usage_class': row['usage_class']?.toString() ?? '',
+    'query_class': row['query_class']?.toString() ?? '',
+    'cap_usd': _adminDouble(row['cap_usd']),
+    'attempted_usd': _adminDouble(row['attempted_usd']),
+    'location_id': row['location_id']?.toString(),
   };
 }
 
