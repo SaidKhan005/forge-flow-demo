@@ -956,6 +956,24 @@ class _BusinessHierarchyPanel extends StatefulWidget {
 class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
   Future<_HierarchyPanelData>? _future;
 
+  /// Accumulated set of location ids the hierarchy gateway has EVER
+  /// surfaced (as an active leaf) for this panel instance, unioned
+  /// across every reload. It distinguishes the two "no live hierarchy
+  /// leaf" sub-cases in [_buildTreeRows]:
+  ///   * an id that was surfaced before and is now gone: the leaf was
+  ///     deleted via the hierarchy gateway, so the row must HIDE (the
+  ///     operator bundle still lists it because the hierarchy delete
+  ///     does not mutate the operator gateway);
+  ///   * an id that was NEVER surfaced: a location just added through
+  ///     the operator gateway whose hierarchy leaf has not arrived yet
+  ///     (always true for the demo's two divergent in-memory stores;
+  ///     transiently true in production until the next hierarchy read),
+  ///     so the row must SHOW immediately, placed by its own
+  ///     `parentOrgUnitId`.
+  /// Without this, a freshly-added location was silently filtered out
+  /// and never appeared after the "Location added" toast.
+  final Set<String> _everSurfacedLocationIds = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -967,9 +985,31 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.bundle.operator.operatorId !=
             widget.bundle.operator.operatorId ||
-        oldWidget.gateway != widget.gateway) {
+        oldWidget.gateway != widget.gateway ||
+        _locationSignature(oldWidget.bundle) !=
+            _locationSignature(widget.bundle)) {
+      // Reload when the operator, the gateway, OR the operator's own
+      // location set changes. The location-set check is the refresh half
+      // of the add-location fix: after `_runAndRefresh` re-fetches the
+      // operator bundles, the parent rebuilds this panel with the SAME
+      // operator id and gateway reference, so without it the cached
+      // `_future` from initState would never re-run and the hierarchy
+      // tree would stay stale (the new location would not appear until a
+      // manual reload).
       _future = _load();
     }
+  }
+
+  /// Order-independent signature of the operator bundle's live (not
+  /// soft-deleted) location ids. Changes whenever a location is added or
+  /// removed, which is exactly when the hierarchy panel must reload.
+  static String _locationSignature(OperatorAdminBundle bundle) {
+    final ids =
+        <String>[
+          for (final location in bundle.locations)
+            if (!location.isDeleted) location.locationId,
+        ]..sort();
+    return ids.join('|');
   }
 
   Future<_HierarchyPanelData> _load() async {
@@ -980,9 +1020,16 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
       gateway.listOrgUnits(operatorId: operatorId),
       gateway.listHierarchyLocations(operatorId: operatorId),
     ]);
+    final locations = results[1] as List<HierarchyLocationLeaf>;
+    // Remember every id the hierarchy gateway surfaces so a later
+    // disappearance is read as a hierarchy delete (hide) rather than a
+    // fresh operator-gateway add (show). See [_everSurfacedLocationIds].
+    for (final leaf in locations) {
+      _everSurfacedLocationIds.add(leaf.locationId);
+    }
     return _HierarchyPanelData(
       orgUnits: results[0] as List<OrgUnitAdminNode>,
-      locations: results[1] as List<HierarchyLocationLeaf>,
+      locations: locations,
     );
   }
 
@@ -1638,7 +1685,20 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     for (final location in widget.bundle.locations) {
       if (location.isDeleted) continue;
       final leaf = leafByLocation[location.locationId];
-      if (trustHierarchyLocations && leaf == null) continue;
+      // When the hierarchy gateway is the placement source, a location
+      // with no live leaf is dropped ONLY if that leaf was deleted via
+      // the hierarchy gateway (the id was surfaced on an earlier load and
+      // is now gone). That is the audited hierarchy-delete-hides path.
+      // A location whose id the hierarchy gateway has NEVER surfaced is a
+      // fresh operator-gateway add (the demo's two in-memory stores never
+      // share it; production has not re-read it yet), so it must still
+      // render, placed below by its own `parentOrgUnitId`. This is the
+      // display half of the add-location fix.
+      if (trustHierarchyLocations &&
+          leaf == null &&
+          _everSurfacedLocationIds.contains(location.locationId)) {
+        continue;
+      }
       final parentFromData =
           leaf?.orgUnitId ??
           leafParentByLocation[location.locationId] ??

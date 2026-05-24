@@ -1452,4 +1452,264 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // Regression: add location persists AND shows in the hierarchy tree
+  // immediately (no manual reload), even when the hierarchy gateway is
+  // wired.
+  //
+  // Root cause this guards: the hierarchy panel cached its load future
+  // from initState and only reloaded on operator/gateway change, so after
+  // `_runAndRefresh` re-fetched the operator bundles the panel never
+  // re-ran; AND `_buildTreeRows` dropped any operator-bundle location with
+  // no live hierarchy leaf, which is exactly the state of a freshly-added
+  // location (the demo's operator + hierarchy gateways are separate
+  // in-memory stores, so the new leaf never appears in the hierarchy
+  // read). Net effect: the "Location added" toast fired but the row was
+  // invisible until a manual reload. The fix reloads the panel on a
+  // location-set change AND renders a never-surfaced location by its own
+  // parentOrgUnitId while still hiding hierarchy-deleted leaves.
+  // ---------------------------------------------------------------------------
+  testWidgets(
+    'adding a location persists and appears in the hierarchy tree '
+    'immediately when a hierarchy gateway is wired',
+    (tester) async {
+      useWideSurface(tester);
+      // Operator gateway starts with only the primary location. The
+      // hierarchy gateway knows the org units + the primary leaf, but NOT
+      // the location we are about to add (mirrors the live divergence
+      // before the next hierarchy read, and the permanent divergence of
+      // the demo's two in-memory stores).
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[
+          seedBundle(operatorId: 'op-add', primaryLocationId: 'loc-add-hq'),
+        ],
+      );
+      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-add': const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'Demo Diner Co.',
+              operatorId: 'op-add',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: 'org-east',
+              name: 'East district',
+              operatorId: 'op-add',
+              parentOrgUnitId: 'org-root',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-add': const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: 'loc-add-hq',
+              name: 'HQ',
+              operatorId: 'op-add',
+              orgUnitId: 'org-root',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            hierarchyGateway: hierarchyGateway,
+            actorUserId: 'demo-super-admin',
+            idempotencyKeyFactory: () => 'idem-add-location-shows',
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await selectBusinessScope(tester, 'op-add');
+
+      // The "Add location" button is disabled until an org unit is the
+      // selected scope. Pick the East district org unit in the left tree.
+      final orgUnitRow = find.byKey(
+        const Key('admin_setup_scope_org_unit_org-east'),
+      );
+      await tester.ensureVisible(orgUnitRow);
+      await pumpEventually(tester);
+      await tester.tap(orgUnitRow);
+      await pumpEventually(tester);
+
+      final addButton = find.byKey(
+        const Key('admin_operator_add_location_button'),
+      );
+      await tester.ensureVisible(addButton);
+      await pumpEventually(tester);
+      expect(
+        tester.widget<OutlinedButton>(addButton).onPressed,
+        isNotNull,
+        reason: 'selecting an org unit must enable Add location',
+      );
+      await tester.tap(addButton);
+      await pumpEventually(tester);
+
+      expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('admin_location_name_field')),
+        'East Annex',
+      );
+      await chooseTimezone(
+        tester,
+        const Key('admin_location_timezone_field'),
+        'America/Toronto',
+      );
+      await tester.tap(find.byKey(const Key('admin_location_submit_button')));
+      await pumpEventually(tester);
+
+      // (a) Persisted: the operator gateway's listOperators returns the
+      // new location, parented to the org unit that was selected.
+      final operators = await gateway.listOperators();
+      expect(operators.single.locations, hasLength(2));
+      final added = operators.single.locations.firstWhere(
+        (l) => l.name == 'East Annex',
+      );
+      expect(added.parentOrgUnitId, equals('org-east'));
+
+      // (b) Refreshed: the new location row is in the hierarchy tree right
+      // away, with NO manual reload. This is the core of the fix.
+      expect(
+        find.byKey(Key('admin_hierarchy_location_${added.locationId}')),
+        findsOneWidget,
+        reason: 'the added location must appear in the hierarchy tree '
+            'immediately after the add, with no manual reload',
+      );
+      expect(find.text('East Annex'), findsWidgets);
+    },
+  );
+
+  // Guard the other half of the filter: a hierarchy-gateway delete still
+  // HIDES the row even though the location lingers in the operator bundle
+  // (the hierarchy delete does not mutate the operator gateway). This is
+  // the behavior the add-location fix had to preserve when it stopped
+  // unconditionally dropping leaf-less operator-bundle locations.
+  testWidgets(
+    'a hierarchy-deleted location stays hidden after the panel reloads',
+    (tester) async {
+      useWideSurface(tester);
+      final created = DateTime.utc(2026, 1, 1);
+      final bundle = OperatorAdminBundle(
+        operator: OperatorAdminRecord(
+          operatorId: 'op-del',
+          businessName: 'Seed Cafe',
+          ownerEmail: 'owner@seed.test',
+          subscriptionTier: 'launch',
+          preferredCurrency: 'CAD',
+          primaryLocationId: 'loc-del-primary',
+          suspendedAt: null,
+          createdAt: created,
+          updatedAt: created,
+        ),
+        locations: <LocationAdminRecord>[
+          LocationAdminRecord(
+            locationId: 'loc-del-primary',
+            operatorId: 'op-del',
+            parentOrgUnitId: 'org-root',
+            name: 'HQ',
+            address: '',
+            timezone: 'America/Toronto',
+            businessDayRolloverHour: 4,
+            createdAt: created,
+            updatedAt: created,
+          ),
+          LocationAdminRecord(
+            locationId: 'loc-del-west',
+            operatorId: 'op-del',
+            parentOrgUnitId: 'org-root',
+            name: 'West Coast',
+            address: '',
+            timezone: 'America/Vancouver',
+            businessDayRolloverHour: 4,
+            createdAt: created,
+            updatedAt: created,
+          ),
+        ],
+      );
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[bundle],
+      );
+      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-del': const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'Demo Diner Co.',
+              operatorId: 'op-del',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-del': const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: 'loc-del-primary',
+              name: 'HQ',
+              operatorId: 'op-del',
+              orgUnitId: 'org-root',
+            ),
+            HierarchyLocationLeaf(
+              locationId: 'loc-del-west',
+              name: 'West Coast',
+              operatorId: 'op-del',
+              orgUnitId: 'org-root',
+            ),
+          ],
+        },
+      );
+      var idempotency = 0;
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            hierarchyGateway: hierarchyGateway,
+            actorUserId: 'demo-super-admin',
+            idempotencyKeyFactory: () => 'idem-del-guard-${idempotency++}',
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await selectBusinessScope(tester, 'op-del');
+
+      // The hierarchy gateway has surfaced loc-del-west, so deleting it
+      // there must hide the row even though it stays in the operator
+      // bundle.
+      expect(
+        find.byKey(const Key('admin_hierarchy_location_loc-del-west')),
+        findsOneWidget,
+      );
+      final deleteButton = find.byKey(
+        const Key('admin_location_remove_loc-del-west'),
+      );
+      await tester.ensureVisible(deleteButton);
+      await pumpEventually(tester);
+      await tester.tap(deleteButton);
+      await pumpEventually(tester);
+      await tester.enterText(
+        find.byKey(const Key('admin_hierarchy_location_delete_reason')),
+        'duplicate location record',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_hierarchy_location_delete_submit')),
+      );
+      await pumpEventually(tester);
+
+      // Still listed by the operator gateway (the hierarchy delete does
+      // not touch it) but hidden in the tree.
+      final operators = await gateway.listOperators();
+      expect(
+        operators.single.locations.any((l) => l.locationId == 'loc-del-west'),
+        isTrue,
+      );
+      expect(
+        find.byKey(const Key('admin_hierarchy_location_loc-del-west')),
+        findsNothing,
+        reason: 'a hierarchy-deleted location must stay hidden',
+      );
+    },
+  );
 }
