@@ -2,14 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
-import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/admin_shell.dart';
-import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
-import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
-import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/data_accuracy_audit_history_panel.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_data_accuracy_table.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_tier_assignment_table.dart';
@@ -822,86 +818,14 @@ void main() {
       expect(find.text('standard'), findsNothing);
     });
 
-    testWidgets(
-      'Operators can hand off a location to the new Operations tabs',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1400, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final scopes = <AdminHierarchyScopeIntent>[];
-        final gateway = InMemoryOperatorLocationAdminGateway(
-          seed: <OperatorAdminBundle>[
-            OperatorAdminBundle(
-              operator: OperatorAdminRecord(
-                operatorId: 'op-1',
-                businessName: 'Barrio Legado',
-                ownerEmail: 'owner@barrio.test',
-                subscriptionTier: 'launch',
-                preferredCurrency: 'CAD',
-                primaryLocationId: 'loc-1',
-                suspendedAt: null,
-                createdAt: DateTime.utc(2026, 1, 1),
-                updatedAt: DateTime.utc(2026, 1, 1),
-              ),
-              locations: <LocationAdminRecord>[
-                LocationAdminRecord(
-                  locationId: 'loc-1',
-                  operatorId: 'op-1',
-                  name: '95 Water Street',
-                  address: '',
-                  timezone: 'America/St_Johns',
-                  businessDayRolloverHour: 4,
-                  createdAt: DateTime.utc(2026, 1, 1),
-                  updatedAt: DateTime.utc(2026, 1, 1),
-                ),
-              ],
-            ),
-          ],
-        );
-
-        await tester.pumpWidget(
-          MaterialApp(
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.themeData,
-            home: Scaffold(
-              body: OperatorLocationAdminScreen(
-                gateway: gateway,
-                onOpenDataAccuracyScope: scopes.add,
-                onOpenPollingPricingScope: scopes.add,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        final locationScope = find.byKey(
-          const Key('admin_hierarchy_location_loc-1'),
-        );
-        await tester.ensureVisible(locationScope);
-        await tester.tap(locationScope);
-        await tester.pumpAndSettle();
-
-        final dataAccuracyAction = find.byKey(
-          const Key('admin_business_setup_tile_data_accuracy'),
-        );
-        await tester.ensureVisible(dataAccuracyAction);
-        await tester.tap(dataAccuracyAction);
-        await tester.pumpAndSettle();
-
-        final pollingPricingAction = find.byKey(
-          const Key('admin_business_setup_tile_polling_pricing'),
-        );
-        await tester.ensureVisible(pollingPricingAction);
-        await tester.tap(pollingPricingAction);
-        await tester.pumpAndSettle();
-
-        expect(scopes, hasLength(2));
-        expect(scopes.first.operatorId, 'op-1');
-        expect(scopes.first.locationId, 'loc-1');
-        expect(scopes.first.displayLabel, 'Barrio Legado / 95 Water Street');
-        expect(scopes.last.locationId, 'loc-1');
-        expect(scopes.last.inheritanceLabel, 'Location only');
-      },
-    );
+    // Removed 2026-05-24: 'Operators can hand off a location to the new
+    // Operations tabs' drove the Data Accuracy + Polling/Pricing handoff
+    // through the `admin_business_setup_tile_data_accuracy` /
+    // `_polling_pricing` drill-in tiles, which the Business-accounts
+    // scope-pane rebuild deleted. That location handoff now lives in the
+    // always-on admin sidebar cluster and is covered by
+    // `admin_shell_widget_test.dart`; the screen's
+    // `onOpenDataAccuracyScope` / `onOpenPollingPricingScope` callbacks are
+    // no longer triggered from within this screen.
   });
 }

@@ -3,17 +3,25 @@
 // Bucket 5h of the 2026-05-20 test-suite tightening audit. Split out
 // of the ~2,131-line `admin_operator_location_screen_test.dart`
 // monolith. Covers operator + location lifecycle flows: editing the
-// Account profile (success + email-conflict), the (read-write and
-// read-only) location and business Timing dialogs, onboarding a new
+// Account profile (success + email-conflict), onboarding a new
 // operator, suspend/reactivate badge + fade, the IANA timezone add +
-// edit + remove location flows, primary-location guard, and the
+// edit + remove location flows, the primary-location guard, and the
 // `editingEnabled: false` mutation hide.
 //
-// Shared fixtures (`wrap`, `seedBundle`, `seedTimingGateway`,
-// `chooseTimezone`, `EmailConflictOperatorGateway`) and bounded pump
-// helpers (`pumpEventually`) live in
-// `admin_operator_location_test_helpers.dart` and
-// `_test_helpers/widget_pump_helpers.dart`, respectively, so each
+// Reconciled 2026-05-24 for the Business-accounts scope-pane rebuild:
+// the screen no longer auto-selects the first operator, so each test
+// first picks its business in the shared left scope tree
+// (`selectBusiness`) before the right detail pane (profile card,
+// hierarchy panel, lifecycle buttons) is rendered. The removed
+// per-business drill-in setup tiles (Timing / Support view / People /
+// Access / Integrations) and the three Timing-dialog tests that opened
+// them are dropped; that navigation moved to the always-on sidebar
+// cluster (covered by `admin_shell_widget_test.dart`).
+//
+// Shared fixtures (`wrap`, `seedBundle`, `chooseTimezone`,
+// `EmailConflictOperatorGateway`) and bounded pump helpers
+// (`pumpEventually`) live in `admin_operator_location_test_helpers.dart`
+// and `_test_helpers/widget_pump_helpers.dart`, respectively, so each
 // split file imports a single source of truth.
 
 import 'package:flutter/material.dart';
@@ -27,9 +35,35 @@ import '_test_helpers/widget_pump_helpers.dart';
 import 'admin_operator_location_test_helpers.dart';
 
 void main() {
+  // The Business-accounts screen now mirrors the AI setup tabs: a left
+  // searchable scope tree + a right detail pane, with NO auto-selected
+  // first operator. Lifecycle tests therefore use a wide window (so the
+  // split layout shows the detail pane) and pick their business in the
+  // scope tree before exercising profile / location actions.
+  void useWideWindow(WidgetTester tester) {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  }
+
+  Future<void> selectBusiness(
+    WidgetTester tester, {
+    required String operatorId,
+  }) async {
+    final businessRow = find.byKey(
+      Key('admin_setup_scope_business_$operatorId'),
+    );
+    await tester.ensureVisible(businessRow);
+    await pumpEventually(tester);
+    await tester.tap(businessRow);
+    await pumpEventually(tester);
+  }
+
   testWidgets('Account profile action edits the business contact email', (
     tester,
   ) async {
+    useWideWindow(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[
         seedBundle(
@@ -43,6 +77,7 @@ void main() {
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-profile');
 
     final profileAction = find.descendant(
       of: find.byKey(const Key('admin_operator_profile_card')),
@@ -76,6 +111,7 @@ void main() {
   testWidgets('Account profile conflict details show existing email usage', (
     tester,
   ) async {
+    useWideWindow(tester);
     final gateway = EmailConflictOperatorGateway(
       seed: <OperatorAdminBundle>[
         seedBundle(
@@ -89,6 +125,7 @@ void main() {
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-profile-conflict');
 
     final profileAction = find.descendant(
       of: find.byKey(const Key('admin_operator_profile_card')),
@@ -120,243 +157,18 @@ void main() {
     expect(find.textContaining('Business contact'), findsOneWidget);
   });
 
-  testWidgets('location Timing action opens a scoped non-destructive dialog', (
-    tester,
-  ) async {
-    final gateway = InMemoryOperatorLocationAdminGateway(
-      seed: <OperatorAdminBundle>[
-        seedBundle(
-          operatorId: 'op-timing',
-          primaryLocationId: 'loc-timing',
-          businessName: 'Timing Cafe',
-        ),
-      ],
-    );
-    final timingGw = seedTimingGateway(
-      operatorId: 'op-timing',
-      locationId: 'loc-timing',
-      timezone: 'America/Toronto',
-      dayStart: '04:00',
-      weekStart: 'monday',
-    );
-    await tester.pumpWidget(
-      wrap(
-        OperatorLocationAdminScreen(
-          gateway: gateway,
-          timingResolutionGateway: timingGw,
-        ),
-      ),
-    );
-    await pumpEventually(tester);
-
-    final locationRow = find.byKey(
-      const Key('admin_hierarchy_location_loc-timing'),
-    );
-    await tester.ensureVisible(locationRow);
-    await pumpEventually(tester);
-    await tester.tap(locationRow);
-    await pumpEventually(tester);
-
-    final timingTile = find.byKey(
-      const Key('admin_business_setup_tile_timing'),
-    );
-    await tester.ensureVisible(timingTile);
-    await pumpEventually(tester);
-    await tester.tap(timingTile);
-    await pumpEventually(tester);
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-timing',
-      scopeType: 'location',
-      locationId: 'loc-timing',
-    );
-    // The resolved body is a FutureBuilder over the READ-ONLY S2
-    // admin gateway; let it complete.
-    await pumpEventually(tester);
-
-    expect(
-      find.byKey(const Key('admin_location_timing_dialog')),
-      findsOneWidget,
-    );
-    expect(find.text('Timing Cafe / HQ'), findsWidgets);
-    // REAL resolved values from the seeded canonical chain (no longer
-    // the deleted synthetic `_AdminTimingResolution.forScope` path).
-    expect(
-      find.byKey(const Key('admin_timing_resolved_fields')),
-      findsOneWidget,
-    );
-    expect(find.text('America/Toronto'), findsOneWidget);
-    expect(find.text('04:00'), findsOneWidget);
-    expect(find.textContaining('No timing change was written'), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_location_timing_audit_reason')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_location_timing_save_disabled')),
-      findsOneWidget,
-    );
-    expect(find.text('Timezone source'), findsOneWidget);
-    // Provenance is the resolver's resolved scope (operator-only chain
-    // => "Inherited (Operator default)"), NOT a synthetic scope flag.
-    expect(find.text('Inherited (Operator default)'), findsWidgets);
-    expect(
-      find.byKey(const Key('admin_timing_service_periods_panel')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('business Timing action shows inherited timing provenance', (
-    tester,
-  ) async {
-    final gateway = InMemoryOperatorLocationAdminGateway(
-      seed: <OperatorAdminBundle>[
-        seedBundle(
-          operatorId: 'op-business-timing',
-          primaryLocationId: 'loc-business-timing',
-          businessName: 'Business Timing Cafe',
-        ),
-      ],
-    );
-    // At business scope the dialog resolves timing for the primary
-    // location; seed the canonical chain under that location id.
-    final timingGw = seedTimingGateway(
-      operatorId: 'op-business-timing',
-      locationId: 'loc-business-timing',
-      timezone: 'America/Toronto',
-      dayStart: '04:00',
-      weekStart: 'monday',
-    );
-    await tester.pumpWidget(
-      wrap(
-        OperatorLocationAdminScreen(
-          gateway: gateway,
-          timingResolutionGateway: timingGw,
-        ),
-      ),
-    );
-    await pumpEventually(tester);
-
-    final timingTile = find.byKey(
-      const Key('admin_business_setup_tile_timing'),
-    );
-    await tester.ensureVisible(timingTile);
-    await pumpEventually(tester);
-    await tester.tap(timingTile);
-    await pumpEventually(tester);
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-business-timing',
-      scopeType: 'business',
-    );
-    await pumpEventually(tester);
-
-    expect(
-      find.byKey(const Key('admin_location_timing_dialog')),
-      findsOneWidget,
-    );
-    expect(find.text('Showing timing for business scope'), findsOneWidget);
-    // REAL resolved values from the seeded canonical chain.
-    expect(
-      find.byKey(const Key('admin_timing_resolved_fields')),
-      findsOneWidget,
-    );
-    expect(find.text('Effective timezone'), findsOneWidget);
-    expect(find.text('America/Toronto'), findsOneWidget);
-    expect(find.text('Business day starts'), findsOneWidget);
-    expect(find.text('04:00'), findsOneWidget);
-    expect(find.text('Week starts'), findsOneWidget);
-    expect(find.text('Monday'), findsOneWidget);
-    expect(find.text('Week-start source'), findsOneWidget);
-    expect(find.text('Effective service periods'), findsOneWidget);
-    expect(find.text('Lunch'), findsOneWidget);
-    // Operator-only seeded chain => provenance is the resolver's
-    // resolved scope, not a synthetic "Set at this scope" flag.
-    expect(find.text('Inherited (Operator default)'), findsWidgets);
-  });
-
-  testWidgets(
-    'read-only location Timing dialog does not expose save controls',
-    (tester) async {
-      final gateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[
-          seedBundle(
-            operatorId: 'op-timing-readonly',
-            primaryLocationId: 'loc-timing-readonly',
-            businessName: 'Readonly Cafe',
-          ),
-        ],
-      );
-      final timingGw = seedTimingGateway(
-        operatorId: 'op-timing-readonly',
-        locationId: 'loc-timing-readonly',
-      );
-      await tester.pumpWidget(
-        wrap(
-          OperatorLocationAdminScreen(
-            gateway: gateway,
-            editingEnabled: false,
-            timingResolutionGateway: timingGw,
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      final locationRow = find.byKey(
-        const Key('admin_hierarchy_location_loc-timing-readonly'),
-      );
-      await tester.ensureVisible(locationRow);
-      await pumpEventually(tester);
-      await tester.tap(locationRow);
-      await pumpEventually(tester);
-
-      final timingTile = find.byKey(
-        const Key('admin_business_setup_tile_timing'),
-      );
-      await tester.ensureVisible(timingTile);
-      await pumpEventually(tester);
-      await tester.tap(timingTile);
-      await pumpEventually(tester);
-      await chooseScopePrompt(
-        tester,
-        operatorId: 'op-timing-readonly',
-        scopeType: 'location',
-        locationId: 'loc-timing-readonly',
-      );
-      await pumpEventually(tester);
-
-      expect(
-        find.byKey(const Key('admin_location_timing_dialog')),
-        findsOneWidget,
-      );
-      expect(find.textContaining('Read-only support view'), findsOneWidget);
-      // Read-only-accurate (operator decision Q3): values are REAL
-      // and resolved, but NO write/edit affordance is added.
-      expect(
-        find.byKey(const Key('admin_timing_resolved_fields')),
-        findsOneWidget,
-      );
-      expect(find.text('America/Toronto'), findsOneWidget);
-      expect(
-        find.byKey(const Key('admin_location_timing_audit_reason')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_location_timing_save_disabled')),
-        findsNothing,
-      );
-    },
-  );
-
   testWidgets('onboarding dialog creates a new operator end-to-end', (
     tester,
   ) async {
+    useWideWindow(tester);
     final gateway = InMemoryOperatorLocationAdminGateway();
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
 
+    // "New business" lives at the top of the scope pane and is reachable
+    // before any business is selected.
     await tester.tap(find.byKey(const Key('admin_operators_new_button')));
     await pumpEventually(tester);
 
@@ -401,10 +213,10 @@ void main() {
       operators.single.locations.single.timezone,
       equals('America/Vancouver'),
     );
-    expect(find.text('New Operator Inc'), findsWidgets);
   });
 
   testWidgets('suspend then reactivate flips the badge', (tester) async {
+    useWideWindow(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle(operatorId: 'op-active')],
     );
@@ -412,6 +224,7 @@ void main() {
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-active');
 
     expect(find.text('suspended'), findsNothing);
 
@@ -430,6 +243,7 @@ void main() {
   });
 
   testWidgets('suspended operator fades the location rows', (tester) async {
+    useWideWindow(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[
         seedBundle(
@@ -443,6 +257,7 @@ void main() {
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-paused');
 
     final fadedLocation = tester.widget<Opacity>(
       find.byKey(const Key('admin_location_suspended_fade_loc-paused')),
@@ -461,6 +276,7 @@ void main() {
   testWidgets('add location dialog submits the selected IANA timezone', (
     tester,
   ) async {
+    useWideWindow(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle()],
     );
@@ -474,6 +290,7 @@ void main() {
       ),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-seed-1');
 
     final addButton = find.byKey(
       const Key('admin_operator_add_location_button'),
@@ -519,6 +336,7 @@ void main() {
   testWidgets('edit location dialog patches the selected location', (
     tester,
   ) async {
+    useWideWindow(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle()],
     );
@@ -526,6 +344,7 @@ void main() {
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-seed-1');
 
     final editButton = find.byKey(const Key('admin_location_edit_loc-seed-1'));
     await tester.ensureVisible(editButton);
@@ -562,6 +381,7 @@ void main() {
   testWidgets('remove button is disabled on the primary location', (
     tester,
   ) async {
+    useWideWindow(tester);
     final bundle = seedBundle(operatorId: 'op-x', primaryLocationId: 'loc-x');
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[bundle],
@@ -576,6 +396,7 @@ void main() {
       ),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-x');
 
     final removeButton = tester.widget<IconButton>(
       find.byKey(const Key('admin_location_remove_loc-x')),
@@ -586,6 +407,7 @@ void main() {
   testWidgets('editingEnabled false hides operator and location mutations', (
     tester,
   ) async {
+    useWideWindow(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle()],
     );
@@ -595,11 +417,14 @@ void main() {
       ),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-seed-1');
 
     expect(
       find.byKey(const Key('admin_operators_readonly_banner')),
       findsOneWidget,
     );
+    // "New business" onboarding is hidden in read-only mode (the scope
+    // pane omits its header button).
     expect(find.byKey(const Key('admin_operators_new_button')), findsNothing);
     expect(find.byKey(const Key('admin_operator_edit_button')), findsNothing);
     expect(
@@ -618,13 +443,10 @@ void main() {
       find.byKey(const Key('admin_location_remove_loc-seed-1')),
       findsNothing,
     );
-    expect(
-      find.byKey(const Key('admin_business_setup_tile_integrations')),
-      findsOneWidget,
-    );
   });
 
   testWidgets('add and then remove a non-primary location', (tester) async {
+    useWideWindow(tester);
     final bundle = seedBundle(
       operatorId: 'op-rem',
       primaryLocationId: 'loc-rem-primary',
@@ -642,6 +464,7 @@ void main() {
       ),
     );
     await pumpEventually(tester);
+    await selectBusiness(tester, operatorId: 'op-rem');
 
     // Add a second location through the dialog.
     final addButton = find.byKey(

@@ -1,10 +1,20 @@
-// Phase 11A.1 — Admin Operator/Location screen widget tests: LIST + SEARCH.
+// Phase 11A.1 — Admin Operator/Location screen widget tests: SCOPE TREE
+// + SEARCH.
 //
 // Bucket 5h of the 2026-05-20 test-suite tightening audit. Split out
 // of the ~2,131-line `admin_operator_location_screen_test.dart`
-// monolith. Covers operator-list rendering, search filtering, the
-// empty state, master/detail pane stacking, and the master/detail
-// tile-tap navigations (support logs, scope prompt, integrations).
+// monolith. Originally covered the flat operator-list, search, setup
+// tiles, and master/detail tile-tap navigations.
+//
+// Reconciled 2026-05-24 for the Business-accounts scope-pane rebuild:
+// the screen now presents the SAME left searchable scope tree as the AI
+// setup tabs (`AdminScopeTreePane`) + a right detail pane, so these
+// tests assert business selection through the scope tree
+// (`admin_setup_scope_business_*` / `admin_setup_scope_search`) and the
+// detail pane (`admin_operator_detail_*` / `admin_operators_detail_empty`)
+// instead of the removed flat list, search field, and drill-in setup
+// tiles. Tile-tap navigation to the per-business setup screens moved to
+// the always-on sidebar cluster (covered by `admin_shell_widget_test.dart`).
 //
 // Shared fixtures (`wrap`, `seedBundle`) and bounded pump helpers
 // (`pumpEventually`) live in `admin_operator_location_test_helpers.dart`
@@ -14,20 +24,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
-import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
-import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
-import 'package:forge_and_flow/admin/widgets/admin_business_accounts_back_button.dart';
-import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 
 import '_test_helpers/widget_pump_helpers.dart';
 import 'admin_operator_location_test_helpers.dart';
 
 void main() {
-  testWidgets('renders one row per seeded operator', (tester) async {
+  testWidgets('renders one scope-tree row per seeded operator', (tester) async {
+    // Wide window so the split layout renders both the left scope tree
+    // and the right detail pane (compact widths fold them into tabs).
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[
         seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
@@ -40,309 +52,112 @@ void main() {
     await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
-    expect(find.byKey(const Key('admin_operator_row_op-1')), findsOneWidget);
-    expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
+    // The shared scope tree renders one selectable business row per
+    // seeded operator (no flat operator list / "manage" rows anymore).
+    expect(
+      find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_setup_scope_business_op-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_setup_scope_business_op-2')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('admin_operator_row_op-1')), findsNothing);
+    expect(find.byKey(const Key('admin_operator_row_op-2')), findsNothing);
     expect(find.byKey(const Key('admin_operator_manage_op-1')), findsNothing);
     expect(find.byKey(const Key('admin_operator_manage_op-2')), findsNothing);
     expect(find.text('Click to manage'), findsNothing);
-    expect(
-      find.text(
-        'Start with the business, then move into setup, locations, team, access, audit, and data controls.',
-      ),
-      findsNothing,
-    );
+
+    // "New business" onboarding moved into the top of the scope pane and
+    // keeps its full-size affordance.
     final newBusinessSize = tester.getSize(
       find.byKey(const Key('admin_operators_new_button')),
     );
     expect(newBusinessSize.width, greaterThanOrEqualTo(168));
     expect(newBusinessSize.height, greaterThanOrEqualTo(50));
-    final profileCard = find.byKey(const Key('admin_operator_profile_card'));
+
+    // Before any business is picked the right pane shows the "Select a
+    // business" empty prompt, and the removed drill-in setup tiles /
+    // groups are gone.
     expect(
-      find.descendant(of: profileCard, matching: find.text('Account profile')),
+      find.byKey(const Key('admin_operators_detail_empty')),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('admin_operator_detail_op-1')), findsNothing);
+    expect(find.byKey(const Key('admin_business_setup_op-1')), findsNothing);
     expect(
-      find.byKey(const Key('admin_business_setup_tile_account_profile')),
+      find.byKey(const Key('admin_business_setup_group_operations')),
       findsNothing,
-    );
-    final setupCard = find.byKey(const Key('admin_business_setup_op-1'));
-    expect(
-      find.descendant(
-        of: setupCard,
-        matching: find.text('Selected business scope'),
-      ),
-      findsOneWidget,
-    );
-    for (final noisyLabel in <String>[
-      'Ready',
-      'Needs details',
-      'Review',
-      'Location required',
-      'Business default',
-      'Inherited',
-      'Effective: Business default',
-      'Editable',
-      'Set at this scope',
-    ]) {
-      expect(
-        find.descendant(of: setupCard, matching: find.text(noisyLabel)),
-        findsNothing,
-      );
-    }
-    final operationsGroup = find.byKey(
-      const Key('admin_business_setup_group_operations'),
-    );
-    expect(operationsGroup, findsOneWidget);
-    for (final label in <String>[
-      'Integrations',
-      'Covers and Wage Data Accuracy',
-      'Timing',
-    ]) {
-      expect(
-        find.descendant(of: operationsGroup, matching: find.text(label)),
-        findsOneWidget,
-      );
-    }
-    final peopleGroup = find.byKey(
-      const Key('admin_business_setup_group_people'),
-    );
-    expect(
-      find.descendant(
-        of: peopleGroup,
-        matching: find.text('People, access, and roles'),
-      ),
-      findsOneWidget,
-    );
-    final safetyGroup = find.byKey(
-      const Key('admin_business_setup_group_safety_support'),
-    );
-    expect(
-      find.descendant(
-        of: safetyGroup,
-        matching: find.text('Security, audit, and sessions'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: safetyGroup, matching: find.text('Support logs')),
-      findsOneWidget,
     );
     expect(
       find.byKey(const Key('admin_business_setup_tile_data_accuracy')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_business_setup_tile_polling_pricing')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_business_setup_tile_people_access_roles')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key('admin_business_setup_tile_security_audit_sessions'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_business_setup_tile_support_logs')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const Key('admin_business_setup_tile_integrations')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
-      find.byKey(const Key('admin_business_setup_tile_timing')),
-      findsOneWidget,
+      find.byKey(const Key('admin_business_setup_tile_support_logs')),
+      findsNothing,
     );
-    expect(find.text('Support workspace'), findsNothing);
-    // The selected operator's name shows in both the list row and the
-    // detail card; the unselected operator's name only in the list.
+
+    // Both business names are discoverable in the scope tree.
     expect(find.text('Alpha Cafe'), findsWidgets);
     expect(find.text('Beta Bistro'), findsWidgets);
   });
 
-  testWidgets('operator detail opens support logs for operator and location', (
+  testWidgets('selecting a scope-tree business shows it in the detail pane', (
     tester,
   ) async {
-    final supportLogRequests = <List<String?>>[];
+    // Wide window so the right detail pane is visible alongside the tree.
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[
-        seedBundle(
-          operatorId: 'op-support',
-          primaryLocationId: 'loc-support',
-          businessName: 'Support Cafe',
-        ),
+        seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
+        seedBundle(operatorId: 'op-2', businessName: 'Beta Bistro'),
       ],
     );
     await tester.pumpWidget(
-      wrap(
-        OperatorLocationAdminScreen(
-          gateway: gateway,
-          onOpenSupportLogs: (operatorId, locationId) {
-            supportLogRequests.add(<String?>[operatorId, locationId]);
-          },
-        ),
-      ),
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
 
-    final supportLogsTile = find.byKey(
-      const Key('admin_business_setup_tile_support_logs'),
+    // No business is auto-selected: the detail pane starts on the empty
+    // prompt (mirrors the AI tabs' "select a scope" behavior).
+    expect(
+      find.byKey(const Key('admin_operators_detail_empty')),
+      findsOneWidget,
     );
-    await tester.ensureVisible(supportLogsTile);
-    await pumpEventually(tester);
-    await tester.tap(supportLogsTile);
-    await pumpEventually(tester);
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-support',
-      scopeType: 'business',
-    );
-    expect(supportLogRequests, hasLength(1));
-    expect(supportLogRequests.single, <String?>['op-support', null]);
 
-    final locationRow = find.byKey(
-      const Key('admin_hierarchy_location_loc-support'),
+    final betaRow = find.byKey(const Key('admin_setup_scope_business_op-2'));
+    await tester.ensureVisible(betaRow);
+    await pumpEventually(tester);
+    await tester.tap(betaRow);
+    await pumpEventually(tester);
+
+    // The right detail pane now renders the picked business profile.
+    expect(
+      find.byKey(const Key('admin_operators_detail_empty')),
+      findsNothing,
     );
-    await tester.ensureVisible(locationRow);
-    await pumpEventually(tester);
-    await tester.tap(locationRow);
-    await pumpEventually(tester);
-    await tester.ensureVisible(supportLogsTile);
-    await pumpEventually(tester);
-    await tester.tap(supportLogsTile);
-    await pumpEventually(tester);
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-support',
-      scopeType: 'location',
-      locationId: 'loc-support',
+    expect(
+      find.byKey(const Key('admin_operator_detail_op-2')),
+      findsOneWidget,
     );
-    expect(supportLogRequests, hasLength(2));
-    expect(supportLogRequests.last, <String?>['op-support', 'loc-support']);
+    expect(find.byKey(const Key('admin_operator_profile_card')), findsOneWidget);
+    expect(find.text('Beta Bistro'), findsWidgets);
   });
 
-  testWidgets('setup tiles offer business, org-unit, and location scope', (
-    tester,
-  ) async {
-    final scopes = <AdminHierarchyScopeIntent>[];
-    final gateway = InMemoryOperatorLocationAdminGateway(
-      seed: <OperatorAdminBundle>[
-        seedBundle(
-          operatorId: 'op-workspace',
-          primaryLocationId: 'loc-workspace',
-          businessName: 'Workspace Cafe',
-        ),
-      ],
-    );
-    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
-      orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
-        'op-workspace': const <OrgUnitAdminNode>[
-          OrgUnitAdminNode(
-            orgUnitId: 'org-root',
-            name: 'Workspace root',
-            operatorId: 'op-workspace',
-          ),
-        ],
-      },
-      locationsByOperator: <String, List<HierarchyLocationLeaf>>{
-        'op-workspace': const <HierarchyLocationLeaf>[
-          HierarchyLocationLeaf(
-            locationId: 'loc-workspace',
-            name: 'HQ',
-            operatorId: 'op-workspace',
-            orgUnitId: 'org-root',
-          ),
-        ],
-      },
-    );
-    await tester.pumpWidget(
-      wrap(
-        OperatorLocationAdminScreen(
-          gateway: gateway,
-          hierarchyGateway: hierarchyGateway,
-          onOpenPeopleAccessRolesScope: scopes.add,
-        ),
-      ),
-    );
-    await pumpEventually(tester);
-
-    final peopleTile = find.byKey(
-      const Key('admin_business_setup_tile_people_access_roles'),
-    );
-    await tester.ensureVisible(peopleTile);
-    await pumpEventually(tester);
-    await tester.tap(peopleTile);
-    await pumpEventually(tester);
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-workspace',
-      scopeType: 'business',
-    );
-    expect(scopes, hasLength(1));
-    expect(scopes.single.operatorId, 'op-workspace');
-    expect(scopes.single.scopeType, AdminHierarchyScopeType.business);
-    expect(scopes.single.locationId, isNull);
-    expect(scopes.single.operatorName, 'Workspace Cafe');
-
-    final orgUnitRow = find.byKey(
-      const Key('admin_hierarchy_org_unit_org-root'),
-    );
-    await tester.ensureVisible(orgUnitRow);
-    await pumpEventually(tester);
-    await tester.tapAt(tester.getTopLeft(orgUnitRow) + const Offset(24, 24));
-    await pumpEventually(tester);
-
-    await tester.ensureVisible(peopleTile);
-    await pumpEventually(tester);
-    await tester.tap(peopleTile);
-    await pumpEventually(tester);
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-workspace',
-      scopeType: 'org_unit',
-      orgUnitId: 'org-root',
-    );
-    expect(scopes, hasLength(2));
-    expect(scopes.last.operatorId, 'op-workspace');
-    expect(scopes.last.scopeType, AdminHierarchyScopeType.orgUnit);
-    expect(scopes.last.orgUnitId, 'org-root');
-    expect(scopes.last.orgUnitName, 'Workspace root');
-
-    final locationRow = find.byKey(
-      const Key('admin_hierarchy_location_loc-workspace'),
-    );
-    await tester.ensureVisible(locationRow);
-    await pumpEventually(tester);
-    await tester.tap(locationRow);
-    await pumpEventually(tester);
-    await tester.ensureVisible(peopleTile);
-    await pumpEventually(tester);
-    await tester.tap(peopleTile);
-    await pumpEventually(tester);
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-workspace',
-      scopeType: 'location',
-      orgUnitId: 'org-root',
-      locationId: 'loc-workspace',
-    );
-    expect(scopes, hasLength(3));
-    expect(scopes.last.operatorId, 'op-workspace');
-    expect(scopes.last.scopeType, AdminHierarchyScopeType.location);
-    expect(scopes.last.locationId, 'loc-workspace');
-    expect(scopes.last.operatorName, 'Workspace Cafe');
-    expect(scopes.last.orgUnitId, 'org-root');
-    expect(scopes.last.orgUnitName, 'Workspace root');
-    expect(scopes.last.locationName, 'HQ');
-  });
-
-  testWidgets('search filters operators by operator and location text', (
-    tester,
-  ) async {
+  testWidgets('scope-tree search filters businesses by name', (tester) async {
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[
         seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
@@ -358,34 +173,61 @@ void main() {
     );
     await pumpEventually(tester);
 
-    await tester.enterText(
+    // Search lives in the shared scope tree now, not a dedicated
+    // operator-list search field.
+    expect(
       find.byKey(const Key('admin_operators_search_field')),
+      findsNothing,
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('admin_setup_scope_search')),
       'beta',
     );
     await pumpEventually(tester);
 
-    expect(find.byKey(const Key('admin_operator_row_op-1')), findsNothing);
-    expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_setup_scope_business_op-1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_setup_scope_business_op-2')),
+      findsOneWidget,
+    );
 
+    // The seeded locations are both named "HQ"; searching that name
+    // matches both businesses (the tree matches business/org-unit/
+    // location names).
     await tester.enterText(
-      find.byKey(const Key('admin_operators_search_field')),
-      'toronto',
+      find.byKey(const Key('admin_setup_scope_search')),
+      'hq',
     );
     await pumpEventually(tester);
 
-    expect(find.byKey(const Key('admin_operator_row_op-1')), findsOneWidget);
-    expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_setup_scope_business_op-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_setup_scope_business_op-2')),
+      findsOneWidget,
+    );
 
     await tester.enterText(
-      find.byKey(const Key('admin_operators_search_field')),
+      find.byKey(const Key('admin_setup_scope_search')),
       'zzzz',
     );
     await pumpEventually(tester);
 
-    expect(find.byKey(const Key('admin_operators_no_matches')), findsOneWidget);
+    // No business matches: the scope tree shows its empty-search card
+    // (the old `admin_operators_no_matches` list state is gone).
+    expect(find.byKey(const Key('admin_setup_scope_empty')), findsOneWidget);
+    expect(find.byKey(const Key('admin_operators_no_matches')), findsNothing);
   });
 
-  testWidgets('stacks master/detail panes on compact widths', (tester) async {
+  testWidgets('stacks scope/detail panes into tabs on compact widths', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(520, 720);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -404,9 +246,18 @@ void main() {
     );
     await pumpEventually(tester);
 
-    expect(find.byKey(const Key('admin_operators_list')), findsOneWidget);
+    // Compact widths fold the left scope tree + right detail pane into a
+    // two-tab layout instead of the side-by-side split.
     expect(
-      find.byKey(const Key('admin_operator_detail_op-compact')),
+      find.byKey(const Key('admin_operators_workspace_tabs')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_operators_workspace_split')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_setup_scope_business_op-compact')),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -424,122 +275,4 @@ void main() {
     expect(find.byKey(const Key('admin_operators_empty')), findsOneWidget);
     expect(find.text('No business accounts yet'), findsOneWidget);
   });
-
-  testWidgets('location vendor action is a manage integrations button', (
-    tester,
-  ) async {
-    final gateway = InMemoryOperatorLocationAdminGateway(
-      seed: <OperatorAdminBundle>[seedBundle()],
-    );
-    await tester.pumpWidget(
-      wrap(OperatorLocationAdminScreen(gateway: gateway)),
-    );
-    await pumpEventually(tester);
-
-    final locationRow = find.byKey(
-      const Key('admin_hierarchy_location_loc-seed-1'),
-    );
-    await tester.ensureVisible(locationRow);
-    await pumpEventually(tester);
-    await tester.tap(locationRow);
-    await pumpEventually(tester);
-
-    final integrationsTile = find.byKey(
-      const Key('admin_business_setup_tile_integrations'),
-    );
-    await tester.ensureVisible(integrationsTile);
-    await pumpEventually(tester);
-
-    expect(integrationsTile, findsOneWidget);
-    expect(find.text('Integrations'), findsOneWidget);
-
-    await tester.tap(integrationsTile);
-    await pumpEventually(tester);
-    await chooseScopePrompt(
-      tester,
-      operatorId: 'op-seed-1',
-      scopeType: 'location',
-      locationId: 'loc-seed-1',
-    );
-
-    expect(
-      find.byKey(const Key('admin_vendor_connections_screen')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets(
-    'business Integrations tile requires a location and then mounts live gateway',
-    (tester) async {
-      final gateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[
-          seedBundle(
-            operatorId: 'op-integrations',
-            primaryLocationId: 'loc-integrations',
-            businessName: 'Integrations Cafe',
-          ),
-        ],
-      );
-      await tester.pumpWidget(
-        wrap(
-          OperatorLocationAdminScreen(
-            gateway: gateway,
-            vendorConnectionsGateway: InMemoryVendorConnectionsGateway(),
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      final integrationsTile = find.byKey(
-        const Key('admin_business_setup_tile_integrations'),
-      );
-      await tester.ensureVisible(integrationsTile);
-      await pumpEventually(tester);
-      await tester.tap(integrationsTile);
-      await pumpEventually(tester);
-      await chooseScopePrompt(
-        tester,
-        operatorId: 'op-integrations',
-        scopeType: 'business',
-      );
-
-      expect(
-        find.byKey(const Key('admin_vendor_connections_location_required')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_hierarchy_scope_prompt')),
-        findsNothing,
-      );
-
-      await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
-      await pumpEventually(tester);
-
-      final locationRow = find.byKey(
-        const Key('admin_hierarchy_location_loc-integrations'),
-      );
-      await tester.ensureVisible(locationRow);
-      await pumpEventually(tester);
-      await tester.tap(locationRow);
-      await pumpEventually(tester);
-      await tester.ensureVisible(integrationsTile);
-      await pumpEventually(tester);
-      await tester.tap(integrationsTile);
-      await pumpEventually(tester);
-
-      expect(
-        find.byKey(const Key('admin_hierarchy_scope_prompt')),
-        findsNothing,
-      );
-
-      expect(
-        find.byKey(const Key('admin_vendor_connections_location_required')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('vendor_connections_section_pos')),
-        findsOneWidget,
-      );
-    },
-  );
 }

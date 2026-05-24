@@ -30,15 +30,14 @@ import 'package:forge_and_flow/domain/services/business_timing_profile_resolver.
 void main() {
   group('AdminBusinessTimingResolutionProjection', () {
     test('admin Timing dialog labels timezone as location-owned', () {
-      final operatorLocationSource = File(
-        'lib/admin/screens/operator_location_admin_screen.dart',
-      ).readAsStringSync();
+      // Reconciled 2026-05-24: the Business-accounts scope-pane rebuild
+      // removed the in-screen per-location Timing dialog from
+      // `operator_location_admin_screen.dart`; Timing is now reached
+      // through the always-on sidebar cluster's Timing setup screen, so
+      // the provenance labels live only in `admin_timing_setup_screen.dart`.
       final timingSetupSource = File(
         'lib/admin/screens/admin_timing_setup_screen.dart',
       ).readAsStringSync();
-      expect(operatorLocationSource, contains("label: 'Timezone source'"));
-      expect(operatorLocationSource, contains("value: 'Location timezone'"));
-      expect(operatorLocationSource, contains("label: 'Week-start source'"));
       expect(timingSetupSource, contains("label: 'Timezone source'"));
       expect(timingSetupSource, contains("value: 'Location timezone'"));
       expect(timingSetupSource, contains("label: 'Week-start source'"));

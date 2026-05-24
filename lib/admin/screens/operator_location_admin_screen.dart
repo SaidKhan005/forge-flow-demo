@@ -15,15 +15,6 @@
 
 import 'package:flutter/material.dart';
 
-// Fix #4 / S4 (G42): the synthetic candidate fabrication that
-// imported the raw timing domain models / resolver was deleted; the
-// REAL resolution is owned by
-// `admin_business_timing_resolution_projection.dart` (which runs the
-// ONE canonical `BusinessTimingProfileResolver`). Only the resolver's
-// exception type is referenced here, for the empty/invalid-chain
-// fallback copy.
-import '../../domain/services/business_timing_profile_resolver.dart'
-    show BusinessTimingProfileResolutionException;
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/iana_timezones.dart';
@@ -33,15 +24,10 @@ import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/admin_business_timing_resolution_gateway.dart';
-import '../services/admin_business_timing_resolution_projection.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
-import '../widgets/admin_hierarchy_scope_prompt.dart';
 import '../widgets/admin_responsive_layout.dart';
-// Phase 8.0 - vendor connections mount (per-location admin sub-route).
-// Append-only addition; the existing Edit / Remove / Make-primary
-// affordances stay untouched.
-import 'vendor_connections/vendor_connections_admin_mount.dart';
+import '../widgets/admin_scope_tree_pane.dart';
 
 const int _kLegacyRolloverHourDefault = 4;
 
@@ -131,6 +117,15 @@ class _OperatorLocationAdminScreenState
       const <AdminEmailConflictUsage>[];
   int _idempotencyCounter = 0;
 
+  // Left scope-pane state. The Business accounts screen now uses the
+  // SAME searchable business -> org unit -> location tree as the AI
+  // setup tabs (`AdminScopeTreePane`), so scope is presented one way
+  // across the admin console.
+  late Future<List<AdminScopeTree>> _scopeTreesFuture;
+  final TextEditingController _scopeSearchController = TextEditingController();
+  final Set<String> _expandedOperatorIds = <String>{};
+  String _scopeSearch = '';
+
   /// Mints a fresh idempotency key per user action so a retried POST
   /// or PATCH at the proxy collapses to one ledger row + one audit
   /// row in `admin_request_idempotency`. A new key is minted each
@@ -147,7 +142,26 @@ class _OperatorLocationAdminScreenState
   @override
   void initState() {
     super.initState();
+    _scopeTreesFuture = _loadScopeTrees();
+    _scopeSearchController.addListener(() {
+      setState(
+        () => _scopeSearch = _scopeSearchController.text.trim().toLowerCase(),
+      );
+    });
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _scopeSearchController.dispose();
+    super.dispose();
+  }
+
+  Future<List<AdminScopeTree>> _loadScopeTrees() {
+    return loadAdminScopeTrees(
+      operatorGateway: widget.gateway,
+      hierarchyGateway: widget.hierarchyGateway,
+    );
   }
 
   Future<void> _refresh() async {
@@ -162,15 +176,19 @@ class _OperatorLocationAdminScreenState
       setState(() {
         _bundles = bundles;
         _loading = false;
+        // Rebuild the left scope tree from the refreshed operator set so
+        // new / removed businesses and locations appear after a mutation.
+        _scopeTreesFuture = _loadScopeTrees();
+        // No auto-select: like the AI setup tabs, the right detail pane
+        // shows a "Select a business" prompt until the operator picks a
+        // node in the left scope tree. A previously-selected business is
+        // retained across refresh; it is cleared only if it disappeared.
         if (_selectedOperatorId != null &&
             bundles.every(
               (b) => b.operator.operatorId != _selectedOperatorId,
             )) {
           _selectedOperatorId = null;
         }
-        _selectedOperatorId ??= bundles.isEmpty
-            ? null
-            : bundles.first.operator.operatorId;
         selectedAfterRefresh = _selected;
         if (selectedAfterRefresh == null) {
           _selectedHierarchyScope = null;
@@ -181,7 +199,15 @@ class _OperatorLocationAdminScreenState
           );
         }
       });
-      _notifyOperatorScope(selectedAfterRefresh);
+      // Seed the shell's scope (sidebar cluster + top toggle + the
+      // scope other admin surfaces inherit on first open) with the
+      // selected business, or, when nothing is picked yet, the first
+      // business. This is shell-sync ONLY: the right detail pane stays
+      // on its "Select a business" prompt until the operator picks a
+      // node in the left scope tree.
+      _notifyOperatorScope(
+        selectedAfterRefresh ?? (bundles.isEmpty ? null : bundles.first),
+      );
     } on OperatorLocationAdminGatewayError catch (error) {
       if (!mounted) return;
       setState(() {
@@ -197,23 +223,40 @@ class _OperatorLocationAdminScreenState
     }
   }
 
-  void _selectOperator(String id) {
-    OperatorAdminBundle? selected;
-    setState(() {
-      _selectedOperatorId = id;
-      selected = _selected;
-      _selectedHierarchyScope = selected == null
-          ? null
-          : _businessHierarchyScope(selected!);
-    });
-    _notifyOperatorScope(selected);
-  }
-
   void _selectHierarchyScope(AdminHierarchyScopeIntent scope) {
     setState(() {
       _selectedHierarchyScope = scope;
       _actionError = null;
       _actionEmailConflicts = const <AdminEmailConflictUsage>[];
+    });
+  }
+
+  /// Handles a pick from the LEFT shared scope tree. Any node (business
+  /// / org unit / location) resolves to its owning business for the
+  /// right detail pane, drives the selected hierarchy scope, and (when
+  /// the owning business changes) notifies the shell through the SAME
+  /// `onSelectOperatorScope` path the screen already used on operator
+  /// switch, so the shell scope, sidebar cluster, and top toggle stay
+  /// in sync.
+  void _selectScopeFromTree(AdminHierarchyScopeIntent scope) {
+    final operatorChanged = _selectedOperatorId != scope.operatorId;
+    setState(() {
+      _selectedOperatorId = scope.operatorId;
+      _selectedHierarchyScope = scope;
+      _expandedOperatorIds.add(scope.operatorId);
+      _actionError = null;
+      _actionEmailConflicts = const <AdminEmailConflictUsage>[];
+    });
+    if (operatorChanged) {
+      _notifyOperatorScope(_selected);
+    }
+  }
+
+  void _toggleScopeExpanded(String operatorId) {
+    setState(() {
+      if (!_expandedOperatorIds.add(operatorId)) {
+        _expandedOperatorIds.remove(operatorId);
+      }
     });
   }
 
@@ -290,11 +333,7 @@ class _OperatorLocationAdminScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _BusinessAccountsHeader(
-              onNewBusiness: widget.editingEnabled
-                  ? _openOnboardingDialog
-                  : null,
-            ),
+            const _BusinessAccountsHeader(),
             const SizedBox(height: 14),
             if (!widget.editingEnabled) const _ReadOnlyBanner(),
             if (!widget.editingEnabled) const SizedBox(height: 12),
@@ -305,7 +344,15 @@ class _OperatorLocationAdminScreenState
                 emailConflicts: _actionEmailConflicts,
                 onShowConflict: _showEmailConflict,
               ),
-            Expanded(child: _buildBody()),
+            // The scope pane's search field + tree rows need a Material
+            // ancestor; this screen is a bare Container (no Scaffold), so
+            // provide a transparent Material for the whole body.
+            Expanded(
+              child: Material(
+                type: MaterialType.transparency,
+                child: _buildBody(),
+              ),
+            ),
           ],
         ),
       ),
@@ -313,26 +360,20 @@ class _OperatorLocationAdminScreenState
   }
 
   Widget _buildBody() {
-    if (_loading) {
-      return const Center(
-        key: Key('admin_operators_loading'),
-        child: SizedBox(
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: AppColors.sunsetDark,
-          ),
-        ),
-      );
-    }
     if (_loadError != null) {
       return _ErrorBanner(
         key: const Key('admin_operators_load_error'),
         message: _loadError!,
       );
     }
-    if (_bundles.isEmpty) {
+    if (!_loading && _bundles.isEmpty) {
+      // The scope pane (which hosts the "New business" header button) does
+      // not render until at least one business exists, so surface that
+      // onboarding affordance directly in the empty state. Otherwise the
+      // "Use New business..." copy below would be a dead end when no
+      // accounts have been created yet. `_buildNewBusinessButton` returns
+      // null in read-only mode, matching the scope-pane behavior.
+      final newBusinessButton = _buildNewBusinessButton();
       return Center(
         key: const Key('admin_operators_empty'),
         child: ConstrainedBox(
@@ -352,67 +393,180 @@ class _OperatorLocationAdminScreenState
                   'Use "New business" to add the account, primary location, and first admin user.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
+                if (newBusinessButton != null) ...[
+                  const SizedBox(height: 16),
+                  newBusinessButton,
+                ],
               ],
             ),
           ),
         ),
       );
     }
-    return AdminMasterDetailLayout(
-      masterWidth: 300,
-      compactMasterHeight: 240,
-      master: _OperatorList(
-        bundles: _bundles,
-        selectedOperatorId: _selectedOperatorId,
-        onSelect: _selectOperator,
+    return FutureBuilder<List<AdminScopeTree>>(
+      future: _scopeTreesFuture,
+      builder: (context, snapshot) {
+        final trees = snapshot.data ?? const <AdminScopeTree>[];
+        final loading =
+            _loading || snapshot.connectionState != ConnectionState.done;
+        final scopePane = AdminScopeTreePane(
+          trees: trees
+              .where((tree) => tree.matchesSearch(_scopeSearch))
+              .toList(growable: false),
+          searchController: _scopeSearchController,
+          selectedScope: _selectedHierarchyScope,
+          expandedOperatorIds: _expandedOperatorIds,
+          loading: loading,
+          onSelectScope: _selectScopeFromTree,
+          onToggleExpanded: _toggleScopeExpanded,
+          forceExpanded: _scopeSearch.isNotEmpty,
+          header: _buildNewBusinessButton(),
+        );
+        final detailPane = _buildDetailPane();
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 920;
+            if (compact) {
+              return DefaultTabController(
+                length: 2,
+                child: Column(
+                  key: const Key('admin_operators_workspace_tabs'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Material(
+                      color: AppColors.backgroundMid,
+                      child: const TabBar(
+                        labelColor: AppColors.textPrimary,
+                        unselectedLabelColor: AppColors.textMuted,
+                        indicatorColor: AppColors.sunsetDark,
+                        tabs: [
+                          Tab(text: 'Scope'),
+                          Tab(text: 'Business'),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: TabBarView(children: [scopePane, detailPane]),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return Row(
+              key: const Key('admin_operators_workspace_split'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 360, child: scopePane),
+                const VerticalDivider(width: 1),
+                Expanded(child: detailPane),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// "New business" onboarding affordance, relocated from the page
+  /// header into the top of the left scope pane so it stays reachable
+  /// after the master list became the shared scope tree. Returns null
+  /// in read-only mode so the button is absent (matching the prior
+  /// `_BusinessAccountsHeader` behavior).
+  Widget? _buildNewBusinessButton() {
+    if (!widget.editingEnabled) return null;
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        key: const Key('admin_operators_new_button'),
+        onPressed: _openOnboardingDialog,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.sunset,
+          foregroundColor: AppColors.backgroundSurface,
+          disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.45),
+          disabledForegroundColor: AppColors.backgroundSurface.withValues(
+            alpha: 0.78,
+          ),
+          minimumSize: const Size(168, 52),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
+          ),
+          textStyle: AppTextStyles.body14(
+            color: AppColors.backgroundSurface,
+          ).copyWith(fontWeight: FontWeight.w700),
+        ),
+        icon: const Icon(Icons.add, size: 18),
+        label: const Text('New business'),
       ),
-      detail: _selected == null
-          ? const SizedBox.shrink()
-          : _OperatorDetail(
-              bundle: _selected!,
-              hierarchyGateway: widget.hierarchyGateway,
-              vendorConnectionsGateway: widget.vendorConnectionsGateway,
-              timingResolutionGateway: widget.timingResolutionGateway,
-              actorUserId: widget.actorUserId,
-              idempotencyKeyFactory: _nextIdempotencyKey,
-              selectedHierarchyScope:
-                  _selectedHierarchyScope ??
-                  _businessHierarchyScope(_selected!),
-              onSelectHierarchyScope: _selectHierarchyScope,
-              onEditOperator: _openEditOperatorDialog,
-              onSuspend: _suspend,
-              onReactivate: _reactivate,
-              onAddLocation: _openAddLocationDialog,
-              onEditLocation: _openEditLocationDialog,
-              onRemoveLocation: _removeLocation,
-              onSetPrimary: _setPrimaryLocation,
-              onOpenSupportLogs: widget.onOpenSupportLogs,
-              onOpenSupportLogsScope: widget.onOpenSupportLogsScope,
-              onOpenDataAccuracy: widget.onOpenDataAccuracy,
-              onOpenDataAccuracyScope: widget.onOpenDataAccuracyScope,
-              onOpenPollingPricing: widget.onOpenPollingPricing,
-              onOpenPollingPricingScope: widget.onOpenPollingPricingScope,
-              onOpenIntegrationsScope: widget.onOpenIntegrationsScope,
-              onOpenTimingScope: widget.onOpenTimingScope,
-              onOpenSupportOperatorView: widget.onOpenSupportOperatorView,
-              onOpenTeam: widget.onOpenTeam,
-              onOpenAccess: widget.onOpenAccess,
-              onOpenPeopleAccessRolesScope: widget.onOpenPeopleAccessRolesScope,
-              onOpenAuditSupport: widget.onOpenAuditSupport,
-              onOpenSecurityAuditSessionsScope:
-                  widget.onOpenSecurityAuditSessionsScope,
-              selectedParentOrgUnitId:
-                  _selectedHierarchyScope?.scopeType ==
-                      AdminHierarchyScopeType.orgUnit
-                  ? _selectedHierarchyScope?.orgUnitId
-                  : widget.selectedParentOrgUnitId,
-              selectedParentOrgUnitLabel:
-                  _selectedHierarchyScope?.scopeType ==
-                      AdminHierarchyScopeType.orgUnit
-                  ? _selectedHierarchyScope?.orgUnitName
-                  : widget.selectedParentOrgUnitLabel,
-              editingEnabled: widget.editingEnabled,
+    );
+  }
+
+  /// Right detail pane: the selected business profile + location
+  /// hierarchy, or a "Select a business" empty prompt before any node
+  /// is picked (mirrors the AI tabs' `_FunctionPane` empty state).
+  Widget _buildDetailPane() {
+    final selected = _selected;
+    if (selected == null) {
+      return Container(
+        key: const Key('admin_operators_detail_pane'),
+        color: AppColors.backgroundDeep,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: AdminCard(
+              key: const Key('admin_operators_detail_empty'),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Business accounts',
+                    style: AppTextStyles.sectionTitle(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Select a business, org unit, or location to manage its profile, locations, and hierarchy.',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
             ),
+          ),
+        ),
+      );
+    }
+    return Container(
+      key: const Key('admin_operators_detail_pane'),
+      color: AppColors.backgroundDeep,
+      child: _OperatorDetail(
+        bundle: selected,
+        hierarchyGateway: widget.hierarchyGateway,
+        actorUserId: widget.actorUserId,
+        idempotencyKeyFactory: _nextIdempotencyKey,
+        selectedHierarchyScope:
+            _selectedHierarchyScope ?? _businessHierarchyScope(selected),
+        onSelectHierarchyScope: _selectHierarchyScope,
+        onEditOperator: _openEditOperatorDialog,
+        onSuspend: _suspend,
+        onReactivate: _reactivate,
+        onAddLocation: _openAddLocationDialog,
+        onEditLocation: _openEditLocationDialog,
+        onRemoveLocation: _removeLocation,
+        onSetPrimary: _setPrimaryLocation,
+        selectedParentOrgUnitId:
+            _selectedHierarchyScope?.scopeType ==
+                AdminHierarchyScopeType.orgUnit
+            ? _selectedHierarchyScope?.orgUnitId
+            : widget.selectedParentOrgUnitId,
+        selectedParentOrgUnitLabel:
+            _selectedHierarchyScope?.scopeType ==
+                AdminHierarchyScopeType.orgUnit
+            ? _selectedHierarchyScope?.orgUnitName
+            : widget.selectedParentOrgUnitLabel,
+        editingEnabled: widget.editingEnabled,
+      ),
     );
   }
 
@@ -570,402 +724,16 @@ class _OperatorLocationAdminScreenState
 }
 
 class _BusinessAccountsHeader extends StatelessWidget {
-  const _BusinessAccountsHeader({required this.onNewBusiness});
-
-  final VoidCallback? onNewBusiness;
+  const _BusinessAccountsHeader();
 
   @override
   Widget build(BuildContext context) {
-    final title = Text(
+    // The "New business" onboarding action now lives at the top of the
+    // left scope pane (see `_buildNewBusinessButton`); this header is
+    // the page title only.
+    return Text(
       'Business accounts',
       style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
-    );
-    final action = onNewBusiness == null
-        ? null
-        : FilledButton.icon(
-            key: const Key('admin_operators_new_button'),
-            onPressed: onNewBusiness,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.sunset,
-              foregroundColor: AppColors.backgroundSurface,
-              disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.45),
-              disabledForegroundColor: AppColors.backgroundSurface.withValues(
-                alpha: 0.78,
-              ),
-              minimumSize: const Size(168, 52),
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
-              ),
-              textStyle: AppTextStyles.body14(
-                color: AppColors.backgroundSurface,
-              ).copyWith(fontWeight: FontWeight.w700),
-            ),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('New business'),
-          );
-    if (action == null) return title;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 560) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [title, const SizedBox(height: 10), action],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(child: title),
-            const SizedBox(width: 12),
-            action,
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _OperatorList extends StatefulWidget {
-  const _OperatorList({
-    required this.bundles,
-    required this.selectedOperatorId,
-    required this.onSelect,
-  });
-
-  final List<OperatorAdminBundle> bundles;
-  final String? selectedOperatorId;
-  final ValueChanged<String> onSelect;
-
-  @override
-  State<_OperatorList> createState() => _OperatorListState();
-}
-
-class _OperatorListState extends State<_OperatorList> {
-  final _search = TextEditingController();
-  late List<_SearchableOperatorBundle> _searchIndex;
-  _BusinessAccountFilter _accountFilter = _BusinessAccountFilter.all;
-
-  @override
-  void initState() {
-    super.initState();
-    _searchIndex = _buildSearchIndex(widget.bundles);
-  }
-
-  @override
-  void didUpdateWidget(covariant _OperatorList oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.bundles != widget.bundles) {
-      _searchIndex = _buildSearchIndex(widget.bundles);
-    }
-  }
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
-  List<_SearchableOperatorBundle> _buildSearchIndex(
-    List<OperatorAdminBundle> bundles,
-  ) {
-    return <_SearchableOperatorBundle>[
-      for (final bundle in bundles) _SearchableOperatorBundle(bundle),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final query = _search.text.trim().toLowerCase();
-    final filtered = _searchIndex
-        .where(
-          (entry) =>
-              entry.matches(query) &&
-              _matchesAccountFilter(entry.bundle, _accountFilter),
-        )
-        .map((entry) => entry.bundle)
-        .toList(growable: false);
-
-    return Container(
-      key: const Key('admin_operators_list'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      key: const Key('admin_operators_search_field'),
-                      controller: _search,
-                      onChanged: (_) => setState(() {}),
-                      style: AppTextStyles.body14(color: AppColors.textPrimary),
-                      decoration: InputDecoration(
-                        hintText: 'Search business accounts',
-                        hintStyle: AppTextStyles.body13(
-                          color: AppColors.textMuted,
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          size: 18,
-                          color: AppColors.textMuted,
-                        ),
-                        suffixIcon: query.isEmpty
-                            ? null
-                            : IconButton(
-                                key: const Key('admin_operators_search_clear'),
-                                tooltip: 'Clear search',
-                                icon: const Icon(Icons.close, size: 16),
-                                color: AppColors.textMuted,
-                                onPressed: () {
-                                  _search.clear();
-                                  setState(() {});
-                                },
-                              ),
-                        isDense: true,
-                        filled: true,
-                        fillColor: AppColors.backgroundSurface,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 10,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          borderSide: const BorderSide(
-                            color: AppColors.borderSubtle,
-                            width: 1,
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          borderSide: const BorderSide(
-                            color: AppColors.borderSubtle,
-                            width: 1,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          borderSide: const BorderSide(
-                            color: AppColors.sunset,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: 'Filter business accounts',
-                    child: PopupMenuButton<_BusinessAccountFilter>(
-                      key: const Key('admin_operators_filter_button'),
-                      tooltip: 'Filter business accounts',
-                      initialValue: _accountFilter,
-                      onSelected: (value) =>
-                          setState(() => _accountFilter = value),
-                      itemBuilder: (context) =>
-                          <PopupMenuEntry<_BusinessAccountFilter>>[
-                            for (final value in _BusinessAccountFilter.values)
-                              PopupMenuItem<_BusinessAccountFilter>(
-                                value: value,
-                                child: Text(value.label),
-                              ),
-                          ],
-                      child: Container(
-                        height: 44,
-                        width: 44,
-                        decoration: BoxDecoration(
-                          color: _accountFilter == _BusinessAccountFilter.all
-                              ? AppColors.backgroundSurface
-                              : AppColors.sunset.withValues(alpha: 0.10),
-                          border: Border.all(
-                            color: _accountFilter == _BusinessAccountFilter.all
-                                ? AppColors.borderSubtle
-                                : AppColors.sunset,
-                            width: 1,
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(
-                          Icons.filter_list,
-                          size: 18,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      key: const Key('admin_operators_no_matches'),
-                      child: Text(
-                        'No business accounts match',
-                        style: AppTextStyles.body13(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) {
-                        final bundle = filtered[index];
-                        final selected =
-                            bundle.operator.operatorId ==
-                            widget.selectedOperatorId;
-                        return _OperatorTile(
-                          key: Key(
-                            'admin_operator_row_${bundle.operator.operatorId}',
-                          ),
-                          bundle: bundle,
-                          selected: selected,
-                          onSelect: () =>
-                              widget.onSelect(bundle.operator.operatorId),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static bool _matchesAccountFilter(
-    OperatorAdminBundle bundle,
-    _BusinessAccountFilter filter,
-  ) {
-    switch (filter) {
-      case _BusinessAccountFilter.all:
-        return true;
-      case _BusinessAccountFilter.active:
-        return !bundle.operator.isSuspended;
-      case _BusinessAccountFilter.suspended:
-        return bundle.operator.isSuspended;
-      case _BusinessAccountFilter.missingPrimary:
-        return bundle.primaryLocation == null;
-      case _BusinessAccountFilter.setupNeedsReview:
-        return bundle.primaryLocation == null || bundle.locations.isEmpty;
-    }
-  }
-}
-
-enum _BusinessAccountFilter {
-  all,
-  active,
-  suspended,
-  missingPrimary,
-  setupNeedsReview;
-
-  String get label {
-    switch (this) {
-      case _BusinessAccountFilter.all:
-        return 'All accounts';
-      case _BusinessAccountFilter.active:
-        return 'Active';
-      case _BusinessAccountFilter.suspended:
-        return 'Suspended';
-      case _BusinessAccountFilter.missingPrimary:
-        return 'Missing primary location';
-      case _BusinessAccountFilter.setupNeedsReview:
-        return 'Setup needs review';
-    }
-  }
-}
-
-class _SearchableOperatorBundle {
-  _SearchableOperatorBundle(this.bundle)
-    : searchableText = _buildSearchableText(bundle);
-
-  final OperatorAdminBundle bundle;
-  final String searchableText;
-
-  bool matches(String query) => query.isEmpty || searchableText.contains(query);
-
-  static String _buildSearchableText(OperatorAdminBundle bundle) {
-    final operator = bundle.operator;
-    return <String>[
-      operator.businessName,
-      operator.ownerEmail,
-      operator.subscriptionTier,
-      operator.preferredCurrency,
-      for (final location in bundle.locations) location.name,
-      for (final location in bundle.locations) location.timezone,
-    ].join(' ').toLowerCase();
-  }
-}
-
-class _OperatorTile extends StatelessWidget {
-  const _OperatorTile({
-    super.key,
-    required this.bundle,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final OperatorAdminBundle bundle;
-  final bool selected;
-  final VoidCallback onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final operator = bundle.operator;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Material(
-        color: selected
-            ? AppColors.sunset.withValues(alpha: 0.09)
-            : AppColors.backgroundSurface,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: onSelect,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: selected ? AppColors.sunset : AppColors.borderSubtle,
-                width: selected ? 1.4 : 1,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  size: 18,
-                  color: selected ? AppColors.sunsetDark : AppColors.textMuted,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    operator.businessName,
-                    style: AppTextStyles.sectionTitle(
-                      color: AppColors.textPrimary,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -974,8 +742,6 @@ class _OperatorDetail extends StatelessWidget {
   const _OperatorDetail({
     required this.bundle,
     required this.hierarchyGateway,
-    required this.vendorConnectionsGateway,
-    this.timingResolutionGateway,
     required this.actorUserId,
     required this.idempotencyKeyFactory,
     required this.selectedHierarchyScope,
@@ -987,20 +753,6 @@ class _OperatorDetail extends StatelessWidget {
     required this.onEditLocation,
     required this.onRemoveLocation,
     required this.onSetPrimary,
-    required this.onOpenSupportLogs,
-    required this.onOpenSupportLogsScope,
-    required this.onOpenDataAccuracy,
-    required this.onOpenDataAccuracyScope,
-    required this.onOpenPollingPricing,
-    required this.onOpenPollingPricingScope,
-    required this.onOpenIntegrationsScope,
-    required this.onOpenTimingScope,
-    required this.onOpenSupportOperatorView,
-    required this.onOpenTeam,
-    required this.onOpenAccess,
-    required this.onOpenPeopleAccessRolesScope,
-    required this.onOpenAuditSupport,
-    required this.onOpenSecurityAuditSessionsScope,
     required this.selectedParentOrgUnitId,
     this.selectedParentOrgUnitLabel,
     required this.editingEnabled,
@@ -1008,8 +760,6 @@ class _OperatorDetail extends StatelessWidget {
 
   final OperatorAdminBundle bundle;
   final RolesHierarchySessionsAdminGateway? hierarchyGateway;
-  final VendorConnectionsGateway? vendorConnectionsGateway;
-  final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
   final String actorUserId;
   final String Function() idempotencyKeyFactory;
   final AdminHierarchyScopeIntent selectedHierarchyScope;
@@ -1021,22 +771,6 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<LocationAdminRecord> onEditLocation;
   final ValueChanged<LocationAdminRecord> onRemoveLocation;
   final void Function(OperatorAdminBundle, LocationAdminRecord) onSetPrimary;
-  final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenSupportLogsScope;
-  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracyScope;
-  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenPollingPricingScope;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenIntegrationsScope;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenTimingScope;
-  final ValueChanged<AdminOperatorLocationScopeIntent>?
-  onOpenSupportOperatorView;
-  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenTeam;
-  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAccess;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenPeopleAccessRolesScope;
-  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenAuditSupport;
-  final ValueChanged<AdminHierarchyScopeIntent>?
-  onOpenSecurityAuditSessionsScope;
   final String? selectedParentOrgUnitId;
   final String? selectedParentOrgUnitLabel;
   final bool editingEnabled;
@@ -1048,24 +782,10 @@ class _OperatorDetail extends StatelessWidget {
         parentOrgUnitId.isNotEmpty;
   }
 
-  LocationAdminRecord? get _selectedLocationForScope {
-    final locationId = selectedHierarchyScope.locationId;
-    if (locationId == null) return null;
-    for (final location in bundle.locations) {
-      if (location.locationId == locationId) return location;
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final operator = bundle.operator;
     final canAddLocation = _canAddLocation;
-    final selectedLocation = _selectedLocationForScope;
-    final timingLocation =
-        selectedLocation ??
-        bundle.primaryLocation ??
-        (bundle.locations.isEmpty ? null : bundle.locations.first);
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1164,305 +884,9 @@ class _OperatorDetail extends StatelessWidget {
             onSetPrimary: (location) => onSetPrimary(bundle, location),
             editingEnabled: editingEnabled,
           ),
-          const SizedBox(height: 12),
-          _BusinessSetupCard(
-            bundle: bundle,
-            selectedScope: selectedHierarchyScope,
-            onSelectScope: onSelectHierarchyScope,
-            onOpenDataAccuracy:
-                onOpenDataAccuracyScope ??
-                (onOpenDataAccuracy == null
-                    ? null
-                    : (scope) =>
-                          onOpenDataAccuracy!(scope.toOperatorLocationScope())),
-            onOpenPollingPricing:
-                onOpenPollingPricingScope ??
-                (onOpenPollingPricing == null
-                    ? null
-                    : (scope) => onOpenPollingPricing!(
-                        scope.toOperatorLocationScope(),
-                      )),
-            onOpenPeopleAccessRoles:
-                onOpenPeopleAccessRolesScope ??
-                (onOpenAccess == null
-                    ? onOpenTeam == null
-                          ? null
-                          : (scope) =>
-                                onOpenTeam!(scope.toOperatorLocationScope())
-                    : (scope) =>
-                          onOpenAccess!(scope.toOperatorLocationScope())),
-            onOpenSecurityAuditSessions:
-                onOpenSecurityAuditSessionsScope ??
-                (onOpenAuditSupport == null
-                    ? null
-                    : (scope) =>
-                          onOpenAuditSupport!(scope.toOperatorLocationScope())),
-            onOpenSupportLogs:
-                onOpenSupportLogsScope ??
-                (onOpenSupportLogs == null
-                    ? null
-                    : (scope) => onOpenSupportLogs!(
-                        scope.operatorId,
-                        scope.locationId,
-                      )),
-            onOpenIntegrations:
-                onOpenIntegrationsScope ??
-                (scope) {
-                  final scopedLocation = _locationForScope(bundle, scope);
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      settings: const RouteSettings(
-                        name: '/vendor-connections',
-                      ),
-                      builder: (_) => VendorConnectionsAdminMount(
-                        operatorId: operator.operatorId,
-                        locationId: scopedLocation?.locationId,
-                        locationName: scopedLocation?.name,
-                        selectedScope: scope,
-                        gateway: vendorConnectionsGateway,
-                        canMutate: editingEnabled,
-                        onBackToBusinessAccounts: () =>
-                            Navigator.of(context).maybePop(),
-                      ),
-                    ),
-                  );
-                },
-            onOpenTiming:
-                onOpenTimingScope ??
-                (scope) {
-                  final scopedTimingLocation =
-                      _locationForScope(bundle, scope) ?? timingLocation;
-                  showDialog<void>(
-                    context: context,
-                    builder: (_) => _AdminLocationTimingDialog(
-                      operatorName: operator.businessName,
-                      selectedScope: scope,
-                      timingLocation: scopedTimingLocation,
-                      editingEnabled: editingEnabled,
-                      timingResolutionGateway: timingResolutionGateway,
-                    ),
-                  );
-                },
-          ),
         ],
       ),
     );
-  }
-
-  LocationAdminRecord? _locationForScope(
-    OperatorAdminBundle bundle,
-    AdminHierarchyScopeIntent scope,
-  ) {
-    final locationId = scope.locationId;
-    if (locationId == null) return null;
-    for (final location in bundle.locations) {
-      if (location.locationId == locationId) return location;
-    }
-    return null;
-  }
-}
-
-class _BusinessSetupCard extends StatelessWidget {
-  const _BusinessSetupCard({
-    required this.bundle,
-    required this.selectedScope,
-    required this.onSelectScope,
-    required this.onOpenPeopleAccessRoles,
-    required this.onOpenSecurityAuditSessions,
-    required this.onOpenDataAccuracy,
-    required this.onOpenPollingPricing,
-    required this.onOpenSupportLogs,
-    required this.onOpenIntegrations,
-    required this.onOpenTiming,
-  });
-
-  final OperatorAdminBundle bundle;
-  final AdminHierarchyScopeIntent selectedScope;
-  final ValueChanged<AdminHierarchyScopeIntent> onSelectScope;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenPeopleAccessRoles;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenSecurityAuditSessions;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenDataAccuracy;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenPollingPricing;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenSupportLogs;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenIntegrations;
-  final ValueChanged<AdminHierarchyScopeIntent>? onOpenTiming;
-
-  VoidCallback? _scopedTileHandler(
-    ValueChanged<AdminHierarchyScopeIntent>? onOpen, {
-    AdminHierarchyScopeIntent? overrideScope,
-  }) {
-    if (onOpen == null) return null;
-    return () {
-      final scope = overrideScope ?? selectedScope;
-      onSelectScope(scope);
-      onOpen(scope);
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final operator = bundle.operator;
-    const operationsTone = AppColors.peacockDark;
-    const peopleTone = AppColors.ocean;
-    const safetyTone = AppColors.sunsetDark;
-    return AdminCard(
-      key: Key('admin_business_setup_${operator.operatorId}'),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.checklist_rtl_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Business setup',
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              Text(
-                '${bundle.locations.length} location'
-                '${bundle.locations.length == 1 ? '' : 's'}',
-                style: AppTextStyles.mono11(color: AppColors.textMuted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Container(
-            key: const Key('admin_business_setup_scope_summary'),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppColors.peacock.withValues(alpha: 0.08),
-              border: Border.all(
-                color: AppColors.peacock.withValues(alpha: 0.28),
-                width: 1,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Selected ${selectedScope.scopeType.label.toLowerCase()} scope',
-                  style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  selectedScope.displayLabel,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.body14(color: AppColors.textPrimary),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _SetupTileGroup(
-            groupKey: const Key('admin_business_setup_group_operations'),
-            label: 'Operations',
-            tone: operationsTone,
-            children: [
-              _SetupTile(
-                tileKey: const Key('admin_business_setup_tile_integrations'),
-                label: 'Integrations',
-                scopeLabel: _scopeLabel(locationRequired: true),
-                icon: Icons.link_outlined,
-                tone: operationsTone,
-                onPressed: _scopedTileHandler(onOpenIntegrations),
-              ),
-              _SetupTile(
-                tileKey: const Key('admin_business_setup_tile_data_accuracy'),
-                label: 'Covers and Wage Data Accuracy',
-                scopeLabel: _scopeLabel(),
-                icon: Icons.fact_check_outlined,
-                tone: operationsTone,
-                onPressed: _scopedTileHandler(onOpenDataAccuracy),
-              ),
-              _SetupTile(
-                tileKey: const Key('admin_business_setup_tile_polling_pricing'),
-                label: 'Polling setup',
-                scopeLabel: _scopeLabel(),
-                icon: Icons.payments_outlined,
-                tone: operationsTone,
-                onPressed: _scopedTileHandler(onOpenPollingPricing),
-              ),
-              _SetupTile(
-                tileKey: const Key('admin_business_setup_tile_timing'),
-                label: 'Timing',
-                scopeLabel: _scopeLabel(),
-                icon: Icons.schedule_outlined,
-                tone: operationsTone,
-                onPressed: _scopedTileHandler(onOpenTiming),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SetupTileGroup(
-            groupKey: const Key('admin_business_setup_group_people'),
-            label: 'People',
-            tone: peopleTone,
-            children: [
-              _SetupTile(
-                tileKey: const Key(
-                  'admin_business_setup_tile_people_access_roles',
-                ),
-                label: 'People, access, and roles',
-                scopeLabel: _scopeLabel(),
-                icon: Icons.people_alt_outlined,
-                tone: peopleTone,
-                onPressed: _scopedTileHandler(onOpenPeopleAccessRoles),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SetupTileGroup(
-            groupKey: const Key('admin_business_setup_group_safety_support'),
-            label: 'Safety/Support',
-            tone: safetyTone,
-            children: [
-              _SetupTile(
-                tileKey: const Key(
-                  'admin_business_setup_tile_security_audit_sessions',
-                ),
-                label: 'Security, audit, and sessions',
-                scopeLabel: _scopeLabel(),
-                icon: Icons.security_outlined,
-                tone: safetyTone,
-                onPressed: _scopedTileHandler(onOpenSecurityAuditSessions),
-              ),
-              _SetupTile(
-                tileKey: const Key('admin_business_setup_tile_support_logs'),
-                label: 'Support logs',
-                scopeLabel: _scopeLabel(),
-                icon: Icons.support_agent_outlined,
-                tone: safetyTone,
-                onPressed: _scopedTileHandler(onOpenSupportLogs),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _scopeLabel({bool locationRequired = false}) {
-    if (locationRequired && !selectedScope.isLocationScope) {
-      return 'Select a location';
-    }
-    switch (selectedScope.scopeType) {
-      case AdminHierarchyScopeType.business:
-        return 'Business scope';
-      case AdminHierarchyScopeType.orgUnit:
-        return 'Org unit scope';
-      case AdminHierarchyScopeType.location:
-        return 'Location scope';
-    }
   }
 }
 
@@ -3035,134 +2459,6 @@ class _HierarchyScopeRow extends StatelessWidget {
   }
 }
 
-class _SetupTileGroup extends StatelessWidget {
-  const _SetupTileGroup({
-    required this.groupKey,
-    required this.label,
-    required this.tone,
-    required this.children,
-  });
-
-  final Key groupKey;
-  final String label;
-  final Color tone;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      key: groupKey,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppTextStyles.uiLabel(color: tone)),
-        const SizedBox(height: 8),
-        Wrap(spacing: 10, runSpacing: 10, children: children),
-      ],
-    );
-  }
-}
-
-class _SetupTile extends StatelessWidget {
-  const _SetupTile({
-    required this.tileKey,
-    required this.label,
-    required this.scopeLabel,
-    required this.icon,
-    required this.tone,
-    this.onPressed,
-  });
-
-  final Key tileKey;
-  final String label;
-  final String scopeLabel;
-  final IconData icon;
-  final Color tone;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-      key: tileKey,
-      child: Semantics(
-        button: true,
-        enabled: enabled,
-        label: '$label, $scopeLabel',
-        child: SizedBox(
-          width: 232,
-          height: 120,
-          child: Material(
-            color: enabled
-                ? tone.withValues(alpha: 0.1)
-                : AppColors.backgroundMid.withValues(alpha: 0.65),
-            shape: RoundedRectangleBorder(
-              side: BorderSide(
-                color: enabled
-                    ? tone.withValues(alpha: 0.5)
-                    : AppColors.borderSubtle,
-                width: enabled ? 1.2 : 1,
-              ),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onPressed,
-              hoverColor: tone.withValues(alpha: 0.08),
-              splashColor: tone.withValues(alpha: 0.12),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          icon,
-                          size: 18,
-                          color: enabled ? tone : AppColors.textMuted,
-                        ),
-                        const Spacer(),
-                        Icon(
-                          Icons.chevron_right,
-                          size: 18,
-                          color: enabled ? tone : AppColors.textMuted,
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Text(
-                      label,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.body14(
-                        color: enabled
-                            ? AppColors.textPrimary
-                            : AppColors.textMuted,
-                      ).copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      scopeLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.body12(
-                        color: enabled
-                            ? AppColors.textSecondary
-                            : AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _OperatorActionButton extends StatelessWidget {
   const _OperatorActionButton({
     required this.buttonKey,
@@ -3200,320 +2496,6 @@ class _OperatorActionButton extends StatelessWidget {
 // Retained for the older per-location row tests until the hierarchy IA
 // fully replaces those expectations.
 // ignore: unused_element
-class _LocationRow extends StatelessWidget {
-  const _LocationRow({
-    required this.operatorName,
-    required this.location,
-    required this.muted,
-    required this.isPrimary,
-    required this.onEdit,
-    required this.onRemove,
-    required this.onMakePrimary,
-    required this.onOpenSupportLogs,
-    required this.onOpenDataAccuracy,
-    required this.onOpenPollingPricing,
-    required this.onOpenSupportOperatorView,
-    required this.onOpenTeam,
-    required this.onOpenAccess,
-    required this.onOpenAuditSupport,
-    required this.editingEnabled,
-  });
-
-  final String operatorName;
-  final LocationAdminRecord location;
-  final bool muted;
-  final bool isPrimary;
-  final VoidCallback onEdit;
-  final VoidCallback onRemove;
-  final VoidCallback onMakePrimary;
-  final VoidCallback? onOpenSupportLogs;
-  final VoidCallback? onOpenDataAccuracy;
-  final VoidCallback? onOpenPollingPricing;
-  final VoidCallback? onOpenSupportOperatorView;
-  final VoidCallback? onOpenTeam;
-  final VoidCallback? onOpenAccess;
-  final VoidCallback? onOpenAuditSupport;
-  final bool editingEnabled;
-
-  @override
-  Widget build(BuildContext context) {
-    final rolloverHour = location.businessDayRolloverHour ?? 0;
-    final summary = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            Text(
-              location.name,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (isPrimary)
-              _StatusPill(label: 'primary location', color: AppColors.peacock),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          '${location.timezone} - legacy rollover ${rolloverHour.toString().padLeft(2, '0')}:00',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
-    );
-    final actions = _LocationActionWrap(
-      operatorName: operatorName,
-      location: location,
-      isPrimary: isPrimary,
-      onEdit: onEdit,
-      onRemove: onRemove,
-      onMakePrimary: onMakePrimary,
-      onOpenSupportLogs: onOpenSupportLogs,
-      onOpenDataAccuracy: onOpenDataAccuracy,
-      onOpenPollingPricing: onOpenPollingPricing,
-      onOpenSupportOperatorView: onOpenSupportOperatorView,
-      onOpenTeam: onOpenTeam,
-      onOpenAccess: onOpenAccess,
-      onOpenAuditSupport: onOpenAuditSupport,
-      editingEnabled: editingEnabled,
-    );
-
-    return Opacity(
-      key: Key('admin_location_suspended_fade_${location.locationId}'),
-      opacity: muted ? 0.52 : 1,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth < 620) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [summary, const SizedBox(height: 10), actions],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: summary),
-                const SizedBox(width: 18),
-                Flexible(child: actions),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _LocationActionWrap extends StatelessWidget {
-  const _LocationActionWrap({
-    required this.operatorName,
-    required this.location,
-    required this.isPrimary,
-    required this.onEdit,
-    required this.onRemove,
-    required this.onMakePrimary,
-    required this.onOpenSupportLogs,
-    required this.onOpenDataAccuracy,
-    required this.onOpenPollingPricing,
-    required this.onOpenSupportOperatorView,
-    required this.onOpenTeam,
-    required this.onOpenAccess,
-    required this.onOpenAuditSupport,
-    required this.editingEnabled,
-  });
-
-  final String operatorName;
-  final LocationAdminRecord location;
-  final bool isPrimary;
-  final VoidCallback onEdit;
-  final VoidCallback onRemove;
-  final VoidCallback onMakePrimary;
-  final VoidCallback? onOpenSupportLogs;
-  final VoidCallback? onOpenDataAccuracy;
-  final VoidCallback? onOpenPollingPricing;
-  final VoidCallback? onOpenSupportOperatorView;
-  final VoidCallback? onOpenTeam;
-  final VoidCallback? onOpenAccess;
-  final VoidCallback? onOpenAuditSupport;
-  final bool editingEnabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        _ActionRowWrap(
-          children: [
-            _LocationActionButton(
-              buttonKey: Key(
-                'admin_location_support_view_${location.locationId}',
-              ),
-              label: 'Support view',
-              icon: Icons.support_agent_outlined,
-              tooltip: 'Open the support workspace for this location scope',
-              minWidth: 132,
-              onPressed: onOpenSupportOperatorView,
-            ),
-            _LocationActionButton(
-              buttonKey: Key('admin_location_team_${location.locationId}'),
-              label: 'People',
-              icon: Icons.people_alt_outlined,
-              tooltip: 'Open people for this location scope',
-              minWidth: 104,
-              onPressed: onOpenTeam,
-            ),
-            _LocationActionButton(
-              buttonKey: Key('admin_location_access_${location.locationId}'),
-              label: 'Access',
-              icon: Icons.account_tree_outlined,
-              tooltip: 'Open access and hierarchy for this location scope',
-              minWidth: 108,
-              onPressed: onOpenAccess,
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        _ActionRowWrap(
-          children: [
-            if (editingEnabled)
-              _LocationActionButton(
-                buttonKey: Key('admin_location_edit_${location.locationId}'),
-                label: 'Edit',
-                icon: Icons.edit_outlined,
-                tooltip: 'Edit location',
-                minWidth: 90,
-                onPressed: onEdit,
-              ),
-            if (editingEnabled && !isPrimary)
-              _LocationActionButton(
-                buttonKey: Key(
-                  'admin_location_make_primary_${location.locationId}',
-                ),
-                label: 'Make primary',
-                icon: Icons.star_outline,
-                tooltip: 'Make primary location',
-                minWidth: 132,
-                onPressed: onMakePrimary,
-              ),
-            if (editingEnabled)
-              _LocationActionButton(
-                buttonKey: Key('admin_location_remove_${location.locationId}'),
-                label: 'Remove',
-                icon: Icons.delete_outline,
-                tooltip: 'Remove location',
-                minWidth: 108,
-                destructive: true,
-                onPressed: isPrimary ? null : onRemove,
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        _ActionRowWrap(
-          children: [
-            _LocationActionButton(
-              buttonKey: Key('admin_location_timing_${location.locationId}'),
-              label: 'Timing',
-              icon: Icons.schedule_outlined,
-              tooltip: 'View timing for this location',
-              minWidth: 108,
-              onPressed: () {
-                showDialog<void>(
-                  context: context,
-                  builder: (_) => _AdminLocationTimingDialog(
-                    operatorName: operatorName,
-                    selectedScope: AdminHierarchyScopeIntent.location(
-                      operatorId: location.operatorId,
-                      locationId: location.locationId,
-                      operatorName: operatorName,
-                      orgUnitId: location.parentOrgUnitId,
-                      locationName: location.name,
-                    ),
-                    timingLocation: location,
-                    editingEnabled: editingEnabled,
-                  ),
-                );
-              },
-            ),
-            _LocationActionButton(
-              buttonKey: Key(
-                'admin_location_data_accuracy_${location.locationId}',
-              ),
-              label: 'Covers and wage',
-              icon: Icons.fact_check_outlined,
-              tooltip: 'View covers and wage data for this location',
-              minWidth: 136,
-              onPressed: onOpenDataAccuracy,
-            ),
-            _LocationActionButton(
-              buttonKey: Key(
-                'admin_location_polling_pricing_${location.locationId}',
-              ),
-              label: 'Polling setup',
-              icon: Icons.payments_outlined,
-              tooltip: 'View polling setup for this location',
-              minWidth: 148,
-              onPressed: onOpenPollingPricing,
-            ),
-            _LocationActionButton(
-              buttonKey: Key(
-                'admin_location_audit_support_${location.locationId}',
-              ),
-              label: 'Security',
-              icon: Icons.security_outlined,
-              tooltip: 'Open security and audit for this location scope',
-              minWidth: 112,
-              onPressed: onOpenAuditSupport,
-            ),
-            _LocationActionButton(
-              buttonKey: Key(
-                'admin_location_support_logs_${location.locationId}',
-              ),
-              label: 'View logs',
-              icon: Icons.bug_report_outlined,
-              tooltip: 'View logs for this location',
-              minWidth: 116,
-              onPressed: onOpenSupportLogs,
-            ),
-            Builder(
-              builder: (subContext) => _LocationActionButton(
-                buttonKey: Key(
-                  'admin_location_vendor_connections_${location.locationId}',
-                ),
-                label: 'Integrations',
-                icon: Icons.link,
-                tooltip: 'Manage integrations',
-                minWidth: 128,
-                emphasized: true,
-                onPressed: () {
-                  Navigator.of(subContext).push(
-                    MaterialPageRoute<void>(
-                      settings: const RouteSettings(
-                        name: '/vendor-connections',
-                      ),
-                      builder: (_) => VendorConnectionsAdminMount(
-                        operatorId: location.operatorId,
-                        locationId: location.locationId,
-                        locationName: location.name,
-                        canMutate: editingEnabled,
-                        onBackToBusinessAccounts: () =>
-                            Navigator.of(subContext).maybePop(),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
 class _ActionRowWrap extends StatelessWidget {
   const _ActionRowWrap({required this.children});
 
@@ -3527,471 +2509,6 @@ class _ActionRowWrap extends StatelessWidget {
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: children,
-    );
-  }
-}
-
-/// Fix #4 / S4 (G42): shared seeded in-memory fallback so demo /
-/// share-preview / widget tests render without the Cloud Run admin
-/// proxy. Empty by default → the dialog shows its honest "no timing
-/// profile yet" state instead of fabricating values. Production
-/// passes a real [HttpAdminBusinessTimingResolutionGateway].
-final AdminBusinessTimingResolutionGateway
-_fallbackAdminTimingResolutionGateway =
-    InMemoryAdminBusinessTimingResolutionGateway();
-
-class _AdminLocationTimingDialog extends StatelessWidget {
-  const _AdminLocationTimingDialog({
-    required this.operatorName,
-    required this.selectedScope,
-    required this.timingLocation,
-    required this.editingEnabled,
-    this.timingResolutionGateway,
-  });
-
-  final String operatorName;
-  final AdminHierarchyScopeIntent selectedScope;
-  final LocationAdminRecord? timingLocation;
-  final bool editingEnabled;
-
-  /// Fix #4 / S4 (G42): READ-ONLY S2 admin cross-tenant business-
-  /// timing resolution gateway. Null falls back to the seeded
-  /// in-memory demo gateway. This UI reads timing only; server-side
-  /// super admin repair routes exist for profile writes.
-  final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
-
-  @override
-  Widget build(BuildContext context) {
-    final bannerScope = _timingBannerScope(selectedScope);
-    final scopeLabel = selectedScope.isLocationScope && timingLocation != null
-        ? '$operatorName / ${timingLocation!.name}'
-        : selectedScope.displayLabel;
-    final gateway =
-        timingResolutionGateway ?? _fallbackAdminTimingResolutionGateway;
-    return AlertDialog(
-      key: const Key('admin_location_timing_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Timing',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              AdminHierarchyScopeBanner(
-                scope: bannerScope,
-                surfaceName: 'timing',
-                onChangeScope: () {},
-              ),
-              const SizedBox(height: 10),
-              _TimingDialogRow(label: 'Scope', value: scopeLabel),
-              // Fix #4 / S4 (G42): the synthetic `_AdminTiming
-              // Resolution.forScope` candidate fabrication, the
-              // `_defaultAdminTimingServicePeriods` hardcoded set, and
-              // the `_rolloverToLocalTime` integer-column path are
-              // deleted. The values below are the REAL resolved
-              // `EffectiveBusinessTimingProfile` — the canonical S2
-              // admin candidate chain run through the ONE
-              // `BusinessTimingProfileResolver`, with provenance from
-              // the resolver's `resolvedScope` (NOT a scope flag).
-              if (timingLocation == null)
-                Text(
-                  'Timing cannot resolve without a selected location. Add a location with an IANA timezone before reviewing effective timing.',
-                  key: const Key('admin_timing_unavailable_copy'),
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                )
-              else
-                _AdminLocationTimingResolvedBody(
-                  operatorId: selectedScope.operatorId,
-                  locationId: timingLocation!.locationId,
-                  gateway: gateway,
-                ),
-              const SizedBox(height: 12),
-              Text(
-                editingEnabled
-                    ? 'Override controls are staged for audited support use, '
-                          'but this dialog has no backend write path. No timing '
-                          'change was written.'
-                    : 'Read-only support view. Timing overrides require an '
-                          'audited admin write path before this dialog can '
-                          'change anything.',
-                key: const Key('admin_location_timing_safe_copy'),
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              if (editingEnabled) ...[
-                const SizedBox(height: 12),
-                TextField(
-                  key: const Key('admin_location_timing_audit_reason'),
-                  enabled: false,
-                  decoration: InputDecoration(
-                    labelText: 'Audit reason',
-                    labelStyle: AppTextStyles.uiLabel(
-                      color: AppColors.textMuted,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(
-                        color: AppColors.borderSubtle,
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        if (editingEnabled)
-          OutlinedButton.icon(
-            key: const Key('admin_location_timing_save_disabled'),
-            onPressed: null,
-            icon: const Icon(Icons.save_outlined, size: 15),
-            label: const Text('Save override'),
-          ),
-        TextButton(
-          key: const Key('admin_location_timing_close'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Fix #4 / S4 (G42): read-only banner scope intent for the timing
-/// dialog. This is purely the banner's "operator owns timing /
-/// read-only" chrome and is independent of the (now real) resolved
-/// values — it only mirrors the selected scope, so it is preserved
-/// verbatim from the deleted synthetic resolver. This UI still reads
-/// timing only; server-side super admin repair routes exist for
-/// profile writes.
-AdminHierarchyScopeIntent _timingBannerScope(AdminHierarchyScopeIntent scope) {
-  switch (scope.scopeType) {
-    case AdminHierarchyScopeType.business:
-      return AdminHierarchyScopeIntent.business(
-        operatorId: scope.operatorId,
-        operatorName: scope.operatorName,
-        valueState: AdminHierarchyScopeValueState.setAtScope,
-        effectiveValueLabel: 'Business timing default',
-        allowedActionsLabel: 'Read-only until write route exists',
-      );
-    case AdminHierarchyScopeType.orgUnit:
-      return AdminHierarchyScopeIntent.orgUnit(
-        operatorId: scope.operatorId,
-        orgUnitId: scope.orgUnitId!,
-        operatorName: scope.operatorName,
-        orgUnitName: scope.orgUnitName,
-        hierarchyPath: scope.hierarchyPath,
-        valueState: AdminHierarchyScopeValueState.inheritedFromBusiness,
-        inheritedFromLabel: 'business',
-        effectiveValueLabel: 'Inherited timing',
-        allowedActionsLabel: 'Read-only until write route exists',
-      );
-    case AdminHierarchyScopeType.location:
-      return AdminHierarchyScopeIntent.location(
-        operatorId: scope.operatorId,
-        locationId: scope.locationId!,
-        operatorName: scope.operatorName,
-        orgUnitId: scope.orgUnitId,
-        orgUnitName: scope.orgUnitName,
-        locationName: scope.locationName,
-        hierarchyPath: scope.hierarchyPath,
-        valueState: AdminHierarchyScopeValueState.locationOnly,
-        effectiveValueLabel: 'Location timezone and day start',
-        allowedActionsLabel: 'Read-only until write route exists',
-      );
-  }
-}
-
-/// Fix #4 / S4 (G42): resolves the REAL effective business-timing
-/// profile via the READ-ONLY S2 admin gateway → canonical resolver →
-/// real per-field provenance (from the resolver's `resolvedScope`,
-/// NOT a scope flag). Replaces the deleted synthetic
-/// `_AdminTimingResolution.forScope` candidate fabrication.
-class _AdminLocationTimingResolvedBody extends StatelessWidget {
-  const _AdminLocationTimingResolvedBody({
-    required this.operatorId,
-    required this.locationId,
-    required this.gateway,
-  });
-
-  final String operatorId;
-  final String locationId;
-  final AdminBusinessTimingResolutionGateway gateway;
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<AdminBusinessTimingResolution>(
-      future: gateway.resolve(operatorId: operatorId, locationId: locationId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Padding(
-            key: Key('admin_timing_resolution_loading'),
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: LinearProgressIndicator(minHeight: 2),
-          );
-        }
-        if (snapshot.hasError) {
-          return Text(
-            'Effective timing could not load. The operator owns these '
-            'values; try again after the operator has saved a timing '
-            'profile.',
-            key: const Key('admin_timing_unavailable_copy'),
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          );
-        }
-        final resolution = snapshot.data!;
-        if (resolution.candidates.isEmpty) {
-          return Text(
-            'No business timing profile has been saved by the operator '
-            'yet. Effective timezone, business day, and service periods '
-            'will appear here once the operator configures them.',
-            key: const Key('admin_timing_unavailable_copy'),
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          );
-        }
-        final AdminEffectiveTimingProjection projection;
-        try {
-          projection = AdminBusinessTimingResolutionProjection.project(
-            resolution,
-          );
-        } on BusinessTimingProfileResolutionException {
-          return Text(
-            'Effective timing could not load. The operator owns these '
-            'values; try again after the operator has saved a timing '
-            'profile.',
-            key: const Key('admin_timing_unavailable_copy'),
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          );
-        }
-        final effective = projection.effective;
-        final sourceLabel = projection.provenance.detailLabel;
-        final timezoneValue = resolution.ianaTimezone?.trim().isNotEmpty == true
-            ? resolution.ianaTimezone!.trim()
-            : effective.businessTimezone;
-        final periods = effective.servicePeriodDefinitions.toList()
-          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-        return Column(
-          key: const Key('admin_timing_resolved_fields'),
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            _TimingDialogRow(
-              label: 'Effective from',
-              value: projection.effectiveDateLabel,
-            ),
-            _TimingDialogRow(label: 'Effective timezone', value: timezoneValue),
-            const _TimingDialogRow(
-              label: 'Timezone source',
-              value: 'Location timezone',
-            ),
-            _TimingDialogRow(
-              label: 'Business day starts',
-              value: effective.businessDayStartLocalTime,
-            ),
-            _TimingDialogRow(label: 'Day-start source', value: sourceLabel),
-            _TimingDialogRow(
-              label: 'Week starts',
-              value: AdminBusinessTimingResolutionProjection.weekdayLabel(
-                effective.weekStartDay,
-              ),
-            ),
-            _TimingDialogRow(label: 'Week-start source', value: sourceLabel),
-            // Per-Daypart V1 Slice 1.5 / Gap 31: the "Shift close
-            // authority" row stays removed (operator decision
-            // 2026-05-15 — close-authority is auto-derived per shift).
-            // The projection seeds a default ShiftCloseAuthority for
-            // the resolver only; it is never displayed.
-            const SizedBox(height: 12),
-            Container(
-              key: const Key('admin_timing_service_periods_panel'),
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              decoration: BoxDecoration(
-                color: AppColors.cardGlow,
-                border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Effective service periods',
-                    style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                  ),
-                  const SizedBox(height: 8),
-                  for (final period in periods)
-                    _TimingPeriodLine(
-                      name: period.label,
-                      range:
-                          '${period.startLocalTime} - ${period.endLocalTime}',
-                      source: sourceLabel,
-                      daysLabel:
-                          AdminBusinessTimingResolutionProjection.daysLabel(
-                            period.applicableDays,
-                          ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _TimingDialogRow extends StatelessWidget {
-  const _TimingDialogRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TimingPeriodLine extends StatelessWidget {
-  const _TimingPeriodLine({
-    required this.name,
-    required this.range,
-    required this.source,
-    this.daysLabel,
-  });
-
-  final String name;
-  final String range;
-  final String source;
-
-  /// G45 / Gap 28: plain-English day restriction (e.g. "Mon, Tue"),
-  /// or null when the period runs every day (the common case).
-  final String? daysLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  name,
-                  style: AppTextStyles.body13(color: AppColors.textPrimary),
-                ),
-                if (daysLabel != null)
-                  Text(
-                    daysLabel!,
-                    style: AppTextStyles.mono8(color: AppColors.textMuted),
-                  ),
-              ],
-            ),
-          ),
-          Text(
-            range,
-            style: AppTextStyles.mono11(color: AppColors.textPrimary),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              source,
-              textAlign: TextAlign.right,
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LocationActionButton extends StatelessWidget {
-  const _LocationActionButton({
-    required this.buttonKey,
-    required this.label,
-    required this.icon,
-    required this.tooltip,
-    required this.minWidth,
-    required this.onPressed,
-    this.emphasized = false,
-    this.destructive = false,
-  });
-
-  final Key buttonKey;
-  final String label;
-  final IconData icon;
-  final String tooltip;
-  final double minWidth;
-  final VoidCallback? onPressed;
-  final bool emphasized;
-  final bool destructive;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    final activeColor = destructive
-        ? AppColors.negative
-        : emphasized
-        ? AppColors.sunsetDark
-        : AppColors.textPrimary;
-    final borderColor = enabled
-        ? (destructive
-              ? AppColors.negative
-              : emphasized
-              ? AppColors.sunset
-              : AppColors.borderSubtle)
-        : AppColors.borderSubtle;
-
-    // Tooltip is hover-only mouse helper; excluding from the semantic
-    // tree keeps the inner OutlinedButton.icon's `label` Text as the
-    // sole semantic leaf for each location action button. Walkthrough
-    // automation (and screen readers) then find buttons by their
-    // visible label ("Support view", "People", "Access", ...) without
-    // the tooltip message overwriting the button's accessible name.
-    // Filed gap: `Support-FU-admin-walkthrough` (Phase 2 walkthrough).
-    return Tooltip(
-      message: tooltip,
-      excludeFromSemantics: true,
-      child: OutlinedButton.icon(
-        key: buttonKey,
-        onPressed: onPressed,
-        style: AdminButtonStyles.secondary(
-          foregroundColor: activeColor,
-          borderColor: borderColor,
-          minWidth: minWidth,
-          emphasized: emphasized,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        ),
-        icon: Icon(icon, size: 15),
-        label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
-      ),
     );
   }
 }
