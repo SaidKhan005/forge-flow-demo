@@ -9,6 +9,18 @@
 // location operations, the non-admin auth-gate forbidden-card path,
 // and the admin-shell scope override + `ff_support` read-only render.
 //
+// 2026-05-24 update: the Business accounts screen now presents scope
+// the SAME way as the AI setup tabs — a shared searchable business ->
+// org unit -> location tree (`AdminScopeTreePane`) as the LEFT pane,
+// with the business profile + location hierarchy as the RIGHT detail.
+// The redundant drill-in setup tiles (Operations / People /
+// Safety-Support) and the per-location drill-in buttons (Support view
+// / People / Access / Timing) were removed because the sidebar now
+// owns that navigation; the lifecycle buttons (Edit / Make primary /
+// Remove) stay. Tests select a business in the left tree before
+// interacting with the detail, and assert the removed affordances are
+// gone while lifecycle + "New business" stay reachable.
+//
 // Shared fixtures (`wrap`, `seedBundle`) and bounded pump helpers
 // (`pumpEventually`) live in `admin_operator_location_test_helpers.dart`
 // and `_test_helpers/widget_pump_helpers.dart`, respectively, so each
@@ -26,14 +38,41 @@ import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admi
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
+import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
 
 import '_test_helpers/widget_pump_helpers.dart';
 import 'admin_operator_location_test_helpers.dart';
 
 void main() {
+  /// Forces the wide split layout (scope pane + detail side-by-side)
+  /// so a test can see both panes at once instead of the compact
+  /// 2-tab ("Scope" / "Business") layout used below 920px.
+  void useWideSurface(WidgetTester tester) {
+    tester.view.physicalSize = const Size(1440, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  }
+
+  /// Taps the business node in the shared left scope tree, which
+  /// selects the owning business for the right detail pane.
+  Future<void> selectBusinessScope(
+    WidgetTester tester,
+    String operatorId,
+  ) async {
+    final businessRow = find.byKey(
+      Key('admin_setup_scope_business_$operatorId'),
+    );
+    await tester.ensureVisible(businessRow);
+    await pumpEventually(tester);
+    await tester.tap(businessRow);
+    await pumpEventually(tester);
+  }
+
   testWidgets('operator AI plan selection is read-only while coming soon', (
     tester,
   ) async {
+    useWideSurface(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle()],
     );
@@ -41,6 +80,8 @@ void main() {
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
+
+    await selectBusinessScope(tester, 'op-seed-1');
 
     expect(find.text('Forge & Flow AI plan'), findsOneWidget);
     final detailRow = tester.widget<AdminDetailRow>(
@@ -71,9 +112,97 @@ void main() {
     expect(planField.onChanged, isNull);
   });
 
-  testWidgets('add location requires a selected hierarchy org unit', (
+  testWidgets(
+    'Business accounts uses the shared scope tree and a select-a-business '
+    'prompt before a node is picked',
+    (tester) async {
+      useWideSurface(tester);
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[
+          seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
+          seedBundle(operatorId: 'op-2', businessName: 'Beta Bistro'),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(OperatorLocationAdminScreen(gateway: gateway)),
+      );
+      await pumpEventually(tester);
+
+      // Left pane is the SAME shared scope tree as the AI setup tabs.
+      expect(
+        find.byKey(const Key('admin_setup_workspace_scope_pane')),
+        findsOneWidget,
+      );
+      expect(find.byType(AdminScopeTreePane), findsOneWidget);
+      expect(find.text('Scope'), findsWidgets);
+      expect(
+        find.byKey(const Key('admin_setup_scope_business_op-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_setup_scope_business_op-2')),
+        findsOneWidget,
+      );
+      // The old flat operator list / tile / search are gone.
+      expect(find.byKey(const Key('admin_operators_list')), findsNothing);
+      expect(find.byKey(const Key('admin_operator_row_op-1')), findsNothing);
+      expect(
+        find.byKey(const Key('admin_operators_search_field')),
+        findsNothing,
+      );
+
+      // Before a business is picked the detail pane shows the prompt.
+      expect(
+        find.byKey(const Key('admin_operators_detail_empty')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_operator_profile_card')),
+        findsNothing,
+      );
+
+      // Picking a business reveals its detail.
+      await selectBusinessScope(tester, 'op-1');
+      expect(
+        find.byKey(const Key('admin_operators_detail_empty')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_operator_detail_op-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_operator_profile_card')),
+        findsOneWidget,
+      );
+
+      // The redundant drill-in setup tiles (now in the sidebar) are gone.
+      for (final removedTile in <String>[
+        'admin_business_setup_op-1',
+        'admin_business_setup_group_operations',
+        'admin_business_setup_group_people',
+        'admin_business_setup_group_safety_support',
+        'admin_business_setup_tile_integrations',
+        'admin_business_setup_tile_data_accuracy',
+        'admin_business_setup_tile_polling_pricing',
+        'admin_business_setup_tile_timing',
+        'admin_business_setup_tile_people_access_roles',
+        'admin_business_setup_tile_security_audit_sessions',
+        'admin_business_setup_tile_support_logs',
+      ]) {
+        expect(
+          find.byKey(Key(removedTile)),
+          findsNothing,
+          reason: '$removedTile should be removed (now owned by the sidebar)',
+        );
+      }
+    },
+  );
+
+  testWidgets('New business onboarding stays reachable from the scope pane', (
     tester,
   ) async {
+    useWideSurface(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle()],
     );
@@ -81,6 +210,39 @@ void main() {
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
     await pumpEventually(tester);
+
+    final newButton = find.byKey(const Key('admin_operators_new_button'));
+    expect(newButton, findsOneWidget);
+    // It lives inside the left scope pane now, above the search field.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('admin_setup_workspace_scope_pane')),
+        matching: newButton,
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(newButton);
+    await pumpEventually(tester);
+    expect(
+      find.byKey(const Key('admin_onboard_operator_dialog')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('add location requires a selected hierarchy org unit', (
+    tester,
+  ) async {
+    useWideSurface(tester);
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await pumpEventually(tester);
+
+    await selectBusinessScope(tester, 'op-seed-1');
 
     final addButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_operator_add_location_button')),
@@ -92,9 +254,131 @@ void main() {
     );
   });
 
+  testWidgets(
+    'location hierarchy keeps lifecycle controls and drops drill-in buttons',
+    (tester) async {
+      useWideSurface(tester);
+      final created = DateTime.utc(2026, 1, 1);
+      final bundle = OperatorAdminBundle(
+        operator: OperatorAdminRecord(
+          operatorId: 'op-seed-1',
+          businessName: 'Seed Cafe',
+          ownerEmail: 'owner@seed.test',
+          subscriptionTier: 'launch',
+          preferredCurrency: 'CAD',
+          primaryLocationId: 'loc-primary',
+          suspendedAt: null,
+          createdAt: created,
+          updatedAt: created,
+        ),
+        locations: <LocationAdminRecord>[
+          LocationAdminRecord(
+            locationId: 'loc-primary',
+            operatorId: 'op-seed-1',
+            parentOrgUnitId: 'org-root',
+            name: 'HQ',
+            address: '',
+            timezone: 'America/Toronto',
+            businessDayRolloverHour: 4,
+            createdAt: created,
+            updatedAt: created,
+          ),
+          LocationAdminRecord(
+            locationId: 'loc-west',
+            operatorId: 'op-seed-1',
+            parentOrgUnitId: 'org-root',
+            name: 'West Coast',
+            address: '',
+            timezone: 'America/Vancouver',
+            businessDayRolloverHour: 4,
+            createdAt: created,
+            updatedAt: created,
+          ),
+        ],
+      );
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[bundle],
+      );
+      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-seed-1': const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'Demo Diner Co.',
+              operatorId: 'op-seed-1',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-seed-1': const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: 'loc-primary',
+              name: 'HQ',
+              operatorId: 'op-seed-1',
+              orgUnitId: 'org-root',
+            ),
+            HierarchyLocationLeaf(
+              locationId: 'loc-west',
+              name: 'West Coast',
+              operatorId: 'op-seed-1',
+              orgUnitId: 'org-root',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            hierarchyGateway: hierarchyGateway,
+            actorUserId: 'demo-super-admin',
+            idempotencyKeyFactory: () => 'idem-lifecycle-keep',
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await selectBusinessScope(tester, 'op-seed-1');
+
+      // Lifecycle controls remain on the non-primary location row.
+      expect(
+        find.byKey(const Key('admin_location_edit_loc-west')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_location_make_primary_loc-west')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_location_remove_loc-west')),
+        findsOneWidget,
+      );
+
+      // The drill-in per-location buttons were removed (sidebar owns them).
+      for (final removed in <String>[
+        'admin_location_support_view_loc-west',
+        'admin_location_team_loc-west',
+        'admin_location_access_loc-west',
+        'admin_location_timing_loc-west',
+        'admin_location_data_accuracy_loc-west',
+        'admin_location_polling_pricing_loc-west',
+        'admin_location_audit_support_loc-west',
+        'admin_location_support_logs_loc-west',
+        'admin_location_vendor_connections_loc-west',
+      ]) {
+        expect(
+          find.byKey(Key(removed)),
+          findsNothing,
+          reason: '$removed drill-in should be removed',
+        );
+      }
+    },
+  );
+
   testWidgets('business hierarchy manager creates a child org unit', (
     tester,
   ) async {
+    useWideSurface(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle()],
     );
@@ -130,6 +414,8 @@ void main() {
       ),
     );
     await pumpEventually(tester);
+
+    await selectBusinessScope(tester, 'op-seed-1');
 
     final addChild = find.byKey(
       const Key('admin_hierarchy_org_unit_add_child_org-root'),
@@ -171,6 +457,7 @@ void main() {
   testWidgets('business hierarchy manager moves a location with a reason', (
     tester,
   ) async {
+    useWideSurface(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle()],
     );
@@ -213,6 +500,8 @@ void main() {
     );
     await pumpEventually(tester);
 
+    await selectBusinessScope(tester, 'op-seed-1');
+
     final moveButton = find.byKey(const Key('admin_location_move_loc-seed-1'));
     await tester.ensureVisible(moveButton);
     await pumpEventually(tester);
@@ -247,6 +536,7 @@ void main() {
   testWidgets('business hierarchy manager moves an org unit with a reason', (
     tester,
   ) async {
+    useWideSurface(tester);
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[seedBundle()],
     );
@@ -301,6 +591,8 @@ void main() {
     );
     await pumpEventually(tester);
 
+    await selectBusinessScope(tester, 'op-seed-1');
+
     final rootMoveButton = tester.widget<IconButton>(
       find.byKey(const Key('admin_hierarchy_org_unit_move_org-root')),
     );
@@ -342,6 +634,7 @@ void main() {
   testWidgets(
     'business hierarchy manager suspends reactivates and deletes org units',
     (tester) async {
+      useWideSurface(tester);
       final gateway = InMemoryOperatorLocationAdminGateway(
         seed: <OperatorAdminBundle>[seedBundle()],
       );
@@ -390,6 +683,8 @@ void main() {
         ),
       );
       await pumpEventually(tester);
+
+      await selectBusinessScope(tester, 'op-seed-1');
 
       final rootSuspend = tester.widget<IconButton>(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_org-root')),
@@ -497,6 +792,7 @@ void main() {
   testWidgets(
     'business hierarchy manager suspends reactivates and deletes locations',
     (tester) async {
+      useWideSurface(tester);
       final created = DateTime.utc(2026, 1, 1);
       final bundle = OperatorAdminBundle(
         operator: OperatorAdminRecord(
@@ -578,6 +874,8 @@ void main() {
         ),
       );
       await pumpEventually(tester);
+
+      await selectBusinessScope(tester, 'op-seed-1');
 
       final primaryDelete = tester.widget<IconButton>(
         find.byKey(const Key('admin_location_remove_loc-primary')),
@@ -701,6 +999,7 @@ void main() {
   testWidgets(
     'admin services scope overrides the default gateway in the shell',
     (tester) async {
+      useWideSurface(tester);
       final overrideGateway = InMemoryOperatorLocationAdminGateway(
         seed: <OperatorAdminBundle>[
           seedBundle(operatorId: 'op-override', businessName: 'Override Co'),
@@ -725,8 +1024,10 @@ void main() {
       await pumpEventually(tester);
 
       expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+      // The overridden gateway's business shows as a node in the shared
+      // scope tree (the old flat operator-row key is gone).
       expect(
-        find.byKey(const Key('admin_operator_row_op-override')),
+        find.byKey(const Key('admin_setup_scope_business_op-override')),
         findsOneWidget,
       );
     },
@@ -735,6 +1036,7 @@ void main() {
   testWidgets('admin shell with ff_support renders operators read-only', (
     tester,
   ) async {
+    useWideSurface(tester);
     final source = DemoAdminAuthSource(
       initial: const AdminAuthAuthenticated(
         AdminAuthSession(
@@ -768,6 +1070,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const Key('admin_operators_new_button')), findsNothing);
+    // The business profile edit button only appears after a business is
+    // picked; in read-only mode it is absent regardless.
     expect(find.byKey(const Key('admin_operator_edit_button')), findsNothing);
   });
 }
