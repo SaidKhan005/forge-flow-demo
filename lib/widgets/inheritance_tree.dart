@@ -27,6 +27,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/models/inheritance_tree_node.dart';
+import '../theme/scope_icons.dart';
 import '../theme/app_theme.dart';
 
 /// Builds a widget rendered to the right of the node's label. Use this
@@ -251,22 +252,16 @@ class _InheritanceTreeNodeRow extends StatelessWidget {
     InheritanceTreeScopeKind kind,
     Map<String, Object?> metadata,
   ) {
-    if (kind == InheritanceTreeScopeKind.location) {
-      return Icons.storefront_outlined;
-    }
-    if (kind == InheritanceTreeScopeKind.business) {
-      return Icons.apartment;
-    }
-    // org_unit — read the unit_type metadata if present, otherwise
-    // fall back to the generic hierarchy icon.
+    // Canonical hierarchy-scope glyphs live in lib/theme/scope_icons.dart.
     final unitType = metadata['unit_type'];
-    return switch (unitType) {
-      'brand' => Icons.sell_outlined,
-      'region' => Icons.public,
-      'district' => Icons.map_outlined,
-      'location_group' => Icons.layers_outlined,
-      _ => Icons.account_tree_outlined,
-    };
+    return scopeIcon(
+      kind: switch (kind) {
+        InheritanceTreeScopeKind.business => ScopeEntityKind.business,
+        InheritanceTreeScopeKind.orgUnit => ScopeEntityKind.orgUnit,
+        InheritanceTreeScopeKind.location => ScopeEntityKind.location,
+      },
+      unitType: unitType is String ? unitType : null,
+    );
   }
 
   static String _scopeKindLabel(InheritanceTreeNode node) {

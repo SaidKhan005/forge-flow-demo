@@ -99,15 +99,13 @@ Do not re-open stale findings unless the repo regresses:
   `202605230900_phase_slice_e_admin_hierarchy_keys.sql`, an additive seed of
   five DORMANT `admin.hierarchy.*` permission-key catalog rows (granted to
   `super_admin` + `ff_support`) for a later "Business accounts" admin
-  hierarchy-mutation gate; no consumer wires them yet. The B10.1
-  vendor-applicability location-scope follow-up then advances the shared
-  migration cutoff to
-  `202605240900_b10_1_vendor_applicability_location_scope.sql`, a pure
-  expand that adds a nullable `location_id` (location-requires-operator
-  CHECK, composite FK to `locations`) plus location-leading current/history
-  indexes that still lead with `operator_id`; the operator-keyed RLS policy
-  is re-asserted unchanged and no proxy/admin/operator-web/worker code moves.
-  The Hardening Wave B3 audit-anchor
+  hierarchy-mutation gate; no consumer wires them yet. Plans & Limits V1
+  Phase 0 then advances the shared migration cutoff to
+  `202605240900_plans_and_limits_phase0_subscription_tier_check.sql`, which
+  backfills the legacy `operators.subscription_tier = 'launch'` placeholder to
+  `'pilot'`, relaxes the column default to `'pilot'`, and adds a CHECK pinning
+  the column to the six operator-approved tiers (pilot/starter/premium/elite/
+  pro/enterprise). The Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
   schedule registration for `forge_audit_anchor_daily` at `0 2 * * *` UTC; the
