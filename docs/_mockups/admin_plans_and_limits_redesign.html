@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forge &amp; Flow Admin: Plans &amp; limits (redesign preview)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#F8EDE6; --bg-mid:#EFE8E0; --surface:#FFFFFF; --glow:#F4EFE8;
+    --sunset:#CC7A3E; --sunset-dark:#9A5C2A;
+    --peacock:#0E8080; --peacock-dark:#0A6060; --ocean:#14B4AC;
+    --text:#2C2C2C; --text-2:#5A524A; --muted:#857B70;
+    --border:#E2DBD1; --positive:#256B29; --negative:#C62828; --warning:#997000;
+    --r-card:12px; --r-small:7px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg-deep);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px;display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+  svg{display:block}
+
+  .ribbon{background:rgba(20,180,172,.09);border-bottom:1px solid rgba(20,180,172,.28);color:var(--peacock-dark);font-size:12px;padding:6px 22px;display:flex;gap:8px;align-items:center}
+  .ribbon .dot{width:6px;height:6px;border-radius:999px;background:var(--ocean);flex:0 0 auto}
+
+  header.bar{height:74px;flex:0 0 auto;background:var(--bg-deep);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 22px;}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand .mark{width:36px;height:36px;border-radius:999px;background:radial-gradient(circle at 30% 30%,#E8A87C,var(--sunset) 55%,var(--sunset-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px}
+  .brand .t1{font-size:17px;font-weight:700} .brand .t2{font-size:10px;font-weight:600;color:var(--sunset-dark);letter-spacing:.4px}
+  .spacer{flex:1 1 auto}
+  .scope-btn{display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:7px 13px;max-width:380px}
+  .scope-btn:hover{border-color:var(--sunset)}
+  .scope-btn .ic{color:var(--sunset-dark)}
+  .scope-btn .lbl-k{font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .scope-btn .lbl-v{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .scope-btn .lbl-v .sep{color:var(--muted);font-weight:500;padding:0 6px}
+  .pill{font-size:11px;font-weight:600;border-radius:999px;padding:4px 11px;background:rgba(14,128,128,.10);color:var(--peacock-dark)}
+
+  .shell{flex:1 1 auto;display:flex;min-height:0}
+  nav.side{width:218px;flex:0 0 auto;background:var(--bg-mid);border-right:1px solid var(--border);padding:12px 8px;overflow:auto}
+  .grp{font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:14px 10px 5px}
+  .grp:first-child{padding-top:2px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-small);cursor:pointer;color:var(--text-2);margin:2px 0}
+  .nav-item:hover{background:rgba(204,122,62,.06)}
+  .nav-item.sel{background:rgba(204,122,62,.11);color:var(--text);font-weight:600}
+  .nav-item .nic{color:var(--text-2)} .nav-item.sel .nic{color:var(--sunset-dark)}
+  .nav-item .lab{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  main.content{flex:1 1 auto;overflow:auto}
+  .frame{max-width:1120px;margin:0 auto;padding:26px 30px 70px}
+  .page-h{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+  .page-h .htext{flex:1 1 340px;min-width:0}
+  .page-h .ttlrow{display:flex;align-items:center;gap:11px}
+  .page-h h1{margin:0;font-size:24px;font-weight:700}
+  .page-h p{margin:7px 0 0;font-size:13.5px;color:var(--muted)}
+  .badge{font-size:10.5px;font-weight:700;border-radius:999px;padding:3px 10px;background:rgba(204,122,62,.13);color:var(--sunset-dark)}
+
+  .viewas{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:3px;font-size:12px}
+  .viewas .seg{padding:6px 12px;border-radius:999px;cursor:pointer;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+  .viewas .seg.on{background:rgba(204,122,62,.13);color:var(--sunset-dark)}
+  body.ro .editonly{display:none!important}
+  .robanner{display:none;align-items:center;gap:9px;background:var(--glow);border:1px solid var(--border);border-radius:var(--r-card);padding:11px 15px;font-size:13px;color:var(--text-2);margin-bottom:18px}
+  body.ro .robanner{display:flex} .robanner .ic{color:var(--muted)}
+
+  .md{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+  .master{width:300px;flex:1 1 280px;max-width:340px}
+  .seg-toggle{display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:3px;margin-bottom:12px;font-size:12px}
+  .seg-toggle .seg{padding:6px 13px;border-radius:999px;cursor:pointer;color:var(--muted);font-weight:600}
+  .seg-toggle .seg.on{background:rgba(204,122,62,.13);color:var(--sunset-dark)}
+  .blist{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden}
+  .brow{display:flex;align-items:center;gap:11px;padding:13px 15px;border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid transparent}
+  .brow:last-child{border-bottom:none}
+  .brow:hover{background:var(--glow)}
+  .brow.sel{background:rgba(204,122,62,.09);border-left-color:var(--sunset-dark)}
+  .brow .hd{width:9px;height:9px;border-radius:999px;flex:0 0 auto}
+  .brow .bx{flex:1;min-width:0}
+  .brow .bn{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brow .bp{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .brow .bm{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;flex:0 0 auto}
+  .hd.good{background:var(--positive)} .hd.thin{background:var(--warning)} .hd.bad{background:var(--negative)} .hd.na{background:#C9C0B4}
+  .bm.good{color:var(--positive)} .bm.thin{color:var(--warning)} .bm.bad{color:var(--negative)} .bm.na{color:var(--muted)}
+
+  .detail{flex:2 1 440px;min-width:0}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:18px}
+  .card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px 0}
+  .card-h .ttl{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .card-b{padding:14px 20px 20px}
+
+  .btn{border:none;border-radius:8px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;background:var(--sunset);color:#fff;display:inline-flex;align-items:center;gap:7px;font-family:inherit}
+  .btn:hover{background:var(--sunset-dark)}
+  .btn.sec{background:transparent;color:var(--sunset-dark);border:1px solid var(--sunset)} .btn.sec:hover{background:rgba(204,122,62,.08)}
+  .btn.ghost{background:transparent;color:var(--text-2);border:1px solid var(--border)} .btn.ghost:hover{background:var(--glow)}
+  .btn.sm{padding:6px 12px;font-size:12px}
+  .btn.danger{background:transparent;color:var(--negative);border:1px solid rgba(198,40,40,.45)}
+  .iconbtn{border:none;background:transparent;border-radius:6px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted)}
+  .iconbtn:hover{background:var(--glow);color:var(--sunset-dark)}
+  .iconbtn.danger:hover{color:var(--negative)}
+
+  .plan-name{font-size:22px;font-weight:700}
+  .plan-price{font-size:13px;color:var(--muted);margin-top:1px}
+  .plan-inc{font-size:12.5px;color:var(--text-2);margin-top:9px;line-height:1.5}
+  .nums{display:flex;align-items:center;gap:26px;flex-wrap:wrap;margin-top:16px;padding-top:15px;border-top:1px solid var(--border)}
+  .num .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums} .num .l{font-size:11px;color:var(--muted);margin-top:1px}
+  .mpill{font-size:14px;font-weight:700;border-radius:999px;padding:5px 13px}
+  .mpill.good{background:rgba(37,107,41,.13);color:var(--positive)} .mpill.thin{background:rgba(153,112,0,.15);color:var(--warning)} .mpill.bad{background:rgba(198,40,40,.12);color:var(--negative)} .mpill.na{background:var(--glow);color:var(--muted)}
+  .nudge{display:flex;gap:9px;align-items:flex-start;margin-top:16px;font-size:13px;color:var(--text-2);line-height:1.5}
+  .nudge .ic{flex:0 0 auto;color:var(--peacock-dark);margin-top:1px} .nudge.warn .ic{color:var(--warning)} .nudge.bad .ic{color:var(--negative)}
+
+  .hit{display:flex;gap:11px;align-items:center;padding:11px 0;border-top:1px solid var(--border)}
+  .hit:first-child{border-top:none}
+  .hit .ic{color:var(--negative);flex:0 0 auto}
+  .hit .hx{flex:1;font-size:13.5px;color:var(--text)} .hit .hx b{font-weight:600}
+
+  .ptiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .ptile{cursor:pointer;border:1px solid var(--border);border-radius:var(--r-small);padding:12px 13px;display:flex;flex-direction:column;gap:3px}
+  .ptile:hover{border-color:var(--sunset)}
+  .ptile.cur{border-color:var(--peacock);background:rgba(14,128,128,.05)}
+  .ptile .pn{font-size:13.5px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .ptile .pp{font-size:11.5px;color:var(--muted)}
+  .curtag{font-size:9px;font-weight:700;color:var(--peacock-dark)}
+
+  .limit{padding:15px 0;border-top:1px solid var(--border)}
+  .limit:first-child{border-top:none}
+  .lim-top{display:flex;align-items:center;gap:10px}
+  .lim-name{font-size:14px;font-weight:700;flex:1;min-width:0}
+  .src{font-size:11px;color:var(--muted)}
+  .lim-actions{display:flex;gap:2px}
+  .bar-line{display:flex;justify-content:space-between;font-size:12.5px;margin:9px 0 5px;font-variant-numeric:tabular-nums}
+  .bar-line .amt{font-weight:600} .bar-line .pc{color:var(--muted)}
+  .bar{height:7px;border-radius:999px;background:var(--glow);overflow:hidden}
+  .bar > i{display:block;height:100%;border-radius:999px}
+  .bar i.good{background:var(--positive)} .bar i.warn{background:var(--warning)} .bar i.bad{background:var(--negative)}
+  .lim-meta{margin-top:8px;font-size:11.5px;color:var(--muted)}
+  .empty{padding:24px 0;color:var(--muted);font-size:13.5px;text-align:center}
+
+  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px;margin-bottom:20px;width:fit-content}
+  .tabs .tab{padding:8px 18px;border-radius:999px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
+  .tabs .tab.on{background:rgba(204,122,62,.13);color:var(--sunset-dark)}
+  .intro{font-size:13px;color:var(--muted);margin:-4px 0 16px;max-width:700px;line-height:1.5}
+  .pmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px}
+  .pcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:15px;display:flex;flex-direction:column;gap:4px}
+  .pcard .pbar{height:4px;border-radius:999px;background:linear-gradient(90deg,var(--peacock),var(--sunset));margin-bottom:8px}
+  .pcard .pc-name{font-size:15px;font-weight:700}
+  .pcard .pc-price{font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:1px}
+  .pcard .pc-price span{font-size:12px;font-weight:600;color:var(--muted)}
+  .pcard .pc-seat{font-size:11.5px;color:var(--muted)}
+  .pcard .pc-inc{font-size:12px;color:var(--text-2);line-height:1.45;margin-top:7px;flex:1}
+  .pcard .pc-cap{font-size:12px;color:var(--text);font-weight:600;margin-top:5px}
+  .pcard .pc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:9px 0 6px}
+  .pcard .pc-count{font-size:11px;color:var(--muted)}
+  .mtag{font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px}
+  .mtag.good{background:rgba(37,107,41,.12);color:var(--positive)} .mtag.na{background:var(--glow);color:var(--muted)}
+
+  .rectoggle{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-bottom:16px}
+  .rtog{cursor:pointer;border:1px solid var(--border);border-radius:999px;padding:6px 13px;font-weight:600;color:var(--muted);background:var(--surface)}
+  .rtog.on{background:rgba(204,122,62,.13);color:var(--sunset-dark);border-color:var(--sunset)}
+  .rrow{display:flex;align-items:center;gap:14px;padding:13px 0;border-top:1px solid var(--border)}
+  .rrow:first-child{border-top:none}
+  .rrow.dim{opacity:.42}
+  .rname{width:96px;flex:0 0 auto;font-weight:700;font-size:14px}
+  .rname2{width:172px;flex:0 0 auto;font-weight:700;font-size:13.5px}
+  .rcells{display:flex;gap:7px;flex-wrap:wrap;flex:1}
+  .scell{font-size:11.5px;font-weight:600;border-radius:999px;padding:3px 10px}
+  .scell.yes{background:rgba(37,107,41,.12);color:var(--positive)}
+  .scell.no{background:var(--glow);color:var(--muted)}
+  .scell.warn{background:rgba(153,112,0,.15);color:var(--warning)}
+  .rectag{font-size:11.5px;color:var(--sunset-dark);font-weight:600;flex:0 0 auto;width:150px;text-align:right}
+  .picks{display:flex;gap:10px;flex:1;flex-wrap:wrap}
+  .pick{cursor:pointer;border:1px solid var(--border);border-radius:9px;padding:8px 13px;min-width:160px;display:flex;flex-direction:column;gap:2px}
+  .pick.on{border-color:var(--sunset);background:rgba(204,122,62,.08)}
+  .pick .lab{font-weight:700;font-size:13px}
+  .pick .psrc{font-size:11px;color:var(--muted)}
+
+  .scrim{position:fixed;inset:0;background:rgba(44,38,32,.42);display:none;align-items:center;justify-content:center;z-index:60;padding:24px}
+  .scrim.open{display:flex}
+  .modal{background:var(--surface);border-radius:13px;box-shadow:0 24px 60px rgba(44,44,44,.3);width:500px;max-width:100%;max-height:88vh;overflow:auto}
+  .modal-h{display:flex;align-items:center;gap:10px;padding:18px 22px 6px}
+  .modal-h .ic{color:var(--sunset-dark)} .modal-h .t{font-size:17px;font-weight:700}
+  .modal-b{padding:12px 22px 4px;color:var(--text-2);font-size:13.5px;line-height:1.5}
+  .modal-f{display:flex;justify-content:flex-end;gap:9px;padding:16px 22px 20px}
+  label.fld{display:block;margin-bottom:13px}
+  label.fld .k{font-size:11.5px;color:var(--muted);font-weight:600;display:block;margin-bottom:5px}
+  .inp,select.inp{width:100%;border:1px solid var(--border);border-radius:var(--r-small);padding:9px 11px;font-size:13.5px;font-family:inherit;color:var(--text);background:var(--surface)}
+  .inp:focus,select.inp:focus{outline:none;border-color:var(--sunset)}
+  .inp:disabled{background:var(--glow);color:var(--muted)}
+  .two{display:flex;gap:11px} .two>*{flex:1}
+  .diff{margin-top:6px;border:1px solid var(--border);border-radius:var(--r-small);overflow:hidden}
+  .diff .dr{display:flex;justify-content:space-between;gap:10px;padding:10px 13px;border-top:1px solid var(--border);font-size:13px}
+  .diff .dr:first-child{border-top:none}
+  .diff .dr.add{background:rgba(37,107,41,.06)} .diff .dr.chg{background:rgba(153,112,0,.06)}
+  .dv .from{color:var(--muted);text-decoration:line-through;margin-right:7px} .dv .to{font-weight:600}
+  .dtag{font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:7px}
+  .dtag.add{background:rgba(37,107,41,.14);color:var(--positive)} .dtag.chg{background:rgba(153,112,0,.16);color:var(--warning)}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--text);color:#fff;padding:11px 18px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:80}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+  <div class="ribbon"><span class="dot"></span><span>Redesign preview. Demo data, not a live business.</span></div>
+
+  <header class="bar">
+    <div class="brand"><div class="mark">F&amp;F</div><div><div class="t1">Forge &amp; Flow</div><div class="t2">ADMIN CONSOLE</div></div></div>
+    <div class="spacer"></div>
+    <div class="scope-btn" id="scopeBtn"><span class="ic" data-ic="pin"></span><span><div class="lbl-k">Viewing</div><div class="lbl-v" id="scopeLabel"></div></span><span data-ic="chev"></span></div>
+    <span class="pill">Ecosystem admin</span>
+  </header>
+
+  <div class="shell">
+    <nav class="side" id="side"></nav>
+    <main class="content"><div class="frame" id="frame"></div></main>
+  </div>
+
+  <div class="scrim" id="scrim"><div class="modal" id="modal"></div></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+const P=(d)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`;
+const SVG=(i,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24">${i}</svg>`;
+const C=(cx,cy,r)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="1.7"/>`;
+const ICONS={
+  chev:SVG(P("M6 9l6 6 6-6"),15),
+  pin:SVG(P("M12 21s-6-5-6-10a6 6 0 0 1 12 0c0 5-6 10-6 10z")+C(12,11,2.2)),
+  building:SVG(P("M4 21V4h9v17")+P("M13 9h7v12h-7")+P("M7 8h2M7 12h2M7 16h2M16 13h1M16 17h1")),
+  tune:SVG(P("M4 7h9")+P("M17 7h3")+C(15,7,2.1)+P("M4 17h3")+P("M11 17h9")+C(9,17,2.1)),
+  book:SVG(P("M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z")+P("M5 19.5A1.5 1.5 0 0 1 6.5 18H19v3H6.5A1.5 1.5 0 0 1 5 19.5z")),
+  insights:SVG(P("M4 20V11")+P("M10 20V5")+P("M16 20v-6")+P("M3 20h18")),
+  health:SVG(`<rect x="3" y="4.5" width="18" height="12" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8 20.5h8M12 16.5v4")+P("M6 10.5h2.5l1.3-3 2 5 1.4-2.5H17")),
+  bug:SVG(`<rect x="8" y="8" width="8" height="11" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8 12H4M16 12h4M8 16.5H4.5M16 16.5h3.5M9 8.2 7.6 5.6M15 8.2 16.4 5.6M12 4.5V8")),
+  link:SVG(P("M9 15l6-6")+P("M10.5 6.5l1.4-1.4a4 4 0 0 1 5.6 5.6L16 12.2")+P("M13.5 17.5 12 19a4 4 0 0 1-5.6-5.6L8 11.8")),
+  flag:SVG(P("M5.5 21V4")+P("M5.5 4.5h11l-2 3 2 3h-11")),
+  star:SVG(P("M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z")),
+  person:SVG(C(12,8,3.4)+P("M5 20.5c0-4 3.5-6.2 7-6.2s7 2.2 7 6.2")),
+  bell:SVG(P("M6 9.5a6 6 0 0 1 12 0c0 4.5 1.8 5.5 1.8 5.5H4.2S6 14 6 9.5")+P("M10 19a2 2 0 0 0 4 0")),
+  funnel:SVG(P("M4 5h16l-6 7v6l-4 2v-8z")),
+  refresh:SVG(P("M20 11a8 8 0 0 0-14-4L4 9")+P("M4 13a8 8 0 0 0 14 4l2-2")+P("M4 5v4h4M20 19v-4h-4")),
+  edit:SVG(P("M4 20h4L19 9l-4-4L4 16z")+P("M14 6l4 4"),16),
+  trash:SVG(P("M5 7h14")+P("M9 7V5h6v2")+P("M7 7l1 13h8l1-13"),16),
+  plus:SVG(P("M12 5v14M5 12h14"),16),
+  bolt:SVG(P("M13 3 5 13h6l-1 8 8-10h-6z"),17),
+  bulb:SVG(C(12,9,5)+P("M9.6 17h4.8M10.3 20h3.4M12 4V3")),
+  lock:SVG(`<rect x="5.5" y="10.5" width="13" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"),15),
+  alert:SVG(P("M12 4 21 20H3z")+P("M12 10v4")+`<circle cx="12" cy="17.2" r="1" fill="currentColor" stroke="none"/>`),
+};
+function paintIcons(root=document){root.querySelectorAll('[data-ic]').forEach(el=>{if(el.dataset.done)return;el.innerHTML=ICONS[el.dataset.ic]||'';el.dataset.done='1';});}
+
+const SECTIONS=[
+  {grp:'Operations',items:[{id:'accounts',label:'Business accounts',ic:'building'},{id:'vendorapp',label:'Vendor applicability',ic:'funnel'},{id:'polling',label:'Polling setup',ic:'refresh'}]},
+  {grp:'AI',items:[{id:'plans',label:'Plans & limits',ic:'tune'},{id:'kb',label:'Knowledge base',ic:'book'},{id:'metrics',label:'AI Metrics',ic:'insights'}]},
+  {grp:'System monitoring',items:[{id:'health',label:'System health',ic:'health'},{id:'logs',label:'Support logs',ic:'bug'}]},
+  {grp:'Service setup',items:[{id:'connected',label:'Connected services',ic:'link'},{id:'launch',label:'Launch controls',ic:'flag'},{id:'defroles',label:'Default roles',ic:'star'}]},
+  {grp:'Your account',items:[{id:'me',label:'My account',ic:'person'},{id:'notif',label:'Notifications',ic:'bell'}]},
+];
+
+const USECASE={advisor_qa:'Advisor answers',coach_qa:'Coaching help',wf_pl:'Workflow planning',wf_schedule:'Workflow scheduling'};
+const PLANS={
+  pilot:{name:'Pilot',price:'Free preview, sample data',includes:'KPI dashboard on sample data, plus the AI advisor. Connect your data to go live.',caps:[['advisor_qa',50,0.10]]},
+  starter:{name:'Starter',price:'$250/mo',includes:'KPI dashboard, reporting, manager chatbot.',caps:[['advisor_qa',50,0.10]]},
+  premium:{name:'Premium',price:'$250/mo plus $5/seat',includes:'Everything in Starter, plus LMS and scoreboard.',caps:[['advisor_qa',200,0.20]]},
+  elite:{name:'Elite',price:'$250/mo plus $10/$5 seat',includes:'Everything in Premium, plus staff coaching and SOPs.',caps:[['advisor_qa',400,0.20],['coach_qa',300,0.20]]},
+  pro:{name:'Pro',price:'$500/mo plus $15/$8 seat',includes:'Everything in Elite, plus the workflow catalog.',caps:[['advisor_qa',600,0.20],['coach_qa',400,0.20],['wf_pl',500,5.0],['wf_schedule',300,5.0]]},
+  enterprise:{name:'Enterprise',price:'Custom contract',includes:'Everything in Pro, plus custom workflows and SLA.',caps:[]},
+};
+const PLAN_ORDER=['pilot','starter','premium','elite','pro','enterprise'];
+const PLAN_META={
+  pilot:{monthly:0,seat:'free preview, no seat fee',onboarding:'$0',margin:'Free trial',mclass:'na'},
+  starter:{monthly:250,seat:'no seat fee',onboarding:'$500 to $1,000',margin:'~95% margin',mclass:'good'},
+  premium:{monthly:250,seat:'plus $5/seat, then $3',onboarding:'$750 to $2,000',margin:'~93% margin',mclass:'good'},
+  elite:{monthly:250,seat:'plus $10/$5 seat',onboarding:'$1,500 to $3,500',margin:'~78% margin',mclass:'good'},
+  pro:{monthly:500,seat:'plus $15/$8 seat',onboarding:'$2,500 to $5,000',margin:'~75% margin',mclass:'good'},
+  enterprise:{monthly:null,seat:'custom per contract',onboarding:'Custom',margin:'80%+ margin',mclass:'good'},
+};
+const countOnPlan=k=>BUSINESSES.filter(b=>b.plan===k).length;
+const planCapUsd=k=>{const c=PLANS[k].caps.find(x=>x[0]==='advisor_qa');return c?c[1]:null;};
+
+const BUSINESSES=[
+  {id:'diner',name:'Demo Diner Co.',loc:'Toronto Yorkville',plan:'pro',revenue:1440,spend:610,
+    nudge:{tone:'',text:'Coaching help is near its cap for Marco Lee. Raise it, or keep watching.'},
+    hits:[{name:'Coaching help',n:2},{name:'Advisor answers, Marco Lee',n:5}],
+    limits:[
+      {uc:'advisor_qa',cap:600,spend:410,perCall:0.20,who:null,src:'inh',when:'Apr 12'},
+      {uc:'coach_qa',cap:400,spend:360,perCall:0.20,who:null,src:'here',when:'May 2'},
+      {uc:'advisor_qa',cap:50,spend:48,perCall:0.10,who:'Marco Lee',src:'here',when:'May 20'},
+      {uc:'wf_pl',cap:500,spend:120,perCall:5.0,who:null,src:'inh',when:'Apr 12'},
+    ]},
+  {id:'sunset',name:'Sunset Cafe Group',loc:'Brooklyn Williamsburg',plan:'premium',revenue:350,spend:300,
+    nudge:{tone:'warn',text:'Thin margin, near the cap three months running. Consider Elite or Pro.'},
+    hits:[{name:'Advisor answers',n:7}],
+    limits:[{uc:'advisor_qa',cap:200,spend:185,perCall:0.20,who:null,src:'inh',when:'Mar 3'}]},
+  {id:'harbor',name:'Harbor Grill',loc:'Seattle Downtown',plan:'starter',revenue:250,spend:14,
+    nudge:{tone:'',text:'Using 22% of the plan. Good fit.'},
+    hits:[],
+    limits:[{uc:'advisor_qa',cap:50,spend:11,perCall:0.10,who:null,src:'inh',when:'Feb 18'}]},
+  {id:'iron',name:'Iron Kitchen',loc:'Chicago Market',plan:'elite',revenue:850,spend:980,
+    nudge:{tone:'bad',text:'Losing money. AI cost is above plan revenue. Review limits or move to Pro.'},
+    hits:[{name:'Advisor answers',n:11},{name:'Coaching help',n:4}],
+    limits:[
+      {uc:'advisor_qa',cap:400,spend:395,perCall:0.20,who:null,src:'inh',when:'Jan 9'},
+      {uc:'coach_qa',cap:300,spend:298,perCall:0.20,who:null,src:'inh',when:'Jan 9'},
+    ]},
+  {id:'maple',name:'Maple Table',loc:'Austin Midtown',plan:'pilot',revenue:null,spend:47,
+    nudge:{tone:'warn',text:'Free preview on sample data. Near the $50 advisor cap. Connect real data to move to Starter.'},
+    hits:[],
+    limits:[{uc:'advisor_qa',cap:50,spend:47,perCall:0.10,who:null,src:'inh',when:'May 1'}]},
+  {id:'golden',name:'Golden Tavern',loc:'Multi-location',plan:'enterprise',revenue:4200,spend:720,
+    nudge:{tone:'',text:'Custom contract. Healthy margin. Limits set by hand.'},
+    hits:[],
+    limits:[
+      {uc:'advisor_qa',cap:1500,spend:640,perCall:0.25,who:null,src:'here',when:'Apr 28'},
+      {uc:'coach_qa',cap:1000,spend:330,perCall:0.25,who:null,src:'here',when:'Apr 28'},
+    ]},
+];
+
+let state={bizId:'diner',attn:false,tab:'reconcile'};
+const recon={tierCount:6,picks:{eliteSeat:'spec',onboarding:'spec',premiumAfter:'plan'}};
+const biz=()=>BUSINESSES.find(b=>b.id===state.bizId);
+const money=n=>n==null?'—':'$'+Math.round(n).toLocaleString('en-US');
+const money2=n=>'$'+Number(n).toFixed(2);
+const marginRatio=b=>(b.revenue==null||b.revenue<=0)?null:(b.revenue-b.spend)/b.revenue;
+function health(b){const m=marginRatio(b);if(m==null)return 'na';if(m<0)return 'bad';if(m<0.55)return 'thin';return 'good';}
+const ratio=(s,c)=>c<=0?0:s/c;
+const barClass=r=>r>=0.9?'bad':r>=0.7?'warn':'good';
+const needsAttn=b=>health(b)==='bad'||b.hits.length>0||b.limits.some(l=>ratio(l.spend,l.cap)>=0.9);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function renderNav(){
+  document.getElementById('side').innerHTML=SECTIONS.map(s=>`<div class="grp">${s.grp}</div>`+
+    s.items.map(it=>`<div class="nav-item ${it.id==='plans'?'sel':''}"><span class="nic" data-ic="${it.ic}"></span><span class="lab">${it.label}</span></div>`).join('')).join('');
+  paintIcons(document.getElementById('side'));
+}
+
+function masterRow(b){
+  const m=marginRatio(b),h=health(b),sel=b.id===state.bizId;
+  return `<div class="brow ${sel?'sel':''}" data-biz="${b.id}">
+    <span class="hd ${h}"></span>
+    <span class="bx"><div class="bn">${esc(b.name)}</div><div class="bp">${PLANS[b.plan].name} · ${money(b.spend)} spent</div></span>
+    <span class="bm ${h}">${m==null?'—':Math.round(m*100)+'%'}</span></div>`;
+}
+function renderMaster(){
+  const total=BUSINESSES.length,attnN=BUSINESSES.filter(needsAttn).length;
+  let list=state.attn?BUSINESSES.filter(needsAttn):BUSINESSES;
+  const rows=list.map(masterRow).join('')||`<div class="empty">Nothing needs attention.</div>`;
+  return `<div class="master">
+    <div class="seg-toggle"><div class="seg ${state.attn?'':'on'}" data-filter="all">All (${total})</div><div class="seg ${state.attn?'on':''}" data-filter="attn">Needs attention (${attnN})</div></div>
+    <div class="blist">${rows}</div></div>`;
+}
+
+function planCard(b){
+  const m=marginRatio(b),h=health(b);
+  const mp=m==null?`<span class="mpill na">No margin yet</span>`:`<span class="mpill ${h}">${Math.round(m*100)}% margin</span>`;
+  return `<div class="card"><div class="card-h"><div class="ttl">Plan and margin</div><button class="btn sec sm editonly" data-act="changeplan"><span data-ic="tune"></span>Change plan</button></div>
+    <div class="card-b">
+      <div class="plan-name">${PLANS[b.plan].name}</div>
+      <div class="plan-price">${esc(PLANS[b.plan].price)}</div>
+      <div class="plan-inc">${esc(PLANS[b.plan].includes)}</div>
+      <div class="nums">
+        <div class="num"><div class="v">${money(b.spend)}</div><div class="l">Spent this month</div></div>
+        <div class="num"><div class="v">${money(b.revenue)}</div><div class="l">Revenue</div></div>
+        <div class="num">${mp}</div>
+      </div>
+      <div class="nudge ${b.nudge.tone}"><span class="ic" data-ic="${b.nudge.tone==='bad'?'alert':'bulb'}"></span><div>${esc(b.nudge.text)}</div></div>
+    </div></div>`;
+}
+function hitsCard(b){
+  if(!b.hits.length)return '';
+  const rows=b.hits.map((x,i)=>`<div class="hit"><span class="ic" data-ic="bolt"></span><div class="hx"><b>${esc(x.name)}</b> refused ${x.n}× this week</div><button class="btn ghost sm editonly" data-act="raise" data-i="${i}">Raise limit</button></div>`).join('');
+  return `<div class="card"><div class="card-h"><div class="ttl">Recent limit hits</div></div><div class="card-b" style="padding-top:6px">${rows}</div></div>`;
+}
+function presetsCard(b){
+  const tiles=PLAN_ORDER.map(k=>{const p=PLANS[k],cur=k===b.plan;
+    return `<div class="ptile ${cur?'cur':''}" data-preset="${k}"><div class="pn">${p.name}${cur?'<span class="curtag">CURRENT</span>':''}</div><div class="pp">${esc(p.price)}</div></div>`;}).join('');
+  return `<div class="card"><div class="card-h"><div class="ttl">Change plan</div></div><div class="card-b"><div class="ptiles">${tiles}</div></div></div>`;
+}
+function limitRow(b,l,i){
+  const r=ratio(l.spend,l.cap),bc=barClass(r);
+  const name=USECASE[l.uc]||l.uc;
+  return `<div class="limit">
+    <div class="lim-top">
+      <div class="lim-name">${esc(name)}${l.who?` <span style="color:var(--muted);font-weight:500">· ${esc(l.who)}</span>`:''}</div>
+      <span class="src">${l.src==='inh'?'Inherited':'Set here'}</span>
+      <div class="lim-actions editonly"><button class="iconbtn" data-act="edit" data-i="${i}" title="Edit"><span data-ic="edit"></span></button><button class="iconbtn danger" data-act="delete" data-i="${i}" title="Delete"><span data-ic="trash"></span></button></div>
+    </div>
+    <div class="bar-line"><span class="amt">${money(l.spend)} / ${money(l.cap)} this month</span><span class="pc">${Math.round(r*100)}%</span></div>
+    <div class="bar"><i class="${bc}" style="width:${Math.min(100,Math.round(r*100))}%"></i></div>
+    <div class="lim-meta">${money2(l.perCall)} per request · Updated ${esc(l.when)}</div></div>`;
+}
+function limitsCard(b){
+  const rows=b.limits.length?b.limits.map((l,i)=>limitRow(b,l,i)).join(''):`<div class="empty">No limits yet. Apply a plan or add one.</div>`;
+  return `<div class="card"><div class="card-h"><div class="ttl">Usage limits</div><button class="btn sec sm editonly" data-act="add"><span data-ic="plus"></span>Add limit</button></div><div class="card-b" style="padding-top:6px">${rows}</div></div>`;
+}
+function renderDetail(){const b=biz();return `<div class="detail">${planCard(b)}${hitsCard(b)}${presetsCard(b)}${limitsCard(b)}</div>`;}
+
+function renderPlansMap(){
+  const w=[28,42,56,70,84,100];
+  const cards=PLAN_ORDER.map((k,i)=>{const p=PLANS[k],m=PLAN_META[k],cap=planCapUsd(k);
+    return `<div class="pcard"><div class="pbar" style="width:${w[i]}%"></div>
+      <div class="pc-name">${p.name}</div>
+      <div class="pc-price">${m.monthly==null?'Custom':'$'+m.monthly+'<span>/mo</span>'}</div>
+      <div class="pc-seat">${esc(m.seat)}</div>
+      <div class="pc-inc">${esc(p.includes)}</div>
+      <div class="pc-cap">${cap==null?'Custom limits':'Advisor cap '+money(cap)+'/mo'}</div>
+      <div class="pc-foot"><span class="mtag ${m.mclass}">${esc(m.margin)}</span><span class="pc-count">${countOnPlan(k)} on this plan</span></div>
+      <button class="btn ghost sm editonly" data-editplan="${k}">Edit pricing</button>
+    </div>`;}).join('');
+  return `<div class="intro">How the six plans ladder up. Each tier includes everything below it and raises the included AI allowance. Margins are estimates from the pricing model.</div><div class="pmap">${cards}</div>`;
+}
+function planPriceDialog(k){
+  const p=PLANS[k],m=PLAN_META[k],cap=planCapUsd(k);
+  openModal(`<div class="modal-h"><span class="ic" data-ic="tune"></span><div class="t">Edit ${p.name} pricing</div></div>
+    <div class="modal-b">
+      <div class="two">
+        <label class="fld"><span class="k">Monthly price (USD)</span><input class="inp" id="pp_month" inputmode="decimal" value="${m.monthly==null?'':m.monthly}" placeholder="Custom"></label>
+        <label class="fld"><span class="k">Per seat</span><input class="inp" id="pp_seat" value="${esc(m.seat)}"></label>
+      </div>
+      ${cap==null?'':`<label class="fld"><span class="k">Included advisor limit (USD per month)</span><input class="inp" id="pp_cap" inputmode="decimal" value="${cap}"></label>`}
+      <label class="fld"><span class="k">Onboarding fee</span><input class="inp" id="pp_onb" value="${esc(m.onboarding)}"></label>
+      <p style="margin:2px 0 0;font-size:12px;color:var(--muted)">Applies to new sign-ups and renewals on ${p.name}. Margin estimate: ${esc(m.margin)}.</p>
+    </div>
+    <div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn" data-saveplan="${k}">Save pricing</button></div>`);
+}
+
+function renderReconcile(){
+  const six=recon.tierCount===6;
+  const sc=(src,st,note)=>st==='warn'?`<span class="scell warn">${src}: ${esc(note)}</span>`:`<span class="scell ${st}">${src} ${st==='yes'?'✓':'—'}</span>`;
+  const TIERS=[
+    {name:'Pilot',plan:['no'],spec:['yes'],code:['yes'],rec:'Add: free preview',only6:true},
+    {name:'Starter',plan:['warn','was "Basic"'],spec:['yes'],code:['warn','demo uses "launch"'],rec:'Rename Basic to Starter'},
+    {name:'Premium',plan:['yes'],spec:['yes'],code:['yes'],rec:'Keep'},
+    {name:'Elite',plan:['yes'],spec:['yes'],code:['warn','missing from security list'],rec:'Keep, fix code'},
+    {name:'Pro',plan:['no'],spec:['yes'],code:['yes'],rec:'Add: workflows',only6:true},
+    {name:'Enterprise',plan:['no'],spec:['yes'],code:['yes'],rec:'Add: custom',only6:true},
+  ];
+  const tierRows=TIERS.map(t=>{const dim=t.only6&&!six;
+    return `<div class="rrow ${dim?'dim':''}"><div class="rname">${t.name}</div>
+      <div class="rcells">${sc('Plan',t.plan[0],t.plan[1])}${sc('Spec',t.spec[0],t.spec[1])}${sc('Code',t.code[0],t.code[1])}</div>
+      <div class="rectag">${dim?'Not in 3-plan model':esc(t.rec)}</div></div>`;}).join('');
+  const CONFLICTS=[
+    {id:'eliteSeat',name:'Elite per-seat',plan:'$7, then $3',spec:'$10, then $5',rec:'spec'},
+    {id:'onboarding',name:'Onboarding fee',plan:'Flat $250 to $1,000',spec:'Per plan, up to $5,000+',rec:'spec'},
+    {id:'premiumAfter',name:'Premium seat after 20',plan:'$3 each',spec:'Not set',rec:'plan'},
+  ];
+  const confRows=CONFLICTS.map(c=>{const sel=recon.picks[c.id];
+    const chip=(side,val)=>`<span class="pick ${sel===side?'on':''}" data-recpick="${c.id}" data-side="${side}"><span class="lab">${esc(val)}</span><span class="psrc">${side==='plan'?'Business plan':'Engineering spec'}${side===c.rec?' · recommended':''}</span></span>`;
+    return `<div class="rrow"><div class="rname2">${c.name}</div><div class="picks">${chip('plan',c.plan)}${chip('spec',c.spec)}</div></div>`;}).join('');
+  const summary=`${recon.tierCount} plans · Elite seat ${recon.picks.eliteSeat==='spec'?'$10/$5':'$7/$3'} · Onboarding ${recon.picks.onboarding==='spec'?'per plan':'flat'}`;
+  return `<div class="intro">Your three sources disagree on the plan list and some prices. Here is every gap, side by side. Tap a value to set your choice. Nothing is saved yet.</div>
+    <div class="rectoggle"><span>Plans in the lineup:</span><span class="rtog ${six?'':'on'}" data-tiers="3">3 (business plan)</span><span class="rtog ${six?'on':''}" data-tiers="6">6 (engineering spec)</span></div>
+    <div class="card"><div class="card-h"><div class="ttl">Plan lineup</div></div><div class="card-b">${tierRows}</div></div>
+    <div class="card"><div class="card-h"><div class="ttl">Price conflicts</div></div><div class="card-b">${confRows}</div></div>
+    <div class="card"><div class="card-h"><div class="ttl">AI vs platform</div></div><div class="card-b"><p style="margin:0;font-size:13px;color:var(--text-2);line-height:1.5">Every paid plan is the full app (dashboard, reporting, branded app) plus AI (advisor, chatbots, feedback). Pilot is the free preview: the dashboard on sample data plus the advisor, so a prospect can try it before connecting real data or paying. The dollar limits on the Plans tab cap AI cost, not the subscription price.</p></div></div>
+    <div class="card"><div class="card-b" style="padding:15px 20px"><span style="font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700">Your choices so far</span><div style="font-size:16px;font-weight:700;margin-top:5px">${summary}</div></div></div>`;
+}
+
+function renderFrame(){
+  const b=biz();
+  document.getElementById('frame').innerHTML=`
+    <div class="page-h">
+      <div class="htext"><div class="ttlrow"><h1>Plans &amp; limits</h1><span class="badge">Admin only</span></div>
+        <p>Set each business's AI plan and spending limits. Operators never see this.</p></div>
+      <div class="viewas" id="viewas"><div class="seg on" data-view="admin">Admin</div><div class="seg" data-view="ro"><span data-ic="lock"></span>Read-only</div></div>
+    </div>
+    <div class="tabs" id="tabs"><div class="tab ${state.tab==='reconcile'?'on':''}" data-tab="reconcile">Reconcile</div><div class="tab ${state.tab==='plans'?'on':''}" data-tab="plans">Plans</div><div class="tab ${state.tab==='businesses'?'on':''}" data-tab="businesses">Businesses</div></div>
+    <div class="robanner"><span class="ic" data-ic="lock"></span>View only. Changing plans and limits needs ecosystem admin access.</div>
+    ${state.tab==='reconcile'?renderReconcile():state.tab==='plans'?renderPlansMap():`<div class="md">${renderMaster()}${renderDetail()}</div>`}`;
+  document.getElementById('scopeLabel').innerHTML=`${esc(b.name)}<span class="sep">›</span>${esc(b.loc)}`;
+  paintIcons(document.getElementById('frame'));paintIcons(document.querySelector('header.bar'));
+  wireFrame();
+}
+
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2000);}
+function closeModal(){document.getElementById('scrim').classList.remove('open');}
+function openModal(h){const m=document.getElementById('modal');m.innerHTML=h;document.getElementById('scrim').classList.add('open');paintIcons(m);}
+
+function presetPreview(k){
+  const b=biz(),p=PLANS[k];let body;
+  if(k==='enterprise'){body=`<p style="margin:0">Enterprise is a custom contract. It sets the plan but adds no preset limits. You build the limits by hand.</p>`;}
+  else{
+    const cur={};b.limits.forEach(l=>{if(!l.who)cur[l.uc]=l;});
+    const rows=p.caps.map(([uc,cap,pc])=>{const ex=cur[uc];
+      if(!ex)return `<div class="dr add"><span>${USECASE[uc]||uc}</span><span class="dv"><span class="to">${money(cap)}/mo</span><span class="dtag add">NEW</span></span></div>`;
+      if(ex.cap!==cap)return `<div class="dr chg"><span>${USECASE[uc]||uc}</span><span class="dv"><span class="from">${money(ex.cap)}</span><span class="to">${money(cap)}/mo</span><span class="dtag chg">CHANGED</span></span></div>`;
+      return `<div class="dr"><span>${USECASE[uc]||uc}</span><span class="dv"><span class="to">${money(cap)}/mo</span></span></div>`;}).join('');
+    body=`<p style="margin:0 0 10px">Sets the plan and these limits. Limits for the same use case are replaced; others are kept.</p><div class="diff">${rows}</div>`;
+  }
+  openModal(`<div class="modal-h"><span class="ic" data-ic="tune"></span><div class="t">Switch to ${p.name}?</div></div><div class="modal-b">${body}</div><div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn" data-apply="${k}">Apply ${p.name}</button></div>`);
+}
+function editDialog(idx){
+  const b=biz(),l=idx!=null?b.limits[idx]:null,editing=l!=null;
+  const opts=Object.keys(USECASE).map(k=>`<option value="${k}" ${l&&l.uc===k?'selected':''}>${USECASE[k]}</option>`).join('');
+  openModal(`<div class="modal-h"><span class="ic" data-ic="${editing?'edit':'plus'}"></span><div class="t">${editing?'Edit limit':'Add limit'}</div></div>
+    <div class="modal-b">
+      <label class="fld"><span class="k">Use case</span><select class="inp" id="f_uc" ${editing?'disabled':''}>${opts}</select></label>
+      <div class="two">
+        <label class="fld"><span class="k">Monthly limit</span><input class="inp" id="f_month" inputmode="decimal" value="${l?l.cap.toFixed(2):''}" placeholder="200.00"></label>
+        <label class="fld"><span class="k">Per request</span><input class="inp" id="f_call" inputmode="decimal" value="${l?l.perCall.toFixed(2):''}" placeholder="0.20"></label>
+      </div>
+      <label class="fld"><span class="k">Applies to</span><select class="inp"><option ${l&&!l.who?'selected':''}>Everyone</option><option ${l&&l.who==='Marco Lee'?'selected':''}>Marco Lee</option><option>Jen Park</option></select></label>
+    </div>
+    <div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn" data-save="${editing?idx:'new'}">${editing?'Save':'Add'}</button></div>`);
+}
+function deleteDialog(idx){
+  const b=biz(),l=b.limits[idx];
+  openModal(`<div class="modal-h"><span class="ic" data-ic="trash" style="color:var(--negative)"></span><div class="t">Delete this limit?</div></div>
+    <div class="modal-b"><p style="margin:0">Removes the ${USECASE[l.uc]||l.uc} limit (${money(l.cap)}/mo). Spend in this use case falls back to the plan or inherited limit.</p></div>
+    <div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn danger" data-del="${idx}">Delete</button></div>`);
+}
+
+function wireFrame(){
+  document.querySelectorAll('[data-tab]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.tab;renderFrame();});
+  document.querySelectorAll('[data-tiers]').forEach(el=>el.onclick=()=>{recon.tierCount=+el.dataset.tiers;renderFrame();});
+  document.querySelectorAll('[data-recpick]').forEach(el=>el.onclick=()=>{recon.picks[el.dataset.recpick]=el.dataset.side;renderFrame();});
+  document.querySelectorAll('[data-editplan]').forEach(el=>el.onclick=()=>{if(!document.body.classList.contains('ro'))planPriceDialog(el.dataset.editplan);});
+  document.querySelectorAll('[data-biz]').forEach(el=>el.onclick=()=>{state.bizId=el.dataset.biz;renderFrame();});
+  document.querySelectorAll('[data-filter]').forEach(el=>el.onclick=()=>{state.attn=el.dataset.filter==='attn';renderFrame();});
+  document.querySelectorAll('#viewas .seg').forEach(el=>el.onclick=()=>{document.body.classList.toggle('ro',el.dataset.view==='ro');document.querySelectorAll('#viewas .seg').forEach(s=>s.classList.toggle('on',s===el));});
+  document.querySelectorAll('[data-preset]').forEach(el=>el.onclick=()=>{if(!document.body.classList.contains('ro'))presetPreview(el.dataset.preset);});
+  document.querySelectorAll('[data-act]').forEach(el=>{const a=el.dataset.act;
+    if(a==='changeplan')el.onclick=()=>toast('Pick a plan below to preview the change.');
+    if(a==='add')el.onclick=()=>editDialog(null);
+    if(a==='edit')el.onclick=()=>editDialog(+el.dataset.i);
+    if(a==='delete')el.onclick=()=>deleteDialog(+el.dataset.i);
+    if(a==='raise')el.onclick=()=>{const b=biz();const nm=b.hits[+el.dataset.i].name.split(',')[0];const idx=b.limits.findIndex(l=>(USECASE[l.uc]||l.uc)===nm);editDialog(idx<0?null:idx);};
+  });
+}
+document.getElementById('scrim').addEventListener('click',e=>{
+  if(e.target.id==='scrim'){closeModal();return;}
+  const t=e.target.closest('[data-close],[data-apply],[data-save],[data-del],[data-saveplan]');if(!t)return;
+  if(t.hasAttribute('data-close')){closeModal();return;}
+  if(t.hasAttribute('data-saveplan')){const k=t.getAttribute('data-saveplan');const mo=document.getElementById('pp_month').value.trim();PLAN_META[k].monthly=mo===''?null:(parseFloat(mo)||0);PLAN_META[k].seat=document.getElementById('pp_seat').value.trim();PLAN_META[k].onboarding=document.getElementById('pp_onb').value.trim();const capEl=document.getElementById('pp_cap');if(capEl){const c=PLANS[k].caps.find(x=>x[0]==='advisor_qa');if(c)c[1]=parseFloat(capEl.value)||0;}PLANS[k].price=PLAN_META[k].monthly==null?'Custom contract':('$'+PLAN_META[k].monthly+'/mo'+(/\$/.test(PLAN_META[k].seat)?(' '+PLAN_META[k].seat):''));closeModal();renderFrame();toast(PLANS[k].name+' pricing updated (preview).');return;}
+  if(t.hasAttribute('data-apply')){biz().plan=t.getAttribute('data-apply');closeModal();renderFrame();toast(PLANS[biz().plan].name+' applied (preview).');return;}
+  if(t.hasAttribute('data-del')){biz().limits.splice(+t.getAttribute('data-del'),1);closeModal();renderFrame();toast('Limit deleted (preview).');return;}
+  if(t.hasAttribute('data-save')){const b=biz(),w=t.getAttribute('data-save');const month=parseFloat(document.getElementById('f_month').value)||0,call=parseFloat(document.getElementById('f_call').value)||0;
+    if(w==='new')b.limits.push({uc:document.getElementById('f_uc').value,cap:month,spend:0,perCall:call,who:null,src:'here',when:'just now'});
+    else{const l=b.limits[+w];l.cap=month;l.perCall=call;l.when='just now';}
+    closeModal();renderFrame();toast('Limit saved (preview).');}
+});
+document.getElementById('scopeBtn').onclick=()=>toast('Opens the business and location picker.');
+
+renderNav();renderFrame();
+</script>
+</body>
+</html>
