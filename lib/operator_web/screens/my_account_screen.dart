@@ -226,13 +226,10 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   Future<void> _handleEnrollMfa() async {
     if (!_canWriteAccount) return;
     final actions = widget.actions;
-    // G60 — mint ONE caller-stable idempotency key for THIS enroll
-    // attempt and reuse it across BOTH the begin call and the confirm
-    // call so the proxy `proxy_requests` UNIQUE guard sees begin+confirm
-    // as one correlated write chain and a retried confirm replays the
-    // original outcome instead of getting a brand-new key. Each fresh
-    // button press mints a DISTINCT key (so two separate attempts never
-    // collide). Matches the admin "My account" 2FA enroll pattern.
+    // G60 — ONE caller-stable key per enroll attempt, reused across the
+    // begin AND confirm writes so a retried confirm replays the proxy
+    // `proxy_requests` UNIQUE guard (distinct key per fresh button press;
+    // mirrors admin 2FA enroll). See OperatorWebAccountActions docs.
     final enrollIdempotencyKey =
         OperatorWebProxyClient.mintActionChainIdempotencyKey(
           'account-mfa-enroll',
@@ -258,8 +255,7 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
       builder: (_) => _MfaEnrollDialog(
         operatorEmail: widget.session.email,
         artifact: artifact,
-        // The SAME key the begin call used. The dialog hands it back on
-        // confirm so begin+confirm of this one attempt share it.
+        // Same key the begin used; the dialog hands it back on confirm.
         idempotencyKey: enrollIdempotencyKey,
         onConfirm: actions == null || artifact == null
             ? null
