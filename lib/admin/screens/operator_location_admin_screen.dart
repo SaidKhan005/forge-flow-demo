@@ -1751,69 +1751,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                   : 'Read-only',
             ),
           ),
-          trailing: widget.editingEnabled && widget.gateway != null
-              ? Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _HierarchyActionButton(
-                      buttonKey: Key(
-                        'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
-                      ),
-                      label: 'Add child',
-                      tooltip: 'Add child org unit',
-                      onPressed: () => _onAddChildOrgUnit(unit),
-                      icon: Icons.add,
-                    ),
-                    _HierarchyActionButton(
-                      buttonKey: Key(
-                        'admin_hierarchy_org_unit_move_${unit.orgUnitId}',
-                      ),
-                      label: 'Move',
-                      tooltip: unit.parentOrgUnitId == null
-                          ? 'Business root stays at business level'
-                          : 'Move org unit',
-                      onPressed: unit.parentOrgUnitId == null
-                          ? null
-                          : () => _onMoveOrgUnit(unit),
-                      icon: Icons.drive_file_move_outlined,
-                    ),
-                    _HierarchyActionButton(
-                      buttonKey: Key(
-                        unit.isSuspended
-                            ? 'admin_hierarchy_org_unit_reactivate_${unit.orgUnitId}'
-                            : 'admin_hierarchy_org_unit_suspend_${unit.orgUnitId}',
-                      ),
-                      label: unit.isSuspended ? 'Reactivate' : 'Suspend',
-                      tooltip: unit.parentOrgUnitId == null
-                          ? 'Business root cannot be suspended'
-                          : unit.isSuspended
-                          ? 'Reactivate org unit'
-                          : 'Suspend org unit',
-                      onPressed: unit.parentOrgUnitId == null
-                          ? null
-                          : () => _onToggleOrgUnitSuspension(unit),
-                      icon: unit.isSuspended
-                          ? Icons.play_circle_outline
-                          : Icons.pause_circle_outline,
-                    ),
-                    _HierarchyActionButton(
-                      buttonKey: Key(
-                        'admin_hierarchy_org_unit_delete_${unit.orgUnitId}',
-                      ),
-                      label: 'Delete',
-                      tooltip: unit.parentOrgUnitId == null
-                          ? 'Business root cannot be deleted'
-                          : 'Delete org unit',
-                      onPressed: unit.parentOrgUnitId == null
-                          ? null
-                          : () => _onDeleteOrgUnit(unit),
-                      icon: Icons.delete_outline,
-                      destructive: true,
-                    ),
-                  ],
-                )
-              : null,
+          trailing: _buildOrgUnitActions(unit),
         ),
       ),
     ];
@@ -1849,6 +1787,93 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
       );
     }
     return rows;
+  }
+
+  /// Trailing action-button cluster for an org-unit hierarchy row.
+  ///
+  /// Extracted from [_buildOrgUnitRows] verbatim (behavior-preserving) to
+  /// keep that method under the cyclomatic-complexity engineering bar; the
+  /// per-button enable/disable and suspend/reactivate ternaries live here
+  /// now. Returns `null` when the row is read-only or no gateway is wired,
+  /// exactly as the prior inline `trailing:` expression did. Widget keys
+  /// are unchanged.
+  Widget? _buildOrgUnitActions(OrgUnitAdminNode unit) {
+    if (!widget.editingEnabled || widget.gateway == null) {
+      return null;
+    }
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        _HierarchyActionButton(
+          buttonKey: Key(
+            'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
+          ),
+          label: 'Add child',
+          tooltip: 'Add child org unit',
+          onPressed: () => _onAddChildOrgUnit(unit),
+          icon: Icons.add,
+        ),
+        _HierarchyActionButton(
+          buttonKey: Key(
+            'admin_hierarchy_org_unit_move_${unit.orgUnitId}',
+          ),
+          label: 'Move',
+          tooltip: unit.parentOrgUnitId == null
+              ? 'Business root stays at business level'
+              : 'Move org unit',
+          onPressed: unit.parentOrgUnitId == null
+              ? null
+              : () => _onMoveOrgUnit(unit),
+          icon: Icons.drive_file_move_outlined,
+        ),
+        _buildOrgUnitSuspendButton(unit),
+        _HierarchyActionButton(
+          buttonKey: Key(
+            'admin_hierarchy_org_unit_delete_${unit.orgUnitId}',
+          ),
+          label: 'Delete',
+          tooltip: unit.parentOrgUnitId == null
+              ? 'Business root cannot be deleted'
+              : 'Delete org unit',
+          onPressed: unit.parentOrgUnitId == null
+              ? null
+              : () => _onDeleteOrgUnit(unit),
+          icon: Icons.delete_outline,
+          destructive: true,
+        ),
+      ],
+    );
+  }
+
+  /// Suspend / reactivate action button for an org-unit hierarchy row.
+  ///
+  /// Extracted verbatim from the action cluster (behavior-preserving) so
+  /// both [_buildOrgUnitActions] and this button stay under the
+  /// cyclomatic-complexity bar; the business-root guard, the
+  /// suspended-vs-active key/label/icon swap, and the nested tooltip
+  /// ternary are unchanged. Widget keys are identical to the prior inline
+  /// expression.
+  Widget _buildOrgUnitSuspendButton(OrgUnitAdminNode unit) {
+    return _HierarchyActionButton(
+      buttonKey: Key(
+        unit.isSuspended
+            ? 'admin_hierarchy_org_unit_reactivate_${unit.orgUnitId}'
+            : 'admin_hierarchy_org_unit_suspend_${unit.orgUnitId}',
+      ),
+      label: unit.isSuspended ? 'Reactivate' : 'Suspend',
+      tooltip: unit.parentOrgUnitId == null
+          ? 'Business root cannot be suspended'
+          : unit.isSuspended
+          ? 'Reactivate org unit'
+          : 'Suspend org unit',
+      onPressed: unit.parentOrgUnitId == null
+          ? null
+          : () => _onToggleOrgUnitSuspension(unit),
+      icon: unit.isSuspended
+          ? Icons.play_circle_outline
+          : Icons.pause_circle_outline,
+    );
   }
 
   List<String> _appendHierarchyPath(List<String> path, String nextLabel) {
