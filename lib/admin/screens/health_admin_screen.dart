@@ -577,12 +577,17 @@ class _HealthSummary extends StatelessWidget {
       if (failingTier1.isNotEmpty) {
         final n = failingTier1.length;
         headline = n == 1
-            ? 'Action needed: 1 critical check failing'
-            : 'Action needed: $n critical checks failing';
+            ? 'Action needed: 1 critical check is failing'
+            : 'Action needed: $n critical checks are failing';
       } else {
         headline = 'Action needed: a required service is unavailable';
       }
-      subLine = _redSubLine(failingDeps);
+      // Items beyond the failing tier-1 (critical) checks that still need a
+      // look: the full attention list minus the critical failures already
+      // named in the headline. Mirrors the mockup's "N other items also
+      // need a look" clause.
+      final rest = attention.length - failingTier1.length;
+      subLine = _redSubLine(failingDeps, rest: rest < 0 ? 0 : rest);
     } else if (amber) {
       color = AppColors.warning;
       icon = Icons.warning_amber_outlined;
@@ -596,7 +601,9 @@ class _HealthSummary extends StatelessWidget {
       icon = Icons.check_circle_outline;
       headline = 'Everything looks good';
       final n = envelope.metrics.length;
-      subLine = n == 1 ? 'All 1 check passed.' : 'All $n checks passed.';
+      subLine = n == 1
+          ? 'All 1 check passed. Last checked just now.'
+          : 'All $n checks passed. Last checked just now.';
     }
 
     return Container(
@@ -677,20 +684,27 @@ class _HealthSummary extends StatelessWidget {
     return ordered;
   }
 
-  String _redSubLine(List<HealthDependency> failingDeps) {
+  String _redSubLine(List<HealthDependency> failingDeps, {int rest = 0}) {
     final services = failingDeps.map(_dependencyLabel).toList(growable: false);
+    final String base;
     if (envelope.dependenciesUnavailable) {
-      if (services.isNotEmpty) {
-        return 'Services affected: ${services.join(", ")}. '
-            'Results below may be out of date.';
-      }
-      return 'Results below may be out of date.';
-    }
-    if (services.isNotEmpty) {
-      return 'Services affected: ${services.join(", ")}. '
+      base = services.isNotEmpty
+          ? 'Services affected: ${services.join(", ")}. '
+                'Results below may be out of date.'
+          : 'Results below may be out of date.';
+    } else if (services.isNotEmpty) {
+      base = 'Services affected: ${services.join(", ")}. '
           'Fix the cause before relying on this environment.';
+    } else {
+      base = 'Fix the cause before relying on this environment.';
     }
-    return 'Fix the cause before relying on this environment.';
+    // When checks beyond the failing tier-1 (critical) ones also need a
+    // look, name them so the operator does not stop at the critical fix.
+    if (rest <= 0) return base;
+    final tail = rest == 1
+        ? ' $rest other item also needs a look.'
+        : ' $rest other items also need a look.';
+    return '$base$tail';
   }
 }
 
@@ -854,7 +868,7 @@ class _Header extends StatelessWidget {
       icon: Icons.health_and_safety_outlined,
       title: 'System health',
       subtitle:
-          'Run a read-only check of advisor data, app service, and platform services.',
+          'A read-only check of the advisor data, the app service, and the platform behind it.',
       collapseBelowWidth: 640,
       actions: <Widget>[
         ConstrainedBox(
@@ -1369,6 +1383,10 @@ class _MetricCardState extends State<_MetricCard> {
     final faceColor = (m != null && severity == HealthSeverity.green)
         ? AppColors.textSecondary
         : _remediationColor(severity);
+    // A failing critical (tier-1) check is blocking: render a small
+    // uppercase "blocking" tag under the face line so the severity reads
+    // at a glance. Only ever shown for tier-1 + red; never otherwise.
+    final isBlocking = m != null && tier == 1 && severity == HealthSeverity.red;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 240, maxWidth: 360),
@@ -1411,6 +1429,12 @@ class _MetricCardState extends State<_MetricCard> {
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.body12(color: faceColor),
             ),
+            if (isBlocking) ...<Widget>[
+              const SizedBox(height: 6),
+              _BlockingTag(
+                key: Key('admin_health_tile_${metricKey}_blocking'),
+              ),
+            ],
             const SizedBox(height: 4),
             _MetricDetails(
               metricKey: metricKey,
@@ -1468,6 +1492,38 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+/// Small uppercase "blocking" tag rendered under a failing critical
+/// (tier-1 + red) metric's face line. Negative-coloured and intentionally
+/// compact so it reads as a severity marker, not a status pill. Only the
+/// card decides when to show it (tier-1 + red); this widget is dumb.
+class _BlockingTag extends StatelessWidget {
+  const _BlockingTag({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.negative.withValues(alpha: 0.15),
+        border: Border.all(color: AppColors.negative, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Text(
+        'BLOCKING',
+        maxLines: 1,
+        overflow: TextOverflow.clip,
+        style: TextStyle(
+          color: AppColors.negative,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          height: 1.2,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
 /// Per-card "Details" disclosure. Collapsed by default; the global
 /// "Show technical details" switch forces every card open via
 /// [forceExpanded]. This is the one place monospace values are allowed.
@@ -1500,7 +1556,7 @@ class _MetricDetails extends StatelessWidget {
       if (healthyRange != null)
         _DetailRow(
           keyName: 'admin_health_tile_${metricKey}_range',
-          label: 'Healthy range',
+          label: 'Healthy',
           value: healthyRange,
         ),
       _DetailRow(
@@ -1512,7 +1568,7 @@ class _MetricDetails extends StatelessWidget {
       ),
       _DetailRow(
         keyName: 'admin_health_tile_${metricKey}_source',
-        label: 'Source',
+        label: 'Signal',
         value: source,
       ),
       _DetailRow(
