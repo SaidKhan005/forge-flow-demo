@@ -31,6 +31,16 @@
 // (any dependency failure is already called out by the red summary). The
 // content stays centered and capped at the shared operator-web width.
 //
+// Slice 4 drops the verbose hierarchy scope notice (the "Where this
+// applies" pill / "Section details" expander / source / effective-value
+// block). System health is platform-wide: the proxy `/health` envelope
+// carries no operator/tenant/scope identifiers per
+// docs/contracts/proxy_health_contract.md, so a per-scope block does not
+// belong. When a hierarchy scope is selected, one short muted line
+// (key `admin_health_platform_note`) states the checks do not change per
+// scope. The scope is still sent to the gateway fetch for request
+// shaping; only the on-screen per-scope block is gone.
+//
 // Coverage:
 //   * Initial render is manual-only and does not fetch.
 //   * Manual check carries the selected hierarchy scope to the gateway.
@@ -168,13 +178,26 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
+    // The verbose hierarchy scope notice was removed (System health is
+    // platform-wide: the /health envelope carries no scope identifiers per
+    // docs/contracts/proxy_health_contract.md). One short muted platform
+    // note renders in its place; the old notice is gone from the tree.
+    expect(
+      find.byKey(const Key('admin_health_scope_notice')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_health_platform_note')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('admin_health_confirm_run')));
     await tester.pump();
 
+    // Scope still flows to the gateway fetch (request shaping is unchanged);
+    // only the on-screen per-scope block was dropped.
     expect(gateway.fetchCount, equals(1));
     expect(gateway.requests.single.operatorId, equals('op-a'));
     expect(gateway.requests.single.locationId, isNull);
