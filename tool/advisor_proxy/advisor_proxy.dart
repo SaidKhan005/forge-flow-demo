@@ -4200,6 +4200,14 @@ const String adminPricingOperatorsPath = '/v1/admin/pricing/operators';
 const String adminPricingOperatorsPrefix = '$adminPricingOperatorsPath/';
 const String adminPricingUsageCapsPath = '/v1/admin/pricing/usage-caps';
 
+// Plans & Limits V1 Phase 3 — editable plan-pricing catalog. GET lists
+// every plan's pricing (gated by the read role set); PATCH on
+// `/plans/{tier_key}` edits one plan's pricing (write role set, MFA,
+// idempotent + audited). Backed by the GLOBAL `pricing_plan_catalog`
+// table (no operator_id, no RLS — admin-pool BYPASSRLS posture).
+const String adminPricingPlansPath = '/v1/admin/pricing/plans';
+const String adminPricingPlansPrefix = '$adminPricingPlansPath/';
+
 // Phase 8 spine-bridge .C -- Data Accuracy + Polling & Pricing admin
 // routes. This surface is separate from 11A.2 pricing caps: it exposes
 // per-location data accuracy settings, polling tier assignments, and
@@ -4374,6 +4382,32 @@ abstract class PricingTierAdminProxyGateway {
   Future<List<Map<String, Object?>>?> monthToDateSpendSummary({
     required String actorUserId,
     required String operatorId,
+    required String adminReason,
+  });
+
+  /// Phase 3 — list the editable plan-pricing catalog. Returns one map
+  /// per plan (`tier_key` + pricing fields + `updated_at` / `updated_by`),
+  /// in the canonical ladder order so the admin console renders
+  /// deterministically.
+  Future<List<Map<String, Object?>>> listPlanCatalog({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  /// Phase 3 — edit one plan's pricing. Returns the updated catalog row
+  /// JSON, or null when [tierKey] is not a known plan so the route can
+  /// answer 404 honestly. Money / band fields are nullable (genuine SQL
+  /// NULL: Enterprise has no monthly price; no-seat plans have null seat
+  /// fees).
+  Future<Map<String, Object?>?> updatePlanPricing({
+    required String actorUserId,
+    required String tierKey,
+    required double? monthlyUsd,
+    required int? firstNSeats,
+    required double? firstSeatUsd,
+    required double? additionalSeatUsd,
+    required double? onboardingMinUsd,
+    required double? onboardingMaxUsd,
     required String adminReason,
   });
 }
@@ -13331,6 +13365,11 @@ bool _isAdminPricingPath(String path) {
     return true;
   }
   if (path == adminPricingUsageCapsPath) return true;
+  // Phase 3 — plan-pricing catalog GET (collection) + PATCH (single plan).
+  if (path == adminPricingPlansPath ||
+      path.startsWith(adminPricingPlansPrefix)) {
+    return true;
+  }
   return false;
 }
 
@@ -13506,6 +13545,13 @@ bool _isAdminPricingOperation(String path, String method) {
   // Phase 2 — delete-a-limit. DELETE is gated by the write-method role
   // set (`kFfPricingAdminWriteRoles`) the same way PUT/PATCH/POST are.
   if (method == 'DELETE' && path == adminPricingUsageCapsPath) return true;
+  // Phase 3 — plan-pricing catalog. GET lists the catalog (read role set);
+  // PATCH on `/plans/{tier_key}` edits one plan (write role set). Both
+  // flow through the same method-scoped gate as the routes above.
+  if (method == 'GET' && path == adminPricingPlansPath) return true;
+  if (method == 'PATCH' && path.startsWith(adminPricingPlansPrefix)) {
+    return true;
+  }
   return false;
 }
 
@@ -14404,6 +14450,78 @@ Future<void> _routePricingAdmin({
     return;
   }
 
+  // Phase 3 — GET /v1/admin/pricing/plans. Lists the editable plan-pricing
+  // catalog (one row per plan). Read-only: no idempotency key (a GET is
+  // naturally idempotent). Gated by the read role set in the dispatch
+  // layer (super_admin + ff_support).
+  if (method == 'GET' && path == adminPricingPlansPath) {
+    final plans = await gateway.listPlanCatalog(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:plans_list',
+    );
+    _writeJson(response, 200, <String, Object?>{'plans': plans});
+    return;
+  }
+
+  // Phase 3 — PATCH /v1/admin/pricing/plans/{tier_key}. Edits one plan's
+  // pricing. Write role set (super_admin only), idempotent + audited like
+  // the operator-tier PATCH: a retried PATCH under the same Idempotency-Key
+  // collapses to one pricing mutation + one audit row. Unknown tier_key
+  // answers 404; out-of-range fields answer 400 via the body parsers.
+  if (method == 'PATCH' && path.startsWith(adminPricingPlansPrefix)) {
+    final tail = _pathSuffix(path, adminPricingPlansPrefix);
+    if (tail == null || tail.contains('/')) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final tierKey = Uri.decodeComponent(tail);
+    if (!kProxyPricingTierTemplateKeys.contains(tierKey)) {
+      throw _AdminInputError(
+        statusCode: 404,
+        code: 'unknown_plan',
+        message: 'tier_key "$tierKey" is not a known plan',
+      );
+    }
+    final monthlyUsd = _optionalBodyMoney(body, 'monthly_usd');
+    final firstNSeats = _optionalBodyInt(body, 'first_n_seats');
+    final firstSeatUsd = _optionalBodyMoney(body, 'first_seat_usd');
+    final additionalSeatUsd = _optionalBodyMoney(body, 'additional_seat_usd');
+    final onboardingMinUsd = _optionalBodyMoney(body, 'onboarding_min_usd');
+    final onboardingMaxUsd = _optionalBodyMoney(body, 'onboarding_max_usd');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.pricing.update_plan_pricing',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final updated = await gateway.updatePlanPricing(
+          actorUserId: actorUserId,
+          tierKey: tierKey,
+          monthlyUsd: monthlyUsd,
+          firstNSeats: firstNSeats,
+          firstSeatUsd: firstSeatUsd,
+          additionalSeatUsd: additionalSeatUsd,
+          onboardingMinUsd: onboardingMinUsd,
+          onboardingMaxUsd: onboardingMaxUsd,
+          adminReason: '$reasonPrefix:plan_pricing:$tierKey',
+        );
+        if (updated == null) {
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_plan',
+              'message': 'plan not found',
+            },
+          );
+        }
+        return (statusCode: 200, payload: <String, Object?>{'plan': updated});
+      },
+    );
+    return;
+  }
+
   _writeNotFound(response, request);
 }
 
@@ -14480,6 +14598,90 @@ double _requireBodyMoney(Map<String, Object?> body, String field) {
     statusCode: 400,
     code: 'missing_$field',
     message: '$field is required',
+  );
+}
+
+/// Phase 3 — parse an OPTIONAL money field that may be a genuine SQL
+/// NULL. A missing key or an explicit JSON `null` returns null (e.g.
+/// Enterprise has no monthly price; no-seat plans have null seat fees);
+/// a present value must be a finite number >= 0. Rejects a wrong type so
+/// a malformed body never silently coerces to 0.
+double? _optionalBodyMoney(Map<String, Object?> body, String field) {
+  final raw = body[field];
+  if (raw == null) return null;
+  if (raw is num) {
+    final value = raw.toDouble();
+    if (value < 0 || value.isNaN || value.isInfinite) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be a finite number >= 0 or null',
+      );
+    }
+    return value;
+  }
+  if (raw is String) {
+    if (raw.isEmpty) return null;
+    final parsed = double.tryParse(raw);
+    if (parsed == null || parsed < 0 || parsed.isNaN || parsed.isInfinite) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be a finite number >= 0 or null',
+      );
+    }
+    return parsed;
+  }
+  throw _AdminInputError(
+    statusCode: 400,
+    code: 'invalid_$field',
+    message: '$field must be a number or null',
+  );
+}
+
+/// Phase 3 — parse an OPTIONAL non-negative integer field that may be a
+/// genuine SQL NULL (e.g. the first-seat band size is null for no-seat
+/// plans). Rejects negatives, non-integers, and wrong types.
+int? _optionalBodyInt(Map<String, Object?> body, String field) {
+  final raw = body[field];
+  if (raw == null) return null;
+  if (raw is int) {
+    if (raw < 0) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be a non-negative integer or null',
+      );
+    }
+    return raw;
+  }
+  if (raw is num && raw == raw.roundToDouble()) {
+    final value = raw.toInt();
+    if (value < 0) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be a non-negative integer or null',
+      );
+    }
+    return value;
+  }
+  if (raw is String) {
+    if (raw.isEmpty) return null;
+    final parsed = int.tryParse(raw);
+    if (parsed == null || parsed < 0) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be a non-negative integer or null',
+      );
+    }
+    return parsed;
+  }
+  throw _AdminInputError(
+    statusCode: 400,
+    code: 'invalid_$field',
+    message: '$field must be an integer or null',
   );
 }
 

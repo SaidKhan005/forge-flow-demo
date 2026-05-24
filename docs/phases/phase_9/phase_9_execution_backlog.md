@@ -118,7 +118,12 @@ Do not re-open stale findings unless the repo regresses:
   `(operator_id, location_id, request_id)` join index to
   `advisor_conversation_log` and schedules a cluster-wide 30-day retention
   purge via pg_cron that never deletes `legal_hold` or `permanent`-retention
-  rows (schema + RLS-adjacent; gated on explicit operator approval). The
+  rows (schema + RLS-adjacent; gated on explicit operator approval). Plans &
+  Limits V1 Phase 3 then advances the shared migration cutoff to
+  `202605241100_plans_and_limits_phase3_pricing_plan_catalog.sql`, which adds
+  the GLOBAL, no-RLS `pricing_plan_catalog` table (one editable row per plan,
+  seeded from the reconciled pricing model; admin-pool BYPASSRLS posture like
+  `default_role_catalog_versions`). The
   Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron

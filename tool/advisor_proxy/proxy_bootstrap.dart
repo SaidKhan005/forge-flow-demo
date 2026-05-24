@@ -51,6 +51,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_unit_account_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/pricing_plan_catalog_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
@@ -1493,6 +1494,10 @@ ProxyProductionBindings buildProxyProductionBindings(
       locationsRepository: LocationsRepository(adminWrapper),
       usageCapsRepository: UsageCapsRepository(adminWrapper),
       orgUnitsRepository: OrgUnitsRepository(adminWrapper),
+      // Phase 3 — editable plan-pricing catalog. Same admin pool
+      // rationale: the GLOBAL `pricing_plan_catalog` is platform-wide
+      // (no operator_id, no RLS), read/written under forge_admin.
+      planCatalogRepository: PricingPlanCatalogRepository(adminWrapper),
       auditRepository: adminAudit,
     ),
     // Phase 11A.3a — corpus admin gateway. Same admin pool rationale
@@ -5446,17 +5451,20 @@ class RepositoryPricingTierAdminProxyGateway
     required LocationsRepository locationsRepository,
     required UsageCapsRepository usageCapsRepository,
     required OrgUnitsRepository orgUnitsRepository,
+    required PricingPlanCatalogRepository planCatalogRepository,
     required AuthEventsAuditRepository auditRepository,
   }) : _operators = operatorsRepository,
        _locations = locationsRepository,
        _caps = usageCapsRepository,
        _orgUnits = orgUnitsRepository,
+       _planCatalog = planCatalogRepository,
        _auditRepository = auditRepository;
 
   final OperatorsRepository _operators;
   final LocationsRepository _locations;
   final UsageCapsRepository _caps;
   final OrgUnitsRepository _orgUnits;
+  final PricingPlanCatalogRepository _planCatalog;
   final AuthEventsAuditRepository _auditRepository;
 
   /// Resolves the operator's root `org_units` id (the row with
@@ -5747,6 +5755,62 @@ class RepositoryPricingTierAdminProxyGateway
       payload: <String, Object?>{'row_count': rows.length},
     );
     return <Map<String, Object?>>[for (final row in rows) row.toJson()];
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listPlanCatalog({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    final rows = await _planCatalog.listPlans(reason: adminReason);
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.pricing.plans_listed',
+      adminReason: adminReason,
+      payload: <String, Object?>{'plan_count': rows.length},
+    );
+    return <Map<String, Object?>>[for (final row in rows) row.toJson()];
+  }
+
+  @override
+  Future<Map<String, Object?>?> updatePlanPricing({
+    required String actorUserId,
+    required String tierKey,
+    required double? monthlyUsd,
+    required int? firstNSeats,
+    required double? firstSeatUsd,
+    required double? additionalSeatUsd,
+    required double? onboardingMinUsd,
+    required double? onboardingMaxUsd,
+    required String adminReason,
+  }) async {
+    final updated = await _planCatalog.updatePlanPricing(
+      tierKey: tierKey,
+      monthlyUsd: monthlyUsd,
+      firstNSeats: firstNSeats,
+      firstSeatUsd: firstSeatUsd,
+      additionalSeatUsd: additionalSeatUsd,
+      onboardingMinUsd: onboardingMinUsd,
+      onboardingMaxUsd: onboardingMaxUsd,
+      updatedByUserId: actorUserId,
+      reason: adminReason,
+    );
+    if (updated == null) return null;
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.pricing.plan_pricing_updated',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'tier_key': tierKey,
+        'monthly_usd': monthlyUsd,
+        'first_n_seats': firstNSeats,
+        'first_seat_usd': firstSeatUsd,
+        'additional_seat_usd': additionalSeatUsd,
+        'onboarding_min_usd': onboardingMinUsd,
+        'onboarding_max_usd': onboardingMaxUsd,
+      },
+    );
+    return updated.toJson();
   }
 
   Future<Map<String, Object?>> _bundleFor(
