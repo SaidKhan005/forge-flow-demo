@@ -3491,6 +3491,337 @@ void main() {
       });
     });
 
+    // -- Phase 2: DELETE usage-cap + spend-summary -----------------------
+
+    test(
+      '11A.2 DELETE /v1/admin/pricing/usage-caps forwards cap_id + audits',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()..deleteResult = true;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-del-1',
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'cap_id': 'cap-xyz',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['deleted'], isTrue);
+            expect(gateway.lastDeleteOperatorId, equals('op-1'));
+            expect(gateway.lastDeleteCapId, equals('cap-xyz'));
+            expect(gateway.lastReason, contains('admin.pricing.DELETE'));
+            expect(gateway.lastReason, contains('usage_caps_delete'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 DELETE /v1/admin/pricing/usage-caps forwards the logical key',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()..deleteResult = true;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-del-key',
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'usage_class': 'advisor_qa',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastDeleteCapId, isNull);
+            expect(gateway.lastDeleteLocationId, equals('loc-1'));
+            expect(gateway.lastDeleteUsageClass, equals('advisor_qa'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 DELETE usage-caps returns deleted:false on a no-op (idempotent)',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()..deleteResult = false;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-del-noop',
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'cap_id': 'cap-gone',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['deleted'], isFalse);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 DELETE usage-caps requires an Idempotency-Key (HARD-H)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'cap_id': 'cap-xyz',
+              },
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('idempotency_key_missing'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 DELETE usage-caps rejects a body with no cap identity (400)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-del-bad',
+              body: const <String, Object?>{'operator_id': 'op-1'},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('missing_cap_identity'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('11A.2 DELETE usage-caps rejects ff_support with 403', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'DELETE',
+            ctx.baseUri.resolve(adminPricingUsageCapsPath),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-del-support',
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'cap_id': 'cap-xyz',
+            },
+          );
+          expect(response.statusCode, equals(403));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('permission_denied'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      '11A.2 GET .../operators/{id}/spend-summary returns the summary',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()
+            ..spendSummaryResult = <String, Object?>{
+              'operator_id': 'op-1',
+              'as_of': '2026-04-30T12:00:00.000Z',
+              'lines': <Map<String, Object?>>[
+                <String, Object?>{
+                  'location_id': 'loc-1',
+                  'usage_class': 'advisor_qa',
+                  'monthly_cap_usd': 50.0,
+                  'monthly_used_usd': 12.5,
+                },
+              ],
+            };
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/spend-summary',
+              ),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['operator_id'], equals('op-1'));
+            expect((body['lines'] as List), hasLength(1));
+            expect(gateway.lastSpendSummaryOperatorId, equals('op-1'));
+            expect(gateway.lastReason, contains('spend_summary'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 GET .../spend-summary surfaces an unknown operator as 404',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()..spendSummaryResult = null;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-missing/spend-summary',
+              ),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(404));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('unknown_operator'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('11A.2 GET .../spend-summary admits ff_support (read-only)', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()
+          ..spendSummaryResult = <String, Object?>{
+            'operator_id': 'op-1',
+            'lines': <Map<String, Object?>>[],
+          };
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '${adminPricingOperatorsPrefix}op-1/spend-summary',
+            ),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.lastSpendSummaryOperatorId, equals('op-1'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test(
       '11A.2 GET /v1/admin/pricing/operators without Authorization is 401',
       () async {
