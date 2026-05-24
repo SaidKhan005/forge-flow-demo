@@ -226,6 +226,46 @@ adds `submitBatch(...)` extension method.
 (Locked 2026-04-26; replaces the abstract "F&F pricing tier model" parked
 in older trackers.)
 
+### Reconciled pricing model (2026-05-24, operator decision)
+
+This subsection is the current source of truth for the plan lineup and prices.
+It reconciles three drifted sources (the investor business plan, this register,
+and the code) into one operator-approved model. Where it differs from the tables
+further down, this subsection wins; the tables below are retained as history.
+
+Decided by the operator (Said / Vanessa) on 2026-05-24:
+
+- **Lineup: six plans** — Pilot, Starter, Premium, Elite, Pro, Enterprise. The
+  investor business plan listed three (Basic/Premium/Elite); Basic is renamed
+  Starter, and Pilot/Pro/Enterprise are kept.
+- **Plans are the full product plus AI, not AI-only.** Every paid plan bundles
+  the Forge & Flow app (KPI dashboard, back-office reporting, branded app) with
+  AI (advisor, manager/staff chatbots, automated feedback) and, higher up, LMS,
+  scoreboard, SOPs, and the workflow catalog. Revenue stays tracked as separate
+  lines (Dashboard Subscription, LMS Subscription, onboarding, services).
+- **Pilot = free preview, not advisor-only.** Pilot is a $0 free preview that
+  shows the full KPI dashboard on demo/sample data plus the AI advisor, so a
+  prospect can try the product before connecting real data. It reuses demo mode
+  (`kDemoMode` / `DemoScope`; HP #2). The operator moves to Starter when real
+  POS / labor data is connected. The advisor in Pilot stays metered (~$50/mo
+  `usage_caps` guardrail) to bound AI cost. This supersedes the earlier
+  "Pilot = Methodology Q&A only, pay-as-you-go" definition below.
+- **Entry tier is named "Starter"** (the code/spec name), not "Basic".
+- **Elite per-seat: $10 first 20, then $5** (this register's value), not the
+  investor plan's $7/$3. $3/seat was below marginal AI cost and broke margin
+  past ~30 staff.
+- **Premium per-seat: $5 first 20, then $3.**
+- **Onboarding is priced per plan** (the per-tier ranges below), not one flat
+  $250-$1,000 range.
+- **Code follow-up (tracked, not yet done):** `OperatorSubscriptionTier`
+  (`lib/auth/mfa_policy.dart`) is missing `elite` and must carry all six keys;
+  the demo `subscription_tier: 'launch'` seed (`lib/admin/admin_routes.dart`) is
+  undefined in both the enum and the pricing templates and must be retired or
+  mapped to a real key.
+
+Operator-approved mockup of this model:
+`docs/_mockups/admin_plans_and_limits_redesign.html` (Reconcile + Plans tabs).
+
 External-facing tiers stay simple (operators see Basic/Premium/Elite/
 Pro/Enterprise). Internal metering is decomposed via `usage_class` so
 F&F can attribute cost per surface and adjust caps per tier without
