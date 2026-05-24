@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Knowledge base : content-first redesign preview</title>
+<!-- System fonts + inline line icons only (no external fetch) so the
+     preview renders offline. Icons mirror the app's Material outlined
+     style: single stroke colour, consistent weight, no emoji. -->
+<style>
+  :root {
+    --bg-deep:#F8EDE6; --bg-mid:#EFE8E0; --surface:#FFFFFF;
+    --sunset:#CC7A3E; --sunset-dark:#9A5C2A;
+    --text-primary:#2C2C2C; --text-secondary:#5A524A; --text-muted:#6b635a;
+    --positive:#256B29; --negative:#C62828; --warning:#997000;
+    --peacock:#0E8080; --peacock-dark:#0A6060; --border:#DDD6CC;
+    --positive-bg:rgba(37,107,41,0.12); --negative-bg:rgba(198,40,40,0.10);
+    --sunset-bg:rgba(204,122,62,0.12); --peacock-bg:rgba(14,128,128,0.12);
+    --warning-bg:rgba(153,112,0,0.16);
+    --radius-sm:8px; --radius-card:14px;
+    --serif:Georgia,'Times New Roman',serif;
+    --sans:'Segoe UI',Roboto,system-ui,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg-deep);font-family:var(--sans);color:var(--text-primary);-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;}
+
+  /* icons */
+  .ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:middle;}
+  .ic-sm{width:16px;height:16px;} .ic-lg{width:22px;height:22px;}
+
+  .preview-bar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 24px;background:#211c19;color:#f3ece4;font-size:13px;}
+  .preview-bar .tag{background:var(--sunset);color:#fff;padding:3px 9px;border-radius:6px;font-weight:700;letter-spacing:.3px;}
+  .preview-bar .spacer{flex:1;}
+  .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
+  .switch input{display:none;}
+  .switch .track{width:38px;height:20px;border-radius:999px;background:#4a423b;position:relative;transition:background .15s;}
+  .switch .track::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s;}
+  .switch input:checked + .track{background:var(--sunset);}
+  .switch input:checked + .track::after{transform:translateX(18px);}
+  .seg{display:inline-flex;border:1px solid #4a423b;border-radius:6px;overflow:hidden;}
+  .seg button{background:transparent;color:#cfc6bd;border:0;padding:5px 11px;font-size:12.5px;cursor:pointer;font-family:var(--sans);}
+  .seg button.active{background:var(--sunset);color:#fff;}
+
+  .frame{max-width:1080px;margin:0 auto;padding:26px 24px 70px;}
+  .breadcrumb{font-size:13px;color:var(--text-muted);margin-bottom:16px;}
+  .breadcrumb b{color:var(--text-secondary);font-weight:600;}
+
+  .screen-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:8px;}
+  .screen-header .hicon{width:48px;height:48px;border-radius:var(--radius-card);background:var(--sunset-bg);color:var(--sunset-dark);display:flex;align-items:center;justify-content:center;flex:none;}
+  .screen-header .hicon .ic{width:26px;height:26px;}
+  .screen-header h1{font-family:var(--serif);font-weight:700;font-size:30px;margin:0;line-height:1.15;}
+  .screen-header p{margin:6px 0 0;color:var(--text-secondary);font-size:15.5px;max-width:640px;}
+  .badge-adminonly{margin-left:auto;flex:none;align-self:center;font-size:12px;font-weight:700;color:var(--peacock-dark);background:var(--peacock-bg);border:1px solid rgba(14,128,128,.3);padding:4px 11px;border-radius:999px;}
+
+  .tabbar{display:flex;gap:8px;margin:22px 0;background:var(--bg-mid);padding:5px;border-radius:999px;width:fit-content;}
+  .tabbar button{display:flex;align-items:center;gap:7px;background:none;border:0;padding:9px 18px;cursor:pointer;font-size:15px;font-weight:600;color:var(--text-secondary);border-radius:999px;}
+  .tabbar button.active{background:var(--surface);color:var(--text-primary);box-shadow:0 1px 4px rgba(0,0,0,.08);}
+  .panel{display:none;} .panel.active{display:block;}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:20px;}
+  .card + .card{margin-top:18px;}
+  .h-row{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
+  .card h2{font-family:var(--serif);font-weight:700;font-size:19px;margin:0;}
+  .card .lead{color:var(--text-secondary);font-size:14px;margin:0 0 16px;}
+
+  .btn{font-family:var(--sans);font-size:14px;font-weight:600;border-radius:var(--radius-sm);padding:9px 16px;cursor:pointer;border:1.5px solid transparent;display:inline-flex;align-items:center;gap:7px;}
+  .btn-primary{background:var(--sunset);color:#fff;} .btn-primary:hover{background:var(--sunset-dark);}
+  .btn-outline{background:transparent;color:var(--text-primary);border-color:var(--border);} .btn-outline:hover{border-color:var(--sunset);}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .btn-yes{background:var(--positive-bg);color:var(--positive);border-color:rgba(37,107,41,.35);} .btn-yes.sel{background:var(--positive);color:#fff;}
+  .btn-no{background:transparent;color:var(--negative);border-color:rgba(198,40,40,.35);} .btn-no.sel{background:var(--negative);color:#fff;}
+  .btn-change{background:transparent;color:var(--text-secondary);border-color:var(--border);}
+  .btn-sm{padding:6px 12px;font-size:13px;}
+
+  /* toolbar: search + filters */
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+  .search{display:flex;align-items:center;gap:8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 11px;flex:1;min-width:200px;color:var(--text-muted);}
+  .search input{border:0;outline:0;font-family:var(--sans);font-size:14px;flex:1;background:transparent;color:var(--text-primary);}
+  select{font-family:var(--sans);font-size:14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;background:var(--surface);color:var(--text-primary);cursor:pointer;}
+  select:focus,.search:focus-within{outline:2px solid var(--sunset);border-color:var(--sunset);}
+  .muted{color:var(--text-muted);font-size:13px;white-space:nowrap;}
+
+  /* doc groups */
+  details.docgroup{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden;}
+  details.docgroup > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg-mid);font-weight:700;}
+  details.docgroup > summary::-webkit-details-marker{display:none;}
+  details.docgroup > summary .chev{margin-left:auto;transition:transform .15s;}
+  details.docgroup[open] > summary .chev{transform:rotate(180deg);}
+  .docgroup .body{padding:2px 14px;}
+
+  .topic{display:flex;align-items:center;gap:14px;padding:12px 4px;border-bottom:1px solid var(--border);}
+  .topic:last-child{border-bottom:0;}
+  .topic .tic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:none;background:var(--bg-mid);color:var(--peacock-dark);}
+  .topic .tname{font-weight:600;font-size:15.5px;} .topic .tkind{font-size:13px;color:var(--text-muted);}
+  .topic .tspace{flex:1;}
+  .kind-pill{font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:999px;background:var(--bg-mid);color:var(--text-secondary);white-space:nowrap;}
+
+  .upd{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);}
+  .upd:last-child{border-bottom:0;}
+  .upd .dot{width:12px;height:12px;border-radius:50%;margin-top:5px;flex:none;background:var(--border);}
+  .upd.now .dot{background:var(--positive);}
+  .upd .ut{font-weight:600;} .upd .um{font-size:13px;color:var(--text-muted);}
+  .upd .tags{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;}
+  .tag-chip{font-size:12px;background:var(--bg-mid);color:var(--text-secondary);padding:3px 10px;border-radius:999px;}
+  .now-badge{font-size:11.5px;font-weight:700;color:var(--positive);background:var(--positive-bg);padding:2px 9px;border-radius:999px;margin-left:8px;}
+
+  /* connections summary */
+  .summary{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .summary .big{font-family:var(--serif);font-size:24px;font-weight:700;}
+  .sum-chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;padding:5px 12px;border-radius:999px;}
+  .sum-chip .cdot{width:9px;height:9px;border-radius:50%;}
+  .sum-chip.clear{color:var(--positive);background:var(--positive-bg);} .sum-chip.clear .cdot{background:var(--positive);}
+  .sum-chip.check{color:var(--warning);background:var(--warning-bg);} .sum-chip.check .cdot{background:var(--warning);}
+  .sum-chip.unsure{color:var(--text-secondary);background:var(--bg-mid);} .sum-chip.unsure .cdot{background:var(--text-muted);}
+
+  .conn{border:1px solid var(--border);border-radius:var(--radius-card);padding:16px 18px;margin-bottom:14px;background:var(--surface);}
+  .conn.sel{border-color:var(--sunset);box-shadow:0 0 0 3px var(--sunset-bg);}
+  .flow{display:flex;align-items:center;gap:0;flex-wrap:wrap;}
+  .node{display:flex;align-items:center;gap:9px;background:var(--bg-mid);border:1px solid var(--border);border-radius:12px;padding:10px 14px;color:var(--text-secondary);}
+  .node .nm{font-weight:700;font-size:15.5px;white-space:nowrap;color:var(--text-primary);}
+  .node .nk{font-size:11.5px;font-weight:600;color:var(--text-muted);}
+  .link{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 8px;min-width:130px;}
+  .verb{font-weight:700;color:var(--sunset-dark);font-size:14px;background:var(--sunset-bg);padding:3px 12px;border-radius:999px;margin-bottom:5px;}
+  .connector{width:100%;height:0;border-top:2px solid var(--sunset);position:relative;}
+  .connector::after{content:'';position:absolute;right:-1px;top:-4px;width:7px;height:7px;border-top:2px solid var(--sunset);border-right:2px solid var(--sunset);transform:rotate(45deg);}
+  .conn-sentence{margin:14px 0 10px;font-size:15.5px;}
+  .clarity{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;}
+  .clarity .cdot{width:9px;height:9px;border-radius:50%;}
+  .clarity.clear{color:var(--positive);background:var(--positive-bg);} .clarity.clear .cdot{background:var(--positive);}
+  .clarity.check{color:var(--warning);background:var(--warning-bg);} .clarity.check .cdot{background:var(--warning);}
+  .clarity.unsure{color:var(--text-secondary);background:var(--bg-mid);} .clarity.unsure .cdot{background:var(--text-muted);}
+  .conn-actions{display:flex;gap:9px;margin-top:14px;flex-wrap:wrap;}
+  .picked{font-size:13px;font-weight:600;margin-top:10px;display:flex;align-items:center;gap:6px;}
+  .picked.yes{color:var(--positive);} .picked.no{color:var(--negative);}
+
+  .group-h{font-family:var(--serif);font-size:17px;font-weight:700;margin:26px 0 12px;display:flex;align-items:center;gap:9px;}
+  .group-h .cdot{width:11px;height:11px;border-radius:50%;}
+  .count-pill{font-size:13px;font-weight:700;color:var(--text-secondary);background:var(--bg-mid);border-radius:999px;padding:2px 11px;}
+  .showmore{display:inline-flex;align-items:center;gap:7px;background:none;border:0;color:var(--sunset-dark);font-family:var(--sans);font-size:13.5px;font-weight:600;cursor:pointer;padding:6px 2px;}
+
+  .mapwrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:18px;}
+  .mapwrap .maptop{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  .mapwrap h2{font-family:var(--serif);font-size:19px;margin:0;}
+  .map-cap{font-size:13px;color:var(--text-muted);margin-top:8px;}
+  .map-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin-top:8px;}
+  .map-legend span{display:inline-flex;align-items:center;gap:7px;}
+
+  .banner{border-radius:var(--radius-sm);padding:12px 14px;font-size:14px;margin-bottom:16px;display:flex;gap:10px;align-items:center;}
+  .banner-readonly{background:var(--bg-mid);color:var(--text-secondary);border:1px solid var(--border);}
+
+  .tech{display:none;} body.show-tech .tech{display:block;}
+  .tech-box{margin-top:12px;border-top:1px dashed var(--border);padding-top:10px;}
+  .tech-box .tt{font-size:11.5px;font-weight:700;color:var(--text-muted);letter-spacing:.4px;text-transform:uppercase;margin-bottom:6px;}
+  .tech-row{display:flex;gap:10px;font-size:12.5px;font-family:'Consolas',monospace;color:var(--text-secondary);padding:2px 0;}
+  .tech-row .tl{width:120px;color:var(--text-muted);flex:none;}
+
+  .overlay{display:none;position:fixed;inset:0;background:rgba(44,44,44,.5);z-index:100;align-items:center;justify-content:center;padding:20px;}
+  .overlay.open{display:flex;}
+  .modal{background:var(--surface);border-radius:var(--radius-card);max-width:560px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:90vh;overflow:auto;}
+  .modal h3{font-family:var(--serif);font-weight:700;margin:0 0 6px;font-size:22px;}
+  .modal .m-sub{font-size:14px;color:var(--text-secondary);margin-bottom:18px;}
+  .opt{display:flex;gap:12px;align-items:center;border:1.5px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:9px;cursor:pointer;}
+  .opt:hover{border-color:var(--sunset);}
+  .opt.sel{border-color:var(--sunset);background:var(--sunset-bg);}
+  .opt .radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--text-muted);flex:none;position:relative;}
+  .opt.sel .radio{border-color:var(--sunset);}
+  .opt.sel .radio::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--sunset);}
+  .opt .oicon{color:var(--peacock-dark);flex:none;}
+  .opt .osentence{font-size:15px;} .opt .osentence b{color:var(--sunset-dark);}
+  .opt .od{font-size:13px;color:var(--text-muted);}
+  textarea{width:100%;font-family:var(--sans);font-size:14.5px;border:1.5px solid var(--border);border-radius:10px;padding:11px;resize:vertical;}
+  textarea:focus{outline:2px solid var(--sunset);border-color:var(--sunset);}
+  .field-label{font-size:13px;font-weight:700;color:var(--text-secondary);margin:18px 0 8px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px;}
+
+  .foot{margin-top:30px;color:var(--text-muted);font-size:13px;text-align:center;}
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<!-- ───────── icon sprite (outlined, single stroke) ───────── -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="ic-book" viewBox="0 0 24 24"><path d="M12 6c-1.6-1-4-1.6-6.5-1.6V17c2.5 0 4.9.6 6.5 1.6 1.6-1 4-1.6 6.5-1.6V4.4C16 4.4 13.6 5 12 6z"/><path d="M12 6v12.6"/></symbol>
+  <symbol id="ic-sop" viewBox="0 0 24 24"><rect x="4.5" y="4" width="15" height="16" rx="2"/><path d="M8 9l1.6 1.6L13 7.2"/><path d="M8 15h7"/></symbol>
+  <symbol id="ic-policy" viewBox="0 0 24 24"><path d="M12 3.2l7 2.6v5c0 4.1-3 7.3-7 8.9-4-1.6-7-4.8-7-8.9v-5z"/><path d="M9 11.5l2 2 4-4"/></symbol>
+  <symbol id="ic-concept" viewBox="0 0 24 24"><path d="M9.5 17h5"/><path d="M10 20h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.5.5.8 1.2.8 2.4h6c0-1.2.3-1.9.8-2.4A6 6 0 0 0 12 3z"/></symbol>
+  <symbol id="ic-metric" viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16v-3.5"/><path d="M12 16V8"/><path d="M16 16v-6"/></symbol>
+  <symbol id="ic-formula" viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="17" rx="2"/><path d="M7.5 7.5h9"/><path d="M8 12h2M14 12h2M8 16h2M14 16h2"/></symbol>
+  <symbol id="ic-risk" viewBox="0 0 24 24"><path d="M12 4L2.8 20h18.4z"/><path d="M12 10v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="ic-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></symbol>
+  <symbol id="ic-text" viewBox="0 0 24 24"><path d="M5 6h14"/><path d="M5 10h14"/><path d="M5 14h9"/><path d="M5 18h9"/></symbol>
+  <symbol id="ic-flag" viewBox="0 0 24 24"><path d="M6 21V4"/><path d="M6 5h11l-2 3 2 3H6"/></symbol>
+  <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-3.6-3.6"/></symbol>
+  <symbol id="ic-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+  <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="ic-edit" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-3-3L5 17z"/><path d="M14 7l3 3"/></symbol>
+  <symbol id="ic-upload" viewBox="0 0 24 24"><path d="M12 16V5"/><path d="M7.5 9.5L12 5l4.5 4.5"/><path d="M5 19.5h14"/></symbol>
+  <symbol id="ic-history" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="ic-link" viewBox="0 0 24 24"><path d="M9.5 14.5l5-5"/><path d="M11 6.5l1-1a3.5 3.5 0 1 1 5 5l-1 1"/><path d="M13 17.5l-1 1a3.5 3.5 0 1 1-5-5l1-1"/></symbol>
+  <symbol id="ic-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+</defs></svg>
+
+<div class="preview-bar">
+  <span class="tag">PREVIEW</span>
+  <span>Knowledge base : at scale, professional icons</span>
+  <span class="spacer"></span>
+  <label class="switch" title="Reveals technical IDs for power users. Off by default.">
+    <input type="checkbox" id="techToggle" /><span class="track"></span><span>Show technical details</span>
+  </label>
+  <span>View as:</span>
+  <span class="seg" id="modeSeg">
+    <button data-mode="admin" class="active">Admin</button>
+    <button data-mode="support">Support (view only)</button>
+  </span>
+</div>
+
+<div class="frame">
+  <div class="breadcrumb"><b>Barrio Legado</b> &rsaquo; North Loop &rsaquo; AI</div>
+
+  <div class="screen-header">
+    <div class="hicon"><svg class="ic"><use href="#ic-book"/></svg></div>
+    <div>
+      <h1>What the advisor knows</h1>
+      <p>Add knowledge, see how topics connect, and keep a history you can roll back. Only F&amp;F staff can see this.</p>
+    </div>
+    <span class="badge-adminonly">Staff only</span>
+  </div>
+
+  <div id="readonlyBanner" class="banner banner-readonly hidden">
+    <svg class="ic ic-sm"><use href="#ic-lock"/></svg><span>You are viewing only. Making changes needs full admin access.</span>
+  </div>
+
+  <div class="tabbar">
+    <button class="active" data-tab="knowledge"><svg class="ic ic-sm"><use href="#ic-book"/></svg>Knowledge</button>
+    <button data-tab="connections"><svg class="ic ic-sm"><use href="#ic-link"/></svg>Connections</button>
+  </div>
+
+  <!-- ════════ KNOWLEDGE TAB ════════ -->
+  <div class="panel active" id="tab-knowledge">
+
+    <div class="card">
+      <div class="h-row"><h2>Add knowledge</h2></div>
+      <p class="lead">Drop in a document and the advisor learns from it. No special formatting needed.</p>
+      <div data-editonly>
+        <div class="dropzone" id="dropzone">
+          <svg class="ic" style="width:32px;height:32px;color:var(--sunset-dark)"><use href="#ic-upload"/></svg>
+          <div class="dz-main" style="font-weight:700;font-size:16px;margin-top:8px;">Choose a file or drag it here</div>
+          <div class="muted" style="margin-top:4px;">A Word, text, or markdown document, up to 1 MB</div>
+          <input type="file" id="fileInput" accept=".md,.txt,.doc,.docx" class="hidden" />
+        </div>
+      </div>
+      <div id="changePreview" style="display:none;margin-top:18px;border-top:1px solid var(--border);padding-top:16px;">
+        <div style="font-weight:700;font-size:16px;margin-bottom:10px;" id="changeTitle">What this update changes</div>
+        <div class="topic"><div class="tic"><svg class="ic"><use href="#ic-metric"/></svg></div><div><div class="tname">Average Guest Check (AGC)</div><div class="tkind">New metric the advisor will learn</div></div></div>
+        <div class="topic"><div class="tic"><svg class="ic"><use href="#ic-edit"/></svg></div><div><div class="tname">Cost per Labor Hour (CPLH)</div><div class="tkind">Reworded, a bit clearer than before</div></div></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+          <button class="btn btn-primary" onclick="closeChangePreview(true)">Save this update</button>
+          <button class="btn btn-outline" onclick="closeChangePreview(false)">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="h-row"><h2>Topics the advisor knows</h2></div>
+      <p class="lead">As the knowledge grows, search or filter to find anything fast. Topics are grouped by the document they came from.</p>
+
+      <div class="toolbar">
+        <label class="search"><svg class="ic ic-sm"><use href="#ic-search"/></svg><input id="topicSearch" placeholder="Search topics, e.g. FIFO, harassment, CPLH" /></label>
+        <select id="kindFilter" aria-label="Filter by kind">
+          <option value="all">All kinds</option>
+          <option value="doc">Documents</option>
+          <option value="sop">SOPs</option>
+          <option value="policy">Policies</option>
+          <option value="concept">Concepts</option>
+          <option value="metric">Metrics</option>
+          <option value="formula">Formulas</option>
+          <option value="risk">Risks</option>
+        </select>
+        <span class="muted" id="topicCount">Showing 12 of 148</span>
+      </div>
+
+      <div id="topicList">
+        <details class="docgroup" open>
+          <summary><svg class="ic ic-sm"><use href="#ic-book"/></svg>Food Safety Manual <span class="count-pill">28</span><svg class="ic ic-sm chev"><use href="#ic-chevron"/></svg></summary>
+          <div class="body">
+            <div class="topic" data-name="Food Safety Manual" data-kind="doc"><div class="tic"><svg class="ic"><use href="#ic-book"/></svg></div><div><div class="tname">Food Safety Manual</div><div class="tkind">A manual</div></div><div class="tspace"></div><span class="kind-pill">Manual</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('Food Safety Manual','Manual')">Change kind</button></div>
+            <div class="topic" data-name="FIFO First In First Out" data-kind="sop"><div class="tic"><svg class="ic"><use href="#ic-sop"/></svg></div><div><div class="tname">FIFO (First In, First Out)</div><div class="tkind">A step-by-step SOP</div></div><div class="tspace"></div><span class="kind-pill">SOP</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('FIFO','SOP')">Change kind</button></div>
+            <div class="topic" data-name="HACCP" data-kind="sop"><div class="tic"><svg class="ic"><use href="#ic-sop"/></svg></div><div><div class="tname">HACCP</div><div class="tkind">A step-by-step SOP</div></div><div class="tspace"></div><span class="kind-pill">SOP</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('HACCP','SOP')">Change kind</button></div>
+            <div class="topic" data-name="The 4 C's" data-kind="concept"><div class="tic"><svg class="ic"><use href="#ic-concept"/></svg></div><div><div class="tname">The 4 C's</div><div class="tkind">A concept</div></div><div class="tspace"></div><span class="kind-pill">Concept</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('The 4 Cs','Concept')">Change kind</button></div>
+            <div class="topic" data-name="Temperature Danger Zone" data-kind="risk"><div class="tic"><svg class="ic"><use href="#ic-risk"/></svg></div><div><div class="tname">Temperature Danger Zone</div><div class="tkind">A risk to watch for</div></div><div class="tspace"></div><span class="kind-pill">Risk</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('Temperature Danger Zone','Risk')">Change kind</button></div>
+          </div>
+        </details>
+
+        <details class="docgroup" open>
+          <summary><svg class="ic ic-sm"><use href="#ic-book"/></svg>Barrio Company Handbook <span class="count-pill">61</span><svg class="ic ic-sm chev"><use href="#ic-chevron"/></svg></summary>
+          <div class="body">
+            <div class="topic" data-name="Barrio Company Handbook" data-kind="doc"><div class="tic"><svg class="ic"><use href="#ic-book"/></svg></div><div><div class="tname">Barrio Company Handbook</div><div class="tkind">A handbook</div></div><div class="tspace"></div><span class="kind-pill">Handbook</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('Barrio Company Handbook','Handbook')">Change kind</button></div>
+            <div class="topic" data-name="Workplace Harassment Policy" data-kind="policy"><div class="tic"><svg class="ic"><use href="#ic-policy"/></svg></div><div><div class="tname">Workplace Harassment Policy</div><div class="tkind">A policy</div></div><div class="tspace"></div><span class="kind-pill">Policy</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('Workplace Harassment Policy','Policy')">Change kind</button></div>
+            <div class="topic" data-name="WHMIS" data-kind="policy"><div class="tic"><svg class="ic"><use href="#ic-policy"/></svg></div><div><div class="tname">WHMIS</div><div class="tkind">A policy</div></div><div class="tspace"></div><span class="kind-pill">Policy</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('WHMIS','Policy')">Change kind</button></div>
+            <div class="topic" data-name="Expo Role" data-kind="role"><div class="tic"><svg class="ic"><use href="#ic-person"/></svg></div><div><div class="tname">Expo (role)</div><div class="tkind">A role</div></div><div class="tspace"></div><span class="kind-pill">Role</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('Expo','Role')">Change kind</button></div>
+          </div>
+        </details>
+
+        <details class="docgroup" open>
+          <summary><svg class="ic ic-sm"><use href="#ic-book"/></svg>BOLD By Design <span class="count-pill">52</span><svg class="ic ic-sm chev"><use href="#ic-chevron"/></svg></summary>
+          <div class="body">
+            <div class="topic" data-name="BOLD By Design" data-kind="doc"><div class="tic"><svg class="ic"><use href="#ic-book"/></svg></div><div><div class="tname">BOLD By Design</div><div class="tkind">A book</div></div><div class="tspace"></div><span class="kind-pill">Book</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('BOLD By Design','Book')">Change kind</button></div>
+            <div class="topic" data-name="The Core Labor Equation" data-kind="formula"><div class="tic"><svg class="ic"><use href="#ic-formula"/></svg></div><div><div class="tname">The Core Labor Equation</div><div class="tkind">A formula</div></div><div class="tspace"></div><span class="kind-pill">Formula</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('The Core Labor Equation','Formula')">Change kind</button></div>
+            <div class="topic" data-name="Cost per Labor Hour CPLH" data-kind="metric"><div class="tic"><svg class="ic"><use href="#ic-metric"/></svg></div><div><div class="tname">Cost per Labor Hour (CPLH)</div><div class="tkind">A metric you track</div></div><div class="tspace"></div><span class="kind-pill">Metric</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('CPLH','Metric')">Change kind</button></div>
+            <div class="topic" data-name="Optimal Productivity Zone OPZ" data-kind="concept"><div class="tic"><svg class="ic"><use href="#ic-concept"/></svg></div><div><div class="tname">Optimal Productivity Zone (OPZ)</div><div class="tkind">A concept</div></div><div class="tspace"></div><span class="kind-pill">Concept</span><button class="btn btn-outline btn-sm" data-editonly onclick="openKind('OPZ','Concept')">Change kind</button></div>
+          </div>
+        </details>
+        <div class="muted hidden" id="noTopics" style="padding:14px 4px;">No topics match your search.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="h-row"><h2>Update history</h2></div>
+      <p class="lead">Every change is saved. You can always go back to an earlier version.</p>
+      <div class="upd now"><div class="dot"></div><div style="flex:1;">
+        <div class="ut">Added Responsible Alcohol Service training <span class="now-badge">In use now</span></div>
+        <div class="um">March 1, 2026 &middot; by F&amp;F staff</div>
+        <div class="tags"><span class="tag-chip">Alcohol service</span><span class="tag-chip">Compliance</span></div>
+      </div></div>
+      <div class="upd"><div class="dot"></div><div style="flex:1;">
+        <div class="ut">Added the Food Safety Manual</div>
+        <div class="um">February 12, 2026 &middot; by F&amp;F staff</div>
+        <div class="tags"><span class="tag-chip">FIFO</span><span class="tag-chip">HACCP</span><span class="tag-chip">The 4 C's</span></div>
+        <div data-editonly style="margin-top:10px;"><button class="btn btn-outline btn-sm"><svg class="ic ic-sm"><use href="#ic-history"/></svg>Go back to this version</button></div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ════════ CONNECTIONS TAB ════════ -->
+  <div class="panel" id="tab-connections">
+    <div id="reviewReadonly" class="banner banner-readonly hidden"><svg class="ic ic-sm"><use href="#ic-lock"/></svg><span>You are viewing only. Approving connections needs full admin access.</span></div>
+
+    <!-- summary at scale -->
+    <div class="card" style="margin-bottom:18px;">
+      <div class="summary">
+        <span class="big">128 connections found</span>
+        <span class="sum-chip clear"><span class="cdot"></span>92 clear</span>
+        <span class="sum-chip check"><span class="cdot"></span>24 worth checking</span>
+        <span class="sum-chip unsure"><span class="cdot"></span>12 not sure</span>
+      </div>
+      <div class="toolbar" style="margin-top:16px;margin-bottom:0;">
+        <label class="search"><svg class="ic ic-sm"><use href="#ic-search"/></svg><input id="connSearch" placeholder="Search connections by topic" /></label>
+        <select id="connShow" aria-label="Show">
+          <option value="attention">Show: needs my attention (36)</option>
+          <option value="all">Show: everything (128)</option>
+          <option value="clear">Show: clear only (92)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- focusable map -->
+    <div class="mapwrap" style="margin-bottom:18px;">
+      <div class="maptop">
+        <svg class="ic"><use href="#ic-link"/></svg>
+        <h2>Map</h2>
+        <span class="muted">Focus on:</span>
+        <select id="focusSelect">
+          <option>Food Safety Manual</option>
+          <option>BOLD By Design</option>
+          <option>Barrio Company Handbook</option>
+        </select>
+      </div>
+      <svg viewBox="0 0 640 270" width="100%" style="max-height:270px;">
+        <defs>
+          <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#256B29"/></marker>
+          <marker id="aa" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#997000"/></marker>
+          <marker id="au" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8a8178"/></marker>
+        </defs>
+        <line x1="196" y1="132" x2="290" y2="60" stroke="#256B29" stroke-width="2.5" marker-end="url(#ag)"/>
+        <line x1="196" y1="132" x2="290" y2="134" stroke="#256B29" stroke-width="2.5" marker-end="url(#ag)"/>
+        <text x="212" y="92" font-family="Segoe UI, Arial" font-size="13" fill="#256B29" font-weight="600">includes</text>
+        <line x1="350" y1="80" x2="350" y2="192" stroke="#8a8178" stroke-width="2.5" stroke-dasharray="2 5" marker-end="url(#au)"/>
+        <text x="358" y="142" font-family="Segoe UI, Arial" font-size="13" fill="#6b635a" font-weight="600">related?</text>
+        <line x1="420" y1="213" x2="468" y2="213" stroke="#997000" stroke-width="2.5" stroke-dasharray="6 5" marker-end="url(#aa)"/>
+        <text x="392" y="205" font-family="Segoe UI, Arial" font-size="12" fill="#997000" font-weight="600">reduces risk of</text>
+        <g font-family="Segoe UI, Arial" font-weight="700" font-size="13.5">
+          <rect x="20" y="112" width="176" height="42" rx="11" fill="#EFE8E0" stroke="#DDD6CC"/><text x="108" y="138" text-anchor="middle" fill="#2C2C2C">Food Safety Manual</text>
+          <rect x="290" y="40" width="120" height="40" rx="11" fill="#E7F0E7" stroke="#256B29"/><text x="350" y="65" text-anchor="middle" fill="#2C2C2C">FIFO</text>
+          <rect x="290" y="114" width="120" height="40" rx="11" fill="#E7F0E7" stroke="#256B29"/><text x="350" y="139" text-anchor="middle" fill="#2C2C2C">HACCP</text>
+          <rect x="290" y="192" width="120" height="40" rx="11" fill="#FBEFE4" stroke="#CC7A3E"/><text x="350" y="217" text-anchor="middle" fill="#2C2C2C">The 4 C's</text>
+          <rect x="468" y="193" width="162" height="40" rx="11" fill="#F6ECCF" stroke="#997000"/><text x="549" y="218" text-anchor="middle" fill="#2C2C2C">Cross-contamination</text>
+        </g>
+      </svg>
+      <div class="map-cap" id="mapCap">Showing 6 of 128 connections, centred on the Food Safety Manual. Pick another topic to explore its links.</div>
+      <div class="map-legend">
+        <span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="#256B29" stroke-width="2.5"/></svg> Clear</span>
+        <span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="#997000" stroke-width="2.5" stroke-dasharray="6 5"/></svg> Worth checking</span>
+        <span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="#8a8178" stroke-width="2.5" stroke-dasharray="2 5"/></svg> Not sure</span>
+      </div>
+    </div>
+
+    <!-- CLEAR group with bulk action -->
+    <div class="group-h"><span class="cdot" style="background:var(--positive)"></span>Looks clear to me <span class="count-pill">92</span>
+      <span style="flex:1"></span>
+      <button class="btn btn-yes btn-sm" data-editonly onclick="bulkClear()"><svg class="ic ic-sm"><use href="#ic-check"/></svg>Mark all 92 correct</button>
+    </div>
+
+    <div class="conn" data-from="Food Safety Manual" data-to="FIFO" data-verb="includes" data-search="food safety manual fifo">
+      <div class="flow">
+        <div class="node"><svg class="ic ic-sm"><use href="#ic-book"/></svg><span><span class="nm">Food Safety Manual</span><br><span class="nk">Manual</span></span></div>
+        <div class="link"><span class="verb">includes</span><span class="connector"></span></div>
+        <div class="node"><svg class="ic ic-sm"><use href="#ic-sop"/></svg><span><span class="nm">FIFO</span><br><span class="nk">SOP</span></span></div>
+      </div>
+      <div class="conn-sentence">The <b>Food Safety Manual</b> includes the <b>FIFO</b> stock-rotation step.</div>
+      <span class="clarity clear"><span class="cdot"></span>Clear match</span>
+      <div class="conn-actions" data-editonly>
+        <button class="btn btn-yes btn-sm" onclick="decide(this,'yes')"><svg class="ic ic-sm"><use href="#ic-check"/></svg>Looks right</button>
+        <button class="btn btn-no btn-sm" onclick="decide(this,'no')"><svg class="ic ic-sm"><use href="#ic-close"/></svg>Not right</button>
+        <button class="btn btn-change btn-sm" onclick="openChange(this)"><svg class="ic ic-sm"><use href="#ic-edit"/></svg>Change</button>
+      </div>
+      <div class="tech tech-box"><div class="tt">Technical details</div>
+        <div class="tech-row"><span class="tl">Relationship</span><span>CONTAINS</span></div>
+        <div class="tech-row"><span class="tl">Confidence</span><span>0.94</span></div>
+        <div class="tech-row"><span class="tl">From / to</span><span>graphify:food_safety_manual_doc &rarr; graphify:food_safety_fifo</span></div>
+      </div>
+    </div>
+
+    <div class="conn" data-from="Food Safety Manual" data-to="HACCP" data-verb="includes" data-search="food safety manual haccp">
+      <div class="flow">
+        <div class="node"><svg class="ic ic-sm"><use href="#ic-book"/></svg><span><span class="nm">Food Safety Manual</span><br><span class="nk">Manual</span></span></div>
+        <div class="link"><span class="verb">includes</span><span class="connector"></span></div>
+        <div class="node"><svg class="ic ic-sm"><use href="#ic-sop"/></svg><span><span class="nm">HACCP</span><br><span class="nk">SOP</span></span></div>
+      </div>
+      <div class="conn-sentence">The <b>Food Safety Manual</b> includes the <b>HACCP</b> plan.</div>
+      <span class="clarity clear"><span class="cdot"></span>Clear match</span>
+      <div class="conn-actions" data-editonly>
+        <button class="btn btn-yes btn-sm" onclick="decide(this,'yes')"><svg class="ic ic-sm"><use href="#ic-check"/></svg>Looks right</button>
+        <button class="btn btn-no btn-sm" onclick="decide(this,'no')"><svg class="ic ic-sm"><use href="#ic-close"/></svg>Not right</button>
+        <button class="btn btn-change btn-sm" onclick="openChange(this)"><svg class="ic ic-sm"><use href="#ic-edit"/></svg>Change</button>
+      </div>
+    </div>
+
+    <button class="showmore" onclick="this.textContent='(In the real screen, the next 90 clear connections would load here.)'"><svg class="ic ic-sm"><use href="#ic-chevron"/></svg>Show 90 more clear connections</button>
+
+    <!-- CHECK group -->
+    <div class="group-h"><span class="cdot" style="background:var(--warning)"></span>Please double-check <span class="count-pill">24</span></div>
+    <div class="conn" data-from="The 4 C's" data-to="cross-contamination" data-verb="reduces the risk of" data-search="4 c's cross contamination">
+      <div class="flow">
+        <div class="node"><svg class="ic ic-sm"><use href="#ic-concept"/></svg><span><span class="nm">The 4 C's</span><br><span class="nk">Concept</span></span></div>
+        <div class="link"><span class="verb">reduces the risk of</span><span class="connector" style="border-color:var(--warning);"></span></div>
+        <div class="node"><svg class="ic ic-sm"><use href="#ic-risk"/></svg><span><span class="nm">Cross-contamination</span><br><span class="nk">Risk</span></span></div>
+      </div>
+      <div class="conn-sentence">The <b>4 C's</b> reduce the risk of <b>cross-contamination</b>.</div>
+      <span class="clarity check"><span class="cdot"></span>Worth checking</span>
+      <div class="conn-actions" data-editonly>
+        <button class="btn btn-yes btn-sm" onclick="decide(this,'yes')"><svg class="ic ic-sm"><use href="#ic-check"/></svg>Looks right</button>
+        <button class="btn btn-no btn-sm" onclick="decide(this,'no')"><svg class="ic ic-sm"><use href="#ic-close"/></svg>Not right</button>
+        <button class="btn btn-change btn-sm" onclick="openChange(this)"><svg class="ic ic-sm"><use href="#ic-edit"/></svg>Change</button>
+      </div>
+    </div>
+    <button class="showmore" onclick="this.textContent='(In the real screen, the next 23 would load here.)'"><svg class="ic ic-sm"><use href="#ic-chevron"/></svg>Show 23 more to check</button>
+
+    <!-- UNSURE group -->
+    <div class="group-h"><span class="cdot" style="background:var(--text-muted)"></span>I'm not sure about these <span class="count-pill">12</span></div>
+    <div class="conn" data-from="FIFO" data-to="The 4 C's" data-verb="is related to" data-search="fifo 4 c's">
+      <div class="flow">
+        <div class="node"><svg class="ic ic-sm"><use href="#ic-sop"/></svg><span><span class="nm">FIFO</span><br><span class="nk">SOP</span></span></div>
+        <div class="link"><span class="verb">is related to</span><span class="connector" style="border-color:var(--text-muted);"></span></div>
+        <div class="node"><svg class="ic ic-sm"><use href="#ic-concept"/></svg><span><span class="nm">The 4 C's</span><br><span class="nk">Concept</span></span></div>
+      </div>
+      <div class="conn-sentence"><b>FIFO</b> seems related to the <b>4 C's</b>, but it is not clear how. Pick how they connect, or remove it.</div>
+      <span class="clarity unsure"><span class="cdot"></span>Not sure</span>
+      <div class="conn-actions" data-editonly>
+        <button class="btn btn-change btn-sm" onclick="openChange(this)"><svg class="ic ic-sm"><use href="#ic-edit"/></svg>Set how they connect</button>
+        <button class="btn btn-no btn-sm" onclick="decide(this,'no')"><svg class="ic ic-sm"><use href="#ic-close"/></svg>Not right</button>
+      </div>
+    </div>
+    <button class="showmore" onclick="this.textContent='(In the real screen, the next 11 would load here.)'"><svg class="ic ic-sm"><use href="#ic-chevron"/></svg>Show 11 more unclear ones</button>
+
+    <div data-editonly style="display:flex;gap:10px;margin-top:24px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="saveBtn" disabled>Save my choices (0)</button>
+      <button class="btn btn-outline" onclick="clearAll()">Start over</button>
+    </div>
+  </div>
+
+  <div class="foot">A look-and-feel preview to agree on the design. Real content and saving arrive when it is built.</div>
+</div>
+
+<div class="overlay" id="changeModal"><div class="modal">
+  <h3>How are these connected?</h3>
+  <div class="m-sub" id="changeSub">Pick the sentence that is true.</div>
+  <div id="changeOptions"></div>
+  <div class="field-label">Add a note (optional)</div>
+  <textarea rows="2" placeholder="Anything you want to remember about this change."></textarea>
+  <div class="modal-actions"><button class="btn btn-outline" onclick="closeChange()">Cancel</button><button class="btn btn-primary" onclick="closeChange()">Save this connection</button></div>
+</div></div>
+
+<div class="overlay" id="kindModal"><div class="modal">
+  <h3>What kind of content is this?</h3>
+  <div class="m-sub" id="kindSub">Choose the label that fits best.</div>
+  <div id="kindOptions">
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-sop"/></svg><span><span class="osentence"><b>SOP</b></span><br><span class="od">A step-by-step way to do a task. Example: FIFO, the hiring flow.</span></span></label>
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-policy"/></svg><span><span class="osentence"><b>Policy</b></span><br><span class="od">A rule that must be followed. Example: harassment policy, alcohol service rules.</span></span></label>
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-concept"/></svg><span><span class="osentence"><b>Concept</b></span><br><span class="od">An idea or principle. Example: the 4 C's, hospitality, culture.</span></span></label>
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-metric"/></svg><span><span class="osentence"><b>Metric</b></span><br><span class="od">A number you track. Example: CPLH, AGC, NPS, table turns.</span></span></label>
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-formula"/></svg><span><span class="osentence"><b>Formula</b></span><br><span class="od">How a metric is worked out. Example: the Core Labor Equation.</span></span></label>
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-risk"/></svg><span><span class="osentence"><b>Risk</b></span><br><span class="od">Something to prevent or watch for. Example: the Temperature Danger Zone.</span></span></label>
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-person"/></svg><span><span class="osentence"><b>Role</b></span><br><span class="od">A person or job. Example: expo, runner, manager.</span></span></label>
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-text"/></svg><span><span class="osentence"><b>Word to know</b></span><br><span class="od">A defined term from the glossary. Example: 86'd, mise en place, covers.</span></span></label>
+    <label class="opt" onclick="pickOne(this)"><span class="radio"></span><svg class="ic oicon"><use href="#ic-flag"/></svg><span><span class="osentence"><b>Coaching move</b></span><br><span class="od">Advice the advisor can give. Example: a hiring tip, a service-recovery step.</span></span></label>
+  </div>
+  <div class="modal-actions"><button class="btn btn-outline" onclick="closeKind()">Cancel</button><button class="btn btn-primary" onclick="closeKind()">Save</button></div>
+</div></div>
+
+<script>
+  document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabbar button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + b.dataset.tab).classList.add('active');
+  }));
+  document.getElementById('techToggle').addEventListener('change', e => document.body.classList.toggle('show-tech', e.target.checked));
+  document.querySelectorAll('#modeSeg button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#modeSeg button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    const support = b.dataset.mode === 'support';
+    document.querySelectorAll('[data-editonly]').forEach(el => el.classList.toggle('hidden', support));
+    document.getElementById('readonlyBanner').classList.toggle('hidden', !support);
+    document.getElementById('reviewReadonly').classList.toggle('hidden', !support);
+  }));
+
+  // file picker
+  const dz = document.getElementById('dropzone'), fi = document.getElementById('fileInput');
+  dz.addEventListener('click', () => fi.click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background='rgba(204,122,62,.2)'; });
+  dz.addEventListener('dragleave', () => dz.style.background='');
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.style.background=''; showChange((e.dataTransfer.files[0]||{}).name); });
+  fi.addEventListener('change', () => showChange(fi.files.length ? fi.files[0].name : ''));
+  function showChange(name) {
+    document.getElementById('changeTitle').textContent = name ? ('What "' + name + '" changes') : 'What this update changes';
+    const c = document.getElementById('changePreview'); c.style.display = 'block'; c.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  function closeChangePreview(saved) { document.getElementById('changePreview').style.display = 'none'; if (saved) alert('Demo only: in the real screen this saves a new update.'); }
+
+  // topic search + kind filter
+  const topicSearch = document.getElementById('topicSearch'), kindFilter = document.getElementById('kindFilter');
+  function filterTopics() {
+    const q = topicSearch.value.trim().toLowerCase(), k = kindFilter.value;
+    let shown = 0;
+    document.querySelectorAll('#topicList .topic').forEach(t => {
+      const ok = (!q || t.dataset.name.toLowerCase().includes(q)) && (k === 'all' || t.dataset.kind === k);
+      t.style.display = ok ? '' : 'none'; if (ok) shown++;
+    });
+    document.querySelectorAll('#topicList .docgroup').forEach(g => {
+      const any = [...g.querySelectorAll('.topic')].some(t => t.style.display !== 'none');
+      g.style.display = any ? '' : 'none'; if (any) g.open = true;
+    });
+    document.getElementById('topicCount').textContent = 'Showing ' + shown + ' of 148';
+    document.getElementById('noTopics').classList.toggle('hidden', shown !== 0);
+  }
+  topicSearch.addEventListener('input', filterTopics);
+  kindFilter.addEventListener('change', filterTopics);
+
+  // connection search
+  document.getElementById('connSearch').addEventListener('input', e => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('#tab-connections .conn').forEach(c =>
+      c.style.display = (!q || c.dataset.search.includes(q)) ? '' : 'none');
+  });
+  document.getElementById('focusSelect').addEventListener('change', e => {
+    document.getElementById('mapCap').textContent = 'Showing connections centred on ' + e.target.value + '. Pick another topic to explore its links.';
+  });
+
+  // decisions
+  let count = 0;
+  function refresh() { const b = document.getElementById('saveBtn'); b.textContent = 'Save my choices (' + count + ')'; b.disabled = count === 0; }
+  function decide(btn, kind) {
+    const conn = btn.closest('.conn'), already = conn.dataset.decision;
+    conn.querySelectorAll('.btn-yes,.btn-no').forEach(x => x.classList.remove('sel'));
+    const old = conn.querySelector('.picked'); if (old) old.remove();
+    if (already) count--;
+    delete conn.dataset.decision; conn.classList.remove('sel');
+    if (already === kind) { refresh(); return; }
+    btn.classList.add('sel'); conn.classList.add('sel'); conn.dataset.decision = kind;
+    const tag = document.createElement('div');
+    tag.className = 'picked ' + (kind === 'yes' ? 'yes' : 'no');
+    tag.innerHTML = (kind === 'yes' ? 'You marked this correct' : 'You marked this for removal');
+    conn.querySelector('.conn-actions').after(tag);
+    count++; refresh();
+  }
+  function bulkClear() { count += 92; refresh(); alert('Demo only: in the real screen this confirms all 92 clear connections at once.'); }
+  function clearAll() {
+    document.querySelectorAll('.conn').forEach(c => {
+      delete c.dataset.decision; c.classList.remove('sel');
+      c.querySelectorAll('.btn-yes,.btn-no').forEach(x => x.classList.remove('sel'));
+      const p = c.querySelector('.picked'); if (p) p.remove();
+    });
+    count = 0; refresh();
+  }
+
+  function sentence(verb, a, b) {
+    switch (verb) {
+      case 'includes': return a + ' includes ' + b;
+      case 'explains': return a + ' explains ' + b;
+      case 'leads to': return a + ' leads to ' + b;
+      case 'needs first': return a + ' needs ' + b + ' first';
+      case 'sets the rules for': return a + ' sets the rules for ' + b;
+      case 'reduces the risk of': return a + ' reduces the risk of ' + b;
+      default: return a + ' is related to ' + b;
+    }
+  }
+  const VERBS = ['includes','explains','leads to','needs first','sets the rules for','reduces the risk of','is related to'];
+  function openChange(btn) {
+    const conn = btn.closest('.conn'), a = conn.dataset.from, b = conn.dataset.to, current = conn.dataset.verb;
+    document.getElementById('changeSub').textContent = 'Pick the sentence that is true about ' + a + ' and ' + b + '.';
+    const box = document.getElementById('changeOptions'); box.innerHTML = '';
+    VERBS.forEach(verb => {
+      const label = document.createElement('label');
+      label.className = 'opt' + (verb === current ? ' sel' : '');
+      label.onclick = function () { pickOne(this); };
+      const tail = verb === 'is related to' ? ' <span class="od">(use only if nothing else fits)</span>' : '';
+      label.innerHTML = '<span class="radio"></span><span><span class="osentence">' + sentence(verb, '<b>' + a + '</b>', '<b>' + b + '</b>') + '</span>' + tail + '</span>';
+      box.appendChild(label);
+    });
+    document.getElementById('changeModal').classList.add('open');
+  }
+  function closeChange() { document.getElementById('changeModal').classList.remove('open'); }
+  function openKind(name, current) {
+    document.getElementById('kindSub').textContent = 'What kind of content is "' + name + '"?';
+    document.querySelectorAll('#kindOptions .opt').forEach(o => o.classList.toggle('sel', o.textContent.trim().toLowerCase().startsWith(current.toLowerCase())));
+    document.getElementById('kindModal').classList.add('open');
+  }
+  function closeKind() { document.getElementById('kindModal').classList.remove('open'); }
+  function pickOne(el) { el.parentElement.querySelectorAll('.opt').forEach(o => o.classList.remove('sel')); el.classList.add('sel'); }
+  document.querySelectorAll('.overlay').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); }));
+</script>
+</body>
+</html>
