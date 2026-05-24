@@ -196,6 +196,142 @@ class UsageCapUpsertCommand {
   };
 }
 
+/// Delete one `usage_caps` row. Goes to
+/// `DELETE /v1/admin/pricing/usage-caps`. Identifies the row by
+/// [capId] when present, otherwise by the same
+/// `(operator_id, location_id, usage_class, staff_id, workflow_id)`
+/// logical key the upsert uses. The proxy stamps an audit row and the
+/// delete is idempotent (a retried delete of an already-gone row is a
+/// no-op 200).
+@immutable
+class UsageCapDeleteCommand {
+  const UsageCapDeleteCommand({
+    required this.operatorId,
+    required this.idempotencyKey,
+    this.capId,
+    this.locationId,
+    this.usageClass,
+    this.staffId,
+    this.workflowId,
+  });
+
+  /// Build a delete command targeting [row] by its strongest available
+  /// identity: the `cap_id` surrogate when the row carries one,
+  /// otherwise the full logical key.
+  factory UsageCapDeleteCommand.forRow(
+    UsageCapRow row, {
+    required String idempotencyKey,
+  }) {
+    return UsageCapDeleteCommand(
+      operatorId: row.operatorId,
+      idempotencyKey: idempotencyKey,
+      capId: row.capId,
+      locationId: row.locationId,
+      usageClass: row.usageClass,
+      staffId: row.staffId,
+      workflowId: row.workflowId,
+    );
+  }
+
+  final String operatorId;
+  final String? capId;
+  final String? locationId;
+  final String? usageClass;
+  final String? staffId;
+  final String? workflowId;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried DELETE collapses to one
+  /// delete + one audit row.
+  final String idempotencyKey;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'operator_id': operatorId,
+    if (capId != null) 'cap_id': capId,
+    if (locationId != null) 'location_id': locationId,
+    if (usageClass != null) 'usage_class': usageClass,
+    if (staffId != null) 'staff_id': staffId,
+    if (workflowId != null) 'workflow_id': workflowId,
+  };
+}
+
+/// One line of the month-to-date spend-summary: a cap identity plus the
+/// rolled-up `monthlyUsedUsd` and (when a cap is set) its
+/// `monthlyCapUsd`. [monthlyCapUsd] is null when usage exists for an
+/// identity with no cap row, so the screen shows the honest empty
+/// sentinel rather than a phantom cap.
+@immutable
+class UsageCapSpendLine {
+  const UsageCapSpendLine({
+    required this.locationId,
+    required this.usageClass,
+    required this.monthlyUsedUsd,
+    this.staffId,
+    this.workflowId,
+    this.capId,
+    this.monthlyCapUsd,
+    this.perInvocationCapUsd,
+  });
+
+  final String locationId;
+  final String usageClass;
+  final String? staffId;
+  final String? workflowId;
+  final String? capId;
+  final double? monthlyCapUsd;
+  final double? perInvocationCapUsd;
+  final double monthlyUsedUsd;
+
+  static UsageCapSpendLine fromJson(Map<String, Object?> json) {
+    return UsageCapSpendLine(
+      locationId: (json['location_id'] as String?) ?? '',
+      usageClass: (json['usage_class'] as String?) ?? '',
+      staffId: json['staff_id'] as String?,
+      workflowId: json['workflow_id'] as String?,
+      capId: json['cap_id'] as String?,
+      monthlyCapUsd: json['monthly_cap_usd'] == null
+          ? null
+          : _asDouble(json['monthly_cap_usd']),
+      perInvocationCapUsd: json['per_invocation_cap_usd'] == null
+          ? null
+          : _asDouble(json['per_invocation_cap_usd']),
+      monthlyUsedUsd: _asDouble(json['monthly_used_usd']),
+    );
+  }
+}
+
+/// Month-to-date spend-summary for one operator. Returned by
+/// `GET /v1/admin/pricing/operators/{id}/spend-summary`. The screen
+/// joins each [UsageCapSpendLine] to a rendered cap by
+/// `(location_id, usage_class, staff_id, workflow_id)`.
+@immutable
+class OperatorSpendSummary {
+  const OperatorSpendSummary({
+    required this.operatorId,
+    required this.lines,
+    this.asOf,
+  });
+
+  final String operatorId;
+  final DateTime? asOf;
+  final List<UsageCapSpendLine> lines;
+
+  static OperatorSpendSummary fromJson(Map<String, Object?> json) {
+    final rawLines = (json['lines'] as List?) ?? const [];
+    final rawAsOf = json['as_of'] as String?;
+    return OperatorSpendSummary(
+      operatorId: (json['operator_id'] as String?) ?? '',
+      asOf: (rawAsOf == null || rawAsOf.isEmpty)
+          ? null
+          : DateTime.tryParse(rawAsOf),
+      lines: <UsageCapSpendLine>[
+        for (final line in rawLines)
+          UsageCapSpendLine.fromJson((line as Map).cast<String, Object?>()),
+      ],
+    );
+  }
+}
+
 /// Apply a tier template: update `operators.subscription_tier` and
 /// upsert each cap row from the template under one admin reason. Goes
 /// to `POST /v1/admin/pricing/operators/{id}/apply-template`.
