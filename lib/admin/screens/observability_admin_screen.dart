@@ -60,6 +60,8 @@ import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
 import '../widgets/admin_run_check_controls.dart';
+import '../widgets/admin_scope_notice_adapter.dart';
+import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 
 /// One tab in the redesigned AI Metrics screen.
 class _TabSpec {
@@ -282,19 +284,18 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                 onSelectMonth: _selectMonth,
               ),
               const SizedBox(height: 12),
-              // AI Metrics is scope-specific, so HP#11 stays as one honest
-              // muted line; scope still flows to the gateway fetch unchanged.
               if (widget.hierarchyScope != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'Showing ${widget.hierarchyScope!.scopeType.label.toLowerCase()} '
-                    'scope: ${widget.hierarchyScope!.displayLabel}. Cost, usage, and '
-                    'customers are for this scope; hosting and the knowledge graph '
-                    'stay platform-wide.',
-                    key: const Key('admin_observability_scope_note'),
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
+                HierarchyScopeNotice(
+                  keyName: 'admin_observability_scope_notice',
+                  selectedScope: adminScopeLevel(
+                    widget.hierarchyScope!.scopeType,
                   ),
+                  scopeName: widget.hierarchyScope!.displayLabel,
+                  effectiveValueSummary:
+                      'AI cost, usage, and reliability for the selected scope.',
+                  backendOnlyHelpTitle: 'What stays platform-wide',
+                  backendOnlyExplainer:
+                      'Hosting and the knowledge graph stay platform-wide. They are shared across every business, not stored per business.',
                 ),
               if (_loadError != null)
                 _ErrorBanner(
