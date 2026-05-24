@@ -1254,9 +1254,15 @@ Widget _buildVendorApplicability(BuildContext context) {
   final gateway = AdminConsoleServicesScope.vendorApplicabilityGatewayOf(
     context,
   );
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   if (source == null) {
-    return VendorApplicabilityAdminScreen(gateway: gateway);
+    return VendorApplicabilityAdminScreen(
+      gateway: gateway,
+      operatorLocationGateway: operatorGateway,
+    );
   }
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
@@ -1267,6 +1273,7 @@ Widget _buildVendorApplicability(BuildContext context) {
       final canEdit = _isAdminSuperAdmin(session);
       return VendorApplicabilityAdminScreen(
         gateway: gateway,
+        operatorLocationGateway: operatorGateway,
         editingEnabled: canEdit,
       );
     },

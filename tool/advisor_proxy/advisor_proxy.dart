@@ -4949,6 +4949,7 @@ abstract class VendorApplicabilityProxyGateway {
   Future<List<Map<String, Object?>>> listAdmin({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     String? settingKind,
     String? settingKey,
     String? vendorSlug,
@@ -4959,6 +4960,7 @@ abstract class VendorApplicabilityProxyGateway {
   Future<Map<String, Object?>> upsert({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     required String settingKind,
     required String settingKey,
     required String vendorSlug,
@@ -4972,6 +4974,7 @@ abstract class VendorApplicabilityProxyGateway {
   Future<Map<String, Object?>?> end({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     required String settingKind,
     required String settingKey,
     required String vendorSlug,
@@ -14472,9 +14475,16 @@ Future<void> _routeVendorApplicabilityAdmin({
   final params = request.uri.queryParameters;
 
   if (method == 'GET') {
+    final operatorId = _nonBlankString(params['operator_id']);
+    final locationId = _nonBlankString(params['location_id']);
+    _assertVendorApplicabilityLocationHasOperator(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     final rows = await gateway.listAdmin(
       actorUserId: actorUserId,
-      operatorId: _nonBlankString(params['operator_id']),
+      operatorId: operatorId,
+      locationId: locationId,
       settingKind: _nonBlankString(params['setting_kind']),
       settingKey: _nonBlankString(params['setting_key']),
       vendorSlug: _nonBlankString(params['vendor_slug']),
@@ -14495,6 +14505,11 @@ Future<void> _routeVendorApplicabilityAdmin({
     final enabled = _requireBodyBool(body, 'enabled');
     final metadata = _optionalBodyObject(body, 'metadata');
     final operatorId = _optionalBodyString(body, 'operator_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    _assertVendorApplicabilityLocationHasOperator(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     final effectiveFrom = _optionalBodyDateTime(body, 'effective_from');
     final adminReason = _requireBodyString(body, 'admin_reason');
     final reasonNote = _optionalBodyString(body, 'reason_note');
@@ -14509,6 +14524,7 @@ Future<void> _routeVendorApplicabilityAdmin({
         final row = await gateway.upsert(
           actorUserId: actorUserId,
           operatorId: operatorId,
+          locationId: locationId,
           settingKind: settingKind,
           settingKey: settingKey,
           vendorSlug: vendorSlug,
@@ -14537,6 +14553,11 @@ Future<void> _routeVendorApplicabilityAdmin({
     final settingKey = _requireBodyString(body, 'setting_key');
     final vendorSlug = _requireBodyString(body, 'vendor_slug');
     final operatorId = _optionalBodyString(body, 'operator_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    _assertVendorApplicabilityLocationHasOperator(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     final effectiveUntil = _optionalBodyDateTime(body, 'effective_until');
     final adminReason = _requireBodyString(body, 'admin_reason');
     final reasonNote = _optionalBodyString(body, 'reason_note');
@@ -14551,6 +14572,7 @@ Future<void> _routeVendorApplicabilityAdmin({
         final row = await gateway.end(
           actorUserId: actorUserId,
           operatorId: operatorId,
+          locationId: locationId,
           settingKind: settingKind,
           settingKey: settingKey,
           vendorSlug: vendorSlug,
@@ -14574,6 +14596,25 @@ Future<void> _routeVendorApplicabilityAdmin({
   }
 
   _writeNotFound(response, request);
+}
+
+/// Enforces the `vendor_applicability` rule (and DB CHECK) that any
+/// location-scoped row must also carry an operator: a location belongs
+/// to exactly one operator, so a location filter / write without an
+/// operator is meaningless. Rejected with 400 before the gateway runs.
+/// UUID shape itself is validated downstream by the repository.
+void _assertVendorApplicabilityLocationHasOperator({
+  required String? operatorId,
+  required String? locationId,
+}) {
+  if (locationId != null && operatorId == null) {
+    throw const _AdminInputError(
+      statusCode: 400,
+      code: 'location_requires_operator',
+      message: 'location_id requires operator_id (a location belongs to one '
+          'operator)',
+    );
+  }
 }
 
 Future<void> _routePricingAdmin({

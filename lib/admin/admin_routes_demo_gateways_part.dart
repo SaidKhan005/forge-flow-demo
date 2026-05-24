@@ -838,6 +838,10 @@ class _InMemoryVendorApplicabilityAdminGateway
               row.operatorId != filter.operatorId) {
             return false;
           }
+          if (filter.locationId != null &&
+              row.locationId != filter.locationId) {
+            return false;
+          }
           if (filter.settingKind != null &&
               row.settingKind != filter.settingKind) {
             return false;
@@ -863,7 +867,12 @@ class _InMemoryVendorApplicabilityAdminGateway
     final now = DateTime.now().toUtc();
     for (var i = 0; i < _rows.length; i++) {
       final row = _rows[i];
+      // Close only the row in the exact same scope (operator + location
+      // + kind/key/vendor), so a location write never closes the
+      // operator-level row and vice versa. Mirrors the repository's
+      // `is not distinct from` temporal close.
       if (row.operatorId == command.operatorId &&
+          row.locationId == command.locationId &&
           row.settingKind == command.settingKind &&
           row.settingKey == command.settingKey &&
           row.vendorSlug == command.vendorSlug &&
@@ -875,6 +884,7 @@ class _InMemoryVendorApplicabilityAdminGateway
     final row = VendorApplicabilityAdminRow(
       id: 'demo-va-row-$_sequence',
       operatorId: command.operatorId,
+      locationId: command.locationId,
       settingKind: command.settingKind,
       settingKey: command.settingKey,
       vendorSlug: command.vendorSlug,
@@ -897,6 +907,7 @@ class _InMemoryVendorApplicabilityAdminGateway
     for (var i = 0; i < _rows.length; i++) {
       final row = _rows[i];
       if (row.operatorId == command.operatorId &&
+          row.locationId == command.locationId &&
           row.settingKind == command.settingKind &&
           row.settingKey == command.settingKey &&
           row.vendorSlug == command.vendorSlug &&
@@ -916,6 +927,7 @@ class _InMemoryVendorApplicabilityAdminGateway
     return VendorApplicabilityAdminRow(
       id: row.id,
       operatorId: row.operatorId,
+      locationId: row.locationId,
       settingKind: row.settingKind,
       settingKey: row.settingKey,
       vendorSlug: row.vendorSlug,
