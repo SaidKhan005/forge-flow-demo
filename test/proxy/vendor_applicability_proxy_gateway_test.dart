@@ -65,6 +65,38 @@ void main() {
         expect(payload['vendor_slug'], 'toast');
       }
     });
+
+    test('upsert threads operator + location into the INSERT scope', () async {
+      const operatorId = '22222222-2222-4222-8222-222222222222';
+      const locationId = '33333333-3333-4333-8333-333333333333';
+      final pool = _RecordingPostgresPool();
+      final wrapper = TenantTransactionWrapper(pool);
+      final gateway = RepositoryVendorApplicabilityProxyGateway(
+        repository: VendorApplicabilityRepository(wrapper),
+        auditRepository: AuthEventsAuditRepository(wrapper),
+      );
+
+      await gateway.upsert(
+        actorUserId: adminUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        settingKind: 'wage',
+        settingKey: 'tip_credit',
+        vendorSlug: 'toast',
+        enabled: true,
+        metadata: const <String, Object?>{'authority_basis': 'job_code'},
+        adminReason: 'test.vendor_applicability.upsert',
+      );
+
+      final insertCall = pool.transactions
+          .expand((tx) => tx.queryCalls)
+          .firstWhere(
+            (call) =>
+                call.sql.contains('insert into public.vendor_applicability'),
+          );
+      expect(insertCall.parameters['operator_id'], operatorId);
+      expect(insertCall.parameters['location_id'], locationId);
+    });
   });
 }
 
