@@ -935,6 +935,12 @@ class _SupportOperatorViewRouteShellState
 
 Widget _buildPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.pricingTierGatewayOf(context);
+  // Plans & Limits V1 (Phase 1) reads spend / margin / cap-breach
+  // figures from the existing observability gateway (read-only). In
+  // demo this returns the seeded envelope keyed by the same demo
+  // operators; no new backend route is added.
+  final observabilityGateway =
+      AdminConsoleServicesScope.observabilityGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   return _buildScopedAdminWorkspace(
     context: context,
@@ -946,6 +952,7 @@ Widget _buildPricing(BuildContext context) {
       if (source == null) {
         return PricingTierAdminScreen(
           gateway: gateway,
+          observabilityGateway: observabilityGateway,
           hierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
         );
@@ -962,6 +969,7 @@ Widget _buildPricing(BuildContext context) {
           );
           return PricingTierAdminScreen(
             gateway: gateway,
+            observabilityGateway: observabilityGateway,
             editingEnabled: canEdit,
             hierarchyScope: selectedScope,
             scopeLocationIds: selection.locationIds,
