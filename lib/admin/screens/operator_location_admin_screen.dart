@@ -367,6 +367,13 @@ class _OperatorLocationAdminScreenState
       );
     }
     if (!_loading && _bundles.isEmpty) {
+      // The scope pane (which hosts the "New business" header button) does
+      // not render until at least one business exists, so surface that
+      // onboarding affordance directly in the empty state. Otherwise the
+      // "Use New business..." copy below would be a dead end when no
+      // accounts have been created yet. `_buildNewBusinessButton` returns
+      // null in read-only mode, matching the scope-pane behavior.
+      final newBusinessButton = _buildNewBusinessButton();
       return Center(
         key: const Key('admin_operators_empty'),
         child: ConstrainedBox(
@@ -386,6 +393,10 @@ class _OperatorLocationAdminScreenState
                   'Use "New business" to add the account, primary location, and first admin user.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
+                if (newBusinessButton != null) ...[
+                  const SizedBox(height: 16),
+                  newBusinessButton,
+                ],
               ],
             ),
           ),
