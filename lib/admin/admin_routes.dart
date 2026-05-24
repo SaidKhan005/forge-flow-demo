@@ -52,6 +52,7 @@ import 'screens/support_operator_view_admin_screen.dart';
 import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/admin_account_gateway.dart';
+import 'services/admin_business_timing_profiles_gateway.dart';
 import 'services/admin_business_timing_resolution_gateway.dart';
 import 'services/admin_business_timing_resolution_projection.dart';
 import 'services/admin_notification_preferences_gateway.dart';
@@ -1464,16 +1465,21 @@ Widget _buildTimingSetup(BuildContext context) {
   ) {
     Widget buildScreen({required bool canEdit}) {
       return AdminTimingSetupScreen(
+        key: ValueKey<String>('timing-${selectedScope.cacheKey}'),
         operatorGateway: operatorGateway,
         selectedScope: selectedScope,
         scopeLocationIds: selection.locationIds,
         editingEnabled: canEdit,
         // Fix #4 / S4 (G41): READ-ONLY admin business-timing
-        // resolution gateway so the effective-timing card shows the
-        // REAL resolved EffectiveBusinessTimingProfile instead of
-        // hardcoded periods / week-start / close-rule.
+        // resolution gateway so the secondary effective-timing summary
+        // shows the REAL resolved EffectiveBusinessTimingProfile.
         timingResolutionGateway:
             AdminConsoleServicesScope.timingResolutionGatewayOf(context),
+        // Timing-editable parity: admin cross-tenant PROFILE WRITE
+        // gateway driving the editor's create / patch on Save.
+        timingProfilesGateway:
+            AdminConsoleServicesScope.timingProfilesGatewayOf(context),
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
 
@@ -1494,8 +1500,9 @@ Widget _buildTimingSetup(BuildContext context) {
 
   return AdminSetupWorkspace(
     functionTitle: 'Timing',
+    showWorkspaceHeader: false,
     description:
-        'Review timezone, business day, and service periods for the selected hierarchy scope.',
+        'Edit timezone, business day, week start, and service periods for the selected hierarchy scope.',
     operatorGateway: operatorGateway,
     hierarchyGateway: hierarchyGateway,
     initialScope: initialScope,
@@ -2689,6 +2696,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.adminSessionsGateway,
     this.adminSecurityGateway,
     this.timingResolutionGateway,
+    this.timingProfilesGateway,
     this.adminAuthSource,
   });
 
@@ -2837,6 +2845,18 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// server-side super admin repair routes exist for profile writes.
   final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
 
+  /// Timing-editable parity — admin cross-tenant business-timing
+  /// PROFILE WRITE gateway (create / patch). Production binds the
+  /// HTTP-backed [HttpAdminBusinessTimingProfilesGateway] here; demo /
+  /// share-preview / widget tests leave it null so the admin Timing
+  /// editor falls back to the shared seeded
+  /// [InMemoryAdminBusinessTimingProfilesGateway] and renders without
+  /// the Cloud Run admin proxy (mirrors [timingResolutionGateway]'s
+  /// optional-gateway + in-memory-fallback shape). Writes require a
+  /// non-empty `admin_reason` + an idempotency key (the editor's reason
+  /// dialog supplies the former; the server enforces both).
+  final AdminBusinessTimingProfilesGateway? timingProfilesGateway;
+
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
   /// compute `editingEnabled` from the signed-in session's roles
@@ -2865,6 +2885,19 @@ class AdminConsoleServicesScope extends InheritedWidget {
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
     return scope?.timingResolutionGateway ??
         _defaultTimingResolutionDemoGateway;
+  }
+
+  /// Timing-editable parity — resolve the admin business-timing PROFILE
+  /// WRITE gateway. Falls back to a shared seeded in-memory gateway
+  /// (empty by default, so the editor opens on the starter profile and
+  /// the first save creates) when no production scope is mounted.
+  /// Mirrors [timingResolutionGatewayOf]'s same-instance demo behavior.
+  static AdminBusinessTimingProfilesGateway timingProfilesGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.timingProfilesGateway ?? _defaultTimingProfilesDemoGateway;
   }
 
   static PricingTierAdminGateway pricingTierGatewayOf(BuildContext context) {
@@ -3046,6 +3079,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       adminSessionsGateway != oldWidget.adminSessionsGateway ||
       adminSecurityGateway != oldWidget.adminSecurityGateway ||
       timingResolutionGateway != oldWidget.timingResolutionGateway ||
+      timingProfilesGateway != oldWidget.timingProfilesGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -3056,6 +3090,16 @@ class AdminConsoleServicesScope extends InheritedWidget {
 /// production [HttpAdminBusinessTimingResolutionGateway] is wired.
 final AdminBusinessTimingResolutionGateway _defaultTimingResolutionDemoGateway =
     InMemoryAdminBusinessTimingResolutionGateway();
+
+/// Timing-editable parity — shared seeded in-memory fallback for the
+/// admin business-timing PROFILE WRITE gateway. Empty by default, so the
+/// admin Timing editor opens on the starter profile and the first Save
+/// creates a profile for the selected scope. A single shared instance
+/// (mirrors [_defaultTimingResolutionDemoGateway]) so demo / share-
+/// preview / widget-test paths see the same store across rebuilds when
+/// no production [HttpAdminBusinessTimingProfilesGateway] is wired.
+final AdminBusinessTimingProfilesGateway _defaultTimingProfilesDemoGateway =
+    InMemoryAdminBusinessTimingProfilesGateway();
 
 /// Demo gateway shared by walkthrough + admin shell when no
 /// production scope is mounted. Seeded with two fixture operators

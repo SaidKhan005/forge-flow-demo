@@ -25,6 +25,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_profiles_gateway.dart';
 import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_gateway.dart';
 import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_projection.dart';
 
@@ -155,6 +156,118 @@ void main() {
       );
       // Byte-equivalent: both demo-shaped paths resolve to the SAME
       // shared seeded fallback instance (unchanged behavior).
+      expect(viaNullScope, same(viaNoScope));
+    },
+  );
+
+  // Timing-editable parity — the admin business-timing PROFILE WRITE
+  // gateway is the NEW DI hop that powers the editable Timing screen. It
+  // is INERT in the production admin app unless `main_admin.dart`
+  // instantiates the HTTP gateway and passes it into the single
+  // `AdminConsoleServicesScope(...)`. Mirror the resolution-gateway locks
+  // above so this write hop cannot silently regress to the empty
+  // in-memory demo fallback.
+
+  test(
+    'admin live entrypoint injects business-timing-profiles HTTP WRITE '
+    'gateway (byte-mirrors the resolution sibling resolver)',
+    () {
+      final source = File('lib/main_admin.dart').readAsStringSync();
+
+      expect(source, contains('HttpAdminBusinessTimingProfilesGateway'));
+      expect(
+        source,
+        contains(
+          "import 'admin/services/"
+          "admin_business_timing_profiles_gateway.dart';",
+        ),
+      );
+      expect(source, contains('_resolveAdminBusinessTimingProfilesGateway'));
+      expect(
+        source,
+        matches(
+          RegExp(
+            r'final adminBusinessTimingProfilesGateway = gateway == null'
+            r'\s*\?\s*null\s*:\s*_resolveAdminBusinessTimingProfilesGateway',
+            multiLine: true,
+          ),
+        ),
+      );
+      expect(
+        source,
+        contains(
+          'timingProfilesGateway: adminBusinessTimingProfilesGateway',
+        ),
+      );
+    },
+  );
+
+  testWidgets(
+    'production scope (HTTP profiles gateway injected) yields the HTTP '
+    'gateway, NOT the in-memory demo fallback',
+    (tester) async {
+      final httpGateway = HttpAdminBusinessTimingProfilesGateway(
+        baseUri: Uri.parse('https://admin-proxy.forgeflow.app'),
+        bearerTokenProvider: () async => 'test-token',
+      );
+      late AdminBusinessTimingProfilesGateway resolved;
+
+      await tester.pumpWidget(
+        AdminConsoleServicesScope(
+          timingProfilesGateway: httpGateway,
+          child: Builder(
+            builder: (context) {
+              resolved =
+                  AdminConsoleServicesScope.timingProfilesGatewayOf(context);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      expect(resolved, same(httpGateway));
+      expect(resolved, isA<HttpAdminBusinessTimingProfilesGateway>());
+      expect(
+        resolved,
+        isNot(isA<InMemoryAdminBusinessTimingProfilesGateway>()),
+      );
+    },
+  );
+
+  testWidgets(
+    'demo / share-preview path (null profiles gateway) stays byte-equivalent: '
+    'shared in-memory write fallback for the editor',
+    (tester) async {
+      late AdminBusinessTimingProfilesGateway viaNullScope;
+      late AdminBusinessTimingProfilesGateway viaNoScope;
+
+      await tester.pumpWidget(
+        AdminConsoleServicesScope(
+          timingProfilesGateway: null,
+          child: Builder(
+            builder: (context) {
+              viaNullScope =
+                  AdminConsoleServicesScope.timingProfilesGatewayOf(context);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        Builder(
+          builder: (context) {
+            viaNoScope =
+                AdminConsoleServicesScope.timingProfilesGatewayOf(context);
+            return const SizedBox.shrink();
+          },
+        ),
+      );
+
+      expect(viaNullScope, isA<InMemoryAdminBusinessTimingProfilesGateway>());
+      expect(viaNoScope, isA<InMemoryAdminBusinessTimingProfilesGateway>());
+      // Both demo-shaped paths resolve to the SAME shared seeded fallback
+      // instance (mirrors the resolution sibling's same-instance behavior).
       expect(viaNullScope, same(viaNoScope));
     },
   );

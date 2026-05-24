@@ -367,3 +367,170 @@ class HttpAdminBusinessTimingProfilesGateway
     return body;
   }
 }
+
+/// In-memory profile write gateway for demo / share-preview / widget
+/// tests, mirroring the shared-fallback shape the READ-ONLY resolution
+/// sibling uses (`InMemoryAdminBusinessTimingResolutionGateway`). It
+/// stores profiles per `operatorId`, assigns an id + version on create,
+/// merges non-null patch fields on update, and lists what is stored so
+/// create -> list -> patch round-trips work end-to-end without the
+/// Cloud Run admin proxy.
+///
+/// The server-required `admin_reason` is captured per write into
+/// [capturedAdminReasons] so tests can assert the editor never submits
+/// without one; the gateway itself does NOT reject an empty reason (the
+/// editor's reason dialog is the client-side guard, and the production
+/// HTTP gateway / proxy enforce the `400 missing_admin_reason` rule).
+class InMemoryAdminBusinessTimingProfilesGateway
+    implements AdminBusinessTimingProfilesGateway {
+  InMemoryAdminBusinessTimingProfilesGateway({
+    Map<String, List<AdminBusinessTimingProfileRecord>>? seed,
+  }) {
+    if (seed != null) {
+      seed.forEach((operatorId, records) {
+        _byOperator[operatorId] = <AdminBusinessTimingProfileRecord>[
+          ...records,
+        ];
+      });
+    }
+  }
+
+  /// Keyed by `operatorId`. Each entry is the operator's stored profile
+  /// list (one per scope at V1, but the list shape mirrors the HTTP
+  /// gateway's `listProfiles` response).
+  final Map<String, List<AdminBusinessTimingProfileRecord>> _byOperator =
+      <String, List<AdminBusinessTimingProfileRecord>>{};
+
+  /// Every `adminReason` passed to [createProfile] / [updateProfile], in
+  /// call order. Lets widget tests assert the editor captured a
+  /// non-empty reason on save.
+  final List<String> capturedAdminReasons = <String>[];
+
+  /// Every create payload captured, in call order (test affordance).
+  final List<AdminBusinessTimingProfileCreate> capturedCreates =
+      <AdminBusinessTimingProfileCreate>[];
+
+  /// Every (profileId, patch) captured, in call order (test affordance).
+  final List<({String profileId, AdminBusinessTimingProfilePatch patch})>
+      capturedPatches =
+      <({String profileId, AdminBusinessTimingProfilePatch patch})>[];
+
+  int _idSeq = 0;
+
+  @override
+  Future<List<AdminBusinessTimingProfileRecord>> listProfiles({
+    required String operatorId,
+  }) async {
+    return <AdminBusinessTimingProfileRecord>[
+      ...?_byOperator[operatorId],
+    ];
+  }
+
+  @override
+  Future<AdminBusinessTimingProfileRecord> createProfile({
+    required String operatorId,
+    required AdminBusinessTimingProfileCreate profile,
+    required String adminReason,
+    required String idempotencyKey,
+  }) async {
+    capturedAdminReasons.add(adminReason);
+    capturedCreates.add(profile);
+    final id = 'mem-profile-${++_idSeq}';
+    final record = AdminBusinessTimingProfileRecord(
+      profileId: id,
+      versionId: id,
+      scopeKind: profile.scopeKind,
+      scopeId: profile.scopeId,
+      effectiveAtBusinessDate: profile.effectiveAtBusinessDate,
+      ianaTimezone: profile.ianaTimezone,
+      weekStartDay: profile.weekStartDay,
+      businessDayStartLocal: profile.businessDayStartLocal,
+      servicePeriods: _periodsFromWrite(profile.servicePeriods),
+    );
+    (_byOperator[operatorId] ??= <AdminBusinessTimingProfileRecord>[])
+        .add(record);
+    return record;
+  }
+
+  @override
+  Future<AdminBusinessTimingProfileRecord> updateProfile({
+    required String operatorId,
+    required String profileId,
+    required AdminBusinessTimingProfilePatch patch,
+    required String adminReason,
+    required String idempotencyKey,
+  }) async {
+    capturedAdminReasons.add(adminReason);
+    capturedPatches.add((profileId: profileId, patch: patch));
+    final records = _byOperator[operatorId];
+    if (records == null) {
+      throw AdminBusinessTimingProfileGatewayError(
+        statusCode: 404,
+        errorCode: 'profile_not_found',
+        message: 'no timing profile $profileId for operator $operatorId',
+      );
+    }
+    final index = records.indexWhere((r) => r.profileId == profileId);
+    if (index < 0) {
+      throw AdminBusinessTimingProfileGatewayError(
+        statusCode: 404,
+        errorCode: 'profile_not_found',
+        message: 'no timing profile $profileId for operator $operatorId',
+      );
+    }
+    final existing = records[index];
+    final merged = AdminBusinessTimingProfileRecord(
+      profileId: existing.profileId,
+      versionId: existing.versionId,
+      scopeKind: existing.scopeKind,
+      scopeId: existing.scopeId,
+      effectiveAtBusinessDate:
+          patch.effectiveAtBusinessDate ?? existing.effectiveAtBusinessDate,
+      ianaTimezone: patch.ianaTimezone ?? existing.ianaTimezone,
+      weekStartDay: patch.weekStartDay ?? existing.weekStartDay,
+      businessDayStartLocal:
+          patch.businessDayStartLocal ?? existing.businessDayStartLocal,
+      servicePeriods: patch.servicePeriods == null
+          ? existing.servicePeriods
+          : _periodsFromWrite(patch.servicePeriods!),
+    );
+    records[index] = merged;
+    return merged;
+  }
+
+  static List<AdminResolutionServicePeriod> _periodsFromWrite(
+    List<AdminServicePeriodWrite> writes,
+  ) {
+    return <AdminResolutionServicePeriod>[
+      for (final w in writes)
+        AdminResolutionServicePeriod(
+          key: w.key,
+          label: w.label,
+          startLocal: w.startLocal,
+          endLocal: w.endLocal,
+          // The server derives this; the in-memory gateway computes the
+          // same flag locally so list/patch round-trips reflect it.
+          rollsPastMidnight: _rollsPastMidnight(w.startLocal, w.endLocal),
+          shortLabel: w.shortLabel,
+          sortOrder: w.sortOrder,
+          applicableDays: List<int>.from(w.applicableDays),
+        ),
+    ];
+  }
+
+  static bool _rollsPastMidnight(String startLocal, String endLocal) {
+    final start = _minutesOrNull(startLocal);
+    final end = _minutesOrNull(endLocal);
+    if (start == null || end == null) return false;
+    return end <= start;
+  }
+
+  static int? _minutesOrNull(String hhmm) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(hhmm.trim());
+    if (match == null) return null;
+    final h = int.tryParse(match.group(1) ?? '');
+    final m = int.tryParse(match.group(2) ?? '');
+    if (h == null || m == null) return null;
+    return h * 60 + m;
+  }
+}
