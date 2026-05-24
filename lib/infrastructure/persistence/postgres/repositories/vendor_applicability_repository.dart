@@ -152,11 +152,7 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
   }
 
   Future<VendorApplicabilityRow> upsert({
-    String? operatorId,
-    String? locationId,
-    required String settingKind,
-    required String settingKey,
-    required String vendorSlug,
+    required VendorApplicabilityScope scope,
     required bool enabled,
     Map<String, Object?> metadata = const <String, Object?>{},
     DateTime? effectiveFrom,
@@ -165,31 +161,17 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
     Future<void> Function(PostgresExecutor exec, VendorApplicabilityRow row)?
     onCommit,
   }) {
-    final normalizedOperatorId = _normalizeOptionalUuid(
-      operatorId,
-      'operator_id',
-    );
-    final normalizedLocationId = _normalizeOptionalUuid(
-      locationId,
-      'location_id',
-    );
-    final normalizedKind = _normalizeRequiredSlug(settingKind, 'setting_kind');
-    final normalizedKey = _normalizeRequiredSettingKey(settingKey);
-    final normalizedVendor = _normalizeRequiredSlug(vendorSlug, 'vendor_slug');
+    final normalizedScope = scope.normalized();
     final normalizedCreatedBy = _normalizeRequiredUuid(createdBy, 'created_by');
     assertApplicabilityMetadataValid(
-      settingKind: normalizedKind,
+      settingKind: normalizedScope.settingKind,
       metadata: metadata,
     );
     final normalizedEffectiveFrom = effectiveFrom?.toUtc();
     return withSystem<VendorApplicabilityRow>((exec) async {
       await _closeCurrent(
         exec,
-        operatorId: normalizedOperatorId,
-        locationId: normalizedLocationId,
-        settingKind: normalizedKind,
-        settingKey: normalizedKey,
-        vendorSlug: normalizedVendor,
+        scope: normalizedScope,
         effectiveUntil: normalizedEffectiveFrom,
       );
       final rows = await exec.query(
@@ -203,11 +185,11 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
         '@created_by::uuid'
         ') returning $_selectList',
         parameters: <String, Object?>{
-          'operator_id': normalizedOperatorId,
-          'location_id': normalizedLocationId,
-          'setting_kind': normalizedKind,
-          'setting_key': normalizedKey,
-          'vendor_slug': normalizedVendor,
+          'operator_id': normalizedScope.operatorId,
+          'location_id': normalizedScope.locationId,
+          'setting_kind': normalizedScope.settingKind,
+          'setting_key': normalizedScope.settingKey,
+          'vendor_slug': normalizedScope.vendorSlug,
           'enabled': enabled,
           'metadata': jsonEncode(metadata),
           'effective_from': normalizedEffectiveFrom,
@@ -226,35 +208,17 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
   }
 
   Future<VendorApplicabilityRow?> end({
-    String? operatorId,
-    String? locationId,
-    required String settingKind,
-    required String settingKey,
-    required String vendorSlug,
+    required VendorApplicabilityScope scope,
     DateTime? effectiveUntil,
     required String adminReason,
     Future<void> Function(PostgresExecutor exec, VendorApplicabilityRow row)?
     onCommit,
   }) {
-    final normalizedOperatorId = _normalizeOptionalUuid(
-      operatorId,
-      'operator_id',
-    );
-    final normalizedLocationId = _normalizeOptionalUuid(
-      locationId,
-      'location_id',
-    );
-    final normalizedKind = _normalizeRequiredSlug(settingKind, 'setting_kind');
-    final normalizedKey = _normalizeRequiredSettingKey(settingKey);
-    final normalizedVendor = _normalizeRequiredSlug(vendorSlug, 'vendor_slug');
+    final normalizedScope = scope.normalized();
     return withSystem<VendorApplicabilityRow?>((exec) async {
       final rows = await _closeCurrent(
         exec,
-        operatorId: normalizedOperatorId,
-        locationId: normalizedLocationId,
-        settingKind: normalizedKind,
-        settingKey: normalizedKey,
-        vendorSlug: normalizedVendor,
+        scope: normalizedScope,
         effectiveUntil: effectiveUntil?.toUtc(),
         returning: true,
       );
@@ -267,11 +231,7 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
 
   Future<List<PostgresRow>> _closeCurrent(
     PostgresExecutor exec, {
-    required String? operatorId,
-    required String? locationId,
-    required String settingKind,
-    required String settingKey,
-    required String vendorSlug,
+    required VendorApplicabilityScope scope,
     DateTime? effectiveUntil,
     bool returning = false,
   }) {
@@ -290,11 +250,11 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
         'and effective_until is null '
         '${returning ? 'returning $_selectList' : ''}';
     final params = <String, Object?>{
-      'operator_id': operatorId,
-      'location_id': locationId,
-      'setting_kind': settingKind,
-      'setting_key': settingKey,
-      'vendor_slug': vendorSlug,
+      'operator_id': scope.operatorId,
+      'location_id': scope.locationId,
+      'setting_kind': scope.settingKind,
+      'setting_key': scope.settingKey,
+      'vendor_slug': scope.vendorSlug,
       'effective_until': effectiveUntil,
     };
     if (returning) {
@@ -372,6 +332,62 @@ class VendorApplicabilityRepository extends OperatorScopedRepository {
   );
   static final RegExp _slugPattern = RegExp(r'^[a-z][a-z0-9_]*$');
   static final RegExp _settingKeyPattern = RegExp(r'^[a-z][a-z0-9_:.+-]*$');
+}
+
+/// The identity tuple every temporal write (`upsert`, `end`) and the
+/// shared `_closeCurrent` helper address: which `(operator, location,
+/// setting_kind, setting_key, vendor_slug)` row family is being created,
+/// closed, or replaced. Bundling these five fields keeps each write
+/// method's parameter list within the engineering bar without changing
+/// behavior; the SQL, precedence, and normalization are unchanged.
+///
+/// [operatorId] / [locationId] are nullable: NULL operator = global
+/// default, NULL location = operator-level (or global) scope. A
+/// [VendorApplicabilityScope] may hold raw caller input or, after
+/// [normalized], the validated/canonical form the SQL layer consumes.
+class VendorApplicabilityScope {
+  const VendorApplicabilityScope({
+    this.operatorId,
+    this.locationId,
+    required this.settingKind,
+    required this.settingKey,
+    required this.vendorSlug,
+  });
+
+  final String? operatorId;
+  final String? locationId;
+  final String settingKind;
+  final String settingKey;
+  final String vendorSlug;
+
+  /// Returns the validated, canonical scope. Field order matches the
+  /// pre-refactor inline normalization so the first invalid field throws
+  /// the same [VendorApplicabilityRepositoryInputError] as before:
+  /// operator_id, then location_id, then setting_kind, setting_key,
+  /// vendor_slug.
+  VendorApplicabilityScope normalized() {
+    return VendorApplicabilityScope(
+      operatorId: VendorApplicabilityRepository._normalizeOptionalUuid(
+        operatorId,
+        'operator_id',
+      ),
+      locationId: VendorApplicabilityRepository._normalizeOptionalUuid(
+        locationId,
+        'location_id',
+      ),
+      settingKind: VendorApplicabilityRepository._normalizeRequiredSlug(
+        settingKind,
+        'setting_kind',
+      ),
+      settingKey: VendorApplicabilityRepository._normalizeRequiredSettingKey(
+        settingKey,
+      ),
+      vendorSlug: VendorApplicabilityRepository._normalizeRequiredSlug(
+        vendorSlug,
+        'vendor_slug',
+      ),
+    );
+  }
 }
 
 class VendorApplicabilityRow {

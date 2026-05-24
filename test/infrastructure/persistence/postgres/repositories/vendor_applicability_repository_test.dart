@@ -20,9 +20,11 @@ void main() {
         );
 
         final row = await repository.upsert(
-          settingKind: 'wage',
-          settingKey: 'tip_credit',
-          vendorSlug: 'toast',
+          scope: const VendorApplicabilityScope(
+            settingKind: 'wage',
+            settingKey: 'tip_credit',
+            vendorSlug: 'toast',
+          ),
           enabled: true,
           metadata: const <String, Object?>{'authority_basis': 'job_code'},
           effectiveFrom: effectiveFrom,
@@ -75,10 +77,12 @@ void main() {
       );
 
       final row = await repository.end(
-        operatorId: operatorId,
-        settingKind: 'covers',
-        settingKey: 'covers',
-        vendorSlug: 'sevenrooms',
+        scope: const VendorApplicabilityScope(
+          operatorId: operatorId,
+          settingKind: 'covers',
+          settingKey: 'covers',
+          vendorSlug: 'sevenrooms',
+        ),
         effectiveUntil: effectiveUntil,
         adminReason: 'test.vendor_applicability.end',
       );
@@ -537,11 +541,13 @@ void main() {
       );
 
       final row = await repository.upsert(
-        operatorId: operatorId,
-        locationId: locationId,
-        settingKind: 'polling',
-        settingKey: 'default',
-        vendorSlug: 'toast',
+        scope: const VendorApplicabilityScope(
+          operatorId: operatorId,
+          locationId: locationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+        ),
         enabled: true,
         createdBy: adminUserId,
         adminReason: 'test.vendor_applicability.upsert_location',
@@ -574,11 +580,13 @@ void main() {
       );
 
       final row = await repository.end(
-        operatorId: operatorId,
-        locationId: locationId,
-        settingKind: 'polling',
-        settingKey: 'default',
-        vendorSlug: 'toast',
+        scope: const VendorApplicabilityScope(
+          operatorId: operatorId,
+          locationId: locationId,
+          settingKind: 'polling',
+          settingKey: 'default',
+          vendorSlug: 'toast',
+        ),
         adminReason: 'test.vendor_applicability.end_location',
       );
 
@@ -689,9 +697,11 @@ void main() {
 
       expect(
         () => repository.upsert(
-          settingKind: 'wage',
-          settingKey: 'tip_credit',
-          vendorSlug: 'toast',
+          scope: const VendorApplicabilityScope(
+            settingKind: 'wage',
+            settingKey: 'tip_credit',
+            vendorSlug: 'toast',
+          ),
           enabled: true,
           metadata: const <String, Object?>{'eav_escape_hatch': true},
           createdBy: adminUserId,
@@ -711,9 +721,11 @@ void main() {
         );
 
         final row = await repository.upsert(
-          settingKind: 'covers',
-          settingKey: 'covers_source',
-          vendorSlug: 'sevenrooms',
+          scope: const VendorApplicabilityScope(
+            settingKind: 'covers',
+            settingKey: 'covers_source',
+            vendorSlug: 'sevenrooms',
+          ),
           enabled: true,
           metadata: const <String, Object?>{
             'cover_filter': 'all_covers',
@@ -740,9 +752,11 @@ void main() {
 
       expect(
         () => repository.upsert(
-          settingKind: 'covers',
-          settingKey: 'covers_source',
-          vendorSlug: 'sevenrooms',
+          scope: const VendorApplicabilityScope(
+            settingKind: 'covers',
+            settingKey: 'covers_source',
+            vendorSlug: 'sevenrooms',
+          ),
           enabled: true,
           metadata: const <String, Object?>{
             'service_periods': <String>['../brunch'],

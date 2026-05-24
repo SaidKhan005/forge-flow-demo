@@ -9112,10 +9112,12 @@ class RepositoryVendorApplicabilityProxyGateway
   }) {
     return _wrapValidation(() async {
       final row = await _repository.upsert(
-        operatorId: operatorId,
-        settingKind: settingKind,
-        settingKey: settingKey,
-        vendorSlug: vendorSlug,
+        scope: VendorApplicabilityScope(
+          operatorId: operatorId,
+          settingKind: settingKind,
+          settingKey: settingKey,
+          vendorSlug: vendorSlug,
+        ),
         enabled: enabled,
         metadata: metadata,
         effectiveFrom: effectiveFrom,
@@ -9161,10 +9163,12 @@ class RepositoryVendorApplicabilityProxyGateway
   }) {
     return _wrapValidation(() async {
       final row = await _repository.end(
-        operatorId: operatorId,
-        settingKind: settingKind,
-        settingKey: settingKey,
-        vendorSlug: vendorSlug,
+        scope: VendorApplicabilityScope(
+          operatorId: operatorId,
+          settingKind: settingKind,
+          settingKey: settingKey,
+          vendorSlug: vendorSlug,
+        ),
         effectiveUntil: effectiveUntil,
         adminReason: adminReason,
         onCommit: (exec, row) async {
