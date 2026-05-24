@@ -38,6 +38,7 @@ import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
+import 'corpus_admin_chunk_view.dart';
 import 'operator_picker_screen.dart';
 
 /// Test seam: lets widget tests inject a synthetic upload byte source
@@ -1858,28 +1859,14 @@ class _VersionDetail extends StatelessWidget {
             const SizedBox(height: 16),
           ],
           OperatorWebPanel(
-            title: 'Content pieces in this version',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (chunks.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'No content loaded yet.',
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  )
-                else
-                  ...chunks.map(
-                    (c) => _ChunkPreviewTile(
-                      key: Key('admin_corpus_chunk_${c.chunkId}'),
-                      chunk: c,
-                    ),
-                  ),
-              ],
+            title: 'Content in this version',
+            child: ChunkGroupedView(
+              key: Key('admin_corpus_grouped_view_${version.versionId}'),
+              chunks: chunks,
+              sectionTileBuilder: (c) => _ChunkPreviewTile(
+                key: Key('admin_corpus_chunk_${c.chunkId}'),
+                chunk: c,
+              ),
             ),
           ),
         ],
