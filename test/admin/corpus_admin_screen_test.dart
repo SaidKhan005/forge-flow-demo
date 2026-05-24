@@ -11,6 +11,11 @@
 //     affordance — exercised by the `ff_support` walkthrough.
 //   * Binary upload surfaces the typed action banner instead of
 //     advancing the staged-diff card.
+//
+// B1 additions (Advisor Knowledge Activation):
+//   * Injected picker returning .md bytes reaches the preview-diff card.
+//   * Injected picker returning .txt bytes reaches the preview-diff card.
+//   * Injected picker returning null (cancel) leaves the screen unchanged.
 
 import 'dart:typed_data';
 
@@ -151,7 +156,7 @@ void main() {
 
     final tabFinder = find.descendant(
       of: find.byKey(const Key('admin_corpus_tab_bar')),
-      matching: find.text('Relationship review'),
+      matching: find.text('Connections'),
     );
     await tester.tap(tabFinder);
     await tester.pumpAndSettle();
@@ -463,6 +468,179 @@ void main() {
     expect(find.byKey(const Key('admin_corpus_action_error')), findsOneWidget);
     expect(find.byKey(const Key('admin_corpus_staged_diff')), findsNothing);
   });
+
+  // ── B1 tests: injected-picker seam exercises the real preview-diff flow ──
+
+  testWidgets(
+    'B1: injected .md picker returns UploadCommand and reaches staged-diff card',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[
+          seedBundle(versionId: 'v1', summary: 'seed', chunkCount: 1),
+        ],
+      );
+      const mdBody =
+          '# Knowledge Base\n\n## Section\n\nContent for the advisor.\n';
+      await tester.pumpWidget(
+        wrap(
+          CorpusAdminScreen(
+            gateway: gateway,
+            uploadPicker: (_) => Future<UploadCommand?>.value(
+              UploadCommand(
+                fileName: 'knowledge.md',
+                contentType: 'text/markdown',
+                bytes: Uint8List.fromList(mdBody.codeUnits),
+                idempotencyKey: 'b1-md-key',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_corpus_staged_diff')),
+        findsOneWidget,
+        reason: '.md upload should produce a staged-diff preview card',
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_action_error')),
+        findsNothing,
+        reason: 'no error banner should appear for a valid .md upload',
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_commit_button')),
+        findsOneWidget,
+        reason: 'commit button should be visible after preview',
+      );
+    },
+  );
+
+  testWidgets(
+    'B1: injected .txt picker returns UploadCommand and reaches staged-diff card',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[
+          seedBundle(versionId: 'v1', summary: 'seed', chunkCount: 1),
+        ],
+      );
+      const txtBody = 'Plain text advisor content.\n\nSome more content.\n';
+      await tester.pumpWidget(
+        wrap(
+          CorpusAdminScreen(
+            gateway: gateway,
+            uploadPicker: (_) => Future<UploadCommand?>.value(
+              UploadCommand(
+                fileName: 'notes.txt',
+                contentType: 'text/plain',
+                bytes: Uint8List.fromList(txtBody.codeUnits),
+                idempotencyKey: 'b1-txt-key',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_corpus_staged_diff')),
+        findsOneWidget,
+        reason: '.txt upload should produce a staged-diff preview card',
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_action_error')),
+        findsNothing,
+        reason: 'no error banner should appear for a valid .txt upload',
+      );
+    },
+  );
+
+  // ── B2 tests: plain-English copy + icons + machine-ID disclosure ──
+
+  testWidgets(
+    'B2: technical-details disclosure exists and raw chunk ID not in primary label',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[
+          seedBundle(
+            versionId: 'v-b2',
+            summary: 'B2 plain-English check',
+            contentHash: 'deadbeef',
+          ),
+        ],
+      );
+      await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+
+      // The disclosure key must exist (machine IDs are behind it).
+      expect(
+        find.byKey(
+          const Key('admin_corpus_chunk_details_methodology_seed.md#000'),
+        ),
+        findsOneWidget,
+        reason: 'technical-details ExpansionTile must exist for chunk',
+      );
+
+      // Before opening the disclosure, raw IDs are not visible.
+      expect(
+        find.textContaining('methodology_seed.md#000'),
+        findsNothing,
+        reason: 'raw chunk ID must not appear in primary label before disclosure',
+      );
+      expect(
+        find.textContaining('sha256'),
+        findsNothing,
+        reason: 'sha256 label must not appear in primary label',
+      );
+
+      // The version-level technical-details disclosure also exists.
+      expect(
+        find.byKey(const Key('admin_corpus_version_details_v-b2')),
+        findsOneWidget,
+        reason: 'technical-details ExpansionTile must exist for version',
+      );
+
+      // Raw version ID not visible in primary label (check the detail panel).
+      expect(
+        find.text('v-b2'),
+        findsNothing,
+        reason: 'raw version ID must not appear outside the disclosure',
+      );
+    },
+  );
+
+  testWidgets(
+    'B1: picker returning null (cancel) leaves the screen unchanged',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[
+          seedBundle(versionId: 'v1', summary: 'seed', chunkCount: 1),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(
+          CorpusAdminScreen(
+            gateway: gateway,
+            uploadPicker: (_) => Future<UploadCommand?>.value(null),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+      await tester.pumpAndSettle();
+
+      // Cancelling the picker should not show any diff or error.
+      expect(find.byKey(const Key('admin_corpus_staged_diff')), findsNothing);
+      expect(find.byKey(const Key('admin_corpus_action_error')), findsNothing);
+    },
+  );
 }
 
 class _CountingCorpusAdminGateway implements CorpusAdminGateway {

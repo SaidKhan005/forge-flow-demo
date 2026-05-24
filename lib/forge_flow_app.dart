@@ -9,6 +9,7 @@ import 'auth/permission_effect.dart';
 import 'auth/permission_keys.dart';
 import 'domain/models/restaurant_location.dart';
 import 'domain/models/business_scope.dart';
+import 'theme/scope_icons.dart';
 import 'services/app_notification_service.dart';
 import 'services/auth/auth_operations_gateway.dart';
 import 'services/auth/handoff_code_gateway.dart';
@@ -1832,13 +1833,10 @@ class BusinessScopeDrawerTile extends StatelessWidget {
     'business_scope_drawer_tile_active_check_icon',
   );
 
+  // Canonical hierarchy-scope glyphs live in lib/theme/scope_icons.dart.
   @visibleForTesting
-  static IconData iconFor(BusinessScope scope) => switch (scope.scopeType) {
-    'operator' => Icons.business_outlined,
-    'org_unit' => Icons.account_tree_outlined,
-    'location' => Icons.storefront_outlined,
-    _ => Icons.work_outline,
-  };
+  static IconData iconFor(BusinessScope scope) =>
+      scopeIconForScopeType(scope.scopeType);
 
   /// The secondary line under a row.
   ///

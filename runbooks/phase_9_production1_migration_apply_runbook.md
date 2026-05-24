@@ -7,17 +7,22 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605240900_b10_1_vendor_applicability_location_scope.sql`
+`202605240900_plans_and_limits_phase0_subscription_tier_check.sql`
+(Plans & Limits V1 Phase 0: backfills the legacy
+`operators.subscription_tier = 'launch'` placeholder to `'pilot'`, relaxes the
+column default to `'pilot'`, and adds a CHECK pinning the column to the six
+operator-approved tiers pilot/starter/premium/elite/pro/enterprise).
+The prior cutoff `202605240900_b10_1_vendor_applicability_location_scope.sql`
 (B10.1 vendor_applicability location scope: adds a nullable `location_id`
 with a location-requires-operator CHECK and a composite FK to `locations`,
 plus location-leading current/history indexes that still lead with
 `operator_id`; the operator-keyed RLS policy is re-asserted unchanged.
-Foundation only; no proxy/admin/operator-web/worker change). The prior
-cutoff `202605230900_phase_slice_e_admin_hierarchy_keys.sql`
+Foundation only; no proxy/admin/operator-web/worker change).
+The prior cutoff `202605230900_phase_slice_e_admin_hierarchy_keys.sql`
 (Slice E: five DORMANT `admin.hierarchy.*` permission-key catalog rows
 seeded and granted to `super_admin` + `ff_support` for a later
 "Business accounts" admin hierarchy-mutation gate; no consumer yet).
-The earlier cutoff `202605201100_operator_account_contact_fields.sql`
+The prior cutoff `202605201100_operator_account_contact_fields.sql`
 (operator account contact defaults: real Business-level contact email and
 phone columns that Brand, Region, District, Location group, and Location
 account overrides can inherit). The earlier cutoff
@@ -302,6 +307,23 @@ Current known post-cutoff staging additions:
   settings from the proxy as cache/read model input; server/admin/operator
   paths remain the write authority. Code-ready and remains
   staging/Production1 apply gated with the rest of the follow-up batch.
+- `db/migrations/202605240900_b10_1_vendor_applicability_location_scope.sql`
+  adds a nullable `location_id` to `vendor_applicability` (CHECK that a
+  location requires an operator, composite FK to `locations`), location-leading
+  current/history indexes that still lead with `operator_id`, and re-asserts
+  the operator-keyed RLS policy unchanged. Foundation only: read precedence
+  becomes location over operator over global; proxy/admin/operator-web/worker
+  paths are unchanged. Code-ready and remains staging/Production1 apply gated
+  with the rest of the follow-up batch.
+- `db/migrations/202605240900_plans_and_limits_phase0_subscription_tier_check.sql`
+  retires the legacy `operators.subscription_tier = 'launch'` placeholder
+  (backfilled to `'pilot'`), relaxes the column default from `'launch'` to
+  `'pilot'`, and adds a CHECK pinning the column to the six operator-approved
+  tiers (pilot/starter/premium/elite/pro/enterprise). The backfill runs before
+  the CHECK so no live row — including the feature-flag system sentinel seeded
+  by `202605072000_feature_flags_sentinel_operator.sql` — violates the new
+  constraint at apply time. Code-ready and remains staging/Production1 apply
+  gated with the rest of the follow-up batch.
 
 Migration drift automation:
 

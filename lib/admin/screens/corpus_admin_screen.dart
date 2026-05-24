@@ -356,11 +356,11 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                 tabs: <Widget>[
                   Tab(
                     key: Key('admin_corpus_versions_tab'),
-                    text: 'Content versions',
+                    text: 'Knowledge',
                   ),
                   Tab(
                     key: Key('admin_corpus_graph_candidates_tab'),
-                    text: 'Relationship review',
+                    text: 'Connections',
                   ),
                 ],
               ),
@@ -488,7 +488,7 @@ class _VersionsTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Upload a markdown file to create the first advisor knowledge version.',
+                  'Upload a document to create the first set of knowledge the advisor can use.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 if (editingEnabled) ...[
@@ -498,7 +498,7 @@ class _VersionsTab extends StatelessWidget {
                     onPressed: busy ? null : onUploadPressed,
                     style: AdminButtonStyles.primary,
                     icon: const Icon(Icons.upload_file_outlined, size: 16),
-                    label: const Text('Upload markdown'),
+                    label: const Text('Upload a document'),
                   ),
                 ],
               ],
@@ -915,7 +915,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                     key: const Key('admin_corpus_graph_bulk_approve_extracted'),
                     onPressed: _busy ? null : _bulkApproveExtracted,
                     style: AdminButtonStyles.primary,
-                    icon: const Icon(Icons.done_all, size: 16),
+                    icon: const Icon(Icons.done_all_outlined, size: 16),
                     label: const Text('Bulk approve all'),
                   )
                 : null,
@@ -982,7 +982,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                         ),
                         onPressed: _busy ? null : widget.onPickOperator,
                         style: AdminButtonStyles.primary,
-                        icon: const Icon(Icons.swap_horiz, size: 16),
+                        icon: const Icon(Icons.swap_horiz_outlined, size: 16),
                         label: const Text('Choose operator'),
                       ),
               ),
@@ -1035,7 +1035,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                 OutlinedButton.icon(
                   key: const Key('admin_corpus_age_rebuild_button'),
                   onPressed: _busy ? null : _onAgeRebuild,
-                  icon: const Icon(Icons.refresh, size: 16),
+                  icon: const Icon(Icons.refresh_outlined, size: 16),
                   label: const Text('Rebuild relationship search'),
                 ),
               ],
@@ -1054,14 +1054,14 @@ class _GraphCandidateMetaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return OperatorWebPanel(
-      title: 'Relationship review summary',
+      title: 'Connections to review',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _DetailRow(label: 'Total suggestions', value: '${diff.totalCount}'),
           _AdvancedDetails(
             keyName: 'admin_corpus_graph_review_advanced',
-            title: 'Review details',
+            title: 'Technical details',
             children: <Widget>[
               _DetailRow(label: 'Review scope', value: diff.graphScope),
               _DetailRow(label: 'Relationship set', value: diff.graphVersion),
@@ -1277,7 +1277,9 @@ class _GraphCandidateRow extends StatelessWidget {
                       selected: queuedForApprove,
                     ),
                     icon: Icon(
-                      queuedForApprove ? Icons.check : Icons.check_outlined,
+                      queuedForApprove
+                          ? Icons.check_circle_outline
+                          : Icons.check_outlined,
                       size: 14,
                     ),
                     label: Text(queuedForApprove ? 'Selected' : 'Approve'),
@@ -1290,7 +1292,7 @@ class _GraphCandidateRow extends StatelessWidget {
                   onPressed: busy ? null : onReject,
                   style: AdminButtonStyles.reject(selected: queuedForReject),
                   icon: Icon(
-                    queuedForReject ? Icons.close : Icons.close_outlined,
+                    Icons.close_outlined,
                     size: 14,
                   ),
                   label: Text(queuedForReject ? 'Selected' : 'Reject'),
@@ -1345,7 +1347,7 @@ class _GraphCandidateDetails extends StatelessWidget {
     if (rows.isEmpty) return const SizedBox.shrink();
     return _AdvancedDetails(
       keyName: 'admin_corpus_graph_candidate_details_${candidate.candidateId}',
-      title: 'Source details',
+      title: 'Technical details',
       children: rows,
     );
   }
@@ -1600,9 +1602,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return const OperatorWebScreenHeader(
       icon: Icons.menu_book_outlined,
-      title: 'Knowledge base',
+      title: 'What the advisor knows',
       subtitle:
-          'Upload advisor knowledge, review changes, publish approved content, and restore earlier versions.',
+          'Add knowledge documents, review what changes, publish updates, and restore an earlier version if needed.',
     );
   }
 }
@@ -1662,7 +1664,7 @@ class _VersionList extends StatelessWidget {
                 onPressed: busy ? null : onUploadPressed,
                 style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.upload_file_outlined, size: 16),
-                label: const Text('Upload markdown'),
+                label: const Text('Upload a document'),
               ),
             ),
           const Divider(height: 1, color: AppColors.borderSubtle),
@@ -1805,14 +1807,14 @@ class _VersionDetail extends StatelessWidget {
         children: [
           OperatorWebPanel(
             title: version.isCurrent
-                ? 'Current knowledge version'
-                : 'Prior knowledge version',
+                ? 'Current knowledge'
+                : 'Earlier knowledge version',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _DetailRow(
                   label: 'Status',
-                  value: version.isCurrent ? 'Current' : 'Superseded',
+                  value: version.isCurrent ? 'Live now' : 'Replaced by a newer version',
                 ),
                 _DetailRow(
                   label: 'Created',
@@ -1831,12 +1833,12 @@ class _VersionDetail extends StatelessWidget {
                 _DetailRow(label: 'Content pieces', value: '${chunks.length}'),
                 _AdvancedDetails(
                   keyName: 'admin_corpus_version_details_${version.versionId}',
-                  title: 'Version details',
+                  title: 'Technical details',
                   children: <Widget>[
                     _DetailRow(label: 'Version ID', value: version.versionId),
                     if (version.rollbackOf != null)
                       _DetailRow(
-                        label: 'Restored version ID',
+                        label: 'Restored from ID',
                         value: version.rollbackOf!,
                       ),
                   ],
@@ -1856,7 +1858,7 @@ class _VersionDetail extends StatelessWidget {
             const SizedBox(height: 16),
           ],
           OperatorWebPanel(
-            title: 'Content in this version',
+            title: 'Content pieces in this version',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1913,7 +1915,7 @@ class _StagedDiffCard extends StatelessWidget {
           if (fileName != null)
             _AdvancedDetails(
               keyName: 'admin_corpus_staged_file_details',
-              title: 'Source details',
+              title: 'Technical details',
               children: <Widget>[
                 _DetailRow(label: 'Uploaded file', value: fileName!),
               ],
@@ -2090,15 +2092,16 @@ class _ChunkPreviewTile extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Risk ${chunk.riskLevel} - about ${chunk.estimatedTokens} tokens',
+            'About ${chunk.estimatedTokens} words of context',
             style: AppTextStyles.mono8(color: AppColors.textMuted),
           ),
           _AdvancedDetails(
             keyName: 'admin_corpus_chunk_details_${chunk.chunkId}',
-            title: 'Content details',
+            title: 'Technical details',
             children: <Widget>[
               _DetailRow(label: 'Content ID', value: chunk.chunkId),
               _DetailRow(label: 'Source file', value: chunk.sourcePath),
+              _DetailRow(label: 'Risk level', value: chunk.riskLevel),
               _DetailRow(
                 label: 'Source hash',
                 value: chunk.contentSha256.substring(
@@ -2162,6 +2165,11 @@ class _AdvancedDetails extends StatelessWidget {
           key: Key(keyName),
           tilePadding: EdgeInsets.zero,
           childrenPadding: const EdgeInsets.only(top: 4, bottom: 4),
+          leading: const Icon(
+            Icons.info_outline,
+            size: 14,
+            color: AppColors.textMuted,
+          ),
           title: Text(
             title,
             style: AppTextStyles.mono8(
