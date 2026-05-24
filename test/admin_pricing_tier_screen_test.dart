@@ -395,6 +395,95 @@ void main() {
     expect(operators.single.caps.single.monthlyCapUsd, equals(125.0));
   });
 
+  testWidgets('Phase 2: delete-limit confirm flow removes the cap', (
+    tester,
+  ) async {
+    final cap = seedCap(operatorId: 'op-del', locationId: 'loc-del');
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-del',
+          primaryLocationId: 'loc-del',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    final deleteKey = Key('admin_pricing_cap_delete_${cap.capId}');
+    await tester.ensureVisible(find.byKey(deleteKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(deleteKey));
+    await tester.pumpAndSettle();
+
+    // The confirm dialog gates the destructive delete.
+    expect(
+      find.byKey(const Key('admin_pricing_confirm_dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('admin_pricing_confirm_ok')));
+    await tester.pumpAndSettle();
+
+    final operators = await gateway.listOperators();
+    expect(operators.single.caps, isEmpty);
+  });
+
+  testWidgets('Phase 2: cancelling the delete confirm keeps the cap', (
+    tester,
+  ) async {
+    final cap = seedCap(operatorId: 'op-keep', locationId: 'loc-keep');
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-keep',
+          primaryLocationId: 'loc-keep',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    final deleteKey = Key('admin_pricing_cap_delete_${cap.capId}');
+    await tester.ensureVisible(find.byKey(deleteKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(deleteKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_pricing_confirm_cancel')));
+    await tester.pumpAndSettle();
+
+    final operators = await gateway.listOperators();
+    expect(operators.single.caps, hasLength(1));
+  });
+
+  testWidgets('Phase 2: read-only mode hides the delete affordance', (
+    tester,
+  ) async {
+    final cap = seedCap(operatorId: 'op-ro-del');
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-ro-del',
+          primaryLocationId: 'loc-seed-1',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(PricingTierAdminScreen(gateway: gateway, editingEnabled: false)),
+    );
+    await tester.pumpAndSettle();
+    await openBusinessesTab(tester);
+
+    expect(
+      find.byKey(Key('admin_pricing_cap_delete_${cap.capId}')),
+      findsNothing,
+    );
+  });
+
   testWidgets('add limit uses a friendly use-case dropdown', (tester) async {
     final gateway = InMemoryPricingTierAdminGateway(
       seed: <PricingOperatorBundle>[

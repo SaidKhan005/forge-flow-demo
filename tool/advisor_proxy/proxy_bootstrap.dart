@@ -5671,6 +5671,84 @@ class RepositoryPricingTierAdminProxyGateway
     return _bundleFor(updatedOperator, adminReason: adminReason);
   }
 
+  @override
+  Future<bool> deleteUsageCap({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String usageClass,
+    String? staffId,
+    String? workflowId,
+    String? capId,
+    required String adminReason,
+  }) async {
+    // When deleting by the logical key the org-unit axes must match the
+    // ones the upsert wrote (corp pays for corp scope), so resolve the
+    // operator's root org_units row exactly as `upsertUsageCap` does.
+    // When a cap_id is supplied the surrogate key alone identifies the
+    // row (the repo still scopes the predicate by operator_id), so the
+    // org-unit lookup is skipped.
+    String orgUnitId = '';
+    if (capId == null) {
+      orgUnitId = await _rootOrgUnitId(
+        operatorId: operatorId,
+        adminReason: adminReason,
+      );
+    }
+    final deleted = await _caps.deleteCap(
+      operatorId: operatorId,
+      billingOwnerOrgUnitId: orgUnitId,
+      scopedOrgUnitId: orgUnitId,
+      locationId: locationId,
+      usageClass: usageClass,
+      staffId: staffId,
+      workflowId: workflowId,
+      capId: capId,
+      adminReason: adminReason,
+    );
+    if (deleted) {
+      await _audit(
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId.isEmpty ? null : locationId,
+        eventType: 'admin.pricing.cap_deleted',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          if (capId != null) 'cap_id': capId,
+          if (usageClass.isNotEmpty) 'usage_class': usageClass,
+          if (staffId != null) 'staff_id': staffId,
+          if (workflowId != null) 'workflow_id': workflowId,
+        },
+      );
+    }
+    return deleted;
+  }
+
+  @override
+  Future<List<Map<String, Object?>>?> monthToDateSpendSummary({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    final existing = await _operators.findById(
+      operatorId: operatorId,
+      adminReason: '$adminReason:lookup',
+    );
+    if (existing == null) return null;
+    final rows = await _caps.monthToDateSpendByClass(
+      operatorId: operatorId,
+      adminReason: adminReason,
+    );
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      eventType: 'admin.pricing.spend_summary',
+      adminReason: adminReason,
+      payload: <String, Object?>{'row_count': rows.length},
+    );
+    return <Map<String, Object?>>[for (final row in rows) row.toJson()];
+  }
+
   Future<Map<String, Object?>> _bundleFor(
     OperatorAdminRow operator, {
     required String adminReason,

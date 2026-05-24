@@ -196,6 +196,79 @@ class UsageCapUpsertCommand {
   };
 }
 
+/// Delete one `usage_caps` row. Goes to
+/// `DELETE /v1/admin/pricing/usage-caps`. The proxy deletes by the
+/// surrogate [capId] when present, otherwise by the same
+/// `(operator_id, location_id, usage_class, staff_id, workflow_id)`
+/// logical key the upsert uses.
+@immutable
+class UsageCapDeleteCommand {
+  const UsageCapDeleteCommand({
+    required this.operatorId,
+    required this.locationId,
+    required this.usageClass,
+    required this.idempotencyKey,
+    this.staffId,
+    this.workflowId,
+    this.capId,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String usageClass;
+  final String? staffId;
+  final String? workflowId;
+  final String? capId;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried DELETE collapses to one
+  /// delete + one audit row.
+  final String idempotencyKey;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'usage_class': usageClass,
+    if (staffId != null) 'staff_id': staffId,
+    if (workflowId != null) 'workflow_id': workflowId,
+    if (capId != null) 'cap_id': capId,
+  };
+}
+
+/// Month-to-date spend for one operator, keyed by
+/// `(location_id, usage_class)`. Read from
+/// `GET /v1/admin/pricing/operators/{id}/spend-summary`; the figures
+/// reuse the same `usage_logs` SUM(cost_usd)-for-month grain the cap
+/// enforcement path uses, so they line up with the cap on each bar.
+@immutable
+class OperatorSpendSummary {
+  const OperatorSpendSummary({required this.byLocationAndClass});
+
+  /// `'<location_id>::<usage_class>' -> month-to-date spend USD`.
+  final Map<String, double> byLocationAndClass;
+
+  static String keyFor(String locationId, String usageClass) =>
+      '$locationId::$usageClass';
+
+  /// Spend for one `(location, usage_class)` pair, or null when the
+  /// summary has no row for it (honest empty, not a phantom $0).
+  double? spendFor(String locationId, String usageClass) =>
+      byLocationAndClass[keyFor(locationId, usageClass)];
+
+  static OperatorSpendSummary fromJson(Map<String, Object?> json) {
+    final spend = (json['spend'] as List?) ?? const [];
+    final map = <String, double>{};
+    for (final entry in spend) {
+      final row = (entry as Map).cast<String, Object?>();
+      final locationId = row['location_id'] as String?;
+      final usageClass = row['usage_class'] as String?;
+      if (locationId == null || usageClass == null) continue;
+      map[keyFor(locationId, usageClass)] = _asDouble(row['spend_usd']);
+    }
+    return OperatorSpendSummary(byLocationAndClass: map);
+  }
+}
+
 /// Apply a tier template: update `operators.subscription_tier` and
 /// upsert each cap row from the template under one admin reason. Goes
 /// to `POST /v1/admin/pricing/operators/{id}/apply-template`.
