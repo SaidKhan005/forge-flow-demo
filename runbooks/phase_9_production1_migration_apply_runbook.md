@@ -7,7 +7,13 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605240900_plans_and_limits_phase0_subscription_tier_check.sql`
+`202605241000_advisor_conversation_log_request_correlation_and_retention.sql`
+(P1a Support logs telemetry groundwork: adds a NULLABLE `request_id` uuid
+correlation key + operator-leading join index to `advisor_conversation_log`,
+and schedules a cluster-wide 30-day retention purge via pg_cron that never
+deletes legal-hold or permanent-retention rows. Schema + RLS-adjacent;
+build-only, gated on explicit operator approval).
+The prior cutoff `202605240900_plans_and_limits_phase0_subscription_tier_check.sql`
 (Plans & Limits V1 Phase 0: backfills the legacy
 `operators.subscription_tier = 'launch'` placeholder to `'pilot'`, relaxes the
 column default to `'pilot'`, and adds a CHECK pinning the column to the six
@@ -324,6 +330,18 @@ Current known post-cutoff staging additions:
   by `202605072000_feature_flags_sentinel_operator.sql` — violates the new
   constraint at apply time. Code-ready and remains staging/Production1 apply
   gated with the rest of the follow-up batch.
+- `db/migrations/202605241000_advisor_conversation_log_request_correlation_and_retention.sql`
+  adds a NULLABLE `request_id` uuid correlation key (advisory join onto
+  `public.proxy_requests.request_id`, intentionally no FK) plus an operator-
+  leading `(operator_id, location_id, request_id)` join index to
+  `public.advisor_conversation_log`, and makes retention real: a cluster-wide
+  `advisor_conversation_log_purge_expired(retention_days, batch_size)`
+  SECURITY DEFINER function (forge_admin EXECUTE only) batched with
+  `FOR UPDATE SKIP LOCKED`, scheduled daily at 03:15 UTC via pg_cron
+  (`forge_advisor_conversation_log_retention`). The purge predicate NEVER
+  deletes rows where `legal_hold = true` or `retention_class = 'permanent'`.
+  Schema-touching + RLS-adjacent groundwork for the Support logs redesign;
+  code-ready and gated on explicit operator approval before any apply.
 
 Migration drift automation:
 

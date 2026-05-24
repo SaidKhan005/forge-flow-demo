@@ -152,7 +152,13 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605240900_plans_and_limits_phase0_subscription_tier_check.sql`
+`202605241000_advisor_conversation_log_request_correlation_and_retention.sql`
+(P1a Support logs telemetry groundwork: adds a NULLABLE `request_id` uuid
+correlation key + operator-leading `(operator_id, location_id, request_id)`
+join index to `advisor_conversation_log`, and schedules a cluster-wide 30-day
+retention purge via pg_cron that never deletes `legal_hold` or
+`permanent`-retention rows; schema + RLS-adjacent, gated on operator approval),
+preceded by `202605240900_plans_and_limits_phase0_subscription_tier_check.sql`
 (Plans & Limits V1 Phase 0: backfills the legacy
 `operators.subscription_tier = 'launch'` placeholder to `'pilot'`, relaxes the
 column default to `'pilot'`, and adds a CHECK pinning the column to the six
