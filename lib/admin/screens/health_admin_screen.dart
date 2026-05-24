@@ -37,6 +37,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_info_button.dart';
 import '../../widgets/console/console_screen_body.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
@@ -387,7 +388,6 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
   }
 
   Widget _envelopeBody(HealthEnvelope envelope) {
-    final showDefinitions = MediaQuery.sizeOf(context).width >= 520;
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -398,19 +398,35 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             onSelectTab: (index) => _tabs.animateTo(index),
           ),
           const SizedBox(height: 12),
-          const _HealthPriorityKey(),
-          const SizedBox(height: 12),
-          if (showDefinitions) ...[
-            const _HealthDefinitionsCard(),
-            const SizedBox(height: 12),
-          ],
-          _DependenciesStrip(envelope: envelope),
-          const SizedBox(height: 12),
-          _TechDetailsToggle(
-            value: _showTechDetails,
-            onChanged: (next) => setState(() => _showTechDetails = next),
+          // Slim controls row: a single "What these mean" info button on
+          // the left carries both the priority key and the plain-English
+          // definitions in a popover (so the calm default stays
+          // uncluttered), and the global technical-details toggle on the
+          // right. Wrap so the two sides stack instead of overflowing on a
+          // narrow viewport.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: <Widget>[
+              const _HealthLegendInfo(),
+              _TechDetailsToggle(
+                value: _showTechDetails,
+                onChanged: (next) => setState(() => _showTechDetails = next),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
+          // Live dependency pings pair with the technical view. Any
+          // dependency failure is already called out prominently in the
+          // red summary above, so the all-green chip strip is hidden by
+          // default to reduce clutter and only shows with technical
+          // details on.
+          if (_showTechDetails) ...[
+            _DependenciesStrip(envelope: envelope),
+            const SizedBox(height: 12),
+          ],
           TabBar(
             key: const Key('admin_health_tabs'),
             controller: _tabs,
@@ -782,6 +798,43 @@ class _TabLabel extends StatelessWidget {
   }
 }
 
+/// "What these mean" info button for the controls row. Carries both the
+/// priority key (Critical / Important / Info) and the plain-English
+/// definitions (Advisor data / App service / Behind the scenes / Service
+/// checks) in a single popover so the screen's default face stays calm.
+class _HealthLegendInfo extends StatelessWidget {
+  const _HealthLegendInfo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          'What these mean',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        const SizedBox(width: 4),
+        OperatorWebInfoButton(
+          key: const Key('admin_health_legend_info'),
+          title: 'What these mean',
+          tooltip: 'What these labels and checks mean',
+          width: 360,
+          body: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const <Widget>[
+              _HealthPriorityKey(),
+              SizedBox(height: 14),
+              _HealthDefinitionsCard(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   const _Header({
     required this.lastRefreshed,
@@ -909,54 +962,47 @@ class _ManualHealthPrompt extends StatelessWidget {
   }
 }
 
+/// Priority-key legend, rendered inside the "What these mean" popover.
+/// Critical / Important / Info stack vertically so they read cleanly in
+/// the narrow popover at every viewport width. The popover supplies the
+/// surrounding surface + padding, so this block is chrome-free.
 class _HealthPriorityKey extends StatelessWidget {
   const _HealthPriorityKey();
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 520;
-        return Container(
-          key: const Key('admin_health_priority_key'),
-          padding: EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: compact ? 8 : 12,
+    return Column(
+      key: const Key('admin_health_priority_key'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: const <Widget>[
+        Text(
+          'Priority',
+          style: TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
           ),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSurface,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: compact
-              ? Text(
-                  'Critical = core checks | Important = reliability/freshness | Info = context',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                )
-              : Wrap(
-                  spacing: 16,
-                  runSpacing: 10,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: const <Widget>[
-                    _PriorityKeyItem(
-                      label: 'Critical',
-                      description: 'Core service and data-safety checks.',
-                      color: AppColors.negative,
-                    ),
-                    _PriorityKeyItem(
-                      label: 'Important',
-                      description: 'Reliability, freshness, and cost signals.',
-                      color: AppColors.warning,
-                    ),
-                    _PriorityKeyItem(
-                      label: 'Info',
-                      description: 'Helpful context for support follow-up.',
-                      color: AppColors.neutral,
-                    ),
-                  ],
-                ),
-        );
-      },
+        ),
+        SizedBox(height: 8),
+        _PriorityKeyItem(
+          label: 'Critical',
+          description: 'Core service and data-safety checks.',
+          color: AppColors.negative,
+        ),
+        SizedBox(height: 8),
+        _PriorityKeyItem(
+          label: 'Important',
+          description: 'Reliability, freshness, and cost signals.',
+          color: AppColors.warning,
+        ),
+        SizedBox(height: 8),
+        _PriorityKeyItem(
+          label: 'Info',
+          description: 'Helpful context for support follow-up.',
+          color: AppColors.neutral,
+        ),
+      ],
     );
   }
 }
@@ -974,120 +1020,101 @@ class _PriorityKeyItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 220, maxWidth: 340),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              border: Border.all(color: color, width: 1),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(label, style: AppTextStyles.chipLabel(color: color)),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            border: Border.all(color: color, width: 1),
+            borderRadius: BorderRadius.circular(999),
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              description,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
+          child: Text(label, style: AppTextStyles.chipLabel(color: color)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            description,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
+/// Plain-English definitions, rendered inside the "What these mean"
+/// popover beneath the priority key. Each term stacks vertically so the
+/// list reads top-to-bottom in the narrow popover.
 class _HealthDefinitionsCard extends StatelessWidget {
   const _HealthDefinitionsCard();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Column(
       key: const Key('admin_health_plain_english_definitions'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final columns = constraints.maxWidth >= 900
-              ? 4
-              : constraints.maxWidth >= 520
-              ? 2
-              : 1;
-          const gap = 10.0;
-          final itemWidth =
-              (constraints.maxWidth - (gap * (columns - 1))) / columns;
-          return Wrap(
-            spacing: gap,
-            runSpacing: gap,
-            children: <Widget>[
-              _HealthDefinitionItem(
-                width: itemWidth,
-                label: 'Advisor data',
-                description:
-                    'Knowledge, vectors, and rollups the advisor uses to answer accurately.',
-              ),
-              _HealthDefinitionItem(
-                width: itemWidth,
-                label: 'App service',
-                description:
-                    'The backend services that serve admin, advisor, and workflow requests.',
-              ),
-              _HealthDefinitionItem(
-                width: itemWidth,
-                label: 'Behind the scenes',
-                description:
-                    'Shared database, search, queues, and scheduled work that keep the app running.',
-              ),
-              _HealthDefinitionItem(
-                width: itemWidth,
-                label: 'Service checks',
-                description:
-                    'Read-only pings that confirm each required service answered successfully.',
-              ),
-            ],
-          );
-        },
-      ),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: const <Widget>[
+        Text(
+          'What the tabs and checks cover',
+          style: TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        SizedBox(height: 8),
+        _HealthDefinitionItem(
+          label: 'Advisor data',
+          description:
+              'Knowledge, vectors, and rollups the advisor uses to answer accurately.',
+        ),
+        SizedBox(height: 6),
+        _HealthDefinitionItem(
+          label: 'App service',
+          description:
+              'The backend services that serve admin, advisor, and workflow requests.',
+        ),
+        SizedBox(height: 6),
+        _HealthDefinitionItem(
+          label: 'Behind the scenes',
+          description:
+              'Shared database, search, queues, and scheduled work that keep the app running.',
+        ),
+        SizedBox(height: 6),
+        _HealthDefinitionItem(
+          label: 'Service checks',
+          description:
+              'Read-only pings that confirm each required service answered successfully.',
+        ),
+      ],
     );
   }
 }
 
 class _HealthDefinitionItem extends StatelessWidget {
-  const _HealthDefinitionItem({
-    required this.width,
-    required this.label,
-    required this.description,
-  });
+  const _HealthDefinitionItem({required this.label, required this.description});
 
-  final double width;
   final String label;
   final String description;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: Text.rich(
-        TextSpan(
-          text: label,
-          style: AppTextStyles.body12(
-            color: AppColors.textPrimary,
-          ).copyWith(fontWeight: FontWeight.w700),
-          children: <InlineSpan>[
-            TextSpan(
-              text: ' - $description',
-              style: AppTextStyles.body12(color: AppColors.textSecondary),
-            ),
-          ],
-        ),
+    return Text.rich(
+      TextSpan(
+        text: label,
+        style: AppTextStyles.body12(
+          color: AppColors.textPrimary,
+        ).copyWith(fontWeight: FontWeight.w700),
+        children: <InlineSpan>[
+          TextSpan(
+            text: ' - $description',
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          ),
+        ],
       ),
     );
   }
@@ -1162,15 +1189,16 @@ class _TechDetailsToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Right-aligned, but the label is Flexible so it ellipsizes instead
-    // of overflowing on a narrow (mobile-width) admin viewport.
+    // Sized to its content so it sits on the right of the Wrap controls
+    // row. The label is capped + ellipsizes so it never overflows on a
+    // narrow (mobile-width) admin viewport.
     return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Flexible(
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 220),
           child: Text(
             'Show technical details',
-            textAlign: TextAlign.right,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTextStyles.body13(color: AppColors.textSecondary),

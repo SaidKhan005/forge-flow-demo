@@ -23,12 +23,23 @@
 // attention, then good, then no-data). The third tab is renamed from
 // "Ecosystem" to "Behind the scenes".
 //
+// Slice 3 declutters the top of the screen. The priority key and the
+// plain-English definitions move behind a single "What these mean" info
+// button in a slim controls row above the tabs (the technical-details
+// toggle sits on the right of that row), and the all-green "Service
+// checks" dependency strip is hidden unless technical details are on
+// (any dependency failure is already called out by the red summary). The
+// content stays centered and capped at the shared operator-web width.
+//
 // Coverage:
 //   * Initial render is manual-only and does not fetch.
 //   * Manual check carries the selected hierarchy scope to the gateway.
-//   * Confirmed manual fetch shows three tabs + the dependencies strip,
-//     a green summary, and the "Behind the scenes" label (not
-//     "Ecosystem").
+//   * Confirmed manual fetch shows three tabs, a green summary, and the
+//     "Behind the scenes" label (not "Ecosystem"); opening the legend
+//     popover reveals the priority key + definitions; turning technical
+//     details on reveals the dependency strip + its probe chips.
+//   * The decluttered default hides the legend blocks + dependency strip.
+//   * On a wide viewport the body is capped at the shared content width.
 //   * The 503 path and a tier-1 metric fail both render the summary's
 //     red "Action needed" state.
 //   * A tier-2 yellow shows the amber summary, lists the offending
@@ -193,14 +204,30 @@ void main() {
     expect(find.byKey(const Key('admin_health_tab_retrieval')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tab_proxy')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tab_infra')), findsOneWidget);
+    // "Ecosystem" is gone from the screen entirely.
+    expect(find.text('Ecosystem'), findsNothing);
+
+    // The legend + definitions now live behind a single "What these mean"
+    // info button so the default face stays calm. They are not visible
+    // until the popover is opened.
+    expect(find.byKey(const Key('admin_health_legend_info')), findsOneWidget);
+    expect(find.byKey(const Key('admin_health_priority_key')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_health_plain_english_definitions')),
+      findsNothing,
+    );
+
+    // Open the popover; both legend blocks (and their text) are now found.
+    await tester.tap(find.byKey(const Key('admin_health_legend_info')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('admin_health_priority_key')), findsOneWidget);
-    expect(find.text('Critical'), findsOneWidget);
-    expect(find.text('Important'), findsWidgets);
-    expect(find.text('Info'), findsWidgets);
     expect(
       find.byKey(const Key('admin_health_plain_english_definitions')),
       findsOneWidget,
     );
+    expect(find.text('Critical'), findsOneWidget);
+    expect(find.text('Important'), findsWidgets);
+    expect(find.text('Info'), findsWidgets);
     expect(
       find.textContaining('Advisor data', findRichText: true),
       findsWidgets,
@@ -209,14 +236,11 @@ void main() {
       find.textContaining('App service', findRichText: true),
       findsWidgets,
     );
-    // The third tab + its definitions entry now read "Behind the scenes".
+    // The third tab + its definitions entry both read "Behind the scenes".
     expect(
       find.textContaining('Behind the scenes', findRichText: true),
       findsWidgets,
     );
-    // "Ecosystem" is gone from the screen entirely.
-    expect(find.text('Ecosystem'), findsNothing);
-    expect(find.textContaining('Service checks'), findsWidgets);
     expect(
       find.textContaining(
         'Read-only pings that confirm each required service answered successfully.',
@@ -224,7 +248,20 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    // Dismiss the popover (tap the trigger again to toggle it closed).
+    await tester.tap(find.byKey(const Key('admin_health_legend_info')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('admin_health_priority_key')), findsNothing);
+
+    // The global tech-details switch sits in the controls row above the
+    // tabs. The "Service checks" dependency strip is hidden until it is on.
+    expect(find.byKey(const Key('admin_health_tech_toggle')), findsOneWidget);
+    expect(find.byKey(const Key('admin_health_dependencies')), findsNothing);
+
+    await showTechnicalDetails(tester);
     expect(find.byKey(const Key('admin_health_dependencies')), findsOneWidget);
+    expect(find.textContaining('Service checks'), findsWidgets);
     // All three dependency probes are rendered.
     expect(
       find.byKey(const Key('admin_health_dependency_postgres')),
@@ -238,11 +275,7 @@ void main() {
       find.byKey(const Key('admin_health_dependency_pgvector')),
       findsOneWidget,
     );
-    // The global tech-details switch sits above the tabs.
-    expect(
-      find.byKey(const Key('admin_health_tech_toggle')),
-      findsOneWidget,
-    );
+
     // A green envelope leads with the calm "Everything looks good"
     // summary (the old banners / overall chip are gone).
     expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
@@ -251,6 +284,65 @@ void main() {
       find.textContaining('All 3 checks passed.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('decluttered default hides the legend and dependency strip', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryHealthAdminGateway(envelope: _greenEnvelope());
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await runHealthCheck(tester);
+
+    // No info-button tap, tech toggle off: the priority key, the
+    // plain-English definitions, and the dependency strip are all absent
+    // from the tree so the default face stays uncluttered.
+    expect(find.byKey(const Key('admin_health_priority_key')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_health_plain_english_definitions')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('admin_health_dependencies')), findsNothing);
+    // But the entry points to reveal them are present.
+    expect(find.byKey(const Key('admin_health_legend_info')), findsOneWidget);
+    expect(find.byKey(const Key('admin_health_tech_toggle')), findsOneWidget);
+  });
+
+  testWidgets('content is capped at the shared max width on a wide viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final gateway = InMemoryHealthAdminGateway(envelope: _greenEnvelope());
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await runHealthCheck(tester);
+
+    // The tabbed body is centered and capped at the shared operator-web
+    // content width (1120) even though the viewport is 1600 wide, so the
+    // tabs do not span edge-to-edge.
+    final tabsWidth = tester.getSize(
+      find.byKey(const Key('admin_health_tabs')),
+    ).width;
+    expect(tester.takeException(), isNull);
+    expect(tabsWidth, lessThanOrEqualTo(1121));
   });
 
   testWidgets('green metric card shows a Good status pill and a meaning line', (
