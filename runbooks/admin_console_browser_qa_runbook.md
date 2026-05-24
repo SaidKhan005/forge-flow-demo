@@ -148,7 +148,7 @@ by text content or role. Helper to find a nav item by text and click it:
 })('Business accounts')
 ```
 
-The admin shell uses a **left nav rail** (220 px wide) on screens ≥ 720 px.
+The admin shell uses a **left nav rail** (280 px wide) on screens ≥ 720 px.
 Nav items are grouped into labeled sections: Operations · AI · System
 monitoring · Service setup · Your account.
 

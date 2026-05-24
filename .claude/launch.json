@@ -48,12 +48,13 @@
     },
     {
       "name": "admin-web-static",
-      "runtimeExecutable": "C:\\Users\\blund\\AppData\\Local\\Pub\\Cache\\bin\\dhttpd.bat",
+      "runtimeExecutable": "python",
       "runtimeArgs": [
-        "--path",
-        "build/web",
-        "--port",
-        "8186"
+        "-m",
+        "http.server",
+        "8186",
+        "--directory",
+        "build/web"
       ],
       "port": 8186
     },
