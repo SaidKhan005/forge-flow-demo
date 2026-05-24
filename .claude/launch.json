@@ -102,6 +102,18 @@
         "docs/_mockups"
       ],
       "port": 8190
+    },
+    {
+      "name": "ai-metrics-mockup",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "C:/Git Local Repos/forge_flow_demo/.claude/worktrees/nifty-stonebraker-cae76b/docs/_mockups/ai_metrics_redesign"
+      ],
+      "port": 8765
     }
   ]
 }
