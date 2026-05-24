@@ -30,6 +30,7 @@ import 'models/feature_flags_admin_models.dart';
 import 'models/integration_admin_models.dart';
 import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
+import 'screens/account_audit_log_admin_screen.dart';
 import 'screens/admin_notification_preferences_screen.dart';
 import 'screens/admin_timing_setup_screen.dart';
 import 'screens/corpus_admin_screen.dart';
@@ -244,6 +245,13 @@ const String kAdminMyAccountRouteId = 'my-account';
 /// `AdminNotificationPreferencesGateway`; no new proxy/backend route.
 const String kAdminNotificationPreferencesRouteId = 'notification-preferences';
 
+/// Full-page admin Audit log of the signed-in admin's own account
+/// events (sign-ins, password, two-factor, profile). Reached from the
+/// My account "View audit log" button and from the "Your account"
+/// side-nav section. Reuses the self-scoped `GET /v1/auth/audit-log`
+/// route via AdminSecurityGateway; no new proxy/backend route.
+const String kAdminAuditLogRouteId = 'audit-log';
+
 /// The admin route table. Order is the side-nav order.
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   AdminRoute(
@@ -452,6 +460,17 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
         'Pick how Forge & Flow lets you know about important events for '
         'your admin sign-in.',
     builder: _buildAdminNotificationPreferences,
+  ),
+  AdminRoute(
+    id: kAdminAuditLogRouteId,
+    title: 'Audit log',
+    path: '/admin/audit-log',
+    icon: Icons.history,
+    section: AdminRouteSection.account,
+    subtitle:
+        'Sign-ins, password changes, two-factor, and profile edits on your '
+        'admin account.',
+    builder: _buildAccountAuditLog,
   ),
 ];
 
@@ -2548,6 +2567,7 @@ Widget _buildMyAccount(BuildContext context) {
   final securityGateway = AdminConsoleServicesScope.adminSecurityGatewayOf(
     context,
   );
+  final handoff = AdminRouteHandoff.maybeOf(context);
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
     initialData: source.current,
@@ -2560,6 +2580,14 @@ Widget _buildMyAccount(BuildContext context) {
           accountGateway: accountGateway,
           sessionsGateway: sessionsGateway,
           securityGateway: securityGateway,
+          // "View audit log" navigates to the full account Audit log
+          // page via the shell, mirroring how the ops My account card
+          // opens the operator audit-log surface.
+          onOpenAuditLog: handoff == null
+              ? null
+              : () => handoff.onSelectRoute(
+                  AdminRouteIntent(routeId: kAdminAuditLogRouteId),
+                ),
         );
       }
       return const _MyAccountUnauthenticatedFallback();
@@ -2577,6 +2605,18 @@ Widget _buildAdminNotificationPreferences(BuildContext context) {
   final gateway =
       AdminConsoleServicesScope.adminNotificationPreferencesGatewayOf(context);
   return AdminNotificationPreferencesScreen(gateway: gateway);
+}
+
+/// Route builder for the full account Audit log page. Reads the admin
+/// security gateway from the scope; when null the screen renders the
+/// honest disconnected state (demo / share-preview / wiring gap). The
+/// gateway resolves the acting admin from the verified bearer token,
+/// so no auth session is needed here.
+Widget _buildAccountAuditLog(BuildContext context) {
+  final securityGateway = AdminConsoleServicesScope.adminSecurityGatewayOf(
+    context,
+  );
+  return AccountAuditLogAdminScreen(gateway: securityGateway);
 }
 
 /// Calm placeholder rendered when the admin auth source has not

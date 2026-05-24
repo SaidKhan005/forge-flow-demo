@@ -70,6 +70,7 @@ class MyAccountAdminScreen extends StatefulWidget {
     this.sessionsGateway,
     this.securityGateway,
     this.now,
+    this.onOpenAuditLog,
   });
 
   final AdminAuthSession session;
@@ -103,6 +104,12 @@ class MyAccountAdminScreen extends StatefulWidget {
   /// Test seam for the freshness clock so widget tests can pin a
   /// deterministic "last signed in" relative label.
   final DateTime Function()? now;
+
+  /// When non-null, the "Audit log" card's "View audit log" button
+  /// navigates to the full account Audit log page. The admin shell
+  /// wires this through AdminRouteHandoff; a screen mounted without a
+  /// shell (older widget tests) leaves it null and the button disabled.
+  final VoidCallback? onOpenAuditLog;
 
   @override
   State<MyAccountAdminScreen> createState() => _MyAccountAdminScreenState();
@@ -225,8 +232,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
               ),
               const SizedBox(height: 14),
               _AdminAuditLogCard(
-                gateway: widget.securityGateway,
-                now: widget.now,
+                onOpenAuditLog: widget.onOpenAuditLog,
               ),
             ],
           ),
@@ -1848,16 +1854,17 @@ class _AdminActiveSessionsDialogState
 // ─── Audit log ──────────────────────────────────────────────────────
 
 /// The "Audit log" card, mirroring the operator-web My account Audit
-/// log card (a "View audit log" button). On admin the button opens a
-/// popup of the signed-in admin's own account events (sign-ins,
-/// password, two-factor, profile) read from the self-scoped
-/// `GET /v1/auth/audit-log` route via
-/// [AdminSecurityGateway.listAccountAuditLog].
+/// log card: a "View audit log" button. On admin the button navigates
+/// to the full account Audit log page (AccountAuditLogAdminScreen) via
+/// [MyAccountAdminScreen.onOpenAuditLog]; that page reads the same
+/// self-scoped `GET /v1/auth/audit-log` events.
 class _AdminAuditLogCard extends StatelessWidget {
-  const _AdminAuditLogCard({this.gateway, this.now});
+  const _AdminAuditLogCard({this.onOpenAuditLog});
 
-  final AdminSecurityGateway? gateway;
-  final DateTime Function()? now;
+  /// When non-null, the button navigates to the full Audit log page.
+  /// Null (a screen mounted without a shell, e.g. older widget tests)
+  /// renders the button disabled.
+  final VoidCallback? onOpenAuditLog;
 
   @override
   Widget build(BuildContext context) {
@@ -1873,137 +1880,23 @@ class _AdminAuditLogCard extends StatelessWidget {
           height: 38,
           child: OutlinedButton.icon(
             key: const Key('admin_my_account_audit_log_link'),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => _AdminAuditLogDialog(gateway: gateway, now: now),
-            ),
+            onPressed: onOpenAuditLog,
             icon: const Icon(Icons.history, size: 16),
             label: const Text('View audit log'),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.sunsetDark,
-              side: const BorderSide(color: AppColors.sunsetDark),
+              disabledForegroundColor: AppColors.textMuted,
+              side: BorderSide(
+                color: onOpenAuditLog == null
+                    ? AppColors.borderSubtle
+                    : AppColors.sunsetDark,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(6),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 14),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Popup listing the admin's own recent account audit events. Reuses
-/// the recent-sign-in activity row chrome.
-class _AdminAuditLogDialog extends StatefulWidget {
-  const _AdminAuditLogDialog({this.gateway, this.now});
-
-  final AdminSecurityGateway? gateway;
-  final DateTime Function()? now;
-
-  @override
-  State<_AdminAuditLogDialog> createState() => _AdminAuditLogDialogState();
-}
-
-class _AdminAuditLogDialogState extends State<_AdminAuditLogDialog> {
-  bool _loading = false;
-  String? _error;
-  List<AdminSecurityAuditEntry> _entries = const <AdminSecurityAuditEntry>[];
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.gateway != null) {
-      unawaited(_load());
-    }
-  }
-
-  Future<void> _load() async {
-    final gateway = widget.gateway;
-    if (gateway == null) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final listed = await gateway.listAccountAuditLog();
-      if (!mounted) return;
-      setState(() {
-        _entries = listed.entries;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'Could not load your audit log. Try again in a moment.';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebDialog(
-      key: const Key('admin_my_account_audit_log_dialog'),
-      title: 'Audit log',
-      icon: Icons.history,
-      maxWidth: 560,
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_my_account_audit_log_dialog_close'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
-      ],
-      child: _buildBody(),
-    );
-  }
-
-  Widget _buildBody() {
-    if (widget.gateway == null) {
-      return const _AdminInlineState(
-        stateKey: Key('admin_my_account_audit_log_disconnected'),
-        icon: Icons.history,
-        message:
-            'Your audit log will appear here once your admin account is '
-            'connected.',
-      );
-    }
-    if (_loading) {
-      return const _AdminInlineState(
-        stateKey: Key('admin_my_account_audit_log_loading'),
-        icon: Icons.sync,
-        message: 'Loading your audit log...',
-      );
-    }
-    if (_error != null) {
-      return _AdminInlineError(
-        key: const Key('admin_my_account_audit_log_error'),
-        message: _error!,
-        onRetry: _load,
-      );
-    }
-    if (_entries.isEmpty) {
-      return const _AdminInlineState(
-        stateKey: Key('admin_my_account_audit_log_empty'),
-        icon: Icons.history,
-        message: 'No account activity in the last 90 days.',
-      );
-    }
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 360),
-      child: SingleChildScrollView(
-        child: Column(
-          key: const Key('admin_my_account_audit_log_list'),
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var i = 0; i < _entries.length; i++) ...[
-              _AdminLoginHistoryRow(entry: _entries[i]),
-              if (i != _entries.length - 1) const SizedBox(height: 10),
-            ],
-          ],
         ),
       ),
     );

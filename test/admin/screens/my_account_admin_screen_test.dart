@@ -278,6 +278,7 @@ void main() {
     Future<void> pumpLive(
       WidgetTester tester, {
       bool seedFactor = false,
+      VoidCallback? onOpenAuditLog,
     }) async {
       final source = DemoAdminAuthSource.signedInAsSuperAdmin();
       addTearDown(source.dispose);
@@ -293,6 +294,7 @@ void main() {
             ),
             sessionsGateway: InMemoryAdminSessionsGateway(now: fixedNow),
             now: fixedNow,
+            onOpenAuditLog: onOpenAuditLog,
           ),
         ),
       );
@@ -343,23 +345,21 @@ void main() {
       expect(find.text('Signed in'), findsWidgets);
     });
 
-    testWidgets('Audit log card opens the account audit popup', (
+    testWidgets('Audit log card navigates via onOpenAuditLog', (
       tester,
     ) async {
       wideViewport(tester);
-      await pumpLive(tester);
+      var opened = false;
+      await pumpLive(tester, onOpenAuditLog: () => opened = true);
       final link = find.byKey(const Key('admin_my_account_audit_log_link'));
       expect(link, findsOneWidget);
       await tester.ensureVisible(link);
       await tester.tap(link);
-      await tester.pumpAndSettle();
+      await tester.pump();
       expect(
-        find.byKey(const Key('admin_my_account_audit_log_dialog')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_my_account_audit_log_list')),
-        findsOneWidget,
+        opened,
+        isTrue,
+        reason: 'View audit log navigates to the full Audit log page',
       );
     });
 
