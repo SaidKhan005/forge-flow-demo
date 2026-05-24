@@ -141,6 +141,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_enroll_mfa_dialog')), findsOneWidget);
+    // Parity with ops + mobile: the enroll dialog renders a scannable QR
+    // code (in addition to the paste-able setup link and secret).
+    expect(find.byKey(const Key('admin_enroll_mfa_qr')), findsOneWidget);
     expect(find.byKey(const Key('admin_enroll_mfa_secret')), findsOneWidget);
 
     await tester.enterText(
