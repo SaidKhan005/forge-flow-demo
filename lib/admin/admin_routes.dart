@@ -3037,7 +3037,7 @@ final OperatorLocationAdminGateway _defaultDemoGateway =
             operatorId: '00000000-0000-4000-8000-000000000001',
             businessName: 'Demo Diner Co.',
             ownerEmail: 'owner@demo-diner.test',
-            subscriptionTier: 'launch',
+            subscriptionTier: 'pro',
             preferredCurrency: 'CAD',
             primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
             suspendedAt: null,
@@ -3097,16 +3097,17 @@ final OperatorLocationAdminGateway _defaultDemoGateway =
 
 /// 11A.2 fallback pricing gateway. Mirrors the two demo operators
 /// from `_defaultDemoGateway` so the walkthrough can hop between
-/// Operators and Pricing without a backing service. Pilot operator
-/// starts with the locked Pilot template caps; the launch operator
-/// has no caps yet so the walkthrough exercises "Apply template" too.
+/// Operators and Pricing without a backing service. The Pilot operator
+/// (Sunset Cafe Group) starts with the locked Pilot template caps; the
+/// Pro operator (Demo Diner Co.) has no caps yet so the walkthrough
+/// exercises "Apply template" too.
 final PricingTierAdminGateway _defaultPricingDemoGateway =
     InMemoryPricingTierAdminGateway(
       seed: <PricingOperatorBundle>[
         PricingOperatorBundle(
           operatorId: '00000000-0000-4000-8000-000000000001',
           businessName: 'Demo Diner Co.',
-          subscriptionTier: 'launch',
+          subscriptionTier: 'pro',
           preferredCurrency: 'CAD',
           primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
           primaryLocationName: 'Toronto Yorkville',
