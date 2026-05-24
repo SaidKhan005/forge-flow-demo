@@ -823,8 +823,25 @@ class InMemoryAccountingStore implements ProxyAccountingStore {
     }
 
     _monthlyUsedCents += estimate.costCents;
-    return ProxyAccountingReserved(capStatus: status);
+    // Mirror the real store: the reservation surfaces the proxy_requests
+    // trace `request_id` so completeRequest can correlate the stats row.
+    // Deterministic synthetic uuid keyed off the reservation order so
+    // tests can assert the value flows through to ProxyRequestStats.
+    final reservedRequestId = reservedRequestIds.putIfAbsent(
+      idempotencyKey,
+      () =>
+          'aaaaaaaa-aaaa-4aaa-8aaa-'
+          '${startCalls.toString().padLeft(12, '0')}',
+    );
+    return ProxyAccountingReserved(
+      capStatus: status,
+      requestId: reservedRequestId,
+    );
   }
+
+  /// Synthetic reservation request ids, keyed by idempotency key, so a
+  /// retry resolves the same correlation id the first reservation minted.
+  final Map<String, String> reservedRequestIds = <String, String>{};
 
   int commitCalls = 0;
   ProxyUsageTelemetry? lastCommittedTelemetry;
@@ -845,15 +862,28 @@ class InMemoryAccountingStore implements ProxyAccountingStore {
     lastCommittedCostCents = estimate.costCents;
   }
 
+  /// P1b — the last `proxy_request_stats` payload completeRequest was
+  /// handed, so tests can assert the measured latency / real status /
+  /// actor / model / token / cost without a live Postgres. Stays null
+  /// when the route does not pass stats (e.g. an idempotency replay never
+  /// reaches completeRequest).
+  ProxyRequestStats? lastStats;
+  final List<ProxyRequestStats> recordedStats = <ProxyRequestStats>[];
+
   @override
   Future<void> completeRequest({
     required OperatorContext operator,
     required String idempotencyKey,
     required Map<String, Object?> responsePayload,
     required DateTime now,
+    ProxyRequestStats? stats,
   }) async {
     completeCalls += 1;
     _responses[idempotencyKey] = Map<String, Object?>.from(responsePayload);
+    if (stats != null) {
+      lastStats = stats;
+      recordedStats.add(stats);
+    }
   }
 }
 
@@ -889,6 +919,15 @@ ProxyJwtClaims defaultProxyClaims() => const ProxyJwtClaims(
   userId: 'user_x',
   operatorId: 'op_777',
   locationId: 'loc_999',
+  roles: <String>['advisor.read'],
+);
+
+/// UUID-shaped variant of [defaultProxyClaims] for paths that assert the
+/// scope flows into a uuid column (e.g. proxy_request_stats.actor_user_id).
+ProxyJwtClaims defaultUuidProxyClaims() => const ProxyJwtClaims(
+  userId: '11111111-1111-4111-8111-111111111111',
+  operatorId: '22222222-2222-4222-8222-222222222222',
+  locationId: '33333333-3333-4333-8333-333333333333',
   roles: <String>['advisor.read'],
 );
 

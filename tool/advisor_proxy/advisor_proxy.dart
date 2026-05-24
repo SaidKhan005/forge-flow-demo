@@ -2299,14 +2299,106 @@ class ProxyCapStatus {
   };
 }
 
+/// Stats-only per-request telemetry the completion step writes into
+/// `public.proxy_request_stats` (Support logs redesign, plan §12 phase
+/// P1b). STATS ONLY — carries NO message content. All fields except
+/// [usageClass] and [resultStatus] are nullable to match the migration
+/// (a request may complete before a model/token count resolves, or be a
+/// system/scheduled turn with no acting user). The completion step folds
+/// the INSERT into the same transaction as the idempotency-row update so
+/// no extra DB round-trip is added.
+class ProxyRequestStats {
+  const ProxyRequestStats({
+    required this.usageClass,
+    required this.resultStatus,
+    this.requestId,
+    this.actorUserId,
+    this.provider,
+    this.modelId,
+    this.modelVersion,
+    this.promptTokenCount,
+    this.completionTokenCount,
+    this.costUsd,
+    this.latencyMs,
+  });
+
+  /// AI cost class (mirrors `proxy_requests.usage_class`). NOT NULL on the
+  /// table — every metered request carries a class.
+  final String usageClass;
+
+  /// Terminal outcome — one of `success` / `error` / `timeout` (the
+  /// table CHECK-constrains the set).
+  final String resultStatus;
+
+  /// `proxy_requests.request_id` correlation key (advisory join, not FK).
+  final String? requestId;
+
+  /// Acting user's UUID only (never name/email — resolved at render time
+  /// per audit_attribution_contract.md). Null for system/scheduled turns
+  /// and for service-principal actors with no human user.
+  final String? actorUserId;
+
+  /// Provider identifier (e.g. `anthropic`). Derived from the model id.
+  final String? provider;
+
+  /// Resolved model id — the versioned model identifier (e.g.
+  /// `claude-haiku-4-5`).
+  final String? modelId;
+
+  /// Distinct model version, if any. The proxy's model id is already the
+  /// versioned identifier, so this is normally null at launch.
+  final String? modelVersion;
+
+  /// Measured input/output token counts and cost. Non-negative where
+  /// present (the table CHECK-constrains this).
+  final int? promptTokenCount;
+  final int? completionTokenCount;
+  final num? costUsd;
+
+  /// MEASURED wall-clock latency from request start to completion, in
+  /// milliseconds.
+  final int? latencyMs;
+
+  Map<String, Object?> toParameters({
+    required String operatorId,
+    required String locationId,
+  }) {
+    return <String, Object?>{
+      'operator_id': operatorId,
+      'location_id': locationId,
+      'request_id': requestId,
+      'usage_class': usageClass,
+      'actor_user_id': actorUserId,
+      'provider': provider,
+      'model_id': modelId,
+      'model_version': modelVersion,
+      'prompt_token_count': promptTokenCount,
+      'completion_token_count': completionTokenCount,
+      // numeric column — pass a string so package:postgres binds it as a
+      // numeric literal exactly like the usage_logs cost_usd write.
+      'cost_usd': costUsd?.toString(),
+      'latency_ms': latencyMs,
+      'result_status': resultStatus,
+    };
+  }
+}
+
 abstract class ProxyAccountingStartResult {
   const ProxyAccountingStartResult();
 }
 
 class ProxyAccountingReserved extends ProxyAccountingStartResult {
-  const ProxyAccountingReserved({required this.capStatus});
+  const ProxyAccountingReserved({required this.capStatus, this.requestId});
 
   final ProxyCapStatus capStatus;
+
+  /// The `public.proxy_requests.request_id` trace uuid the reservation
+  /// INSERT returned, surfaced so the completion step can correlate the
+  /// `proxy_request_stats` row to the same `(operator_id, location_id,
+  /// request_id)` tenant key. Null when the store does not (or cannot)
+  /// surface it — the stats row is then written with a null correlation
+  /// key rather than being dropped.
+  final String? requestId;
 }
 
 class ProxyAccountingReplayed extends ProxyAccountingStartResult {
@@ -2351,11 +2443,18 @@ abstract class ProxyAccountingStore {
     required DateTime now,
   });
 
+  /// Post-chain: marks the reserved idempotency row complete with the
+  /// served [responsePayload] AND, when [stats] is provided, writes the
+  /// matching `public.proxy_request_stats` telemetry row in the SAME
+  /// tenant transaction (no extra round-trip). Called exactly once per
+  /// REAL request; the route early-returns on an idempotency replay, so a
+  /// replay never reaches here and cannot write a duplicate stats row.
   Future<void> completeRequest({
     required OperatorContext operator,
     required String idempotencyKey,
     required Map<String, Object?> responsePayload,
     required DateTime now,
+    ProxyRequestStats? stats,
   });
 }
 
@@ -2420,7 +2519,16 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
         );
       }
 
-      return ProxyAccountingReserved(capStatus: capStatus);
+      // The reservation INSERT returns the trace `request_id` the DB
+      // generated; surface it so completeRequest can correlate the
+      // proxy_request_stats row to this proxy_requests row.
+      final reservedRequestId = _stringOrNull(
+        reservationRows.first['request_id'],
+      );
+      return ProxyAccountingReserved(
+        capStatus: capStatus,
+        requestId: reservedRequestId,
+      );
     });
 
     // AI Metrics "Limit hits": record the refusal into the append-only
@@ -2477,10 +2585,11 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
     required String idempotencyKey,
     required Map<String, Object?> responsePayload,
     required DateTime now,
+    ProxyRequestStats? stats,
   }) async {
     final ctx = _tenantContextFor(operator);
-    final affected = await _wrapper.runInTenantContext(ctx, (exec) {
-      return exec.execute(
+    final affected = await _wrapper.runInTenantContext(ctx, (exec) async {
+      final rows = await exec.execute(
         ProxyUsageLogSql.completionUpdate,
         parameters: <String, Object?>{
           'operator_id': operator.operatorId,
@@ -2490,6 +2599,24 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
           'completed_at': now.toUtc().toIso8601String(),
         },
       );
+      // P1b — Support logs telemetry. Fold the stats-only INSERT into the
+      // SAME tenant transaction as the completion update so no extra
+      // per-request DB round-trip is added (CLAUDE.md Cost & Convergence).
+      // STATS ONLY — no message content is written here. Runs under the
+      // identical `SET LOCAL` tenant context as the sibling write. Guarded
+      // on `rows > 0` so a completion that matched no proxy_requests row
+      // (the "should never happen" case the StateError below catches)
+      // never leaves an orphan stats row behind.
+      if (stats != null && rows > 0) {
+        await exec.execute(
+          ProxyRequestStatsSql.insert,
+          parameters: stats.toParameters(
+            operatorId: operator.operatorId,
+            locationId: operator.locationId,
+          ),
+        );
+      }
+      return rows;
     });
     if (affected == 0) {
       throw StateError('proxy accounting completion row was not found');
@@ -2574,6 +2701,12 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
     );
   }
 
+  static String? _stringOrNull(Object? value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
   static Map<String, Object?>? _jsonObjectOrNull(Object? value) {
     if (value == null) return null;
     if (value is Map<String, Object?>) return value;
@@ -2632,6 +2765,7 @@ class ScaffoldFailingProxyAccountingStore implements ProxyAccountingStore {
     required String idempotencyKey,
     required Map<String, Object?> responsePayload,
     required DateTime now,
+    ProxyRequestStats? stats,
   }) async {
     throw StateError(
       '11a.11d scaffold: real Postgres accounting store is not wired.',
@@ -3527,6 +3661,78 @@ update public.proxy_requests
    and location_id = @location_id
    and idempotency_key = @idempotency_key;
 ''';
+}
+
+/// SQL for the Support-logs stats-only telemetry table
+/// `public.proxy_request_stats`
+/// (202605241500_create_proxy_request_stats.sql; plan §12 phase P1b).
+///
+/// One row per REAL (non-replayed) LLM request, written from
+/// [PostgresProxyAccountingStore.completeRequest] inside the SAME tenant
+/// transaction as [ProxyUsageLogSql.completionUpdate] so the stats write
+/// adds no extra per-request DB round-trip (CLAUDE.md Cost & Convergence
+/// "keep proxy per-request cost low"). STATS ONLY — no message content
+/// (the no-content choice is enforced at the schema layer: the table has
+/// no content/encrypted columns). `created_at` defaults `now()` and is
+/// not written here.
+///
+/// `request_id` carries the trace uuid the [ProxyUsageLogSql.idempotencyInsert]
+/// reservation returned, so each stats row correlates to the same
+/// `(operator_id, location_id, request_id)` tenant-leading key on
+/// `public.proxy_requests` (an advisory join, not an FK — see the
+/// migration header). Idempotency-replay never reaches `completeRequest`
+/// (the route early-returns on [ProxyAccountingReplayed]), so no replay
+/// can write a duplicate stats row.
+abstract class ProxyRequestStatsSql {
+  ProxyRequestStatsSql._();
+
+  static const String insert = '''
+insert into public.proxy_request_stats (
+  operator_id,
+  location_id,
+  request_id,
+  usage_class,
+  actor_user_id,
+  provider,
+  model_id,
+  model_version,
+  prompt_token_count,
+  completion_token_count,
+  cost_usd,
+  latency_ms,
+  result_status
+) values (
+  @operator_id,
+  @location_id,
+  @request_id::uuid,
+  @usage_class,
+  @actor_user_id::uuid,
+  @provider,
+  @model_id,
+  @model_version,
+  @prompt_token_count,
+  @completion_token_count,
+  @cost_usd,
+  @latency_ms,
+  @result_status
+);
+''';
+}
+
+/// Maps a resolved LLM model identifier to its provider for the
+/// `proxy_request_stats.provider` column. The proxy is Anthropic-only at
+/// launch; the model id IS the versioned identifier (e.g.
+/// `claude-haiku-4-5`), so `model_version` is left null and the version
+/// lives in `model_id`. Recognises the `claude-*` (Anthropic) and
+/// `gemini-*` / `models/*` (Google) families the proxy LLM routing emits;
+/// anything else returns null rather than fabricate a provider.
+String? providerFromModelId(String? modelId) {
+  if (modelId == null) return null;
+  final id = modelId.trim().toLowerCase();
+  if (id.isEmpty) return null;
+  if (id.startsWith('claude')) return 'anthropic';
+  if (id.startsWith('gemini') || id.startsWith('models/')) return 'google';
+  return null;
 }
 
 // ─── HARD-B — Auth lockout / retry enforcement ──────────────────────────────
@@ -6762,6 +6968,13 @@ Future<void> routeRequest(
             return;
           }
 
+          // P1b — wall-clock anchor for the measured `latency_ms` written
+          // into proxy_request_stats at completion. Captured after auth +
+          // idempotency-key validation so it spans the metered work (cap
+          // check, prompt build, provider call, accounting writes) rather
+          // than client-header parsing.
+          final requestStartedAt = clock();
+
           final params = request.uri.queryParameters;
           final usageClass = _nonBlankOr(params['usage_class'], 'advisor_qa');
           final queryClass = _nonBlankOr(
@@ -7044,12 +7257,47 @@ Future<void> routeRequest(
             );
           }
 
+          // P1b — Support logs stats-only telemetry (plan §12). One row
+          // per REAL request, written inside completeRequest's transaction
+          // (no extra round-trip). MEASURED latency = wall-clock from the
+          // post-validation anchor to now; clamped to >= 0 so a backwards
+          // test clock cannot violate the table CHECK. result_status is
+          // 'success': completeRequest is reached only on a normal proxy
+          // completion (a graceful cache/refusal degradation still completed
+          // the request); provider failures + timeouts early-return 503/504
+          // upstream and never reach here. actor_user_id = the acting human
+          // user's UUID; null for service-principal actors (no human user)
+          // per audit_attribution_contract.md. Token/cost/model mirror the
+          // same final telemetry the usage-log write used. The completion's
+          // model id (the versioned identifier) is authoritative when a
+          // provider call served the response; model_version stays null
+          // because the proxy's model id already carries the version.
+          final completed = pipelineResult.completion;
+          final statsModelId = completed?.modelId ?? finalTelemetry.modelUsed;
+          final latencyMs = clock()
+              .difference(requestStartedAt)
+              .inMilliseconds;
+          final requestStats = ProxyRequestStats(
+            usageClass: usageClass,
+            resultStatus: 'success',
+            requestId: reserved.requestId,
+            actorUserId: scope.isServicePrincipal ? null : scope.userId,
+            provider: providerFromModelId(statsModelId),
+            modelId: statsModelId,
+            modelVersion: null,
+            promptTokenCount: completed != null ? estimate.tokenCount : 0,
+            completionTokenCount: completed?.outputTokens ?? 0,
+            costUsd: finalEstimate.costCents / 100,
+            latencyMs: latencyMs < 0 ? 0 : latencyMs,
+          );
+
           try {
             await accountingStore.completeRequest(
               operator: scope,
               idempotencyKey: idempotencyKey,
               responsePayload: responsePayload,
               now: clock().toUtc(),
+              stats: requestStats,
             );
           } on Exception catch (_) {
             // A3.4: same accounting-store surface (completeRequest variant);

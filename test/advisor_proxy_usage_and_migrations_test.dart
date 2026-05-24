@@ -672,6 +672,108 @@ void main() {
         completionCall.parameters['response_payload'],
         equals('{"status":"ok","answer":"fake"}'),
       );
+      // P1b — with no stats argument, no proxy_request_stats INSERT fires.
+      expect(
+        tx.executeCalls
+            .where(
+              (call) =>
+                  call.sql.contains('insert into public.proxy_request_stats'),
+            )
+            .isEmpty,
+        isTrue,
+      );
+    });
+
+    test('P1b — completeRequest folds the proxy_request_stats INSERT into '
+        'the SAME completion transaction with the correlated request_id, '
+        'measured latency, real status, actor + model/token/cost', () async {
+      final pool = AccountingPostgresPool();
+      final store = PostgresProxyAccountingStore(
+        wrapper: TenantTransactionWrapper(pool),
+      );
+      final operator = defaultUuidOperatorContext();
+
+      await store.completeRequest(
+        operator: operator,
+        idempotencyKey: 'idem-stats',
+        responsePayload: const <String, Object?>{'status': 'ok'},
+        now: DateTime.utc(2026, 4, 26, 12, 1),
+        stats: const ProxyRequestStats(
+          usageClass: 'advisor_qa',
+          resultStatus: 'success',
+          requestId: '44444444-4444-4444-8444-444444444444',
+          actorUserId: '11111111-1111-4111-8111-111111111111',
+          provider: 'anthropic',
+          modelId: 'claude-haiku-4-5',
+          modelVersion: null,
+          promptTokenCount: 40,
+          completionTokenCount: 12,
+          costUsd: 0.10,
+          latencyMs: 250,
+        ),
+      );
+
+      // Exactly one transaction — the stats write is folded in, not a
+      // second round-trip.
+      expect(pool.transactions, hasLength(1));
+      final tx = pool.transactions.single;
+      expect(tx.committed, isTrue);
+      expect(tx.rolledBack, isFalse);
+
+      // The completion update and the stats INSERT both ran in this tx,
+      // under the same SET LOCAL tenant context.
+      expect(
+        tx.executedSql,
+        containsAll(<String>[
+          "select set_config('app.operator_id', @value, true)",
+          "select set_config('app.location_id', @value, true)",
+        ]),
+      );
+      expect(
+        tx.executeCalls.where(
+          (call) => call.sql.contains('update public.proxy_requests'),
+        ),
+        hasLength(1),
+      );
+      final statsCall = tx.executeCalls.singleWhere(
+        (call) => call.sql.contains('insert into public.proxy_request_stats'),
+      );
+      // No content/encrypted columns in the write.
+      expect(statsCall.sql, isNot(contains('payload')));
+      expect(statsCall.sql, isNot(contains('content')));
+      // Tenant + correlation key.
+      expect(statsCall.parameters['operator_id'], equals(operator.operatorId));
+      expect(statsCall.parameters['location_id'], equals(operator.locationId));
+      expect(
+        statsCall.parameters['request_id'],
+        equals('44444444-4444-4444-8444-444444444444'),
+      );
+      // Stats fields.
+      expect(statsCall.parameters['usage_class'], equals('advisor_qa'));
+      expect(statsCall.parameters['result_status'], equals('success'));
+      expect(
+        statsCall.parameters['actor_user_id'],
+        equals('11111111-1111-4111-8111-111111111111'),
+      );
+      expect(statsCall.parameters['provider'], equals('anthropic'));
+      expect(statsCall.parameters['model_id'], equals('claude-haiku-4-5'));
+      expect(statsCall.parameters['model_version'], isNull);
+      expect(statsCall.parameters['prompt_token_count'], equals(40));
+      expect(statsCall.parameters['completion_token_count'], equals(12));
+      // numeric cost bound as a string literal (same shape as usage_logs).
+      expect(statsCall.parameters['cost_usd'], equals('0.1'));
+      expect(statsCall.parameters['latency_ms'], equals(250));
+    });
+
+    test('P1b — providerFromModelId maps the proxy model families and '
+        'returns null rather than fabricate', () {
+      expect(providerFromModelId('claude-haiku-4-5'), equals('anthropic'));
+      expect(providerFromModelId('claude-sonnet-4-6'), equals('anthropic'));
+      expect(providerFromModelId('gemini-1.5-pro'), equals('google'));
+      expect(providerFromModelId('models/gemini-pro'), equals('google'));
+      expect(providerFromModelId('mistral-large'), isNull);
+      expect(providerFromModelId(null), isNull);
+      expect(providerFromModelId(''), isNull);
     });
 
     test(
