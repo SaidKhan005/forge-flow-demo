@@ -12,7 +12,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../auth/permission_keys.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
@@ -456,177 +455,136 @@ class _AdminHeaderBar extends StatelessWidget {
           ),
           padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 20),
           child: Row(
-            children: [
-              ClipOval(
-                child: Image.asset(
-                  'assets/images/forge_flow_splash_icon.png',
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              if (!compact) ...[
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Forge & Flow',
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.display20(
-                          color: AppColors.textPrimary,
-                        ),
+            children: <Widget>[
+              // LEFT zone: brand mark + wordmark, left-aligned. Equal flex
+              // with the right zone keeps the fixed-width picker at the true
+              // centre of the bar (operator-web parity).
+              Expanded(
+                child: Row(
+                  children: <Widget>[
+                    ClipOval(
+                      child: Image.asset(
+                        'assets/images/forge_flow_splash_icon.png',
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
                       ),
-                      Text(
-                        'Admin Console',
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.mono10(
-                          color: AppColors.sunsetDark,
+                    ),
+                    if (!compact) ...<Widget>[
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
+                              'Forge & Flow',
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.display20(
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            Text(
+                              'Admin Console',
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.mono10(
+                                color: AppColors.sunsetDark,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-              ],
-              const Spacer(),
-              // The top-bar scope picker is a wide-layout affordance. On
-              // the compact header (narrow widths use the horizontal
-              // compact nav) it is hidden — there is no room beside the
-              // brand, role pill, and sign out.
-              if (!compact) ...[
-                Flexible(
+              ),
+              // CENTRE zone: the management-scope picker, fixed to the same
+              // width operator-web uses so the two consoles line up. Hidden
+              // on the compact header (the Business accounts drill-in stays
+              // the entry point there).
+              if (!compact)
+                SizedBox(
+                  width: _pickerWidthFor(constraints.maxWidth),
                   child: AdminScopePicker(
                     gateway: scopeGateway,
                     selectedScope: selectedScope,
                     onSelectScope: onSelectScope,
                   ),
                 ),
-                const SizedBox(width: 12),
-              ],
-              if (sharePreviewMode) ...[
-                const _SharePreviewPill(),
-                SizedBox(width: compact ? 6 : 10),
-              ],
-              _RolePill(roles: session.roles),
-              if (!compact) ...[
-                const SizedBox(width: 12),
-                Flexible(child: _IdentityChip(session: session)),
-              ],
-              if (!sharePreviewMode) SizedBox(width: compact ? 6 : 8),
-              if (sharePreviewMode)
-                const SizedBox.shrink()
-              else if (compact)
-                IconButton(
-                  key: const Key('admin_header_signout'),
-                  tooltip: 'Sign out',
-                  onPressed: onSignOut,
-                  icon: const Icon(
-                    Icons.logout_outlined,
-                    size: 20,
-                    color: AppColors.textSecondary,
-                  ),
-                )
-              else
-                Tooltip(
-                  message:
-                      'Sign out: ends this session and returns to the '
-                      'welcome screen.',
-                  child: TextButton.icon(
-                    key: const Key('admin_header_signout'),
-                    onPressed: onSignOut,
-                    icon: const Icon(
-                      Icons.logout_outlined,
-                      size: 22,
-                      color: AppColors.textSecondary,
-                    ),
-                    label: Text(
-                      'Sign out',
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      foregroundColor: AppColors.textSecondary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                  ),
+              // RIGHT zone: signed-in identity + sign out, right-aligned.
+              // Equal flex with the left zone keeps the picker centred. The
+              // demo-data and role badges were removed to declutter the bar;
+              // demo state still shows in the banner below the header.
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: <Widget>[
+                    if (!compact) ...<Widget>[
+                      Flexible(child: _IdentityChip(session: session)),
+                      if (!sharePreviewMode) const SizedBox(width: 12),
+                    ],
+                    _signOutControl(compact: compact),
+                  ],
                 ),
+              ),
             ],
           ),
         );
       },
     );
   }
-}
 
-class _SharePreviewPill extends StatelessWidget {
-  const _SharePreviewPill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_header_share_preview_pill'),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.ocean.withValues(alpha: 0.10),
-        border: Border.all(
-          color: AppColors.ocean.withValues(alpha: 0.45),
-          width: 1,
+  /// Sign-out affordance. Hidden in share-preview mode (read-only demo
+  /// walkthroughs never sign out); a compact icon button on narrow
+  /// headers; an operator-web-style flat text button otherwise.
+  Widget _signOutControl({required bool compact}) {
+    if (sharePreviewMode) return const SizedBox.shrink();
+    if (compact) {
+      return IconButton(
+        key: const Key('admin_header_signout'),
+        tooltip: 'Sign out',
+        onPressed: onSignOut,
+        icon: const Icon(
+          Icons.logout_outlined,
+          size: 20,
+          color: AppColors.textSecondary,
         ),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        'Demo data',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
+      );
+    }
+    return Tooltip(
+      message:
+          'Sign out: ends this session and returns to the welcome screen.',
+      child: TextButton.icon(
+        key: const Key('admin_header_signout'),
+        onPressed: onSignOut,
+        icon: const Icon(
+          Icons.logout_outlined,
+          size: 22,
+          color: AppColors.textSecondary,
+        ),
+        label: Text(
+          'Sign out',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          foregroundColor: AppColors.textSecondary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
       ),
     );
   }
-}
 
-class _RolePill extends StatelessWidget {
-  const _RolePill({required this.roles});
-
-  final List<String> roles;
-
-  @override
-  Widget build(BuildContext context) {
-    final adminRole = roles.firstWhere(
-      kAdminConsoleRoles.contains,
-      orElse: () => roles.isEmpty ? 'unknown' : roles.first,
-    );
-    final roleLabel = switch (adminRole) {
-      PermissionKeys.roleSuperAdmin => 'Ecosystem admin',
-      PermissionKeys.roleFfSupport => 'Support access',
-      'unknown' => 'Unknown role',
-      _ => adminRole.replaceAll('_', ' '),
-    };
-    return Container(
-      key: const Key('admin_header_role_pill'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.peacock.withValues(alpha: 0.12),
-        border: Border.all(
-          color: AppColors.peacock.withValues(alpha: 0.45),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        roleLabel,
-        style: AppTextStyles.mono8(color: AppColors.peacockDark),
-      ),
-    );
+  /// Picker width mirroring operator-web's header so the admin "Managing"
+  /// control is the same width as the operator-web management-scope picker.
+  static double _pickerWidthFor(double maxWidth) {
+    if (maxWidth >= 1440) return 540;
+    if (maxWidth >= 1180) return 460;
+    if (maxWidth >= 980) return 340;
+    return 220;
   }
 }
 

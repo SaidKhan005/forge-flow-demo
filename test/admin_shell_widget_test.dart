@@ -101,7 +101,7 @@ void main() {
     expect(find.byKey(screenKey), findsNothing);
   }
 
-  testWidgets('renders branded header with role pill + identity chip', (
+  testWidgets('renders branded header with identity (no role/demo badges)', (
     tester,
   ) async {
     final source = DemoAdminAuthSource.signedInAsSuperAdmin();
@@ -113,10 +113,17 @@ void main() {
 
     expect(find.byKey(const Key('admin_shell_scaffold')), findsOneWidget);
     expect(find.byKey(const Key('admin_header_bar')), findsOneWidget);
-    expect(find.byKey(const Key('admin_header_role_pill')), findsOneWidget);
-    expect(find.text('Ecosystem admin'), findsOneWidget);
+    // Badge clutter removed from the bar: no role pill, no demo-data pill.
+    expect(find.byKey(const Key('admin_header_role_pill')), findsNothing);
+    expect(find.text('Ecosystem admin'), findsNothing);
+    expect(
+      find.byKey(const Key('admin_header_share_preview_pill')),
+      findsNothing,
+    );
+    // Username + sign out remain.
     expect(find.byKey(const Key('admin_header_identity')), findsOneWidget);
     expect(find.text(superAdmin.email), findsOneWidget);
+    expect(find.byKey(const Key('admin_header_signout')), findsOneWidget);
     // Brand wordmark from AppTextStyles.display20.
     expect(find.text('Forge & Flow'), findsOneWidget);
     expect(find.text('Admin Console'), findsOneWidget);
@@ -279,9 +286,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('share preview mode shows demo-data pill and hides sign out', (
-    tester,
-  ) async {
+  testWidgets('share preview mode hides sign out and bar badges, keeps demo '
+      'banner', (tester) async {
     final source = DemoAdminAuthSource.signedInAsSupport();
     addTearDown(source.dispose);
 
@@ -301,13 +307,18 @@ void main() {
     );
     await pumpEventually(tester);
 
+    // The in-bar demo-data pill and role pill were removed as clutter; the
+    // full-width demo banner under the header still carries demo state.
     expect(
       find.byKey(const Key('admin_header_share_preview_pill')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('Demo data'), findsOneWidget);
+    expect(find.byKey(const Key('admin_header_role_pill')), findsNothing);
+    expect(find.text('Support access'), findsNothing);
+    expect(find.byKey(const Key('admin_demo_banner')), findsOneWidget);
+    // Share-preview is read-only: sign out is hidden; identity still shows.
     expect(find.byKey(const Key('admin_header_signout')), findsNothing);
-    expect(find.text('Support access'), findsOneWidget);
+    expect(find.byKey(const Key('admin_header_identity')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
