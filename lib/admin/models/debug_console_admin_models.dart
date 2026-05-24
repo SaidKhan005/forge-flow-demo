@@ -116,6 +116,12 @@ class RequestLogEntry {
     required this.requestMeta,
     required this.fullContentOptInOn,
     this.fullContentPayload,
+    this.provider,
+    this.modelId,
+    this.promptTokenCount,
+    this.completionTokenCount,
+    this.costUsd,
+    this.actorUserId,
   });
 
   /// UUID stamped by the proxy.
@@ -148,6 +154,35 @@ class RequestLogEntry {
   /// a `super_admin` caller.
   final Map<String, Object?>? fullContentPayload;
 
+  // P2 (Support logs redesign, plan §12) — real per-request telemetry the
+  // proxy LEFT JOINs from `public.proxy_request_stats`. Every field below is
+  // nullable and is null when no stats row was correlated (a failed /
+  // pre-P1b / non-LLM support-help request). The screen (P3) renders the
+  // honest "not recorded" sentinel for nulls rather than a phantom zero
+  // (Metric Honesty Doctrine). Actor display-name/role are NOT resolved here:
+  // only the UUID is carried; P3 resolves uid -> name/role via the members
+  // lookup (audit_attribution_contract.md — never store PII in logs).
+
+  /// LLM provider that served the request (e.g. `anthropic`), or null when
+  /// no stats row exists / the provider was not recorded.
+  final String? provider;
+
+  /// Resolved model identifier (e.g. `claude-sonnet-4-6`), or null.
+  final String? modelId;
+
+  /// Measured prompt (input) token count, or null when not recorded.
+  final int? promptTokenCount;
+
+  /// Measured completion (output) token count, or null when not recorded.
+  final int? completionTokenCount;
+
+  /// Measured request cost in USD, or null when not recorded.
+  final double? costUsd;
+
+  /// Acting user's UUID only (never name/email — resolved at render). Null
+  /// for system / scheduled turns or when no stats row exists.
+  final String? actorUserId;
+
   factory RequestLogEntry.fromJson(Map<String, Object?> json) {
     return RequestLogEntry(
       requestId: (json['request_id'] as String?) ?? '',
@@ -164,6 +199,12 @@ class RequestLogEntry {
       fullContentOptInOn: (json['full_content_opt_in'] as bool?) ?? false,
       fullContentPayload: (json['full_content'] as Map?)
           ?.cast<String, Object?>(),
+      provider: json['provider'] as String?,
+      modelId: json['model_id'] as String?,
+      promptTokenCount: _parseInt(json['prompt_token_count']),
+      completionTokenCount: _parseInt(json['completion_token_count']),
+      costUsd: _parseDouble(json['cost_usd']),
+      actorUserId: json['actor_user_id'] as String?,
     );
   }
 
@@ -179,6 +220,15 @@ class RequestLogEntry {
     'request_meta': requestMeta,
     'full_content_opt_in': fullContentOptInOn,
     if (fullContentPayload != null) 'full_content': fullContentPayload,
+    // P2: emit the telemetry keys ONLY when present so the absent-stats path
+    // round-trips back to null (honest empty), matching the proxy projection.
+    if (provider != null) 'provider': provider,
+    if (modelId != null) 'model_id': modelId,
+    if (promptTokenCount != null) 'prompt_token_count': promptTokenCount,
+    if (completionTokenCount != null)
+      'completion_token_count': completionTokenCount,
+    if (costUsd != null) 'cost_usd': costUsd,
+    if (actorUserId != null) 'actor_user_id': actorUserId,
   };
 }
 
@@ -346,6 +396,13 @@ int? _parseInt(Object? raw) {
   if (raw is int) return raw;
   if (raw is num) return raw.toInt();
   if (raw is String) return int.tryParse(raw);
+  return null;
+}
+
+double? _parseDouble(Object? raw) {
+  if (raw is double) return raw;
+  if (raw is num) return raw.toDouble();
+  if (raw is String) return double.tryParse(raw);
   return null;
 }
 
