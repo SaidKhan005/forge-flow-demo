@@ -709,7 +709,6 @@ void main() {
       'seeded-role edit': PermissionKeys.adminRolesEditSeeded,
       'reset MFA factors': PermissionKeys.adminUsersResetMfaFactors,
       'PII erasure': PermissionKeys.adminUsersErasePii,
-      'audit log export': PermissionKeys.adminAuditLogExport,
     };
 
     actions.forEach((label, key) {
@@ -785,8 +784,7 @@ void main() {
             superAdminFresh(permissions: const <String>{'admin.other'}),
             null,
           ]) {
-            final flag =
-                adminCanEdit(s, requiredKey: key) && freshMirror(s);
+            final flag = adminCanEdit(s, requiredKey: key) && freshMirror(s);
             // With empty perms the flag reduces to super_admin && fresh,
             // which is the OLD flag value (MFA-fresh) ONLY when the role
             // is super_admin; for non-super_admin empty-perms sessions the
@@ -813,14 +811,8 @@ void main() {
     });
 
     test('catalog requiresMfa flags match the route freshness gating', () {
-      // Three of the four E4 destructive keys are catalog-flagged
-      // `requiresMfa`. The route preserves the existing `&& mfaFresh`
-      // conjunction on all four flags regardless: `admin.audit_log.export`
-      // is bundled under the same audited-support freshness check at the
-      // route level even though it is NOT itself flagged `requiresMfa` in
-      // the frozen catalog (the route, not the key flag, supplies that
-      // freshness gate). E4 changes only the ROLE dimension, so this
-      // pre-existing route-vs-catalog shape is left exactly as-is.
+      // These destructive keys are catalog-flagged `requiresMfa`; audit-log
+      // export is handled by the non-destructive audit export key gate.
       expect(
         PermissionKeys.requiresMfa.contains(
           PermissionKeys.adminRolesEditSeeded,
@@ -837,8 +829,6 @@ void main() {
         PermissionKeys.requiresMfa.contains(PermissionKeys.adminUsersErasePii),
         isTrue,
       );
-      // Catalog does NOT flag audit-log export as requiresMfa; the route
-      // still applies freshness via its bundled `_isAdminMfaFresh` gate.
       expect(
         PermissionKeys.requiresMfa.contains(PermissionKeys.adminAuditLogExport),
         isFalse,
@@ -854,7 +844,10 @@ void main() {
         PermissionKeys.adminUsersResetMfaFactors,
         equals('admin.users.reset_mfa_factors'),
       );
-      expect(PermissionKeys.adminUsersErasePii, equals('admin.users.erase_pii'));
+      expect(
+        PermissionKeys.adminUsersErasePii,
+        equals('admin.users.erase_pii'),
+      );
       expect(
         PermissionKeys.adminAuditLogExport,
         equals('admin.audit_log.export'),

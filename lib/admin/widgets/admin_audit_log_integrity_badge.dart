@@ -105,7 +105,7 @@ class AdminAuditLogIntegrityBadge extends StatelessWidget {
       return const _AdminBadgeStyle(
         wireKey: 'loading',
         title: 'Checking audit chain integrity',
-        body: 'Loading the most recent anchor for the selected operator.',
+        body: 'Loading the most recent anchor for your operator.',
         foreground: AppColors.sunsetDark,
         background: AppColors.backgroundSurface,
         border: AppColors.borderSubtle,
@@ -163,9 +163,9 @@ class AdminAuditLogIntegrityBadge extends StatelessWidget {
           wireKey: 'failed',
           title: 'Audit chain anchor failed',
           body:
-              'Anchor failed. F and F support is investigating. This '
-              "operator's audit log entries are still being recorded; the "
-              'daily evidence anchor is what is delayed.',
+              'Anchor failed. F and F support is investigating. Your audit '
+              'log entries are still being recorded; the daily evidence '
+              'anchor is what is delayed.',
           foreground: Color(0xFFA8341B),
           background: Color(0xFFFCEEEA),
           border: Color(0xFFA8341B),
@@ -179,7 +179,7 @@ class AdminAuditLogIntegrityBadge extends StatelessWidget {
               ? 'Audit chain status unavailable'
               : 'Audit chain status unknown',
           body: transient
-              ? 'Audit chain status could not load. Reload the screen to try '
+              ? 'Audit chain status could not load. Refresh the page to try '
                     'again. Daily anchoring runs at 02:00 UTC.'
               : 'No anchor recorded yet. Daily anchoring runs at 02:00 UTC '
                     'and this badge updates as soon as the first sweep lands.',
