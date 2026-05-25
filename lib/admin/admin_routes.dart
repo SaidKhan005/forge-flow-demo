@@ -2543,6 +2543,12 @@ Widget _buildDebugConsole(BuildContext context) {
   final gateway = AdminConsoleServicesScope.debugConsoleGatewayOf(context);
   final hierarchyGateway =
       AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  // Members gateway resolves a Support-log row's actor UUID to a friendly
+  // "Name (Role)" at render (P3.2). Same gateway the Members route uses;
+  // the screen fetches the scoped operator's members once and caches them.
+  final membersGateway = AdminConsoleServicesScope.membersAdminGatewayOf(
+    context,
+  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
@@ -2569,6 +2575,7 @@ Widget _buildDebugConsole(BuildContext context) {
       return DebugConsoleAdminScreen(
         gateway: gateway,
         hierarchyGateway: hierarchyGateway,
+        membersGateway: membersGateway,
         hierarchyScope: selectedScope,
         initialFilter: initialFilter,
       );
@@ -2583,6 +2590,7 @@ Widget _buildDebugConsole(BuildContext context) {
         return DebugConsoleAdminScreen(
           gateway: gateway,
           hierarchyGateway: hierarchyGateway,
+          membersGateway: membersGateway,
           hierarchyScope: selectedScope,
           editingEnabled: canEdit,
           initialFilter: initialFilter,
