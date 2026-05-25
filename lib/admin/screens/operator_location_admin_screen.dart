@@ -65,6 +65,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.selectedParentOrgUnitLabel,
     this.editingEnabled = true,
     this.actorUserId = 'admin-console',
+    this.businessSelectionAttentionToken = 0,
   });
 
   final OperatorLocationAdminGateway gateway;
@@ -112,6 +113,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   final ValueChanged<AdminHierarchyScopeIntent>? onChooseBusinessScope;
   final bool editingEnabled;
   final String actorUserId;
+  final int businessSelectionAttentionToken;
 
   /// Factory for the idempotency key the gateway attaches to each
   /// mutating call. Production binds this to a UUID-shaped generator;
@@ -456,6 +458,7 @@ class _OperatorLocationAdminScreenState
           onToggleExpanded: _toggleScopeExpanded,
           forceExpanded: _scopeSearch.isNotEmpty,
           header: _buildNewBusinessButton(),
+          attentionPulseToken: widget.businessSelectionAttentionToken,
         );
         final detailPane = _buildDetailPane();
         return LayoutBuilder(

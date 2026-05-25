@@ -678,6 +678,8 @@ Widget _buildOperators(BuildContext context) {
                 ),
               );
             },
+      businessSelectionAttentionToken:
+          handoff?.businessSelectionAttentionToken ?? 0,
     );
   }
 
