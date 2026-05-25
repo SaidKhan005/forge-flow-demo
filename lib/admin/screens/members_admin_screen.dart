@@ -910,6 +910,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
                 '${widget.pickedOperator.operatorBusinessName}: members, '
                 'invites, role grants, and access scopes. Changes require a reason.',
             actions: _buildHeaderActions(),
+            collapseBelowWidth: 980,
           ),
           const SizedBox(height: 14),
           if (!widget.editingEnabled)
