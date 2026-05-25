@@ -57,7 +57,7 @@ const Map<String, int> kOperatorWebSizeCeilings = <String, int>{
   'lib/admin/screens/operator_location_admin_screen.dart': 5162,
   'lib/admin/admin_routes.dart': 4078,
   'lib/admin/screens/roles_hierarchy_sessions_admin_screen.dart': 3255,
-  'lib/admin/screens/observability_admin_screen.dart': 3152,
+  'lib/admin/screens/observability_admin_screen.dart': 2868,
   'lib/admin/screens/corpus_admin_screen.dart': 2549,
   'lib/admin/screens/members_admin_screen.dart': 2532,
   'lib/operator_web/router/operator_web_router.dart': 2941,
