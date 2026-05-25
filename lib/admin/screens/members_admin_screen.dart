@@ -3,19 +3,13 @@
 // Cross-operator members + invites table for the admin console.
 // Mirrors the operator-web sibling (`11W.1`) parity surface: same
 // filter set (status / role / location / mfa_enrolled / search),
-// same locked validation copy on the invite dialog, same per-row
-// actions (Suspend / Reactivate / Soft delete / Reset password /
-// Reset MFA / Force logout). The admin path adds two affordances
-// the operator self-service surface does NOT expose:
-//
-//   * Restore soft-deleted - resurrects a soft-deleted member.
-//   * Override role grant - reassigns a member's role bypassing the
-//     normal `team.roles.assign` workflow.
-//
-// Both admin-only actions land on the proxy `/v1/admin/auth/*`
-// path with `actor_kind = forge_admin` and a non-empty
-// `admin_reason`. Operator self-service (`11W.1`) does NOT expose
-// either action; the parity contract pins the asymmetry.
+// same locked validation copy on the invite dialog, same pagination,
+// same table layout, and same Team-tab row actions (Edit, Suspend /
+// Reactivate, Remove from team, Reset password, Reset MFA). The
+// admin path still writes through `/v1/admin/auth/*` with
+// `actor_kind = forge_admin` and a non-empty `admin_reason`, but the
+// Team tab UX follows operator web. Role policy and restore workflows
+// stay outside this tab.
 //
 // The screen mounts in the admin shell at `/admin/members`. The shell
 // passes the shared Operations operator context when one exists; the
@@ -39,10 +33,12 @@ import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_members_ops_table.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import 'invite_member_admin_dialog.dart';
 import 'operator_picker_screen.dart';
-import 'roles_hierarchy_sessions_admin_screen.dart';
+
+const int _kMembersPageSize = 50;
 
 class MembersAdminScreen extends StatefulWidget {
   const MembersAdminScreen({
@@ -85,8 +81,8 @@ class MembersAdminScreen extends StatefulWidget {
   /// affordance is rendered inline in the page header (no overlay).
   final VoidCallback? onChangeOperator;
 
-  /// Opens the scoped role policy / hierarchy / sessions surface for
-  /// the same business. This keeps role work reachable from Team.
+  /// Kept for route compatibility. Team members no longer renders a
+  /// Role policy action because operator web is the UX authority here.
   final VoidCallback? onOpenAccess;
   final RolesHierarchySessionsAdminGateway? rolesGateway;
   final bool canEditSeededRoles;
@@ -112,6 +108,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   // Wave 2 W-2 — Cancel pending invite. Per-invite busy set so a
   // retried Cancel during an in-flight DELETE does not double-dispatch.
   final Set<String> _busyInviteIds = <String>{};
+  final Set<String> _busyUserIds = <String>{};
   Timer? _searchDebounce;
   int _refreshGeneration = 0;
 
@@ -121,6 +118,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   String? _locationFilter;
   bool? _mfaEnrolledFilter;
   String _searchQuery = '';
+  int _pageIndex = 0;
 
   int _idempotencyCounter = 0;
 
@@ -200,6 +198,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       );
       if (!mounted) return;
       setState(() {
+        _clampPageIndex(visibleMembers.length);
         _members = visibleMembers;
         _invites = visibleInvites;
         _roles = roles;
@@ -243,8 +242,37 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       _locationFilter = null;
       _mfaEnrolledFilter = null;
       _searchQuery = '';
+      _pageIndex = 0;
     });
     _refresh();
+  }
+
+  void _resetPageAndRefresh() {
+    setState(() => _pageIndex = 0);
+    _refresh();
+  }
+
+  List<MemberAdminRow> get _pagedMembers {
+    final pageStart = _pageIndex * _kMembersPageSize;
+    if (pageStart >= _members.length) return const <MemberAdminRow>[];
+    final pageEnd = (pageStart + _kMembersPageSize).clamp(0, _members.length);
+    return _members.sublist(pageStart, pageEnd);
+  }
+
+  void _previousPage() {
+    if (_pageIndex == 0) return;
+    setState(() => _pageIndex -= 1);
+  }
+
+  void _nextPage() {
+    final nextStart = (_pageIndex + 1) * _kMembersPageSize;
+    if (nextStart >= _members.length) return;
+    setState(() => _pageIndex += 1);
+  }
+
+  void _clampPageIndex(int totalRows) {
+    final maxPage = totalRows == 0 ? 0 : (totalRows - 1) ~/ _kMembersPageSize;
+    if (_pageIndex > maxPage) _pageIndex = maxPage;
   }
 
   List<MemberAdminRow> _applyLocalFilters(
@@ -255,7 +283,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     final roleFilter = _roleFilter;
     final locationFilter = _locationFilter;
     final scopeLocationIds = _locationIdsForHierarchyScope(hierarchyLocations);
-    return rows
+    final filtered = rows
         .where((row) {
           if (!_memberMatchesHierarchyScope(row, scopeLocationIds)) {
             return false;
@@ -283,6 +311,13 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           return true;
         })
         .toList(growable: false);
+    final sorted = filtered.toList();
+    sorted.sort((a, b) {
+      final cmp = b.lastActiveAt.compareTo(a.lastActiveAt);
+      if (cmp != 0) return cmp;
+      return a.email.toLowerCase().compareTo(b.email.toLowerCase());
+    });
+    return List<MemberAdminRow>.unmodifiable(sorted);
   }
 
   List<MemberInviteRow> _applyInviteScope(
@@ -354,10 +389,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     final haystack = <String>[
       row.email,
       row.displayName,
-      row.roleKey,
-      memberRoleLabel(row.roleKey),
-      row.primaryLocationName,
-      row.status.wire,
     ].join(' ').toLowerCase();
     return haystack.contains(query);
   }
@@ -395,6 +426,19 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     }
   }
 
+  Future<void> _runUserAction(
+    MemberAdminRow row,
+    Future<void> Function() action, {
+    String? successHint,
+  }) async {
+    setState(() => _busyUserIds.add(row.userId));
+    try {
+      await _runAndRefresh(action, successHint: successHint);
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(row.userId));
+    }
+  }
+
   Future<String?> _promptAdminReason(String title) async {
     return showDialog<String>(
       context: context,
@@ -405,7 +449,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   Future<void> _onSuspend(MemberAdminRow row) async {
     final reason = await _promptAdminReason('Suspend ${row.displayName}');
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.suspendMember(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -421,7 +466,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   Future<void> _onReactivate(MemberAdminRow row) async {
     final reason = await _promptAdminReason('Reactivate ${row.displayName}');
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.reactivateMember(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -435,9 +481,10 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   }
 
   Future<void> _onSoftDelete(MemberAdminRow row) async {
-    final reason = await _promptAdminReason('Soft delete ${row.displayName}');
+    final reason = await _promptAdminReason('Remove access');
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.softDeleteMember(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -446,7 +493,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       ),
-      successHint: 'Soft-deleted ${row.displayName}',
+      successHint: 'Member access removed.',
     );
   }
 
@@ -455,7 +502,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       'Reset password for ${row.displayName}',
     );
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.resetPassword(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -464,7 +512,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       ),
-      successHint: 'Sent ${row.displayName} a password-reset email.',
+      successHint: 'Password reset email queued.',
     );
   }
 
@@ -473,7 +521,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       'Reset two-factor sign-in for ${row.displayName}',
     );
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.resetMfa(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -483,24 +532,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         adminReason: reason,
       ),
       successHint:
-          "${row.displayName}'s two-factor sign-in will be removed in 24 "
-          'hours unless cancelled.',
-    );
-  }
-
-  Future<void> _onForceLogout(MemberAdminRow row) async {
-    final reason = await _promptAdminReason('Force logout ${row.displayName}');
-    if (reason == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.forceLogout(
-        operatorId: widget.pickedOperator.operatorId,
-        userId: row.userId,
-        idempotencyKey: _nextIdempotencyKey('member-force-logout'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-      ),
-      successHint: '${row.displayName} has been signed out of every device.',
+          'Two-factor sign-in removal started. It will be removed in 24 '
+          'hours.',
     );
   }
 
@@ -512,142 +545,77 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     // fans out to Firebase Identity Platform + Postgres + audit log.
     final result = await showDialog<_DisplayNameEditResult>(
       context: context,
-      builder: (_) => _DisplayNameEditDialog(row: row),
-    );
-    if (result == null) return;
-    final emailChanged =
-        result.email != null &&
-        result.email!.trim().toLowerCase() != row.email.toLowerCase();
-    final displayNameChanged =
-        result.displayName.trim() != row.displayName.trim();
-    if (!emailChanged && !displayNameChanged) return;
-    await _runAndRefresh(
-      () => widget.gateway.updateMember(
-        operatorId: widget.pickedOperator.operatorId,
-        userId: row.userId,
-        idempotencyKey: _nextIdempotencyKey('member-edit'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-        email: emailChanged ? result.email : null,
-        displayName: displayNameChanged ? result.displayName : null,
-      ),
-      successHint: 'Updated ${row.email}.',
-    );
-  }
-
-  Future<void> _onRestoreSoftDeleted(MemberAdminRow row) async {
-    final reason = await _promptAdminReason('Restore ${row.displayName}');
-    if (reason == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.restoreSoftDeletedMember(
-        operatorId: widget.pickedOperator.operatorId,
-        userId: row.userId,
-        idempotencyKey: _nextIdempotencyKey('member-restore'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-      ),
-      successHint: 'Restored ${row.displayName}',
-    );
-  }
-
-  Future<void> _onOverrideRoleGrant(MemberAdminRow row) async {
-    final result = await showDialog<_OverrideRoleResult>(
-      context: context,
-      builder: (_) => _OverrideRoleDialog(
-        currentRoleKey: row.roleKey,
-        targetDisplayName: row.displayName,
+      builder: (_) => _DisplayNameEditDialog(
+        row: row,
         roles: _roles,
         accessScopes: _availableAccessScopes,
         initialScope: _initialGrantScope(row),
       ),
     );
     if (result == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.overrideRoleGrant(
-        operatorId: widget.pickedOperator.operatorId,
-        userId: row.userId,
-        roleId: result.roleId,
-        roleKey: result.roleKey,
-        idempotencyKey: _nextIdempotencyKey('member-override-role'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-        scopeType: result.scope.scopeType,
-        primaryLocationId: result.scope.locationId,
-        orgUnitId: result.scope.orgUnitId,
-      ),
-      successHint:
-          'Reassigned ${row.displayName} to ${memberRoleLabel(result.roleKey)}',
+    final delta = _editDelta(row, result);
+    if (!delta.hasChanges) return;
+    await _runUserAction(row, () async {
+      if (delta.profileChanged) await _updateMemberProfile(row, result, delta);
+      if (delta.grantChanged) await _updateMemberGrant(row, result);
+    }, successHint: 'Updated ${row.email}.');
+  }
+
+  _MemberEditDelta _editDelta(
+    MemberAdminRow row,
+    _DisplayNameEditResult result,
+  ) {
+    return _MemberEditDelta(
+      emailChanged:
+          result.email != null &&
+          result.email!.trim().toLowerCase() != row.email.toLowerCase(),
+      displayNameChanged: result.displayName.trim() != row.displayName.trim(),
+      roleChanged: result.roleKey != row.roleKey,
+      scopeChanged: _scopeChanged(row, result.scope),
     );
   }
 
-  Future<void> _onEditSeededRole(RoleAdminRow row) async {
-    if (!widget.canEditSeededRoles) return;
-    final rolesGateway = widget.rolesGateway;
-    if (rolesGateway == null) return;
-    final result = await showDialog<EditSeededRoleResult>(
-      context: context,
-      builder: (_) => EditSeededRoleDialog(initial: row),
-    );
-    if (result == null) return;
-    await _runAndRefresh(() async {
-      await rolesGateway.editSeededRole(
-        operatorId: widget.pickedOperator.operatorId,
-        roleId: row.roleId,
-        permissionKeys: result.permissionKeys,
-        idempotencyKey: _nextIdempotencyKey('roles-edit-seeded'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-      );
-    }, successHint: 'Updated ${roleAdminDisplayLabel(row)}');
-  }
-
-  Future<void> _onCreateCustomRole() async {
-    final rolesGateway = widget.rolesGateway;
-    if (rolesGateway == null) return;
-    final result = await showDialog<CustomRoleDraft>(
-      context: context,
-      builder: (_) => CreateCustomRoleDialog(
-        existingRoleKeys: <String>{for (final r in _roles) r.roleKey},
+  Future<void> _updateMemberProfile(
+    MemberAdminRow row,
+    _DisplayNameEditResult result,
+    _MemberEditDelta delta,
+  ) {
+    return widget.gateway.updateMember(
+      operatorId: widget.pickedOperator.operatorId,
+      userId: row.userId,
+      idempotencyKey: _nextIdempotencyKey('member-edit'),
+      actorUserId: widget.actorUserId,
+      actorIsForgeAdmin: widget.editingEnabled,
+      adminReason: result.adminReason,
+      patch: MemberProfilePatch(
+        email: delta.emailChanged ? result.email : null,
+        displayName: delta.displayNameChanged ? result.displayName : null,
       ),
     );
-    if (result == null) return;
-    await _runAndRefresh(() async {
-      await rolesGateway.createCustomRole(
-        operatorId: widget.pickedOperator.operatorId,
-        roleKey: result.roleKey,
-        displayName: result.displayName,
-        description: result.description,
-        permissionKeys: result.permissionKeys,
-        idempotencyKey: _nextIdempotencyKey('roles-create-custom'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-      );
-    }, successHint: 'Created ${result.displayName}');
   }
 
-  Future<void> _onDeleteCustomRole(RoleAdminRow row) async {
-    final rolesGateway = widget.rolesGateway;
-    if (rolesGateway == null) return;
-    final reason = await _promptAdminReason(
-      'Delete ${roleAdminDisplayLabel(row)}',
+  Future<void> _updateMemberGrant(
+    MemberAdminRow row,
+    _DisplayNameEditResult result,
+  ) {
+    return widget.gateway.overrideRoleGrant(
+      operatorId: widget.pickedOperator.operatorId,
+      userId: row.userId,
+      roleId: result.roleId,
+      roleKey: result.roleKey,
+      idempotencyKey: _nextIdempotencyKey('member-override-role'),
+      actorUserId: widget.actorUserId,
+      actorIsForgeAdmin: widget.editingEnabled,
+      adminReason: result.adminReason,
+      scopeType: result.scope.scopeType,
+      primaryLocationId: result.scope.locationId,
+      orgUnitId: result.scope.orgUnitId,
     );
-    if (reason == null) return;
-    await _runAndRefresh(
-      () => rolesGateway.deleteCustomRole(
-        operatorId: widget.pickedOperator.operatorId,
-        roleId: row.roleId,
-        idempotencyKey: _nextIdempotencyKey('roles-delete-custom'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-      ),
-      successHint: 'Deleted ${roleAdminDisplayLabel(row)}',
-    );
+  }
+
+  bool _scopeChanged(MemberAdminRow row, MemberAccessScopeRef scope) {
+    final initial = _initialGrantScope(row);
+    return initial?.id != scope.id;
   }
 
   MemberAccessScopeRef? _initialGrantScope(MemberAdminRow row) {
@@ -868,6 +836,22 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     return byId.values.toList(growable: false);
   }
 
+  List<_RoleFilterOption> get _roleFilterOptions {
+    if (_roles.isNotEmpty) {
+      return <_RoleFilterOption>[
+        for (final role in _roles)
+          _RoleFilterOption(
+            roleKey: role.roleKey,
+            label: roleAdminDisplayLabel(role),
+          ),
+      ];
+    }
+    return <_RoleFilterOption>[
+      for (final roleKey in kSeededRoleKeysForAdmin)
+        _RoleFilterOption(roleKey: roleKey, label: memberRoleLabel(roleKey)),
+    ];
+  }
+
   List<MemberAccessScopeRef> get _availableAccessScopes {
     final scopes = <MemberAccessScopeRef>[
       MemberAccessScopeRef(
@@ -927,24 +911,28 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
             mfaEnrolledFilter: _mfaEnrolledFilter,
             searchQuery: _searchQuery,
             locations: _availableLocations,
+            roles: _roleFilterOptions,
             onStatusChanged: (v) {
               setState(() => _statusFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onRoleChanged: (v) {
               setState(() => _roleFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onLocationChanged: (v) {
               setState(() => _locationFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onMfaEnrolledChanged: (v) {
               setState(() => _mfaEnrolledFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onSearchChanged: (v) {
-              setState(() => _searchQuery = v);
+              setState(() {
+                _searchQuery = v;
+                _pageIndex = 0;
+              });
               _refreshAfterSearchPause();
             },
             onClearFilters: _clearFilters,
@@ -976,25 +964,24 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         ),
       );
     }
-    if (widget.onOpenAccess != null) {
-      children.add(
-        OutlinedButton.icon(
-          key: const Key('admin_members_open_access'),
-          onPressed: widget.onOpenAccess,
-          style: AdminButtonStyles.secondary(),
-          icon: const Icon(Icons.shield_outlined, size: 16),
-          label: const Text('Role policy'),
-        ),
-      );
-    }
     if (widget.editingEnabled) {
       children.add(
-        FilledButton.icon(
-          key: const Key('admin_members_invite_button'),
-          onPressed: _onInvite,
-          style: AdminButtonStyles.primary,
-          icon: const Icon(Icons.person_add_alt_1, size: 16),
-          label: const Text('Invite member'),
+        SizedBox(
+          height: 48,
+          child: FilledButton.icon(
+            key: const Key('admin_members_invite_button'),
+            onPressed: _onInvite,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.sunset,
+              foregroundColor: AppColors.backgroundSurface,
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              textStyle: AppTextStyles.display16(
+                color: AppColors.backgroundSurface,
+              ),
+            ),
+            icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
+            label: const Text('Invite member'),
+          ),
         ),
       );
     }
@@ -1016,10 +1003,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       );
     }
     if (_loadError != null) {
-      return _ErrorBanner(
-        key: const Key('admin_members_load_error'),
-        message: _loadError!,
-      );
+      return _buildLoadError();
     }
     // Outer frame is OperatorWebScreenBody (a SingleChildScrollView), so
     // this body returns a plain Column to avoid nesting a second scroll
@@ -1027,43 +1011,79 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _MembersTable(
-          rows: _members,
+        AdminMembersOpsTable(
+          rows: _pagedMembers,
           editingEnabled: widget.editingEnabled,
+          busyUserIds: _busyUserIds,
           onSuspend: _onSuspend,
           onReactivate: _onReactivate,
           onSoftDelete: _onSoftDelete,
           onResetPassword: _onResetPassword,
           onResetMfa: _onResetMfa,
-          onForceLogout: _onForceLogout,
           onEditDisplayName: _onEditDisplayName,
-          onRestoreSoftDeleted: _onRestoreSoftDeleted,
-          onOverrideRoleGrant: _onOverrideRoleGrant,
         ),
-        const SizedBox(height: 16),
-        _InvitesPanel(
-          invites: _invites,
-          editingEnabled: widget.editingEnabled,
-          busyInviteIds: _busyInviteIds,
-          onCancel: _onCancelInvite,
+        const SizedBox(height: 12),
+        AdminMembersPaginationBar(
+          pageIndex: _pageIndex,
+          pageSize: _kMembersPageSize,
+          totalRows: _members.length,
+          onPrevious: _previousPage,
+          onNext: _nextPage,
         ),
-        if (widget.rolesGateway != null) ...<Widget>[
-          const SizedBox(height: 16),
-          RolePolicyAdminPanel(
-            roles: _roles,
+        if (_invites.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 24),
+          AdminMembersInvitesPanel(
+            invites: _invites,
             editingEnabled: widget.editingEnabled,
-            canEditSeededRoles: widget.canEditSeededRoles,
-            onEditSeeded: _onEditSeededRole,
-            onCreateCustom: _onCreateCustomRole,
-            onDeleteCustom: _onDeleteCustomRole,
-            showSummaryStrip: false,
-            showPermissionExplainer: false,
-            rolePreviewLimit: 3,
+            busyInviteIds: _busyInviteIds,
+            onCancel: _onCancelInvite,
           ),
         ],
       ],
     );
   }
+
+  Widget _buildLoadError() {
+    return ConstrainedBox(
+      key: const Key('admin_members_load_error'),
+      constraints: const BoxConstraints(maxWidth: 480),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Members could not load',
+              style: AppTextStyles.display20(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _loadError!,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton(
+              key: const Key('admin_members_load_retry'),
+              onPressed: _refresh,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.sunsetDark,
+                side: const BorderSide(color: AppColors.sunsetDark, width: 1),
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleFilterOption {
+  const _RoleFilterOption({required this.roleKey, required this.label});
+
+  final String roleKey;
+  final String label;
 }
 
 /// Filter bar is Stateful so the search field's [TextEditingController]
@@ -1081,6 +1101,7 @@ class _MembersFilterBar extends StatefulWidget {
     required this.mfaEnrolledFilter,
     required this.searchQuery,
     required this.locations,
+    required this.roles,
     required this.onStatusChanged,
     required this.onRoleChanged,
     required this.onLocationChanged,
@@ -1095,6 +1116,7 @@ class _MembersFilterBar extends StatefulWidget {
   final bool? mfaEnrolledFilter;
   final String searchQuery;
   final List<MemberLocationRef> locations;
+  final List<_RoleFilterOption> roles;
   final ValueChanged<MemberStatus?> onStatusChanged;
   final ValueChanged<String?> onRoleChanged;
   final ValueChanged<String?> onLocationChanged;
@@ -1142,10 +1164,6 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
       if (widget.mfaEnrolledFilter != null) 'MFA',
       if (widget.searchQuery.trim().isNotEmpty) 'Search',
     ];
-    // Web parity (members_screen.dart `_MembersFilterRail`): filters
-    // render in a plain bordered surface with NO panel title, and the
-    // admin-only "Clear filters" affordance sits inline as the last
-    // child of the same Wrap.
     return Container(
       key: const Key('admin_members_filter_card'),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -1154,599 +1172,129 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: <Widget>[
-              SizedBox(
-                width: 200,
-                child: DropdownButtonFormField<MemberStatus?>(
-                  key: const Key('admin_members_filter_status'),
-                  initialValue: widget.statusFilter,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Status',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: <DropdownMenuItem<MemberStatus?>>[
-                    const DropdownMenuItem<MemberStatus?>(
-                      value: null,
-                      child: Text('Any status'),
-                    ),
-                    for (final s in MemberStatus.values)
-                      DropdownMenuItem<MemberStatus?>(
-                        value: s,
-                        child: Text(memberStatusLabel(s)),
-                      ),
-                  ],
-                  onChanged: widget.onStatusChanged,
-                ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: <Widget>[
+          SizedBox(
+            width: 260,
+            child: TextField(
+              key: const Key('admin_members_filter_search'),
+              decoration: const InputDecoration(
+                labelText: 'Search by name or email',
+                prefixIcon: Icon(Icons.search, size: 18),
+                isDense: true,
+                border: OutlineInputBorder(),
               ),
-              SizedBox(
-                width: 200,
-                child: DropdownButtonFormField<String?>(
-                  key: const Key('admin_members_filter_role'),
-                  initialValue: widget.roleFilter,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: <DropdownMenuItem<String?>>[
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Any role'),
-                    ),
-                    for (final role in kSeededRoleKeysForAdmin)
-                      DropdownMenuItem<String?>(
-                        value: role,
-                        child: Text(memberRoleLabel(role)),
-                      ),
-                  ],
-                  onChanged: widget.onRoleChanged,
-                ),
-              ),
-              SizedBox(
-                width: 220,
-                child: DropdownButtonFormField<String?>(
-                  key: const Key('admin_members_filter_location'),
-                  initialValue: widget.locationFilter,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Location',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: <DropdownMenuItem<String?>>[
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Any location'),
-                    ),
-                    for (final loc in widget.locations)
-                      DropdownMenuItem<String?>(
-                        value: loc.locationId,
-                        child: Text(loc.name),
-                      ),
-                  ],
-                  onChanged: widget.onLocationChanged,
-                ),
-              ),
-              SizedBox(
-                width: 180,
-                child: DropdownButtonFormField<bool?>(
-                  key: const Key('admin_members_filter_mfa'),
-                  initialValue: widget.mfaEnrolledFilter,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Two-factor sign-in',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const <DropdownMenuItem<bool?>>[
-                    DropdownMenuItem<bool?>(value: null, child: Text('Any')),
-                    DropdownMenuItem<bool?>(value: true, child: Text('On')),
-                    DropdownMenuItem<bool?>(value: false, child: Text('Off')),
-                  ],
-                  onChanged: widget.onMfaEnrolledChanged,
-                ),
-              ),
-              SizedBox(
-                width: 240,
-                child: TextField(
-                  key: const Key('admin_members_filter_search'),
-                  decoration: const InputDecoration(
-                    labelText: 'Search by name or email',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: widget.onSearchChanged,
-                  controller: _searchController,
-                ),
-              ),
-              if (activeFilters.isNotEmpty)
-                OutlinedButton.icon(
-                  key: const Key('admin_members_clear_filters'),
-                  onPressed: widget.onClearFilters,
-                  style: AdminButtonStyles.secondary(
-                    minWidth: 120,
-                    minHeight: 40,
-                  ),
-                  icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
-                  label: const Text('Clear filters'),
-                ),
-            ],
+              onChanged: widget.onSearchChanged,
+              controller: _searchController,
+            ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MembersTable extends StatelessWidget {
-  const _MembersTable({
-    required this.rows,
-    required this.editingEnabled,
-    required this.onSuspend,
-    required this.onReactivate,
-    required this.onSoftDelete,
-    required this.onResetPassword,
-    required this.onResetMfa,
-    required this.onForceLogout,
-    required this.onEditDisplayName,
-    required this.onRestoreSoftDeleted,
-    required this.onOverrideRoleGrant,
-  });
-
-  final List<MemberAdminRow> rows;
-  final bool editingEnabled;
-  final ValueChanged<MemberAdminRow> onSuspend;
-  final ValueChanged<MemberAdminRow> onReactivate;
-  final ValueChanged<MemberAdminRow> onSoftDelete;
-  final ValueChanged<MemberAdminRow> onResetPassword;
-  final ValueChanged<MemberAdminRow> onResetMfa;
-  final ValueChanged<MemberAdminRow> onForceLogout;
-  final ValueChanged<MemberAdminRow> onEditDisplayName;
-  final ValueChanged<MemberAdminRow> onRestoreSoftDeleted;
-  final ValueChanged<MemberAdminRow> onOverrideRoleGrant;
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebPanel(
-      key: const Key('admin_members_table'),
-      title: 'Members',
-      trailing: Text(
-        '${rows.length} row${rows.length == 1 ? '' : 's'}',
-        style: AppTextStyles.mono11(color: AppColors.textMuted),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (rows.isEmpty)
-            Container(
-              key: const Key('admin_members_empty_state'),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundDeep,
-                border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(8),
+          SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<MemberStatus?>(
+              key: const Key('admin_members_filter_status'),
+              initialValue: widget.statusFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Status',
+                isDense: true,
+                border: OutlineInputBorder(),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'No members match these filters',
-                    style: AppTextStyles.mono14(
-                      color: AppColors.textPrimary,
-                      weight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Try clearing a filter or use Invite member to add '
-                    'someone new to the team.',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            )
-          else
-            for (final row in rows)
-              _MemberRowTile(
-                key: Key('admin_members_row_${row.userId}'),
-                row: row,
-                editingEnabled: editingEnabled,
-                onSuspend: onSuspend,
-                onReactivate: onReactivate,
-                onSoftDelete: onSoftDelete,
-                onResetPassword: onResetPassword,
-                onResetMfa: onResetMfa,
-                onForceLogout: onForceLogout,
-                onEditDisplayName: onEditDisplayName,
-                onRestoreSoftDeleted: onRestoreSoftDeleted,
-                onOverrideRoleGrant: onOverrideRoleGrant,
-              ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MemberRowTile extends StatelessWidget {
-  const _MemberRowTile({
-    super.key,
-    required this.row,
-    required this.editingEnabled,
-    required this.onSuspend,
-    required this.onReactivate,
-    required this.onSoftDelete,
-    required this.onResetPassword,
-    required this.onResetMfa,
-    required this.onForceLogout,
-    required this.onEditDisplayName,
-    required this.onRestoreSoftDeleted,
-    required this.onOverrideRoleGrant,
-  });
-
-  final MemberAdminRow row;
-  final bool editingEnabled;
-  final ValueChanged<MemberAdminRow> onSuspend;
-  final ValueChanged<MemberAdminRow> onReactivate;
-  final ValueChanged<MemberAdminRow> onSoftDelete;
-  final ValueChanged<MemberAdminRow> onResetPassword;
-  final ValueChanged<MemberAdminRow> onResetMfa;
-  final ValueChanged<MemberAdminRow> onForceLogout;
-  final ValueChanged<MemberAdminRow> onEditDisplayName;
-  final ValueChanged<MemberAdminRow> onRestoreSoftDeleted;
-  final ValueChanged<MemberAdminRow> onOverrideRoleGrant;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    row.displayName,
-                    style: AppTextStyles.body14(
-                      color: AppColors.textPrimary,
-                    ).copyWith(fontWeight: FontWeight.w600),
-                  ),
+              items: <DropdownMenuItem<MemberStatus?>>[
+                const DropdownMenuItem<MemberStatus?>(
+                  value: null,
+                  child: Text('Any status'),
                 ),
-                _StatusChip(status: row.status),
+                for (final s in MemberStatus.values)
+                  DropdownMenuItem<MemberStatus?>(
+                    value: s,
+                    child: Text(memberStatusLabel(s)),
+                  ),
               ],
+              onChanged: widget.onStatusChanged,
             ),
-            const SizedBox(height: 4),
-            Text(
-              row.email,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 14,
-              runSpacing: 4,
-              children: <Widget>[
-                _MetaPill(
-                  icon: Icons.shield_outlined,
-                  label: memberRoleLabel(row.roleKey),
+          ),
+          SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<String?>(
+              key: const Key('admin_members_filter_role'),
+              initialValue: widget.roleFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Role',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              items: <DropdownMenuItem<String?>>[
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Any role'),
                 ),
-                _MetaPill(
-                  icon: Icons.location_on_outlined,
-                  label: row.primaryLocationName,
-                ),
-                _MetaPill(
-                  icon: row.mfaEnrolled
-                      ? Icons.verified_user_outlined
-                      : Icons.gpp_maybe_outlined,
-                  label: row.mfaEnrolled ? 'MFA on' : 'MFA off',
-                ),
+                for (final role in widget.roles)
+                  DropdownMenuItem<String?>(
+                    value: role.roleKey,
+                    child: Text(role.label),
+                  ),
               ],
+              onChanged: widget.onRoleChanged,
             ),
-            if (row.grants.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: <Widget>[
-                  for (final grant in row.grants) _GrantScopeChip(grant: grant),
-                ],
+          ),
+          SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<String?>(
+              key: const Key('admin_members_filter_location'),
+              initialValue: widget.locationFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Location',
+                isDense: true,
+                border: OutlineInputBorder(),
               ),
-            ],
-            if (editingEnabled) ...[
-              const SizedBox(height: 10),
-              Wrap(spacing: 6, runSpacing: 6, children: _buildActionButtons()),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildActionButtons() {
-    final buttons = <Widget>[];
-    buttons.add(
-      _RowAction(
-        keyValue: 'admin_members_action_edit_name_${row.userId}',
-        label: 'Edit display name',
-        onPressed: () => onEditDisplayName(row),
-      ),
-    );
-    if (row.status == MemberStatus.active) {
-      buttons.add(
-        _RowAction(
-          keyValue: 'admin_members_action_suspend_${row.userId}',
-          label: 'Suspend',
-          onPressed: () => onSuspend(row),
-        ),
-      );
-      buttons.add(
-        _RowAction(
-          keyValue: 'admin_members_action_soft_delete_${row.userId}',
-          label: 'Soft delete',
-          onPressed: () => onSoftDelete(row),
-        ),
-      );
-    }
-    if (row.status == MemberStatus.suspended ||
-        row.status == MemberStatus.dormant30) {
-      buttons.add(
-        _RowAction(
-          keyValue: 'admin_members_action_reactivate_${row.userId}',
-          label: 'Reactivate',
-          onPressed: () => onReactivate(row),
-        ),
-      );
-    }
-    if (row.status == MemberStatus.softDeleted) {
-      // Admin-only action. Operator self-service (11W.1) does NOT
-      // expose Restore - the parity contract pins this asymmetry.
-      buttons.add(
-        _RowAction(
-          keyValue: 'admin_members_action_restore_${row.userId}',
-          label: 'Restore soft-deleted',
-          onPressed: () => onRestoreSoftDeleted(row),
-        ),
-      );
-    } else {
-      // Admin-only action. Operator self-service (11W.1) routes role
-      // changes through the normal `team.roles.assign` workflow; the
-      // override path lives only on the admin surface.
-      buttons.add(
-        _RowAction(
-          keyValue: 'admin_members_action_override_role_${row.userId}',
-          label: 'Grant role',
-          onPressed: () => onOverrideRoleGrant(row),
-        ),
-      );
-    }
-    return buttons;
-  }
-}
-
-class _GrantScopeChip extends StatelessWidget {
-  const _GrantScopeChip({required this.grant});
-
-  final MemberRoleGrantRow grant;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        '${grant.roleDisplayLabel} / ${_grantScopeLabel(grant)}',
-        style: AppTextStyles.mono11(color: AppColors.textSecondary),
-      ),
-    );
-  }
-}
-
-String _grantScopeLabel(MemberRoleGrantRow grant) {
-  switch (grant.scopeType) {
-    case 'operator_wide':
-      return 'Business';
-    case 'org_unit':
-      return grant.orgUnitName ?? grant.orgUnitId ?? 'Org unit';
-    case 'location':
-      return grant.locationName ?? grant.locationId ?? 'Location';
-    default:
-      return grant.scopeType;
-  }
-}
-
-class _RowAction extends StatelessWidget {
-  const _RowAction({
-    required this.keyValue,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final String keyValue;
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      key: Key(keyValue),
-      onPressed: onPressed,
-      style: AdminButtonStyles.secondary(),
-      child: Text(label),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final MemberStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final tone = _toneFor(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tone.withValues(alpha: 0.5), width: 1),
-      ),
-      child: Text(
-        memberStatusLabel(status),
-        style: AppTextStyles.mono11(color: tone),
-      ),
-    );
-  }
-
-  static Color _toneFor(MemberStatus status) {
-    switch (status) {
-      case MemberStatus.active:
-        return AppColors.positive;
-      case MemberStatus.suspended:
-        return AppColors.warning;
-      case MemberStatus.dormant30:
-        return AppColors.textMuted;
-      case MemberStatus.softDeleted:
-        return AppColors.negative;
-    }
-  }
-}
-
-class _MetaPill extends StatelessWidget {
-  const _MetaPill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Icon(icon, size: 14, color: AppColors.textMuted),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ],
-    );
-  }
-}
-
-class _InvitesPanel extends StatelessWidget {
-  const _InvitesPanel({
-    required this.invites,
-    required this.editingEnabled,
-    required this.busyInviteIds,
-    required this.onCancel,
-  });
-
-  final List<MemberInviteRow> invites;
-  // Wave 2 W-2 — Cancel pending invite end-to-end.
-  final bool editingEnabled;
-  final Set<String> busyInviteIds;
-  final Future<void> Function(MemberInviteRow invite) onCancel;
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebPanel(
-      key: const Key('admin_members_invites_panel'),
-      title: 'Pending invites',
-      trailing: Text(
-        '${invites.length} invite${invites.length == 1 ? '' : 's'}',
-        style: AppTextStyles.mono11(color: AppColors.textMuted),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (invites.isEmpty)
-            Text(
-              'No pending invites.',
-              style: AppTextStyles.body13(color: AppColors.textMuted),
-            )
-          else
-            for (final invite in invites)
-              Padding(
-                key: Key('admin_members_invite_row_${invite.inviteId}'),
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            invite.displayName,
-                            style: AppTextStyles.body14(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            invite.email,
-                            style: AppTextStyles.body13(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Text(
-                      '${memberRoleLabel(invite.roleKey)} / '
-                      '${_inviteScopeLabel(invite)}',
-                      style: AppTextStyles.mono11(color: AppColors.textMuted),
-                    ),
-                    if (editingEnabled) ...<Widget>[
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 110,
-                        child: busyInviteIds.contains(invite.inviteId)
-                            ? const Align(
-                                alignment: Alignment.centerRight,
-                                child: SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.sunsetDark,
-                                  ),
-                                ),
-                              )
-                            : Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  key: Key(
-                                    'admin_members_invite_cancel_'
-                                    '${invite.inviteId}',
-                                  ),
-                                  onPressed: () => onCancel(invite),
-                                  child: const Text('Cancel invite'),
-                                ),
-                              ),
-                      ),
-                    ],
-                  ],
+              items: <DropdownMenuItem<String?>>[
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Any location'),
                 ),
+                for (final loc in widget.locations)
+                  DropdownMenuItem<String?>(
+                    value: loc.locationId,
+                    child: Text(loc.name),
+                  ),
+              ],
+              onChanged: widget.onLocationChanged,
+            ),
+          ),
+          SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<bool?>(
+              key: const Key('admin_members_filter_mfa'),
+              initialValue: widget.mfaEnrolledFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Two-factor sign-in',
+                isDense: true,
+                border: OutlineInputBorder(),
               ),
+              items: const <DropdownMenuItem<bool?>>[
+                DropdownMenuItem<bool?>(value: null, child: Text('Any')),
+                DropdownMenuItem<bool?>(value: true, child: Text('On')),
+                DropdownMenuItem<bool?>(value: false, child: Text('Off')),
+              ],
+              onChanged: widget.onMfaEnrolledChanged,
+            ),
+          ),
+          if (activeFilters.isNotEmpty)
+            TextButton.icon(
+              key: const Key('admin_members_clear_filters'),
+              onPressed: widget.onClearFilters,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.sunsetDark,
+              ),
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('Clear filters'),
+            ),
         ],
       ),
     );
@@ -1909,19 +1457,63 @@ class _EmailConflictUsageTile extends StatelessWidget {
 class _DisplayNameEditResult {
   const _DisplayNameEditResult({
     required this.displayName,
+    required this.roleId,
+    required this.roleKey,
+    required this.scope,
     required this.adminReason,
     this.email,
   });
 
   final String displayName;
+  final String roleId;
+  final String roleKey;
+  final MemberAccessScopeRef scope;
   final String? email;
   final String adminReason;
 }
 
+class _MemberEditDelta {
+  const _MemberEditDelta({
+    required this.emailChanged,
+    required this.displayNameChanged,
+    required this.roleChanged,
+    required this.scopeChanged,
+  });
+
+  final bool emailChanged;
+  final bool displayNameChanged;
+  final bool roleChanged;
+  final bool scopeChanged;
+
+  bool get profileChanged => emailChanged || displayNameChanged;
+  bool get grantChanged => roleChanged || scopeChanged;
+  bool get hasChanges => profileChanged || grantChanged;
+}
+
+class _EditRoleChoice {
+  const _EditRoleChoice({
+    required this.roleId,
+    required this.roleKey,
+    required this.label,
+  });
+
+  final String roleId;
+  final String roleKey;
+  final String label;
+}
+
 class _DisplayNameEditDialog extends StatefulWidget {
-  const _DisplayNameEditDialog({required this.row});
+  const _DisplayNameEditDialog({
+    required this.row,
+    required this.roles,
+    required this.accessScopes,
+    this.initialScope,
+  });
 
   final MemberAdminRow row;
+  final List<RoleAdminRow> roles;
+  final List<MemberAccessScopeRef> accessScopes;
+  final MemberAccessScopeRef? initialScope;
 
   @override
   State<_DisplayNameEditDialog> createState() => _DisplayNameEditDialogState();
@@ -1931,9 +1523,16 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   final _reasonController = TextEditingController();
+  late final List<_EditRoleChoice> _roleChoices = _buildRoleChoices();
+  late String _selectedRoleId = _initialRoleId();
+  late String? _selectedScopeId =
+      widget.initialScope?.id ??
+      (widget.accessScopes.isEmpty ? null : widget.accessScopes.first.id);
   bool _nameViolated = false;
   bool _emailViolated = false;
   bool _reasonViolated = false;
+  bool _roleViolated = false;
+  bool _scopeViolated = false;
   bool _confirmEmail = false;
   bool _confirmEmailViolated = false;
 
@@ -1956,26 +1555,96 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
       _emailController.text.trim().toLowerCase() !=
       widget.row.email.toLowerCase();
 
+  _EditRoleChoice? get _selectedRoleChoice {
+    for (final role in _roleChoices) {
+      if (role.roleId == _selectedRoleId) return role;
+    }
+    return null;
+  }
+
+  MemberAccessScopeRef? get _selectedScope {
+    final selected = _selectedScopeId;
+    if (selected == null) return null;
+    for (final scope in widget.accessScopes) {
+      if (scope.id == selected) return scope;
+    }
+    return null;
+  }
+
+  List<_EditRoleChoice> _buildRoleChoices() {
+    if (widget.roles.isNotEmpty) {
+      return <_EditRoleChoice>[
+        for (final role in widget.roles)
+          _EditRoleChoice(
+            roleId: role.roleId,
+            roleKey: role.roleKey,
+            label: roleAdminDisplayLabel(role),
+          ),
+      ];
+    }
+    return <_EditRoleChoice>[
+      for (final roleKey in kSeededRoleKeysForAdmin)
+        _EditRoleChoice(
+          roleId: roleKey,
+          roleKey: roleKey,
+          label: memberRoleLabel(roleKey),
+        ),
+    ];
+  }
+
+  String _initialRoleId() {
+    for (final choice in _roleChoices) {
+      if (choice.roleKey == widget.row.roleKey) return choice.roleId;
+    }
+    return _roleChoices.isEmpty
+        ? widget.row.roleKey
+        : _roleChoices.first.roleId;
+  }
+
+  String _scopeHelper(MemberAccessScopeRef? scope) {
+    if (scope == null) return 'Choose where this applies.';
+    switch (scope.scopeType) {
+      case 'operator_wide':
+        return 'Business-wide: this teammate can act in every location.';
+      case 'org_unit':
+        return 'Org unit: this teammate inherits access to locations under '
+            'the chosen unit.';
+      case 'location':
+        return 'Single location: access is limited to the chosen location.';
+      default:
+        return 'Choose where this applies.';
+    }
+  }
+
   void _onSubmit() {
     final displayName = _nameController.text.trim();
     final email = _emailController.text.trim();
     final reason = _reasonController.text.trim();
     final emailIsChanging = _emailChanged();
+    final selectedRole = _selectedRoleChoice;
+    final selectedScope = _selectedScope;
     setState(() {
       _nameViolated = displayName.isEmpty;
       _emailViolated = email.isEmpty || !_looksLikeEmailAdmin(email);
       _reasonViolated = reason.isEmpty;
+      _roleViolated = selectedRole == null;
+      _scopeViolated = selectedScope == null;
       _confirmEmailViolated = emailIsChanging && !_confirmEmail;
     });
     if (_nameViolated ||
         _emailViolated ||
         _reasonViolated ||
+        _roleViolated ||
+        _scopeViolated ||
         _confirmEmailViolated) {
       return;
     }
     Navigator.of(context).pop(
       _DisplayNameEditResult(
         displayName: displayName,
+        roleId: selectedRole!.roleId,
+        roleKey: selectedRole.roleKey,
+        scope: selectedScope!,
         email: emailIsChanging ? email : null,
         adminReason: reason,
       ),
@@ -1987,7 +1656,7 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
     return OperatorWebDialog(
       key: const Key('admin_members_display_name_dialog'),
       title: 'Edit member',
-      icon: Icons.person_outline,
+      icon: Icons.manage_accounts_outlined,
       maxWidth: 540,
       actions: <Widget>[
         TextButton(
@@ -2002,78 +1671,134 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
           child: const Text('Save'),
         ),
       ],
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(
-            widget.row.email,
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('admin_members_email_field'),
-            controller: _emailController,
-            textInputAction: TextInputAction.next,
-            keyboardType: TextInputType.emailAddress,
-            decoration: InputDecoration(
-              labelText: 'Email',
-              border: const OutlineInputBorder(),
-              errorText: _emailViolated
-                  ? MembersValidationCopy.emailMalformed
-                  : null,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              widget.row.email,
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
             ),
-            onChanged: (_) => setState(() {}),
-          ),
-          if (_emailChanged()) ...<Widget>[
-            const SizedBox(height: 8),
-            CheckboxListTile(
-              key: const Key('admin_members_email_confirm'),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              dense: true,
-              title: Text(
-                'Confirm: change this teammate’s sign-in email.',
-                style: AppTextStyles.body13(color: AppColors.textPrimary),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_members_email_field'),
+              controller: _emailController,
+              textInputAction: TextInputAction.next,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Email address',
+                border: const OutlineInputBorder(),
+                errorText: _emailViolated
+                    ? MembersValidationCopy.emailMalformed
+                    : null,
               ),
-              subtitle: _confirmEmailViolated
-                  ? Text(
-                      'You must confirm before saving an email change.',
-                      style: AppTextStyles.body12(color: AppColors.negative),
-                    )
-                  : null,
-              value: _confirmEmail,
-              onChanged: (v) => setState(() => _confirmEmail = v ?? false),
+              onChanged: (_) => setState(() {}),
+            ),
+            if (_emailChanged()) ...<Widget>[
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                key: const Key('admin_members_email_confirm'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                title: Text(
+                  "Confirm you want to change this teammate's sign-in email.",
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                subtitle: _confirmEmailViolated
+                    ? Text(
+                        'You must confirm before saving an email change.',
+                        style: AppTextStyles.body12(color: AppColors.negative),
+                      )
+                    : null,
+                value: _confirmEmail,
+                onChanged: (v) => setState(() => _confirmEmail = v ?? false),
+              ),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_members_display_name_field'),
+              controller: _nameController,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                labelText: 'Display name',
+                border: const OutlineInputBorder(),
+                errorText: _nameViolated
+                    ? MembersValidationCopy.displayNameEmpty
+                    : null,
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('admin_members_role_field'),
+              initialValue: _selectedRoleId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Role',
+                border: const OutlineInputBorder(),
+                errorText: _roleViolated
+                    ? MembersValidationCopy.roleMissing
+                    : null,
+              ),
+              items: <DropdownMenuItem<String>>[
+                for (final role in _roleChoices)
+                  DropdownMenuItem<String>(
+                    value: role.roleId,
+                    child: Text(role.label),
+                  ),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _selectedRoleId = v);
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('admin_members_scope_field'),
+              initialValue: _selectedScopeId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Where this applies',
+                border: const OutlineInputBorder(),
+                errorText: _scopeViolated
+                    ? MembersValidationCopy.locationMissing
+                    : null,
+              ),
+              items: <DropdownMenuItem<String>>[
+                for (final scope in widget.accessScopes)
+                  DropdownMenuItem<String>(
+                    value: scope.id,
+                    child: Text(scope.label),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _selectedScopeId = v),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _scopeHelper(_selectedScope),
+              key: const Key('admin_members_scope_helper'),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_members_display_name_reason'),
+              controller: _reasonController,
+              minLines: 1,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Reason',
+                hintText: 'Why are you making this change?',
+                border: const OutlineInputBorder(),
+                errorText: _reasonViolated
+                    ? 'Add a reason before continuing.'
+                    : null,
+              ),
+              onChanged: (_) => setState(() {}),
             ),
           ],
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('admin_members_display_name_field'),
-            controller: _nameController,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(
-              labelText: 'Display name',
-              border: const OutlineInputBorder(),
-              errorText: _nameViolated
-                  ? MembersValidationCopy.displayNameEmpty
-                  : null,
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('admin_members_display_name_reason'),
-            controller: _reasonController,
-            minLines: 1,
-            maxLines: 3,
-            decoration: InputDecoration(
-              labelText: 'Reason',
-              border: const OutlineInputBorder(),
-              errorText: _reasonViolated
-                  ? 'Add a reason before continuing.'
-                  : null,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2152,239 +1877,6 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
           const SizedBox(height: 12),
           TextField(
             key: const Key('admin_members_reason_field'),
-            controller: _reasonController,
-            minLines: 1,
-            maxLines: 3,
-            decoration: InputDecoration(
-              labelText: 'Reason',
-              border: const OutlineInputBorder(),
-              errorText: _violated ? 'Add a reason before continuing.' : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OverrideRoleResult {
-  const _OverrideRoleResult({
-    required this.roleId,
-    required this.roleKey,
-    required this.scope,
-    required this.adminReason,
-  });
-
-  final String roleId;
-  final String roleKey;
-  final MemberAccessScopeRef scope;
-  final String adminReason;
-}
-
-class _OverrideRoleChoice {
-  const _OverrideRoleChoice({
-    required this.roleId,
-    required this.roleKey,
-    required this.label,
-  });
-
-  final String roleId;
-  final String roleKey;
-  final String label;
-}
-
-String _inviteScopeLabel(MemberInviteRow invite) {
-  switch (invite.scopeType) {
-    case 'operator_wide':
-      return 'Business';
-    case 'org_unit':
-      return invite.orgUnitName ?? invite.orgUnitId ?? 'Org unit';
-    case 'location':
-      return invite.primaryLocationName.isNotEmpty
-          ? invite.primaryLocationName
-          : 'Location';
-    default:
-      return invite.scopeType;
-  }
-}
-
-class _OverrideRoleDialog extends StatefulWidget {
-  const _OverrideRoleDialog({
-    required this.currentRoleKey,
-    required this.targetDisplayName,
-    required this.roles,
-    required this.accessScopes,
-    this.initialScope,
-  });
-
-  final String currentRoleKey;
-  final String targetDisplayName;
-  final List<RoleAdminRow> roles;
-  final List<MemberAccessScopeRef> accessScopes;
-  final MemberAccessScopeRef? initialScope;
-
-  @override
-  State<_OverrideRoleDialog> createState() => _OverrideRoleDialogState();
-}
-
-class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
-  late final List<_OverrideRoleChoice> _roleChoices = _buildRoleChoices();
-  late String _selectedRoleId = _initialRoleId();
-  late String? _selectedScopeId =
-      widget.initialScope?.id ??
-      (widget.accessScopes.isEmpty ? null : widget.accessScopes.first.id);
-  final _reasonController = TextEditingController();
-  bool _violated = false;
-
-  @override
-  void dispose() {
-    _reasonController.dispose();
-    super.dispose();
-  }
-
-  void _onSubmit() {
-    final reason = _reasonController.text.trim();
-    final scope = _selectedScope;
-    if (reason.isEmpty || scope == null) {
-      setState(() => _violated = true);
-      return;
-    }
-    final role = _selectedRoleChoice;
-    if (role == null) {
-      setState(() => _violated = true);
-      return;
-    }
-    Navigator.of(context).pop(
-      _OverrideRoleResult(
-        roleId: role.roleId,
-        roleKey: role.roleKey,
-        scope: scope,
-        adminReason: reason,
-      ),
-    );
-  }
-
-  MemberAccessScopeRef? get _selectedScope {
-    final selected = _selectedScopeId;
-    if (selected == null) return null;
-    for (final scope in widget.accessScopes) {
-      if (scope.id == selected) return scope;
-    }
-    return null;
-  }
-
-  _OverrideRoleChoice? get _selectedRoleChoice {
-    for (final choice in _roleChoices) {
-      if (choice.roleId == _selectedRoleId) return choice;
-    }
-    return null;
-  }
-
-  List<_OverrideRoleChoice> _buildRoleChoices() {
-    if (widget.roles.isNotEmpty) {
-      return <_OverrideRoleChoice>[
-        for (final role in widget.roles)
-          _OverrideRoleChoice(
-            roleId: role.roleId,
-            roleKey: role.roleKey,
-            label: roleAdminDisplayLabel(role),
-          ),
-      ];
-    }
-    return <_OverrideRoleChoice>[
-      for (final roleKey in kSeededRoleKeysForAdmin)
-        _OverrideRoleChoice(
-          roleId: roleKey,
-          roleKey: roleKey,
-          label: memberRoleLabel(roleKey),
-        ),
-    ];
-  }
-
-  String _initialRoleId() {
-    for (final choice in _roleChoices) {
-      if (choice.roleKey == widget.currentRoleKey) return choice.roleId;
-    }
-    return _roleChoices.isEmpty
-        ? widget.currentRoleKey
-        : _roleChoices.first.roleId;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebDialog(
-      key: const Key('admin_members_override_role_dialog'),
-      title: 'Override role grant for ${widget.targetDisplayName}',
-      icon: Icons.admin_panel_settings_outlined,
-      maxWidth: 540,
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_members_override_role_cancel'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('admin_members_override_role_submit'),
-          style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Apply override'),
-        ),
-      ],
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(
-            "Reassigns this member's role directly. The operator's "
-            'normal role-assignment workflow is skipped. The new '
-            'role takes effect immediately.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            key: const Key('admin_members_override_role_select'),
-            initialValue: _selectedRoleId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'New role',
-              border: OutlineInputBorder(),
-            ),
-            items: <DropdownMenuItem<String>>[
-              for (final role in _roleChoices)
-                DropdownMenuItem<String>(
-                  value: role.roleId,
-                  child: Text(role.label),
-                ),
-            ],
-            onChanged: (v) {
-              if (v == null) return;
-              setState(() => _selectedRoleId = v);
-            },
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            key: const Key('admin_members_override_role_scope'),
-            initialValue: _selectedScopeId,
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: 'Grant scope',
-              border: const OutlineInputBorder(),
-              errorText: _violated && _selectedScope == null
-                  ? 'Choose a scope for this role grant.'
-                  : null,
-            ),
-            items: <DropdownMenuItem<String>>[
-              for (final scope in widget.accessScopes)
-                DropdownMenuItem<String>(
-                  value: scope.id,
-                  child: Text(scope.label),
-                ),
-            ],
-            onChanged: (v) => setState(() => _selectedScopeId = v),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('admin_members_override_role_reason'),
             controller: _reasonController,
             minLines: 1,
             maxLines: 3,
