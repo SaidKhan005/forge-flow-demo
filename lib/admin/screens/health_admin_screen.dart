@@ -523,26 +523,37 @@ class _HealthSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final failingDeps = envelope.dependencies
+    // Genuinely-red signals only. The red "failing" alarm + wording are
+    // reserved for checks that are actually red: a yellow ("needs
+    // attention") tier-1 metric or a yellow dependency is amber, not red,
+    // so the banner colour and word match the cards below. Mirrors the
+    // approved mockup, which only alarmed red on a real red tier-1 fail.
+    final redTier1 = envelope
+        .metricsAtTier(1)
+        .where((m) => m.status == HealthSeverity.red)
+        .toList(growable: false);
+    final redDeps = envelope.dependencies
+        .where((d) => d.status == HealthSeverity.red)
+        .toList(growable: false);
+    // Dependencies that merely need attention (yellow) keep the summary in
+    // the amber state instead of being hidden.
+    final attentionDeps = envelope.dependencies
         .where(
           (d) =>
               d.status == HealthSeverity.red ||
               d.status == HealthSeverity.yellow,
         )
         .toList(growable: false);
-    final failingTier1 = envelope
-        .metricsAtTier(1)
-        .where((m) => m.isFailing)
-        .toList(growable: false);
     final isRed =
         envelope.dependenciesUnavailable ||
-        failingTier1.isNotEmpty ||
-        failingDeps.isNotEmpty;
+        redTier1.isNotEmpty ||
+        redDeps.isNotEmpty;
 
     // Every metric in the envelope that needs attention, in tab order so
     // the triage list reads top-to-bottom like the tabs.
     final attention = _attentionMetrics(envelope);
-    final amber = !isRed && attention.isNotEmpty;
+    final amber =
+        !isRed && (attention.isNotEmpty || attentionDeps.isNotEmpty);
 
     final Color color;
     final IconData icon;
@@ -553,8 +564,8 @@ class _HealthSummary extends StatelessWidget {
     if (isRed) {
       color = AppColors.negative;
       icon = Icons.error_outline;
-      if (failingTier1.isNotEmpty) {
-        final n = failingTier1.length;
+      if (redTier1.isNotEmpty) {
+        final n = redTier1.length;
         headline = n == 1
             ? 'Action needed: 1 critical check is failing'
             : 'Action needed: $n critical checks are failing';
@@ -565,9 +576,10 @@ class _HealthSummary extends StatelessWidget {
       // look: the full attention list minus the critical failures already
       // named in the headline. Mirrors the mockup's "N other items also
       // need a look" clause.
-      final rest = attention.length - failingTier1.length;
-      subLine = _redSubLine(failingDeps, rest: rest < 0 ? 0 : rest);
-      final count = attention.isEmpty ? failingDeps.length : attention.length;
+      final rest = attention.length - redTier1.length;
+      subLine = _redSubLine(redDeps, rest: rest < 0 ? 0 : rest);
+      final count =
+          attention.isEmpty ? attentionDeps.length : attention.length;
       countLabel = '$count';
       countCaption = count == 1 ? 'item to review' : 'items to review';
     } else if (amber) {

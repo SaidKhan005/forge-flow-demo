@@ -607,6 +607,51 @@ void main() {
     );
   });
 
+  testWidgets(
+    'a yellow tier-1 check shows the amber summary, not the red alarm',
+    (tester) async {
+      setLargeViewport(tester);
+      final json = _greenEnvelope();
+      // A critical (tier-1) check that is only YELLOW ("needs attention"),
+      // not red. It must NOT trip the red "Action needed ... failing"
+      // alarm; it drops to the calmer amber "needs attention" banner so the
+      // banner colour and word match the yellow card. Matches the approved
+      // mockup, which only alarmed red on a real red tier-1 fail.
+      (json['metrics']! as Map<String, Object?>)['circuit_breaker_anthropic_state'] =
+          <String, Object?>{
+            'status': 'yellow',
+            'value': 'half_open',
+            'unit': 'state',
+            'description': 'breaker half-open',
+            'owner': 'B42',
+            'observed_at': '2026-05-02T12:00:00.000Z',
+            'metadata': <String, Object?>{'tier': 1},
+          };
+      final gateway = InMemoryHealthAdminGateway(envelope: json);
+      await tester.pumpWidget(
+        wrap(
+          HealthAdminScreen(
+            gateway: gateway,
+            now: () => DateTime.utc(2026, 5, 2, 12),
+          ),
+        ),
+      );
+      await runHealthCheck(tester);
+
+      expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
+      // Amber, not red: never the "Action needed ... failing" wording.
+      expect(summaryHeadline(tester), isNot(startsWith('Action needed')));
+      expect(summaryHeadline(tester), equals('1 thing needs attention'));
+      // It still appears in the cross-tab triage list.
+      expect(
+        find.byKey(
+          const Key('admin_health_attn_circuit_breaker_anthropic_state'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('tapping a triage row jumps to that check\'s tab', (
     tester,
   ) async {
