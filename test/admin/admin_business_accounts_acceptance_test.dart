@@ -61,9 +61,10 @@ void main() {
 
   // The six per-business cluster routes, in nav order, paired with a
   // robust anchor that proves the destination rendered. Vendor
-  // integrations needs a LOCATION scope to show its connections widget;
-  // with a business-only scope it honestly renders its location-required
-  // state, which is still a "renders without throwing" outcome.
+  // integrations and Data Accuracy need a LOCATION scope to show their
+  // operator surfaces; with a broader scope they honestly render their
+  // location-required state, which is still a "renders without throwing"
+  // outcome for this broad journey test.
   const sixClusterDestinations = <({String routeId, Key anchorKey})>[
     (routeId: kAdminMembersRouteId, anchorKey: Key('admin_members_screen')),
     (
@@ -80,7 +81,7 @@ void main() {
     ),
     (
       routeId: kAdminDataAccuracyRouteId,
-      anchorKey: Key('admin_data_accuracy_screen'),
+      anchorKey: Key('admin_data_accuracy_waiting_for_location_scope'),
     ),
     (
       routeId: kAdminTimingSetupRouteId,
@@ -541,6 +542,48 @@ void main() {
           reason: 'opening ${destination.routeId} must not throw',
         );
       }
+    },
+  );
+
+  testWidgets(
+    'demo Data Accuracy opens the operator surface for Toronto Yorkville',
+    (tester) async {
+      await pumpAdminConsole(tester);
+
+      await tapKey(tester, Key('admin_setup_scope_business_$dinerOperatorId'));
+      await tapKey(
+        tester,
+        Key('admin_setup_scope_location_$dinerLocationToronto'),
+      );
+      await tapKey(
+        tester,
+        Key('admin_nav_cluster_item_$kAdminDataAccuracyRouteId'),
+      );
+
+      expect(
+        find.byKey(const Key('admin_data_accuracy_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('data_accuracy_covers_source_card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('data_accuracy_wage_source_card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_data_accuracy_business_timing_error'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Data accuracy needs Business Timing'), findsNothing);
+      expect(tester.takeException(), isNull);
     },
   );
 

@@ -7,12 +7,120 @@ part of 'admin_routes.dart';
 // as the default gateways when no production gateway is injected.
 
 /// Fix #4 / S4 (G41 + G42) — shared seeded in-memory fallback for
-/// the READ-ONLY admin business-timing resolution gateway. Empty by
-/// default so the timing surfaces render their honest "no timing
-/// profile yet" state instead of fabricating values when no
-/// production [HttpAdminBusinessTimingResolutionGateway] is wired.
+/// the READ-ONLY admin business-timing resolution gateway. Seeded
+/// demo locations mirror the Data Accuracy demo locations so the
+/// share-preview path can resolve a business date before mounting
+/// the operator web Data Accuracy surface. Unknown locations still
+/// render their honest "no timing profile yet" state instead of
+/// fabricating values when no production gateway is wired.
 final AdminBusinessTimingResolutionGateway _defaultTimingResolutionDemoGateway =
-    InMemoryAdminBusinessTimingResolutionGateway();
+    InMemoryAdminBusinessTimingResolutionGateway(
+      seed: <String, AdminBusinessTimingResolution>{
+        InMemoryAdminBusinessTimingResolutionGateway.keyFor(
+          '00000000-0000-4000-8000-000000000001',
+          '00000000-0000-4000-8000-0000000000a1',
+        ): _demoTimingResolution(
+          operatorId: '00000000-0000-4000-8000-000000000001',
+          locationId: '00000000-0000-4000-8000-0000000000a1',
+          locationName: 'Toronto Yorkville',
+          timezone: 'America/Toronto',
+          businessDayStartLocal: '04:00',
+        ),
+        InMemoryAdminBusinessTimingResolutionGateway.keyFor(
+          '00000000-0000-4000-8000-000000000001',
+          '00000000-0000-4000-8000-0000000000a2',
+        ): _demoTimingResolution(
+          operatorId: '00000000-0000-4000-8000-000000000001',
+          locationId: '00000000-0000-4000-8000-0000000000a2',
+          locationName: 'Vancouver Robson',
+          timezone: 'America/Vancouver',
+          businessDayStartLocal: '04:00',
+        ),
+        InMemoryAdminBusinessTimingResolutionGateway.keyFor(
+          '00000000-0000-4000-8000-000000000002',
+          '00000000-0000-4000-8000-0000000000b1',
+        ): _demoTimingResolution(
+          operatorId: '00000000-0000-4000-8000-000000000002',
+          locationId: '00000000-0000-4000-8000-0000000000b1',
+          locationName: 'Brooklyn Williamsburg',
+          timezone: 'America/New_York',
+          businessDayStartLocal: '05:00',
+        ),
+      },
+    );
+
+AdminBusinessTimingResolution _demoTimingResolution({
+  required String operatorId,
+  required String locationId,
+  required String locationName,
+  required String timezone,
+  required String businessDayStartLocal,
+}) {
+  return AdminBusinessTimingResolution(
+    operatorId: operatorId,
+    locationId: locationId,
+    businessDate: '2026-05-24',
+    ianaTimezone: timezone,
+    candidates: <AdminResolutionCandidate>[
+      AdminResolutionCandidate(
+        profileId: 'demo-timing-$locationId',
+        scopeType: 'location',
+        scopeId: locationId,
+        scopeLabel: locationName,
+        scopeDepthRank: 3,
+        ianaTimezone: timezone,
+        effectiveAtBusinessDate: '2026-01-01',
+        weekStartDay: 'monday',
+        businessDayStartLocal: businessDayStartLocal,
+        servicePeriods: _demoTimingServicePeriods,
+      ),
+    ],
+  );
+}
+
+const List<AdminResolutionServicePeriod> _demoTimingServicePeriods =
+    <AdminResolutionServicePeriod>[
+      AdminResolutionServicePeriod(
+        key: 'breakfast',
+        label: 'Breakfast',
+        shortLabel: 'Breakfast',
+        startLocal: '06:00',
+        endLocal: '11:00',
+        rollsPastMidnight: false,
+        sortOrder: 0,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+      ),
+      AdminResolutionServicePeriod(
+        key: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'Lunch',
+        startLocal: '11:00',
+        endLocal: '15:00',
+        rollsPastMidnight: false,
+        sortOrder: 1,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+      ),
+      AdminResolutionServicePeriod(
+        key: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'Dinner',
+        startLocal: '17:00',
+        endLocal: '22:00',
+        rollsPastMidnight: false,
+        sortOrder: 2,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+      ),
+      AdminResolutionServicePeriod(
+        key: 'late_night',
+        label: 'Late night',
+        shortLabel: 'Late',
+        startLocal: '22:00',
+        endLocal: '02:00',
+        rollsPastMidnight: true,
+        sortOrder: 3,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+      ),
+    ];
 
 /// Timing-editable parity — shared seeded in-memory fallback for the
 /// admin business-timing PROFILE WRITE gateway. Empty by default, so the
