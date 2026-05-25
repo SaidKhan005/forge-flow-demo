@@ -462,11 +462,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(premiumButton);
     await tester.pumpAndSettle();
+    // The preset preview diff gates the apply (replaces the old plain
+    // confirm).
     expect(
-      find.byKey(const Key('admin_pricing_confirm_dialog')),
+      find.byKey(const Key('admin_pricing_preset_dialog')),
       findsOneWidget,
     );
-    await tester.tap(find.byKey(const Key('admin_pricing_confirm_ok')));
+    await tester.tap(find.byKey(const Key('admin_pricing_preset_apply')));
     await tester.pumpAndSettle();
 
     final operators = await gateway.listOperators();
@@ -814,11 +816,140 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(pilotButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('admin_pricing_confirm_ok')));
+    await tester.tap(find.byKey(const Key('admin_pricing_preset_apply')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_pricing_action_error')), findsOneWidget);
   });
+
+  testWidgets(
+    'preset preview diff shows a NEW row, a CHANGED row, and applies on '
+    'confirm',
+    (tester) async {
+      // Operator is on a plan with an existing advisor_qa cap at $50.
+      // Applying Elite (advisor_qa $400 + coach_qa $300) must preview
+      // advisor_qa as CHANGED ($50 to $400) and coach_qa as NEW ($300).
+      final existing = seedCap(
+        operatorId: 'op-diff',
+        locationId: 'loc-diff',
+        usageClass: 'advisor_qa',
+        monthly: 50.0,
+      );
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(
+            operatorId: 'op-diff',
+            tier: 'starter',
+            primaryLocationId: 'loc-diff',
+            caps: <UsageCapRow>[existing],
+          ),
+        ],
+      );
+      await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+      await openBusinessesTab(tester);
+
+      final eliteButton = find.byKey(
+        const Key('admin_pricing_template_elite_button'),
+      );
+      await tester.ensureVisible(eliteButton);
+      await tester.pumpAndSettle();
+      await tester.tap(eliteButton);
+      await tester.pumpAndSettle();
+
+      // The preview diff dialog opens with both rows.
+      expect(
+        find.byKey(const Key('admin_pricing_preset_dialog')),
+        findsOneWidget,
+      );
+      // advisor_qa already exists at a different amount -> CHANGED, with
+      // the prior ($50) and new ($400/mo) amounts both visible inside the
+      // row.
+      final advisorRow = find.byKey(
+        const Key('admin_pricing_preset_row_advisor_qa'),
+      );
+      expect(advisorRow, findsOneWidget);
+      expect(find.text('CHANGED'), findsOneWidget);
+      expect(
+        find.descendant(of: advisorRow, matching: find.text('\$50')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: advisorRow, matching: find.text('\$400/mo')),
+        findsOneWidget,
+      );
+      // coach_qa has no current limit -> NEW, new amount $300/mo.
+      final coachRow = find.byKey(
+        const Key('admin_pricing_preset_row_coach_qa'),
+      );
+      expect(coachRow, findsOneWidget);
+      expect(find.text('NEW'), findsOneWidget);
+      expect(
+        find.descendant(of: coachRow, matching: find.text('\$300/mo')),
+        findsOneWidget,
+      );
+
+      // Confirming applies the template through the gateway.
+      await tester.tap(find.byKey(const Key('admin_pricing_preset_apply')));
+      await tester.pumpAndSettle();
+
+      final operators = await gateway.listOperators();
+      expect(operators.single.subscriptionTier, equals('elite'));
+      final classes = operators.single.caps
+          .map((c) => c.usageClass)
+          .toSet();
+      expect(classes, containsAll(<String>['advisor_qa', 'coach_qa']));
+      expect(
+        operators.single.caps
+            .firstWhere((c) => c.usageClass == 'advisor_qa')
+            .monthlyCapUsd,
+        equals(400.0),
+      );
+    },
+  );
+
+  testWidgets(
+    'preset preview shows the custom-contract note and no diff rows for '
+    'Enterprise',
+    (tester) async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(
+            operatorId: 'op-ent',
+            tier: 'pro',
+            primaryLocationId: 'loc-ent',
+          ),
+        ],
+      );
+      await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+      await openBusinessesTab(tester);
+
+      final enterpriseButton = find.byKey(
+        const Key('admin_pricing_template_enterprise_button'),
+      );
+      await tester.ensureVisible(enterpriseButton);
+      await tester.pumpAndSettle();
+      await tester.tap(enterpriseButton);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_pricing_preset_dialog')),
+        findsOneWidget,
+      );
+      // Custom contract: the note shows and there are no diff rows.
+      expect(
+        find.byKey(const Key('admin_pricing_preset_custom_note')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_preset_row_advisor_qa')),
+        findsNothing,
+      );
+      expect(find.text('NEW'), findsNothing);
+      expect(find.text('CHANGED'), findsNothing);
+    },
+  );
 }
 
 /// Test double whose plan-catalog read always fails, standing in for the

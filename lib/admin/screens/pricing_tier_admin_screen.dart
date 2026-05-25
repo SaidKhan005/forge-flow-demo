@@ -518,18 +518,12 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     PricingOperatorBundle bundle,
     PricingTierTemplate template,
   ) async {
+    // Operator-approved mockup: show a preview diff of exactly which
+    // operator/location-level limits this preset adds or changes before
+    // applying, instead of a bare "Apply?" confirm.
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => _ConfirmDialog(
-        title: 'Apply ${template.displayName} template?',
-        message:
-            'Sets the Forge & Flow AI plan to ${template.displayName} and '
-            'replaces ${template.caps.length} usage limit'
-            '${template.caps.length == 1 ? '' : 's'} '
-            'on ${bundle.businessName}. Existing limits for the same '
-            'use case are overwritten; other limits are preserved.',
-        confirmLabel: 'Apply',
-      ),
+      builder: (_) => _PresetPreviewDialog(bundle: bundle, template: template),
     );
     if (confirmed != true) return;
     final key = _nextIdempotencyKey();
@@ -2599,6 +2593,232 @@ class _ConfirmDialog extends StatelessWidget {
       child: Text(
         message,
         style: AppTextStyles.body13(color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Preset preview diff: shown before a plan template is applied.
+// ---------------------------------------------------------------------------
+
+/// How one preset cap compares to the operator's current limit for the
+/// same use case. Mirrors the operator-approved mockup's NEW / CHANGED /
+/// unchanged states (`docs/_mockups/admin_plans_and_limits_redesign.html`,
+/// `presetPreview`).
+enum _PresetCapChange {
+  /// The use case has no current operator/location-level limit; the
+  /// preset adds one.
+  added,
+
+  /// The use case already has a limit at a different monthly amount; the
+  /// preset replaces it.
+  changed,
+
+  /// The use case already has a limit at the same monthly amount; the
+  /// preset leaves it as-is.
+  unchanged,
+}
+
+/// One row of the preset preview diff: a preset cap, its change state,
+/// and the current monthly amount it replaces (null when [change] is
+/// [_PresetCapChange.added]).
+@immutable
+class _PresetCapDiff {
+  const _PresetCapDiff({
+    required this.usageClass,
+    required this.newMonthlyCapUsd,
+    required this.currentMonthlyCapUsd,
+    required this.change,
+  });
+
+  final String usageClass;
+  final double newMonthlyCapUsd;
+  final double? currentMonthlyCapUsd;
+  final _PresetCapChange change;
+}
+
+/// Compute the preview diff for applying [template] to [bundle].
+///
+/// Matches the mockup: only operator/location-level caps participate
+/// (the mockup's `if(!l.who)` filter), so caps scoped to a specific staff
+/// member or workflow are ignored when deciding NEW vs CHANGED. The
+/// proxy's apply-template path overwrites by `(operator, location,
+/// usage_class)` and leaves staff/workflow-scoped rows alone, so this
+/// preview reflects the rows the operator will actually see change.
+List<_PresetCapDiff> _buildPresetDiff(
+  PricingOperatorBundle bundle,
+  PricingTierTemplate template,
+) {
+  // Current operator/location-level monthly cap per use case. A cap
+  // scoped to a specific staff member or workflow is skipped, mirroring
+  // the mockup. If two location-level rows share a use case the last one
+  // wins (the apply path keys on use case at this level).
+  final current = <String, double>{};
+  for (final cap in bundle.caps) {
+    if (cap.staffId != null || cap.workflowId != null) continue;
+    current[cap.usageClass] = cap.monthlyCapUsd;
+  }
+  return <_PresetCapDiff>[
+    for (final cap in template.caps)
+      _PresetCapDiff(
+        usageClass: cap.usageClass,
+        newMonthlyCapUsd: cap.monthlyCapUsd,
+        currentMonthlyCapUsd: current[cap.usageClass],
+        change: !current.containsKey(cap.usageClass)
+            ? _PresetCapChange.added
+            : (current[cap.usageClass] != cap.monthlyCapUsd
+                  ? _PresetCapChange.changed
+                  : _PresetCapChange.unchanged),
+      ),
+  ];
+}
+
+/// Preview diff dialog for applying a plan preset. Pops `true` to apply,
+/// `false` (or null on dismiss) to cancel. Screen-only: it computes the
+/// diff from the in-memory bundle + the static template and never touches
+/// the gateway. The actual apply still runs in `_onApplyTemplate` on a
+/// `true` result.
+class _PresetPreviewDialog extends StatelessWidget {
+  const _PresetPreviewDialog({required this.bundle, required this.template});
+
+  final PricingOperatorBundle bundle;
+  final PricingTierTemplate template;
+
+  @override
+  Widget build(BuildContext context) {
+    final diff = _buildPresetDiff(bundle, template);
+    // Enterprise (and any preset with no caps) sets the plan but adds no
+    // preset limits, so there is no diff list to show.
+    final isCustomContract = template.caps.isEmpty;
+    return OperatorWebDialog(
+      key: const Key('admin_pricing_preset_dialog'),
+      title: 'Switch to ${template.displayName}?',
+      icon: Icons.tune,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_pricing_preset_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_pricing_preset_apply'),
+          style: AdminButtonStyles.primary,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text('Apply ${template.displayName}'),
+        ),
+      ],
+      child: Flexible(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (isCustomContract)
+                Text(
+                  '${template.displayName} is a custom contract. It sets the '
+                  'plan but adds no preset limits. You build the limits by '
+                  'hand.',
+                  key: const Key('admin_pricing_preset_custom_note'),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                )
+              else ...<Widget>[
+                Text(
+                  'Sets the plan and these limits. Limits for the same use '
+                  'case are replaced; others are kept.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                for (final row in diff) _PresetDiffRow(diff: row),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One row of the preset preview diff. Shows the use case (friendly
+/// label), the new monthly amount, the prior amount when it changes, and
+/// a plain-English NEW / CHANGED tag. Unchanged rows carry no tag.
+class _PresetDiffRow extends StatelessWidget {
+  const _PresetDiffRow({required this.diff});
+
+  final _PresetCapDiff diff;
+
+  @override
+  Widget build(BuildContext context) {
+    final newAmount = '${_money(diff.newMonthlyCapUsd)}/mo';
+    return Padding(
+      key: Key('admin_pricing_preset_row_${diff.usageClass}'),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              adminRequestUseCaseLabel(diff.usageClass),
+              style: AppTextStyles.body13(
+                color: AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // The new amount. When the limit changes, show the prior amount
+          // before it, joined with "to" (UX no-em-dash law).
+          if (diff.change == _PresetCapChange.changed &&
+              diff.currentMonthlyCapUsd != null) ...<Widget>[
+            Text(
+              _money(diff.currentMonthlyCapUsd),
+              style: AppTextStyles.mono11(
+                color: AppColors.textMuted,
+              ).copyWith(decoration: TextDecoration.lineThrough),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'to',
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            newAmount,
+            style: AppTextStyles.mono11(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          if (diff.change != _PresetCapChange.unchanged) ...<Widget>[
+            const SizedBox(width: 8),
+            _PresetDiffTag(change: diff.change),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Plain-English NEW / CHANGED tag for a preset diff row.
+class _PresetDiffTag extends StatelessWidget {
+  const _PresetDiffTag({required this.change});
+
+  final _PresetCapChange change;
+
+  @override
+  Widget build(BuildContext context) {
+    final isNew = change == _PresetCapChange.added;
+    final color = isNew ? AppColors.positive : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        isNew ? 'NEW' : 'CHANGED',
+        style: AppTextStyles.mono8(
+          color: color,
+        ).copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.5),
       ),
     );
   }
