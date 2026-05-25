@@ -815,9 +815,17 @@ class _OperatorDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AdminCard(
+          Container(
             key: const Key('admin_operator_profile_card'),
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSurface.withValues(alpha: 0.72),
+              border: Border(
+                bottom: BorderSide(
+                  color: AppColors.borderSubtle.withValues(alpha: 0.72),
+                ),
+              ),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -856,7 +864,7 @@ class _OperatorDetail extends StatelessWidget {
                         if (editingEnabled)
                           _OperatorActionButton(
                             buttonKey: const Key('admin_operator_edit_button'),
-                            label: 'Account profile',
+                            label: 'Edit',
                             icon: Icons.badge_outlined,
                             tooltip: 'Edit account profile',
                             onPressed: () => onEditOperator(bundle),
@@ -886,10 +894,10 @@ class _OperatorDetail extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+                  spacing: 22,
+                  runSpacing: 8,
                   children: [
                     _OperatorSummaryTile(
                       label: 'Email',
@@ -955,18 +963,12 @@ class _OperatorSummaryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = Container(
-      width: 220,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundDeep.withValues(alpha: 0.48),
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
+    final content = ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 150, maxWidth: 220),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 9),
+          Icon(icon, size: 15, color: AppColors.textMuted),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -974,9 +976,9 @@ class _OperatorSummaryTile extends StatelessWidget {
                 Text(
                   label,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   value,
                   overflow: TextOverflow.ellipsis,
@@ -1634,82 +1636,80 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 250),
-      child: AdminCard(
-        key: const Key('admin_business_hierarchy_panel'),
-        padding: const EdgeInsets.all(24),
-        child: FutureBuilder<_HierarchyPanelData>(
-          future: _future,
-          builder: (context, snapshot) {
-            final data = snapshot.data ?? _HierarchyPanelData.empty();
-            final loading =
-                snapshot.connectionState == ConnectionState.waiting &&
-                !snapshot.hasData;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                OperatorWebSectionHeading(
-                  title: 'Location hierarchy',
-                  trailing: widget.editingEnabled
-                      ? Tooltip(
-                          message: widget.addLocationEnabled
-                              ? 'Add location'
-                              : 'Select an org unit before adding a location',
-                          child: OutlinedButton.icon(
-                            key: const Key(
-                              'admin_operator_add_location_button',
+    return Container(
+      key: const Key('admin_business_hierarchy_panel'),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface.withValues(alpha: 0.72),
+      ),
+      child: FutureBuilder<_HierarchyPanelData>(
+        future: _future,
+        builder: (context, snapshot) {
+          final data = snapshot.data ?? _HierarchyPanelData.empty();
+          final loading =
+              snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              OperatorWebSectionHeading(
+                title: 'Location hierarchy',
+                trailing: widget.editingEnabled
+                    ? Tooltip(
+                        message: widget.addLocationEnabled
+                            ? 'Add location'
+                            : 'Select an org unit before adding a location',
+                        child: OutlinedButton.icon(
+                          key: const Key('admin_operator_add_location_button'),
+                          onPressed: widget.addLocationEnabled
+                              ? widget.onAddLocation
+                              : null,
+                          style: AdminButtonStyles.secondary(
+                            minWidth: 136,
+                            minHeight: 38,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 9,
                             ),
-                            onPressed: widget.addLocationEnabled
-                                ? widget.onAddLocation
-                                : null,
-                            style: AdminButtonStyles.secondary(
-                              minWidth: 136,
-                              minHeight: 38,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 9,
-                              ),
-                            ),
-                            icon: const Icon(Icons.add, size: 14),
-                            label: const Text('Add location'),
                           ),
-                        )
-                      : null,
+                          icon: const Icon(Icons.add, size: 14),
+                          label: const Text('Add location'),
+                        ),
+                      )
+                    : null,
+              ),
+              if (snapshot.hasError) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Hierarchy details are unavailable; showing known locations.',
+                  key: const Key('admin_business_hierarchy_load_error'),
+                  style: AppTextStyles.body13(color: AppColors.warning),
                 ),
-                if (snapshot.hasError) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    'Hierarchy details are unavailable; showing known locations.',
-                    key: const Key('admin_business_hierarchy_load_error'),
-                    style: AppTextStyles.body13(color: AppColors.warning),
-                  ),
-                ],
-                if (loading) ...[
-                  const SizedBox(height: 16),
-                  const LinearProgressIndicator(
-                    key: Key('admin_business_hierarchy_loading'),
-                    minHeight: 2,
-                    color: AppColors.sunsetDark,
-                  ),
-                ],
-                const SizedBox(height: 16),
-                _HierarchyScopeRow(
-                  key: const Key('admin_hierarchy_business_scope_row'),
-                  icon: scopeIcon(kind: ScopeEntityKind.business),
-                  label: widget.bundle.operator.businessName,
-                  subtitle: 'Business',
-                  selected:
-                      widget.selectedScope.scopeType ==
-                      AdminHierarchyScopeType.business,
-                  onTap: () => widget.onSelectScope(_businessScope()),
-                ),
-                const SizedBox(height: 8),
-                ..._buildTreeRows(data),
               ],
-            );
-          },
-        ),
+              if (loading) ...[
+                const SizedBox(height: 16),
+                const LinearProgressIndicator(
+                  key: Key('admin_business_hierarchy_loading'),
+                  minHeight: 2,
+                  color: AppColors.sunsetDark,
+                ),
+              ],
+              const SizedBox(height: 14),
+              _HierarchyScopeRow(
+                key: const Key('admin_hierarchy_business_scope_row'),
+                icon: scopeIcon(kind: ScopeEntityKind.business),
+                label: widget.bundle.operator.businessName,
+                subtitle: 'Business',
+                selected:
+                    widget.selectedScope.scopeType ==
+                    AdminHierarchyScopeType.business,
+                onTap: () => widget.onSelectScope(_businessScope()),
+              ),
+              const SizedBox(height: 6),
+              ..._buildTreeRows(data),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2557,144 +2557,139 @@ class _HierarchyScopeRow extends StatelessWidget {
     final depthIndent = depth * 20.0;
     final isNested = depth > 0;
     final radius = BorderRadius.circular(6);
+    final rowMaxWidth = trailing == null ? 860.0 : 1100.0;
     final fillColor = selected
         ? AppColors.sunset.withValues(alpha: 0.07)
         : Colors.transparent;
     const borderColor = Colors.transparent;
     return Padding(
       padding: EdgeInsets.only(left: depthIndent, top: 3, bottom: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          if (isNested) ...[
-            Container(
-              width: 1,
-              height: 40,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: AppColors.borderSubtle.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ],
-          Expanded(
-            child: Material(
-              color: fillColor,
-              borderRadius: radius,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: radius,
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: rowMaxWidth),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (isNested) ...[
+                Container(
+                  width: 1,
+                  height: 40,
+                  margin: const EdgeInsets.only(right: 10),
                   decoration: BoxDecoration(
-                    border: Border.all(color: borderColor, width: 1),
-                    borderRadius: radius,
+                    color: AppColors.borderSubtle.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final compactActions =
-                          trailing != null && constraints.maxWidth < 940;
-                      final showLeadingIcon = constraints.maxWidth >= 72;
-                      final showSelectedIcon =
-                          selected && constraints.maxWidth >= 96;
-                      final showAccent = constraints.maxWidth >= 104;
-                      final labelBlock = Row(
-                        children: [
-                          if (showAccent) ...[
-                            Container(
-                              width: 3,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? AppColors.sunsetDark
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                          ],
-                          if (showLeadingIcon) ...[
-                            Icon(
-                              icon,
-                              size: 17,
-                              color: selected
-                                  ? AppColors.sunsetDark
-                                  : AppColors.textSecondary,
-                            ),
-                            const SizedBox(width: 10),
-                          ],
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  label,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.body14(
-                                    color: selected
-                                        ? AppColors.textPrimary
-                                        : AppColors.textSecondary,
+                ),
+              ],
+              Expanded(
+                child: Material(
+                  color: fillColor,
+                  borderRadius: radius,
+                  child: InkWell(
+                    onTap: onTap,
+                    borderRadius: radius,
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: borderColor, width: 1),
+                        borderRadius: radius,
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final compactActions =
+                              trailing != null && constraints.maxWidth < 940;
+                          final showLeadingIcon = constraints.maxWidth >= 72;
+                          final showAccent =
+                              selected && constraints.maxWidth >= 104;
+                          final labelBlock = Row(
+                            children: [
+                              if (showAccent) ...[
+                                Container(
+                                  width: 3,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.sunsetDark,
+                                    borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  subtitle,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.mono11(
-                                    color: AppColors.textMuted,
-                                  ),
-                                ),
+                                const SizedBox(width: 10),
                               ],
-                            ),
-                          ),
-                          if (showSelectedIcon)
-                            const Padding(
-                              padding: EdgeInsets.only(left: 8),
-                              child: Icon(
-                                Icons.check_circle,
-                                size: 16,
-                                color: AppColors.sunsetDark,
-                              ),
-                            ),
-                        ],
-                      );
-                      if (trailing == null) return labelBlock;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (compactActions) ...[
-                            labelBlock,
-                            const SizedBox(height: 10),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: trailing!,
-                            ),
-                          ] else
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(child: labelBlock),
-                                const SizedBox(width: 18),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 760,
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: trailing!,
-                                  ),
+                              if (showLeadingIcon) ...[
+                                Icon(
+                                  icon,
+                                  size: 17,
+                                  color: selected
+                                      ? AppColors.sunsetDark
+                                      : AppColors.textSecondary,
                                 ),
+                                const SizedBox(width: 10),
                               ],
-                            ),
-                        ],
-                      );
-                    },
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      label,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.body14(
+                                        color: selected
+                                            ? AppColors.textPrimary
+                                            : AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      subtitle,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.mono11(
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                          if (trailing == null) return labelBlock;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (compactActions) ...[
+                                labelBlock,
+                                const SizedBox(height: 10),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: trailing!,
+                                ),
+                              ] else
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Expanded(child: labelBlock),
+                                    const SizedBox(width: 18),
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 760,
+                                      ),
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: trailing!,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
