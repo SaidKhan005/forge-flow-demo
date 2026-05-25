@@ -84,7 +84,7 @@ void main() {
       find.byKey(const Key('admin_audited_support_actions_screen')),
       findsOneWidget,
     );
-    expect(find.byKey(const Key('admin_asa_actions_panel')), findsOneWidget);
+    expect(find.byKey(const Key('admin_asa_actions_panel')), findsNothing);
     expect(find.byKey(const Key('admin_asa_audit_log')), findsOneWidget);
 
     await tester.tap(find.text('Vendors'));

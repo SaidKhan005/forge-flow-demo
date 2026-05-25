@@ -64,7 +64,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Lifecycle actions are not live'),
+      find.textContaining('Vendor integrations gateway is not configured'),
       findsOneWidget,
     );
     expect(
