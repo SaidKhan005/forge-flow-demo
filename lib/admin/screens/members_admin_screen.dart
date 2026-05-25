@@ -34,7 +34,6 @@ import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
-import '../../theme/scope_icons.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
@@ -921,12 +920,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               onShowConflict: _showEmailUsage,
               onChangeOperator: widget.onChangeOperator,
             ),
-          _PeopleAccessScopeCard(
-            pickedOperator: widget.pickedOperator,
-            initialScope: widget.initialScope,
-            accessScopes: _availableAccessScopes,
-          ),
-          const SizedBox(height: 12),
           _MembersFilterBar(
             statusFilter: _statusFilter,
             roleFilter: _roleFilter,
@@ -1063,97 +1056,12 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
             onEditSeeded: _onEditSeededRole,
             onCreateCustom: _onCreateCustomRole,
             onDeleteCustom: _onDeleteCustomRole,
+            showSummaryStrip: false,
+            showPermissionExplainer: false,
+            rolePreviewLimit: 3,
           ),
         ],
       ],
-    );
-  }
-}
-
-class _PeopleAccessScopeCard extends StatelessWidget {
-  const _PeopleAccessScopeCard({
-    required this.pickedOperator,
-    required this.accessScopes,
-    this.initialScope,
-  });
-
-  final OperatorPickerResult pickedOperator;
-  final List<MemberAccessScopeRef> accessScopes;
-  final AdminHierarchyScopeIntent? initialScope;
-
-  @override
-  Widget build(BuildContext context) {
-    final scope = initialScope;
-    final scopeLabel = _selectedScopeLabel(scope);
-    final scopeDisplay =
-        scope?.displayLabel ?? pickedOperator.operatorBusinessName;
-    return OperatorWebPanel(
-      key: const Key('admin_people_access_scope_card'),
-      title: 'People, access, and roles',
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: <Widget>[
-          _ScopePill(
-            icon: scopeIcon(kind: ScopeEntityKind.business),
-            label: pickedOperator.operatorBusinessName,
-          ),
-          _ScopePill(icon: Icons.tune_outlined, label: scopeLabel),
-          _ScopePill(icon: Icons.account_tree_outlined, label: scopeDisplay),
-          _ScopePill(
-            icon: Icons.lock_open_outlined,
-            label: '${accessScopes.length} grant scopes',
-          ),
-          // Operator-web parity declutter: the explanatory "Invites and role
-          // grants can target business, org-unit, or location scopes." helper
-          // line was removed (web has no equivalent; the scope pills above
-          // already show the live selected scope). The functional scope-state
-          // pills stay.
-        ],
-      ),
-    );
-  }
-}
-
-String _selectedScopeLabel(AdminHierarchyScopeIntent? scope) {
-  switch (scope?.scopeType ?? AdminHierarchyScopeType.business) {
-    case AdminHierarchyScopeType.business:
-      return 'Selected business scope';
-    case AdminHierarchyScopeType.orgUnit:
-      return 'Selected org unit scope';
-    case AdminHierarchyScopeType.location:
-      return 'Selected location scope';
-  }
-}
-
-class _ScopePill extends StatelessWidget {
-  const _ScopePill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, size: 13, color: AppColors.textMuted),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: AppTextStyles.mono11(color: AppColors.textSecondary),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1341,18 +1249,9 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                     border: OutlineInputBorder(),
                   ),
                   items: const <DropdownMenuItem<bool?>>[
-                    DropdownMenuItem<bool?>(
-                      value: null,
-                      child: Text('Any'),
-                    ),
-                    DropdownMenuItem<bool?>(
-                      value: true,
-                      child: Text('On'),
-                    ),
-                    DropdownMenuItem<bool?>(
-                      value: false,
-                      child: Text('Off'),
-                    ),
+                    DropdownMenuItem<bool?>(value: null, child: Text('Any')),
+                    DropdownMenuItem<bool?>(value: true, child: Text('On')),
+                    DropdownMenuItem<bool?>(value: false, child: Text('Off')),
                   ],
                   onChanged: widget.onMfaEnrolledChanged,
                 ),

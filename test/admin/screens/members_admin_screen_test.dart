@@ -1462,9 +1462,7 @@ void main() {
   });
 
   group('merged People/access/roles surface', () {
-    testWidgets('renders role policy and Permission Explainer on People', (
-      tester,
-    ) async {
+    testWidgets('renders compact role policy on People', (tester) async {
       wideViewport(tester);
       final gateway = InMemoryMembersAdminGateway(
         membersByOperator: kDemoMembersByOperator(),
@@ -1491,17 +1489,42 @@ void main() {
 
       expect(
         find.byKey(const Key('admin_people_access_scope_card')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('Selected business scope'), findsOneWidget);
+      expect(find.text('People, access, and roles'), findsNothing);
+      expect(find.text('Selected business scope'), findsNothing);
+      expect(find.text('Default roles'), findsNothing);
+      expect(find.text('Custom roles'), findsNothing);
+      expect(find.text('Human permissions'), findsNothing);
       expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
       expect(
         find.byKey(const Key('admin_rhs_permission_explainer')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_rhs_role_row_role-seed-operator-owner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_rhs_role_row_role-seed-supervisor')),
+        findsNothing,
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_rhs_roles_seeded_toggle')),
+      );
+      await pumpEventually(tester);
+      await tester.tap(find.byKey(const Key('admin_rhs_roles_seeded_toggle')));
+      await pumpEventually(tester);
+      expect(
+        find.byKey(const Key('admin_rhs_role_row_role-seed-supervisor')),
         findsOneWidget,
       );
     });
 
-    testWidgets('preserves selected hierarchy scope context', (tester) async {
+    testWidgets('hides selected hierarchy scope context banner', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = InMemoryMembersAdminGateway(
         membersByOperator: kDemoMembersByOperator(),
@@ -1525,8 +1548,8 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(find.text('Selected org unit scope'), findsOneWidget);
-      expect(find.text('Demo Diner Co. / East Region'), findsOneWidget);
+      expect(find.text('Selected org unit scope'), findsNothing);
+      expect(find.text('Demo Diner Co. / East Region'), findsNothing);
     });
   });
 

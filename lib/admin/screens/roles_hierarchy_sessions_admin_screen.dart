@@ -41,6 +41,7 @@ import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_role_warning_panel.dart';
+import '../widgets/admin_role_policy_section.dart';
 import 'operator_picker_screen.dart';
 
 class RolesHierarchySessionsAdminScreen extends StatefulWidget {
@@ -760,7 +761,7 @@ class _ScopeChip extends StatelessWidget {
 // Roles tab
 // ---------------------------------------------------------------------
 
-class RolePolicyAdminPanel extends StatelessWidget {
+class RolePolicyAdminPanel extends StatefulWidget {
   const RolePolicyAdminPanel({
     super.key,
     required this.roles,
@@ -769,6 +770,9 @@ class RolePolicyAdminPanel extends StatelessWidget {
     required this.onEditSeeded,
     required this.onCreateCustom,
     required this.onDeleteCustom,
+    this.showSummaryStrip = true,
+    this.showPermissionExplainer = true,
+    this.rolePreviewLimit,
   });
 
   final List<RoleAdminRow> roles;
@@ -777,100 +781,111 @@ class RolePolicyAdminPanel extends StatelessWidget {
   final ValueChanged<RoleAdminRow> onEditSeeded;
   final VoidCallback onCreateCustom;
   final ValueChanged<RoleAdminRow> onDeleteCustom;
+  final bool showSummaryStrip;
+  final bool showPermissionExplainer;
+  final int? rolePreviewLimit;
+
+  @override
+  State<RolePolicyAdminPanel> createState() => _RolePolicyAdminPanelState();
+}
+
+class _RolePolicyAdminPanelState extends State<RolePolicyAdminPanel> {
+  bool _showAllSeeded = false;
+  bool _showAllCustom = false;
 
   @override
   Widget build(BuildContext context) {
-    final seeded = roles.where((r) => r.isSeeded).toList(growable: false);
-    final custom = roles.where((r) => !r.isSeeded).toList(growable: false);
+    final seeded = widget.roles
+        .where((r) => r.isSeeded)
+        .toList(growable: false);
+    final custom = widget.roles
+        .where((r) => !r.isSeeded)
+        .toList(growable: false);
     return SingleChildScrollView(
       key: const Key('admin_rhs_roles_tab'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          AdminStatStrip(
-            items: <AdminStatItem>[
-              AdminStatItem(
-                label: 'Default roles',
-                value: seeded.length.toString(),
-                icon: Icons.verified_user_outlined,
-                tone: AppColors.peacock,
-              ),
-              AdminStatItem(
-                label: 'Custom roles',
-                value: custom.length.toString(),
-                icon: Icons.person_add_alt_outlined,
-                tone: AppColors.sunset,
-              ),
-              AdminStatItem(
-                label: 'Human permissions',
-                value: PermissionKeys.all.length.toString(),
-                icon: Icons.fact_check_outlined,
-                tone: AppColors.textMuted,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          OperatorWebPanel(
-            title: 'Default roles (${seeded.length})',
-            child: Column(
-              key: const Key('admin_rhs_roles_seeded'),
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                if (seeded.isEmpty)
-                  Text(
-                    'No seeded roles for this operator.',
-                    style: AppTextStyles.body13(color: AppColors.textMuted),
-                  )
-                else
-                  for (final role in seeded)
-                    _RoleRowTile(
-                      key: Key('admin_rhs_role_row_${role.roleId}'),
-                      row: role,
-                      editingEnabled:
-                          editingEnabled && canEditSeededRoles && role.isSeeded,
-                      isSeeded: true,
-                      onEdit: onEditSeeded,
-                      onDelete: onDeleteCustom,
-                    ),
+          if (widget.showSummaryStrip) ...<Widget>[
+            AdminStatStrip(
+              items: <AdminStatItem>[
+                AdminStatItem(
+                  label: 'Default roles',
+                  value: seeded.length.toString(),
+                  icon: Icons.verified_user_outlined,
+                  tone: AppColors.peacock,
+                ),
+                AdminStatItem(
+                  label: 'Custom roles',
+                  value: custom.length.toString(),
+                  icon: Icons.person_add_alt_outlined,
+                  tone: AppColors.sunset,
+                ),
+                AdminStatItem(
+                  label: 'Human permissions',
+                  value: PermissionKeys.all.length.toString(),
+                  icon: Icons.fact_check_outlined,
+                  tone: AppColors.textMuted,
+                ),
               ],
+            ),
+            const SizedBox(height: 16),
+          ],
+          AdminRolePolicySection(
+            title: 'Default roles',
+            roles: seeded,
+            sectionKey: const Key('admin_rhs_roles_seeded'),
+            emptyText: 'No seeded roles for this operator.',
+            showAll: _showAllSeeded,
+            rolePreviewLimit: widget.rolePreviewLimit,
+            toggleKey: const Key('admin_rhs_roles_seeded_toggle'),
+            onToggleExpanded: () {
+              setState(() => _showAllSeeded = !_showAllSeeded);
+            },
+            rowBuilder: (role) => _RoleRowTile(
+              key: Key('admin_rhs_role_row_${role.roleId}'),
+              row: role,
+              editingEnabled:
+                  widget.editingEnabled && widget.canEditSeededRoles,
+              isSeeded: true,
+              onEdit: widget.onEditSeeded,
+              onDelete: widget.onDeleteCustom,
             ),
           ),
           const SizedBox(height: 16),
-          OperatorWebPanel(
-            title: 'Custom roles (${custom.length})',
-            trailing: editingEnabled
+          AdminRolePolicySection(
+            title: 'Custom roles',
+            roles: custom,
+            sectionKey: const Key('admin_rhs_roles_custom'),
+            emptyText: 'This operator has no custom roles yet.',
+            showAll: _showAllCustom,
+            rolePreviewLimit: widget.rolePreviewLimit,
+            toggleKey: const Key('admin_rhs_roles_custom_toggle'),
+            onToggleExpanded: () {
+              setState(() => _showAllCustom = !_showAllCustom);
+            },
+            rowBuilder: (role) => _RoleRowTile(
+              key: Key('admin_rhs_role_row_${role.roleId}'),
+              row: role,
+              editingEnabled: widget.editingEnabled,
+              isSeeded: false,
+              onEdit: widget.onEditSeeded,
+              onDelete: widget.onDeleteCustom,
+            ),
+            trailing: widget.editingEnabled
                 ? FilledButton.icon(
                     key: const Key('admin_rhs_roles_create_custom'),
-                    onPressed: onCreateCustom,
+                    onPressed: widget.onCreateCustom,
                     style: AdminButtonStyles.primary,
                     icon: const Icon(Icons.add, size: 16),
                     label: const Text('New custom role'),
                   )
                 : null,
-            child: Column(
-              key: const Key('admin_rhs_roles_custom'),
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                if (custom.isEmpty)
-                  Text(
-                    'This operator has no custom roles yet.',
-                    style: AppTextStyles.body13(color: AppColors.textMuted),
-                  )
-                else
-                  for (final role in custom)
-                    _RoleRowTile(
-                      key: Key('admin_rhs_role_row_${role.roleId}'),
-                      row: role,
-                      editingEnabled: editingEnabled,
-                      isSeeded: false,
-                      onEdit: onEditSeeded,
-                      onDelete: onDeleteCustom,
-                    ),
-              ],
-            ),
           ),
-          const SizedBox(height: 16),
-          const _PermissionExplainerCard(),
+          if (widget.showPermissionExplainer) ...<Widget>[
+            const SizedBox(height: 16),
+            const _PermissionExplainerCard(),
+          ],
         ],
       ),
     );
