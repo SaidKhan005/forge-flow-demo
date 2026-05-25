@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
@@ -323,6 +324,50 @@ void main() {
         expect(barrio['to'], equals('inherit'));
       },
     );
+
+    test(
+      'editSeededRolePermissions protects Ecosystem admin recovery permissions',
+      () async {
+        final rolePermissionsRepository = _RecordingRolePermissionsRepository();
+        final gateway = _gatewayWithRepositories(
+          authInvitesRepository: _RecordingAuthInvitesRepository(<int>[]),
+          auditRepository: _RecordingAuthEventsAuditRepository(),
+          rolesRepository: _RecordingRolesRepository(
+            roleId: _roleId,
+            roleKey: PermissionKeys.roleSuperAdmin,
+            isSeeded: true,
+          ),
+          rolePermissionsRepository: rolePermissionsRepository,
+        );
+
+        await expectLater(
+          gateway.editSeededRolePermissions(
+            const TeamSeededRolePermissionsEditCommand(
+              actorUserId: _actorUserId,
+              operatorId: _operatorId,
+              locationId: _locationId,
+              roleId: _roleId,
+              permissionKeys: <String>[
+                PermissionKeys.adminRolesView,
+                PermissionKeys.teamRolesView,
+              ],
+              reason: 'defense-in-depth regression',
+            ),
+          ),
+          throwsA(
+            isA<AuthOperationRejected>()
+                .having(
+                  (e) => e.code,
+                  'code',
+                  equals('platform_role_locked_permission'),
+                )
+                .having((e) => e.statusCode, 'statusCode', equals(400)),
+          ),
+        );
+        expect(rolePermissionsRepository.upserts, isEmpty);
+        expect(rolePermissionsRepository.deletes, isEmpty);
+      },
+    );
   });
 }
 
@@ -357,10 +402,15 @@ RepositoryAuthOperationsGateway _gatewayWithRepositories({
 }
 
 class _RecordingRolesRepository extends RolesRepository {
-  _RecordingRolesRepository({required this.roleId})
-    : super(TenantTransactionWrapper(_UnexpectedPostgresPool()));
+  _RecordingRolesRepository({
+    required this.roleId,
+    this.roleKey = 'custom.line_lead',
+    this.isSeeded = false,
+  }) : super(TenantTransactionWrapper(_UnexpectedPostgresPool()));
 
   final String roleId;
+  final String roleKey;
+  final bool isSeeded;
 
   @override
   Future<String> insertOperatorRole({
@@ -384,11 +434,11 @@ class _RecordingRolesRepository extends RolesRepository {
   }) async {
     return RoleRecord(
       roleId: roleId,
-      operatorId: operatorId,
-      roleKey: 'custom.line_lead',
+      operatorId: isSeeded ? null : operatorId,
+      roleKey: roleKey,
       displayName: 'Line Lead',
       description: '',
-      isSeeded: false,
+      isSeeded: isSeeded,
       isEditable: true,
       createdAt: DateTime.utc(2026, 5, 12),
       updatedAt: DateTime.utc(2026, 5, 12),
