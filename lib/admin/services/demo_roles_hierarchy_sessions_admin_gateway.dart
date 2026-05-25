@@ -1020,6 +1020,62 @@ class InMemoryRolesHierarchySessionsAdminGateway
   void clearAuditEventsForTesting() {
     _auditLog.clear();
   }
+
+  /// Demo-only: register (or revive) a location leaf that was added
+  /// through the sibling [InMemoryOperatorLocationAdminGateway], so the
+  /// Hierarchy tree's Delete / Move / Suspend / Reactivate actions can
+  /// resolve a freshly-added location instead of returning 404
+  /// `unknown_location`. This is NOT part of the gateway interface and
+  /// has no live HTTP counterpart: the production hierarchy gateway
+  /// learns about new locations from the proxy, not from a UI sibling.
+  /// It deliberately skips the forge-admin / admin_reason gate because
+  /// the add was already authorized at the operator gateway, and writes
+  /// no audit row (the operator gateway owns the add_location audit).
+  void registerDemoLocation({
+    required String operatorId,
+    required String locationId,
+    required String name,
+    required String orgUnitId,
+  }) {
+    final locations = _locationsFor(operatorId);
+    final index = locations.indexWhere((l) => l.locationId == locationId);
+    final leaf = HierarchyLocationLeaf(
+      locationId: locationId,
+      name: name,
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+    );
+    if (index < 0) {
+      locations.add(leaf);
+    } else {
+      // Revive / refresh an existing leaf (e.g. re-add after delete) so
+      // its `deletedAt` clears and it reappears in the tree.
+      locations[index] = leaf;
+    }
+  }
+
+  /// Demo-only counterpart to [registerDemoLocation]: soft-deletes the
+  /// matching leaf so a location removed through the operator gateway
+  /// also disappears from the Hierarchy tree. No-op if the leaf is
+  /// unknown. Skips the gate / audit for the same reason as
+  /// [registerDemoLocation].
+  void removeDemoLocation({
+    required String operatorId,
+    required String locationId,
+  }) {
+    final locations = _locationsFor(operatorId);
+    final index = locations.indexWhere((l) => l.locationId == locationId);
+    if (index < 0 || locations[index].isDeleted) return;
+    final prev = locations[index];
+    locations[index] = HierarchyLocationLeaf(
+      locationId: prev.locationId,
+      name: prev.name,
+      operatorId: prev.operatorId,
+      orgUnitId: prev.orgUnitId,
+      suspendedAt: prev.suspendedAt,
+      deletedAt: _clock().toUtc(),
+    );
+  }
 }
 
 /// Locked validation copy for the Hierarchy tab, mirrored verbatim

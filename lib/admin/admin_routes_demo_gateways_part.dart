@@ -24,12 +24,55 @@ final AdminBusinessTimingResolutionGateway _defaultTimingResolutionDemoGateway =
 final AdminBusinessTimingProfilesGateway _defaultTimingProfilesDemoGateway =
     InMemoryAdminBusinessTimingProfilesGateway();
 
+/// Monotonic id minter for locations added through the demo operator
+/// gateway. Uses a `c`-prefixed hex tail so a minted id can never
+/// collide with a seeded operator id (`...001` / `...002`), a seeded
+/// location id (`...a1` / `...a2` / `...b1`), or the default
+/// [InMemoryOperatorLocationAdminGateway] counter (which starts at
+/// `...001` and so would otherwise reuse the Demo Diner operator id for
+/// the first added location). Origin: the 404 `unknown_location` on
+/// added-location actions (location id == operator id) in the demo
+/// Business accounts screen.
+int _demoAddedLocationCounter = 0;
+String _mintDemoAddedLocationId() {
+  _demoAddedLocationCounter += 1;
+  final hex = _demoAddedLocationCounter.toRadixString(16).padLeft(2, '0');
+  return '00000000-0000-4000-8000-0000000000c$hex';
+}
+
 /// Demo gateway shared by walkthrough + admin shell when no
 /// production scope is mounted. Seeded with two fixture operators
 /// so the click path has something to show on first paint without
 /// asking the F&F admin to manually run onboarding.
+///
+/// `idGenerator` + `onLocationAdded` / `onLocationRemoved` keep this
+/// operator store consistent with the sibling hierarchy demo store
+/// [_defaultRolesHierarchySessionsAdminDemoGateway]: an added location
+/// gets a unique id AND is registered as a tree leaf, so the Hierarchy
+/// tree's Delete / Move / Suspend / Reactivate actions resolve it
+/// instead of 404ing. The hooks reference the hierarchy gateway lazily
+/// (only at add/remove time), so the forward reference across these two
+/// lazily-initialized top-level finals is safe.
 final OperatorLocationAdminGateway _defaultDemoGateway =
     InMemoryOperatorLocationAdminGateway(
+      idGenerator: _mintDemoAddedLocationId,
+      onLocationAdded: (location) {
+        final orgUnitId = location.parentOrgUnitId;
+        if (orgUnitId == null || orgUnitId.trim().isEmpty) return;
+        (_defaultRolesHierarchySessionsAdminDemoGateway
+                as InMemoryRolesHierarchySessionsAdminGateway)
+            .registerDemoLocation(
+              operatorId: location.operatorId,
+              locationId: location.locationId,
+              name: location.name,
+              orgUnitId: orgUnitId.trim(),
+            );
+      },
+      onLocationRemoved: ({required operatorId, required locationId}) {
+        (_defaultRolesHierarchySessionsAdminDemoGateway
+                as InMemoryRolesHierarchySessionsAdminGateway)
+            .removeDemoLocation(operatorId: operatorId, locationId: locationId);
+      },
       seed: <OperatorAdminBundle>[
         OperatorAdminBundle(
           operator: OperatorAdminRecord(

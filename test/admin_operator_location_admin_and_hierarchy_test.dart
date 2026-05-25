@@ -1709,4 +1709,375 @@ void main() {
       );
     },
   );
+
+  // Regression — added locations are actionable in demo (operator +
+  // hierarchy stores stay in sync).
+  //
+  // BUG: the admin demo runs TWO in-memory stores — the operator gateway
+  // (where `addLocation` writes) and the hierarchy gateway (where the
+  // tree's Delete / Move / Suspend / Reactivate actions read). An added
+  // location was written ONLY to the operator store, so acting on it via
+  // the tree returned `RolesHierarchySessionsGatewayError(404/
+  // unknown_location)`. The first added location also reused the default
+  // operator-gateway id counter and so collided with the operator id.
+  //
+  // These tests wire the two in-memory gateways with the SAME
+  // `onLocationAdded` / `onLocationRemoved` sync that the kDemoMode
+  // defaults use (see `admin_routes_demo_gateways_part.dart`).
+  group('added-location demo store sync', () {
+    const operatorId = 'op-sync';
+    const rootOrgUnit = 'org-sync-root';
+    const eastOrgUnit = 'org-sync-east';
+    const westOrgUnit = 'org-sync-west';
+    const primaryLocationId = 'loc-sync-primary';
+
+    /// Builds the operator + hierarchy demo gateways wired together the
+    /// same way `_defaultDemoGateway` is in the demo route table: an
+    /// added location gets a unique `c`-prefixed id AND is registered as
+    /// a hierarchy leaf; a removed location is dropped from both stores.
+    ({
+      InMemoryOperatorLocationAdminGateway operator,
+      InMemoryRolesHierarchySessionsAdminGateway hierarchy,
+    })
+    buildWiredGateways() {
+      late final InMemoryRolesHierarchySessionsAdminGateway hierarchy;
+      var addedCounter = 0;
+      final operator = InMemoryOperatorLocationAdminGateway(
+        idGenerator: () {
+          addedCounter += 1;
+          final hex = addedCounter.toRadixString(16).padLeft(2, '0');
+          return '00000000-0000-4000-8000-0000000000c$hex';
+        },
+        onLocationAdded: (location) {
+          final orgUnitId = location.parentOrgUnitId;
+          if (orgUnitId == null || orgUnitId.trim().isEmpty) return;
+          hierarchy.registerDemoLocation(
+            operatorId: location.operatorId,
+            locationId: location.locationId,
+            name: location.name,
+            orgUnitId: orgUnitId.trim(),
+          );
+        },
+        onLocationRemoved: ({required operatorId, required locationId}) {
+          hierarchy.removeDemoLocation(
+            operatorId: operatorId,
+            locationId: locationId,
+          );
+        },
+        seed: <OperatorAdminBundle>[
+          OperatorAdminBundle(
+            operator: OperatorAdminRecord(
+              // Same shape as the demo Diner operator id so an added
+              // location that reused the default counter would collide
+              // with it.
+              operatorId: operatorId,
+              businessName: 'Sync Diner Co.',
+              ownerEmail: 'owner@sync-diner.test',
+              subscriptionTier: 'pro',
+              preferredCurrency: 'CAD',
+              primaryLocationId: primaryLocationId,
+              suspendedAt: null,
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+            locations: <LocationAdminRecord>[
+              LocationAdminRecord(
+                locationId: primaryLocationId,
+                operatorId: operatorId,
+                parentOrgUnitId: eastOrgUnit,
+                name: 'Toronto Yorkville',
+                address: '',
+                timezone: 'America/Toronto',
+                businessDayRolloverHour: 4,
+                createdAt: DateTime.utc(2026, 1, 1),
+                updatedAt: DateTime.utc(2026, 1, 1),
+              ),
+            ],
+          ),
+        ],
+      );
+      hierarchy = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          operatorId: const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: rootOrgUnit,
+              name: 'Sync Diner Co.',
+              operatorId: operatorId,
+              unitType: 'corp',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: eastOrgUnit,
+              name: 'East region',
+              operatorId: operatorId,
+              parentOrgUnitId: rootOrgUnit,
+              unitType: 'region',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: westOrgUnit,
+              name: 'West region',
+              operatorId: operatorId,
+              parentOrgUnitId: rootOrgUnit,
+              unitType: 'region',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          operatorId: const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: primaryLocationId,
+              name: 'Toronto Yorkville',
+              operatorId: operatorId,
+              orgUnitId: eastOrgUnit,
+            ),
+          ],
+        },
+      );
+      return (operator: operator, hierarchy: hierarchy);
+    }
+
+    Future<LocationAdminRecord> addLocation(
+      InMemoryOperatorLocationAdminGateway operator, {
+      required String name,
+      required String orgUnitId,
+      required String idempotencyKey,
+    }) {
+      return operator.addLocation(
+        LocationCreateCommand(
+          operatorId: operatorId,
+          parentOrgUnitId: orgUnitId,
+          name: name,
+          timezone: 'America/Toronto',
+          businessDayRolloverHour: 4,
+          idempotencyKey: idempotencyKey,
+        ),
+      );
+    }
+
+    test('an added location gets a unique id and is hierarchy-known', () async {
+      final gw = buildWiredGateways();
+      final added = await addLocation(
+        gw.operator,
+        name: 'East Annex',
+        orgUnitId: eastOrgUnit,
+        idempotencyKey: 'k-add-1',
+      );
+
+      // Unique id: never the operator id, never a seeded location id.
+      expect(added.locationId, isNot(equals(operatorId)));
+      expect(added.locationId, isNot(equals(primaryLocationId)));
+
+      // Registered in the hierarchy store under the chosen org unit.
+      final leaves = await gw.hierarchy.listHierarchyLocations(
+        operatorId: operatorId,
+      );
+      final leaf = leaves.firstWhere((l) => l.locationId == added.locationId);
+      expect(leaf.name, equals('East Annex'));
+      expect(leaf.orgUnitId, equals(eastOrgUnit));
+    });
+
+    test('add then delete the location via the hierarchy gateway: no 404',
+        () async {
+      final gw = buildWiredGateways();
+      final added = await addLocation(
+        gw.operator,
+        name: 'East Annex',
+        orgUnitId: eastOrgUnit,
+        idempotencyKey: 'k-add-1',
+      );
+
+      // The exact action that used to throw 404 unknown_location.
+      await gw.hierarchy.deleteLocation(
+        operatorId: operatorId,
+        locationId: added.locationId,
+        idempotencyKey: 'k-del-1',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'closed location',
+      );
+
+      final leaves = await gw.hierarchy.listHierarchyLocations(
+        operatorId: operatorId,
+      );
+      expect(
+        leaves.any((l) => l.locationId == added.locationId),
+        isFalse,
+        reason: 'the deleted leaf must drop out of the hierarchy read',
+      );
+    });
+
+    test('add then move the location via the hierarchy gateway: no 404',
+        () async {
+      final gw = buildWiredGateways();
+      final added = await addLocation(
+        gw.operator,
+        name: 'East Annex',
+        orgUnitId: eastOrgUnit,
+        idempotencyKey: 'k-add-1',
+      );
+
+      final moved = await gw.hierarchy.moveLocation(
+        operatorId: operatorId,
+        locationId: added.locationId,
+        newOrgUnitId: westOrgUnit,
+        idempotencyKey: 'k-move-1',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'reorg',
+      );
+      expect(moved.orgUnitId, equals(westOrgUnit));
+
+      final leaves = await gw.hierarchy.listHierarchyLocations(
+        operatorId: operatorId,
+      );
+      final leaf = leaves.firstWhere((l) => l.locationId == added.locationId);
+      expect(leaf.orgUnitId, equals(westOrgUnit));
+    });
+
+    test('add then suspend the location via the hierarchy gateway: no 404',
+        () async {
+      final gw = buildWiredGateways();
+      final added = await addLocation(
+        gw.operator,
+        name: 'East Annex',
+        orgUnitId: eastOrgUnit,
+        idempotencyKey: 'k-add-1',
+      );
+
+      final suspended = await gw.hierarchy.suspendLocation(
+        operatorId: operatorId,
+        locationId: added.locationId,
+        idempotencyKey: 'k-suspend-1',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'temporary closure',
+      );
+      expect(suspended.isSuspended, isTrue);
+
+      final reactivated = await gw.hierarchy.reactivateLocation(
+        operatorId: operatorId,
+        locationId: added.locationId,
+        idempotencyKey: 'k-reactivate-1',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'reopened',
+      );
+      expect(reactivated.isSuspended, isFalse);
+    });
+
+    test('removing a location via the operator gateway drops the leaf too',
+        () async {
+      final gw = buildWiredGateways();
+      final added = await addLocation(
+        gw.operator,
+        name: 'East Annex',
+        orgUnitId: eastOrgUnit,
+        idempotencyKey: 'k-add-1',
+      );
+
+      await gw.operator.removeLocation(
+        operatorId: operatorId,
+        locationId: added.locationId,
+        idempotencyKey: 'k-op-remove-1',
+      );
+
+      final leaves = await gw.hierarchy.listHierarchyLocations(
+        operatorId: operatorId,
+      );
+      expect(
+        leaves.any((l) => l.locationId == added.locationId),
+        isFalse,
+        reason:
+            'an operator-gateway removal must also drop the hierarchy leaf',
+      );
+    });
+
+    testWidgets(
+      'add a location in the tree then delete it: no 404 snackbar, row gone',
+      (tester) async {
+        useWideSurface(tester);
+        final gw = buildWiredGateways();
+        var idempotency = 0;
+        await tester.pumpWidget(
+          wrap(
+            OperatorLocationAdminScreen(
+              gateway: gw.operator,
+              hierarchyGateway: gw.hierarchy,
+              actorUserId: 'demo-super-admin',
+              idempotencyKeyFactory: () => 'idem-sync-${idempotency++}',
+            ),
+          ),
+        );
+        await pumpEventually(tester);
+        await selectBusinessScope(tester, operatorId);
+
+        // Pick the East region org unit so Add location is enabled.
+        final orgUnitRow = find.byKey(
+          Key('admin_setup_scope_org_unit_$eastOrgUnit'),
+        );
+        await tester.ensureVisible(orgUnitRow);
+        await pumpEventually(tester);
+        await tester.tap(orgUnitRow);
+        await pumpEventually(tester);
+
+        await tester.tap(
+          find.byKey(const Key('admin_operator_add_location_button')),
+        );
+        await pumpEventually(tester);
+        await tester.enterText(
+          find.byKey(const Key('admin_location_name_field')),
+          'East Annex',
+        );
+        await chooseTimezone(
+          tester,
+          const Key('admin_location_timezone_field'),
+          'America/Toronto',
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_location_submit_button')),
+        );
+        await pumpEventually(tester);
+
+        // The added location is in BOTH stores now.
+        final operators = await gw.operator.listOperators();
+        final added = operators.single.locations.firstWhere(
+          (l) => l.name == 'East Annex',
+        );
+        // The bug's tell-tale: id must not collide with the operator id.
+        expect(added.locationId, isNot(equals(operatorId)));
+        final rowKey = Key('admin_hierarchy_location_${added.locationId}');
+        expect(find.byKey(rowKey), findsOneWidget);
+
+        // Delete it from the tree. Before the fix this raised
+        // "Could not delete location: ...404/unknown_location...".
+        await tester.tap(
+          find.byKey(Key('admin_location_remove_${added.locationId}')),
+        );
+        await pumpEventually(tester);
+        await tester.enterText(
+          find.byKey(const Key('admin_hierarchy_location_delete_reason')),
+          'closed location',
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_hierarchy_location_delete_submit')),
+        );
+        await pumpEventually(tester);
+
+        // No 404 error snackbar + the row reloads away together prove the
+        // delete succeeded: a 404 would show the error AND skip the reload
+        // (the catch branch does not call `_load()`), so the row would
+        // linger. (The transient success snackbar auto-dismisses, so it is
+        // not asserted here — same pattern as the #1290 add-location test.)
+        expect(
+          find.textContaining('Could not delete location'),
+          findsNothing,
+          reason: 'deleting an added location must not 404',
+        );
+        expect(
+          find.byKey(rowKey),
+          findsNothing,
+          reason: 'the deleted location row must disappear from the tree',
+        );
+      },
+    );
+  });
 }

@@ -32,6 +32,21 @@ import 'admin_http_timeout.dart';
 /// tests pin a synthetic value.
 typedef AdminBearerTokenProvider = Future<String> Function();
 
+/// Demo-only hook fired by [InMemoryOperatorLocationAdminGateway] after
+/// it adds a location, so a sibling demo store (the in-memory hierarchy
+/// gateway) can register the same location as a tree leaf. Null in the
+/// LIVE path and in every default in-memory construction, so the
+/// behaviour is byte-identical unless a caller opts in. See
+/// `admin_routes_demo_gateways_part.dart` for the demo wiring that keeps
+/// the operator and hierarchy demo stores consistent.
+typedef DemoLocationAddedHook = void Function(LocationAdminRecord location);
+
+/// Demo-only hook fired by [InMemoryOperatorLocationAdminGateway] after
+/// it removes a location, so the sibling demo hierarchy store can drop
+/// the matching tree leaf. Null by default (see [DemoLocationAddedHook]).
+typedef DemoLocationRemovedHook =
+    void Function({required String operatorId, required String locationId});
+
 void _validateParentOrgUnitId(String? value) {
   if (value == null || value.trim().isEmpty) {
     throw const OperatorLocationAdminGatewayError(
@@ -320,8 +335,12 @@ class InMemoryOperatorLocationAdminGateway
     Iterable<OperatorAdminBundle> seed = const <OperatorAdminBundle>[],
     DateTime Function()? now,
     String Function()? idGenerator,
+    DemoLocationAddedHook? onLocationAdded,
+    DemoLocationRemovedHook? onLocationRemoved,
   }) : _now = now ?? DateTime.now,
        _idGenerator = idGenerator ?? _randomId,
+       _onLocationAdded = onLocationAdded,
+       _onLocationRemoved = onLocationRemoved,
        _bundles = <String, _MutableBundle>{
          for (final bundle in seed)
            bundle.operator.operatorId: _MutableBundle.from(bundle),
@@ -329,6 +348,15 @@ class InMemoryOperatorLocationAdminGateway
 
   final DateTime Function() _now;
   final String Function() _idGenerator;
+
+  /// Demo-only sync hooks. Both null in the LIVE path and in every
+  /// default in-memory construction (so existing tests are byte-
+  /// identical). The kDemoMode wiring sets them so an added/removed
+  /// location stays consistent with the sibling hierarchy demo store
+  /// (otherwise the tree's Delete/Move/Suspend 404 on added locations).
+  final DemoLocationAddedHook? _onLocationAdded;
+  final DemoLocationRemovedHook? _onLocationRemoved;
+
   final Map<String, _MutableBundle> _bundles;
 
   /// Per-key cache so a retried mutation on the in-memory gateway
@@ -408,22 +436,7 @@ class InMemoryOperatorLocationAdminGateway
     if (command.preferredCurrency != null) {
       _validateCurrency(command.preferredCurrency!);
     }
-    final updated = OperatorAdminRecord(
-      operatorId: bundle.operator.operatorId,
-      businessName:
-          command.businessName?.trim() ?? bundle.operator.businessName,
-      ownerEmail: command.ownerEmail?.trim() ?? bundle.operator.ownerEmail,
-      subscriptionTier:
-          command.subscriptionTier ?? bundle.operator.subscriptionTier,
-      preferredCurrency:
-          command.preferredCurrency?.toUpperCase() ??
-          bundle.operator.preferredCurrency,
-      primaryLocationId:
-          command.primaryLocationId ?? bundle.operator.primaryLocationId,
-      suspendedAt: bundle.operator.suspendedAt,
-      createdAt: bundle.operator.createdAt,
-      updatedAt: _now().toUtc(),
-    );
+    final updated = _mergeOperatorPatch(bundle.operator, command);
     if (updated.primaryLocationId != null &&
         bundle.locations.every(
           (l) => l.locationId != updated.primaryLocationId,
@@ -437,6 +450,30 @@ class InMemoryOperatorLocationAdminGateway
     bundle.operator = updated;
     _idempotentResults[command.idempotencyKey] = updated;
     return updated;
+  }
+
+  /// Field-by-field merge of an [OperatorPatchCommand] over the existing
+  /// operator record (null command fields fall back to the current
+  /// value). Extracted from [patchOperator] so each stays within the
+  /// per-function cyclomatic bar.
+  OperatorAdminRecord _mergeOperatorPatch(
+    OperatorAdminRecord existing,
+    OperatorPatchCommand command,
+  ) {
+    return OperatorAdminRecord(
+      operatorId: existing.operatorId,
+      businessName: command.businessName?.trim() ?? existing.businessName,
+      ownerEmail: command.ownerEmail?.trim() ?? existing.ownerEmail,
+      subscriptionTier: command.subscriptionTier ?? existing.subscriptionTier,
+      preferredCurrency:
+          command.preferredCurrency?.toUpperCase() ??
+          existing.preferredCurrency,
+      primaryLocationId:
+          command.primaryLocationId ?? existing.primaryLocationId,
+      suspendedAt: existing.suspendedAt,
+      createdAt: existing.createdAt,
+      updatedAt: _now().toUtc(),
+    );
   }
 
   @override
@@ -499,6 +536,10 @@ class InMemoryOperatorLocationAdminGateway
     );
     bundle.locations.add(location);
     _idempotentResults[command.idempotencyKey] = location;
+    // Demo-only: keep the sibling hierarchy demo store in sync so the
+    // tree's Delete / Move / Suspend / Reactivate actions resolve this
+    // freshly-added location instead of 404ing on `unknown_location`.
+    _onLocationAdded?.call(location);
     return location;
   }
 
@@ -563,6 +604,9 @@ class InMemoryOperatorLocationAdminGateway
     // Sentinel value - `removeLocation` returns void so any non-null
     // marker suffices for the cache hit branch above.
     _idempotentResults[idempotencyKey] = const Object();
+    // Demo-only: mirror the removal into the sibling hierarchy demo
+    // store so a deleted location also disappears from the tree.
+    _onLocationRemoved?.call(operatorId: operatorId, locationId: locationId);
   }
 
   _MutableBundle _bundleOrThrow(String operatorId) {
