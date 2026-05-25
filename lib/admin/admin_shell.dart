@@ -807,7 +807,7 @@ class _AdminSideNav extends StatelessWidget {
               route: route,
               selected: false,
               enabled: false,
-              onTap: goToBusinessAccounts,
+              onTap: () => onSelect(route.id),
             ),
         ],
       ),
