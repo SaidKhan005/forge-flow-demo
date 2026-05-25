@@ -64,6 +64,15 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postg
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_connection_list_repository.dart';
+// Advisor Knowledge Activation — Slice A4.6 operational read tools.
+// These three repository imports back the `advisor_operational_tools_part.dart`
+// tool handlers (get_active_targets / get_week_plan / get_shift_variance).
+// INERT: nothing in the monolith's `routeRequest` references them yet — the
+// A4.2 answer route wires them in. shift_records_read_repository.dart is new
+// in this slice (the Phase 8 writer had no read companion).
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/shift_records_read_repository.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
@@ -417,6 +426,14 @@ part 'health_registry_part.dart';
 // import above. NO route, NO routeRequest dispatch, NO bootstrap wiring
 // (all A4.2). No `kAdvisorProxyMaxLines` raise.
 part 'advisor_agentic_answer_part.dart';
+
+// Advisor Knowledge Activation — Slice A4.6: operational read tools
+// (get_active_targets / get_week_plan / get_shift_variance). All tool
+// definitions + handlers + the OperatorContext-bound factory live in
+// this sibling part file. INERT: NO route, NO routeRequest dispatch, NO
+// bootstrap wiring (all A4.2). The monolith gains only this declaration
+// + the three repository imports above. No `kAdvisorProxyMaxLines` raise.
+part 'advisor_operational_tools_part.dart';
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
