@@ -340,11 +340,6 @@ void main() {
       screenKey: Key('admin_corpus_screen'),
     ),
     (
-      routeId: kAdminHealthRouteId,
-      title: 'System health',
-      screenKey: Key('admin_health_screen'),
-    ),
-    (
       routeId: kAdminObservabilityRouteId,
       title: 'AI Metrics',
       screenKey: Key('admin_observability_screen'),
@@ -441,6 +436,39 @@ void main() {
       findsNothing,
     );
     expect(find.byKey(const Key('admin_integrations_screen')), findsOneWidget);
+  });
+
+  testWidgets('System health opens without the hierarchy workspace', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: superAdmin,
+          authSource: source,
+          initialRouteId: kAdminHealthRouteId,
+        ),
+      ),
+    );
+    await pumpEventually(tester);
+
+    expect(
+      find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('admin_health_screen')), findsOneWidget);
+    expect(find.byKey(const Key('admin_health_title')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('11A.5 promotes the debug route from placeholder to live', (

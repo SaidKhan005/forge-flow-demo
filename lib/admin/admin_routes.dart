@@ -1103,19 +1103,7 @@ Widget _buildHealth(BuildContext context) {
   // gateway is the only injection point; there is no editingEnabled
   // flag because the surface has no mutate affordances.
   final gateway = AdminConsoleServicesScope.healthGatewayOf(context);
-  return _buildScopedAdminWorkspace(
-    context: context,
-    routeId: kAdminHealthRouteId,
-    functionTitle: 'System health',
-    description:
-        'Run health checks for Advisor data, app services, and ecosystem dependencies in the selected scope.',
-    functionBuilder: (context, selectedScope, selection) => HealthAdminScreen(
-      key: ValueKey<String>('health-${selectedScope.cacheKey}'),
-      gateway: gateway,
-      hierarchyScope: selectedScope,
-      scopeLocationIds: selection.locationIds,
-    ),
-  );
+  return HealthAdminScreen(gateway: gateway);
 }
 
 Widget _buildObservability(BuildContext context) {
