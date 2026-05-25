@@ -285,6 +285,9 @@ class ProxyProductionBindings {
     // Slice A2b — optional (when null, /v1/advisor/retrieve returns 503).
     this.corpusRetrievalService,
     this.corpusQueryEmbeddingGateway,
+    // Slice A3 — optional (when null, the text-query path returns the A2b
+    // vector-only order with no rerank).
+    this.corpusRerankGateway,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -732,6 +735,19 @@ class ProxyProductionBindings {
   /// to [routeRequest] alongside this gateway so main.dart controls
   /// the key lifetime.
   final AdvisorQueryEmbeddingGateway? corpusQueryEmbeddingGateway;
+
+  /// Server-side Voyage rerank gateway (Slice A3). Reorders a candidate
+  /// pool of corpus chunks against the query text via the Voyage
+  /// `/v1/rerank` API (`rerank-2.5`). Optional: when null the text-query
+  /// path of [advisorRetrievePath] returns the A2b vector-only order with
+  /// no rerank.
+  ///
+  /// HP #7: like the embedding key, the Voyage rerank API key is resolved
+  /// from [ProxyConfig] at bootstrap time and is NEVER stored in this
+  /// field — it is passed to [routeRequest] alongside this gateway so
+  /// main.dart controls the key lifetime. (Both gateways share the one
+  /// VOYAGE_API_KEY secret.)
+  final AdvisorRerankGateway? corpusRerankGateway;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -1849,6 +1865,11 @@ ProxyProductionBindings buildProxyProductionBindings(
       repository: PostgresCorpusRetrievalRepository(tenantWrapper),
     ),
     corpusQueryEmbeddingGateway: VoyageHttpQueryEmbeddingGateway(),
+    // Slice A3 — production Voyage rerank gateway. Like the embedding
+    // gateway, the key is NOT stored here; main.dart resolves
+    // VOYAGE_API_KEY from config and passes it to routeRequest alongside
+    // this gateway (HP #7: key lifetime bounded to a single call stack).
+    corpusRerankGateway: VoyageHttpRerankGateway(),
   );
 }
 
