@@ -1312,7 +1312,7 @@ Widget _buildDataAccuracy(BuildContext context) {
         initialScope: operatorScope,
         initialHierarchyScope: selectedScope,
         scopeLocationIds: selection.locationIds,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
         showPageHeader: false,
         showScopeControls: false,
       );
@@ -1332,7 +1332,7 @@ Widget _buildDataAccuracy(BuildContext context) {
           initialScope: operatorScope,
           initialHierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
-          onBackToBusinessAccounts: onBackToBusinessAccounts,
+          onBackToBusinessAccounts: null,
           showPageHeader: false,
           showScopeControls: false,
         );
@@ -1457,7 +1457,7 @@ Widget _buildVendorIntegrations(BuildContext context) {
         gateway: gateway,
         canMutate: canMutate,
         embedded: true,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
       );
     }
 
@@ -1529,7 +1529,7 @@ Widget _buildTimingSetup(BuildContext context) {
         // gateway driving the editor's create / patch on Save.
         timingProfilesGateway:
             AdminConsoleServicesScope.timingProfilesGatewayOf(context),
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
       );
     }
 
@@ -1652,7 +1652,7 @@ Widget _buildMembers(BuildContext context) {
         canEditSeededRoles: canEditSeededRoles,
         initialScope: selectedScope,
         onOpenAccess: openAccess,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
       );
     }
 
@@ -1892,7 +1892,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         editingEnabled: canEdit,
         canEditSeededRoles: canEditSeededRoles,
         initialScope: selectedScope,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
       );
     }
 
@@ -2233,7 +2233,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
             hierarchyScope: selectedScope,
             auditScopeRootNode: scopeSnapshot.data,
             onCsvReady: downloadOperatorWebCsv,
-            onBackToBusinessAccounts: onBackToBusinessAccounts,
+            onBackToBusinessAccounts: null,
           );
         },
       );

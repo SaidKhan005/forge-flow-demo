@@ -44,6 +44,7 @@ import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart'
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
+import 'package:forge_and_flow/admin/widgets/admin_business_accounts_back_button.dart';
 import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
 
 import '../_test_helpers/widget_pump_helpers.dart';
@@ -239,14 +240,18 @@ void main() {
       // Side nav: Business accounts is pinned at the very top, above the
       // per-business cluster.
       final pinnedTop = tester
-          .getTopLeft(find.byKey(const Key('admin_nav_business_accounts_pinned')))
+          .getTopLeft(
+            find.byKey(const Key('admin_nav_business_accounts_pinned')),
+          )
           .dy;
       expect(
         pinnedTop,
         lessThan(
           tester
               .getTopLeft(
-                find.byKey(const Key('admin_nav_per_business_cluster_inactive')),
+                find.byKey(
+                  const Key('admin_nav_per_business_cluster_inactive'),
+                ),
               )
               .dy,
         ),
@@ -313,10 +318,7 @@ void main() {
       // STEP 2: Picking the business activates the cluster AND loads the
       // detail.
       // ---------------------------------------------------------------
-      await tapKey(
-        tester,
-        Key('admin_setup_scope_business_$dinerOperatorId'),
-      );
+      await tapKey(tester, Key('admin_setup_scope_business_$dinerOperatorId'));
 
       // Sidebar cluster is now ACTIVE: headed by the business name, the
       // "Pick a business first" hint is gone.
@@ -399,10 +401,7 @@ void main() {
       // the detail hierarchy first, then add through the same dialog the
       // screen uses.
       // ---------------------------------------------------------------
-      await tapKey(
-        tester,
-        Key('admin_hierarchy_org_unit_$dinerOrgUnitEast'),
-      );
+      await tapKey(tester, Key('admin_hierarchy_org_unit_$dinerOrgUnitEast'));
 
       // With an org unit selected the add-location button is enabled.
       final addButton = tester.widget<OutlinedButton>(
@@ -415,7 +414,10 @@ void main() {
       );
 
       await tapKey(tester, const Key('admin_operator_add_location_button'));
-      expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_location_add_dialog')),
+        findsOneWidget,
+      );
 
       await tester.enterText(
         find.byKey(const Key('admin_location_name_field')),
@@ -476,10 +478,7 @@ void main() {
         find.byKey(const Key('admin_hierarchy_location_delete_reason')),
         'added in error during walkthrough',
       );
-      await tapKey(
-        tester,
-        const Key('admin_hierarchy_location_delete_submit'),
-      );
+      await tapKey(tester, const Key('admin_hierarchy_location_delete_submit'));
 
       // No 404 / failure snackbar (the #1313 symptom was an error snack).
       expect(
@@ -512,6 +511,13 @@ void main() {
               'cluster item ${destination.routeId} must open a rendered '
               'screen (anchor ${destination.anchorKey})',
         );
+        expect(
+          find.byKey(kAdminBusinessAccountsBackButtonKey),
+          findsNothing,
+          reason:
+              'per-business tab ${destination.routeId} must not show the '
+              'top Business accounts back button',
+        );
         // The cluster stays active (the scope is still chosen) so the
         // journey can keep hopping between per-business screens.
         expect(
@@ -531,36 +537,27 @@ void main() {
   // (before any business is picked) must not silently open the screen; it
   // routes the operator to Business accounts to choose a business first.
   // Guards the "deliberate scope choice" model the cluster depends on.
-  testWidgets(
-    'before a business is picked, an inactive cluster row routes to '
-    'Business accounts instead of opening the screen',
-    (tester) async {
-      await pumpAdminConsole(tester);
+  testWidgets('before a business is picked, an inactive cluster row routes to '
+      'Business accounts instead of opening the screen', (tester) async {
+    await pumpAdminConsole(tester);
 
-      // Start somewhere other than Business accounts so the redirect is
-      // observable (the operators surface appears).
-      await tapKey(tester, const Key('admin_nav_item_health'));
-      expect(find.byKey(const Key('admin_health_screen')), findsOneWidget);
+    // Start somewhere other than Business accounts so the redirect is
+    // observable (the operators surface appears).
+    await tapKey(tester, const Key('admin_nav_item_health'));
+    expect(find.byKey(const Key('admin_health_screen')), findsOneWidget);
 
-      // Tapping an inactive per-business row opens a "pick a business
-      // first" dialog, NOT the destination screen.
-      await tapKey(
-        tester,
-        Key('admin_nav_cluster_item_$kAdminMembersRouteId'),
-      );
-      expect(find.byKey(const Key('admin_members_screen')), findsNothing);
-      expect(
-        find.byKey(const Key('admin_pick_business_first_dialog')),
-        findsOneWidget,
-      );
+    // Tapping an inactive per-business row opens a "pick a business
+    // first" dialog, NOT the destination screen.
+    await tapKey(tester, Key('admin_nav_cluster_item_$kAdminMembersRouteId'));
+    expect(find.byKey(const Key('admin_members_screen')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_pick_business_first_dialog')),
+      findsOneWidget,
+    );
 
-      // Its link routes to Business accounts.
-      await tapKey(
-        tester,
-        const Key('admin_pick_business_first_dialog_link'),
-      );
-      expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    // Its link routes to Business accounts.
+    await tapKey(tester, const Key('admin_pick_business_first_dialog_link'));
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
