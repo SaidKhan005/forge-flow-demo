@@ -553,47 +553,64 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       ),
     );
     if (result == null) return;
-    final emailChanged =
-        result.email != null &&
-        result.email!.trim().toLowerCase() != row.email.toLowerCase();
-    final displayNameChanged =
-        result.displayName.trim() != row.displayName.trim();
-    final roleChanged = result.roleKey != row.roleKey;
-    final scopeChanged = _scopeChanged(row, result.scope);
-    if (!emailChanged && !displayNameChanged && !roleChanged && !scopeChanged) {
-      return;
-    }
+    final delta = _editDelta(row, result);
+    if (!delta.hasChanges) return;
     await _runUserAction(row, () async {
-      if (emailChanged || displayNameChanged) {
-        await widget.gateway.updateMember(
-          operatorId: widget.pickedOperator.operatorId,
-          userId: row.userId,
-          idempotencyKey: _nextIdempotencyKey('member-edit'),
-          actorUserId: widget.actorUserId,
-          actorIsForgeAdmin: widget.editingEnabled,
-          adminReason: result.adminReason,
-          patch: MemberProfilePatch(
-            email: emailChanged ? result.email : null,
-            displayName: displayNameChanged ? result.displayName : null,
-          ),
-        );
-      }
-      if (roleChanged || scopeChanged) {
-        await widget.gateway.overrideRoleGrant(
-          operatorId: widget.pickedOperator.operatorId,
-          userId: row.userId,
-          roleId: result.roleId,
-          roleKey: result.roleKey,
-          idempotencyKey: _nextIdempotencyKey('member-override-role'),
-          actorUserId: widget.actorUserId,
-          actorIsForgeAdmin: widget.editingEnabled,
-          adminReason: result.adminReason,
-          scopeType: result.scope.scopeType,
-          primaryLocationId: result.scope.locationId,
-          orgUnitId: result.scope.orgUnitId,
-        );
-      }
+      if (delta.profileChanged) await _updateMemberProfile(row, result, delta);
+      if (delta.grantChanged) await _updateMemberGrant(row, result);
     }, successHint: 'Updated ${row.email}.');
+  }
+
+  _MemberEditDelta _editDelta(
+    MemberAdminRow row,
+    _DisplayNameEditResult result,
+  ) {
+    return _MemberEditDelta(
+      emailChanged:
+          result.email != null &&
+          result.email!.trim().toLowerCase() != row.email.toLowerCase(),
+      displayNameChanged: result.displayName.trim() != row.displayName.trim(),
+      roleChanged: result.roleKey != row.roleKey,
+      scopeChanged: _scopeChanged(row, result.scope),
+    );
+  }
+
+  Future<void> _updateMemberProfile(
+    MemberAdminRow row,
+    _DisplayNameEditResult result,
+    _MemberEditDelta delta,
+  ) {
+    return widget.gateway.updateMember(
+      operatorId: widget.pickedOperator.operatorId,
+      userId: row.userId,
+      idempotencyKey: _nextIdempotencyKey('member-edit'),
+      actorUserId: widget.actorUserId,
+      actorIsForgeAdmin: widget.editingEnabled,
+      adminReason: result.adminReason,
+      patch: MemberProfilePatch(
+        email: delta.emailChanged ? result.email : null,
+        displayName: delta.displayNameChanged ? result.displayName : null,
+      ),
+    );
+  }
+
+  Future<void> _updateMemberGrant(
+    MemberAdminRow row,
+    _DisplayNameEditResult result,
+  ) {
+    return widget.gateway.overrideRoleGrant(
+      operatorId: widget.pickedOperator.operatorId,
+      userId: row.userId,
+      roleId: result.roleId,
+      roleKey: result.roleKey,
+      idempotencyKey: _nextIdempotencyKey('member-override-role'),
+      actorUserId: widget.actorUserId,
+      actorIsForgeAdmin: widget.editingEnabled,
+      adminReason: result.adminReason,
+      scopeType: result.scope.scopeType,
+      primaryLocationId: result.scope.locationId,
+      orgUnitId: result.scope.orgUnitId,
+    );
   }
 
   bool _scopeChanged(MemberAdminRow row, MemberAccessScopeRef scope) {
@@ -1453,6 +1470,24 @@ class _DisplayNameEditResult {
   final MemberAccessScopeRef scope;
   final String? email;
   final String adminReason;
+}
+
+class _MemberEditDelta {
+  const _MemberEditDelta({
+    required this.emailChanged,
+    required this.displayNameChanged,
+    required this.roleChanged,
+    required this.scopeChanged,
+  });
+
+  final bool emailChanged;
+  final bool displayNameChanged;
+  final bool roleChanged;
+  final bool scopeChanged;
+
+  bool get profileChanged => emailChanged || displayNameChanged;
+  bool get grantChanged => roleChanged || scopeChanged;
+  bool get hasChanges => profileChanged || grantChanged;
 }
 
 class _EditRoleChoice {
