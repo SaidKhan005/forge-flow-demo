@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'admin_action_controls.dart';
 import 'admin_responsive_layout.dart';
 import 'admin_scope_tree_pane.dart';
 
@@ -348,13 +349,14 @@ class _PickBusinessFirstState extends StatelessWidget {
             const SizedBox(height: 18),
             Align(
               alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
+              child: AdminActionButton(
                 key: const Key(
                   'admin_setup_workspace_pick_business_first_link',
                 ),
+                label: 'Open Business accounts',
+                role: AdminActionRole.primary,
                 onPressed: onBackToBusinessAccounts,
-                icon: const Icon(Icons.apartment_outlined, size: 18),
-                label: const Text('Open Business accounts'),
+                icon: Icons.apartment_outlined,
               ),
             ),
           ],

@@ -15,12 +15,12 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../theme/scope_icons.dart';
 import '../widgets/console/console_surface.dart';
-import 'admin_button_styles.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'widgets/admin_demo_banner.dart';
+import 'widgets/admin_action_controls.dart';
 import 'widgets/admin_scope_picker.dart';
 
 const double _kCompactShellBreakpoint = 720;
@@ -570,35 +570,21 @@ class _AdminHeaderBar extends StatelessWidget {
   Widget _signOutControl({required bool compact}) {
     if (sharePreviewMode) return const SizedBox.shrink();
     if (compact) {
-      return IconButton(
+      return AdminIconAction(
         key: const Key('admin_header_signout'),
         tooltip: 'Sign out',
         onPressed: onSignOut,
-        icon: const Icon(Icons.logout_outlined, size: 20),
+        icon: Icons.logout_outlined,
       );
     }
     return Tooltip(
       message: 'Sign out: ends this session and returns to the welcome screen.',
-      child: TextButton.icon(
+      child: AdminActionButton(
         key: const Key('admin_header_signout'),
+        label: 'Sign out',
+        role: AdminActionRole.quiet,
         onPressed: onSignOut,
-        icon: const Icon(
-          Icons.logout_outlined,
-          size: 22,
-          color: AppColors.textSecondary,
-        ),
-        label: Text(
-          'Sign out',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-        style: AdminButtonStyles.text.copyWith(
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          ),
-          foregroundColor: const WidgetStatePropertyAll(
-            AppColors.textSecondary,
-          ),
-        ),
+        icon: Icons.logout_outlined,
       ),
     );
   }
@@ -858,18 +844,20 @@ class _AdminSideNav extends StatelessWidget {
         icon: Icons.apartment_outlined,
         maxWidth: 400,
         actions: [
-          TextButton(
+          AdminActionButton(
+            label: 'Stay here',
+            role: AdminActionRole.quiet,
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Stay here'),
           ),
-          FilledButton.icon(
+          AdminActionButton(
             key: const Key('admin_pick_business_first_dialog_link'),
+            label: 'Open Business accounts',
+            role: AdminActionRole.primary,
             onPressed: () {
               Navigator.of(dialogContext).pop();
               onSelectBusinessForRoute(routeId);
             },
-            icon: const Icon(Icons.apartment_outlined, size: 18),
-            label: const Text('Open Business accounts'),
+            icon: Icons.apartment_outlined,
           ),
         ],
         child: Text(

@@ -45,6 +45,7 @@ import '../theme/app_theme.dart';
 import 'admin_button_styles.dart';
 import 'services/admin_permission_snapshot_loader.dart';
 import 'services/admin_sessions_gateway.dart';
+import 'widgets/admin_action_controls.dart';
 
 /// Roles that are admitted to the admin console. Mirrors the
 /// `_adminTierRoles` set in `lib/auth/mfa_policy.dart` for
@@ -1271,7 +1272,7 @@ class _SignInButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 48,
+      height: AdminButtonStyles.controlHeight,
       child: FilledButton(
         key: const Key('admin_signin_submit'),
         onPressed: onPressed,
@@ -1423,14 +1424,11 @@ class _AdminForbiddenScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      SizedBox(
-                        height: 42,
-                        child: OutlinedButton(
-                          key: const Key('admin_forbidden_signout'),
-                          onPressed: () => source.signOut(),
-                          style: AdminButtonStyles.secondary(),
-                          child: const Text('Sign out'),
-                        ),
+                      AdminActionButton(
+                        key: const Key('admin_forbidden_signout'),
+                        label: 'Sign out',
+                        role: AdminActionRole.secondary,
+                        onPressed: () => source.signOut(),
                       ),
                     ],
                   ),
