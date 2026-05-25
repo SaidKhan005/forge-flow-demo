@@ -72,7 +72,7 @@ class AdminActionButton extends StatelessWidget {
     return _buttonForRole(
       style: style,
       child: child,
-      icon: Icon(icon, size: 16),
+      icon: Icon(icon, size: 18),
     );
   }
 
@@ -153,7 +153,7 @@ class AdminActionButton extends StatelessWidget {
       padding: WidgetStatePropertyAll(
         EdgeInsets.symmetric(
           horizontal: compact ? 12 : 16,
-          vertical: compact ? 8 : 10,
+          vertical: compact ? 10 : 12,
         ),
       ),
     );
@@ -189,7 +189,7 @@ class AdminIconAction extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       style: style,
-      icon: Icon(icon, size: 18),
+      icon: Icon(icon, size: 20),
     );
   }
 }
@@ -239,7 +239,7 @@ class AdminOverflowMenu<T> extends StatelessWidget {
                   if (action.icon != null) ...<Widget>[
                     Icon(
                       action.icon,
-                      size: 16,
+                      size: 18,
                       color: action.destructive
                           ? AppColors.negative
                           : AppColors.textMuted,
