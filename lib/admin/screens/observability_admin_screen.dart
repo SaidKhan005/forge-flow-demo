@@ -338,32 +338,28 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       AnimatedBuilder(
         animation: _tabs,
         builder: (context, _) {
-          switch (_tabs.index) {
-            case 0:
-              return _MoneyTab(
-                key: const Key('admin_observability_tab_body_money'),
-                envelope: envelope,
-              );
-            case 1:
-              return _CustomersTab(
-                key: const Key('admin_observability_tab_body_customers'),
-                envelope: envelope,
-              );
-            case 2:
-              return _ReliabilityTab(
-                key: const Key('admin_observability_tab_body_reliability'),
-                envelope: envelope,
-                tripwireGateway: widget.tripwireGateway,
-                tripwires: _tripwires,
-                tripwireError: _tripwireError,
-              );
-            case 3:
-            default:
-              return _KnowledgeTab(
-                key: const Key('admin_observability_tab_body_knowledge'),
-                envelope: envelope,
-              );
-          }
+          final tabBodies = <Widget>[
+            _MoneyTab(
+              key: const Key('admin_observability_tab_body_money'),
+              envelope: envelope,
+            ),
+            _CustomersTab(
+              key: const Key('admin_observability_tab_body_customers'),
+              envelope: envelope,
+            ),
+            _ReliabilityTab(
+              key: const Key('admin_observability_tab_body_reliability'),
+              envelope: envelope,
+              tripwireGateway: widget.tripwireGateway,
+              tripwires: _tripwires,
+              tripwireError: _tripwireError,
+            ),
+            _KnowledgeTab(
+              key: const Key('admin_observability_tab_body_knowledge'),
+              envelope: envelope,
+            ),
+          ];
+          return tabBodies[_tabs.index];
         },
       ),
     ];
@@ -573,8 +569,7 @@ class _HeroCards extends StatelessWidget {
 
   final ObservabilityEnvelope envelope;
 
-  @override
-  Widget build(BuildContext context) {
+  List<Widget> _heroCards() {
     final totalSpend = _totalSpend(envelope);
     final usingAi = _businessesUsingAi(envelope);
     final inactive = envelope.dormantOperators.length;
@@ -582,7 +577,7 @@ class _HeroCards extends StatelessWidget {
     final speed = _speedSummary(envelope);
     final graph = envelope.graph;
 
-    final cards = <Widget>[
+    return <Widget>[
       _HeroCard(
         keyName: 'admin_observability_hero_spend',
         accent: AppColors.sunset,
@@ -636,7 +631,11 @@ class _HeroCards extends StatelessWidget {
             : const _HeroPill(label: 'Up to date', tone: _HeroTone.ok),
       ),
     ];
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final cards = _heroCards();
     return LayoutBuilder(
       builder: (context, constraints) {
         const gap = 14.0;
