@@ -66,6 +66,7 @@ import '../screens/data_accuracy_screen.dart';
 import '../screens/hierarchy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/permission_explainer_screen.dart';
+import '../screens/plan_screen.dart';
 import '../screens/roles_screen.dart';
 import '../screens/sessions_screen.dart';
 import '../screens/settings_notifications_screen.dart';
@@ -105,6 +106,11 @@ const String kOperatorWebNavNotifications = 'notifications';
 // constant + its router case were dead (no production entry point
 // could ever select them) and were removed in OW-G73.
 const String kOperatorWebNavSchedule = 'schedule';
+
+/// Plans & limits Phase 5b — the "Your plan" surface. Display-only plan
+/// awareness (current plan + included features + trial countdown +
+/// upgrade intent). No feature gating (deferred Phase 5d).
+const String kOperatorWebNavPlan = 'plan';
 
 /// Sub-route names mounted under the Roles nav surface. The router
 /// keeps a small state machine here rather than registering full
@@ -282,6 +288,8 @@ String? _navIdFromRaw(String? raw) {
     // landing on the wage section without 404ing.
     'wage_authority' => kOperatorWebNavDataAccuracy,
     'schedule' => kOperatorWebNavSchedule,
+    // Plans & limits Phase 5b — "Your plan" deep link / bookmark.
+    'plan' || 'your_plan' || 'plans' => kOperatorWebNavPlan,
     'security' || 'sign_in_security' => kOperatorWebNavMyAccount,
     _ => null,
   };
@@ -1582,6 +1590,15 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.notifications_outlined,
         group: 'People & access',
       ),
+      // Plans & limits Phase 5b — display-only "Your plan" surface.
+      // Reachable like every other operator-web screen (same nav item
+      // shape, same router case below). No feature gating here.
+      const OperatorWebNavItem(
+        id: kOperatorWebNavPlan,
+        title: 'Your plan',
+        icon: Icons.workspace_premium_outlined,
+        group: 'Plan & billing',
+      ),
     ];
     final Widget body;
     switch (_selectedNavId) {
@@ -1993,6 +2010,20 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             onOpenWageAuthority: _openDataAccuracyWageAuthority,
           );
         }
+        break;
+      case kOperatorWebNavPlan:
+        // Plans & limits Phase 5b — display-only "Your plan" surface.
+        // Web-only: reads the tier + trial fields off the session and
+        // the per-plan feature list off the client-side pricing
+        // constants. No gateway, so no `_liveSurfaceMissingGateway`
+        // guard applies (that guard catches a missing live gateway
+        // silently serving fixtures; this screen has no gateway and
+        // never reads fixtures). The clock seam threads through so the
+        // free-preview countdown stays deterministic in tests.
+        body = PlanScreen(
+          session: session,
+          nowUtc: widget.nowUtc,
+        );
         break;
       default:
         body = AccountScreen(

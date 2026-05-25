@@ -764,6 +764,20 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
       permissions: session.permissions,
       phone: session.phone,
       mfaEnrolled: mfaEnrolled ?? session.mfaEnrolled,
+      logoUrl: session.logoUrl,
+      currencyCode: session.currencyCode,
+      localeTag: session.localeTag,
+      weekStartDay: session.weekStartDay,
+      rolloverHour: session.rolloverHour,
+      primaryLocationTimezone: session.primaryLocationTimezone,
+      // Plans & limits Phase 5b — carry the tier/trial fields through
+      // the session copy so re-emitting after MFA enrollment does not
+      // drop the "Your plan" inputs. Null on the live source today
+      // (the gated follow-up projects them); preserving them here keeps
+      // the copy honest once they are wired.
+      subscriptionTier: session.subscriptionTier,
+      trialMode: session.trialMode,
+      trialExpiresAt: session.trialExpiresAt,
     );
   }
 
