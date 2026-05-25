@@ -1068,24 +1068,13 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
       confirmButtonKey: Key('admin_health_confirm_run'),
       icon: Icons.health_and_safety_outlined,
       title: 'Run system check',
-      description:
-          'This reads live staging health and dependency status. It is read-only and usually finishes in a few seconds.',
+      description: 'Refresh the current system health snapshot from staging.',
       confirmLabel: 'Run system check',
       facts: [
         AdminRunCheckFact(
-          icon: Icons.visibility_outlined,
-          label: 'Read-only',
-          text: 'No settings or operator data are changed.',
-        ),
-        AdminRunCheckFact(
           icon: Icons.schedule_outlined,
           label: 'Timing',
-          text: 'Some dependency checks take a few moments to answer.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.warning_amber_outlined,
-          label: 'Results',
-          text: 'Warnings usually mean backend state needs review.',
+          text: 'Some dependency checks can take a few minutes to answer.',
         ),
       ],
     );
@@ -1094,10 +1083,9 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
 
 /// Slim empty-state hint shown before the first check. The big prompt
 /// card (icon + facts panel + a second Run button) was removed as
-/// clutter: the confirm dialog already carries the Read-only / Timing /
-/// Results facts, and the compact actions row above already carries the
-/// single Run button. This is just a short bordered nudge so the empty
-/// state is not blank. Card styling matches the screen's other cards
+/// clutter: the compact actions row above already carries the single Run
+/// button, and this is just a short bordered nudge so the empty state is
+/// not blank. Card styling matches the screen's other cards
 /// (`backgroundSurface`, `borderSubtle`, radius 6).
 class _ManualHealthHint extends StatelessWidget {
   const _ManualHealthHint({required this.onRunHealthCheck});
