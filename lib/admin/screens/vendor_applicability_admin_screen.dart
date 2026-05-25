@@ -12,9 +12,9 @@
 // read on the Data accuracy screen) so support and operators describe
 // the same setting the same way. The friendly Add/Edit form generates
 // the narrow per-kind metadata JSON; an "Advanced" fold still exposes
-// the raw JSON for power users. Writes stay temporal (a new dated row
-// per change, nothing deleted), idempotent, and audited through the
-// location-aware admin gateway.
+// the raw JSON for power users behind the advanced editor. Writes stay
+// temporal (a new dated row per change, nothing deleted), idempotent,
+// and audited through the location-aware admin gateway.
 
 import 'dart:convert';
 
@@ -22,7 +22,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
-import 'package:forge_and_flow/widgets/console/console_switch_row.dart';
 
 import '../../services/settings/applicability_metadata_schemas.dart';
 import '../../theme/app_theme.dart';
@@ -182,9 +181,9 @@ class _VendorApplicabilityAdminScreenState
   ) {
     final scope = _scopeRank(a).compareTo(_scopeRank(b));
     if (scope != 0) return scope;
-    final vendor = _vendorLabel(a.vendorSlug).compareTo(
-      _vendorLabel(b.vendorSlug),
-    );
+    final vendor = _vendorLabel(
+      a.vendorSlug,
+    ).compareTo(_vendorLabel(b.vendorSlug));
     if (vendor != 0) return vendor;
     final key = a.settingKey.compareTo(b.settingKey);
     if (key != 0) return key;
@@ -319,16 +318,18 @@ class _VendorApplicabilityAdminScreenState
   @override
   Widget build(BuildContext context) {
     final spec = _tabs[_tabController.index];
-    // Centre + max-width cap matching the shared operator-web body kit so
-    // the content stays balanced on a wide window. The dark page colour
-    // stays full-bleed behind the cap; the body sits on a white surface
-    // tile (matching the sibling per-operator admin screens).
+    final currentRows = _currentRows;
+    final allowedCount = currentRows.where((row) => row.enabled).length;
+    final blockedCount = currentRows.length - allowedCount;
+    // Centre + focused width cap so this dense settings table fits inside
+    // the admin shell beside the left nav without clipping its actions.
     return Container(
       key: const Key('admin_vendor_applicability_screen'),
       color: AppColors.backgroundDeep,
-      child: Center(
+      child: Align(
+        alignment: Alignment.topLeft,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1120),
+          constraints: const BoxConstraints(maxWidth: 920),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
             child: Column(
@@ -375,6 +376,8 @@ class _VendorApplicabilityAdminScreenState
                 const SizedBox(height: 12),
                 _Toolbar(
                   guide: spec.guide,
+                  allowedCount: allowedCount,
+                  blockedCount: blockedCount,
                   saving: _saving,
                   editingEnabled: widget.editingEnabled,
                   onAdd: _openAddDialog,
@@ -436,10 +439,7 @@ class _VendorApplicabilityAdminScreenState
         key: const Key('admin_vendor_applicability_list'),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
         children: [
-          _SectionLabel(
-            text: 'Current rules',
-            count: current.length,
-          ),
+          _SectionLabel(text: 'Current rules', count: current.length),
           const SizedBox(height: 10),
           if (current.isEmpty)
             const _MutedNote(
@@ -489,6 +489,8 @@ class _SettingKindSpec {
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.guide,
+    required this.allowedCount,
+    required this.blockedCount,
     required this.saving,
     required this.editingEnabled,
     required this.onAdd,
@@ -496,6 +498,8 @@ class _Toolbar extends StatelessWidget {
   });
 
   final String guide;
+  final int allowedCount;
+  final int blockedCount;
   final bool saving;
   final bool editingEnabled;
   final VoidCallback onAdd;
@@ -503,38 +507,82 @@ class _Toolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return LayoutBuilder(
       key: const Key('admin_vendor_applicability_toolbar'),
-      padding: const EdgeInsets.all(14),
+      builder: (context, constraints) {
+        final actions = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              key: const Key('admin_vendor_applicability_refresh'),
+              tooltip: 'Refresh',
+              onPressed: saving ? null : onRefresh,
+              icon: const Icon(Icons.refresh_outlined),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              key: const Key('admin_vendor_applicability_add'),
+              style: AdminButtonStyles.primary,
+              onPressed: editingEnabled && !saving ? onAdd : null,
+              icon: const Icon(Icons.add_outlined, size: 18),
+              label: Text(saving ? 'Saving...' : 'Add rule'),
+            ),
+          ],
+        );
+        final summary = Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              guide,
+              key: const Key('admin_vendor_applicability_guide'),
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            _ToolbarStat(label: 'Allowed', count: allowedCount),
+            _ToolbarStat(label: 'Blocked', count: blockedCount),
+          ],
+        );
+        if (constraints.maxWidth < 720) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              summary,
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: actions),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: summary),
+            const SizedBox(width: 14),
+            actions,
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ToolbarStat extends StatelessWidget {
+  const _ToolbarStat({required this.label, required this.count});
+
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(999),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              guide,
-              key: const Key('admin_vendor_applicability_guide'),
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
-            ),
-          ),
-          IconButton(
-            key: const Key('admin_vendor_applicability_refresh'),
-            tooltip: 'Refresh',
-            onPressed: saving ? null : onRefresh,
-            icon: const Icon(Icons.refresh_outlined),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.icon(
-            key: const Key('admin_vendor_applicability_add'),
-            style: AdminButtonStyles.primary,
-            onPressed: editingEnabled && !saving ? onAdd : null,
-            icon: const Icon(Icons.add_outlined, size: 18),
-            label: Text(saving ? 'Saving...' : 'Add rule'),
-          ),
-        ],
+      child: Text(
+        '$label: $count',
+        style: AppTextStyles.mono11(color: AppColors.textMuted),
       ),
     );
   }
@@ -595,70 +643,105 @@ class _RuleCard extends StatelessWidget {
       settingKind: row.settingKind,
       metadata: row.metadata,
     );
+    final details = summaryChips.isEmpty
+        ? 'No special handling'
+        : summaryChips.join(', ');
     return Container(
       key: ValueKey('vendor_applicability_${row.id}'),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
       decoration: BoxDecoration(
-        color: AppColors.cardGlow,
+        color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      vendorLabel,
-                      style: AppTextStyles.body14(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    _CategoryChip(vendorSlug: row.vendorSlug),
-                    _EnabledPill(enabled: row.enabled),
-                  ],
+          Expanded(
+            flex: 3,
+            child: _RuleTextBlock(
+              title: vendorLabel,
+              subtitle: vendorCategoryLabel(row.vendorSlug),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(width: 88, child: _EnabledPill(enabled: row.enabled)),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 3,
+            child: _RuleTextBlock(title: appliesTo, subtitle: 'Scope'),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 4,
+            child: _RuleTextBlock(
+              title: details,
+              subtitle: 'Since ${_formatDate(row.effectiveFrom)}',
+            ),
+          ),
+          if (editingEnabled)
+            PopupMenuButton<_RuleMenuAction>(
+              key: Key('admin_vendor_applicability_actions_${row.id}'),
+              tooltip: 'Rule actions',
+              enabled: !saving,
+              icon: const Icon(Icons.more_horiz, size: 20),
+              onSelected: (action) {
+                switch (action) {
+                  case _RuleMenuAction.edit:
+                    onEdit();
+                    break;
+                  case _RuleMenuAction.end:
+                    onEnd();
+                    break;
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem<_RuleMenuAction>(
+                  value: _RuleMenuAction.edit,
+                  child: Text('Edit rule'),
                 ),
-              ),
-              if (editingEnabled) ...[
-                IconButton(
-                  key: Key('admin_vendor_applicability_edit_${row.id}'),
-                  tooltip: 'Edit rule',
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  onPressed: saving ? null : onEdit,
-                ),
-                IconButton(
-                  key: Key('admin_vendor_applicability_end_${row.id}'),
-                  tooltip: 'Stop using this vendor',
-                  icon: const Icon(Icons.event_busy_outlined, size: 18),
-                  onPressed: saving ? null : onEnd,
+                PopupMenuItem<_RuleMenuAction>(
+                  value: _RuleMenuAction.end,
+                  child: Text('Stop using this rule'),
                 ),
               ],
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _AppliesToChip(label: appliesTo),
-              for (final chip in summaryChips) _SummaryChip(label: chip),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'In effect since ${_formatDate(row.effectiveFrom)}',
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
+            )
+          else
+            const SizedBox(width: 48),
         ],
       ),
+    );
+  }
+}
+
+enum _RuleMenuAction { edit, end }
+
+class _RuleTextBlock extends StatelessWidget {
+  const _RuleTextBlock({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.body13(color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.mono11(color: AppColors.textMuted),
+        ),
+      ],
     );
   }
 }
@@ -686,20 +769,6 @@ class _EnabledPill extends StatelessWidget {
   }
 }
 
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({required this.vendorSlug});
-
-  final String vendorSlug;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SummaryChip(
-      label: vendorCategoryLabel(vendorSlug),
-      icon: Icons.category_outlined,
-    );
-  }
-}
-
 class _AppliesToChip extends StatelessWidget {
   const _AppliesToChip({required this.label});
 
@@ -707,7 +776,10 @@ class _AppliesToChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SummaryChip(label: 'Applies to: $label', icon: Icons.place_outlined);
+    return _SummaryChip(
+      label: 'Applies to: $label',
+      icon: Icons.place_outlined,
+    );
   }
 }
 
@@ -860,10 +932,7 @@ class _HistoryRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            range,
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
+          Text(range, style: AppTextStyles.body12(color: AppColors.textMuted)),
         ],
       ),
     );
@@ -940,9 +1009,10 @@ class _VendorApplicabilityEditDialogState
   String _tierKey = 'standard';
   final TextEditingController _pollingMinutes = TextEditingController();
 
-  // Advanced.
-  bool _advancedJsonExpanded = false;
-  bool _advancedKeyExpanded = false;
+  // Progressive disclosure.
+  bool _scopeExpanded = false;
+  bool _detailsExpanded = false;
+  bool _advancedExpanded = false;
   late final TextEditingController _settingKey;
   late final TextEditingController _metadataJson;
   bool _userEditedJson = false;
@@ -981,7 +1051,10 @@ class _VendorApplicabilityEditDialogState
       _scope = _AppliesToScope.allOperators;
     }
 
-    _seedFriendlyFieldsFromMetadata(initial?.metadata ?? const {});
+    final metadata = initial?.metadata ?? const <String, Object?>{};
+    _scopeExpanded = _scope != _AppliesToScope.allOperators;
+    _detailsExpanded = _hasSpecialDetails(metadata);
+    _seedFriendlyFieldsFromMetadata(metadata);
     _metadataJson.text = _prettyJson(_buildMetadata());
   }
 
@@ -1022,6 +1095,20 @@ class _VendorApplicabilityEditDialogState
         }
         break;
     }
+  }
+
+  bool _hasSpecialDetails(Map<String, Object?> metadata) {
+    switch (widget.settingKind) {
+      case VendorApplicabilitySettingKind.wage:
+        return metadata.isNotEmpty;
+      case VendorApplicabilitySettingKind.covers:
+        return metadata.isNotEmpty;
+      case VendorApplicabilitySettingKind.polling:
+        final tier = metadata['tier_key'];
+        return (tier is String && tier != 'standard') ||
+            metadata['polling_seconds_override'] != null;
+    }
+    return metadata.isNotEmpty;
   }
 
   // Builds the narrow per-kind metadata map from the friendly fields,
@@ -1124,9 +1211,7 @@ class _VendorApplicabilityEditDialogState
           return;
         }
         if (_locationId == null) {
-          setState(
-            () => _error = 'Choose a location (or pick all operators).',
-          );
+          setState(() => _error = 'Choose a location (or pick all operators).');
           return;
         }
         operatorId = _operatorId;
@@ -1193,9 +1278,7 @@ class _VendorApplicabilityEditDialogState
       // viewport: the form then scrolls inside the dialog instead of
       // overflowing, and the dialog still fits on screen.
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.7,
-        ),
+        constraints: BoxConstraints(maxHeight: 360),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1211,17 +1294,15 @@ class _VendorApplicabilityEditDialogState
                 const SizedBox(height: 14),
               ],
               _buildVendorPicker(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               _buildAllowedToggle(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               _buildAppliesTo(),
-              const SizedBox(height: 16),
-              _buildOptionalFields(),
-              const SizedBox(height: 16),
-              _buildAdvancedKey(),
               const SizedBox(height: 8),
-              _buildAdvancedJson(),
-              const SizedBox(height: 16),
+              _buildOptionalFields(),
+              const SizedBox(height: 8),
+              _buildAdvanced(),
+              const SizedBox(height: 14),
               _FieldLabel(
                 label: 'Why are you making this change?',
                 example: 'Saved with the audit log. Example: Ticket VA-200.',
@@ -1267,9 +1348,7 @@ class _VendorApplicabilityEditDialogState
       children: [
         _FieldLabel(
           label: 'Vendor',
-          example:
-              'Pick the connected vendor this rule applies to. The list is '
-              'filtered to vendors that fit this setting.',
+          example: 'Filtered to vendors that fit this setting.',
         ),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
@@ -1281,13 +1360,19 @@ class _VendorApplicabilityEditDialogState
           items: items,
           onChanged: (value) => setState(() => _vendorSlug = value),
         ),
-        const SizedBox(height: 6),
-        ConsoleSwitchRow(
-          switchKey: const Key('admin_vendor_applicability_show_all_vendors'),
-          label: 'Show all vendors (not just the ones that fit this setting)',
-          labelStyle: AppTextStyles.body12(color: AppColors.textSecondary),
-          value: _showAllVendors,
-          onChanged: (value) => setState(() => _showAllVendors = value),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: const Key('admin_vendor_applicability_show_all_vendors'),
+            onPressed: () => setState(() => _showAllVendors = !_showAllVendors),
+            icon: Icon(
+              _showAllVendors
+                  ? Icons.filter_alt_off_outlined
+                  : Icons.filter_alt_outlined,
+              size: 16,
+            ),
+            label: Text(_showAllVendors ? 'Show fitting vendors' : 'Show all'),
+          ),
         ),
       ],
     );
@@ -1298,17 +1383,16 @@ class _VendorApplicabilityEditDialogState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _FieldLabel(
-          label: 'Allowed to use?',
+          label: 'Status',
           example:
-              'Yes lets operators pick this vendor for this setting. No blocks '
-              'it even if it is connected.',
+              'Allowed appears to operators. Blocked keeps it unavailable.',
         ),
         const SizedBox(height: 6),
         SegmentedButton<bool>(
           key: const Key('admin_vendor_applicability_enabled'),
           segments: const <ButtonSegment<bool>>[
-            ButtonSegment<bool>(value: true, label: Text('Yes, allowed')),
-            ButtonSegment<bool>(value: false, label: Text('No, blocked')),
+            ButtonSegment<bool>(value: true, label: Text('Allowed')),
+            ButtonSegment<bool>(value: false, label: Text('Blocked')),
           ],
           selected: <bool>{_enabled},
           onSelectionChanged: (selection) =>
@@ -1322,115 +1406,137 @@ class _VendorApplicabilityEditDialogState
     final operatorsAvailable = widget.operators.isNotEmpty;
     final bundle = _selectedOperatorBundle;
     final locations = bundle?.locations ?? const <LocationAdminRecord>[];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _FieldLabel(
-          label: 'Applies to',
-          example:
-              'All operators sets a Forge & Flow default. One operator or one '
-              'location overrides it for that scope; the most specific rule '
-              'wins.',
-        ),
-        const SizedBox(height: 6),
-        _RadioTile<_AppliesToScope>(
-          tileKey: const Key('admin_vendor_applicability_scope_all'),
-          value: _AppliesToScope.allOperators,
-          groupValue: _scope,
-          title: 'All operators (Forge & Flow default)',
-          onChanged: (value) => setState(() {
-            _scope = value;
-            _operatorId = null;
-            _locationId = null;
-          }),
-        ),
-        _RadioTile<_AppliesToScope>(
-          tileKey: const Key('admin_vendor_applicability_scope_operator'),
-          value: _AppliesToScope.oneOperator,
-          groupValue: _scope,
-          title: 'One operator',
-          enabled: operatorsAvailable,
-          onChanged: (value) => setState(() {
-            _scope = value;
-            _locationId = null;
-          }),
-        ),
-        _RadioTile<_AppliesToScope>(
-          tileKey: const Key('admin_vendor_applicability_scope_location'),
-          value: _AppliesToScope.oneLocation,
-          groupValue: _scope,
-          title: 'One operator and one location',
-          enabled: operatorsAvailable,
-          onChanged: (value) => setState(() => _scope = value),
-        ),
-        if (!operatorsAvailable)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              'Operator list is not available here, so only an all-operators '
-              'rule can be set.',
-              key: const Key('admin_vendor_applicability_no_operators_note'),
-              style: AppTextStyles.body12(color: AppColors.textMuted),
-            ),
+    return _AdvancedFold(
+      foldKey: const Key('admin_vendor_applicability_scope_toggle'),
+      title: 'Applies to: ${_draftScopeLabel()}',
+      expanded: _scopeExpanded,
+      onToggle: () => setState(() => _scopeExpanded = !_scopeExpanded),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'The most specific rule wins.',
+            style: AppTextStyles.body12(color: AppColors.textMuted),
           ),
-        if (operatorsAvailable &&
-            (_scope == _AppliesToScope.oneOperator ||
-                _scope == _AppliesToScope.oneLocation)) ...[
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            key: const Key('admin_vendor_applicability_operator_dropdown'),
-            initialValue: _operatorId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Operator',
-              border: OutlineInputBorder(),
-            ),
-            hint: const Text('Choose an operator'),
-            items: <DropdownMenuItem<String>>[
-              for (final b in widget.operators)
-                DropdownMenuItem<String>(
-                  key: Key(
-                    'admin_vendor_applicability_operator_item_'
-                    '${b.operator.operatorId}',
-                  ),
-                  value: b.operator.operatorId,
-                  child: Text(b.operator.businessName),
-                ),
-            ],
+          const SizedBox(height: 8),
+          _RadioTile<_AppliesToScope>(
+            tileKey: const Key('admin_vendor_applicability_scope_all'),
+            value: _AppliesToScope.allOperators,
+            groupValue: _scope,
+            title: 'All operators',
             onChanged: (value) => setState(() {
-              _operatorId = value;
+              _scope = value;
+              _operatorId = null;
               _locationId = null;
             }),
           ),
-        ],
-        if (operatorsAvailable && _scope == _AppliesToScope.oneLocation) ...[
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            key: const Key('admin_vendor_applicability_location_dropdown'),
-            initialValue: _locationId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Location',
-              border: OutlineInputBorder(),
-            ),
-            hint: const Text('Choose a location'),
-            items: <DropdownMenuItem<String>>[
-              for (final l in locations)
-                DropdownMenuItem<String>(
-                  key: Key(
-                    'admin_vendor_applicability_location_item_${l.locationId}',
-                  ),
-                  value: l.locationId,
-                  child: Text(l.name),
-                ),
-            ],
-            onChanged: bundle == null
-                ? null
-                : (value) => setState(() => _locationId = value),
+          _RadioTile<_AppliesToScope>(
+            tileKey: const Key('admin_vendor_applicability_scope_operator'),
+            value: _AppliesToScope.oneOperator,
+            groupValue: _scope,
+            title: 'One operator',
+            enabled: operatorsAvailable,
+            onChanged: (value) => setState(() {
+              _scope = value;
+              _locationId = null;
+            }),
           ),
+          _RadioTile<_AppliesToScope>(
+            tileKey: const Key('admin_vendor_applicability_scope_location'),
+            value: _AppliesToScope.oneLocation,
+            groupValue: _scope,
+            title: 'One location',
+            enabled: operatorsAvailable,
+            onChanged: (value) => setState(() => _scope = value),
+          ),
+          if (!operatorsAvailable)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Operator list is not available here, so only an all-operators '
+                'rule can be set.',
+                key: const Key('admin_vendor_applicability_no_operators_note'),
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
+            ),
+          if (operatorsAvailable &&
+              (_scope == _AppliesToScope.oneOperator ||
+                  _scope == _AppliesToScope.oneLocation)) ...[
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              key: const Key('admin_vendor_applicability_operator_dropdown'),
+              initialValue: _operatorId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Operator',
+                border: OutlineInputBorder(),
+              ),
+              hint: const Text('Choose an operator'),
+              items: <DropdownMenuItem<String>>[
+                for (final b in widget.operators)
+                  DropdownMenuItem<String>(
+                    key: Key(
+                      'admin_vendor_applicability_operator_item_'
+                      '${b.operator.operatorId}',
+                    ),
+                    value: b.operator.operatorId,
+                    child: Text(b.operator.businessName),
+                  ),
+              ],
+              onChanged: (value) => setState(() {
+                _operatorId = value;
+                _locationId = null;
+              }),
+            ),
+          ],
+          if (operatorsAvailable && _scope == _AppliesToScope.oneLocation) ...[
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              key: const Key('admin_vendor_applicability_location_dropdown'),
+              initialValue: _locationId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Location',
+                border: OutlineInputBorder(),
+              ),
+              hint: const Text('Choose a location'),
+              items: <DropdownMenuItem<String>>[
+                for (final l in locations)
+                  DropdownMenuItem<String>(
+                    key: Key(
+                      'admin_vendor_applicability_location_item_${l.locationId}',
+                    ),
+                    value: l.locationId,
+                    child: Text(l.name),
+                  ),
+              ],
+              onChanged: bundle == null
+                  ? null
+                  : (value) => setState(() => _locationId = value),
+            ),
+          ],
         ],
-      ],
+      ),
     );
+  }
+
+  String _draftScopeLabel() {
+    switch (_scope) {
+      case _AppliesToScope.allOperators:
+        return 'All operators';
+      case _AppliesToScope.oneOperator:
+        return _selectedOperatorBundle?.operator.businessName ?? 'One operator';
+      case _AppliesToScope.oneLocation:
+        final bundle = _selectedOperatorBundle;
+        final locationId = _locationId;
+        if (bundle == null || locationId == null) return 'One location';
+        for (final location in bundle.locations) {
+          if (location.locationId == locationId) {
+            return '${bundle.operator.businessName}: ${location.name}';
+          }
+        }
+        return '${bundle.operator.businessName}: $locationId';
+    }
   }
 
   Widget _buildOptionalFields() {
@@ -1448,25 +1554,15 @@ class _VendorApplicabilityEditDialogState
       default:
         body = const SizedBox.shrink();
     }
-    return Container(
-      key: const Key('admin_vendor_applicability_optional_block'),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: BoxDecoration(
-        color: AppColors.cardGlow,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return _AdvancedFold(
+      foldKey: const Key('admin_vendor_applicability_details_toggle'),
+      title: 'Special handling',
+      expanded: _detailsExpanded,
+      onToggle: () => setState(() => _detailsExpanded = !_detailsExpanded),
       child: Column(
+        key: const Key('admin_vendor_applicability_optional_block'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Optional details',
-            style: AppTextStyles.mono12(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
           Text(
             'Leave these blank unless this vendor needs special handling.',
             style: AppTextStyles.body12(color: AppColors.textMuted),
@@ -1577,9 +1673,7 @@ class _VendorApplicabilityEditDialogState
             children: [
               for (final period in _servicePeriods)
                 InputChip(
-                  key: Key(
-                    'admin_vendor_applicability_service_period_$period',
-                  ),
+                  key: Key('admin_vendor_applicability_service_period_$period'),
                   label: Text(period),
                   onDeleted: () => setState(() {
                     _servicePeriods.remove(period);
@@ -1605,7 +1699,9 @@ class _VendorApplicabilityEditDialogState
             ),
             const SizedBox(width: 8),
             OutlinedButton(
-              key: const Key('admin_vendor_applicability_service_period_button'),
+              key: const Key(
+                'admin_vendor_applicability_service_period_button',
+              ),
               style: AdminButtonStyles.secondary(),
               onPressed: _addServicePeriod,
               child: const Text('Add'),
@@ -1694,13 +1790,12 @@ class _VendorApplicabilityEditDialogState
     );
   }
 
-  Widget _buildAdvancedKey() {
+  Widget _buildAdvanced() {
     return _AdvancedFold(
-      foldKey: const Key('admin_vendor_applicability_advanced_key_toggle'),
-      title: 'Advanced: setting key',
-      expanded: _advancedKeyExpanded,
-      onToggle: () =>
-          setState(() => _advancedKeyExpanded = !_advancedKeyExpanded),
+      foldKey: const Key('admin_vendor_applicability_advanced_toggle'),
+      title: 'Advanced',
+      expanded: _advancedExpanded,
+      onToggle: () => setState(() => _advancedExpanded = !_advancedExpanded),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1717,24 +1812,10 @@ class _VendorApplicabilityEditDialogState
               border: OutlineInputBorder(),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAdvancedJson() {
-    return _AdvancedFold(
-      foldKey: const Key('admin_vendor_applicability_advanced_json_toggle'),
-      title: 'Advanced: raw JSON',
-      expanded: _advancedJsonExpanded,
-      onToggle: () =>
-          setState(() => _advancedJsonExpanded = !_advancedJsonExpanded),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+          const SizedBox(height: 12),
           Text(
-            'This reflects the details above. Editing it directly takes over '
-            'from the friendly fields.',
+            'Raw JSON reflects the details above. Editing it directly takes '
+            'over from the friendly fields.',
             style: AppTextStyles.body12(color: AppColors.textMuted),
           ),
           const SizedBox(height: 6),
@@ -1778,10 +1859,7 @@ class _FieldLabel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: AppTextStyles.body14(color: AppColors.textPrimary),
-        ),
+        Text(label, style: AppTextStyles.body14(color: AppColors.textPrimary)),
         if (example != null) ...[
           const SizedBox(height: 2),
           Text(
@@ -1815,10 +1893,7 @@ class _CheckRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       child: Row(
         children: [
-          Checkbox(
-            value: value,
-            onChanged: (v) => onChanged(v ?? false),
-          ),
+          Checkbox(value: value, onChanged: (v) => onChanged(v ?? false)),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
@@ -1926,9 +2001,15 @@ class _AdvancedFold extends StatelessWidget {
                     color: AppColors.textMuted,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ),
                 ],
               ),
