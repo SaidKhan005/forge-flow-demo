@@ -106,6 +106,40 @@ void main() {
     expect(widget.onConnectFlowStarted, isNotNull);
   });
 
+  testWidgets('read-only mode keeps vendor status visible without mutate '
+      'controls', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        VendorConnectionsAdminMount(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          locationName: 'Harbour',
+          gateway: InMemoryVendorConnectionsGateway(),
+          canMutate: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('vendor_connections_section_pos')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('vendor_connections_connect_pos')),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('You do not have permission to connect a vendor'),
+      findsWidgets,
+    );
+
+    final widget = tester.widget<VendorConnectionsWidget>(
+      find.byType(VendorConnectionsWidget),
+    );
+    expect(widget.canMutate, isFalse);
+  });
+
   testWidgets('business scope shows the location-required copy', (
     tester,
   ) async {

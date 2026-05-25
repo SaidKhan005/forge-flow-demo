@@ -170,9 +170,20 @@ class InMemoryAuditedSupportActionsAdminGateway
     required String operatorId,
     AuditLogFilters filters = AuditLogFilters.empty,
     String? cursor,
+    AuditLogScope? scope,
   }) async {
     final all = _logsFor(operatorId);
     Iterable<AuditLogRow> filtered = all;
+    if (scope != null && scope.scopeType == AuditLogScopeType.location) {
+      final location = scope.locationFilter?.trim();
+      if (location != null && location.isNotEmpty) {
+        filtered = filtered.where(
+          (r) =>
+              r.payload['location_id'] == location ||
+              r.payload['location_filter'] == location,
+        );
+      }
+    }
     final actorUserIds = filters.effectiveActorUserIds;
     if (actorUserIds.isNotEmpty) {
       final wanted = actorUserIds.toSet();
@@ -241,12 +252,17 @@ class InMemoryAuditedSupportActionsAdminGateway
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    AuditLogScope? scope,
   }) async {
     _ensureForgeAdmin(actorIsForgeAdmin, 'exportAuditLogCsv');
     _ensureAdminReason(adminReason, 'exportAuditLogCsv');
     final cached = _idempotentResults[idempotencyKey];
     if (cached is String) return cached;
-    final page = await listAuditLog(operatorId: operatorId, filters: filters);
+    final page = await listAuditLog(
+      operatorId: operatorId,
+      filters: filters,
+      scope: scope,
+    );
     final buf = StringBuffer();
     buf.writeln(
       'event_id,occurred_at,action,actor_user_id,actor_kind,'

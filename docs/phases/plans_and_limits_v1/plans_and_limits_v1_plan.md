@@ -1,6 +1,6 @@
 # Plans & Limits V1 — Pricing Model + Admin Redesign Plan
 
-Status: SHIPPED through Phase 4a + preset-diff (2026-05-25); Phase 5 scoped below, now unblocked.
+Status: SHIPPED through Phase 5 Wave 1+2 (2026-05-25). Only 5d (feature gates) remains, DEFERRED until the gateable features are built (see Phase 5).
 Created: 2026-05-24
 Updated: 2026-05-25
 
@@ -12,8 +12,15 @@ Progress (2026-05-25):
 - DROPPED by operator decision: the rest of Phase 4 (Pilot sample-data preview, no
   web or mobile preview seeding); the mockup's "Reconcile" tab (one-time decision
   aid, intentionally out of the live operational screen).
-- NEXT: Phase 5 (below) is scoped + unblocked (7.58 confirmed shipped). Not started;
-  awaiting operator go-ahead per slice.
+- SHIPPED to master (Phase 5 Wave 1+2, 2026-05-25): 5a (feature_entitlements table +
+  admin Features matrix), 5c (model routing by plan), selector cleanup (scope tree is the
+  single business selector; redundant business list removed), 5b ("Your plan" on
+  operator-web), 5b live-data follow-up (plan + trial on the operator account read). Plus
+  a 5a test-compile regression fixed (#1343); full-package analyze is error-free.
+- ONLY REMAINING: 5d (actual feature gates) — DEFERRED (see Phase 5). Reality-check
+  (2026-05-25) found the gateable features (LMS / scoreboard / SOPs / workflows) have NO
+  real surfaces yet, so there is nothing to gate. Blocked by features-not-built, not by
+  7.58. The 5a control panel is ready for when they ship.
 Owner: Orchestrator (operator: Said / Vanessa)
 Method: `runbooks/feature_implementation_lens_audit_runbook.md` (deep pass)
 
@@ -100,7 +107,7 @@ approval per CLAUDE.md (auth/RLS/schema/proxy-touching).
 - Conversion: when a real POS/labor connector succeeds, flip trial off + tier → Starter.
 - Files: migration, proxy signup/convert logic, operator-web preview entry.
 
-### Phase 5 — Plan entitlements + "Your plan" screen + model routing (L) — UNBLOCKED 2026-05-25
+### Phase 5 — Plan entitlements + "Your plan" screen + model routing (L) — WAVE 1+2 SHIPPED 2026-05-25 (5d deferred)
 
 **Gate status:** 7.58 (Primary Driver) is SHIPPED and live (confirmed 2026-05-25:
 `primaryDriver` / `LeverCard` logic across `lib/screens/variance/**`,
@@ -130,16 +137,28 @@ approval per CLAUDE.md (auth/RLS/schema/proxy-touching).
   `trial_mode` / `trial_expires_at`), upgrade intent. Greenfield in `lib/operator_web/**`.
 - **5c — Model routing by plan (S–M, gate: proxy).** Wire operator tier →
   `ProxyLlmTier` so plan drives Haiku vs Sonnet. Extend existing routing; no parallel stack.
-- **5d — Actual feature gates (size: depends; gate: app logic, now allowed).**
-  Hide / disable LMS / scoreboard / chatbots / workflows by tier. CAVEAT: only
-  gateable where a real surface exists; recon found no finished operator-web surfaces
-  for LMS / scoreboard / chatbots (several may be unbuilt or MOBILE = paused). Gate
-  what exists; defer the rest. Needs a per-feature surface reality-check first.
+- **5d — Actual feature gates — DEFERRED 2026-05-25 (reality-check done; nothing real to gate yet).**
+  Reality-check complete: the gateable features the plans advertise (LMS, scoreboard,
+  SOPs, workflows) have NO real operator-facing surfaces today. Evidence (2026-05-25):
+  operator-web routes are only business-timing / roles / security / my-account /
+  your-plan (`lib/operator_web/router/**`); mobile is the core dashboard + variance
+  coaching (`lib/screens/**`); no LMS / scoreboard / SOPs / workflow-catalog screen
+  exists in either. You cannot gate a screen that does not exist, so 5d is blocked by
+  **features-not-built**, NOT by 7.58 (cleared) or app-logic. The 5a entitlements
+  control panel (table + admin Features matrix) is the durable foundation and is READY:
+  when any of these features ships, gating plugs straight in. Do NOT build speculative
+  gating that hides nothing; revisit 5d when a gateable feature is actually built.
+  - **UX note (operator directive 2026-05-25):** when 5d is built, its feature-gating /
+    Features UX MUST use the unified premium switch — the shared `ConsoleSwitchRow` /
+    `ConsoleChannelToggle` (`lib/widgets/console/console_switch_row.dart`) + the shared
+    `SwitchThemeData` in `lib/theme/app_theme.dart` — so every toggle stays consistent
+    and premium across both consoles. No bespoke switches.
 
 **Decision feeding 5a:** confirm the exact "what's included per plan" matrix (a draft
 exists in the `kPricingTierTemplates` plan summaries).
 **Recommended start:** 5a + 5b + 5c (foundation + display + routing; web/server, low
-risk). 5d after the surface reality-check.
+risk) — ALL SHIPPED 2026-05-25, plus the selector cleanup and the 5b live-data follow-up.
+5d's surface reality-check is DONE; result: DEFERRED (no features to gate yet, see 5d).
 
 **UX standard (BINDING, operator directive 2026-05-25):** every new Phase 5
 operator-web surface (especially 5b "Your plan", and any plan-related screen) MUST be

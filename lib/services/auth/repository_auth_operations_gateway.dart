@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
@@ -542,6 +543,23 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         throw AuthOperationRejected(
           code: 'duplicate_permission_update',
           message: 'permission update for $key appears more than once',
+          statusCode: 400,
+        );
+      }
+    }
+    if (role.roleKey == PermissionKeys.roleSuperAdmin) {
+      final lockedKeys = <String>{
+        PermissionKeys.adminRolesView,
+        PermissionKeys.adminRolesEditSeeded,
+        PermissionKeys.teamRolesView,
+        PermissionKeys.teamRolesDefaultCatalogView,
+        PermissionKeys.teamRolesDefaultCatalogEdit,
+      };
+      final missing = lockedKeys.where((key) => !nextKeys.contains(key));
+      if (missing.isNotEmpty) {
+        throw const AuthOperationRejected(
+          code: 'platform_role_locked_permission',
+          message: 'Ecosystem admin keeps required safety permissions.',
           statusCode: 400,
         );
       }

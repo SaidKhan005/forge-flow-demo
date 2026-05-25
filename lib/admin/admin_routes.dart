@@ -18,6 +18,7 @@ import '../auth/auth_session.dart';
 import '../auth/fresh_mfa_resolver.dart';
 import '../auth/permission_keys.dart';
 import '../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
+import '../operator_web/services/operator_web_csv_download.dart';
 import '../theme/app_theme.dart';
 import '../theme/scope_icons.dart';
 import 'admin_auth_gate.dart';
@@ -328,13 +329,11 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminDefaultRoleCatalogRouteId,
-    title: 'Default role catalog',
+    title: 'Default roles',
     path: '/default-roles',
     icon: Icons.shield_outlined,
     section: AdminRouteSection.serviceSetup,
-    subtitle:
-        'This surface is for F&F admins only. Operators cannot see it. '
-        'Edit the starter role catalog every business begins with.',
+    subtitle: 'Edit the starter roles every new business receives.',
     builder: _buildDefaultRoleCatalog,
   ),
   AdminRoute(
@@ -411,7 +410,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.schedule_outlined,
     section: AdminRouteSection.operations,
     subtitle:
-        'Review effective timezone, business day, and service periods. Normal timing edits stay in Operator Web; super admin repair routes are server-side.',
+        'Edit timezone, business day, week start, and service periods for the selected scope.',
     builder: _buildTimingSetup,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -702,15 +701,25 @@ VoidCallback? _backToBusinessAccounts(BuildContext context) {
   );
 }
 
+class _ScopedAdminWorkspaceOptions {
+  const _ScopedAdminWorkspaceOptions({
+    this.showWorkspaceHeader = true,
+    this.allowAllBusinessesScope = false,
+    this.allBusinessesBuilder,
+  });
+
+  final bool showWorkspaceHeader;
+  final bool allowAllBusinessesScope;
+  final WidgetBuilder? allBusinessesBuilder;
+}
+
 Widget _buildScopedAdminWorkspace({
   required BuildContext context,
   required String routeId,
   required String functionTitle,
   required String description,
   required AdminSetupWorkspaceBuilder functionBuilder,
-  bool showWorkspaceHeader = true,
-  bool allowAllBusinessesScope = false,
-  WidgetBuilder? allBusinessesBuilder,
+  _ScopedAdminWorkspaceOptions options = const _ScopedAdminWorkspaceOptions(),
 }) {
   final handoff = AdminRouteHandoff.maybeOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
@@ -725,15 +734,15 @@ Widget _buildScopedAdminWorkspace({
     hierarchyGateway: hierarchyGateway,
     initialScope: handoff?.effectiveHierarchyScope,
     onBackToBusinessAccounts: _backToBusinessAccounts(context),
-    showWorkspaceHeader: showWorkspaceHeader,
+    showWorkspaceHeader: options.showWorkspaceHeader,
     onScopeChanged: handoff == null
         ? null
         : (scope) => handoff.onSelectRoute(
             AdminRouteIntent(routeId: routeId, hierarchyScope: scope),
           ),
     functionBuilder: functionBuilder,
-    allowAllBusinessesScope: allowAllBusinessesScope,
-    allBusinessesBuilder: allBusinessesBuilder,
+    allowAllBusinessesScope: options.allowAllBusinessesScope,
+    allBusinessesBuilder: options.allBusinessesBuilder,
   );
 }
 
@@ -999,6 +1008,7 @@ Widget _buildPricing(BuildContext context) {
     routeId: kAdminPricingRouteId,
     functionTitle: 'Plans and limits',
     description: 'Review plan status and usage limits.',
+    options: const _ScopedAdminWorkspaceOptions(showWorkspaceHeader: false),
     functionBuilder: (context, selectedScope, selection) {
       if (source == null) {
         return PricingTierAdminScreen(
@@ -1055,6 +1065,7 @@ Widget _buildCorpus(BuildContext context) {
     routeId: kAdminCorpusRouteId,
     functionTitle: 'Knowledge Base',
     description: 'Review knowledge content and relationship review.',
+    options: const _ScopedAdminWorkspaceOptions(showWorkspaceHeader: false),
     functionBuilder: (context, selectedScope, selection) {
       final targetOperatorId = selectedScope.operatorId;
       final targetLocationId = selectedScope.locationId;
@@ -1148,11 +1159,13 @@ Widget _buildObservability(BuildContext context) {
     // (operator_id = null). The screen already reads cross-business when
     // its hierarchy scope is null, so the all-businesses builder simply
     // omits the scope.
-    showWorkspaceHeader: false,
-    allowAllBusinessesScope: true,
-    allBusinessesBuilder: (context) => ObservabilityAdminScreen(
-      key: const ValueKey<String>('observability-all-businesses'),
-      gateway: gateway,
+    options: _ScopedAdminWorkspaceOptions(
+      showWorkspaceHeader: false,
+      allowAllBusinessesScope: true,
+      allBusinessesBuilder: (context) => ObservabilityAdminScreen(
+        key: const ValueKey<String>('observability-all-businesses'),
+        gateway: gateway,
+      ),
     ),
   );
 }
@@ -1166,6 +1179,7 @@ Widget _buildFeatureFlags(BuildContext context) {
     functionTitle: 'Launch controls',
     description:
         'Turn rollout controls on or off with audit-backed confirmation.',
+    options: const _ScopedAdminWorkspaceOptions(showWorkspaceHeader: false),
     functionBuilder: (context, selectedScope, selection) {
       Widget buildScreen({required bool canEdit}) {
         return FeatureFlagsAdminScreen(
@@ -1376,7 +1390,7 @@ Widget _buildPollingPricing(BuildContext context) {
         initialScope: operatorScope,
         initialHierarchyScope: selectedScope,
         scopeLocationIds: selection.locationIds,
-        showPageHeader: false,
+        showPageHeader: true,
         showScopeControls: false,
       );
     }
@@ -1394,7 +1408,7 @@ Widget _buildPollingPricing(BuildContext context) {
           initialScope: operatorScope,
           initialHierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
-          showPageHeader: false,
+          showPageHeader: true,
           showScopeControls: false,
         );
       },
@@ -1403,6 +1417,7 @@ Widget _buildPollingPricing(BuildContext context) {
 
   return AdminSetupWorkspace(
     functionTitle: 'Polling Setup',
+    showWorkspaceHeader: false,
     description:
         'Choose the hierarchy scope, assign vendor polling tiers, and estimate operating cost.',
     operatorGateway: operatorGateway,
@@ -2222,6 +2237,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
             canExportAuditLog: canExportAuditLog,
             hierarchyScope: selectedScope,
             auditScopeRootNode: scopeSnapshot.data,
+            onCsvReady: downloadOperatorWebCsv,
             onBackToBusinessAccounts: onBackToBusinessAccounts,
           );
         },
@@ -2502,9 +2518,9 @@ class _AuditedSupportActionsRouteShellState
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Audit and support work is scoped to one operator. Choose '
-                    'an operator once, then move between Team, Access, and '
-                    'Audit without choosing again.',
+                    'Audit log review is scoped to one operator. Choose an '
+                    'operator once, then use the same audit controls as the '
+                    'operator console.',
                     style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 16),
@@ -2535,6 +2551,7 @@ class _AuditedSupportActionsRouteShellState
       canIssuePairedErasure: widget.canIssuePairedErasure,
       canExportAuditLog: widget.canExportAuditLog,
       hierarchyScope: widget.initialScope,
+      onCsvReady: downloadOperatorWebCsv,
       onChangeOperator: _openPicker,
       onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
     );

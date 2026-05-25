@@ -505,8 +505,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
-    String? email,
-    String? displayName,
+    required MemberProfilePatch patch,
   }) async {
     // Wave 2 W-1 — Members edit-user write path (admin demo). Mirrors
     // [HttpMembersAdminGateway.updateMember]: bundled email + display
@@ -515,8 +514,8 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
     // `team.users.update_profile` enum with a `fields` array marker.
     _ensureForgeAdmin(actorIsForgeAdmin, 'updateMember');
     _ensureAdminReason(adminReason, 'updateMember');
-    final nextEmail = email?.trim();
-    final nextDisplay = displayName?.trim();
+    final nextEmail = patch.email?.trim();
+    final nextDisplay = patch.displayName?.trim();
     if ((nextEmail == null || nextEmail.isEmpty) &&
         (nextDisplay == null || nextDisplay.isEmpty)) {
       throw MembersAdminGatewayError(

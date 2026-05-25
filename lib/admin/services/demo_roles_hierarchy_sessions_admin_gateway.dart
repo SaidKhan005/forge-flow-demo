@@ -170,6 +170,22 @@ class InMemoryRolesHierarchySessionsAdminGateway
     return 'forgeflow';
   }
 
+  void _ensureLockedPlatformPermissions({
+    required String roleKey,
+    required Iterable<String> permissionKeys,
+  }) {
+    final locked = platformRoleLockedPermissionKeys(roleKey);
+    if (locked.isEmpty) return;
+    final permissions = permissionKeys.toSet();
+    final missing = locked.where((key) => !permissions.contains(key)).toList();
+    if (missing.isEmpty) return;
+    throw RolesHierarchySessionsGatewayError(
+      statusCode: 400,
+      errorCode: 'platform_role_locked_permission',
+      message: 'Ecosystem admin keeps required safety permissions.',
+    );
+  }
+
   List<RoleAdminRow> _rolesFor(String operatorId) {
     return _roles.putIfAbsent(operatorId, () => <RoleAdminRow>[]);
   }
@@ -247,6 +263,10 @@ class InMemoryRolesHierarchySessionsAdminGateway
         message: 'editSeededRole only valid for seeded roles',
       );
     }
+    _ensureLockedPlatformPermissions(
+      roleKey: prev.roleKey,
+      permissionKeys: permissionKeys,
+    );
     final updated = RoleAdminRow(
       roleId: prev.roleId,
       roleKey: prev.roleKey,
@@ -278,6 +298,42 @@ class InMemoryRolesHierarchySessionsAdminGateway
     );
     _idempotentResults[idempotencyKey] = updated;
     return updated;
+  }
+
+  @override
+  Future<RoleAdminRow> editPlatformRole({
+    required String operatorId,
+    required String roleId,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    final roles = _rolesFor(operatorId);
+    RoleAdminRow? role;
+    for (final candidate in roles) {
+      if (candidate.roleId == roleId) {
+        role = candidate;
+        break;
+      }
+    }
+    if (role == null || !role.isPlatformRole) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 400,
+        errorCode: 'not_platform_role',
+        message: 'editPlatformRole only valid for Forge & Flow access roles',
+      );
+    }
+    return editSeededRole(
+      operatorId: operatorId,
+      roleId: roleId,
+      permissionKeys: permissionKeys,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
   }
 
   @override
@@ -335,6 +391,78 @@ class InMemoryRolesHierarchySessionsAdminGateway
     );
     _idempotentResults[idempotencyKey] = created;
     return created;
+  }
+
+  @override
+  Future<RoleAdminRow> updateCustomRole({
+    required String operatorId,
+    required String roleId,
+    required String displayName,
+    required String description,
+    required List<String> previousPermissionKeys,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'updateCustomRole');
+    _ensureAdminReason(adminReason, 'updateCustomRole');
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is RoleAdminRow) return cached;
+    final roles = _rolesFor(operatorId);
+    final index = roles.indexWhere((r) => r.roleId == roleId);
+    if (index < 0) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_role',
+        message: 'role $roleId not found for operator $operatorId',
+      );
+    }
+    final prev = roles[index];
+    if (prev.isSeeded) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 400,
+        errorCode: 'cannot_update_seeded',
+        message: 'seeded roles cannot be updated through this path',
+      );
+    }
+    final updated = RoleAdminRow(
+      roleId: prev.roleId,
+      roleKey: prev.roleKey,
+      displayName: displayName,
+      description: description,
+      isSeeded: false,
+      permissionKeys: List<String>.unmodifiable(permissionKeys),
+      operatorId: prev.operatorId,
+    );
+    roles[index] = updated;
+    _record(
+      action: 'team.roles.update_custom',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'team_role',
+      targetId: updated.roleId,
+      payload: <String, Object?>{
+        'role_key': updated.roleKey,
+        'display_name': <String, Object?>{
+          'from': prev.displayName,
+          'to': updated.displayName,
+        },
+        'permission_keys': <String, Object?>{
+          'from': prev.permissionKeys,
+          'to': updated.permissionKeys,
+        },
+        'change_payload': _permissionChangePayload(
+          roleId: updated.roleId,
+          from: prev.permissionKeys,
+          to: updated.permissionKeys,
+        ),
+      },
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = updated;
+    return updated;
   }
 
   @override
@@ -1150,6 +1278,36 @@ const String kDemoSunsetOrgUnitRoot = '00000000-0000-4000-8000-000000000s01';
 Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
   const dinerRoles = <RoleAdminRow>[
     RoleAdminRow(
+      roleId: 'role-seed-super-admin',
+      roleKey: PermissionKeys.roleSuperAdmin,
+      displayName: 'Super admin',
+      description: 'Full Forge & Flow platform administration access.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        PermissionKeys.adminRolesView,
+        PermissionKeys.adminRolesEditSeeded,
+        PermissionKeys.teamRolesView,
+        PermissionKeys.teamRolesDefaultCatalogView,
+        PermissionKeys.teamRolesDefaultCatalogEdit,
+        PermissionKeys.adminUsersView,
+        PermissionKeys.adminAuditLogView,
+      ],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-ff-support',
+      roleKey: PermissionKeys.roleFfSupport,
+      displayName: 'F&F support',
+      description: 'Read-only Forge & Flow support access.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        PermissionKeys.adminRolesView,
+        PermissionKeys.teamRolesView,
+        PermissionKeys.teamRolesDefaultCatalogView,
+        PermissionKeys.adminUsersView,
+        PermissionKeys.adminAuditLogView,
+      ],
+    ),
+    RoleAdminRow(
       roleId: 'role-seed-operator-owner',
       roleKey: 'operator_owner',
       displayName: 'Owner',
@@ -1275,6 +1433,36 @@ Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
     ),
   ];
   const sunsetRoles = <RoleAdminRow>[
+    RoleAdminRow(
+      roleId: 'role-seed-super-admin',
+      roleKey: PermissionKeys.roleSuperAdmin,
+      displayName: 'Super admin',
+      description: 'Full Forge & Flow platform administration access.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        PermissionKeys.adminRolesView,
+        PermissionKeys.adminRolesEditSeeded,
+        PermissionKeys.teamRolesView,
+        PermissionKeys.teamRolesDefaultCatalogView,
+        PermissionKeys.teamRolesDefaultCatalogEdit,
+        PermissionKeys.adminUsersView,
+        PermissionKeys.adminAuditLogView,
+      ],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-ff-support',
+      roleKey: PermissionKeys.roleFfSupport,
+      displayName: 'F&F support',
+      description: 'Read-only Forge & Flow support access.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        PermissionKeys.adminRolesView,
+        PermissionKeys.teamRolesView,
+        PermissionKeys.teamRolesDefaultCatalogView,
+        PermissionKeys.adminUsersView,
+        PermissionKeys.adminAuditLogView,
+      ],
+    ),
     RoleAdminRow(
       roleId: 'role-seed-operator-owner',
       roleKey: 'operator_owner',

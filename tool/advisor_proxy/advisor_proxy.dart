@@ -435,6 +435,16 @@ part 'advisor_agentic_answer_part.dart';
 // + the three repository imports above. No `kAdvisorProxyMaxLines` raise.
 part 'advisor_operational_tools_part.dart';
 
+// Advisor Knowledge Activation — Slice A4.2a: the `retrieve_methodology`
+// answer tool + the shared embed→search→rerank pipeline helper it wraps
+// (the helper itself lives in advisor_retrieve_route_group_part.dart,
+// factored out of the retrieve route behavior-preservingly). The tool
+// definition + its OperatorContext/gateway-bound factory live in this
+// sibling part file. INERT: NO route, NO routeRequest dispatch, NO
+// bootstrap wiring (all A4.2b). The monolith gains only this declaration.
+// No `kAdvisorProxyMaxLines` raise.
+part 'advisor_answer_tools_part.dart';
+
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
 /// caller does not inject one. Production bootstrap can override
@@ -9389,12 +9399,54 @@ Future<void> routeRequest(
                 });
                 return;
               }
+              final permissionKeys = _permissionKeyList(
+                body['permission_keys'],
+              );
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
               final cached = await authOpsCache.runOrReplay(
                 route: '$adminAuthRolePrefix$roleId/permissions',
                 key: idempotencyKey,
                 compute: () async {
+                  final listed = await authOperationsGateway.listRoles(
+                    TeamRoleCatalogListCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                    ),
+                  );
+                  TeamRoleCatalogEntry? targetRole;
+                  for (final role in listed.roles) {
+                    if (role.roleId == roleId) {
+                      targetRole = role;
+                      break;
+                    }
+                  }
+                  if (targetRole?.roleKey == PermissionKeys.roleSuperAdmin) {
+                    final requested = permissionKeys.toSet();
+                    final locked = <String>{
+                      PermissionKeys.adminRolesView,
+                      PermissionKeys.adminRolesEditSeeded,
+                      PermissionKeys.teamRolesView,
+                      PermissionKeys.teamRolesDefaultCatalogView,
+                      PermissionKeys.teamRolesDefaultCatalogEdit,
+                    };
+                    final missing =
+                        locked.where((key) => !requested.contains(key)).toList()
+                          ..sort();
+                    if (missing.isNotEmpty) {
+                      return CachedProxyResponse(
+                        statusCode: 400,
+                        body: <String, Object?>{
+                          'error': 'platform_role_locked_permission',
+                          'message':
+                              'Ecosystem admin keeps required safety '
+                              'permissions.',
+                          'missing_permission_keys': missing,
+                        },
+                      );
+                    }
+                  }
                   final patched = await authOperationsGateway
                       .editSeededRolePermissions(
                         TeamSeededRolePermissionsEditCommand(
@@ -9402,9 +9454,7 @@ Future<void> routeRequest(
                           operatorId: scope.operatorId,
                           locationId: scope.locationId,
                           roleId: roleId,
-                          permissionKeys: _permissionKeyList(
-                            body['permission_keys'],
-                          ),
+                          permissionKeys: permissionKeys,
                           reason: reason,
                         ),
                       );

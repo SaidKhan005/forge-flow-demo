@@ -161,8 +161,6 @@ class _VendorConnectionsAdminMountState
     final Widget content;
     if (location == null) {
       content = _embeddedLocationRequiredPanel(scope);
-    } else if (!widget.canMutate) {
-      content = _embeddedForbiddenPanel(location.locationName);
     } else if (widget.gateway == null) {
       content = _embeddedNotWiredPanel(location.locationName);
     } else {
@@ -256,26 +254,6 @@ class _VendorConnectionsAdminMountState
     );
   }
 
-  Widget _embeddedForbiddenPanel(String locationName) {
-    return OperatorWebPanel(
-      key: const Key('admin_vendor_connections_forbidden'),
-      title: 'Vendor integrations unavailable',
-      subtitle:
-          'You do not have permission to configure vendor integrations for '
-          'this location.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          AdminDetailRow(label: 'Location', value: locationName),
-          const AdminDetailRow(
-            label: 'Who can connect vendors',
-            value: 'A super admin with integration access',
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _embeddedNotWiredPanel(String locationName) {
     return OperatorWebPanel(
       key: const Key('admin_vendor_connections_not_wired'),
@@ -325,14 +303,6 @@ class _VendorConnectionsAdminMountState
 
   Widget _buildLocationContent(_VendorConnectionsLocationScope location) {
     final resolvedGateway = widget.gateway;
-    if (!widget.canMutate) {
-      return _VendorLifecycleForbiddenPanel(
-        locationName: location.locationName,
-        onBackToBusinessAccounts: widget.embedded
-            ? widget.onBackToBusinessAccounts
-            : null,
-      );
-    }
     return resolvedGateway == null
         ? _VendorLifecycleUnavailablePanel(
             locationName: location.locationName,
@@ -409,135 +379,77 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.backgroundDeep,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_vendor_connections_location_required_scroll'),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      maxContentWidth: 760,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          OperatorWebScreenHeader(
+            icon: Icons.cable_outlined,
+            title: 'Vendor integrations',
+            subtitle:
+                'Vendor credentials are connected, tested, disconnected, and logged per location.',
+            actions: <Widget>[
+              if (onBackToBusinessAccounts != null)
+                AdminBusinessAccountsBackButton(
+                  onPressed: onBackToBusinessAccounts,
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          AdminCard(
+            key: const Key('admin_vendor_connections_location_required'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                AdminPageHeader(
-                  title: 'Vendor integrations',
-                  subtitle:
-                      'Vendor credentials are connected, tested, disconnected, and logged per location.',
-                  leading: onBackToBusinessAccounts == null
-                      ? null
-                      : AdminBusinessAccountsBackButton(
-                          onPressed: onBackToBusinessAccounts,
-                        ),
-                ),
-                const SizedBox(height: 14),
-                AdminCard(
-                  key: const Key('admin_vendor_connections_location_required'),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Icon(
+                      // canonical location icon (mirrors scopeIcon(location)); this empty state illustrates a LOCATION
+                      Icons.place_outlined,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          const Icon(
-                            // canonical location icon (mirrors scopeIcon(location)); this empty state illustrates a LOCATION
-                            Icons.place_outlined,
-                            size: 20,
-                            color: AppColors.textMuted,
+                          Text(
+                            'Choose a location before editing vendor integrations',
+                            style: AppTextStyles.sectionTitle(
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  'Choose a location before editing vendor integrations',
-                                  style: AppTextStyles.sectionTitle(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Choose a location to show connect, test, '
-                                  'disconnect, and sync-log controls.',
-                                  style: AppTextStyles.body13(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 6),
+                          Text(
+                            'Choose a location to show connect, test, '
+                            'disconnect, and sync-log controls.',
+                            style: AppTextStyles.body13(
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      const AdminDetailRow(
-                        label: 'Edit controls',
-                        value: 'Location required',
-                      ),
-                      const AdminDetailRow(
-                        label: 'Global services',
-                        value: 'Connected services remains separate',
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const AdminDetailRow(
+                  label: 'Edit controls',
+                  value: 'Location required',
+                ),
+                const AdminDetailRow(
+                  label: 'Global services',
+                  value: 'Connected services remains separate',
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _VendorLifecycleForbiddenPanel extends StatelessWidget {
-  const _VendorLifecycleForbiddenPanel({
-    required this.locationName,
-    required this.onBackToBusinessAccounts,
-  });
-
-  final String locationName;
-  final VoidCallback? onBackToBusinessAccounts;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.backgroundDeep,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                AdminPageHeader(
-                  title: 'Vendor integrations',
-                  subtitle:
-                      'You do not have permission to configure vendor integrations for this location.',
-                  leading: onBackToBusinessAccounts == null
-                      ? null
-                      : AdminBusinessAccountsBackButton(
-                          onPressed: onBackToBusinessAccounts,
-                        ),
-                ),
-                const SizedBox(height: 14),
-                AdminCard(
-                  key: const Key('admin_vendor_connections_forbidden'),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      AdminDetailRow(label: 'Location', value: locationName),
-                      const AdminDetailRow(
-                        label: 'Who can connect vendors',
-                        value: 'A super admin with integration access',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -554,75 +466,72 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.backgroundDeep,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_vendor_connections_not_wired_scroll'),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      maxContentWidth: 760,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          OperatorWebScreenHeader(
+            icon: Icons.cable_outlined,
+            title: 'Vendor integrations',
+            subtitle:
+                'This admin route needs the live vendor integrations gateway before it can show the same connection workflow as Operator Web.',
+            actions: <Widget>[
+              if (onBackToBusinessAccounts != null)
+                AdminBusinessAccountsBackButton(
+                  onPressed: onBackToBusinessAccounts,
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          AdminCard(
+            key: const Key('admin_vendor_connections_not_wired'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                AdminPageHeader(
-                  title: 'Vendor integrations',
-                  subtitle:
-                      'This admin route needs the live vendor integrations gateway before it can show the same connection workflow as Operator Web.',
-                  leading: onBackToBusinessAccounts == null
-                      ? null
-                      : AdminBusinessAccountsBackButton(
-                          onPressed: onBackToBusinessAccounts,
-                        ),
-                ),
-                const SizedBox(height: 14),
-                AdminCard(
-                  key: const Key('admin_vendor_connections_not_wired'),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Icon(
+                      Icons.lock_outline,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          const Icon(
-                            Icons.lock_outline,
-                            size: 20,
-                            color: AppColors.textMuted,
+                          Text(
+                            'Vendor integrations gateway is not configured for $locationName',
+                            style: AppTextStyles.sectionTitle(
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  'Vendor integrations gateway is not configured for $locationName',
-                                  style: AppTextStyles.sectionTitle(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Connect, test, disconnect, and sync-log actions need the live admin gateway.',
-                                  style: AppTextStyles.body13(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 6),
+                          Text(
+                            'Connect, test, disconnect, and sync-log actions need the live admin gateway.',
+                            style: AppTextStyles.body13(
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      const AdminDetailRow(
-                        label: 'Current admin status',
-                        value: 'Gateway missing',
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                AdminDetailRow(label: 'Location', value: locationName),
+                const AdminDetailRow(
+                  label: 'Current admin status',
+                  value: 'Gateway missing',
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }

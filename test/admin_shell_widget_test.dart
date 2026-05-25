@@ -842,7 +842,7 @@ void main() {
 
   testWidgets(
     'tapping an inactive cluster row opens a pick-business message with a '
-    'Business accounts link',
+    'Business accounts link that returns to the clicked tab',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 1000);
       tester.view.devicePixelRatio = 1;
@@ -910,6 +910,26 @@ void main() {
       await pumpEventually(tester);
 
       expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+      final businessRow = find.byKey(
+        const Key(
+          'admin_setup_scope_business_00000000-0000-4000-8000-000000000001',
+        ),
+      );
+      await tester.ensureVisible(businessRow);
+      await pumpEventually(tester);
+      await tester.tap(businessRow);
+      await pumpEventually(tester);
+
+      expect(find.byKey(const Key('admin_members_screen')), findsOneWidget);
+      expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
+      expect(
+        find.byKey(const Key('admin_operator_picker_screen')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_per_business_cluster')),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );

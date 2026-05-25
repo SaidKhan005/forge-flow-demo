@@ -100,6 +100,21 @@ class RoleAdminRow {
   /// per the parity contract § "Custom-role builder" which pins
   /// custom-role rows to carry `operator_id`.
   final String? operatorId;
+
+  bool get isPlatformRole =>
+      roleKey == PermissionKeys.roleSuperAdmin ||
+      roleKey == PermissionKeys.roleFfSupport;
+}
+
+Set<String> platformRoleLockedPermissionKeys(String roleKey) {
+  if (roleKey != PermissionKeys.roleSuperAdmin) return const <String>{};
+  return const <String>{
+    PermissionKeys.adminRolesView,
+    PermissionKeys.adminRolesEditSeeded,
+    PermissionKeys.teamRolesView,
+    PermissionKeys.teamRolesDefaultCatalogView,
+    PermissionKeys.teamRolesDefaultCatalogEdit,
+  };
 }
 
 /// One node in the org-unit hierarchy. Roots have
@@ -364,6 +379,16 @@ abstract class RolesHierarchySessionsAdminGateway {
     required String adminReason,
   });
 
+  Future<RoleAdminRow> editPlatformRole({
+    required String operatorId,
+    required String roleId,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
   /// Create a custom operator-scoped role. Gated on
   /// `admin.roles.create_custom`.
   Future<RoleAdminRow> createCustomRole({
@@ -371,6 +396,22 @@ abstract class RolesHierarchySessionsAdminGateway {
     required String roleKey,
     required String displayName,
     required String description,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  /// Update a custom operator-scoped role. Gated on
+  /// `admin.roles.create_custom`, matching the proxy's custom-role
+  /// patch permission today.
+  Future<RoleAdminRow> updateCustomRole({
+    required String operatorId,
+    required String roleId,
+    required String displayName,
+    required String description,
+    required List<String> previousPermissionKeys,
     required List<String> permissionKeys,
     required String idempotencyKey,
     required String actorUserId,
@@ -647,6 +688,27 @@ class HttpRolesHierarchySessionsAdminGateway
   }
 
   @override
+  Future<RoleAdminRow> editPlatformRole({
+    required String operatorId,
+    required String roleId,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return editSeededRole(
+      operatorId: operatorId,
+      roleId: roleId,
+      permissionKeys: permissionKeys,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
+  }
+
+  @override
   Future<RoleAdminRow> createCustomRole({
     required String operatorId,
     required String roleKey,
@@ -669,7 +731,42 @@ class HttpRolesHierarchySessionsAdminGateway
         'role_key': roleKey,
         'display_name': displayName,
         'description': description,
-        'permission_keys': permissionKeys,
+        'permissions': _permissionUpdatesFromKeys(permissionKeys),
+        'reason': adminReason,
+        'admin_reason': adminReason,
+      },
+    );
+    return _roleRowFromJson(_asMap(body['role']));
+  }
+
+  @override
+  Future<RoleAdminRow> updateCustomRole({
+    required String operatorId,
+    required String roleId,
+    required String displayName,
+    required String description,
+    required List<String> previousPermissionKeys,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'updateCustomRole');
+    _requireAdminReason(adminReason, 'updateCustomRole');
+    final body = await _send(
+      method: 'PATCH',
+      path: '$rolesPath/${Uri.encodeComponent(roleId)}',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'display_name': displayName,
+        'description': description,
+        'permissions': _permissionUpdatesForReplacement(
+          previous: previousPermissionKeys,
+          next: permissionKeys,
+        ),
+        'reason': adminReason,
         'admin_reason': adminReason,
       },
     );
@@ -688,11 +785,12 @@ class HttpRolesHierarchySessionsAdminGateway
     _requireEditable(actorIsForgeAdmin, 'deleteCustomRole');
     _requireAdminReason(adminReason, 'deleteCustomRole');
     await _send(
-      method: 'POST',
-      path: '$rolesPath/${Uri.encodeComponent(roleId)}/delete',
+      method: 'DELETE',
+      path: '$rolesPath/${Uri.encodeComponent(roleId)}',
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
+        'reason': adminReason,
         'admin_reason': adminReason,
       },
     );
@@ -1155,6 +1253,30 @@ class HttpRolesHierarchySessionsAdminGateway
   }
 }
 
+List<Map<String, String>> _permissionUpdatesFromKeys(Iterable<String> keys) {
+  final ordered = keys.toSet().toList()..sort();
+  return <Map<String, String>>[
+    for (final key in ordered)
+      <String, String>{'permission_key': key, 'effect': 'allow'},
+  ];
+}
+
+List<Map<String, String>> _permissionUpdatesForReplacement({
+  required Iterable<String> previous,
+  required Iterable<String> next,
+}) {
+  final previousSet = previous.toSet();
+  final nextSet = next.toSet();
+  final keys = <String>{...previousSet, ...nextSet}.toList()..sort();
+  return <Map<String, String>>[
+    for (final key in keys)
+      <String, String>{
+        'permission_key': key,
+        'effect': nextSet.contains(key) ? 'allow' : 'inherit',
+      },
+  ];
+}
+
 RoleAdminRow _roleRowFromJson(Map<String, Object?> json) {
   final permsRaw = json['permission_keys'];
   final permissions = <String>[
@@ -1296,8 +1418,8 @@ DateTime? _optionalDateTime(Object? value) {
 /// view-only for everyone except a super_admin holding
 /// `admin.roles.edit_seeded`).
 const Map<String, String> kRoleDisplayNamesForAdmin = <String, String>{
-  'super_admin': 'F&F super admin',
-  'ff_support': 'F&F support',
+  'super_admin': 'Ecosystem admin',
+  'ff_support': 'Support access',
   'operator_owner': 'Owner',
   'operator_general_manager': 'General Manager',
   'location_manager': 'Location Manager',

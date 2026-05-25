@@ -20,8 +20,10 @@
 // "§ Idempotency keys" + "§ Audit-row shape".
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../auth/permission_key_metadata.dart';
@@ -31,9 +33,8 @@ import '../../domain/models/inheritance_tree_node.dart';
 import '../../services/auth/custom_role_validator.dart';
 import '../../services/auth/role_key_generator.dart';
 import '../../theme/app_theme.dart';
-import '../../theme/scope_icons.dart';
 import '../../widgets/inheritance_tree.dart';
-import '../../widgets/permission_explainer_view.dart';
+import '../../widgets/role_permission_picker.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
@@ -41,7 +42,6 @@ import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_role_warning_panel.dart';
-import '../widgets/admin_role_policy_section.dart';
 import 'operator_picker_screen.dart';
 
 class RolesHierarchySessionsAdminScreen extends StatefulWidget {
@@ -266,19 +266,32 @@ class _RolesHierarchySessionsAdminScreenState
     if (!widget.canEditSeededRoles) return;
     final result = await showDialog<EditSeededRoleResult>(
       context: context,
-      builder: (_) => EditSeededRoleDialog(initial: row),
+      builder: (_) => EditSeededRoleDialog(
+        initial: row,
+        lockedPermissionKeys: platformRoleLockedPermissionKeys(row.roleKey),
+      ),
     );
     if (result == null) return;
     await _runAndRefresh(
-      () => widget.gateway.editSeededRole(
-        operatorId: widget.pickedOperator.operatorId,
-        roleId: row.roleId,
-        permissionKeys: result.permissionKeys,
-        idempotencyKey: _nextIdempotencyKey('roles-edit-seeded'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-      ),
+      () => row.isPlatformRole
+          ? widget.gateway.editPlatformRole(
+              operatorId: widget.pickedOperator.operatorId,
+              roleId: row.roleId,
+              permissionKeys: result.permissionKeys,
+              idempotencyKey: _nextIdempotencyKey('roles-edit-platform'),
+              actorUserId: widget.actorUserId,
+              actorIsForgeAdmin: widget.editingEnabled,
+              adminReason: result.adminReason,
+            )
+          : widget.gateway.editSeededRole(
+              operatorId: widget.pickedOperator.operatorId,
+              roleId: row.roleId,
+              permissionKeys: result.permissionKeys,
+              idempotencyKey: _nextIdempotencyKey('roles-edit-seeded'),
+              actorUserId: widget.actorUserId,
+              actorIsForgeAdmin: widget.editingEnabled,
+              adminReason: result.adminReason,
+            ),
       refresh: _refreshRoles,
       successHint: 'Updated ${roleAdminDisplayLabel(row)}',
     );
@@ -309,6 +322,39 @@ class _RolesHierarchySessionsAdminScreenState
       ),
       refresh: _refreshRoles,
       successHint: 'Created ${result.displayName}',
+    );
+  }
+
+  Future<void> _onEditCustomRole(RoleAdminRow row) async {
+    final scope =
+        widget.initialScope ?? _scopeFromPickedOperator(widget.pickedOperator);
+    final result = await showDialog<CustomRoleDraft>(
+      context: context,
+      builder: (_) => CreateCustomRoleDialog(
+        existingRoleKeys: <String>{
+          for (final r in _roles)
+            if (r.roleId != row.roleId) r.roleKey,
+        },
+        existing: row,
+        roleScope: _roleScopeFromAdminScope(scope.scopeType),
+      ),
+    );
+    if (result == null) return;
+    await _runAndRefresh(
+      () => widget.gateway.updateCustomRole(
+        operatorId: widget.pickedOperator.operatorId,
+        roleId: row.roleId,
+        displayName: result.displayName,
+        description: result.description,
+        previousPermissionKeys: row.permissionKeys,
+        permissionKeys: result.permissionKeys,
+        idempotencyKey: _nextIdempotencyKey('roles-update-custom'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      ),
+      refresh: _refreshRoles,
+      successHint: 'Updated ${result.displayName}',
     );
   }
 
@@ -502,7 +548,7 @@ class _RolesHierarchySessionsAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             OperatorWebScreenHeader(
-              icon: Icons.account_tree_outlined,
+              icon: Icons.shield_outlined,
               title: 'Roles & permissions',
               actions: _buildHeaderActions(),
             ),
@@ -514,11 +560,6 @@ class _RolesHierarchySessionsAdminScreenState
                 key: const Key('admin_rhs_action_error'),
                 message: _actionError!,
               ),
-            _AccessScopeFilterCard(
-              pickedOperator: widget.pickedOperator,
-              initialScope: widget.initialScope,
-            ),
-            const SizedBox(height: 12),
             TabBar(
               key: const Key('admin_rhs_tab_bar'),
               controller: _tabController,
@@ -543,6 +584,21 @@ class _RolesHierarchySessionsAdminScreenState
 
   List<Widget> _buildHeaderActions() {
     final children = <Widget>[
+      SizedBox(
+        height: 38,
+        child: FilledButton.icon(
+          key: const Key('admin_rhs_roles_new_role'),
+          onPressed: widget.editingEnabled ? _onCreateCustomRole : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.sunset,
+            foregroundColor: AppColors.backgroundSurface,
+            disabledBackgroundColor: AppColors.borderSubtle,
+            disabledForegroundColor: AppColors.textMuted,
+          ),
+          icon: const Icon(Icons.add, size: 16),
+          label: const Text('New role'),
+        ),
+      ),
       if (widget.onBackToBusinessAccounts != null)
         AdminBusinessAccountsBackButton(
           onPressed: widget.onBackToBusinessAccounts,
@@ -576,6 +632,7 @@ class _RolesHierarchySessionsAdminScreenState
             editingEnabled: widget.editingEnabled,
             canEditSeededRoles: widget.canEditSeededRoles,
             onEditSeeded: _onEditSeededRole,
+            onEditCustom: _onEditCustomRole,
             onCreateCustom: _onCreateCustomRole,
             onDeleteCustom: _onDeleteCustomRole,
           ),
@@ -637,45 +694,6 @@ class _TabLoadBody extends StatelessWidget {
   }
 }
 
-class _AccessScopeFilterCard extends StatelessWidget {
-  const _AccessScopeFilterCard({
-    required this.pickedOperator,
-    this.initialScope,
-  });
-
-  final OperatorPickerResult pickedOperator;
-  final AdminHierarchyScopeIntent? initialScope;
-
-  @override
-  Widget build(BuildContext context) {
-    final scope = initialScope ?? _scopeFromPickedOperator(pickedOperator);
-    return OperatorWebPanel(
-      key: const Key('admin_rhs_filter_card'),
-      title: 'Scope context',
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          _ScopeChip(
-            icon: scopeIcon(kind: ScopeEntityKind.business),
-            label: pickedOperator.operatorBusinessName,
-          ),
-          _ScopeChip(
-            icon: Icons.tune_outlined,
-            label: _selectedScopeLabel(scope),
-          ),
-          _ScopeChip(
-            icon: _scopeIcon(scope.scopeType),
-            label: scope.displayLabel,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 AdminHierarchyScopeIntent _scopeFromPickedOperator(
   OperatorPickerResult picked,
 ) {
@@ -694,23 +712,6 @@ AdminHierarchyScopeIntent _scopeFromPickedOperator(
   );
 }
 
-String _selectedScopeLabel(AdminHierarchyScopeIntent scope) {
-  switch (scope.scopeType) {
-    case AdminHierarchyScopeType.business:
-      return 'Selected business scope';
-    case AdminHierarchyScopeType.orgUnit:
-      return 'Selected org unit scope';
-    case AdminHierarchyScopeType.location:
-      return 'Selected location scope';
-  }
-}
-
-IconData _scopeIcon(AdminHierarchyScopeType type) => switch (type) {
-  AdminHierarchyScopeType.business => scopeIcon(kind: ScopeEntityKind.business),
-  AdminHierarchyScopeType.orgUnit => scopeIcon(kind: ScopeEntityKind.orgUnit),
-  AdminHierarchyScopeType.location => scopeIcon(kind: ScopeEntityKind.location),
-};
-
 /// Map the admin shell's working hierarchy scope onto the shared
 /// [RoleScope] the [CustomRoleValidator] understands, so the admin
 /// custom-role editor surfaces the same coherence warnings as the
@@ -727,29 +728,88 @@ RoleScope _roleScopeFromAdminScope(AdminHierarchyScopeType type) {
   }
 }
 
-class _ScopeChip extends StatelessWidget {
-  const _ScopeChip({required this.icon, required this.label});
+// ---------------------------------------------------------------------
+// Roles tab
+// ---------------------------------------------------------------------
 
-  final IconData icon;
-  final String label;
+class RolePolicyAdminPanel extends StatelessWidget {
+  const RolePolicyAdminPanel({
+    super.key,
+    required this.roles,
+    required this.editingEnabled,
+    required this.canEditSeededRoles,
+    required this.onEditSeeded,
+    required this.onEditCustom,
+    required this.onCreateCustom,
+    required this.onDeleteCustom,
+  });
+
+  final List<RoleAdminRow> roles;
+  final bool editingEnabled;
+  final bool canEditSeededRoles;
+  final ValueChanged<RoleAdminRow> onEditSeeded;
+  final ValueChanged<RoleAdminRow> onEditCustom;
+  final VoidCallback onCreateCustom;
+  final ValueChanged<RoleAdminRow> onDeleteCustom;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: AppColors.textMuted),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: AppTextStyles.mono11(color: AppColors.textSecondary),
+    final platform = roles.where((r) => r.isPlatformRole).toList(growable: true)
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+    final seeded =
+        roles
+            .where((r) => r.isSeeded && !r.isPlatformRole)
+            .toList(growable: true)
+          ..sort((a, b) => a.displayName.compareTo(b.displayName));
+    final custom = roles.where((r) => !r.isSeeded).toList(growable: true)
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+    return SingleChildScrollView(
+      key: const Key('admin_rhs_roles_tab'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (custom.isEmpty)
+            _EmptyCustomRolesPanel(
+              canWrite: editingEnabled,
+              onCreateRole: onCreateCustom,
+            )
+          else
+            _RoleGroup(
+              key: const Key('admin_rhs_roles_custom_group'),
+              title: 'Custom roles (${custom.length})',
+              subtitle:
+                  'Roles you have built for this operator. Edit or delete '
+                  'them as your team changes.',
+              roles: custom,
+              canWrite: editingEnabled,
+              canEditSeededRoles: canEditSeededRoles,
+              onEditSeeded: onEditSeeded,
+              onEditCustom: onEditCustom,
+              onDelete: onDeleteCustom,
+            ),
+          const SizedBox(height: 18),
+          if (platform.isNotEmpty) ...<Widget>[
+            _RoleGroup(
+              key: const Key('admin_rhs_roles_platform_group'),
+              title: 'Forge & Flow access (${platform.length})',
+              roles: platform,
+              canWrite: false,
+              canEditSeededRoles: canEditSeededRoles,
+              onEditSeeded: onEditSeeded,
+              onEditCustom: onEditCustom,
+              onDelete: onDeleteCustom,
+            ),
+            const SizedBox(height: 18),
+          ],
+          _RoleGroup(
+            key: const Key('admin_rhs_roles_seeded_group'),
+            title: 'Default roles (${seeded.length})',
+            roles: seeded,
+            canWrite: false,
+            canEditSeededRoles: canEditSeededRoles,
+            onEditSeeded: onEditSeeded,
+            onEditCustom: onEditCustom,
+            onDelete: onDeleteCustom,
           ),
         ],
       ),
@@ -757,137 +817,74 @@ class _ScopeChip extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------
-// Roles tab
-// ---------------------------------------------------------------------
-
-class RolePolicyAdminPanel extends StatefulWidget {
-  const RolePolicyAdminPanel({
+class _RoleGroup extends StatelessWidget {
+  const _RoleGroup({
     super.key,
+    required this.title,
+    this.subtitle,
     required this.roles,
-    required this.editingEnabled,
+    required this.canWrite,
     required this.canEditSeededRoles,
     required this.onEditSeeded,
-    required this.onCreateCustom,
-    required this.onDeleteCustom,
-    this.showSummaryStrip = true,
-    this.showPermissionExplainer = true,
-    this.rolePreviewLimit,
+    required this.onEditCustom,
+    required this.onDelete,
   });
 
+  final String title;
+  final String? subtitle;
   final List<RoleAdminRow> roles;
-  final bool editingEnabled;
+  final bool canWrite;
   final bool canEditSeededRoles;
   final ValueChanged<RoleAdminRow> onEditSeeded;
-  final VoidCallback onCreateCustom;
-  final ValueChanged<RoleAdminRow> onDeleteCustom;
-  final bool showSummaryStrip;
-  final bool showPermissionExplainer;
-  final int? rolePreviewLimit;
-
-  @override
-  State<RolePolicyAdminPanel> createState() => _RolePolicyAdminPanelState();
-}
-
-class _RolePolicyAdminPanelState extends State<RolePolicyAdminPanel> {
-  bool _showAllSeeded = false;
-  bool _showAllCustom = false;
+  final ValueChanged<RoleAdminRow> onEditCustom;
+  final ValueChanged<RoleAdminRow> onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final seeded = widget.roles
-        .where((r) => r.isSeeded)
-        .toList(growable: false);
-    final custom = widget.roles
-        .where((r) => !r.isSeeded)
-        .toList(growable: false);
-    return SingleChildScrollView(
-      key: const Key('admin_rhs_roles_tab'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (widget.showSummaryStrip) ...<Widget>[
-            AdminStatStrip(
-              items: <AdminStatItem>[
-                AdminStatItem(
-                  label: 'Default roles',
-                  value: seeded.length.toString(),
-                  icon: Icons.verified_user_outlined,
-                  tone: AppColors.peacock,
+    final subtitleText = subtitle;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        OperatorWebSectionHeading(
+          title: title,
+          trailing: subtitleText == null
+              ? null
+              : OperatorWebInfoButton(
+                  title: title,
+                  tooltip: title,
+                  body: Text(
+                    subtitleText,
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
                 ),
-                AdminStatItem(
-                  label: 'Custom roles',
-                  value: custom.length.toString(),
-                  icon: Icons.person_add_alt_outlined,
-                  tone: AppColors.sunset,
-                ),
-                AdminStatItem(
-                  label: 'Human permissions',
-                  value: PermissionKeys.all.length.toString(),
-                  icon: Icons.fact_check_outlined,
-                  tone: AppColors.textMuted,
-                ),
+        ),
+        const SizedBox(height: 10),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Column(
+              children: <Widget>[
+                for (var i = 0; i < roles.length; i++)
+                  _RoleRowTile(
+                    key: Key('admin_rhs_role_row_${roles[i].roleId}'),
+                    row: roles[i],
+                    isLast: i == roles.length - 1,
+                    canWrite: canWrite,
+                    canEditSeededRoles: canEditSeededRoles,
+                    onEditSeeded: onEditSeeded,
+                    onEditCustom: onEditCustom,
+                    onDelete: onDelete,
+                  ),
               ],
             ),
-            const SizedBox(height: 16),
-          ],
-          AdminRolePolicySection(
-            title: 'Default roles',
-            roles: seeded,
-            sectionKey: const Key('admin_rhs_roles_seeded'),
-            emptyText: 'No seeded roles for this operator.',
-            showAll: _showAllSeeded,
-            rolePreviewLimit: widget.rolePreviewLimit,
-            toggleKey: const Key('admin_rhs_roles_seeded_toggle'),
-            onToggleExpanded: () {
-              setState(() => _showAllSeeded = !_showAllSeeded);
-            },
-            rowBuilder: (role) => _RoleRowTile(
-              key: Key('admin_rhs_role_row_${role.roleId}'),
-              row: role,
-              editingEnabled:
-                  widget.editingEnabled && widget.canEditSeededRoles,
-              isSeeded: true,
-              onEdit: widget.onEditSeeded,
-              onDelete: widget.onDeleteCustom,
-            ),
           ),
-          const SizedBox(height: 16),
-          AdminRolePolicySection(
-            title: 'Custom roles',
-            roles: custom,
-            sectionKey: const Key('admin_rhs_roles_custom'),
-            emptyText: 'This operator has no custom roles yet.',
-            showAll: _showAllCustom,
-            rolePreviewLimit: widget.rolePreviewLimit,
-            toggleKey: const Key('admin_rhs_roles_custom_toggle'),
-            onToggleExpanded: () {
-              setState(() => _showAllCustom = !_showAllCustom);
-            },
-            rowBuilder: (role) => _RoleRowTile(
-              key: Key('admin_rhs_role_row_${role.roleId}'),
-              row: role,
-              editingEnabled: widget.editingEnabled,
-              isSeeded: false,
-              onEdit: widget.onEditSeeded,
-              onDelete: widget.onDeleteCustom,
-            ),
-            trailing: widget.editingEnabled
-                ? FilledButton.icon(
-                    key: const Key('admin_rhs_roles_create_custom'),
-                    onPressed: widget.onCreateCustom,
-                    style: AdminButtonStyles.primary,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('New custom role'),
-                  )
-                : null,
-          ),
-          if (widget.showPermissionExplainer) ...<Widget>[
-            const SizedBox(height: 16),
-            const _PermissionExplainerCard(),
-          ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -896,249 +893,161 @@ class _RoleRowTile extends StatelessWidget {
   const _RoleRowTile({
     super.key,
     required this.row,
-    required this.editingEnabled,
-    required this.isSeeded,
-    required this.onEdit,
+    required this.isLast,
+    required this.canWrite,
+    required this.canEditSeededRoles,
+    required this.onEditSeeded,
+    required this.onEditCustom,
     required this.onDelete,
   });
 
   final RoleAdminRow row;
-  final bool editingEnabled;
-  final bool isSeeded;
-  final ValueChanged<RoleAdminRow> onEdit;
+  final bool isLast;
+  final bool canWrite;
+  final bool canEditSeededRoles;
+  final ValueChanged<RoleAdminRow> onEditSeeded;
+  final ValueChanged<RoleAdminRow> onEditCustom;
   final ValueChanged<RoleAdminRow> onDelete;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(6),
+    final mutable = canWrite && !row.isSeeded;
+    final seededRepair = row.isSeeded && canEditSeededRoles;
+    final canOpen = seededRepair || mutable;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border(
+          bottom: isLast
+              ? BorderSide.none
+              : const BorderSide(color: AppColors.borderSubtle, width: 1),
         ),
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    roleAdminDisplayLabel(row),
-                    style: AppTextStyles.body14(
-                      color: AppColors.textPrimary,
-                    ).copyWith(fontWeight: FontWeight.w600),
-                  ),
+      ),
+      child: InkWell(
+        onTap: canOpen
+            ? () => seededRepair ? onEditSeeded(row) : onEditCustom(row)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  roleAdminDisplayLabel(row),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body14(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
                 ),
-                if (isSeeded)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundSurface,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: AppColors.borderSubtle,
-                        width: 1,
-                      ),
-                    ),
-                    child: Text(
-                      'Seeded',
-                      style: AppTextStyles.mono11(color: AppColors.textMuted),
-                    ),
-                  ),
-              ],
-            ),
-            if (row.description.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 4),
-              Text(
-                row.description,
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
+              if (seededRepair)
+                IconButton(
+                  key: Key('admin_rhs_role_edit_${row.roleId}'),
+                  tooltip: 'Edit permissions',
+                  onPressed: () => onEditSeeded(row),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  color: AppColors.textMuted,
+                )
+              else if (mutable)
+                IconButton(
+                  key: Key('admin_rhs_role_edit_${row.roleId}'),
+                  tooltip: 'Edit role',
+                  onPressed: () => onEditCustom(row),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  color: AppColors.textMuted,
+                )
+              else
+                const Icon(
+                  Icons.visibility_outlined,
+                  color: AppColors.textMuted,
+                  size: 18,
+                ),
+              if (mutable)
+                IconButton(
+                  key: Key('admin_rhs_role_delete_${row.roleId}'),
+                  tooltip: 'Delete role',
+                  onPressed: () => onDelete(row),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  color: AppColors.negative,
+                ),
             ],
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: <Widget>[
-                for (final key in row.permissionKeys)
-                  PermissionKeyChip(permissionKey: key),
-              ],
-            ),
-            if (editingEnabled) ...<Widget>[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: <Widget>[
-                  if (isSeeded)
-                    OutlinedButton(
-                      key: Key('admin_rhs_role_edit_${row.roleId}'),
-                      onPressed: () => onEdit(row),
-                      style: AdminButtonStyles.secondary(),
-                      child: const Text('Edit permissions'),
-                    )
-                  else
-                    OutlinedButton(
-                      key: Key('admin_rhs_role_delete_${row.roleId}'),
-                      onPressed: () => onDelete(row),
-                      style: AdminButtonStyles.secondary(),
-                      child: const Text('Delete'),
-                    ),
-                ],
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// MFA-required marker text used in the chip + tooltip per the parity
-/// contract § "Roles + Permission Explainer" line 110:
-/// "Render with a 🔒 chip (or text equivalent — no emoji-only signals
-/// per accessibility) and the tooltip 'Requires multi-factor
-/// authentication.'" The contract mandates a non-emoji-only signal —
-/// this widget pairs a `Lock` icon with the literal "MFA" text label.
 @visibleForTesting
-const String kMfaRequiredTooltip = 'Requires multi-factor authentication.';
+String adminShortRoleDescriptionForTest(String description) {
+  return _shortRoleDescription(description);
+}
 
-/// One permission chip. Renders a human label first and keeps the raw
-/// catalog key in the tooltip for diagnostics. MFA-required grants keep
-/// the lock icon plus literal "MFA" text from the parity contract.
-class PermissionKeyChip extends StatelessWidget {
-  const PermissionKeyChip({super.key, required this.permissionKey});
+String _shortRoleDescription(String description) {
+  final trimmed = description.trim();
+  if (trimmed.isEmpty) return '';
+  final match = RegExp(r'([.!?])(\s|$)').firstMatch(trimmed);
+  if (match == null) return trimmed;
+  return trimmed.substring(0, match.end).trim();
+}
 
-  final String permissionKey;
+class _EmptyCustomRolesPanel extends StatelessWidget {
+  const _EmptyCustomRolesPanel({
+    required this.canWrite,
+    required this.onCreateRole,
+  });
+
+  final bool canWrite;
+  final VoidCallback onCreateRole;
 
   @override
   Widget build(BuildContext context) {
-    final mfa = PermissionKeys.requiresMfa.contains(permissionKey);
-    final tooltip = mfa
-        ? 'Raw key: $permissionKey\n$kMfaRequiredTooltip'
-        : 'Raw key: $permissionKey';
-    final chip = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    return Container(
+      key: const Key('admin_rhs_roles_empty_custom'),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // The chip sits in a Wrap, so its slot is capped at the panel
-          // width. A long human label must ellipsize inside that cap rather
-          // than overflow the Row (the cap is generous; ellipsis only ever
-          // bites the rare extra-long label at constrained widths).
-          Flexible(
-            child: Text(
-              permissionHumanLabel(permissionKey),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body12(color: AppColors.textSecondary),
+          Text(
+            'Create custom role',
+            style: AppTextStyles.mono14(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
             ),
           ),
-          if (mfa) ...<Widget>[
-            const SizedBox(width: 6),
-            const Icon(
-              Icons.lock_outline,
-              size: 12,
-              color: AppColors.textMuted,
-            ),
-            const SizedBox(width: 2),
-            Text(
-              'MFA',
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
+          if (canWrite) ...<Widget>[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                key: const Key('admin_rhs_roles_empty_create'),
+                onPressed: onCreateRole,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.sunset,
+                  foregroundColor: AppColors.backgroundSurface,
+                ),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('New custom role'),
+              ),
             ),
           ],
         ],
       ),
     );
-    return Tooltip(
-      key: Key(
-        mfa
-            ? 'admin_rhs_perm_mfa_tooltip_$permissionKey'
-            : 'admin_rhs_perm_tooltip_$permissionKey',
-      ),
-      message: tooltip,
-      child: chip,
-    );
   }
-}
-
-enum _RoleEditorProduct {
-  forgeFlow(label: 'Forge & Flow'),
-  barrio(label: 'Barrio');
-
-  const _RoleEditorProduct({required this.label});
-
-  final String label;
-}
-
-_RoleEditorProduct _productForPermission(String permissionKey) {
-  if (permissionKey == PermissionKeys.productBarrioAccess ||
-      permissionKey.startsWith('barrio.')) {
-    return _RoleEditorProduct.barrio;
-  }
-  return _RoleEditorProduct.forgeFlow;
-}
-
-String _resourceLabelForPermission(String permissionKey) {
-  if (permissionKey == PermissionKeys.productForgeflowAccess ||
-      permissionKey == PermissionKeys.productBarrioAccess) {
-    return 'Product access';
-  }
-  final parts = permissionKey.split('.');
-  if (parts.length < 2) return permissionKey;
-  final product = _productForPermission(permissionKey);
-  final resourceParts = switch (product) {
-    _RoleEditorProduct.forgeFlow when parts.first == 'forgeflow' =>
-      parts.skip(1).take(1),
-    _RoleEditorProduct.barrio when parts.first == 'barrio' =>
-      parts.skip(1).take(1),
-    _ => parts.take(parts.length - 1),
-  };
-  return resourceParts.map(_titleCaseToken).join(' ');
-}
-
-List<String> _orderedPermissionKeysForProduct(_RoleEditorProduct product) {
-  final keys = PermissionKeys.all
-      .where((key) => _productForPermission(key) == product)
-      .toList(growable: false);
-  keys.sort((a, b) {
-    final resource = _resourceLabelForPermission(
-      a,
-    ).compareTo(_resourceLabelForPermission(b));
-    if (resource != 0) return resource;
-    return a.compareTo(b);
-  });
-  return keys;
-}
-
-Map<String, List<String>> _permissionKeysByResource(
-  _RoleEditorProduct product,
-) {
-  final grouped = <String, List<String>>{};
-  for (final key in _orderedPermissionKeysForProduct(product)) {
-    grouped
-        .putIfAbsent(_resourceLabelForPermission(key), () => <String>[])
-        .add(key);
-  }
-  return grouped;
 }
 
 List<String> _orderedSelectedPermissionKeys(Set<String> selected) {
-  final ordered = <String>[];
-  for (final product in _RoleEditorProduct.values) {
-    for (final key in _orderedPermissionKeysForProduct(product)) {
-      if (selected.contains(key)) ordered.add(key);
-    }
-  }
+  final ordered = PermissionKeys.all
+      .where(selected.contains)
+      .toList(growable: true);
   final unknown =
       selected
           .where((key) => !PermissionKeys.all.contains(key))
@@ -1148,225 +1057,9 @@ List<String> _orderedSelectedPermissionKeys(Set<String> selected) {
   return ordered;
 }
 
-@visibleForTesting
-String permissionHumanLabel(String permissionKey) {
-  final parts = permissionKey
-      .split('.')
-      .map((part) => part.trim())
-      .where((part) => part.isNotEmpty)
-      .toList(growable: false);
-  if (parts.length < 2) return _titleCaseToken(permissionKey);
-  final action = parts.last;
-  final resource = _permissionResourceLabel(parts.take(parts.length - 1));
-  final verb = _permissionActionLabel(action);
-  if (verb == 'Access' && parts.first == 'product') {
-    return 'Access $resource';
-  }
-  return '$verb $resource';
-}
-
-String _permissionResourceLabel(Iterable<String> parts) {
-  final normalized = parts.toList(growable: false);
-  if (normalized.isEmpty) return 'permission';
-  if (normalized.length == 2 &&
-      normalized.first == 'product' &&
-      normalized.last == 'forgeflow') {
-    return 'Forge & Flow product';
-  }
-  if (normalized.length == 2 &&
-      normalized.first == 'product' &&
-      normalized.last == 'barrio') {
-    return 'Barrio product';
-  }
-  return normalized.map(_permissionResourceToken).join(' ');
-}
-
-String _permissionResourceToken(String token) {
-  switch (token) {
-    case 'forgeflow':
-      return 'Forge & Flow';
-    case 'barrio':
-      return 'Barrio';
-    case 'admin':
-      return 'admin';
-    case 'team':
-      return 'team';
-    case 'billing':
-      return 'billing';
-    case 'integration':
-      return 'integration';
-    case 'integrations':
-      return 'vendor integrations';
-    case 'workflow':
-      return 'workflow';
-    case 'users':
-      return 'users';
-    case 'roles':
-      return 'roles';
-    case 'audit_log':
-      return 'audit log';
-    case 'session':
-      return 'sessions';
-    case 'service_principal':
-      return 'service principal';
-    case 'feature_flag':
-      return 'feature flags';
-    case 'pricing_tier':
-      return 'pricing tiers';
-    case 'payment_method':
-      return 'payment methods';
-    case 'usage_caps':
-      return 'usage caps';
-    case 'target_cycle':
-      return 'target cycles';
-    case 'target_profile':
-      return 'target profiles';
-    case 'weekly_plan':
-      return 'weekly plans';
-    case 'jim_taylor':
-      return 'Jim Taylor';
-    case 'preston_lee':
-      return 'Preston Lee';
-    case 'el_podio':
-      return 'El Podio';
-    case '7shifts':
-      return '7shifts';
-    case 'qbo':
-      return 'QuickBooks';
-    default:
-      return token
-          .split('_')
-          .where((part) => part.isNotEmpty)
-          .map(_titleCaseToken)
-          .join(' ');
-  }
-}
-
-String _permissionActionLabel(String action) {
-  switch (action) {
-    case 'access':
-      return 'Access';
-    case 'view':
-      return 'View';
-    case 'edit':
-      return 'Edit';
-    case 'override':
-      return 'Override';
-    case 'manage':
-      return 'Manage';
-    case 'unlock':
-      return 'Unlock';
-    case 'replace':
-      return 'Replace';
-    case 'create':
-      return 'Create';
-    case 'delete':
-      return 'Delete';
-    case 'assign':
-      return 'Assign';
-    case 'revoke':
-      return 'Revoke';
-    case 'invite':
-      return 'Invite';
-    case 'deactivate':
-      return 'Deactivate';
-    case 'reactivate':
-      return 'Reactivate';
-    case 'soft_delete':
-      return 'Soft delete';
-    case 'erase_pii':
-      return 'Erase PII for';
-    case 'reset_password':
-      return 'Reset password for';
-    case 'reset_mfa':
-      return 'Reset two-factor sign-in for';
-    case 'reset_mfa_factors':
-      return 'Reset two-factor sign-in factors for';
-    case 'edit_seeded':
-      return 'Edit seeded';
-    case 'export':
-      return 'Export';
-    case 'force_logout':
-      return 'Force logout';
-    case 'issue_token':
-      return 'Issue token for';
-    case 'read':
-      return 'Read';
-    case 'toggle':
-      return 'Toggle';
-    case 'publish':
-      return 'Publish';
-    case 'connect':
-      return 'Connect';
-    case 'key_rotate':
-      return 'Rotate keys for';
-    case 'configure':
-      return 'Configure';
-    case 'run':
-      return 'Run';
-    case 'approve':
-      return 'Approve';
-    case 'reject':
-      return 'Reject';
-    case 'complete_unit':
-      return 'Complete unit in';
-    case 'tool_invoke':
-      return 'Invoke tools in';
-    default:
-      return _titleCaseToken(action);
-  }
-}
-
-String _titleCaseToken(String token) {
-  final normalized = token.trim().replaceAll(RegExp(r'[_\-]+'), ' ');
-  final words = normalized
-      .split(RegExp(r'\s+'))
-      .where((word) => word.isNotEmpty)
-      .map((word) {
-        if (word.length == 1) return word.toUpperCase();
-        return word.substring(0, 1).toUpperCase() +
-            word.substring(1).toLowerCase();
-      });
-  return words.join(' ');
-}
-
-/// Permission Explainer card. Read-only card that hosts the shared,
-/// surface-agnostic [PermissionExplainerView]
-/// (`lib/widgets/permission_explainer_view.dart`) so the F&F Admin
-/// Roles tab renders byte-identical Explainer content to the Operator
-/// Web screen per the parity contract
-/// § "Roles + Permission Explainer (11W.2 + 11A.13 Roles tab)".
-///
-/// Before this lift the admin Explainer DUPLICATED the bucketing and
-/// (a) paraphrased the catalog `description` text (the contract
-/// forbids paraphrasing) and (b) omitted the `account.*` +
-/// `business_timing.*` categories (the contract requires every
-/// catalog key to appear). The shared view fixes both: verbatim
-/// catalog descriptions and the full 11-category order.
-///
-/// Stays behind the existing admin Roles-tab posture (`admin.roles.view`,
-/// already in the catalog). The card is read-only — NO new permission
-/// key, NO gating change, NOT auth-touching.
-class _PermissionExplainerCard extends StatelessWidget {
-  const _PermissionExplainerCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return const OperatorWebPanel(
-      key: Key('admin_rhs_permission_explainer'),
-      title: 'Permission explainer',
-      child: PermissionExplainerView(
-        embedded: true,
-        keyPrefix: 'admin_rhs_permission_explainer',
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------
 // Hierarchy tab
 // ---------------------------------------------------------------------
-
 class _HierarchyTab extends StatelessWidget {
   const _HierarchyTab({
     required this.orgUnits,
@@ -2266,239 +1959,6 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 // Roles tab dialogs
 // ---------------------------------------------------------------------
 
-class _AdminProductPermissionPicker extends StatefulWidget {
-  const _AdminProductPermissionPicker({
-    required this.selected,
-    required this.barrioPlanIncluded,
-    required this.onToggle,
-  });
-
-  final Set<String> selected;
-  final bool barrioPlanIncluded;
-  final void Function(String permissionKey, bool selected) onToggle;
-
-  @override
-  State<_AdminProductPermissionPicker> createState() =>
-      _AdminProductPermissionPickerState();
-}
-
-class _AdminProductPermissionPickerState
-    extends State<_AdminProductPermissionPicker>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController = TabController(
-    length: _RoleEditorProduct.values.length,
-    vsync: this,
-  );
-
-  _RoleEditorProduct _activeProduct = _RoleEditorProduct.forgeFlow;
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final product = _activeProduct;
-    final disabled =
-        product == _RoleEditorProduct.barrio && !widget.barrioPlanIncluded;
-    return Container(
-      key: const Key('admin_rhs_role_editor_permission_picker'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          TabBar(
-            key: const Key('admin_rhs_role_editor_product_tabs'),
-            controller: _tabController,
-            labelColor: AppColors.textPrimary,
-            unselectedLabelColor: AppColors.textMuted,
-            indicatorColor: AppColors.sunset,
-            onTap: (index) {
-              setState(() => _activeProduct = _RoleEditorProduct.values[index]);
-            },
-            tabs: const <Widget>[
-              Tab(
-                key: Key('admin_rhs_role_editor_tab_forgeflow'),
-                text: 'Forge & Flow',
-              ),
-              Tab(key: Key('admin_rhs_role_editor_tab_barrio'), text: 'Barrio'),
-            ],
-          ),
-          if (disabled)
-            const _AdminDormantProductNotice(
-              key: Key('admin_rhs_role_editor_barrio_coming_soon'),
-            ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              children: <Widget>[
-                for (final entry in _permissionKeysByResource(product).entries)
-                  _AdminPermissionResourceSection(
-                    key: Key(
-                      'admin_rhs_role_editor_resource_'
-                      '${product.name}_${entry.key}',
-                    ),
-                    resourceLabel: entry.key,
-                    permissionKeys: entry.value,
-                    selected: widget.selected,
-                    disabled: disabled,
-                    onToggle: widget.onToggle,
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdminDormantProductNotice extends StatelessWidget {
-  const _AdminDormantProductNotice({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 10, 12, 2),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.08),
-        border: Border.all(
-          color: AppColors.warning.withValues(alpha: 0.32),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Icon(Icons.info_outline, size: 16, color: AppColors.warning),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Coming soon. Barrio permissions are visible for planning, '
-              'but this operator plan does not include Barrio yet.',
-              style: AppTextStyles.body12(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdminPermissionResourceSection extends StatelessWidget {
-  const _AdminPermissionResourceSection({
-    super.key,
-    required this.resourceLabel,
-    required this.permissionKeys,
-    required this.selected,
-    required this.disabled,
-    required this.onToggle,
-  });
-
-  final String resourceLabel;
-  final List<String> permissionKeys;
-  final Set<String> selected;
-  final bool disabled;
-  final void Function(String permissionKey, bool selected) onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedCount = permissionKeys.where(selected.contains).length;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  resourceLabel,
-                  style: AppTextStyles.mono12(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Text(
-                '$selectedCount / ${permissionKeys.length}',
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          for (final key in permissionKeys)
-            _AdminPermissionCheckbox(
-              key: Key('admin_rhs_role_editor_perm_$key'),
-              permissionKey: key,
-              selected: selected.contains(key),
-              disabled: disabled,
-              onChanged: (value) => onToggle(key, value ?? false),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdminPermissionCheckbox extends StatelessWidget {
-  const _AdminPermissionCheckbox({
-    super.key,
-    required this.permissionKey,
-    required this.selected,
-    required this.disabled,
-    required this.onChanged,
-  });
-
-  final String permissionKey;
-  final bool selected;
-  final bool disabled;
-  final ValueChanged<bool?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final mfa = PermissionKeys.requiresMfa.contains(permissionKey);
-    return CheckboxListTile(
-      key: Key('admin_rhs_role_editor_checkbox_$permissionKey'),
-      value: selected,
-      onChanged: disabled ? null : onChanged,
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      controlAffinity: ListTileControlAffinity.leading,
-      title: Wrap(
-        spacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: <Widget>[
-          Text(
-            permissionHumanLabel(permissionKey),
-            style: AppTextStyles.body12(color: AppColors.textPrimary),
-          ),
-          if (mfa)
-            Tooltip(
-              message: kMfaRequiredTooltip,
-              child: Text(
-                'MFA',
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-            ),
-        ],
-      ),
-      subtitle: Text(
-        permissionKey,
-        style: AppTextStyles.mono10(color: AppColors.textMuted),
-      ),
-    );
-  }
-}
-
 class EditSeededRoleResult {
   const EditSeededRoleResult({
     required this.permissionKeys,
@@ -2510,9 +1970,14 @@ class EditSeededRoleResult {
 }
 
 class EditSeededRoleDialog extends StatefulWidget {
-  const EditSeededRoleDialog({super.key, required this.initial});
+  const EditSeededRoleDialog({
+    super.key,
+    required this.initial,
+    this.lockedPermissionKeys = const <String>{},
+  });
 
   final RoleAdminRow initial;
+  final Set<String> lockedPermissionKeys;
 
   @override
   State<EditSeededRoleDialog> createState() => _EditSeededRoleDialogState();
@@ -2520,9 +1985,14 @@ class EditSeededRoleDialog extends StatefulWidget {
 
 class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
   final _reasonController = TextEditingController();
-  late final Set<String> _selectedPermissionKeys = widget.initial.permissionKeys
-      .toSet();
+  late final Set<String> _explicitPermissionKeys = <String>{
+    ...widget.initial.permissionKeys,
+    ...widget.lockedPermissionKeys,
+  };
   bool _violated = false;
+
+  Set<String> get _selectedPermissionKeys =>
+      PermissionKeyMetadataCatalog.expandImplies(_explicitPermissionKeys);
 
   @override
   void dispose() {
@@ -2547,9 +2017,9 @@ class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
   void _togglePermission(String permissionKey, bool selected) {
     setState(() {
       if (selected) {
-        _selectedPermissionKeys.add(permissionKey);
-      } else {
-        _selectedPermissionKeys.remove(permissionKey);
+        _explicitPermissionKeys.add(permissionKey);
+      } else if (!widget.lockedPermissionKeys.contains(permissionKey)) {
+        _explicitPermissionKeys.remove(permissionKey);
       }
     });
   }
@@ -2584,12 +2054,28 @@ class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
               'Pick permissions by product, then add a reason.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
+            if (widget.lockedPermissionKeys.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                'Required platform safety permissions stay enabled.',
+                style: AppTextStyles.body12(color: AppColors.textSecondary),
+              ),
+            ],
             const SizedBox(height: 12),
             Expanded(
-              child: _AdminProductPermissionPicker(
-                selected: _selectedPermissionKeys,
-                barrioPlanIncluded: false,
-                onToggle: _togglePermission,
+              child: SingleChildScrollView(
+                child: RolePermissionPickerCard(
+                  key: const Key('admin_rhs_seeded_role_editor_permissions'),
+                  header: const OperatorWebSectionHeading(title: 'Permissions'),
+                  selected: _selectedPermissionKeys,
+                  explicit: _explicitPermissionKeys,
+                  readOnly: false,
+                  barrioPlanIncluded: true,
+                  roleScope: RoleScope.business,
+                  onToggle: _togglePermission,
+                  keyPrefix: 'admin_rhs_seeded_role_editor',
+                  lockedPermissionKeys: widget.lockedPermissionKeys,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -2631,11 +2117,13 @@ class CreateCustomRoleDialog extends StatefulWidget {
   const CreateCustomRoleDialog({
     super.key,
     required this.existingRoleKeys,
+    this.existing,
     this.roleScope = RoleScope.business,
     this.validator = const CustomRoleValidator(),
   });
 
   final Set<String> existingRoleKeys;
+  final RoleAdminRow? existing;
 
   /// Working hierarchy scope this role is being authored at, so the
   /// validator's location-scope warnings fire as on operator-web.
@@ -2653,27 +2141,42 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   final _displayNameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _reasonController = TextEditingController();
-  final Set<String> _selectedPermissionKeys = <String>{};
+  final Set<String> _explicitPermissionKeys = <String>{};
   String? _displayNameError;
   String? _permissionsError;
   String? _reasonError;
 
+  bool get _isCreate => widget.existing == null;
+
+  Set<String> get _selectedPermissionKeys =>
+      PermissionKeyMetadataCatalog.expandImplies(_explicitPermissionKeys);
+
+  bool get _canSubmit =>
+      _displayNameController.text.trim().isNotEmpty &&
+      _selectedPermissionKeys.isNotEmpty &&
+      _reasonController.text.trim().isNotEmpty;
+
   @override
   void initState() {
     super.initState();
-    // Rebuild on name change so the advisory warning panel re-runs the
-    // validator as the admin types (the non-Owner billing rule reads
-    // the display name). Mirrors the operator-web editor.
-    _displayNameController.addListener(_onDisplayNameChanged);
+    final existing = widget.existing;
+    if (existing != null) {
+      _displayNameController.text = roleAdminDisplayLabel(existing);
+      _descriptionController.text = existing.description;
+      _explicitPermissionKeys.addAll(existing.permissionKeys);
+    }
+    _displayNameController.addListener(_onFieldChanged);
+    _reasonController.addListener(_onFieldChanged);
   }
 
-  void _onDisplayNameChanged() {
+  void _onFieldChanged() {
     if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _displayNameController.removeListener(_onDisplayNameChanged);
+    _displayNameController.removeListener(_onFieldChanged);
+    _reasonController.removeListener(_onFieldChanged);
     _displayNameController.dispose();
     _descriptionController.dispose();
     _reasonController.dispose();
@@ -2682,14 +2185,16 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
 
   void _onSubmit() {
     final displayName = _displayNameController.text.trim();
+    final roleKey =
+        widget.existing?.roleKey ??
+        generateRoleKeyFromDisplayName(
+          displayName,
+          existingKeys: widget.existingRoleKeys,
+        );
     final reason = _reasonController.text.trim();
-    final effectivePermissions = PermissionKeyMetadataCatalog.expandImplies(
-      _selectedPermissionKeys,
-    );
+    final effectivePermissions = _selectedPermissionKeys;
     setState(() {
-      _displayNameError = displayName.isEmpty
-          ? 'Choose a name for this role.'
-          : null;
+      _displayNameError = displayName.isEmpty ? 'Role name is required.' : null;
       _permissionsError = effectivePermissions.isEmpty
           ? 'Pick at least one permission for this role.'
           : null;
@@ -2700,10 +2205,6 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
         _reasonError != null) {
       return;
     }
-    final roleKey = generateRoleKeyFromDisplayName(
-      displayName,
-      existingKeys: widget.existingRoleKeys,
-    );
     Navigator.of(context).pop(
       CustomRoleDraft(
         roleKey: roleKey,
@@ -2718,9 +2219,9 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   void _togglePermission(String permissionKey, bool selected) {
     setState(() {
       if (selected) {
-        _selectedPermissionKeys.add(permissionKey);
+        _explicitPermissionKeys.add(permissionKey);
       } else {
-        _selectedPermissionKeys.remove(permissionKey);
+        _explicitPermissionKeys.remove(permissionKey);
       }
       _permissionsError = null;
     });
@@ -2730,7 +2231,7 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   Widget build(BuildContext context) {
     return OperatorWebDialog(
       key: const Key('admin_rhs_create_custom_role_dialog'),
-      title: 'New custom role',
+      title: _isCreate ? 'New custom role' : 'Edit role',
       icon: Icons.person_add_alt_outlined,
       maxWidth: 780,
       actions: <Widget>[
@@ -2741,42 +2242,40 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
         FilledButton(
           key: const Key('admin_rhs_create_custom_role_submit'),
           style: AdminButtonStyles.primary,
-          onPressed: _onSubmit,
-          child: const Text('Create role'),
+          onPressed: _canSubmit ? _onSubmit : null,
+          child: Text(_isCreate ? 'Create role' : 'Save changes'),
         ),
       ],
       child: SizedBox(
         width: 720,
-        height: 720,
+        height: 760,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            TextField(
-              key: const Key('admin_rhs_create_custom_role_name'),
-              controller: _displayNameController,
-              decoration: InputDecoration(
-                labelText: 'Display name',
-                border: const OutlineInputBorder(),
-                errorText: _displayNameError,
-              ),
+            _AdminRoleEditorScopePanel(
+              scopeLabel: _adminRoleScopeLabel(widget.roleScope),
+              roleScope: widget.roleScope,
             ),
-            const SizedBox(height: 10),
-            TextField(
-              key: const Key('admin_rhs_create_custom_role_description'),
-              controller: _descriptionController,
-              minLines: 1,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                border: OutlineInputBorder(),
-              ),
+            const SizedBox(height: 16),
+            _AdminRoleDetailsCard(
+              displayNameController: _displayNameController,
+              descriptionController: _descriptionController,
+              displayNameError: _displayNameError,
             ),
             const SizedBox(height: 10),
             Expanded(
-              child: _AdminProductPermissionPicker(
-                selected: _selectedPermissionKeys,
-                barrioPlanIncluded: false,
-                onToggle: _togglePermission,
+              child: SingleChildScrollView(
+                child: RolePermissionPickerCard(
+                  key: const Key('admin_rhs_custom_role_editor_permissions'),
+                  header: const OperatorWebSectionHeading(title: 'Permissions'),
+                  selected: _selectedPermissionKeys,
+                  explicit: _explicitPermissionKeys,
+                  readOnly: false,
+                  barrioPlanIncluded: true,
+                  roleScope: widget.roleScope,
+                  onToggle: _togglePermission,
+                  keyPrefix: 'admin_rhs_custom_role_editor',
+                ),
               ),
             ),
             if (_permissionsError != null) ...<Widget>[
@@ -2807,6 +2306,17 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
                 errorText: _reasonError,
               ),
             ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '${_selectedPermissionKeys.length} '
+                "${_selectedPermissionKeys.length == 1 ? 'permission' : 'permissions'} "
+                'selected',
+                key: const Key('admin_rhs_custom_role_editor_count'),
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ),
           ],
         ),
       ),
@@ -2814,7 +2324,132 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   }
 }
 
-// ---------------------------------------------------------------------
+class _AdminRoleEditorScopePanel extends StatelessWidget {
+  const _AdminRoleEditorScopePanel({
+    required this.scopeLabel,
+    required this.roleScope,
+  });
+
+  final String scopeLabel;
+  final RoleScope roleScope;
+
+  @override
+  Widget build(BuildContext context) {
+    final limited = roleScope != RoleScope.business;
+    return Container(
+      key: const Key('admin_rhs_custom_role_editor_scope_context'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.account_tree_outlined, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Scope: $scopeLabel',
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  limited
+                      ? 'Business-wide permissions are hidden here. Assign '
+                            'this role from Team members to keep access scoped.'
+                      : 'All permissions are available here. Assign this role '
+                            'from Team members when choosing who receives it.',
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminRoleDetailsCard extends StatelessWidget {
+  const _AdminRoleDetailsCard({
+    required this.displayNameController,
+    required this.descriptionController,
+    required this.displayNameError,
+  });
+
+  final TextEditingController displayNameController;
+  final TextEditingController descriptionController;
+  final String? displayNameError;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          OperatorWebSectionHeading(
+            title: 'Role details',
+            trailing: OperatorWebInfoButton(
+              title: 'Role details',
+              tooltip: 'Role details',
+              body: Text(
+                'Pick a name and short description so your team knows what '
+                'this role is for. Names show on Team members.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            key: const Key('admin_rhs_create_custom_role_name'),
+            controller: displayNameController,
+            decoration: InputDecoration(
+              labelText: 'Role name',
+              border: const OutlineInputBorder(),
+              isDense: true,
+              errorText: displayNameError,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_rhs_create_custom_role_description'),
+            controller: descriptionController,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Description',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _adminRoleScopeLabel(RoleScope scope) {
+  switch (scope) {
+    case RoleScope.business:
+      return 'Business';
+    case RoleScope.orgUnit:
+      return 'Org unit';
+    case RoleScope.location:
+      return 'Location';
+  }
+}
+
 // Hierarchy tab dialogs
 // ---------------------------------------------------------------------
 
