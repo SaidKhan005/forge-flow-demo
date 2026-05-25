@@ -51,14 +51,18 @@ class AdminOperatorWebDataAccuracyGateway
     required int covers,
   }) {
     return _adminGateway.saveManualCovers(
-      operatorId: operatorId,
-      locationId: locationId,
-      businessDateIso: businessDateIso,
-      servicePeriodKey: servicePeriodKey,
-      covers: covers,
-      actorUserId: _actorUserId,
-      actorIsForgeAdmin: _actorIsForgeAdmin,
-      reasonNote: _reasonNote,
+      DataAccuracyManualCoversSaveCommand(
+        target: DataAccuracyManualCoversTarget(
+          operatorId: operatorId,
+          locationId: locationId,
+          businessDateIso: businessDateIso,
+          servicePeriodKey: servicePeriodKey,
+        ),
+        covers: covers,
+        actorUserId: _actorUserId,
+        actorIsForgeAdmin: _actorIsForgeAdmin,
+        reasonNote: _reasonNote,
+      ),
     );
   }
 

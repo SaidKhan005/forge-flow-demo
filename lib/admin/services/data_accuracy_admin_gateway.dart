@@ -435,6 +435,36 @@ class DataAccuracyAdminGatewayError implements Exception {
       'DataAccuracyAdminGatewayError($statusCode/$errorCode): $message';
 }
 
+class DataAccuracyManualCoversTarget {
+  const DataAccuracyManualCoversTarget({
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDateIso,
+    required this.servicePeriodKey,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String businessDateIso;
+  final String servicePeriodKey;
+}
+
+class DataAccuracyManualCoversSaveCommand {
+  const DataAccuracyManualCoversSaveCommand({
+    required this.target,
+    required this.covers,
+    required this.actorUserId,
+    required this.actorIsForgeAdmin,
+    this.reasonNote,
+  });
+
+  final DataAccuracyManualCoversTarget target;
+  final int covers;
+  final String actorUserId;
+  final bool actorIsForgeAdmin;
+  final String? reasonNote;
+}
+
 abstract class DataAccuracyAdminGateway {
   // ── Tab 1 reads ──────────────────────────────────────────────────────
   Future<List<DataAccuracyAdminRow>> listDataAccuracyRows();
@@ -459,16 +489,9 @@ abstract class DataAccuracyAdminGateway {
     String? reasonNote,
   });
 
-  Future<DataAccuracySettings> saveManualCovers({
-    required String operatorId,
-    required String locationId,
-    required String businessDateIso,
-    required String servicePeriodKey,
-    required int covers,
-    required String actorUserId,
-    required bool actorIsForgeAdmin,
-    String? reasonNote,
-  });
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  );
 
   Future<DataAccuracySettings> clearManualCovers({
     required String operatorId,
@@ -736,29 +759,24 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
-  Future<DataAccuracySettings> saveManualCovers({
-    required String operatorId,
-    required String locationId,
-    required String businessDateIso,
-    required String servicePeriodKey,
-    required int covers,
-    required String actorUserId,
-    required bool actorIsForgeAdmin,
-    String? reasonNote,
-  }) async {
-    _requireEditable(actorIsForgeAdmin, 'saveManualCovers');
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  ) async {
+    final target = command.target;
+    _requireEditable(command.actorIsForgeAdmin, 'saveManualCovers');
     final body = await _send(
       method: 'PATCH',
       path:
-          '$dataSettingsPrefix${Uri.encodeComponent(operatorId)}/'
-          '${Uri.encodeComponent(locationId)}/$dataManualCoversSegment',
+          '$dataSettingsPrefix${Uri.encodeComponent(target.operatorId)}/'
+          '${Uri.encodeComponent(target.locationId)}/'
+          '$dataManualCoversSegment',
       idempotencyKey: _newIdempotencyKey('data-accuracy-manual-covers-save'),
       jsonBody: <String, Object?>{
-        'business_date': businessDateIso,
-        'service_period_key': servicePeriodKey,
-        'covers': covers,
-        if (reasonNote != null && reasonNote.trim().isNotEmpty)
-          'reason_note': reasonNote.trim(),
+        'business_date': target.businessDateIso,
+        'service_period_key': target.servicePeriodKey,
+        'covers': command.covers,
+        if (command.reasonNote != null && command.reasonNote!.trim().isNotEmpty)
+          'reason_note': command.reasonNote!.trim(),
       },
     );
     return _settingsFromWriteResponse(body);
@@ -1180,6 +1198,30 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     String? idempotencyKey,
   }) async {
     final token = await bearerTokenProvider();
+    final request = _buildRequest(
+      method: method,
+      path: path,
+      token: token,
+      queryParameters: queryParameters,
+      jsonBody: jsonBody,
+      idempotencyKey: idempotencyKey,
+    );
+    final response = await _sendRequest(request);
+    final parsed = _decodeResponseBody(response);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return parsed;
+    }
+    _throwGatewayError(response, parsed);
+  }
+
+  http.Request _buildRequest({
+    required String method,
+    required String path,
+    required String token,
+    required Map<String, String> queryParameters,
+    Map<String, Object?>? jsonBody,
+    String? idempotencyKey,
+  }) {
     var uri = baseUri.resolve(path);
     if (queryParameters.isNotEmpty) {
       uri = uri.replace(queryParameters: queryParameters);
@@ -1194,9 +1236,12 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       request.headers['content-type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    late final http.Response response;
+    return request;
+  }
+
+  Future<http.Response> _sendRequest(http.Request request) async {
     try {
-      response = await sendAdminHttpRequest(
+      return await sendAdminHttpRequest(
         _httpClient,
         request,
         timeout: _timeout,
@@ -1209,15 +1254,22 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
             'admin data accuracy proxy timed out after ${_timeout.inSeconds}s',
       );
     }
+  }
+
+  Map<String, Object?> _decodeResponseBody(http.Response response) {
     final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
       final decoded = jsonDecode(raw);
       if (decoded is Map) parsed = decoded.cast<String, Object?>();
     }
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return parsed;
-    }
+    return parsed;
+  }
+
+  Never _throwGatewayError(
+    http.Response response,
+    Map<String, Object?> parsed,
+  ) {
     final message =
         (parsed['message'] as String?) ??
         'admin data accuracy proxy returned an error';
@@ -1746,39 +1798,78 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       final servicePeriodKey = entry.key.trim();
       if (servicePeriodKey.isEmpty) continue;
       _validateServicePeriodKey(servicePeriodKey);
-      final priorIdx = list.indexWhere(
-        (row) =>
-            row.servicePeriodKey == servicePeriodKey &&
-            row.effectiveAtBusinessDate == '1970-01-01',
-      );
-      final prev = priorIdx >= 0 ? list[priorIdx] : null;
-      if (prev == null) {
-        _servicePeriodIdCounter += 1;
-      }
-      final next = DataAccuracyServicePeriodSetting(
-        id: prev?.id ?? 'period-setting-$_servicePeriodIdCounter',
-        operatorId: settings.operatorId,
-        locationId: settings.locationId,
+      _upsertBaselineServicePeriodRow(
+        list,
+        settings: settings,
         servicePeriodKey: servicePeriodKey,
-        coversSource: ServicePeriodCoversSourceWire.fromWire(entry.value.wire),
-        wageSource:
-            prev?.wageSource ?? ServicePeriodWageSource.vendorPerEmployee,
-        effectiveAtBusinessDate: '1970-01-01',
-        createdAt: prev?.createdAt ?? _clock(),
-        updatedAt: _clock(),
-        updatedBy: actorUserId,
+        coversSource: entry.value,
+        actorUserId: actorUserId,
       );
-      if (priorIdx >= 0) {
-        list[priorIdx] = next;
-      } else {
-        list.add(next);
-      }
     }
     list.sort((a, b) {
       final byKey = a.servicePeriodKey.compareTo(b.servicePeriodKey);
       if (byKey != 0) return byKey;
       return b.effectiveAtBusinessDate.compareTo(a.effectiveAtBusinessDate);
     });
+  }
+
+  void _upsertBaselineServicePeriodRow(
+    List<DataAccuracyServicePeriodSetting> list, {
+    required DataAccuracySettings settings,
+    required String servicePeriodKey,
+    required CoversSource coversSource,
+    required String actorUserId,
+  }) {
+    final priorIdx = _baselineServicePeriodIndex(list, servicePeriodKey);
+    final prev = priorIdx >= 0 ? list[priorIdx] : null;
+    final next = _buildBaselineServicePeriodRow(
+      settings,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: coversSource,
+      previous: prev,
+      actorUserId: actorUserId,
+    );
+    if (priorIdx >= 0) {
+      list[priorIdx] = next;
+    } else {
+      list.add(next);
+    }
+  }
+
+  int _baselineServicePeriodIndex(
+    List<DataAccuracyServicePeriodSetting> list,
+    String servicePeriodKey,
+  ) {
+    return list.indexWhere(
+      (row) =>
+          row.servicePeriodKey == servicePeriodKey &&
+          row.effectiveAtBusinessDate == '1970-01-01',
+    );
+  }
+
+  DataAccuracyServicePeriodSetting _buildBaselineServicePeriodRow(
+    DataAccuracySettings settings, {
+    required String servicePeriodKey,
+    required CoversSource coversSource,
+    required DataAccuracyServicePeriodSetting? previous,
+    required String actorUserId,
+  }) {
+    if (previous == null) {
+      _servicePeriodIdCounter += 1;
+    }
+    return DataAccuracyServicePeriodSetting(
+      id: previous?.id ?? 'period-setting-$_servicePeriodIdCounter',
+      operatorId: settings.operatorId,
+      locationId: settings.locationId,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: ServicePeriodCoversSourceWire.fromWire(coversSource.wire),
+      wageSource:
+          previous?.wageSource ?? ServicePeriodWageSource.vendorPerEmployee,
+      effectiveAtBusinessDate: '1970-01-01',
+      createdAt: previous?.createdAt ?? _clock(),
+      updatedAt: _clock(),
+      updatedBy: actorUserId,
+    );
   }
 
   DataAccuracyAdminRow _rowFor(OperatorLocationRef ref) {
@@ -2015,17 +2106,16 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
-  Future<DataAccuracySettings> saveManualCovers({
-    required String operatorId,
-    required String locationId,
-    required String businessDateIso,
-    required String servicePeriodKey,
-    required int covers,
-    required String actorUserId,
-    required bool actorIsForgeAdmin,
-    String? reasonNote,
-  }) async {
-    _ensureForgeAdmin(actorIsForgeAdmin, 'saveManualCovers');
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  ) async {
+    final target = command.target;
+    _ensureForgeAdmin(command.actorIsForgeAdmin, 'saveManualCovers');
+    final operatorId = target.operatorId;
+    final locationId = target.locationId;
+    final businessDateIso = target.businessDateIso;
+    final servicePeriodKey = target.servicePeriodKey;
+    final covers = command.covers;
     _validateBusinessDate(businessDateIso, 'business_date');
     _validateServicePeriodKey(servicePeriodKey);
     _validateCovers(covers);
@@ -2048,13 +2138,13 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     final next = _settingsWith(
       prev,
       coversManualEntries: entries,
-      updatedBy: actorUserId,
+      updatedBy: command.actorUserId,
     );
     _settings[_key(operatorId, locationId)] = next;
     if (before != covers) {
       _record(
         eventType: 'admin.data_accuracy.manual_covers.save',
-        actorUserId: actorUserId,
+        actorUserId: command.actorUserId,
         operatorId: operatorId,
         locationId: locationId,
         diff: <String, Object?>{
@@ -2062,7 +2152,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           'service_period_key': servicePeriodKey,
           'covers': <String, int?>{'from': before, 'to': covers},
         },
-        reasonNote: reasonNote,
+        reasonNote: command.reasonNote,
       );
     }
     return _effectiveSettings(operatorId, locationId);
