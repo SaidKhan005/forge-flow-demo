@@ -45,6 +45,13 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
     'caps': <Map<String, Object?>>[],
   };
 
+  bool deleteResult = true;
+  Map<String, Object?>? spendSummaryResult = <String, Object?>{
+    'operator_id': 'op-1',
+    'as_of': '2026-04-30T12:00:00.000Z',
+    'lines': <Map<String, Object?>>[],
+  };
+
   String? lastReason;
   String? lastActorUserId;
   String? lastTierUpdateOperatorId;
@@ -56,6 +63,11 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
   String? lastApplyTemplateOperatorId;
   String? lastApplyTemplateTierKey;
   Object? raiseOnApplyTemplate;
+  String? lastDeleteOperatorId;
+  String? lastDeleteCapId;
+  String? lastDeleteLocationId;
+  String? lastDeleteUsageClass;
+  String? lastSpendSummaryOperatorId;
 
   @override
   Future<List<Map<String, Object?>>> listOperatorsWithCaps({
@@ -116,6 +128,38 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
     final raise = raiseOnApplyTemplate;
     if (raise != null) throw raise;
     return applyTemplateResult;
+  }
+
+  @override
+  Future<bool> deleteUsageCap({
+    required String actorUserId,
+    required String operatorId,
+    String? capId,
+    String? locationId,
+    String? usageClass,
+    String? staffId,
+    String? workflowId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastDeleteOperatorId = operatorId;
+    lastDeleteCapId = capId;
+    lastDeleteLocationId = locationId;
+    lastDeleteUsageClass = usageClass;
+    return deleteResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> spendSummary({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastSpendSummaryOperatorId = operatorId;
+    return spendSummaryResult;
   }
 }
 

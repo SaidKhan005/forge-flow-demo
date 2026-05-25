@@ -63,6 +63,15 @@ abstract class PricingTierAdminGateway {
   Future<PricingOperatorBundle> applyTierTemplate(
     ApplyTierTemplateCommand command,
   );
+
+  /// DELETE one cap row. `DELETE /v1/admin/pricing/usage-caps`. Returns
+  /// true when a row was removed, false when nothing matched (a retried
+  /// delete of an already-gone row is a no-op).
+  Future<bool> deleteUsageCap(UsageCapDeleteCommand command);
+
+  /// Month-to-date spend per cap identity for one operator.
+  /// `GET /v1/admin/pricing/operators/{id}/spend-summary`.
+  Future<OperatorSpendSummary> fetchSpendSummary(String operatorId);
 }
 
 class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
@@ -84,6 +93,7 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
   static const String operatorsPath = '/v1/admin/pricing/operators';
   static const String operatorsPrefix = '$operatorsPath/';
   static const String usageCapsPath = '/v1/admin/pricing/usage-caps';
+  static const String spendSummaryAction = 'spend-summary';
 
   // Idempotency key generation lives in the screen layer
   // (`_PricingTierAdminScreenState._nextIdempotencyKey`) so a single
@@ -137,6 +147,29 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
       jsonBody: command.toJson(),
     );
     return PricingOperatorBundle.fromJson(body);
+  }
+
+  @override
+  Future<bool> deleteUsageCap(UsageCapDeleteCommand command) async {
+    final body = await _send(
+      method: 'DELETE',
+      path: usageCapsPath,
+      idempotencyKey: command.idempotencyKey,
+      jsonBody: command.toJson(),
+    );
+    // The proxy returns `{deleted: bool}`. Absent / non-bool defaults to
+    // true (a 2xx with no body still means the server accepted it).
+    return (body['deleted'] as bool?) ?? true;
+  }
+
+  @override
+  Future<OperatorSpendSummary> fetchSpendSummary(String operatorId) async {
+    final body = await _send(
+      method: 'GET',
+      path:
+          '$operatorsPrefix${Uri.encodeComponent(operatorId)}/$spendSummaryAction',
+    );
+    return OperatorSpendSummary.fromJson(body);
   }
 
   Future<Map<String, Object?>> _send({
@@ -363,6 +396,55 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     final result = bundle.toBundle();
     _idempotentResults[command.idempotencyKey] = result;
     return result;
+  }
+
+  @override
+  Future<bool> deleteUsageCap(UsageCapDeleteCommand command) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is bool) return cached;
+    final bundle = _bundleOrThrow(command.operatorId);
+    final before = bundle.caps.length;
+    bundle.caps.removeWhere((c) {
+      if (command.capId != null) {
+        return c.capId == command.capId;
+      }
+      return c.locationId == command.locationId &&
+          c.usageClass == command.usageClass &&
+          c.staffId == command.staffId &&
+          c.workflowId == command.workflowId;
+    });
+    final deleted = bundle.caps.length < before;
+    _idempotentResults[command.idempotencyKey] = deleted;
+    return deleted;
+  }
+
+  @override
+  Future<OperatorSpendSummary> fetchSpendSummary(String operatorId) async {
+    // Demo / widget tests have no usage_logs roll-up, so the in-memory
+    // gateway reports zero month-to-date spend per existing cap. The
+    // screen falls back to the observability envelope for demo spend
+    // figures, so this just keeps the live-endpoint shape exercisable
+    // without inventing phantom spend.
+    final bundle = _bundles[operatorId];
+    final lines = <UsageCapSpendLine>[
+      if (bundle != null)
+        for (final cap in bundle.caps)
+          UsageCapSpendLine(
+            locationId: cap.locationId,
+            usageClass: cap.usageClass,
+            staffId: cap.staffId,
+            workflowId: cap.workflowId,
+            capId: cap.capId,
+            monthlyCapUsd: cap.monthlyCapUsd,
+            perInvocationCapUsd: cap.perInvocationCapUsd,
+            monthlyUsedUsd: 0,
+          ),
+    ];
+    return OperatorSpendSummary(
+      operatorId: operatorId,
+      asOf: _now().toUtc(),
+      lines: lines,
+    );
   }
 
   _MutableBundle _bundleOrThrow(String operatorId) {
