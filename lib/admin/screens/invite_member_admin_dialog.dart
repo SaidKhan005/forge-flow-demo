@@ -295,7 +295,7 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
   Widget build(BuildContext context) {
     return OperatorWebDialog(
       key: const Key('admin_members_invite_dialog'),
-      title: 'Invite member to ${widget.operatorBusinessName}',
+      title: 'Invite a team member',
       icon: Icons.person_add_alt_1_outlined,
       maxWidth: 520,
       actions: <Widget>[
@@ -317,6 +317,17 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              // Operator-web parity (invite_member_dialog.dart): the intro
+              // line is copied verbatim so the admin invite dialog opens with
+              // the same plain-English framing as the operator self-service
+              // dialog.
+              Text(
+                'Send an email invite. The new teammate will set their own '
+                'password and turn on two-factor sign-in before they get to '
+                'your dashboard.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 14),
               if (_violation != null) ...[
                 _ValidationBanner(
                   message: _violation!,
@@ -336,8 +347,8 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
                 key: const Key('admin_members_invite_email'),
                 controller: _emailController,
                 decoration: const InputDecoration(
-                  labelText: 'Email',
-                  hintText: 'name@example.com',
+                  labelText: 'Email address',
+                  hintText: 'jordan.lee@example.com',
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.emailAddress,
