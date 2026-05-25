@@ -631,6 +631,37 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     }, successHint: 'Created ${result.displayName}');
   }
 
+  Future<void> _onEditCustomRole(RoleAdminRow row) async {
+    final rolesGateway = widget.rolesGateway;
+    if (rolesGateway == null) return;
+    final result = await showDialog<CustomRoleDraft>(
+      context: context,
+      builder: (_) => CreateCustomRoleDialog(
+        existingRoleKeys: <String>{
+          for (final role in _roles)
+            if (role.roleId != row.roleId) role.roleKey,
+        },
+        existing: row,
+      ),
+    );
+    if (result == null) return;
+    await _runAndRefresh(
+      () => rolesGateway.updateCustomRole(
+        operatorId: widget.pickedOperator.operatorId,
+        roleId: row.roleId,
+        displayName: result.displayName,
+        description: result.description,
+        previousPermissionKeys: row.permissionKeys,
+        permissionKeys: result.permissionKeys,
+        idempotencyKey: _nextIdempotencyKey('roles-update-custom'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      ),
+      successHint: 'Updated ${result.displayName}',
+    );
+  }
+
   Future<void> _onDeleteCustomRole(RoleAdminRow row) async {
     final rolesGateway = widget.rolesGateway;
     if (rolesGateway == null) return;
@@ -1061,6 +1092,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
             editingEnabled: widget.editingEnabled,
             canEditSeededRoles: widget.canEditSeededRoles,
             onEditSeeded: _onEditSeededRole,
+            onEditCustom: _onEditCustomRole,
             onCreateCustom: _onCreateCustomRole,
             onDeleteCustom: _onDeleteCustomRole,
           ),
@@ -1341,18 +1373,9 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                     border: OutlineInputBorder(),
                   ),
                   items: const <DropdownMenuItem<bool?>>[
-                    DropdownMenuItem<bool?>(
-                      value: null,
-                      child: Text('Any'),
-                    ),
-                    DropdownMenuItem<bool?>(
-                      value: true,
-                      child: Text('On'),
-                    ),
-                    DropdownMenuItem<bool?>(
-                      value: false,
-                      child: Text('Off'),
-                    ),
+                    DropdownMenuItem<bool?>(value: null, child: Text('Any')),
+                    DropdownMenuItem<bool?>(value: true, child: Text('On')),
+                    DropdownMenuItem<bool?>(value: false, child: Text('Off')),
                   ],
                   onChanged: widget.onMfaEnrolledChanged,
                 ),

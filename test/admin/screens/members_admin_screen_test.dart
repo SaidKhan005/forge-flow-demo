@@ -1462,7 +1462,7 @@ void main() {
   });
 
   group('merged People/access/roles surface', () {
-    testWidgets('renders role policy and Permission Explainer on People', (
+    testWidgets('renders Ops-shaped role policy without Permission Explainer', (
       tester,
     ) async {
       wideViewport(tester);
@@ -1497,7 +1497,7 @@ void main() {
       expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
       expect(
         find.byKey(const Key('admin_rhs_permission_explainer')),
-        findsOneWidget,
+        findsNothing,
       );
     });
 

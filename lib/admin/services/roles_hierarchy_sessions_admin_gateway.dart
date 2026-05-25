@@ -378,6 +378,22 @@ abstract class RolesHierarchySessionsAdminGateway {
     required String adminReason,
   });
 
+  /// Update a custom operator-scoped role. Gated on
+  /// `admin.roles.create_custom`, matching the proxy's custom-role
+  /// patch permission today.
+  Future<RoleAdminRow> updateCustomRole({
+    required String operatorId,
+    required String roleId,
+    required String displayName,
+    required String description,
+    required List<String> previousPermissionKeys,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
   /// Delete a custom operator-scoped role. Gated on
   /// `admin.roles.delete_custom`.
   Future<void> deleteCustomRole({
@@ -669,7 +685,42 @@ class HttpRolesHierarchySessionsAdminGateway
         'role_key': roleKey,
         'display_name': displayName,
         'description': description,
-        'permission_keys': permissionKeys,
+        'permissions': _permissionUpdatesFromKeys(permissionKeys),
+        'reason': adminReason,
+        'admin_reason': adminReason,
+      },
+    );
+    return _roleRowFromJson(_asMap(body['role']));
+  }
+
+  @override
+  Future<RoleAdminRow> updateCustomRole({
+    required String operatorId,
+    required String roleId,
+    required String displayName,
+    required String description,
+    required List<String> previousPermissionKeys,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'updateCustomRole');
+    _requireAdminReason(adminReason, 'updateCustomRole');
+    final body = await _send(
+      method: 'PATCH',
+      path: '$rolesPath/${Uri.encodeComponent(roleId)}',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'display_name': displayName,
+        'description': description,
+        'permissions': _permissionUpdatesForReplacement(
+          previous: previousPermissionKeys,
+          next: permissionKeys,
+        ),
+        'reason': adminReason,
         'admin_reason': adminReason,
       },
     );
@@ -688,11 +739,12 @@ class HttpRolesHierarchySessionsAdminGateway
     _requireEditable(actorIsForgeAdmin, 'deleteCustomRole');
     _requireAdminReason(adminReason, 'deleteCustomRole');
     await _send(
-      method: 'POST',
-      path: '$rolesPath/${Uri.encodeComponent(roleId)}/delete',
+      method: 'DELETE',
+      path: '$rolesPath/${Uri.encodeComponent(roleId)}',
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
+        'reason': adminReason,
         'admin_reason': adminReason,
       },
     );
@@ -1153,6 +1205,30 @@ class HttpRolesHierarchySessionsAdminGateway
       message: message,
     );
   }
+}
+
+List<Map<String, String>> _permissionUpdatesFromKeys(Iterable<String> keys) {
+  final ordered = keys.toSet().toList()..sort();
+  return <Map<String, String>>[
+    for (final key in ordered)
+      <String, String>{'permission_key': key, 'effect': 'allow'},
+  ];
+}
+
+List<Map<String, String>> _permissionUpdatesForReplacement({
+  required Iterable<String> previous,
+  required Iterable<String> next,
+}) {
+  final previousSet = previous.toSet();
+  final nextSet = next.toSet();
+  final keys = <String>{...previousSet, ...nextSet}.toList()..sort();
+  return <Map<String, String>>[
+    for (final key in keys)
+      <String, String>{
+        'permission_key': key,
+        'effect': nextSet.contains(key) ? 'allow' : 'inherit',
+      },
+  ];
 }
 
 RoleAdminRow _roleRowFromJson(Map<String, Object?> json) {
