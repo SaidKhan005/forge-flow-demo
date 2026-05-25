@@ -487,12 +487,8 @@ class _PollingAndPricingAdminScreenState
     final scope = _scope!;
     final result = await showDialog<_TierAssignmentDraft>(
       context: context,
-      builder: (_) => _TierAssignmentDialog(
-        row: rows.first,
-        definitions: _definitions,
-        title: 'Assign polling setup to ${scope.displayLabel}',
-        scopeLocationCount: _selectedScopeLocationCount,
-      ),
+      builder: (_) =>
+          _TierAssignmentDialog(row: rows.first, definitions: _definitions),
     );
     if (result == null) return;
     setState(() => _actionError = null);
@@ -721,7 +717,6 @@ class _PollingAndPricingAdminScreenState
           if (_scopeMutationEnabled) ...[
             const SizedBox(height: 16),
             _ScopedPollingActionCard(
-              scope: _scope!,
               locationCount: _selectedScopeLocationCount,
               onPressed: _onAssignSelectedScope,
             ),
@@ -877,12 +872,10 @@ class _PollingAndPricingAdminScreenState
 
 class _ScopedPollingActionCard extends StatelessWidget {
   const _ScopedPollingActionCard({
-    required this.scope,
     required this.locationCount,
     required this.onPressed,
   });
 
-  final AdminHierarchyScopeIntent scope;
   final int locationCount;
   final VoidCallback onPressed;
 
@@ -899,7 +892,7 @@ class _ScopedPollingActionCard extends StatelessWidget {
         role: AdminActionRole.primary,
       ),
       child: Text(
-        'Selected scope: ${scope.displayLabel}. This saves one polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower setting overrides it.',
+        'Apply one polling setup to the covered $locationCount location${locationCount == 1 ? '' : 's'}. Lower location settings can still override it.',
         style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
     );
@@ -993,17 +986,10 @@ class _TierAssignmentDraft {
 }
 
 class _TierAssignmentDialog extends StatefulWidget {
-  const _TierAssignmentDialog({
-    required this.row,
-    required this.definitions,
-    this.title,
-    this.scopeLocationCount = 1,
-  });
+  const _TierAssignmentDialog({required this.row, required this.definitions});
 
   final TierAssignmentAdminRow row;
   final List<TierDefinition> definitions;
-  final String? title;
-  final int scopeLocationCount;
 
   @override
   State<_TierAssignmentDialog> createState() => _TierAssignmentDialogState();
@@ -1076,10 +1062,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
     return OperatorWebDialog(
       key: const Key('admin_tier_assignment_dialog'),
       maxWidth: 560,
-      title:
-          widget.title ??
-          'Assign tier - ${widget.row.operatorRef.businessName} '
-              '/ ${widget.row.operatorRef.locationName}',
+      title: 'Assign polling setup',
       actions: <Widget>[
         AdminActionButton(
           key: const Key('admin_tier_assignment_dialog_cancel'),
@@ -1232,16 +1215,13 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
                     Builder(
                       builder: (context) {
                         final perLocation = _calculatorMonthlyCostCents;
-                        final scopeTotal = perLocation == null
-                            ? null
-                            : perLocation * widget.scopeLocationCount;
                         return Row(
                           children: [
                             Expanded(
                               child: Text(
                                 perLocation == null
                                     ? 'Enter calls and API cost to estimate monthly cost.'
-                                    : 'Estimate: \$${_formatCents(perLocation)} per location, \$${_formatCents(scopeTotal!)} for ${widget.scopeLocationCount} location${widget.scopeLocationCount == 1 ? '' : 's'}.',
+                                    : 'Estimate: \$${_formatCents(perLocation)} per location.',
                                 style: AppTextStyles.body13(
                                   color: AppColors.textSecondary,
                                 ),
