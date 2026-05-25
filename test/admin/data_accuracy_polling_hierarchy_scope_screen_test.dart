@@ -4,7 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/per_location_data_accuracy_screen.dart';
 import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_gateway.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_projection.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/vendor_applicability_admin_gateway.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -58,6 +61,60 @@ void main() {
     );
   }
 
+  InMemoryAdminBusinessTimingResolutionGateway timingGateway({
+    String operatorId = 'op-1',
+    String locationId = 'loc-1a',
+  }) {
+    return InMemoryAdminBusinessTimingResolutionGateway(
+      seed: <String, AdminBusinessTimingResolution>{
+        InMemoryAdminBusinessTimingResolutionGateway.keyFor(
+          operatorId,
+          locationId,
+        ): AdminBusinessTimingResolution(
+          operatorId: operatorId,
+          locationId: locationId,
+          businessDate: '2026-05-24',
+          ianaTimezone: 'America/Toronto',
+          candidates: const <AdminResolutionCandidate>[
+            AdminResolutionCandidate(
+              profileId: 'timing-op-1',
+              scopeType: 'operator_default',
+              scopeId: 'op-1',
+              scopeLabel: 'Demo Diner Co.',
+              scopeDepthRank: 0,
+              ianaTimezone: 'America/Toronto',
+              effectiveAtBusinessDate: '2026-01-01',
+              weekStartDay: 'monday',
+              businessDayStartLocal: '04:00',
+              servicePeriods: <AdminResolutionServicePeriod>[
+                AdminResolutionServicePeriod(
+                  key: 'lunch',
+                  label: 'Lunch',
+                  shortLabel: 'Lunch',
+                  startLocal: '11:00',
+                  endLocal: '15:00',
+                  rollsPastMidnight: false,
+                  sortOrder: 0,
+                  applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+                ),
+                AdminResolutionServicePeriod(
+                  key: 'dinner',
+                  label: 'Dinner',
+                  shortLabel: 'Dinner',
+                  startLocal: '17:00',
+                  endLocal: '22:00',
+                  rollsPastMidnight: false,
+                  sortOrder: 1,
+                  applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+                ),
+              ],
+            ),
+          ],
+        ),
+      },
+    );
+  }
+
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized();
   });
@@ -72,8 +129,7 @@ void main() {
   }
 
   testWidgets(
-    'Covers and Wage Data Accuracy business scope shows pick-a-location for '
-    'the primary surface but still lists scoped rows in the table',
+    'Covers and Wage Data Accuracy business scope waits for the left picker',
     (tester) async {
       useWideViewport(tester);
       const businessScope = AdminHierarchyScopeIntent.business(
@@ -87,41 +143,24 @@ void main() {
           PerLocationDataAccuracyScreen(
             gateway: gateway(),
             actorUserId: 'demo-super-admin',
+            timingResolutionGateway: timingGateway(),
+            vendorApplicabilityGateway:
+                const _EmptyVendorApplicabilityAdminGateway(),
           ),
           hierarchyScope: businessScope,
         ),
       );
       await tester.pumpAndSettle();
 
-      // Web-style replica parity: data accuracy is per-location, so a
-      // business scope shows the friendly "pick a location" surface for the
-      // PRIMARY section instead of the web source controls.
       expect(
-        find.byKey(const Key('admin_data_accuracy_pick_location')),
+        find.byKey(const Key('admin_data_accuracy_waiting_for_location_scope')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('admin_data_accuracy_primary_section')),
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
         findsNothing,
       );
-      expect(
-        find.byKey(const Key('data_accuracy_covers_source_card')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('data_accuracy_wage_source_card')),
-        findsNothing,
-      );
-
-      // SECONDARY admin extras still render: the table lists the scoped
-      // operator-1 locations (and excludes operator-2's location).
-      expect(
-        find.byKey(const Key('admin_data_accuracy_table')),
-        findsOneWidget,
-      );
-      expect(find.text('Toronto Yorkville'), findsOneWidget);
-      expect(find.text('Vancouver Robson'), findsOneWidget);
-      expect(find.text('Brooklyn Williamsburg'), findsNothing);
+      expect(find.byKey(const Key('admin_data_accuracy_table')), findsNothing);
     },
   );
 
@@ -188,8 +227,7 @@ void main() {
   );
 
   testWidgets(
-    'Data Accuracy location scope renders the web-style primary controls '
-    'and keeps the secondary table edit behavior',
+    'Data Accuracy location scope renders the Operator Web surface only',
     (tester) async {
       useWideViewport(tester);
       const locationScope = AdminHierarchyScopeIntent.location(
@@ -204,15 +242,17 @@ void main() {
           PerLocationDataAccuracyScreen(
             gateway: gateway(),
             actorUserId: 'demo-super-admin',
+            timingResolutionGateway: timingGateway(),
+            vendorApplicabilityGateway:
+                const _EmptyVendorApplicabilityAdminGateway(),
             initialHierarchyScope: locationScope,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      // PRIMARY web-style source controls render for the selected location.
       expect(
-        find.byKey(const Key('admin_data_accuracy_primary_section')),
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
         findsOneWidget,
       );
       expect(
@@ -227,13 +267,7 @@ void main() {
         find.byKey(const Key('admin_data_accuracy_pick_location')),
         findsNothing,
       );
-
-      // SECONDARY admin table still offers the per-location override edit.
-      expect(
-        find.byKey(const Key('admin_data_accuracy_edit_op-1_loc-1a')),
-        findsOneWidget,
-      );
-      expect(find.text('Vancouver Robson'), findsNothing);
+      expect(find.byKey(const Key('admin_data_accuracy_table')), findsNothing);
     },
   );
 
@@ -465,28 +499,99 @@ void main() {
     );
   }
 
-  // Web-style replica parity: the data-accuracy screen no longer hosts the
-  // in-screen inheritance notice / scope banner (the AdminSetupWorkspace
-  // scope-tree pane owns scope selection now). At a business / org-unit
-  // scope the PRIMARY surface shows the friendly pick-a-location panel
-  // because data accuracy is per-location, exactly like operator-web. The
-  // Polling tile keeps the inheritance notice (its screen is unchanged), so
+  // Data Accuracy no longer hosts an in-screen inheritance notice, scope
+  // banner, pick-location panel, or table. The AdminSetupWorkspace scope tree
+  // owns scope selection; the Data Accuracy tab mounts Operator Web only after
+  // a location is selected. The Polling tile keeps the inheritance notice, so
   // the shared single-location fixtures below stay in use.
+  testWidgets('Data Accuracy business scope waits for a selected location '
+      '(single covered location)', (tester) async {
+    useWideViewport(tester);
+    const businessScope = AdminHierarchyScopeIntent.business(
+      operatorId: 'op-solo',
+      operatorName: 'Solo Diner LLC',
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        PerLocationDataAccuracyScreen(
+          gateway: singleLocationGateway(),
+          actorUserId: 'demo-super-admin',
+          timingResolutionGateway: timingGateway(
+            operatorId: 'op-solo',
+            locationId: 'loc-solo-a',
+          ),
+          vendorApplicabilityGateway:
+              const _EmptyVendorApplicabilityAdminGateway(),
+          initialHierarchyScope: businessScope,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_data_accuracy_waiting_for_location_scope')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Data Accuracy org-unit scope waits for a selected location '
+      '(single covered location)', (tester) async {
+    useWideViewport(tester);
+    const orgScope = AdminHierarchyScopeIntent.orgUnit(
+      operatorId: 'op-1',
+      orgUnitId: 'ou-yorkville-only',
+      operatorName: 'Demo Diner Co.',
+      orgUnitName: 'Yorkville Region',
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        PerLocationDataAccuracyScreen(
+          gateway: gateway(),
+          actorUserId: 'demo-super-admin',
+          timingResolutionGateway: timingGateway(),
+          vendorApplicabilityGateway:
+              const _EmptyVendorApplicabilityAdminGateway(),
+          initialHierarchyScope: orgScope,
+          scopeLocationIds: const <String>{'loc-1a'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_data_accuracy_waiting_for_location_scope')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('data_accuracy_covers_source_card')),
+      findsNothing,
+    );
+  });
+
   testWidgets(
-    'Data Accuracy business scope shows pick-a-location for the primary '
-    'surface (single covered location)',
+    'Data Accuracy multi-covered scope waits for a selected location, no '
+    'inheritance notice',
     (tester) async {
       useWideViewport(tester);
       const businessScope = AdminHierarchyScopeIntent.business(
-        operatorId: 'op-solo',
-        operatorName: 'Solo Diner LLC',
+        operatorId: 'op-1',
+        operatorName: 'Demo Diner Co.',
       );
 
       await tester.pumpWidget(
         wrap(
           PerLocationDataAccuracyScreen(
-            gateway: singleLocationGateway(),
+            gateway: gateway(),
             actorUserId: 'demo-super-admin',
+            timingResolutionGateway: timingGateway(),
+            vendorApplicabilityGateway:
+                const _EmptyVendorApplicabilityAdminGateway(),
             initialHierarchyScope: businessScope,
           ),
         ),
@@ -494,7 +599,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_data_accuracy_pick_location')),
+        find.byKey(const Key('admin_data_accuracy_waiting_for_location_scope')),
         findsOneWidget,
       );
       expect(
@@ -505,75 +610,7 @@ void main() {
   );
 
   testWidgets(
-    'Data Accuracy org-unit scope shows pick-a-location for the primary '
-    'surface (single covered location)',
-    (tester) async {
-      useWideViewport(tester);
-      const orgScope = AdminHierarchyScopeIntent.orgUnit(
-        operatorId: 'op-1',
-        orgUnitId: 'ou-yorkville-only',
-        operatorName: 'Demo Diner Co.',
-        orgUnitName: 'Yorkville Region',
-      );
-
-      await tester.pumpWidget(
-        wrap(
-          PerLocationDataAccuracyScreen(
-            gateway: gateway(),
-            actorUserId: 'demo-super-admin',
-            initialHierarchyScope: orgScope,
-            scopeLocationIds: const <String>{'loc-1a'},
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const Key('admin_data_accuracy_pick_location')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('data_accuracy_covers_source_card')),
-        findsNothing,
-      );
-    },
-  );
-
-  testWidgets(
-    'Data Accuracy multi-covered scope shows pick-a-location, no inheritance '
-    'notice',
-    (tester) async {
-      useWideViewport(tester);
-      const businessScope = AdminHierarchyScopeIntent.business(
-        operatorId: 'op-1',
-        operatorName: 'Demo Diner Co.',
-      );
-
-      await tester.pumpWidget(
-        wrap(
-          PerLocationDataAccuracyScreen(
-            gateway: gateway(),
-            actorUserId: 'demo-super-admin',
-            initialHierarchyScope: businessScope,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const Key('admin_data_accuracy_pick_location')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
-        findsNothing,
-      );
-    },
-  );
-
-  testWidgets(
-    'Data Accuracy location scope renders the primary surface, no inheritance '
-    'notice',
+    'Data Accuracy location scope renders Operator Web, no inheritance notice',
     (tester) async {
       useWideViewport(tester);
       const locationScope = AdminHierarchyScopeIntent.location(
@@ -588,6 +625,9 @@ void main() {
           PerLocationDataAccuracyScreen(
             gateway: gateway(),
             actorUserId: 'demo-super-admin',
+            timingResolutionGateway: timingGateway(),
+            vendorApplicabilityGateway:
+                const _EmptyVendorApplicabilityAdminGateway(),
             initialHierarchyScope: locationScope,
           ),
         ),
@@ -595,7 +635,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_data_accuracy_primary_section')),
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
         findsOneWidget,
       );
       expect(
@@ -726,4 +766,31 @@ void main() {
       findsNothing,
     );
   });
+}
+
+class _EmptyVendorApplicabilityAdminGateway
+    implements VendorApplicabilityAdminGateway {
+  const _EmptyVendorApplicabilityAdminGateway();
+
+  @override
+  Future<List<VendorApplicabilityAdminRow>> list({
+    VendorApplicabilityAdminFilter filter =
+        const VendorApplicabilityAdminFilter(),
+  }) async {
+    return const <VendorApplicabilityAdminRow>[];
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow> upsert(
+    VendorApplicabilityUpsertCommand command,
+  ) {
+    throw UnsupportedError('not used by Data Accuracy polling tests');
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow?> end(
+    VendorApplicabilityEndCommand command,
+  ) {
+    throw UnsupportedError('not used by Data Accuracy polling tests');
+  }
 }

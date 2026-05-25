@@ -115,11 +115,13 @@ class AuditLogScope {
     required this.scopeType,
     this.orgUnitId,
     this.locationFilter,
+    this.locationId,
   });
 
   final AuditLogScopeType scopeType;
   final String? orgUnitId;
   final String? locationFilter;
+  final String? locationId;
 
   bool get isOperatorWide => scopeType == AuditLogScopeType.operatorWide;
 }
@@ -684,6 +686,8 @@ class HttpAuditedSupportActionsAdminGateway
       if (scope.orgUnitId != null) 'org_unit_id': scope.orgUnitId!,
       if (scope.locationFilter != null)
         'location_filter': scope.locationFilter!,
+      if (scope.locationId != null && scope.locationId!.trim().isNotEmpty)
+        'location_id': scope.locationId!.trim(),
       if (range.$1 != null) 'from': range.$1!.toUtc().toIso8601String(),
       if (range.$2 != null) 'to': range.$2!.toUtc().toIso8601String(),
       if (actorUserIds.length == 1) 'actor_user_id': actorUserIds.single,

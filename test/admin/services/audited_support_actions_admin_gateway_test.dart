@@ -395,7 +395,12 @@ void main() {
           adminReason: 'compliance review',
         );
         expect(csv, isNotEmpty);
-        expect(csv.contains('event_id'), isTrue);
+        expect(
+          csv,
+          contains(
+            'created_at,action,actor_user_id,actor_display_name,actor_email',
+          ),
+        );
         // The export itself wrote an audit row.
         final exportRows = gateway
             .capturedAuditLogFor(kDemoDinerOperatorId)
@@ -575,6 +580,46 @@ void main() {
         );
       },
     );
+
+    test('listAuditLog uses hierarchy path for operator-wide scope', () async {
+      late http.Request captured;
+      final mock = http_testing.MockClient((http.Request request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'rows': const <Object?>[],
+            'next_cursor': null,
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpAuditedSupportActionsAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      await gateway.listAuditLog(
+        operatorId: 'op-1',
+        filters: const AuditLogFilters(timeWindow: AuditLogTimeWindow.last30d),
+        scope: const AuditLogScope(
+          scopeType: AuditLogScopeType.operatorWide,
+          locationId: 'loc-1',
+        ),
+      );
+
+      expect(captured.method, equals('GET'));
+      expect(captured.url.path, equals('/v1/admin/auth/audit-log/hierarchy'));
+      expect(
+        captured.url.queryParameters['scope_type'],
+        equals('operator_wide'),
+      );
+      expect(captured.url.queryParameters['operator_id'], equals('op-1'));
+      expect(captured.url.queryParameters['location_id'], equals('loc-1'));
+      expect(captured.url.queryParameters['limit'], equals('200'));
+      expect(captured.headers['admin_reason'], equals('Audit log review'));
+    });
 
     test('listAuditLog parses actor role enrichment when supplied', () async {
       final mock = http_testing.MockClient((http.Request request) async {

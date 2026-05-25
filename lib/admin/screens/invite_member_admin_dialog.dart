@@ -29,6 +29,14 @@ class MemberLocationRef {
 }
 
 @immutable
+class MemberRoleRef {
+  const MemberRoleRef({required this.roleKey, required this.label});
+
+  final String roleKey;
+  final String label;
+}
+
+@immutable
 class MemberAccessScopeRef {
   const MemberAccessScopeRef({
     required this.scopeType,
@@ -77,6 +85,7 @@ class InviteMemberAdminDialog extends StatefulWidget {
     super.key,
     required this.operatorBusinessName,
     required this.locations,
+    this.roles = const <MemberRoleRef>[],
     this.accessScopes = const <MemberAccessScopeRef>[],
     this.initialScope,
     this.existingEmails = const <String>{},
@@ -86,6 +95,7 @@ class InviteMemberAdminDialog extends StatefulWidget {
 
   final String operatorBusinessName;
   final List<MemberLocationRef> locations;
+  final List<MemberRoleRef> roles;
   final List<MemberAccessScopeRef> accessScopes;
   final MemberAccessScopeRef? initialScope;
 
@@ -126,6 +136,14 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
     ];
   }
 
+  List<MemberRoleRef> get _roleOptions {
+    if (widget.roles.isNotEmpty) return widget.roles;
+    return <MemberRoleRef>[
+      for (final role in kSeededRoleKeysForAdmin)
+        MemberRoleRef(roleKey: role, label: memberRoleLabel(role)),
+    ];
+  }
+
   /// Project the admin scope catalog into the hierarchy-tree picker's
   /// node shape. Each [MemberAccessScopeRef] becomes one
   /// [HierarchyMapNode]; the picker uses the prefix on `id`
@@ -158,35 +176,35 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
           helper: scope.isBusiness
               ? 'Whole business'
               : scope.isOrgUnit
-                  ? 'Region or group'
-                  : 'Location',
+              ? 'Region or group'
+              : 'Location',
           kind: scope.isBusiness
               ? HierarchyMapNodeKind.business
               : scope.isOrgUnit
-                  ? HierarchyMapNodeKind.orgUnit
-                  : HierarchyMapNodeKind.location,
+              ? HierarchyMapNodeKind.orgUnit
+              : HierarchyMapNodeKind.location,
           parentId: scope.isBusiness
               ? null
               : scope.isOrgUnit
-                  // Admin catalog is flat; org-units hang directly under
-                  // the business root for now. A follow-up live wiring
-                  // slice can encode parent linkage on
-                  // MemberAccessScopeRef without a picker change.
-                  ? businessRootId
-                  // Location nodes parent under their org-unit when one
-                  // is encoded in the access-scope id pattern
-                  // ("location:<locId>"); the admin catalog does not
-                  // carry the org-unit linkage today, so locations sit
-                  // under the business root alongside the regions. The
-                  // operator still sees the location grouped beneath
-                  // "Whole business" with the region nodes as peers,
-                  // which is correct for the flat admin catalog.
-                  : businessRootId,
+              // Admin catalog is flat; org-units hang directly under
+              // the business root for now. A follow-up live wiring
+              // slice can encode parent linkage on
+              // MemberAccessScopeRef without a picker change.
+              ? businessRootId
+              // Location nodes parent under their org-unit when one
+              // is encoded in the access-scope id pattern
+              // ("location:<locId>"); the admin catalog does not
+              // carry the org-unit linkage today, so locations sit
+              // under the business root alongside the regions. The
+              // operator still sees the location grouped beneath
+              // "Whole business" with the region nodes as peers,
+              // which is correct for the flat admin catalog.
+              : businessRootId,
           inheritanceBreadcrumb: scope.isBusiness
               ? 'Granting at this level covers every region and location.'
               : scope.isOrgUnit
-                  ? 'Locations under this region inherit access granted here.'
-                  : null,
+              ? 'Locations under this region inherit access granted here.'
+              : null,
         ),
     ];
   }
@@ -374,11 +392,11 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
                   border: OutlineInputBorder(),
                 ),
                 items: <DropdownMenuItem<String>>[
-                  for (final role in kSeededRoleKeysForAdmin)
+                  for (final role in _roleOptions)
                     DropdownMenuItem<String>(
-                      key: Key('admin_members_invite_role_$role'),
-                      value: role,
-                      child: Text(memberRoleLabel(role)),
+                      key: Key('admin_members_invite_role_${role.roleKey}'),
+                      value: role.roleKey,
+                      child: Text(role.label),
                     ),
                 ],
                 onChanged: (v) => setState(() => _roleKey = v),

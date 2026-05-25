@@ -11,12 +11,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/audited_support_actions_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
-import 'package:forge_and_flow/admin/services/audit_log_admin_rootnode_builder.dart';
 import 'package:forge_and_flow/admin/services/demo_audited_support_actions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart'
     show kDemoDinerLocationToronto, kDemoDinerOperatorId;
-import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
-import 'package:forge_and_flow/domain/models/inheritance_tree_node.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -46,23 +43,8 @@ void main() {
     locationName: '',
   );
 
-  Future<InheritanceTreeNode?> builtRootNode() async {
-    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
-      orgUnitsByOperator: kDemoOrgUnitsByOperator(),
-      locationsByOperator: kDemoHierarchyLocationsByOperator(),
-    );
-    final orgUnits = await hierarchyGateway.listOrgUnits(
-      operatorId: kDemoDinerOperatorId,
-    );
-    final locations = await hierarchyGateway.listHierarchyLocations(
-      operatorId: kDemoDinerOperatorId,
-    );
-    return buildAuditLogAdminRootNode(orgUnits: orgUnits, locations: locations);
-  }
-
   Future<void> pumpAuditScreen(
     WidgetTester tester, {
-    InheritanceTreeNode? rootNode,
     AdminHierarchyScopeIntent? hierarchyScope,
   }) async {
     await tester.pumpWidget(
@@ -73,7 +55,6 @@ void main() {
           ),
           actorUserId: 'demo-super-admin',
           pickedOperator: picked,
-          auditScopeRootNode: rootNode,
           hierarchyScope: hierarchyScope,
         ),
       ),
@@ -82,10 +63,7 @@ void main() {
   }
 
   testWidgets('does not render the old in-screen scope picker', (tester) async {
-    final rootNode = await builtRootNode();
-    expect(rootNode, isNotNull);
-
-    await pumpAuditScreen(tester, rootNode: rootNode);
+    await pumpAuditScreen(tester);
 
     expect(find.byKey(const Key('admin_asa_audit_scope_picker')), findsNothing);
     expect(find.byKey(const Key('inheritance_tree')), findsNothing);

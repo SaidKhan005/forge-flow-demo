@@ -1,6 +1,6 @@
 // Phase 11A.12 - Members admin screen widget tests.
 //
-// Coverage focuses on the parity-contract surface area: the locked
+// Coverage focuses on the parity-contract surface area: the scope-aware
 // filter set renders, the search field is usable across multiple
 // keystrokes (regression test for the previous TextEditingController
 // rebuild bug), the locked validation copy is identical to the
@@ -76,7 +76,9 @@ void main() {
         find.byKey(const Key('admin_members_invites_panel')),
         findsOneWidget,
       );
-      // Locked filter chips visible.
+      // Scope-aware filters visible. Location narrowing is handled by
+      // the admin shell's left hierarchy scope picker, not another
+      // in-page dropdown.
       expect(
         find.byKey(const Key('admin_members_filter_status')),
         findsOneWidget,
@@ -87,7 +89,7 @@ void main() {
       );
       expect(
         find.byKey(const Key('admin_members_filter_location')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.byKey(const Key('admin_members_filter_mfa')), findsOneWidget);
       expect(
@@ -99,7 +101,7 @@ void main() {
       expect(find.text('People filters'), findsNothing);
       expect(find.text('Any status'), findsOneWidget);
       expect(find.text('Any role'), findsOneWidget);
-      expect(find.text('Any location'), findsOneWidget);
+      expect(find.text('Any location'), findsNothing);
       // Two-factor default reads "Any" (web verbatim). It is the lone
       // "Any" selected in the closed two-factor dropdown.
       expect(find.text('Any'), findsOneWidget);
@@ -116,6 +118,108 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('left hierarchy scope owns location narrowing', (tester) async {
+      wideViewport(tester);
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            initialScope: const AdminHierarchyScopeIntent.location(
+              operatorId: kDemoDinerOperatorId,
+              locationId: kDemoDinerLocationToronto,
+              operatorName: 'Demo Diner Co.',
+              locationName: 'Toronto Yorkville',
+            ),
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      expect(
+        find.byKey(const Key('admin_members_filter_location')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-owner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-supervisor')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_members_row_demo-user-diner-manager')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('status filter copy matches Operator Web', (tester) async {
+      wideViewport(tester);
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await tester.tap(find.byKey(const Key('admin_members_filter_status')));
+      await pumpEventually(tester);
+
+      expect(find.text('Dormant 30+ days'), findsOneWidget);
+      expect(find.text('Removed'), findsWidgets);
+      expect(find.text('Dormant 30d'), findsNothing);
+      expect(find.text('Soft deleted'), findsNothing);
+    });
+
+    testWidgets('role choices hide platform roles and include operator roles', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      final rolesGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            rolesGateway: rolesGateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await tester.tap(find.byKey(const Key('admin_members_filter_role')));
+      await pumpEventually(tester);
+
+      expect(find.text('Finance Analyst'), findsOneWidget);
+      expect(find.text('Auditor / Compliance'), findsOneWidget);
+      expect(find.text('Training Lead'), findsOneWidget);
+      expect(find.text('Team Admin'), findsOneWidget);
+      expect(find.text('Floor Captain'), findsOneWidget);
+      expect(find.text('Ecosystem admin'), findsNothing);
+      expect(find.text('Support access'), findsNothing);
     });
 
     testWidgets('filter mfa_enrolled = false narrows to unenrolled rows', (

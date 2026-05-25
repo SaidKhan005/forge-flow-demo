@@ -3,8 +3,8 @@
 // Extracted from `admin_routes.dart` (which is at its frozen
 // refactor-phase size ceiling) so the monolith shrinks rather than
 // grows. The destructive per-action route flags
-// (`canEditSeededRoles`, `canResetMfaFactors`, `canIssuePairedErasure`,
-// `canExportAuditLog`) are computed as
+// (`canEditSeededRoles`, `canResetMfaFactors`, `canIssuePairedErasure`)
+// are computed as
 // `adminCanEdit(session, requiredKey: <key>) && <MFA-fresh>`.
 
 import 'admin_auth_gate.dart';

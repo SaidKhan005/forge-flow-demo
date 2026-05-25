@@ -1587,23 +1587,24 @@ void main() {
       },
     );
 
-    test(
-      'kSeededRoleKeysForAdmin lists the 4 operator-grantable roles only',
-      () {
-        // Operator owner can never grant `super_admin` or
-        // `ff_support` (those are F&F-internal). The contract's
-        // § "Seeded roles" lists 6 total; the invite dialog catalog
-        // surfaces only the 4 operator-side roles.
-        expect(
-          kSeededRoleKeysForAdmin.toSet(),
-          equals(<String>{
-            'operator_owner',
-            'operator_general_manager',
-            'location_manager',
-            'supervisor',
-          }),
-        );
-      },
-    );
+    test('kSeededRoleKeysForAdmin lists operator-facing roles only', () {
+      // Operator owner can never grant `super_admin` or
+      // `ff_support` (those are F&F-internal). The contract's
+      // Team members mirrors Operator Web's operator-facing role
+      // catalog while excluding platform support roles.
+      expect(
+        kSeededRoleKeysForAdmin.toSet(),
+        equals(<String>{
+          'operator_owner',
+          'operator_general_manager',
+          'location_manager',
+          'supervisor',
+          'finance_analyst',
+          'auditor_compliance',
+          'training_lead',
+          'team_admin',
+        }),
+      );
+    });
   });
 }

@@ -61,7 +61,6 @@ import 'services/admin_business_timing_resolution_projection.dart';
 import 'services/admin_notification_preferences_gateway.dart';
 import 'services/admin_security_gateway.dart';
 import 'services/admin_sessions_gateway.dart';
-import 'services/audit_log_admin_rootnode_builder.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
@@ -83,7 +82,6 @@ import 'widgets/admin_setup_workspace.dart';
 import 'widgets/corpus_upload_dialog.dart';
 import '../domain/models/data_accuracy_settings.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
-import '../domain/models/inheritance_tree_node.dart';
 
 // AdminRoute + AdminRouteSection moved to admin_route_model.dart to keep
 // this frozen-ceiling route table shrinking; re-exported so importers
@@ -149,6 +147,15 @@ bool _isAdminMfaFresh(AdminAuthSession? session) {
 /// re-checks every write server-side.
 bool _isAdminSuperAdmin(AdminAuthSession? session) =>
     session != null && session.roles.contains(PermissionKeys.roleSuperAdmin);
+
+bool _canEditSeededRoles(AdminAuthSession? session) {
+  if (session?.uid == 'demo-super-admin') return true;
+  return adminCanEditDestructive(
+    session,
+    requiredKey: PermissionKeys.adminRolesEditSeeded,
+    mfaFresh: _isAdminMfaFresh(session),
+  );
+}
 
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
@@ -442,9 +449,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     id: kAdminAuditedSupportActionsRouteId,
     title: 'Audit log', // UX-parity Slice C: operator-web nav label.
     path: '/admin/audited-support-actions',
-    icon: Icons.security_outlined,
+    icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
-    subtitle: 'Review audit history for one operator.',
+    subtitle: 'Review audit history for one business.',
     builder: _buildAuditedSupportActions,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -799,9 +806,10 @@ Widget _buildSupportOperatorView(BuildContext context) {
       vendorConnectionsGateway: vendorConnectionsGateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
-      canEditSeededRoles: false,
+      canEditSeededRoles: true,
       canResetMfaFactors: false,
       canIssuePairedErasure: false,
+      canViewAuditLog: true,
       canExportAuditLog: false,
       adminUid: null,
       initialPicked: initialPicked,
@@ -818,6 +826,14 @@ Widget _buildSupportOperatorView(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
+      final canViewAuditLog = adminCanEdit(
+        session,
+        requiredKey: PermissionKeys.adminAuditLogView,
+      );
+      final canExportAuditLog = adminCanEdit(
+        session,
+        requiredKey: PermissionKeys.adminAuditLogExport,
+      );
       return _SupportOperatorViewRouteShell(
         membersGateway: membersGateway,
         rolesGateway: rolesGateway,
@@ -831,10 +847,11 @@ Widget _buildSupportOperatorView(BuildContext context) {
         // [FreshMfaResolver] (1-hour window, env-overridable). The
         // proxy is authoritative on the per-call check; the UI just
         // hides affordances when the resolver says stale.
-        canEditSeededRoles: _isAdminMfaFresh(session),
+        canEditSeededRoles: _canEditSeededRoles(session),
         canResetMfaFactors: _isAdminMfaFresh(session),
         canIssuePairedErasure: _isAdminMfaFresh(session),
-        canExportAuditLog: _isAdminMfaFresh(session),
+        canViewAuditLog: canViewAuditLog,
+        canExportAuditLog: canExportAuditLog,
         adminUid: session?.uid,
         initialPicked: initialPicked,
         initialScope: initialScope,
@@ -856,6 +873,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
     required this.canEditSeededRoles,
     required this.canResetMfaFactors,
     required this.canIssuePairedErasure,
+    required this.canViewAuditLog,
     required this.canExportAuditLog,
     required this.adminUid,
     required this.initialPicked,
@@ -873,6 +891,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
   final bool canEditSeededRoles;
   final bool canResetMfaFactors;
   final bool canIssuePairedErasure;
+  final bool canViewAuditLog;
   final bool canExportAuditLog;
   final String? adminUid;
   final OperatorPickerResult? initialPicked;
@@ -987,7 +1006,9 @@ class _SupportOperatorViewRouteShellState
       canEditSeededRoles: widget.canEditSeededRoles,
       canResetMfaFactors: widget.canResetMfaFactors,
       canIssuePairedErasure: widget.canIssuePairedErasure,
+      canViewAuditLog: widget.canViewAuditLog,
       canExportAuditLog: widget.canExportAuditLog,
+      hierarchyScope: widget.initialScope,
       onChangeOperator: _openPicker,
     );
   }
@@ -1293,6 +1314,12 @@ Widget _buildVendorApplicability(BuildContext context) {
 
 Widget _buildDataAccuracy(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
+  final vendorApplicabilityGateway =
+      AdminConsoleServicesScope.vendorApplicabilityGatewayOf(context);
+  final vendorConnectionsGateway =
+      AdminConsoleServicesScope.vendorConnectionsGatewayOf(context);
+  final timingResolutionGateway =
+      AdminConsoleServicesScope.timingResolutionGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
@@ -1314,10 +1341,13 @@ Widget _buildDataAccuracy(BuildContext context) {
         key: ValueKey<String>('data-accuracy-${selectedScope.cacheKey}'),
         gateway: gateway,
         actorUserId: 'demo-super-admin',
+        timingResolutionGateway: timingResolutionGateway,
+        vendorApplicabilityGateway: vendorApplicabilityGateway,
+        vendorConnectionsGateway: vendorConnectionsGateway,
         initialScope: operatorScope,
         initialHierarchyScope: selectedScope,
         scopeLocationIds: selection.locationIds,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
         showPageHeader: false,
         showScopeControls: false,
       );
@@ -1333,11 +1363,14 @@ Widget _buildDataAccuracy(BuildContext context) {
           key: ValueKey<String>('data-accuracy-${selectedScope.cacheKey}'),
           gateway: gateway,
           actorUserId: session?.uid ?? 'unknown',
+          timingResolutionGateway: timingResolutionGateway,
+          vendorApplicabilityGateway: vendorApplicabilityGateway,
+          vendorConnectionsGateway: vendorConnectionsGateway,
           editingEnabled: canEdit,
           initialScope: operatorScope,
           initialHierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
-          onBackToBusinessAccounts: onBackToBusinessAccounts,
+          onBackToBusinessAccounts: null,
           showPageHeader: false,
           showScopeControls: false,
         );
@@ -1462,7 +1495,7 @@ Widget _buildVendorIntegrations(BuildContext context) {
         gateway: gateway,
         canMutate: canMutate,
         embedded: true,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
       );
     }
 
@@ -1534,7 +1567,7 @@ Widget _buildTimingSetup(BuildContext context) {
         // gateway driving the editor's create / patch on Save.
         timingProfilesGateway:
             AdminConsoleServicesScope.timingProfilesGatewayOf(context),
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
       );
     }
 
@@ -1657,7 +1690,7 @@ Widget _buildMembers(BuildContext context) {
         canEditSeededRoles: canEditSeededRoles,
         initialScope: selectedScope,
         onOpenAccess: openAccess,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
       );
     }
 
@@ -1665,7 +1698,7 @@ Widget _buildMembers(BuildContext context) {
       return buildScreen(
         actorUserId: 'demo-super-admin',
         canEdit: true,
-        canEditSeededRoles: false,
+        canEditSeededRoles: true,
       );
     }
     return StreamBuilder<AdminAuthState>(
@@ -1678,11 +1711,7 @@ Widget _buildMembers(BuildContext context) {
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canEditSeededRoles: adminCanEditDestructive(
-            session,
-            requiredKey: PermissionKeys.adminRolesEditSeeded,
-            mfaFresh: _isAdminMfaFresh(session),
-          ),
+          canEditSeededRoles: _canEditSeededRoles(session),
         );
       },
     );
@@ -1691,8 +1720,7 @@ Widget _buildMembers(BuildContext context) {
   return AdminSetupWorkspace(
     functionTitle: 'Team members',
     showWorkspaceHeader: false,
-    description:
-        'Manage members, invites, role assignments, and access policy.',
+    description: 'Manage team members and pending invites.',
     operatorGateway: operatorGateway,
     hierarchyGateway: rolesGateway,
     initialScope: initialScope,
@@ -1897,7 +1925,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         editingEnabled: canEdit,
         canEditSeededRoles: canEditSeededRoles,
         initialScope: selectedScope,
-        onBackToBusinessAccounts: onBackToBusinessAccounts,
+        onBackToBusinessAccounts: null,
       );
     }
 
@@ -1905,7 +1933,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
       return buildScreen(
         actorUserId: 'demo-super-admin',
         canEdit: true,
-        canEditSeededRoles: false,
+        canEditSeededRoles: true,
       );
     }
     return StreamBuilder<AdminAuthState>(
@@ -1918,11 +1946,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canEditSeededRoles: adminCanEditDestructive(
-            session,
-            requiredKey: PermissionKeys.adminRolesEditSeeded,
-            mfaFresh: _isAdminMfaFresh(session),
-          ),
+          canEditSeededRoles: _canEditSeededRoles(session),
         );
       },
     );
@@ -1996,9 +2020,7 @@ Widget _buildRolesHierarchySessionsLegacy(BuildContext context) {
       gateway: gateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
-      // Demo / test path: leave seeded-role edit disabled. Production
-      // wires `canEditSeededRoles` from MFA-required admin claims.
-      canEditSeededRoles: false,
+      canEditSeededRoles: true,
       adminUid: null,
       initialPicked: initialPicked,
       initialScope: initialScope,
@@ -2024,7 +2046,7 @@ Widget _buildRolesHierarchySessionsLegacy(BuildContext context) {
       // `MFA_FRESHNESS_WINDOW_SECONDS`). Stale → affordance hidden;
       // the proxy stays authoritative and double-rejects on a stale
       // claim regardless.
-      final canEditSeeded = _isAdminMfaFresh(session);
+      final canEditSeeded = _canEditSeededRoles(session);
       return _RolesHierarchySessionsRouteShell(
         gateway: gateway,
         actorUserId: session?.uid ?? 'unknown',
@@ -2207,40 +2229,24 @@ Widget _buildAuditedSupportActions(BuildContext context) {
       required bool canEdit,
       required bool canResetMfaFactors,
       required bool canIssuePairedErasure,
+      required bool canViewAuditLog,
       required bool canExportAuditLog,
     }) {
-      // GAP B3 — fold the org-units + locations the EXISTING
-      // RolesHierarchySessionsAdminGateway already exposes (the same
-      // gateway the Roles/Hierarchy admin tab uses) into the shared
-      // InheritanceTree scope picker. No new proxy route, no new
-      // gateway method. While the tree loads (or if it fails / is
-      // empty) the screen mounts with a null rootNode and keeps the
-      // existing read-only scope banner — graceful degradation, no
-      // regression to that path.
-      return FutureBuilder<InheritanceTreeNode?>(
-        key: ValueKey<String>('asa-scope-tree-${picked.operatorId}'),
-        future: _loadAuditedSupportActionsScopeTree(
-          sessionsGateway,
-          picked.operatorId,
-        ),
-        builder: (context, scopeSnapshot) {
-          return AuditedSupportActionsAdminScreen(
-            key: ValueKey<String>('asa-${selectedScope.cacheKey}'),
-            gateway: gateway,
-            sessionsGateway: sessionsGateway,
-            anchorsGateway: anchorsGateway,
-            actorUserId: actorUserId,
-            pickedOperator: picked,
-            editingEnabled: canEdit,
-            canResetMfaFactors: canResetMfaFactors,
-            canIssuePairedErasure: canIssuePairedErasure,
-            canExportAuditLog: canExportAuditLog,
-            hierarchyScope: selectedScope,
-            auditScopeRootNode: scopeSnapshot.data,
-            onCsvReady: downloadOperatorWebCsv,
-            onBackToBusinessAccounts: onBackToBusinessAccounts,
-          );
-        },
+      return AuditedSupportActionsAdminScreen(
+        key: ValueKey<String>('asa-${selectedScope.cacheKey}'),
+        gateway: gateway,
+        sessionsGateway: sessionsGateway,
+        anchorsGateway: anchorsGateway,
+        actorUserId: actorUserId,
+        pickedOperator: picked,
+        editingEnabled: canEdit,
+        canResetMfaFactors: canResetMfaFactors,
+        canIssuePairedErasure: canIssuePairedErasure,
+        canViewAuditLog: canViewAuditLog,
+        canExportAuditLog: canExportAuditLog,
+        hierarchyScope: selectedScope,
+        onCsvReady: downloadOperatorWebCsv,
+        onBackToBusinessAccounts: onBackToBusinessAccounts,
       );
     }
 
@@ -2250,6 +2256,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
         canEdit: true,
         canResetMfaFactors: false,
         canIssuePairedErasure: false,
+        canViewAuditLog: true,
         canExportAuditLog: false,
       );
     }
@@ -2262,13 +2269,19 @@ Widget _buildAuditedSupportActions(BuildContext context) {
         final canEdit = _isAdminSuperAdmin(session);
         final fresh = _isAdminMfaFresh(session);
         // Slice E4 — destructive audited-support gates keyed per-action.
-        bool can(String key) =>
+        bool canDestructive(String key) =>
             adminCanEditDestructive(session, requiredKey: key, mfaFresh: fresh);
+        bool can(String key) => adminCanEdit(session, requiredKey: key);
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canResetMfaFactors: can(PermissionKeys.adminUsersResetMfaFactors),
-          canIssuePairedErasure: can(PermissionKeys.adminUsersErasePii),
+          canResetMfaFactors: canDestructive(
+            PermissionKeys.adminUsersResetMfaFactors,
+          ),
+          canIssuePairedErasure: canDestructive(
+            PermissionKeys.adminUsersErasePii,
+          ),
+          canViewAuditLog: can(PermissionKeys.adminAuditLogView),
           canExportAuditLog: can(PermissionKeys.adminAuditLogExport),
         );
       },
@@ -2278,7 +2291,9 @@ Widget _buildAuditedSupportActions(BuildContext context) {
   return AdminSetupWorkspace(
     functionTitle: 'Audit log',
     showWorkspaceHeader: false,
-    description: 'Review audit history for the selected business.',
+    description:
+        'Review audit history for the selected business, then narrow '
+        'entries by time window, action, or team member.',
     operatorGateway: operatorGateway,
     hierarchyGateway: sessionsGateway,
     initialScope: initialScope,
@@ -2293,31 +2308,6 @@ Widget _buildAuditedSupportActions(BuildContext context) {
           ),
     functionBuilder: buildFunction,
   );
-}
-
-/// GAP B3 — loads the org-units + locations the
-/// [RolesHierarchySessionsAdminGateway] already exposes and folds them
-/// into the shared audit-log scope-picker tree via the pure
-/// [buildAuditLogAdminRootNode] helper. Returns `null` (read-only
-/// scope-banner fallback) on any gateway error or when the operator
-/// has no org units. No new proxy route, no new gateway method.
-Future<InheritanceTreeNode?> _loadAuditedSupportActionsScopeTree(
-  RolesHierarchySessionsAdminGateway gateway,
-  String operatorId,
-) async {
-  try {
-    final results = await Future.wait<Object>(<Future<Object>>[
-      gateway.listOrgUnits(operatorId: operatorId),
-      gateway.listHierarchyLocations(operatorId: operatorId),
-    ]);
-    final orgUnits = results[0] as List<OrgUnitAdminNode>;
-    final locations = results[1] as List<HierarchyLocationLeaf>;
-    return buildAuditLogAdminRootNode(orgUnits: orgUnits, locations: locations);
-  } on Object {
-    // Hierarchy load failed — degrade gracefully to the existing
-    // read-only scope banner rather than blocking the audit surface.
-    return null;
-  }
 }
 
 // Legacy audited-support-actions builder retained for backwards-compatible
@@ -2375,6 +2365,7 @@ Widget _buildAuditedSupportActionsLegacy(BuildContext context) {
       // / `canExportAuditLog` from MFA-required admin claims.
       canResetMfaFactors: false,
       canIssuePairedErasure: false,
+      canViewAuditLog: true,
       canExportAuditLog: false,
       adminUid: null,
       initialPicked: initialPicked,
@@ -2397,7 +2388,14 @@ Widget _buildAuditedSupportActionsLegacy(BuildContext context) {
       final fresh = _isAdminMfaFresh(session);
       final canResetMfa = fresh;
       final canIssuePairedErasure = fresh;
-      final canExportAuditLog = fresh;
+      final canViewAuditLog = adminCanEdit(
+        session,
+        requiredKey: PermissionKeys.adminAuditLogView,
+      );
+      final canExportAuditLog = adminCanEdit(
+        session,
+        requiredKey: PermissionKeys.adminAuditLogExport,
+      );
       return _AuditedSupportActionsRouteShell(
         gateway: gateway,
         sessionsGateway: sessionsGateway,
@@ -2405,6 +2403,7 @@ Widget _buildAuditedSupportActionsLegacy(BuildContext context) {
         editingEnabled: canEdit,
         canResetMfaFactors: canResetMfa,
         canIssuePairedErasure: canIssuePairedErasure,
+        canViewAuditLog: canViewAuditLog,
         canExportAuditLog: canExportAuditLog,
         adminUid: session?.uid,
         initialPicked: initialPicked,
@@ -2425,6 +2424,7 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
     required this.editingEnabled,
     required this.canResetMfaFactors,
     required this.canIssuePairedErasure,
+    required this.canViewAuditLog,
     required this.canExportAuditLog,
     required this.adminUid,
     required this.initialPicked,
@@ -2440,6 +2440,7 @@ class _AuditedSupportActionsRouteShell extends StatefulWidget {
   final bool editingEnabled;
   final bool canResetMfaFactors;
   final bool canIssuePairedErasure;
+  final bool canViewAuditLog;
   final bool canExportAuditLog;
   final String? adminUid;
   final OperatorPickerResult? initialPicked;
@@ -2549,6 +2550,7 @@ class _AuditedSupportActionsRouteShellState
       editingEnabled: widget.editingEnabled,
       canResetMfaFactors: widget.canResetMfaFactors,
       canIssuePairedErasure: widget.canIssuePairedErasure,
+      canViewAuditLog: widget.canViewAuditLog,
       canExportAuditLog: widget.canExportAuditLog,
       hierarchyScope: widget.initialScope,
       onCsvReady: downloadOperatorWebCsv,

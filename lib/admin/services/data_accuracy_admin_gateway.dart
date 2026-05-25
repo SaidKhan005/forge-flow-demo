@@ -435,15 +435,74 @@ class DataAccuracyAdminGatewayError implements Exception {
       'DataAccuracyAdminGatewayError($statusCode/$errorCode): $message';
 }
 
+class DataAccuracyManualCoversTarget {
+  const DataAccuracyManualCoversTarget({
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDateIso,
+    required this.servicePeriodKey,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String businessDateIso;
+  final String servicePeriodKey;
+}
+
+class DataAccuracyManualCoversSaveCommand {
+  const DataAccuracyManualCoversSaveCommand({
+    required this.target,
+    required this.covers,
+    required this.actorUserId,
+    required this.actorIsForgeAdmin,
+    this.reasonNote,
+  });
+
+  final DataAccuracyManualCoversTarget target;
+  final int covers;
+  final String actorUserId;
+  final bool actorIsForgeAdmin;
+  final String? reasonNote;
+}
+
 abstract class DataAccuracyAdminGateway {
   // ── Tab 1 reads ──────────────────────────────────────────────────────
   Future<List<DataAccuracyAdminRow>> listDataAccuracyRows();
+  Future<DataAccuracyAdminRow?> loadDataAccuracyRow({
+    required String operatorId,
+    required String locationId,
+  });
+  Future<DataAccuracySettings?> loadSettings({
+    required String operatorId,
+    required String locationId,
+  });
   Future<List<DataAccuracyAdminAuditEvent>> listAuditHistory({
     String? operatorId,
     String? locationId,
   });
 
   // ── Tab 1 writes ─────────────────────────────────────────────────────
+  Future<DataAccuracySettings> saveSettings({
+    required DataAccuracySettings settings,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  });
+
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  );
+
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  });
+
   Future<DataAccuracyAdminRow> overrideDataAccuracy({
     required String operatorId,
     required String locationId,
@@ -500,9 +559,22 @@ abstract class DataAccuracyAdminGateway {
     required String locationId,
   });
 
+  Future<void> resetServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String reasonNote,
+  });
+
   // ── Tab 2 reads ──────────────────────────────────────────────────────
   Future<List<TierDefinition>> listTierDefinitions();
   Future<List<TierAssignmentAdminRow>> listTierAssignments();
+  Future<ForgeFlowPollingTierAssignment?> loadPollingTierAssignment({
+    required String operatorId,
+    required String locationId,
+  });
   Future<TierMarginRollup> summarizeMargin({PollingTierKey? tierFilter});
   Future<List<TierChangeRequest>> listTierChangeRequests();
 
@@ -579,6 +651,7 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
 
   static const String dataRowsPath = '/v1/admin/data-accuracy/rows';
   static const String dataSettingsPrefix = '/v1/admin/data-accuracy/settings/';
+  static const String dataManualCoversSegment = 'manual-covers';
   static const String dataScopedSettingsPath =
       '/v1/admin/data-accuracy/scoped-settings';
   static const String dataServicePeriodSettingsPrefix =
@@ -614,6 +687,33 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
+  Future<DataAccuracyAdminRow?> loadDataAccuracyRow({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final body = await _send(
+      method: 'GET',
+      path:
+          '$dataSettingsPrefix${Uri.encodeComponent(operatorId)}/'
+          '${Uri.encodeComponent(locationId)}',
+    );
+    final raw = body['row'] ?? body['data'];
+    if (raw == null) return null;
+    return _dataAccuracyRowFromJson(_asMap(raw));
+  }
+
+  @override
+  Future<DataAccuracySettings?> loadSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return (await loadDataAccuracyRow(
+      operatorId: operatorId,
+      locationId: locationId,
+    ))?.settings;
+  }
+
+  @override
   Future<List<DataAccuracyAdminAuditEvent>> listAuditHistory({
     String? operatorId,
     String? locationId,
@@ -633,6 +733,81 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       for (final event in events)
         _auditEventFromJson((event as Map).cast<String, Object?>()),
     ];
+  }
+
+  @override
+  Future<DataAccuracySettings> saveSettings({
+    required DataAccuracySettings settings,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'saveSettings');
+    final body = await _send(
+      method: 'PATCH',
+      path:
+          '$dataSettingsPrefix${Uri.encodeComponent(settings.operatorId)}/'
+          '${Uri.encodeComponent(settings.locationId)}',
+      idempotencyKey: _newIdempotencyKey('data-accuracy-settings-save'),
+      jsonBody: <String, Object?>{
+        ..._settingsToJson(settings),
+        if (reasonNote != null && reasonNote.trim().isNotEmpty)
+          'reason_note': reasonNote.trim(),
+      },
+    );
+    return _settingsFromWriteResponse(body);
+  }
+
+  @override
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  ) async {
+    final target = command.target;
+    _requireEditable(command.actorIsForgeAdmin, 'saveManualCovers');
+    final body = await _send(
+      method: 'PATCH',
+      path:
+          '$dataSettingsPrefix${Uri.encodeComponent(target.operatorId)}/'
+          '${Uri.encodeComponent(target.locationId)}/'
+          '$dataManualCoversSegment',
+      idempotencyKey: _newIdempotencyKey('data-accuracy-manual-covers-save'),
+      jsonBody: <String, Object?>{
+        'business_date': target.businessDateIso,
+        'service_period_key': target.servicePeriodKey,
+        'covers': command.covers,
+        if (command.reasonNote != null && command.reasonNote!.trim().isNotEmpty)
+          'reason_note': command.reasonNote!.trim(),
+      },
+    );
+    return _settingsFromWriteResponse(body);
+  }
+
+  @override
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'clearManualCovers');
+    final body = await _send(
+      method: 'PATCH',
+      path:
+          '$dataSettingsPrefix${Uri.encodeComponent(operatorId)}/'
+          '${Uri.encodeComponent(locationId)}/$dataManualCoversSegment',
+      idempotencyKey: _newIdempotencyKey('data-accuracy-manual-covers-clear'),
+      jsonBody: <String, Object?>{
+        'business_date': businessDateIso,
+        'service_period_key': servicePeriodKey,
+        'clear': true,
+        if (reasonNote != null && reasonNote.trim().isNotEmpty)
+          'reason_note': reasonNote.trim(),
+      },
+    );
+    return _settingsFromWriteResponse(body);
   }
 
   @override
@@ -770,6 +945,38 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
+  Future<void> resetServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'resetServicePeriodSetting');
+    if (reasonNote.trim().isEmpty) {
+      throw const DataAccuracyAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'reason_note_required',
+        message:
+            'resetServicePeriodSetting requires a reason note for the audit log',
+      );
+    }
+    await _send(
+      method: 'PATCH',
+      path:
+          '$dataServicePeriodSettingsPrefix${Uri.encodeComponent(operatorId)}/'
+          '${Uri.encodeComponent(locationId)}',
+      idempotencyKey: _newIdempotencyKey('data-accuracy-service-period-reset'),
+      jsonBody: <String, Object?>{
+        'service_period_key': servicePeriodKey,
+        'clear': true,
+        'reason_note': reasonNote.trim(),
+      },
+    );
+  }
+
+  @override
   Future<List<TierDefinition>> listTierDefinitions() async {
     final body = await _send(method: 'GET', path: tierDefinitionsPath);
     final definitions = (body['definitions'] as List?) ?? const [];
@@ -787,6 +994,22 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       for (final assignment in assignments)
         _tierAssignmentRowFromJson((assignment as Map).cast<String, Object?>()),
     ];
+  }
+
+  @override
+  Future<ForgeFlowPollingTierAssignment?> loadPollingTierAssignment({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final body = await _send(
+      method: 'GET',
+      path:
+          '$tierAssignmentsPrefix${Uri.encodeComponent(operatorId)}/'
+          '${Uri.encodeComponent(locationId)}',
+    );
+    final raw = body['assignment'] ?? body['data'];
+    if (raw == null) return null;
+    return _assignmentFromJson(_asMap(raw));
   }
 
   @override
@@ -975,6 +1198,30 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     String? idempotencyKey,
   }) async {
     final token = await bearerTokenProvider();
+    final request = _buildRequest(
+      method: method,
+      path: path,
+      token: token,
+      queryParameters: queryParameters,
+      jsonBody: jsonBody,
+      idempotencyKey: idempotencyKey,
+    );
+    final response = await _sendRequest(request);
+    final parsed = _decodeResponseBody(response);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return parsed;
+    }
+    _throwGatewayError(response, parsed);
+  }
+
+  http.Request _buildRequest({
+    required String method,
+    required String path,
+    required String token,
+    required Map<String, String> queryParameters,
+    Map<String, Object?>? jsonBody,
+    String? idempotencyKey,
+  }) {
     var uri = baseUri.resolve(path);
     if (queryParameters.isNotEmpty) {
       uri = uri.replace(queryParameters: queryParameters);
@@ -989,9 +1236,12 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       request.headers['content-type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    late final http.Response response;
+    return request;
+  }
+
+  Future<http.Response> _sendRequest(http.Request request) async {
     try {
-      response = await sendAdminHttpRequest(
+      return await sendAdminHttpRequest(
         _httpClient,
         request,
         timeout: _timeout,
@@ -1004,15 +1254,22 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
             'admin data accuracy proxy timed out after ${_timeout.inSeconds}s',
       );
     }
+  }
+
+  Map<String, Object?> _decodeResponseBody(http.Response response) {
     final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
       final decoded = jsonDecode(raw);
       if (decoded is Map) parsed = decoded.cast<String, Object?>();
     }
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return parsed;
-    }
+    return parsed;
+  }
+
+  Never _throwGatewayError(
+    http.Response response,
+    Map<String, Object?> parsed,
+  ) {
     final message =
         (parsed['message'] as String?) ??
         'admin data accuracy proxy returned an error';
@@ -1089,6 +1346,39 @@ DataAccuracySettings _settingsFromJson(Map<String, Object?> json) {
     'created_at': _dateTimeField(json, 'created_at'),
     'updated_at': _dateTimeField(json, 'updated_at'),
   });
+}
+
+DataAccuracySettings _settingsFromWriteResponse(Map<String, Object?> body) {
+  final row = body['row'];
+  if (row is Map) {
+    final settings = row['settings'];
+    if (settings is Map) {
+      return _settingsFromJson(settings.cast<String, Object?>());
+    }
+  }
+  final raw = body['settings'] ?? body['data'];
+  return _settingsFromJson(_asMap(raw));
+}
+
+Map<String, Object?> _settingsToJson(DataAccuracySettings settings) {
+  return <String, Object?>{
+    'covers_source_per_service_period': <String, Object?>{
+      for (final entry in settings.coversSourcePerServicePeriod.entries)
+        entry.key: entry.value.wire,
+    },
+    'covers_manual_entries': <String, Object?>{
+      for (final entry in settings.coversManualEntries.entries)
+        entry.key: <String, Object?>{
+          for (final inner in entry.value.entries) inner.key: inner.value,
+        },
+    },
+    'wage_source': settings.wageSource.wire,
+    'walk_in_handling_mode': settings.walkInHandlingMode.wire,
+    'walk_in_manual_entries': <String, Object?>{
+      for (final entry in settings.walkInManualEntries.entries)
+        entry.key: entry.value,
+    },
+  };
 }
 
 DataAccuracyServicePeriodSetting _servicePeriodSettingFromJson(
@@ -1369,6 +1659,35 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     }
   }
 
+  void _validateServicePeriodKey(String servicePeriodKey) {
+    if (RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(servicePeriodKey)) return;
+    throw const DataAccuracyAdminGatewayError(
+      statusCode: 400,
+      errorCode: 'invalid_service_period_key',
+      message:
+          'service_period_key must start with a lowercase letter and '
+          'contain only lowercase letters, numbers, or underscores',
+    );
+  }
+
+  void _validateBusinessDate(String value, String fieldName) {
+    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return;
+    throw DataAccuracyAdminGatewayError(
+      statusCode: 400,
+      errorCode: 'invalid_$fieldName',
+      message: '$fieldName must be a YYYY-MM-DD business date',
+    );
+  }
+
+  void _validateCovers(int covers) {
+    if (covers >= 0) return;
+    throw const DataAccuracyAdminGatewayError(
+      statusCode: 400,
+      errorCode: 'invalid_covers',
+      message: 'covers must be a non-negative integer',
+    );
+  }
+
   /// Defensive guard: reject the synthetic `__unallocated__` vendor ID
   /// from any cadence map written through this gateway. The synthetic
   /// key is reserved for the per-vendor cost rollup's "no vendor
@@ -1437,6 +1756,144 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     );
   }
 
+  DataAccuracySettings _settingsWith(
+    DataAccuracySettings base, {
+    Map<String, CoversSource>? coversSourcePerServicePeriod,
+    Map<String, Map<String, int>>? coversManualEntries,
+    WageSource? wageSource,
+    DataAccuracyWalkInHandlingMode? walkInHandlingMode,
+    Map<String, int>? walkInManualEntries,
+    String? updatedBy,
+  }) {
+    return DataAccuracySettings(
+      settingId: base.settingId,
+      operatorId: base.operatorId,
+      locationId: base.locationId,
+      coversSourcePerServicePeriod:
+          coversSourcePerServicePeriod ?? base.coversSourcePerServicePeriod,
+      coversSourcePerServicePeriodSources:
+          base.coversSourcePerServicePeriodSources,
+      coversManualEntries: coversManualEntries ?? base.coversManualEntries,
+      wageSource: wageSource ?? base.wageSource,
+      wageSourceSource: base.wageSourceSource,
+      walkInHandlingMode: walkInHandlingMode ?? base.walkInHandlingMode,
+      walkInHandlingModeSource: base.walkInHandlingModeSource,
+      walkInManualEntries: walkInManualEntries ?? base.walkInManualEntries,
+      createdAt: base.createdAt,
+      updatedAt: _clock(),
+      updatedBy: updatedBy ?? base.updatedBy,
+    );
+  }
+
+  void _upsertBaselineServicePeriodRowsFromSettings(
+    DataAccuracySettings settings, {
+    required String actorUserId,
+  }) {
+    final key = _key(settings.operatorId, settings.locationId);
+    final list = _servicePeriodSettings.putIfAbsent(
+      key,
+      () => <DataAccuracyServicePeriodSetting>[],
+    );
+    for (final entry in settings.coversSourcePerServicePeriod.entries) {
+      final servicePeriodKey = entry.key.trim();
+      if (servicePeriodKey.isEmpty) continue;
+      _validateServicePeriodKey(servicePeriodKey);
+      _upsertBaselineServicePeriodRow(
+        list,
+        settings: settings,
+        servicePeriodKey: servicePeriodKey,
+        coversSource: entry.value,
+        actorUserId: actorUserId,
+      );
+    }
+    list.sort((a, b) {
+      final byKey = a.servicePeriodKey.compareTo(b.servicePeriodKey);
+      if (byKey != 0) return byKey;
+      return b.effectiveAtBusinessDate.compareTo(a.effectiveAtBusinessDate);
+    });
+  }
+
+  void _upsertBaselineServicePeriodRow(
+    List<DataAccuracyServicePeriodSetting> list, {
+    required DataAccuracySettings settings,
+    required String servicePeriodKey,
+    required CoversSource coversSource,
+    required String actorUserId,
+  }) {
+    final priorIdx = _baselineServicePeriodIndex(list, servicePeriodKey);
+    final prev = priorIdx >= 0 ? list[priorIdx] : null;
+    final next = _buildBaselineServicePeriodRow(
+      settings,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: coversSource,
+      previous: prev,
+      actorUserId: actorUserId,
+    );
+    if (priorIdx >= 0) {
+      list[priorIdx] = next;
+    } else {
+      list.add(next);
+    }
+  }
+
+  int _baselineServicePeriodIndex(
+    List<DataAccuracyServicePeriodSetting> list,
+    String servicePeriodKey,
+  ) {
+    return list.indexWhere(
+      (row) =>
+          row.servicePeriodKey == servicePeriodKey &&
+          row.effectiveAtBusinessDate == '1970-01-01',
+    );
+  }
+
+  DataAccuracyServicePeriodSetting _buildBaselineServicePeriodRow(
+    DataAccuracySettings settings, {
+    required String servicePeriodKey,
+    required CoversSource coversSource,
+    required DataAccuracyServicePeriodSetting? previous,
+    required String actorUserId,
+  }) {
+    if (previous == null) {
+      _servicePeriodIdCounter += 1;
+    }
+    return DataAccuracyServicePeriodSetting(
+      id: previous?.id ?? 'period-setting-$_servicePeriodIdCounter',
+      operatorId: settings.operatorId,
+      locationId: settings.locationId,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: ServicePeriodCoversSourceWire.fromWire(coversSource.wire),
+      wageSource:
+          previous?.wageSource ?? ServicePeriodWageSource.vendorPerEmployee,
+      effectiveAtBusinessDate: '1970-01-01',
+      createdAt: previous?.createdAt ?? _clock(),
+      updatedAt: _clock(),
+      updatedBy: actorUserId,
+    );
+  }
+
+  DataAccuracyAdminRow _rowFor(OperatorLocationRef ref) {
+    return DataAccuracyAdminRow(
+      operatorRef: ref,
+      settings: _effectiveSettings(ref.operatorId, ref.locationId),
+      servicePeriodSettings:
+          List<DataAccuracyServicePeriodSetting>.unmodifiable(
+            _servicePeriodSettings[_key(ref.operatorId, ref.locationId)] ??
+                const <DataAccuracyServicePeriodSetting>[],
+          ),
+      configuredServicePeriods: ServicePeriodDefinitionResolver.demoDefinitions,
+    );
+  }
+
+  DataAccuracyAdminRow? _rowForIds(String operatorId, String locationId) {
+    for (final ref in _operatorLocations) {
+      if (ref.operatorId == operatorId && ref.locationId == locationId) {
+        return _rowFor(ref);
+      }
+    }
+    return null;
+  }
+
   /// Build the effective per-location settings view by folding the
   /// keyed `_servicePeriodSettings` list into
   /// `settings.coversSourcePerServicePeriod`.
@@ -1467,9 +1924,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         _servicePeriodSettings[_key(operatorId, locationId)] ??
         const <DataAccuracyServicePeriodSetting>[];
     if (keyedRows.isEmpty) return base;
-    final folded = <String, CoversSource>{
-      ...base.coversSourcePerServicePeriod,
-    };
+    final folded = <String, CoversSource>{...base.coversSourcePerServicePeriod};
     final seen = <String>{};
     for (final row in keyedRows) {
       if (!seen.add(row.servicePeriodKey)) continue;
@@ -1550,6 +2005,25 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
+  Future<DataAccuracyAdminRow?> loadDataAccuracyRow({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return _rowForIds(operatorId, locationId);
+  }
+
+  @override
+  Future<DataAccuracySettings?> loadSettings({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return (await loadDataAccuracyRow(
+      operatorId: operatorId,
+      locationId: locationId,
+    ))?.settings;
+  }
+
+  @override
   Future<List<DataAccuracyAdminAuditEvent>> listAuditHistory({
     String? operatorId,
     String? locationId,
@@ -1561,6 +2035,177 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
               (locationId == null || event.locationId == locationId),
         )
         .toList(growable: false);
+  }
+
+  @override
+  Future<DataAccuracySettings> saveSettings({
+    required DataAccuracySettings settings,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'saveSettings');
+    if (_rowForIds(settings.operatorId, settings.locationId) == null) {
+      throw StateError(
+        'saveSettings: unknown operator/location '
+        '${settings.operatorId}/${settings.locationId}',
+      );
+    }
+    final prev = _effectiveSettings(settings.operatorId, settings.locationId);
+    final next = DataAccuracySettings(
+      settingId: settings.settingId,
+      operatorId: settings.operatorId,
+      locationId: settings.locationId,
+      coversSourcePerServicePeriod: settings.coversSourcePerServicePeriod,
+      coversSourcePerServicePeriodSources:
+          settings.coversSourcePerServicePeriodSources,
+      coversManualEntries: settings.coversManualEntries,
+      wageSource: settings.wageSource,
+      wageSourceSource: settings.wageSourceSource,
+      walkInHandlingMode: settings.walkInHandlingMode,
+      walkInHandlingModeSource: settings.walkInHandlingModeSource,
+      walkInManualEntries: settings.walkInManualEntries,
+      createdAt: settings.createdAt,
+      updatedAt: _clock(),
+      updatedBy: actorUserId,
+    );
+    _settings[_key(settings.operatorId, settings.locationId)] = next;
+    _upsertBaselineServicePeriodRowsFromSettings(
+      next,
+      actorUserId: actorUserId,
+    );
+    final diff = <String, Object?>{};
+    final beforeJson = _settingsToJson(prev);
+    final afterJson = _settingsToJson(next);
+    for (final field in <String>[
+      'covers_source_per_service_period',
+      'covers_manual_entries',
+      'wage_source',
+      'walk_in_handling_mode',
+      'walk_in_manual_entries',
+    ]) {
+      if (jsonEncode(beforeJson[field]) == jsonEncode(afterJson[field])) {
+        continue;
+      }
+      diff[field] = <String, Object?>{
+        'from': beforeJson[field],
+        'to': afterJson[field],
+      };
+    }
+    if (diff.isNotEmpty) {
+      _record(
+        eventType: 'admin.data_accuracy.settings.save',
+        actorUserId: actorUserId,
+        operatorId: settings.operatorId,
+        locationId: settings.locationId,
+        diff: diff,
+        reasonNote: reasonNote,
+      );
+    }
+    return _effectiveSettings(settings.operatorId, settings.locationId);
+  }
+
+  @override
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  ) async {
+    final target = command.target;
+    _ensureForgeAdmin(command.actorIsForgeAdmin, 'saveManualCovers');
+    final operatorId = target.operatorId;
+    final locationId = target.locationId;
+    final businessDateIso = target.businessDateIso;
+    final servicePeriodKey = target.servicePeriodKey;
+    final covers = command.covers;
+    _validateBusinessDate(businessDateIso, 'business_date');
+    _validateServicePeriodKey(servicePeriodKey);
+    _validateCovers(covers);
+    if (_rowForIds(operatorId, locationId) == null) {
+      throw StateError(
+        'saveManualCovers: unknown operator/location $operatorId/$locationId',
+      );
+    }
+    final prev = _readSettings(operatorId, locationId);
+    final entries = <String, Map<String, int>>{
+      for (final entry in prev.coversManualEntries.entries)
+        entry.key: <String, int>{...entry.value},
+    };
+    final dayEntries = entries.putIfAbsent(
+      businessDateIso,
+      () => <String, int>{},
+    );
+    final before = dayEntries[servicePeriodKey];
+    dayEntries[servicePeriodKey] = covers;
+    final next = _settingsWith(
+      prev,
+      coversManualEntries: entries,
+      updatedBy: command.actorUserId,
+    );
+    _settings[_key(operatorId, locationId)] = next;
+    if (before != covers) {
+      _record(
+        eventType: 'admin.data_accuracy.manual_covers.save',
+        actorUserId: command.actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        diff: <String, Object?>{
+          'business_date': businessDateIso,
+          'service_period_key': servicePeriodKey,
+          'covers': <String, int?>{'from': before, 'to': covers},
+        },
+        reasonNote: command.reasonNote,
+      );
+    }
+    return _effectiveSettings(operatorId, locationId);
+  }
+
+  @override
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'clearManualCovers');
+    _validateBusinessDate(businessDateIso, 'business_date');
+    _validateServicePeriodKey(servicePeriodKey);
+    if (_rowForIds(operatorId, locationId) == null) {
+      throw StateError(
+        'clearManualCovers: unknown operator/location $operatorId/$locationId',
+      );
+    }
+    final prev = _readSettings(operatorId, locationId);
+    final entries = <String, Map<String, int>>{
+      for (final entry in prev.coversManualEntries.entries)
+        entry.key: <String, int>{...entry.value},
+    };
+    final dayEntries = entries[businessDateIso];
+    final before = dayEntries?[servicePeriodKey];
+    dayEntries?.remove(servicePeriodKey);
+    if (dayEntries != null && dayEntries.isEmpty) {
+      entries.remove(businessDateIso);
+    }
+    final next = _settingsWith(
+      prev,
+      coversManualEntries: entries,
+      updatedBy: actorUserId,
+    );
+    _settings[_key(operatorId, locationId)] = next;
+    _record(
+      eventType: 'admin.data_accuracy.manual_covers.clear',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      diff: <String, Object?>{
+        'business_date': businessDateIso,
+        'service_period_key': servicePeriodKey,
+        'covers': <String, int?>{'from': before, 'to': null},
+      },
+      reasonNote: reasonNote,
+    );
+    return _effectiveSettings(operatorId, locationId);
   }
 
   @override
@@ -1758,24 +2403,11 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
             'the audit log',
       );
     }
-    final keyPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
-    if (!keyPattern.hasMatch(servicePeriodKey)) {
-      throw const DataAccuracyAdminGatewayError(
-        statusCode: 400,
-        errorCode: 'invalid_service_period_key',
-        message:
-            'service_period_key must start with a lowercase letter and '
-            'contain only lowercase letters, numbers, or underscores',
-      );
-    }
-    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(effectiveAtBusinessDateIso)) {
-      throw const DataAccuracyAdminGatewayError(
-        statusCode: 400,
-        errorCode: 'invalid_effective_at_business_date',
-        message:
-            'effective_at_business_date must be a YYYY-MM-DD business date',
-      );
-    }
+    _validateServicePeriodKey(servicePeriodKey);
+    _validateBusinessDate(
+      effectiveAtBusinessDateIso,
+      'effective_at_business_date',
+    );
     final key = _key(operatorId, locationId);
     final list = _servicePeriodSettings.putIfAbsent(
       key,
@@ -1850,6 +2482,61 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     final list = _servicePeriodSettings[_key(operatorId, locationId)];
     if (list == null) return const <DataAccuracyServicePeriodSetting>[];
     return List<DataAccuracyServicePeriodSetting>.unmodifiable(list);
+  }
+
+  @override
+  Future<void> resetServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String reasonNote,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'resetServicePeriodSetting');
+    if (reasonNote.trim().isEmpty) {
+      throw const DataAccuracyAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'reason_note_required',
+        message:
+            'resetServicePeriodSetting requires a reason note for the audit log',
+      );
+    }
+    _validateServicePeriodKey(servicePeriodKey);
+    if (_rowForIds(operatorId, locationId) == null) {
+      throw StateError(
+        'resetServicePeriodSetting: unknown operator/location '
+        '$operatorId/$locationId',
+      );
+    }
+    final key = _key(operatorId, locationId);
+    final list = _servicePeriodSettings[key];
+    final beforeCount =
+        list?.where((row) => row.servicePeriodKey == servicePeriodKey).length ??
+        0;
+    list?.removeWhere((row) => row.servicePeriodKey == servicePeriodKey);
+    final prev = _readSettings(operatorId, locationId);
+    if (prev.coversSourcePerServicePeriod.containsKey(servicePeriodKey)) {
+      final nextCovers = <String, CoversSource>{
+        ...prev.coversSourcePerServicePeriod,
+      }..remove(servicePeriodKey);
+      _settings[key] = _settingsWith(
+        prev,
+        coversSourcePerServicePeriod: nextCovers,
+        updatedBy: actorUserId,
+      );
+    }
+    _record(
+      eventType: 'admin.data_accuracy.service_period_clear',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      diff: <String, Object?>{
+        'service_period_key': servicePeriodKey,
+        'cleared_count': beforeCount,
+      },
+      reasonNote: reasonNote.trim(),
+    );
   }
 
   @override
@@ -1950,6 +2637,15 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           adminNotes: _adminNotes[_key(ref.operatorId, ref.locationId)],
         ),
     ];
+  }
+
+  @override
+  Future<ForgeFlowPollingTierAssignment?> loadPollingTierAssignment({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    if (_rowForIds(operatorId, locationId) == null) return null;
+    return _assignments[_key(operatorId, locationId)];
   }
 
   @override

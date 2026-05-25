@@ -188,10 +188,13 @@ void main() {
       expect(calls, 13);
     });
 
-    test('exactly 1 bare adminCanEdit(session, ...) call site (E1 Pricing)', () {
+    test('exactly 2 bare adminCanEdit(session, ...) call sites', () {
       // UX-parity Slice E1 applied the key-first helper directly at ONE
       // site (the non-destructive, single-key Pricing route) — that bare
-      // `adminCanEdit(session, ...)` call remains.
+      // `adminCanEdit(session, ...)` call remains. The Audit Log route now
+      // has a second active call site for the non-destructive view/export
+      // keys so it mirrors ops permission behavior without bundling export
+      // under the destructive MFA helper.
       //
       // UX-parity Slice E4 (operator-approved 2026-05-23) keyed the LIVE
       // destructive per-action gates too, but routes them through the
@@ -201,7 +204,7 @@ void main() {
       // `adminCanEdit` in the route file. Extraction keeps the
       // frozen-ceiling monolith from growing more than necessary. So the
       // count of BARE `adminCanEdit(session` calls in active builders
-      // stays 1; the E4 destructive call sites are counted separately
+      // is now 2; the E4 destructive call sites are counted separately
       // below. The regex excludes
       // `_isAdminSuperAdmin`/`_isAdminMfaFresh`/`adminCanEditDestructive`
       // by requiring the bare `adminCanEdit(` token at a word boundary;
@@ -209,18 +212,18 @@ void main() {
       final calls = RegExp(
         r'(?<![\w_])adminCanEdit\(\s*session',
       ).allMatches(activeSource).length;
-      expect(calls, 1);
+      expect(calls, 2);
     });
 
-    test('exactly 3 adminCanEditDestructive(...) call sites (E4)', () {
-      // UX-parity Slice E4 keyed FOUR live destructive per-action gates
-      // via the extracted [adminCanEditDestructive] composer. It appears
-      // at THREE direct call sites in the active builders:
-      //   * `_buildMembers`                — admin.roles.edit_seeded
-      //   * `_buildRolesHierarchySessions` — admin.roles.edit_seeded
-      //   * `_buildAuditedSupportActions`  — once inside a local
-      //     `can(key)` closure that the three audited flags
-      //     (reset_mfa_factors / erase_pii / audit_log.export) forward to
+    test('exactly 2 adminCanEditDestructive(...) call sites (E4)', () {
+      // UX-parity Slice E4 keyed the remaining live destructive per-action
+      // gates via the extracted [adminCanEditDestructive] composer. Current
+      // origin moved seeded-role gating behind `_canEditSeededRoles`, so the
+      // route file has TWO direct call sites in active builders:
+      //   * `_canEditSeededRoles` - admin.roles.edit_seeded
+      //   * `_buildAuditedSupportActions` - once inside a local
+      //     `canDestructive(key)` closure that reset_mfa_factors and
+      //     erase_pii forward to
       // Each composes the per-action key (key-first, super_admin
       // fallback) with the unchanged MFA-freshness dimension, so an EMPTY
       // permissions set stays byte-identical to the pre-slice role+MFA
@@ -230,7 +233,7 @@ void main() {
       final calls = RegExp(
         r'(?<![\w_])adminCanEditDestructive\(',
       ).allMatches(activeSource).length;
-      expect(calls, 3);
+      expect(calls, 2);
     });
 
     test('admin_destructive_gate import is present (E4 extraction)', () {

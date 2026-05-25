@@ -1226,15 +1226,18 @@ class MembersValidationCopy {
   static const String displayNameEmpty = 'Display name is required.';
 }
 
-/// Catalog of seeded role keys the invite dialog renders. Mirrors the
-/// `auth_permission_key_catalog.md` seeded role list. The admin path
-/// can additionally override role grants directly so this catalog is
-/// shared by the override-role-grant action.
+/// Catalog of operator-facing seeded role keys the Team members tab renders.
+/// F&F-internal platform roles (`super_admin`, `ff_support`) stay out of this
+/// surface so Admin mirrors Operator Web role choices.
 const List<String> kSeededRoleKeysForAdmin = <String>[
   'operator_owner',
   'operator_general_manager',
   'location_manager',
   'supervisor',
+  'finance_analyst',
+  'auditor_compliance',
+  'training_lead',
+  'team_admin',
 ];
 
 /// Display labels for the seeded role keys. The admin members table
@@ -1245,6 +1248,10 @@ const Map<String, String> kSeededRoleDisplayNames = <String, String>{
   'operator_general_manager': 'General Manager',
   'location_manager': 'Location Manager',
   'supervisor': 'Supervisor',
+  'finance_analyst': 'Finance Analyst',
+  'auditor_compliance': 'Auditor / Compliance',
+  'training_lead': 'Training Lead',
+  'team_admin': 'Team Admin',
 };
 
 String memberRoleLabel(String roleKey) {
@@ -1259,8 +1266,8 @@ String memberStatusLabel(MemberStatus status) {
     case MemberStatus.suspended:
       return 'Suspended';
     case MemberStatus.dormant30:
-      return 'Dormant 30d';
+      return 'Dormant 30+ days';
     case MemberStatus.softDeleted:
-      return 'Soft deleted';
+      return 'Removed';
   }
 }
