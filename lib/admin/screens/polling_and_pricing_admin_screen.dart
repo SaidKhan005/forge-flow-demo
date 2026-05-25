@@ -17,6 +17,7 @@ import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
+import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
 import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
@@ -586,10 +587,7 @@ class _PollingAndPricingAdminScreenState
           if (widget.showPageHeader ||
               !widget.editingEnabled ||
               _actionError != null)
-            Padding(
-              // Pinned header + banners keep operator-web edge insets; the
-              // scrollable body below carries its own OperatorWebScreenBody
-              // padding so it is not double-padded. Header gating unchanged.
+            OperatorWebScreenFrame(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -599,7 +597,7 @@ class _PollingAndPricingAdminScreenState
                       icon: Icons.payments_outlined,
                       title: 'Polling Setup',
                       subtitle:
-                          'This surface is for F&F admins only. Operators cannot see it. Set vendor polling tiers, cost basis, and margin.',
+                          'Set vendor cadence, tier price, cost basis, and margin for admin-managed locations.',
                       actions: <Widget>[
                         if (widget.onBackToBusinessAccounts != null)
                           AdminBusinessAccountsBackButton(
@@ -721,13 +719,14 @@ class _PollingAndPricingAdminScreenState
             ),
           ],
           const SizedBox(height: 16),
-          const PlainEnglishExplainerCard(),
-          const SizedBox(height: 16),
-          TierDefinitionsCard(
-            definitions: _definitions,
-            editingEnabled: _locationMutationEnabled,
-            onEdit: _onEditDefinition,
+          _PollingSetupOverviewPanel(
+            scope: _scope,
+            visibleRows: _filteredAssignments,
+            visibleRequests: _visibleChangeRequests,
+            visibleRollup: _visibleRollup,
           ),
+          const SizedBox(height: 16),
+          const PlainEnglishExplainerCard(),
           const SizedBox(height: 16),
           PerLocationTierAssignmentTable(
             rows: _filteredAssignments,
@@ -749,29 +748,28 @@ class _PollingAndPricingAdminScreenState
             onVendorFilterChanged: (v) => setState(() => _vendorFilter = v),
           ),
           const SizedBox(height: 16),
-          MarginRollupCard(
-            rollup: _visibleRollup,
-            canExportCsv: _locationMutationEnabled,
-            onExportCsv: _onExportCsv,
-          ),
-          const SizedBox(height: 16),
-          TierChangeRequestsCard(
-            requests: _visibleChangeRequests,
-            editingEnabled: _locationMutationEnabled,
-            onResolve: _onResolveChangeRequest,
-          ),
-          const SizedBox(height: 16),
-          // Card 5 (Audit history) per contract - every tier
-          // definition edit, tier assignment, change-request
-          // resolution, and CSV export the F&F admin runs lands here
-          // with prior → new diff display + actor + timestamp + reason
-          // note. Filtered to polling-tier event types so Tab 1 data-
-          // accuracy overrides do not leak in.
-          DataAccuracyAuditHistoryPanel(
-            key: const Key('admin_polling_pricing_audit_panel'),
-            events: _visibleTierAuditEvents,
-            title: 'Audit history',
-            emptyText: 'No tier changes recorded yet.',
+          _PollingSetupSecondaryGrid(
+            tierDefinitions: TierDefinitionsCard(
+              definitions: _definitions,
+              editingEnabled: _locationMutationEnabled,
+              onEdit: _onEditDefinition,
+            ),
+            marginRollup: MarginRollupCard(
+              rollup: _visibleRollup,
+              canExportCsv: _locationMutationEnabled,
+              onExportCsv: _onExportCsv,
+            ),
+            changeRequests: TierChangeRequestsCard(
+              requests: _visibleChangeRequests,
+              editingEnabled: _locationMutationEnabled,
+              onResolve: _onResolveChangeRequest,
+            ),
+            auditHistory: DataAccuracyAuditHistoryPanel(
+              key: const Key('admin_polling_pricing_audit_panel'),
+              events: _visibleTierAuditEvents,
+              title: 'Audit history',
+              emptyText: 'No tier changes recorded yet.',
+            ),
           ),
         ],
       ),
@@ -802,7 +800,10 @@ class _PollingAndPricingAdminScreenState
           .putIfAbsent(assignment.tierKey, () => _MutableTierMargin())
           .add(price: price, cost: cost);
 
-      final vendors = assignment.pollingCadencePerVendorSeconds.keys.toList();
+      final effectiveCadence = assignment.pollingCadencePerVendorSeconds.isEmpty
+          ? definition?.pollingCadencePerVendorSeconds ?? const <String, int>{}
+          : assignment.pollingCadencePerVendorSeconds;
+      final vendors = effectiveCadence.keys.toList();
       if (vendors.isEmpty) {
         perVendor.update(
           kUnallocatedVendorId,
@@ -899,9 +900,192 @@ class _ScopedPollingActionCard extends StatelessWidget {
         role: AdminActionRole.primary,
       ),
       child: Text(
-        'This saves one polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower setting overrides it.',
+        'Selected scope: ${scope.displayLabel}. This saves one polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower setting overrides it.',
         style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
+    );
+  }
+}
+
+class _PollingSetupOverviewPanel extends StatelessWidget {
+  const _PollingSetupOverviewPanel({
+    required this.scope,
+    required this.visibleRows,
+    required this.visibleRequests,
+    required this.visibleRollup,
+  });
+
+  final AdminHierarchyScopeIntent? scope;
+  final List<TierAssignmentAdminRow> visibleRows;
+  final List<TierChangeRequest> visibleRequests;
+  final TierMarginRollup visibleRollup;
+
+  @override
+  Widget build(BuildContext context) {
+    final assignedCount = visibleRows
+        .where((row) => row.assignment != null)
+        .length;
+    final pendingRequests = visibleRequests
+        .where((request) => request.status == TierChangeRequestStatus.pending)
+        .length;
+    final margin = visibleRollup.totalMonthlyMarginCents;
+    final marginColor = margin > 0
+        ? AppColors.positive
+        : margin < 0
+        ? AppColors.negative
+        : AppColors.textMuted;
+    final scopeLabel = scope == null ? 'All operators' : scope!.displayLabel;
+
+    return OperatorWebPanel(
+      key: const Key('admin_polling_setup_overview_panel'),
+      title: 'Setup overview',
+      subtitle: scopeLabel,
+      tone: OperatorWebPanelTone.highlight,
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: <Widget>[
+          _OverviewMetric(
+            label: 'Locations shown',
+            value: '${visibleRows.length}',
+            icon: Icons.storefront_outlined,
+            color: AppColors.sunsetDark,
+          ),
+          _OverviewMetric(
+            label: 'Assigned',
+            value: '$assignedCount',
+            icon: Icons.check_circle_outline,
+            color: assignedCount == 0
+                ? AppColors.textMuted
+                : AppColors.positive,
+          ),
+          _OverviewMetric(
+            label: 'Pending requests',
+            value: '$pendingRequests',
+            icon: Icons.inbox_outlined,
+            color: pendingRequests == 0
+                ? AppColors.textMuted
+                : AppColors.warning,
+          ),
+          _OverviewMetric(
+            label: 'Monthly margin',
+            value: formatCents(margin),
+            icon: Icons.trending_up_outlined,
+            color: marginColor,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverviewMetric extends StatelessWidget {
+  const _OverviewMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 152, maxWidth: 232),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: color.withValues(alpha: 0.26), width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PollingSetupSecondaryGrid extends StatelessWidget {
+  const _PollingSetupSecondaryGrid({
+    required this.tierDefinitions,
+    required this.marginRollup,
+    required this.changeRequests,
+    required this.auditHistory,
+  });
+
+  final Widget tierDefinitions;
+  final Widget marginRollup;
+  final Widget changeRequests;
+  final Widget auditHistory;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final leftColumn = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            tierDefinitions,
+            const SizedBox(height: 16),
+            marginRollup,
+          ],
+        );
+        final rightColumn = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            changeRequests,
+            const SizedBox(height: 16),
+            auditHistory,
+          ],
+        );
+        if (constraints.maxWidth < 960) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              leftColumn,
+              const SizedBox(height: 16),
+              rightColumn,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(child: leftColumn),
+            const SizedBox(width: 16),
+            Expanded(child: rightColumn),
+          ],
+        );
+      },
     );
   }
 }
@@ -1244,14 +1428,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
 }
 
 String _tierLabel(PollingTierKey tier) {
-  switch (tier) {
-    case PollingTierKey.standard:
-      return 'Regular';
-    case PollingTierKey.premium:
-      return 'Premium';
-    case PollingTierKey.custom:
-      return 'Custom';
-  }
+  return adminPollingTierLabel(tier);
 }
 
 class _ReadOnlyBanner extends StatelessWidget {

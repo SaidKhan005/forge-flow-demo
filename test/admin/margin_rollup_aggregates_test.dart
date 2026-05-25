@@ -86,10 +86,7 @@ void main() {
       // Margin = revenue - cost = 63200.
       expect(rollup.totalMonthlyMarginCents, equals(63200));
       // marginFraction = 63200 / 74600 ≈ 0.8472...
-      expect(
-        rollup.marginFraction,
-        closeTo(63200 / 74600, 1e-9),
-      );
+      expect(rollup.marginFraction, closeTo(63200 / 74600, 1e-9));
 
       // perTier has 3 entries.
       expect(rollup.perTier, hasLength(3));
@@ -97,14 +94,20 @@ void main() {
         for (final pt in rollup.perTier) pt.tierKey: pt,
       };
       expect(perTierByKey[PollingTierKey.standard]!.assignmentCount, equals(3));
-      expect(perTierByKey[PollingTierKey.standard]!.totalMonthlyPriceCents,
-          equals(29700));
+      expect(
+        perTierByKey[PollingTierKey.standard]!.totalMonthlyPriceCents,
+        equals(29700),
+      );
       expect(perTierByKey[PollingTierKey.premium]!.assignmentCount, equals(1));
-      expect(perTierByKey[PollingTierKey.premium]!.totalMonthlyPriceCents,
-          equals(19900));
+      expect(
+        perTierByKey[PollingTierKey.premium]!.totalMonthlyPriceCents,
+        equals(19900),
+      );
       expect(perTierByKey[PollingTierKey.custom]!.assignmentCount, equals(1));
-      expect(perTierByKey[PollingTierKey.custom]!.totalMonthlyPriceCents,
-          equals(25000));
+      expect(
+        perTierByKey[PollingTierKey.custom]!.totalMonthlyPriceCents,
+        equals(25000),
+      );
 
       // Filter: tierFilter=standard returns only the 3 standard rows.
       final filtered = await gateway.summarizeMargin(
@@ -128,9 +131,59 @@ void main() {
       expect(
         perVendorSum,
         equals(rollup.totalMonthlyVendorCostCents),
-        reason: 'per-vendor cost rollup must be lossless: '
+        reason:
+            'per-vendor cost rollup must be lossless: '
             'sum(perVendor) == totalMonthlyVendorCostCents',
       );
     });
+
+    test(
+      'summarizeMargin uses tier vendor defaults when assignment cadence is empty',
+      () async {
+        const ref = OperatorLocationRef(
+          operatorId: 'op-1',
+          businessName: 'Diner A',
+          locationId: 'loc-a',
+          locationName: 'A1',
+        );
+        final now = DateTime.utc(2026, 5, 5, 12);
+        final gateway = InMemoryDataAccuracyAdminGateway(
+          operatorLocations: const <OperatorLocationRef>[ref],
+          initialTierDefinitions: <PollingTierKey, TierDefinition>{
+            PollingTierKey.standard: kDemoStandardTierDefinition(),
+            PollingTierKey.premium: kDemoPremiumTierDefinition(),
+            PollingTierKey.custom: kDemoCustomTierDefinition(),
+          },
+          initialAssignments: <String, ForgeFlowPollingTierAssignment>{
+            'op-1/loc-a': ForgeFlowPollingTierAssignment(
+              assignmentId: 'assignment-1',
+              operatorId: 'op-1',
+              locationId: 'loc-a',
+              tierKey: PollingTierKey.standard,
+              pollingCadencePerVendorSeconds: const <String, int>{},
+              monthlyPriceCents: 9900,
+              vendorApiCostEstimateCentsMonthly: 1200,
+              effectiveAt: now,
+              createdAt: now,
+            ),
+          },
+        );
+
+        final rollup = await gateway.summarizeMargin();
+        final vendorIds = rollup.perVendor
+            .map((entry) => entry.vendorId)
+            .toSet();
+
+        expect(vendorIds, contains('quickbooks_time'));
+        expect(vendorIds, isNot(contains(kUnallocatedVendorId)));
+        expect(
+          rollup.perVendor.fold<int>(
+            0,
+            (acc, entry) => acc + entry.totalMonthlyVendorCostCents,
+          ),
+          equals(1200),
+        );
+      },
+    );
   });
 }
