@@ -218,10 +218,9 @@ const String kAdminMembersRouteId = 'members';
 /// operator, and lands on a three-tab screen scoped to that operator.
 const String kAdminRolesHierarchySessionsRouteId = 'roles-hierarchy-sessions';
 
-/// Phase 11A.14 - cross-operator Audited support actions surface
-/// (audit log review + Reset MFA / password reset / paired-approval
-/// erasure). Mounted after the operator picker; same shell pattern
-/// as `kAdminMembersRouteId` and `kAdminRolesHierarchySessionsRouteId`.
+/// Phase 11A.14 - cross-operator audit-log surface. Mounted after the
+/// operator picker; same shell pattern as `kAdminMembersRouteId` and
+/// `kAdminRolesHierarchySessionsRouteId`.
 const String kAdminAuditedSupportActionsRouteId = 'audited-support-actions';
 
 /// Canonical operator-picker route ID (11A.3a follow-up; reused by
@@ -272,7 +271,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.support_agent_outlined,
     section: AdminRouteSection.operations,
     subtitle:
-        'Work across people, access, security, audit, and vendors for the selected business.',
+        'Work across people, access, audit log, and vendors for the selected business.',
     builder: _buildSupportOperatorView,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -400,7 +399,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.link_outlined,
     section: AdminRouteSection.operations,
     subtitle:
-        'Review location-scoped vendor connections; super admins can connect, test, disconnect, and inspect logs.',
+        'Review location-scoped vendor connections; super admins can connect, test, and disconnect vendors.',
     builder: _buildVendorIntegrations,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -446,8 +445,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/admin/audited-support-actions',
     icon: Icons.security_outlined,
     section: AdminRouteSection.operations,
-    subtitle:
-        'Review audit history and gated support actions for one operator.',
+    subtitle: 'Review audit history for one operator.',
     builder: _buildAuditedSupportActions,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -750,6 +748,8 @@ Widget _buildSupportOperatorView(BuildContext context) {
       AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
   final supportGateway =
       AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(context);
+  final vendorConnectionsGateway =
+      AdminConsoleServicesScope.vendorConnectionsGatewayOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
     context,
   );
@@ -787,6 +787,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
       membersGateway: membersGateway,
       rolesGateway: rolesGateway,
       supportGateway: supportGateway,
+      vendorConnectionsGateway: vendorConnectionsGateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
       canEditSeededRoles: false,
@@ -812,6 +813,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
         membersGateway: membersGateway,
         rolesGateway: rolesGateway,
         supportGateway: supportGateway,
+        vendorConnectionsGateway: vendorConnectionsGateway,
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
         // CODE_OPS_DEBT Theme A item 1 — resolved off the JWT
@@ -839,6 +841,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
     required this.membersGateway,
     required this.rolesGateway,
     required this.supportGateway,
+    required this.vendorConnectionsGateway,
     required this.actorUserId,
     required this.editingEnabled,
     required this.canEditSeededRoles,
@@ -855,6 +858,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
   final MembersAdminGateway membersGateway;
   final RolesHierarchySessionsAdminGateway rolesGateway;
   final AuditedSupportActionsAdminGateway supportGateway;
+  final VendorConnectionsGateway? vendorConnectionsGateway;
   final String actorUserId;
   final bool editingEnabled;
   final bool canEditSeededRoles;
@@ -967,6 +971,7 @@ class _SupportOperatorViewRouteShellState
       membersGateway: widget.membersGateway,
       rolesGateway: widget.rolesGateway,
       supportGateway: widget.supportGateway,
+      vendorConnectionsGateway: widget.vendorConnectionsGateway,
       actorUserId: widget.actorUserId,
       pickedOperator: picked,
       editingEnabled: widget.editingEnabled,
@@ -2257,8 +2262,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
   return AdminSetupWorkspace(
     functionTitle: 'Audit log',
     showWorkspaceHeader: false,
-    description:
-        'Review audit history, active sessions, and guarded support actions.',
+    description: 'Review audit history for the selected business.',
     operatorGateway: operatorGateway,
     hierarchyGateway: sessionsGateway,
     initialScope: initialScope,
@@ -2371,14 +2375,9 @@ Widget _buildAuditedSupportActionsLegacy(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      // CODE_OPS_DEBT Theme A item 1 — un-pin from `const false`.
-      // The three MFA-required audited-support actions
-      // (`admin.users.reset_mfa_factors`,
-      // `admin.users.issue_paired_erasure`,
-      // `admin.audit.export`) all gate on the same fresh-MFA window.
-      // Resolve via the shared [FreshMfaResolver] (1-hour default,
-      // env-overridable). The proxy double-rejects on stale claims
-      // regardless of what the UI exposes.
+      // Export remains MFA-fresh gated. The old support-action flags
+      // are still passed through for route compatibility, but this tab
+      // now renders the audit log only.
       final fresh = _isAdminMfaFresh(session);
       final canResetMfa = fresh;
       final canIssuePairedErasure = fresh;
@@ -2868,9 +2867,9 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// gateway used by the kDemoMode walkthrough.
   final RolesHierarchySessionsAdminGateway? rolesHierarchySessionsAdminGateway;
 
-  /// Phase 11A.14 - cross-operator Audited support actions admin
-  /// gateway. Optional; the default fallback is the seeded in-memory
-  /// gateway used by the kDemoMode walkthrough.
+  /// Phase 11A.14 - cross-operator audit-log admin gateway. Optional;
+  /// the default fallback is the seeded in-memory gateway used by the
+  /// kDemoMode walkthrough.
   final AuditedSupportActionsAdminGateway? auditedSupportActionsAdminGateway;
 
   /// Admin audit-integrity badge — READ-ONLY admin/cross-tenant

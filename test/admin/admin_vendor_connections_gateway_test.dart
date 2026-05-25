@@ -36,9 +36,9 @@ void main() {
                   'connection_id': 'conn-toast',
                   'vendor_id': 'toast',
                   'category': 'pos',
-                  'status': 'connected',
+                  'status': ' CONNECTED ',
                   'first_backfill': <String, Object?>{
-                    'status': 'running',
+                    'status': ' RUNNING ',
                     'processed_days': 12,
                     'total_days': 60,
                   },
@@ -68,6 +68,7 @@ void main() {
       expect(captured.headers['authorization'], 'Bearer admin-token');
       expect(bundle.locationName, 'Harbour');
       expect(bundle.posConnection!.vendorId, 'toast');
+      expect(bundle.posConnection!.status, VendorConnectionStatus.connected);
       expect(
         bundle.posConnection!.firstBackfill!.status,
         VendorConnectionFirstBackfillStatus.running,
@@ -103,6 +104,7 @@ void main() {
               jsonEncode(<String, Object?>{
                 'connection_id': 'conn-toast',
                 'connected_at': '2026-05-08T12:00:00.000Z',
+                'first_backfill_started': false,
                 'first_backfill': const <String, Object?>{'started': true},
               }),
               200,
@@ -177,6 +179,25 @@ void main() {
       expect(captured[3].headers['Idempotency-Key'], isNot('idem-3'));
     },
   );
+
+  test('key-paste vendors open the key form without starting OAuth', () async {
+    final gateway = AdminHttpVendorConnectionsGateway(
+      baseUri: Uri.parse(proxyBase),
+      bearerTokenProvider: tokenProvider,
+      httpClient: MockClient((request) async {
+        throw StateError('key-paste vendors should not start OAuth');
+      }),
+    );
+
+    final flow = await gateway.startConnect(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+    );
+
+    expect(flow.flowKind, VendorConnectFlowKind.keyPasteForm);
+    expect(flow.redirectUrl, isEmpty);
+  });
 
   test('api-key connect and disconnect use stable idempotency keys', () async {
     final captured = <_CapturedRequest>[];
@@ -256,7 +277,9 @@ void main() {
                 'vendor_id': 'toast',
                 'category': 'pos',
                 'status': 'connected',
-                'first_backfill': const <String, Object?>{'status': 'enqueued'},
+                'first_backfill': const <String, Object?>{
+                  'status': ' ENQUEUED ',
+                },
               },
             ],
           }),
@@ -283,6 +306,7 @@ void main() {
             'ok': true,
             'auth_valid': false,
             'elapsed_ms': 10,
+            'message': 'Proxy says this worked.',
           }),
           200,
         );
@@ -296,6 +320,7 @@ void main() {
     );
 
     expect(result.authValid, isFalse);
+    expect(result.sampleSummary, 'No sample rows returned.');
   });
 
   test(

@@ -73,6 +73,19 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
     final op = _requireScopeValue('operator', operatorId);
     final loc = _requireLocationId(locationId);
     final vendor = _requireScopeValue('vendor', vendorId);
+    final entry = _catalog.firstWhere(
+      (candidate) => candidate.vendorId == vendor,
+      orElse: () => throw VendorConnectionsGatewayError(
+        message: 'Unknown vendor: $vendor',
+        remediation: 'Pick a vendor from the connection dialog.',
+      ),
+    );
+    if (entry.authMode == VendorAuthMode.keyPaste) {
+      return const VendorConnectFlowStart(
+        redirectUrl: '',
+        flowKind: VendorConnectFlowKind.keyPasteForm,
+      );
+    }
     final body = await _send(
       method: 'POST',
       path: '/v1/admin/integrations/oauth/${_pathSegment(vendor)}/start',
@@ -191,9 +204,7 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
       authValid: body['auth_valid'] == true,
       elapsedMs: _readInt(body['elapsed_ms']) ?? 0,
       sampleSummary:
-          _readString(body['sample_summary']) ??
-          _readString(body['message']) ??
-          'No sample rows returned.',
+          _readString(body['sample_summary']) ?? 'No sample rows returned.',
       fieldMapping: Map<String, String>.unmodifiable(fieldMapping),
       note: _readString(body['note']),
     );
@@ -424,7 +435,8 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
   static VendorConnectionFirstBackfillStatus? _firstBackfillStatusFromString(
     String? raw,
   ) {
-    switch (raw) {
+    if (raw == null) return null;
+    switch (raw.trim().toLowerCase()) {
       case 'pending':
         return VendorConnectionFirstBackfillStatus.pending;
       case 'running':
@@ -480,7 +492,7 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
   }
 
   static VendorConnectionStatus _statusFromString(String? raw) {
-    switch (raw) {
+    switch (raw?.trim().toLowerCase()) {
       case 'connected':
       case 'active':
         return VendorConnectionStatus.connected;
@@ -501,14 +513,11 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
   }
 
   static bool _firstBackfillStarted(Map<String, Object?> body) {
-    if (body['first_backfill_started'] == true) {
-      return true;
-    }
     final raw = body['first_backfill'];
     if (raw is Map<Object?, Object?>) {
       return raw['started'] == true;
     }
-    return false;
+    return body['first_backfill_started'] == true;
   }
 
   static String _pathSegment(String value) => Uri.encodeComponent(value);
