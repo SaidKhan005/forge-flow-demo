@@ -502,9 +502,6 @@ class _RolesHierarchySessionsAdminScreenState
             OperatorWebScreenHeader(
               icon: Icons.account_tree_outlined,
               title: 'Roles & permissions',
-              subtitle:
-                  '${widget.pickedOperator.operatorBusinessName}: role policy, '
-                  'and location hierarchy. Active sessions moved to Security/audit/sessions.',
               actions: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -799,7 +796,7 @@ class RolePolicyAdminPanel extends StatelessWidget {
           AdminStatStrip(
             items: <AdminStatItem>[
               AdminStatItem(
-                label: 'Seeded roles',
+                label: 'Default roles',
                 value: seeded.length.toString(),
                 icon: Icons.verified_user_outlined,
                 tone: AppColors.peacock,
@@ -820,21 +817,11 @@ class RolePolicyAdminPanel extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           OperatorWebPanel(
-            title: 'Seeded roles',
-            trailing: Text(
-              '${seeded.length} role${seeded.length == 1 ? '' : 's'}',
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
-            ),
+            title: 'Default roles (${seeded.length})',
             child: Column(
               key: const Key('admin_rhs_roles_seeded'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Text(
-                  'Seeded roles are read only. To change a seeded role you '
-                  'need an admin role edit permission with multi-factor sign-in.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 8),
                 if (seeded.isEmpty)
                   Text(
                     'No seeded roles for this operator.',
@@ -856,7 +843,7 @@ class RolePolicyAdminPanel extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           OperatorWebPanel(
-            title: 'Custom roles',
+            title: 'Custom roles (${custom.length})',
             trailing: editingEnabled
                 ? FilledButton.icon(
                     key: const Key('admin_rhs_roles_create_custom'),
@@ -1368,9 +1355,6 @@ class _PermissionExplainerCard extends StatelessWidget {
 // Hierarchy tab
 // ---------------------------------------------------------------------
 
-const String _orgUnitMoveGatedCopy =
-    'Org-unit moves are gated until schema, proxy, and audit support ships.';
-
 class _HierarchyTab extends StatelessWidget {
   const _HierarchyTab({
     required this.orgUnits,
@@ -1407,7 +1391,7 @@ class _HierarchyTab extends StatelessWidget {
           AdminStatStrip(
             items: <AdminStatItem>[
               AdminStatItem(
-                label: 'Org units',
+                label: 'Groups',
                 value: orgUnits.length.toString(),
                 icon: Icons.account_tree_outlined,
                 tone: AppColors.peacock,
@@ -1433,15 +1417,6 @@ class _HierarchyTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Text(
-                  'Location moves are audit-logged with your name and reason. '
-                  'Use Add child to create a new region, district, or '
-                  'location group under an existing unit. '
-                  'Org-unit moves are gated until schema, proxy, and audit '
-                  'support ships.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 8),
                 if (orgUnits.isEmpty)
                   Text(
                     'No org units yet for this operator.',
@@ -1618,26 +1593,7 @@ class _AdminHierarchyOrgUnitAnnotation extends StatelessWidget {
             style: AppTextStyles.mono11(color: AppColors.textMuted),
           ),
         ),
-        if (editingEnabled && !isRoot)
-          // GAP A1 added a third org-unit action (Rename). The
-          // informational gated-move copy is capped + ellipsized so a
-          // deeply indented node keeps every affordance on one short
-          // line: no RenderFlex overflow, no taller rows that push deep
-          // nodes off-screen. The full sentence stays in `Text.data`
-          // (find.text + the screen-reader label are unaffected).
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 150),
-            child: Text(
-              _orgUnitMoveGatedCopy,
-              key: Key('admin_rhs_org_unit_move_gated_${node.orgUnitId}'),
-              textAlign: TextAlign.right,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
-            ),
-          ),
         if (editingEnabled) ...<Widget>[
-          if (!isRoot) const SizedBox(width: 8),
           // GAP A1 — rename affordance. Shown on EVERY node including
           // the business root: the corp root IS renameable (it is the
           // operator-facing Business label) behind the same edit gate.

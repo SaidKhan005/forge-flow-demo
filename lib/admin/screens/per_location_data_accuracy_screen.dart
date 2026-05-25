@@ -396,9 +396,6 @@ class _PerLocationDataAccuracyScreenState
           OperatorWebScreenHeader(
             icon: Icons.fact_check_outlined,
             title: 'Data accuracy',
-            subtitle:
-                'Set where covers and labor dollars come from for the '
-                'selected location.',
             actions: _buildHeaderActions(),
           ),
           const SizedBox(height: 14),
@@ -1492,10 +1489,7 @@ class _ManualCoversNote extends StatelessWidget {
     return const OperatorWebBanner(
       key: Key('admin_data_accuracy_manual_covers_note'),
       icon: Icons.info_outline,
-      message:
-          'A service period is set to manual covers. The operator or a '
-          'location manager types the daily numbers in their own app. This '
-          'preview is read-only here.',
+      message: 'Read-only here. Operators enter the daily numbers in their app.',
     );
   }
 }
