@@ -38,7 +38,6 @@ import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
-import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
 import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -202,11 +201,11 @@ void main() {
 
     await selectBusinessScope(tester, 'op-seed-1');
 
-    expect(find.text('Forge & Flow AI plan'), findsOneWidget);
-    final detailRow = tester.widget<AdminDetailRow>(
+    expect(find.text('Plan'), findsOneWidget);
+    expect(
       find.byKey(const Key('admin_operator_ai_plan_detail_row')),
+      findsOneWidget,
     );
-    expect(detailRow.muted, isTrue);
 
     await tester.tap(find.byKey(const Key('admin_operator_edit_button')));
     await pumpEventually(tester);
@@ -369,7 +368,7 @@ void main() {
     expect(addButton.onPressed, isNull);
     expect(
       find.byKey(const Key('admin_location_parent_org_unit_required_copy')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -712,7 +711,7 @@ void main() {
 
     await selectBusinessScope(tester, 'op-seed-1');
 
-    final rootMoveButton = tester.widget<OutlinedButton>(
+    final rootMoveButton = tester.widget<IconButton>(
       find.byKey(const Key('admin_hierarchy_org_unit_move_org-root')),
     );
     expect(rootMoveButton.onPressed, isNull);
@@ -805,7 +804,7 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      final rootSuspend = tester.widget<OutlinedButton>(
+      final rootSuspend = tester.widget<IconButton>(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_org-root')),
       );
       expect(rootSuspend.onPressed, isNull);
@@ -996,7 +995,7 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      final primaryDelete = tester.widget<OutlinedButton>(
+      final primaryDelete = tester.widget<IconButton>(
         find.byKey(const Key('admin_location_remove_loc-primary')),
       );
       expect(primaryDelete.onPressed, isNull);
@@ -1318,10 +1317,10 @@ void main() {
   );
 
   // ---------------------------------------------------------------------------
-  // 2026-05-24 — hierarchy tree actions are labeled buttons (not icon-only).
+  // 2026-05-24: hierarchy tree actions stay compact, keyed, and accessible.
   // ---------------------------------------------------------------------------
   testWidgets(
-    'hierarchy tree actions render as labeled buttons with the destructive '
+    'hierarchy tree actions render as icon buttons with the destructive '
     'ones in the danger style, keeping their existing keys',
     (tester) async {
       useWideSurface(tester);
@@ -1369,56 +1368,49 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      // The org-unit and location action controls now read as words: their
-      // concise labels render as visible text in the tree.
+      // The hierarchy uses compact icon buttons with tooltips so row names
+      // remain the primary readable content.
       for (final label in <String>[
-        'Add child',
-        'Move',
-        'Suspend',
-        'Edit',
-        'Make primary',
-        'Delete',
-        'Remove',
+        'Add child org unit',
+        'Move org unit',
+        'Suspend org unit',
+        'Edit location',
+        'Make primary location',
+        'Delete org unit',
+        'Delete location',
       ]) {
         expect(
-          find.text(label),
+          find.byTooltip(label),
           findsWidgets,
-          reason: 'tree action "$label" must render as a labeled button',
+          reason: 'tree action "$label" must keep a tooltip',
         );
       }
 
-      // Each labeled action is an OutlinedButton (the `.icon` factory builds
-      // an OutlinedButton subclass, so resolve via key + cast). Confirm the
-      // keyed control IS an OutlinedButton and the concise label text is a
-      // descendant of it.
-      void expectLabeledButton(Key key, String label) {
+      // Each action keeps a stable keyed IconButton.
+      void expectIconButton(Key key, IconData icon) {
         expect(
-          tester.widget<OutlinedButton>(find.byKey(key)),
-          isA<OutlinedButton>(),
-        );
-        expect(
-          find.descendant(of: find.byKey(key), matching: find.text(label)),
+          find.descendant(of: find.byKey(key), matching: find.byIcon(icon)),
           findsOneWidget,
-          reason: '$key must show the "$label" label',
+          reason: '$key must show the expected icon',
         );
       }
 
-      expectLabeledButton(
+      expectIconButton(
         const Key('admin_hierarchy_org_unit_add_child_org-east'),
-        'Add child',
+        Icons.add,
       );
-      expectLabeledButton(
+      expectIconButton(
         const Key('admin_location_edit_loc-seed-1'),
-        'Edit',
+        Icons.edit_outlined,
       );
-      expectLabeledButton(
+      expectIconButton(
         const Key('admin_location_make_primary_loc-seed-1'),
-        'Make primary',
+        Icons.star_outline,
       );
 
       // Destructive actions use the danger (negative) secondary style.
       Color? foregroundOf(Key key) {
-        final button = tester.widget<OutlinedButton>(find.byKey(key));
+        final button = tester.widget<IconButton>(find.byKey(key));
         return button.style?.foregroundColor?.resolve(<WidgetState>{});
       }
 
@@ -1470,118 +1462,116 @@ void main() {
   // location-set change AND renders a never-surfaced location by its own
   // parentOrgUnitId while still hiding hierarchy-deleted leaves.
   // ---------------------------------------------------------------------------
-  testWidgets(
-    'adding a location persists and appears in the hierarchy tree '
-    'immediately when a hierarchy gateway is wired',
-    (tester) async {
-      useWideSurface(tester);
-      // Operator gateway starts with only the primary location. The
-      // hierarchy gateway knows the org units + the primary leaf, but NOT
-      // the location we are about to add (mirrors the live divergence
-      // before the next hierarchy read, and the permanent divergence of
-      // the demo's two in-memory stores).
-      final gateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[
-          seedBundle(operatorId: 'op-add', primaryLocationId: 'loc-add-hq'),
-        ],
-      );
-      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
-        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
-          'op-add': const <OrgUnitAdminNode>[
-            OrgUnitAdminNode(
-              orgUnitId: 'org-root',
-              name: 'Demo Diner Co.',
-              operatorId: 'op-add',
-            ),
-            OrgUnitAdminNode(
-              orgUnitId: 'org-east',
-              name: 'East district',
-              operatorId: 'op-add',
-              parentOrgUnitId: 'org-root',
-            ),
-          ],
-        },
-        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
-          'op-add': const <HierarchyLocationLeaf>[
-            HierarchyLocationLeaf(
-              locationId: 'loc-add-hq',
-              name: 'HQ',
-              operatorId: 'op-add',
-              orgUnitId: 'org-root',
-            ),
-          ],
-        },
-      );
-      await tester.pumpWidget(
-        wrap(
-          OperatorLocationAdminScreen(
-            gateway: gateway,
-            hierarchyGateway: hierarchyGateway,
-            actorUserId: 'demo-super-admin',
-            idempotencyKeyFactory: () => 'idem-add-location-shows',
+  testWidgets('adding a location persists and appears in the hierarchy tree '
+      'immediately when a hierarchy gateway is wired', (tester) async {
+    useWideSurface(tester);
+    // Operator gateway starts with only the primary location. The
+    // hierarchy gateway knows the org units + the primary leaf, but NOT
+    // the location we are about to add (mirrors the live divergence
+    // before the next hierarchy read, and the permanent divergence of
+    // the demo's two in-memory stores).
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(operatorId: 'op-add', primaryLocationId: 'loc-add-hq'),
+      ],
+    );
+    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+        'op-add': const <OrgUnitAdminNode>[
+          OrgUnitAdminNode(
+            orgUnitId: 'org-root',
+            name: 'Demo Diner Co.',
+            operatorId: 'op-add',
           ),
+          OrgUnitAdminNode(
+            orgUnitId: 'org-east',
+            name: 'East district',
+            operatorId: 'op-add',
+            parentOrgUnitId: 'org-root',
+          ),
+        ],
+      },
+      locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+        'op-add': const <HierarchyLocationLeaf>[
+          HierarchyLocationLeaf(
+            locationId: 'loc-add-hq',
+            name: 'HQ',
+            operatorId: 'op-add',
+            orgUnitId: 'org-root',
+          ),
+        ],
+      },
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
+          actorUserId: 'demo-super-admin',
+          idempotencyKeyFactory: () => 'idem-add-location-shows',
         ),
-      );
-      await pumpEventually(tester);
+      ),
+    );
+    await pumpEventually(tester);
 
-      await selectBusinessScope(tester, 'op-add');
+    await selectBusinessScope(tester, 'op-add');
 
-      // The "Add location" button is disabled until an org unit is the
-      // selected scope. Pick the East district org unit in the left tree.
-      final orgUnitRow = find.byKey(
-        const Key('admin_setup_scope_org_unit_org-east'),
-      );
-      await tester.ensureVisible(orgUnitRow);
-      await pumpEventually(tester);
-      await tester.tap(orgUnitRow);
-      await pumpEventually(tester);
+    // The "Add location" button is disabled until an org unit is the
+    // selected scope. Pick the East district org unit in the left tree.
+    final orgUnitRow = find.byKey(
+      const Key('admin_setup_scope_org_unit_org-east'),
+    );
+    await tester.ensureVisible(orgUnitRow);
+    await pumpEventually(tester);
+    await tester.tap(orgUnitRow);
+    await pumpEventually(tester);
 
-      final addButton = find.byKey(
-        const Key('admin_operator_add_location_button'),
-      );
-      await tester.ensureVisible(addButton);
-      await pumpEventually(tester);
-      expect(
-        tester.widget<OutlinedButton>(addButton).onPressed,
-        isNotNull,
-        reason: 'selecting an org unit must enable Add location',
-      );
-      await tester.tap(addButton);
-      await pumpEventually(tester);
+    final addButton = find.byKey(
+      const Key('admin_operator_add_location_button'),
+    );
+    await tester.ensureVisible(addButton);
+    await pumpEventually(tester);
+    expect(
+      tester.widget<OutlinedButton>(addButton).onPressed,
+      isNotNull,
+      reason: 'selecting an org unit must enable Add location',
+    );
+    await tester.tap(addButton);
+    await pumpEventually(tester);
 
-      expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
-      await tester.enterText(
-        find.byKey(const Key('admin_location_name_field')),
-        'East Annex',
-      );
-      await chooseTimezone(
-        tester,
-        const Key('admin_location_timezone_field'),
-        'America/Toronto',
-      );
-      await tester.tap(find.byKey(const Key('admin_location_submit_button')));
-      await pumpEventually(tester);
+    expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('admin_location_name_field')),
+      'East Annex',
+    );
+    await chooseTimezone(
+      tester,
+      const Key('admin_location_timezone_field'),
+      'America/Toronto',
+    );
+    await tester.tap(find.byKey(const Key('admin_location_submit_button')));
+    await pumpEventually(tester);
 
-      // (a) Persisted: the operator gateway's listOperators returns the
-      // new location, parented to the org unit that was selected.
-      final operators = await gateway.listOperators();
-      expect(operators.single.locations, hasLength(2));
-      final added = operators.single.locations.firstWhere(
-        (l) => l.name == 'East Annex',
-      );
-      expect(added.parentOrgUnitId, equals('org-east'));
+    // (a) Persisted: the operator gateway's listOperators returns the
+    // new location, parented to the org unit that was selected.
+    final operators = await gateway.listOperators();
+    expect(operators.single.locations, hasLength(2));
+    final added = operators.single.locations.firstWhere(
+      (l) => l.name == 'East Annex',
+    );
+    expect(added.parentOrgUnitId, equals('org-east'));
 
-      // (b) Refreshed: the new location row is in the hierarchy tree right
-      // away, with NO manual reload. This is the core of the fix.
-      expect(
-        find.byKey(Key('admin_hierarchy_location_${added.locationId}')),
-        findsOneWidget,
-        reason: 'the added location must appear in the hierarchy tree '
-            'immediately after the add, with no manual reload',
-      );
-      expect(find.text('East Annex'), findsWidgets);
-    },
-  );
+    // (b) Refreshed: the new location row is in the hierarchy tree right
+    // away, with NO manual reload. This is the core of the fix.
+    expect(
+      find.byKey(Key('admin_hierarchy_location_${added.locationId}')),
+      findsOneWidget,
+      reason:
+          'the added location must appear in the hierarchy tree '
+          'immediately after the add, with no manual reload',
+    );
+    expect(find.text('East Annex'), findsWidgets);
+  });
 
   // Guard the other half of the filter: a hierarchy-gateway delete still
   // HIDES the row even though the location lingers in the operator bundle
