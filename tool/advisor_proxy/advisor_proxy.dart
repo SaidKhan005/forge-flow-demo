@@ -73,6 +73,21 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/shift_records_read_repository.dart';
+// Advisor Knowledge Activation — Slice A4.2b answer route. The encrypted
+// advisor-conversation sink + the in-process AEAD encryptor + the (abstract)
+// CMK resolver back the POST /v1/advisor/answer handler in
+// `advisor_answer_route_group_part.dart`. The envelope file lives in `lib/`
+// and has NO proxy dependency, so importing it here introduces no cycle (the
+// concrete proxy-side resolver in `advisor_conversation_cmk_resolver.dart`
+// imports this monolith and is wired in `proxy_bootstrap.dart` / `main.dart`,
+// never imported here).
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/advisor_conversation_log_repository.dart'
+    show AdvisorConversationLogRepository;
+import 'package:forge_and_flow/infrastructure/crypto/advisor_conversation_envelope.dart'
+    show
+        AdvisorConversationCmkResolver,
+        AdvisorConversationEnvelope,
+        AdvisorConversationKeyLengthError;
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
@@ -162,6 +177,13 @@ export 'advisor_rerank_gateway_part.dart'
         AdvisorRerankException,
         AdvisorRerankResult,
         VoyageHttpRerankGateway;
+// Slice A4.2b — the abstract advisor-conversation CMK resolver type, exported
+// so proxy_bootstrap.dart + main.dart can type the field / param that carries
+// the concrete ProxyAdvisorConversationCmkResolver by importing
+// advisor_proxy.dart only (mirrors the A2b/A3 gateway re-export above). The
+// encryptor + key-length error stay encapsulated in the part file.
+export 'package:forge_and_flow/infrastructure/crypto/advisor_conversation_envelope.dart'
+    show AdvisorConversationCmkResolver;
 export 'log.dart'
     show
         LogSeverity,
@@ -444,6 +466,15 @@ part 'advisor_operational_tools_part.dart';
 // bootstrap wiring (all A4.2b). The monolith gains only this declaration.
 // No `kAdvisorProxyMaxLines` raise.
 part 'advisor_answer_tools_part.dart';
+
+// Advisor Knowledge Activation — Slice A4.2b: the ACTIVATING POST
+// /v1/advisor/answer route. All handler logic (body parse, fail-closed
+// encryption gate, cap-check, tier→model, tool catalog assembly, engine run,
+// encrypted user+assistant writes, HP #9 metering, success envelope) lives in
+// this sibling part file. The monolith gains only this declaration, one
+// `routeRequest` dispatch block, and a few optional `routeRequest` params.
+// No `kAdvisorProxyMaxLines` raise.
+part 'advisor_answer_route_group_part.dart';
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
@@ -6553,6 +6584,36 @@ Future<void> routeRequest(
   // secret as the embedding gateway (one Voyage account, two endpoints).
   AdvisorRerankGateway? corpusRerankGateway,
   String? voyageRerankApiKeyForRetrieval,
+  // ── Slice A4.2b — POST /v1/advisor/answer dependencies ──────────────────
+  // The ACTIVATING agentic answer route. Every binding is OPTIONAL so the
+  // many existing routeRequest call sites (and their tests) stay
+  // byte-compatible; when a required one is absent the route fails closed
+  // (503) rather than crashing.
+  //
+  // Provider seam (A4.1): the tool-use Anthropic gateway, pre-built in
+  // main.dart from ONE shared http.Client + the server-side Anthropic key, so
+  // the monolith never imports package:http and one client is reused. Null →
+  // 503 advisor_answer_not_configured.
+  AnthropicToolUseCompleteFn? anthropicToolUseCompleteFnForAnswer,
+  // Encryption-first seam (A4-ENC): the abstract CMK resolver (the concrete
+  // proxy resolver is built only when ADVISOR_CONVERSATION_CMK is provisioned)
+  // + the encrypted-history sink. Either null → 503
+  // advisor_answer_encryption_unavailable (fail closed; no answer without a
+  // persisted encrypted record). HP #7.
+  AdvisorConversationCmkResolver? advisorConversationCmkResolver,
+  AdvisorConversationLogRepository? advisorConversationLogRepository,
+  // Operational read tools (A4.6): the three tenant-pool-backed repos. Null →
+  // the operational tools are omitted from the catalog (the engine can still
+  // answer from methodology). HP #4: scope is the verified caller's only.
+  TargetCycleRepository? advisorAnswerTargetCycleRepository,
+  WeeklyPlanSnapshotRepository? advisorAnswerWeeklyPlanSnapshotRepository,
+  ShiftRecordsReadRepository? advisorAnswerShiftRecordsReadRepository,
+  // The answer route REUSES the existing retrieval bindings
+  // (corpusRetrievalService / corpusQueryEmbeddingGateway /
+  // voyageApiKeyForRetrieval / corpusRerankGateway /
+  // voyageRerankApiKeyForRetrieval) for its retrieve_methodology tool, and the
+  // existing metering bindings (usageGuard / accountingStore / now). No new
+  // duplicate params for those.
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -13882,6 +13943,83 @@ Future<void> routeRequest(
             _writeJson(response, 503, const <String, Object?>{
               'error': 'corpus_retrieval_unavailable',
               'message': 'corpus retrieval is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Slice A4.2b — POST /v1/advisor/answer. The ACTIVATING agentic answer
+        // route: encryption-first (fail-closed) + recommendation-only engine +
+        // encrypted conversation history + HP #9 metering. The handler lives
+        // entirely in advisor_answer_route_group_part.dart; it resolves the
+        // operator scope + reads the body here (mirroring the retrieve block)
+        // and is then handed every optional binding (any missing one fails the
+        // route closed inside the handler).
+        if (request.method == 'POST' && path == advisorAnswerPath) {
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+          try {
+            await _handleAdvisorAnswer(
+              request: request,
+              response: response,
+              body: body,
+              operator: scope,
+              // Provider seam (A4.1) — pre-built tool-use gateway over the
+              // shared http.Client + Anthropic key. HP #7: the key lives only
+              // inside this fn, never logged or returned.
+              completeFn: anthropicToolUseCompleteFnForAnswer,
+              // Encryption-first seam (A4-ENC). HP #7: the CMK is resolved only
+              // inside one encrypt call; absent either → fail closed.
+              conversationCmkResolver: advisorConversationCmkResolver,
+              conversationLogRepository: advisorConversationLogRepository,
+              // retrieve_methodology dependencies (A4.2a) — REUSE the retrieve
+              // route's bindings. Absent → the methodology tool is omitted and
+              // the engine runs operational tools only (graceful degrade).
+              retrievalService: corpusRetrievalService,
+              embeddingGateway: corpusQueryEmbeddingGateway,
+              voyageApiKey: voyageApiKeyForRetrieval,
+              rerankGateway: corpusRerankGateway,
+              voyageRerankApiKey: voyageRerankApiKeyForRetrieval,
+              // Operational tools (A4.6). HP #4: bound to the verified caller
+              // scope only.
+              targetCycleRepository: advisorAnswerTargetCycleRepository,
+              weeklyPlanSnapshotRepository:
+                  advisorAnswerWeeklyPlanSnapshotRepository,
+              shiftRecordsReadRepository:
+                  advisorAnswerShiftRecordsReadRepository,
+              // Metering (HP #9) — the SAME handles the smoke + retrieve routes
+              // use (HP #8: no parallel stack); optional, so unmetered when
+              // unwired.
+              usageGuard: usageGuard,
+              accountingStore: accountingStore,
+              clock: clock,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'advisor_answer',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, const <String, Object?>{
+              'error': 'advisor_answer_unavailable',
+              'message': 'advisor answer is unavailable; please retry',
             });
           }
           return;

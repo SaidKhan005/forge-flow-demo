@@ -71,6 +71,12 @@ import '../pressure/p4_heap_snapshot_uploader.dart'
 import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
+// Slice A4.2b — the tool-use Anthropic gateway builder for the
+// POST /v1/advisor/answer route. Standalone, import-independent file (it owns
+// the package:http dependency); main.dart builds ONE completeFn over a shared
+// http.Client at startup and threads it into routeRequest.
+import 'anthropic_tool_use_complete_fn.dart'
+    show AnthropicToolUseCompleteFn, buildAnthropicToolUseCompleteFn;
 import 'audit_log_hierarchy_routes.dart';
 import 'heap_snapshot_capture_routes.dart';
 import 'operator_web_audit_log_hierarchy_routes.dart';
@@ -1786,6 +1792,41 @@ Future<void> _runProxy(List<String> args) async {
     },
   );
 
+  // Slice A4.2b — POST /v1/advisor/answer provider seam. Build ONE tool-use
+  // Anthropic gateway over a single shared http.Client at startup (reused
+  // across every request, never per-request), keyed by the server-side
+  // ANTHROPIC_API_KEY. When the key is absent the fn stays null and the answer
+  // route fails closed (`advisor_answer_not_configured`). HP #7: the key lives
+  // only inside the returned closure's header — never logged, never returned.
+  AnthropicToolUseCompleteFn? advisorAnswerCompleteFn;
+  if (config.hasSecretFor(ProxySecretNames.anthropicApiKey)) {
+    final advisorAnswerHttpClient = http.Client();
+    advisorAnswerCompleteFn = buildAnthropicToolUseCompleteFn(
+      client: advisorAnswerHttpClient,
+      apiKey: config.secretFor(ProxySecretNames.anthropicApiKey),
+    );
+    log(
+      LogSeverity.info,
+      'startup.advisor_answer_route.provider_wired',
+      fields: <String, Object?>{
+        // Booleans only — never the key value (HP #7).
+        'anthropic_key_loaded': true,
+        'conversation_cmk_loaded':
+            productionBindings.advisorConversationCmkResolver != null,
+      },
+    );
+  } else {
+    log(
+      LogSeverity.warning,
+      'startup.advisor_answer_route.provider_absent',
+      fields: <String, Object?>{
+        'anthropic_key_loaded': false,
+        'note': 'POST /v1/advisor/answer fails closed until '
+            'ANTHROPIC_API_KEY is provisioned',
+      },
+    );
+  }
+
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
 
   // CODE_HEALTH L4 — graceful shutdown.
@@ -2309,6 +2350,26 @@ Future<void> _runProxy(List<String> args) async {
             corpusRerankGateway: productionBindings.corpusRerankGateway,
             voyageRerankApiKeyForRetrieval:
                 config.secretFor(ProxySecretNames.voyageApiKey),
+            // Slice A4.2b — POST /v1/advisor/answer. The tool-use gateway is
+            // built once at startup over a shared http.Client (null when
+            // ANTHROPIC_API_KEY is absent → the route fails closed). The
+            // operational repos + encrypted-history sink + (abstract) CMK
+            // resolver come from productionBindings; the CMK resolver is null
+            // until ADVISOR_CONVERSATION_CMK is provisioned (encryption-first
+            // fail-closed). The route REUSES the corpus* + Voyage retrieval
+            // bindings above for its retrieve_methodology tool and the
+            // usageGuard / accountingStore for HP #9 metering.
+            anthropicToolUseCompleteFnForAnswer: advisorAnswerCompleteFn,
+            advisorConversationCmkResolver:
+                productionBindings.advisorConversationCmkResolver,
+            advisorConversationLogRepository:
+                productionBindings.advisorConversationLogRepository,
+            advisorAnswerTargetCycleRepository:
+                productionBindings.advisorAnswerTargetCycleRepository,
+            advisorAnswerWeeklyPlanSnapshotRepository:
+                productionBindings.advisorAnswerWeeklyPlanSnapshotRepository,
+            advisorAnswerShiftRecordsReadRepository:
+                productionBindings.advisorAnswerShiftRecordsReadRepository,
           );
         } catch (error, stack) {
           log(
