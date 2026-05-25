@@ -25,13 +25,10 @@ import 'widgets/admin_scope_picker.dart';
 
 const double _kCompactShellBreakpoint = 720;
 
-/// Fixed width of the wide-layout left side nav. Sized so the longest
-/// nav labels ("Vendor Applicability", "Roles & permissions") and the
-/// widest route badge ("Support + location repair") render in full
-/// rather than truncating with an ellipsis. The label column works out
-/// to roughly `_kSideNavWidth - 80` after the container, section-panel,
-/// nav-item, and icon insets.
-const double _kSideNavWidth = 280;
+/// Fixed width of the wide-layout left side nav. Sized so the admin
+/// rail can use the more open operator-web rhythm without truncating
+/// "Roles & permissions" or the longer route badges.
+const double _kSideNavWidth = 304;
 
 /// UX-parity Slice C — the six per-business screens, in the order the
 /// approved mock renders them (`docs/_mockups/admin_unified_scope_sample.html`,
@@ -685,7 +682,7 @@ class _AdminSideNav extends StatelessWidget {
           ),
         ),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -718,7 +715,7 @@ class _AdminSideNav extends StatelessWidget {
     return <Widget>[
       Padding(
         key: const Key('admin_nav_business_accounts_pinned'),
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: 14),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.sunset.withValues(alpha: 0.055),
@@ -729,7 +726,7 @@ class _AdminSideNav extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             child: _NavItem(
               key: Key('admin_nav_item_${route.id}'),
               route: route,
@@ -776,7 +773,7 @@ class _AdminSideNav extends StatelessWidget {
         key: const Key('admin_nav_per_business_cluster'),
         children: <Widget>[
           _PerBusinessClusterHeader(businessName: businessName),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           for (final route in clusterRoutes)
             _NavItem(
               key: Key('admin_nav_cluster_item_${route.id}'),
@@ -803,7 +800,7 @@ class _AdminSideNav extends StatelessWidget {
         key: const Key('admin_nav_per_business_cluster_inactive'),
         children: <Widget>[
           _PerBusinessClusterInactiveHint(onTap: goToBusinessAccounts),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           for (final route in clusterRoutes)
             _NavItem(
               key: Key('admin_nav_cluster_item_${route.id}'),
@@ -858,7 +855,7 @@ class _AdminSideNav extends StatelessWidget {
   /// The sunset-tinted container both cluster states share.
   Widget _clusterShell({required Key key, required List<Widget> children}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: DecoratedBox(
         key: key,
         decoration: BoxDecoration(
@@ -870,7 +867,7 @@ class _AdminSideNav extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: children,
@@ -902,7 +899,7 @@ class _AdminSideNav extends StatelessWidget {
     if (sectionRoutes.isEmpty) return const <Widget>[];
     return <Widget>[
       Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: 14),
         child: DecoratedBox(
           key: Key('admin_nav_section_panel_${section.section.name}'),
           decoration: BoxDecoration(
@@ -914,14 +911,14 @@ class _AdminSideNav extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _NavSectionHeader(section: section),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 _NavSectionDivider(section: section),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 for (final route in sectionRoutes)
                   _NavItem(
                     key: Key('admin_nav_item_${route.id}'),
@@ -954,8 +951,8 @@ class _PerBusinessClusterHeader extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 26,
-            height: 26,
+            width: 30,
+            height: 30,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppColors.sunset.withValues(alpha: 0.12),
@@ -963,18 +960,18 @@ class _PerBusinessClusterHeader extends StatelessWidget {
             ),
             child: Icon(
               scopeIcon(kind: ScopeEntityKind.business),
-              size: 16,
+              size: 18,
               color: AppColors.sunsetDark,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               businessName,
               key: const Key('admin_nav_per_business_cluster_business_name'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
+              style: AppTextStyles.body14(color: AppColors.sunsetDark),
             ),
           ),
         ],
@@ -1009,8 +1006,8 @@ class _PerBusinessClusterInactiveHint extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 26,
-                  height: 26,
+                  width: 30,
+                  height: 30,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppColors.sunset.withValues(alpha: 0.08),
@@ -1018,22 +1015,22 @@ class _PerBusinessClusterInactiveHint extends StatelessWidget {
                   ),
                   child: Icon(
                     scopeIcon(kind: ScopeEntityKind.business),
-                    size: 16,
+                    size: 18,
                     color: AppColors.textMuted,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     'Pick a business first',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+                    style: AppTextStyles.body14(color: AppColors.textMuted),
                   ),
                 ),
                 const Icon(
                   Icons.chevron_right,
-                  size: 16,
+                  size: 18,
                   color: AppColors.textMuted,
                 ),
               ],
@@ -1111,8 +1108,8 @@ class _NavSectionHeader extends StatelessWidget {
             children: [
               Container(
                 key: Key('admin_nav_section_icon_${section.section.name}'),
-                width: 26,
-                height: 26,
+                width: 30,
+                height: 30,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: section.accentColor.withValues(alpha: 0.12),
@@ -1120,20 +1117,20 @@ class _NavSectionHeader extends StatelessWidget {
                 ),
                 child: Icon(
                   section.icon,
-                  size: 16,
+                  size: 18,
                   color: Color.alphaBlend(
                     section.accentColor.withValues(alpha: 0.88),
                     AppColors.textPrimary,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   section.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.uiLabel(color: AppColors.textPrimary),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
               ),
             ],
@@ -1144,8 +1141,8 @@ class _NavSectionHeader extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Container(
                 key: Key('admin_nav_section_badge_${section.section.name}'),
-                constraints: const BoxConstraints(maxWidth: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                constraints: const BoxConstraints(maxWidth: 180),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.peacock.withValues(alpha: 0.10),
                   border: Border.all(
@@ -1207,7 +1204,7 @@ class _NavItem extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(6),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
@@ -1219,8 +1216,8 @@ class _NavItem extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(route.icon, size: 18, color: iconColor),
-                const SizedBox(width: 10),
+                Icon(route.icon, size: 20, color: iconColor),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1230,7 +1227,7 @@ class _NavItem extends StatelessWidget {
                         route.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.body14(color: titleColor),
+                        style: AppTextStyles.body15Bold(color: titleColor),
                       ),
                       if (enabled && route.badge != null) ...[
                         const SizedBox(height: 4),
