@@ -45,9 +45,11 @@ import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/inheritance_tree_node.dart';
+import '../../operator_web/services/web_team_audit_log_gateway.dart'
+    as operator_audit;
+import '../../operator_web/widgets/audit_log_row.dart'
+    as operator_audit_widgets;
 import '../../theme/app_theme.dart';
-import '../../theme/scope_icons.dart';
-import '../../widgets/inheritance_tree.dart';
 import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
 import '../services/admin_audit_chain_anchors_gateway.dart';
@@ -57,7 +59,6 @@ import '../widgets/admin_audit_log_integrity_badge.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
-import 'roles_hierarchy_sessions_admin_screen.dart';
 
 class AuditedSupportActionsAdminScreen extends StatefulWidget {
   const AuditedSupportActionsAdminScreen({
