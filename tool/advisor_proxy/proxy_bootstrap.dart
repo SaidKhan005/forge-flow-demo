@@ -6258,6 +6258,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     }, reason: adminReason);
   }
 
+  @override
   Future<Map<String, Object?>?> loadDataAccuracyRow({
     required String actorUserId,
     required String operatorId,
@@ -6307,6 +6308,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     }, reason: adminReason);
   }
 
+  @override
   Future<Map<String, Object?>?> saveDataAccuracySettings({
     required String actorUserId,
     required String operatorId,
@@ -6415,6 +6417,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     }, reason: adminReason);
   }
 
+  @override
   Future<Map<String, Object?>?> saveDataAccuracyManualCovers({
     required String actorUserId,
     required String operatorId,
@@ -6447,6 +6450,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     );
   }
 
+  @override
   Future<Map<String, Object?>?> clearDataAccuracyManualCovers({
     required String actorUserId,
     required String operatorId,
@@ -7175,6 +7179,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     }, reason: adminReason);
   }
 
+  @override
   Future<Map<String, Object?>?> loadTierAssignment({
     required String actorUserId,
     required String operatorId,

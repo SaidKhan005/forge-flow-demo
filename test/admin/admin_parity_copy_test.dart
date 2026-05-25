@@ -7,13 +7,14 @@ import 'package:forge_and_flow/admin/screens/per_location_data_accuracy_screen.d
 import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/vendor_applicability_admin_screen.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_gateway.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_projection.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/vendor_applicability_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
-  const dataAccuracySupportCopy =
-      'Support can review effective covers, wages, and walk-ins by location. Normal operator edits stay in Operator Web; location repair actions are hidden for this role.';
   const adminOnlyCopy =
       'This surface is for F&F admins only. Operators cannot see it.';
 
@@ -35,6 +36,54 @@ void main() {
       locationName: 'Toronto Yorkville',
     ),
   ];
+
+  const locationScope = AdminHierarchyScopeIntent.location(
+    operatorId: 'op-1',
+    locationId: 'loc-1',
+    operatorName: 'Demo Diner Co.',
+    locationName: 'Toronto Yorkville',
+  );
+
+  InMemoryAdminBusinessTimingResolutionGateway timingGateway() {
+    return InMemoryAdminBusinessTimingResolutionGateway(
+      seed: <String, AdminBusinessTimingResolution>{
+        InMemoryAdminBusinessTimingResolutionGateway.keyFor(
+          'op-1',
+          'loc-1',
+        ): const AdminBusinessTimingResolution(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          businessDate: '2026-05-24',
+          ianaTimezone: 'America/Toronto',
+          candidates: <AdminResolutionCandidate>[
+            AdminResolutionCandidate(
+              profileId: 'timing-op-1',
+              scopeType: 'operator_default',
+              scopeId: 'op-1',
+              scopeLabel: 'Demo Diner Co.',
+              scopeDepthRank: 0,
+              ianaTimezone: 'America/Toronto',
+              effectiveAtBusinessDate: '2026-01-01',
+              weekStartDay: 'monday',
+              businessDayStartLocal: '04:00',
+              servicePeriods: <AdminResolutionServicePeriod>[
+                AdminResolutionServicePeriod(
+                  key: 'lunch',
+                  label: 'Lunch',
+                  shortLabel: 'Lunch',
+                  startLocal: '11:00',
+                  endLocal: '15:00',
+                  rollsPastMidnight: false,
+                  sortOrder: 0,
+                  applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+                ),
+              ],
+            ),
+          ],
+        ),
+      },
+    );
+  }
 
   group('C-10 admin parity ownership copy', () {
     test('route labels support actions honestly', () {
@@ -111,7 +160,7 @@ void main() {
       expect(find.text('Vendor Applicability'), findsWidgets);
     });
 
-    testWidgets('data accuracy read-only mode names Operator Web ownership', (
+    testWidgets('data accuracy read-only mode keeps the Operator Web surface', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -121,17 +170,24 @@ void main() {
               operatorLocations: operatorLocations,
             ),
             actorUserId: 'support-user',
+            timingResolutionGateway: timingGateway(),
+            vendorApplicabilityGateway:
+                const _EmptyVendorApplicabilityAdminGateway(),
             editingEnabled: false,
+            initialHierarchyScope: locationScope,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_data_accuracy_readonly_banner')),
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
         findsOneWidget,
       );
-      expect(find.text(dataAccuracySupportCopy), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_data_accuracy_readonly_banner')),
+        findsNothing,
+      );
     });
 
     testWidgets('polling setup read-only mode names F&F-only ownership', (
@@ -195,4 +251,31 @@ void main() {
       );
     });
   });
+}
+
+class _EmptyVendorApplicabilityAdminGateway
+    implements VendorApplicabilityAdminGateway {
+  const _EmptyVendorApplicabilityAdminGateway();
+
+  @override
+  Future<List<VendorApplicabilityAdminRow>> list({
+    VendorApplicabilityAdminFilter filter =
+        const VendorApplicabilityAdminFilter(),
+  }) async {
+    return const <VendorApplicabilityAdminRow>[];
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow> upsert(
+    VendorApplicabilityUpsertCommand command,
+  ) {
+    throw UnsupportedError('not used by admin parity copy tests');
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow?> end(
+    VendorApplicabilityEndCommand command,
+  ) {
+    throw UnsupportedError('not used by admin parity copy tests');
+  }
 }
