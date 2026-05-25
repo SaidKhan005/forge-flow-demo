@@ -915,3 +915,124 @@ Future<Set<String>> _loadGraphCandidatesManifestScope() async {
   _graphCandidatesManifestCache = scope;
   return scope;
 }
+
+// ---------------------------------------------------------------------------
+// Plans & Limits V1 (Phase 2) — pricing usage-cap DELETE +
+// month-to-date spend-summary handlers.
+//
+// Bodies live here (a `part` of `advisor_proxy.dart`, sharing its
+// private scope verbatim) so the monolith stays under the
+// `kAdvisorProxyMaxLines` bleed-stop ceiling. `_routePricingAdmin` in
+// the monolith dispatches into these. New routes still belong in their
+// own decomposed files per the seam map; these two are folded in next
+// to the rest of the admin route-group helpers because they share the
+// existing `PricingTierAdminProxyGateway`, idempotency helper, and
+// admin-input error type with no new dependency.
+// ---------------------------------------------------------------------------
+
+/// DELETE one `usage_caps` row, identified EITHER by `cap_id` OR by the
+/// full logical key `(operator_id, location_id, usage_class, staff_id,
+/// workflow_id)`. Gated upstream by [kFfPricingAdminWriteRoles]
+/// (super_admin, the proxy mirror of `PermissionKeys.adminPricingTierEdit`)
+/// and a REQUIRED Idempotency-Key (HARD-H) so a double-tap collapses to
+/// one delete + one audit row. Operator-scoped: the gateway resolves the
+/// operator's root org-unit for both org-unit axes and never reads a
+/// bare `current_setting()`. A delete that matches no row is a no-op 200
+/// (`deleted: false`) so a retried delete is idempotent, not a 404.
+Future<void> _handlePricingDeleteCap({
+  required HttpResponse response,
+  required PricingTierAdminProxyGateway gateway,
+  required String actorUserId,
+  required String reasonPrefix,
+  required Map<String, Object?> body,
+  required String idempotencyKey,
+  AdminRequestIdempotencyStore? idempotencyStore,
+}) async {
+  final operatorId = _requireBodyString(body, 'operator_id');
+  final capId = _optionalBodyString(body, 'cap_id');
+  final locationId = _optionalBodyString(body, 'location_id');
+  final usageClass = _optionalBodyString(body, 'usage_class');
+  final staffId = _optionalBodyString(body, 'staff_id');
+  final workflowId = _optionalBodyString(body, 'workflow_id');
+  // Need one of: a cap_id, or the (location_id + usage_class) logical
+  // key. staff_id / workflow_id are optional axes of that key (NULL =
+  // the all-staff / all-workflow cap), so they cannot identify a row
+  // on their own.
+  if (capId == null && (locationId == null || usageClass == null)) {
+    throw const _AdminInputError(
+      statusCode: 400,
+      code: 'missing_cap_identity',
+      message:
+          'provide cap_id, or both location_id and usage_class, to identify '
+          'the usage limit to delete',
+    );
+  }
+  await _runAdminIdempotent(
+    response: response,
+    store: idempotencyStore,
+    idempotencyKey: idempotencyKey,
+    requestType: 'admin.pricing.delete_usage_cap',
+    actorUserId: actorUserId,
+    requestBody: body,
+    compute: () async {
+      final deleted = await gateway.deleteUsageCap(
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        capId: capId,
+        locationId: locationId,
+        usageClass: usageClass,
+        staffId: staffId,
+        workflowId: workflowId,
+        adminReason:
+            '$reasonPrefix:usage_caps_delete:$operatorId:'
+            '${capId ?? '$locationId:$usageClass'}',
+      );
+      return (
+        statusCode: 200,
+        payload: <String, Object?>{'deleted': deleted},
+      );
+    },
+  );
+}
+
+/// GET `/v1/admin/pricing/operators/{id}/spend-summary` — month-to-date
+/// spend per cap identity for one operator, alongside the matching cap.
+/// Read-only (admitted for `super_admin` + `ff_support` by the GET gate
+/// upstream). Reuses the same `SUM(cost_usd)` for the current
+/// `period_start` roll-up the cap-enforcement path uses. A 404 is
+/// returned when the operator does not exist.
+Future<void> _handlePricingSpendSummary({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required PricingTierAdminProxyGateway gateway,
+  required String actorUserId,
+  required String reasonPrefix,
+}) async {
+  final tail = _pathSuffix(path, adminPricingOperatorsPrefix);
+  if (tail == null) {
+    _writeNotFound(response, request);
+    return;
+  }
+  final parts = tail.split('/');
+  if (parts.length != 2 ||
+      parts.any((p) => p.isEmpty) ||
+      Uri.decodeComponent(parts[1]) != adminPricingSpendSummaryAction) {
+    _writeNotFound(response, request);
+    return;
+  }
+  final operatorId = Uri.decodeComponent(parts[0]);
+  final summary = await gateway.spendSummary(
+    actorUserId: actorUserId,
+    operatorId: operatorId,
+    adminReason: '$reasonPrefix:spend_summary:$operatorId',
+  );
+  if (summary == null) {
+    _writeJson(response, 404, <String, Object?>{
+      'error': 'unknown_operator',
+      'message': 'operator not found',
+    });
+    return;
+  }
+  _writeJson(response, 200, summary);
+}
