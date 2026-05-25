@@ -7,6 +7,11 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605241700_plans_and_limits_phase5a_feature_entitlements.sql`
+(Plans & Limits V1 Phase 5a feature-entitlements foundation: creates the
+GLOBAL `public.feature_entitlements` plan/feature matrix — no operator_id /
+RLS, admin-pool BYPASSRLS posture like `pricing_plan_catalog`; see the
+migration list below), preceded by
 `202605241600_plans_and_limits_phase4_operator_trial_mode.sql`
 (Plans & Limits V1 Phase 4a Pilot free-trial flag: adds `trial_mode` +
 `trial_expires_at` to the tenant-root `public.operators` table — the
@@ -373,6 +378,18 @@ Current known post-cutoff staging additions:
   the existing operators RLS (no new policy). Set by the start-pilot path;
   cleared by the conversion path when real POS/labor data connects. Schema;
   build-only, gated on explicit operator approval before any apply.
+- `db/migrations/202605241700_plans_and_limits_phase5a_feature_entitlements.sql`
+  creates the GLOBAL `public.feature_entitlements` plan/feature matrix:
+  composite PK `(tier_key, feature_slug)`, a CHECK pinning `tier_key` to the
+  six tiers, `enabled boolean not null default false`, `updated_at` TIMESTAMPTZ,
+  `updated_by`. No `operator_id` / RLS (admin-pool BYPASSRLS posture, exactly
+  like `pricing_plan_catalog`): REVOKE public + GRANT SELECT service_role +
+  full DML forge_admin. Idempotent seed of the cumulative ladder (advisor for
+  pilot + every paid tier; lms+scoreboard premium and up; staff_coach+sops
+  elite and up; workflows pro and up; enterprise all on) via `on conflict do
+  nothing`. Records which features each plan includes; FOUNDATION ONLY (does
+  not gate the app yet). Schema; build-only, gated on explicit operator
+  approval before any apply.
 
 Migration drift automation:
 

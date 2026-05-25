@@ -629,6 +629,164 @@ void main() {
     });
   });
 
+  group('InMemoryPricingTierAdminGateway — entitlements (Phase 5a)', () {
+    test('listEntitlements seeds the cumulative ladder default', () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      final entitlements = await gateway.listEntitlements();
+      Map<String, bool> forTier(String tier) => <String, bool>{
+        for (final e in entitlements.where((e) => e.tierKey == tier))
+          e.featureSlug: e.enabled,
+      };
+      // advisor on for the free Pilot preview + every paid tier.
+      expect(forTier('pilot')['advisor'], isTrue);
+      expect(forTier('starter')['advisor'], isTrue);
+      // Starter does NOT include LMS / scoreboard / workflows.
+      expect(forTier('starter')['lms'], isFalse);
+      expect(forTier('starter')['scoreboard'], isFalse);
+      expect(forTier('starter')['workflows'], isFalse);
+      // Premium adds LMS + scoreboard, not staff_coach / workflows.
+      expect(forTier('premium')['lms'], isTrue);
+      expect(forTier('premium')['scoreboard'], isTrue);
+      expect(forTier('premium')['staff_coach'], isFalse);
+      expect(forTier('premium')['workflows'], isFalse);
+      // Elite adds staff_coach + sops, not workflows.
+      expect(forTier('elite')['staff_coach'], isTrue);
+      expect(forTier('elite')['sops'], isTrue);
+      expect(forTier('elite')['workflows'], isFalse);
+      // Pro adds workflows.
+      expect(forTier('pro')['workflows'], isTrue);
+      // Enterprise has every feature on.
+      final enterprise = forTier('enterprise');
+      for (final slug in kFeatureSlugOrder) {
+        expect(enterprise[slug], isTrue, reason: 'enterprise includes $slug');
+      }
+    });
+
+    test('listEntitlements returns rows in tier-ladder, feature order',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      final entitlements = await gateway.listEntitlements();
+      // The first six rows are Pilot's features in display order.
+      expect(
+        entitlements.take(kFeatureSlugOrder.length).map((e) => e.tierKey),
+        everyElement(equals('pilot')),
+      );
+      expect(
+        entitlements.take(kFeatureSlugOrder.length).map((e) => e.featureSlug),
+        equals(kFeatureSlugOrder),
+      );
+    });
+
+    test('updateEntitlement toggles a cell and listEntitlements reflects it',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway(actorUserId: 'actor-x');
+      // Turn LMS ON for Starter (off by default).
+      final updated = await gateway.updateEntitlement(
+        const FeatureEntitlementUpdateCommand(
+          tierKey: 'starter',
+          featureSlug: 'lms',
+          enabled: true,
+          idempotencyKey: 'k-ent-starter-lms',
+        ),
+      );
+      expect(updated.enabled, isTrue);
+      expect(updated.updatedBy, equals('actor-x'));
+      expect(updated.updatedAt, isNotNull);
+
+      final entitlements = await gateway.listEntitlements();
+      final starterLms = entitlements.firstWhere(
+        (e) => e.tierKey == 'starter' && e.featureSlug == 'lms',
+      );
+      expect(starterLms.enabled, isTrue);
+    });
+
+    test('updateEntitlement can turn a feature OFF', () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      // Advisor is on for premium by default; turn it off.
+      final updated = await gateway.updateEntitlement(
+        const FeatureEntitlementUpdateCommand(
+          tierKey: 'premium',
+          featureSlug: 'advisor',
+          enabled: false,
+          idempotencyKey: 'k-ent-premium-advisor-off',
+        ),
+      );
+      expect(updated.enabled, isFalse);
+      final entitlements = await gateway.listEntitlements();
+      final premiumAdvisor = entitlements.firstWhere(
+        (e) => e.tierKey == 'premium' && e.featureSlug == 'advisor',
+      );
+      expect(premiumAdvisor.enabled, isFalse);
+    });
+
+    test('updateEntitlement rejects an unknown tier_key (404-style)',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      Object? thrown;
+      try {
+        await gateway.updateEntitlement(
+          const FeatureEntitlementUpdateCommand(
+            tierKey: 'megapremium',
+            featureSlug: 'lms',
+            enabled: true,
+            idempotencyKey: 'k-ent-bad-tier',
+          ),
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isA<PricingTierAdminGatewayError>());
+      final error = thrown! as PricingTierAdminGatewayError;
+      expect(error.errorCode, equals('unknown_plan'));
+      expect(error.statusCode, equals(404));
+    });
+
+    test('updateEntitlement rejects an unknown feature_slug (404-style)',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      Object? thrown;
+      try {
+        await gateway.updateEntitlement(
+          const FeatureEntitlementUpdateCommand(
+            tierKey: 'premium',
+            featureSlug: 'teleportation',
+            enabled: true,
+            idempotencyKey: 'k-ent-bad-feature',
+          ),
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isA<PricingTierAdminGatewayError>());
+      final error = thrown! as PricingTierAdminGatewayError;
+      expect(error.errorCode, equals('unknown_feature'));
+      expect(error.statusCode, equals(404));
+    });
+
+    test('replayed updateEntitlement under the same key returns cached row',
+        () async {
+      final gateway = InMemoryPricingTierAdminGateway();
+      const command = FeatureEntitlementUpdateCommand(
+        tierKey: 'starter',
+        featureSlug: 'lms',
+        enabled: true,
+        idempotencyKey: 'k-ent-replay',
+      );
+      final first = await gateway.updateEntitlement(command);
+      // Replay with a DIFFERENT value under the same key — cached wins.
+      final second = await gateway.updateEntitlement(
+        const FeatureEntitlementUpdateCommand(
+          tierKey: 'starter',
+          featureSlug: 'lms',
+          enabled: false,
+          idempotencyKey: 'k-ent-replay',
+        ),
+      );
+      expect(second.enabled, equals(first.enabled));
+      expect(second.enabled, isTrue);
+    });
+  });
+
   // HARD-H — admin idempotency parcel. The InMemory gateway caches
   // per-key like the proxy does against `admin_request_idempotency`.
   group('InMemoryPricingTierAdminGateway — idempotency replay', () {
@@ -989,6 +1147,105 @@ void main() {
         expect(req.body.containsKey('idempotency_key'), isFalse);
         // tier_key travels in the path, not the body.
         expect(req.body.containsKey('tier_key'), isFalse);
+      },
+    );
+
+    test(
+      'listEntitlements GETs /entitlements and parses the rows (Phase 5a)',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{
+              'entitlements': <Map<String, Object?>>[
+                <String, Object?>{
+                  'tier_key': 'premium',
+                  'feature_slug': 'lms',
+                  'enabled': true,
+                  'updated_at': '2026-05-02T12:00:00.000Z',
+                  'updated_by': 'user_admin',
+                },
+                <String, Object?>{
+                  'tier_key': 'starter',
+                  'feature_slug': 'lms',
+                  'enabled': false,
+                  'updated_at': null,
+                  'updated_by': null,
+                },
+              ],
+            },
+          ),
+        );
+        final gateway = HttpPricingTierAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        final entitlements = await gateway.listEntitlements();
+        final req = captured.single;
+        expect(req.method, equals('GET'));
+        expect(req.uri.path, equals('/v1/admin/pricing/entitlements'));
+        expect(entitlements, hasLength(2));
+        expect(entitlements.first.tierKey, equals('premium'));
+        expect(entitlements.first.featureSlug, equals('lms'));
+        expect(entitlements.first.enabled, isTrue);
+        expect(entitlements.last.enabled, isFalse);
+        expect(entitlements.last.updatedAt, isNull);
+      },
+    );
+
+    test(
+      'updateEntitlement PATCHes /entitlements/{tier}/{slug} with '
+      'Idempotency-Key header and enabled body WITHOUT the key inside '
+      '(Phase 5a)',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{
+              'entitlement': <String, Object?>{
+                'tier_key': 'starter',
+                'feature_slug': 'lms',
+                'enabled': true,
+                'updated_at': '2026-05-02T12:00:00.000Z',
+                'updated_by': 'user_admin',
+              },
+            },
+          ),
+        );
+        final gateway = HttpPricingTierAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        final updated = await gateway.updateEntitlement(
+          const FeatureEntitlementUpdateCommand(
+            tierKey: 'starter',
+            featureSlug: 'lms',
+            enabled: true,
+            idempotencyKey: 'idem-http-ent',
+          ),
+        );
+        expect(updated.enabled, isTrue);
+        final req = captured.single;
+        expect(req.method, equals('PATCH'));
+        expect(
+          req.uri.path,
+          equals('/v1/admin/pricing/entitlements/starter/lms'),
+        );
+        expect(
+          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+          equals('idem-http-ent'),
+        );
+        expect(req.body['enabled'], equals(true));
+        expect(req.body.containsKey('idempotency_key'), isFalse);
+        // tier_key + feature_slug travel in the path, not the body.
+        expect(req.body.containsKey('tier_key'), isFalse);
+        expect(req.body.containsKey('feature_slug'), isFalse);
       },
     );
   });

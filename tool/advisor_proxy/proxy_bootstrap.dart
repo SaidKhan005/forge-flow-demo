@@ -35,6 +35,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/demo_mode_state_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/email_event_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_entitlements_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/handoff_codes_repository.dart';
@@ -1549,6 +1550,10 @@ ProxyProductionBindings buildProxyProductionBindings(
       // rationale: the GLOBAL `pricing_plan_catalog` is platform-wide
       // (no operator_id, no RLS), read/written under forge_admin.
       planCatalogRepository: PricingPlanCatalogRepository(adminWrapper),
+      // Phase 5a — editable feature-entitlements matrix. Same admin pool
+      // rationale: the GLOBAL `feature_entitlements` is platform-wide
+      // (no operator_id, no RLS), read/written under forge_admin.
+      entitlementsRepository: FeatureEntitlementsRepository(adminWrapper),
       auditRepository: adminAudit,
     ),
     // Phase 11A.3a — corpus admin gateway. Same admin pool rationale
@@ -5532,12 +5537,14 @@ class RepositoryPricingTierAdminProxyGateway
     required UsageCapsRepository usageCapsRepository,
     required OrgUnitsRepository orgUnitsRepository,
     required PricingPlanCatalogRepository planCatalogRepository,
+    required FeatureEntitlementsRepository entitlementsRepository,
     required AuthEventsAuditRepository auditRepository,
   }) : _operators = operatorsRepository,
        _locations = locationsRepository,
        _caps = usageCapsRepository,
        _orgUnits = orgUnitsRepository,
        _planCatalog = planCatalogRepository,
+       _entitlements = entitlementsRepository,
        _auditRepository = auditRepository;
 
   final OperatorsRepository _operators;
@@ -5545,6 +5552,7 @@ class RepositoryPricingTierAdminProxyGateway
   final UsageCapsRepository _caps;
   final OrgUnitsRepository _orgUnits;
   final PricingPlanCatalogRepository _planCatalog;
+  final FeatureEntitlementsRepository _entitlements;
   final AuthEventsAuditRepository _auditRepository;
 
   /// Resolves the operator's root `org_units` id (the row with
@@ -5890,6 +5898,49 @@ class RepositoryPricingTierAdminProxyGateway
         'additional_seat_usd': additionalSeatUsd,
         'onboarding_min_usd': onboardingMinUsd,
         'onboarding_max_usd': onboardingMaxUsd,
+      },
+    );
+    return updated.toJson();
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listEntitlements({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    final rows = await _entitlements.listEntitlements(reason: adminReason);
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.pricing.entitlements_listed',
+      adminReason: adminReason,
+      payload: <String, Object?>{'entitlement_count': rows.length},
+    );
+    return <Map<String, Object?>>[for (final row in rows) row.toJson()];
+  }
+
+  @override
+  Future<Map<String, Object?>> setEntitlement({
+    required String actorUserId,
+    required String tierKey,
+    required String featureSlug,
+    required bool enabled,
+    required String adminReason,
+  }) async {
+    final updated = await _entitlements.setEntitlement(
+      tierKey: tierKey,
+      featureSlug: featureSlug,
+      enabled: enabled,
+      updatedByUserId: actorUserId,
+      reason: adminReason,
+    );
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.pricing.entitlement_updated',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'tier_key': tierKey,
+        'feature_slug': featureSlug,
+        'enabled': enabled,
       },
     );
     return updated.toJson();

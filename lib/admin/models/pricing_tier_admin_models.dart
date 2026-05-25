@@ -791,6 +791,178 @@ List<PricingPlanCatalogEntry> buildFallbackPlanCatalog() => <
     PricingPlanCatalogEntry.fromPresentation(p),
 ];
 
+// ---------------------------------------------------------------------------
+// Phase 5a — feature entitlements (which features each plan includes).
+// ---------------------------------------------------------------------------
+
+/// Plain-English display names for each feature slug, used by the admin
+/// matrix editor so the operator reads "Learning (LMS)" not the raw
+/// `lms` key. Mirrors the slug set seeded by
+/// `db/migrations/202605241700_plans_and_limits_phase5a_feature_entitlements.sql`.
+///
+/// `advisor` covers the AI advisor / manager chatbot (there is no
+/// separate "chatbots" product concept — Starter's "manager chatbot" IS
+/// the advisor surface). Order is the display order in the matrix
+/// (advisor first, then the features each higher plan layers on).
+const Map<String, String> kFeatureSlugCatalog = <String, String>{
+  'advisor': 'AI advisor',
+  'lms': 'Learning (LMS)',
+  'scoreboard': 'Scoreboard',
+  'staff_coach': 'Staff coaching',
+  'sops': 'Standard operating procedures',
+  'workflows': 'Workflow catalog',
+};
+
+/// The known feature slugs in display order. Used by the screen to draw
+/// the matrix columns and by the in-memory gateway / client validation to
+/// reject an unknown slug.
+final List<String> kFeatureSlugOrder = kFeatureSlugCatalog.keys.toList(
+  growable: false,
+);
+
+/// The set of feature slugs the proxy + gateway accept. Mirrors
+/// [kFeatureSlugCatalog]'s keys.
+final Set<String> kFeatureSlugKeys = kFeatureSlugCatalog.keys.toSet();
+
+/// Resolve a feature slug to its plain-English display name; falls back to
+/// the raw slug for an unknown key so the UI never renders blank.
+String featureSlugDisplayName(String slug) =>
+    kFeatureSlugCatalog[slug] ?? slug;
+
+/// One editable row from the server `feature_entitlements` table
+/// (`db/migrations/202605241700_plans_and_limits_phase5a_feature_entitlements.sql`):
+/// whether one plan ([tierKey]) includes one feature ([featureSlug]).
+///
+/// This is the live, admin-editable source of the per-plan feature matrix.
+/// The screen reads it via `GET /v1/admin/pricing/entitlements` and falls
+/// back to [buildDefaultFeatureEntitlements] when the call fails or in
+/// offline demo mode, so the matrix always paints.
+@immutable
+class FeatureEntitlementEntry {
+  const FeatureEntitlementEntry({
+    required this.tierKey,
+    required this.featureSlug,
+    required this.enabled,
+    this.updatedAt,
+    this.updatedBy,
+  });
+
+  /// Matches [PricingTierTemplate.tierKey] / the catalog primary key.
+  final String tierKey;
+
+  /// Matches a key in [kFeatureSlugCatalog].
+  final String featureSlug;
+
+  /// Whether the plan includes the feature.
+  final bool enabled;
+
+  /// UTC instant of the last toggle + the actor who made it. Null on a
+  /// default entry projected from [buildDefaultFeatureEntitlements].
+  final DateTime? updatedAt;
+  final String? updatedBy;
+
+  FeatureEntitlementEntry copyWith({bool? enabled}) => FeatureEntitlementEntry(
+    tierKey: tierKey,
+    featureSlug: featureSlug,
+    enabled: enabled ?? this.enabled,
+    updatedAt: updatedAt,
+    updatedBy: updatedBy,
+  );
+
+  static FeatureEntitlementEntry fromJson(Map<String, Object?> json) {
+    final updatedAtRaw = json['updated_at'] as String?;
+    return FeatureEntitlementEntry(
+      tierKey: json['tier_key']! as String,
+      featureSlug: json['feature_slug']! as String,
+      enabled: _asBool(json['enabled']),
+      updatedAt: (updatedAtRaw == null || updatedAtRaw.isEmpty)
+          ? null
+          : DateTime.parse(updatedAtRaw),
+      updatedBy: json['updated_by'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'tier_key': tierKey,
+    'feature_slug': featureSlug,
+    'enabled': enabled,
+    if (updatedAt != null) 'updated_at': updatedAt!.toUtc().toIso8601String(),
+    if (updatedBy != null) 'updated_by': updatedBy,
+  };
+}
+
+/// Toggle one plan/feature pair. Goes to
+/// `PATCH /v1/admin/pricing/entitlements/{tier_key}/{feature_slug}`. The
+/// keys are path segments; only `enabled` travels in the body.
+@immutable
+class FeatureEntitlementUpdateCommand {
+  const FeatureEntitlementUpdateCommand({
+    required this.tierKey,
+    required this.featureSlug,
+    required this.enabled,
+    required this.idempotencyKey,
+  });
+
+  final String tierKey;
+  final String featureSlug;
+  final bool enabled;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried PATCH collapses to one
+  /// toggle + one audit row.
+  final String idempotencyKey;
+
+  Map<String, Object?> toJson() => <String, Object?>{'enabled': enabled};
+}
+
+/// The cumulative-ladder DEFAULT matrix, mirroring the migration seed in
+/// `202605241700_plans_and_limits_phase5a_feature_entitlements.sql`. Each
+/// plan includes everything below it. Used by the in-memory gateway so the
+/// demo walkthrough edits the matrix offline, and by the screen as the
+/// fallback when `GET /v1/admin/pricing/entitlements` is unavailable.
+///
+/// A pair NOT in this map is `enabled: false` (the feature is not included
+/// in that plan by default).
+List<FeatureEntitlementEntry> buildDefaultFeatureEntitlements() {
+  // Lowest tier at which each feature turns on, cumulative up the ladder.
+  // Index into [kPricingPlanPresentations] (Pilot=0 .. Enterprise=5).
+  const minTierIndexBySlug = <String, int>{
+    'advisor': 0, // Pilot (free preview) + every paid tier.
+    'lms': 2, // Premium and up.
+    'scoreboard': 2, // Premium and up.
+    'staff_coach': 3, // Elite and up.
+    'sops': 3, // Elite and up.
+    'workflows': 4, // Pro and up.
+  };
+  final entries = <FeatureEntitlementEntry>[];
+  for (var tierIndex = 0;
+      tierIndex < kPricingPlanPresentations.length;
+      tierIndex++) {
+    final tierKey = kPricingPlanPresentations[tierIndex].tierKey;
+    for (final slug in kFeatureSlugOrder) {
+      final minIndex = minTierIndexBySlug[slug] ?? 0;
+      entries.add(
+        FeatureEntitlementEntry(
+          tierKey: tierKey,
+          featureSlug: slug,
+          enabled: tierIndex >= minIndex,
+        ),
+      );
+    }
+  }
+  return entries;
+}
+
+bool _asBool(Object? raw) {
+  if (raw is bool) return raw;
+  if (raw is num) return raw != 0;
+  if (raw is String) {
+    final lower = raw.toLowerCase();
+    return raw == 't' || lower == 'true';
+  }
+  return false;
+}
+
 double _asDouble(Object? raw) {
   if (raw == null) return 0;
   if (raw is num) return raw.toDouble();

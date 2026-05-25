@@ -75,11 +75,15 @@ import '../services/observability_admin_gateway.dart';
 import '../services/pricing_tier_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
 
-/// The two views the screen exposes. The mockup also carries a
-/// "Reconcile" decision-aid tab; that tab is a one-time pricing
-/// reconciliation worksheet with no gateway and no persistence, so it
-/// is intentionally out of scope for this operational screen.
-enum _PricingView { plans, businesses }
+/// The views the screen exposes. The mockup also carries a "Reconcile"
+/// decision-aid tab; that tab is a one-time pricing reconciliation
+/// worksheet with no gateway and no persistence, so it is intentionally
+/// out of scope for this operational screen.
+///
+/// Phase 5a adds [features]: an editable matrix of which features each
+/// plan includes (`feature_entitlements`). FOUNDATION ONLY — it records
+/// the matrix; it does not gate the app yet (deferred Phase 5d).
+enum _PricingView { plans, features, businesses }
 
 /// Health bucket for a business, mirroring the mockup's dot/pill tones.
 enum _MarginHealth { good, thin, bad, unknown }
@@ -148,6 +152,18 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         for (final entry in buildFallbackPlanCatalog()) entry.tierKey: entry,
       };
 
+  /// Phase 5a — live feature-entitlements matrix keyed by
+  /// `tier_key::feature_slug`, read from `GET /v1/admin/pricing/entitlements`.
+  /// When the call fails or returns empty (offline demo, endpoint not
+  /// deployed) this falls back to [buildDefaultFeatureEntitlements] so the
+  /// matrix always paints. Always populated (default at construction), then
+  /// overwritten with live rows on a successful load.
+  Map<String, FeatureEntitlementEntry> _entitlements =
+      <String, FeatureEntitlementEntry>{
+        for (final entry in buildDefaultFeatureEntitlements())
+          '${entry.tierKey}::${entry.featureSlug}': entry,
+      };
+
   /// Mints a fresh idempotency key per user action so a retried PATCH,
   /// PUT, or POST at the proxy collapses to one ledger row + one audit
   /// row in `admin_request_idempotency`.
@@ -182,6 +198,10 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       // `_planCatalog`, so the Plans map paints either way (HP#2: demo
       // mode works offline). Never blocks the screen.
       final planCatalog = await _fetchPlanCatalog();
+      // Phase 5a — best-effort live feature-entitlements matrix. Same
+      // posture: a failure or empty result keeps the default ladder
+      // already in `_entitlements`, so the matrix paints either way.
+      final entitlements = await _fetchEntitlements();
       if (!mounted) return;
       setState(() {
         _bundles = bundles;
@@ -189,6 +209,12 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         if (planCatalog != null && planCatalog.isNotEmpty) {
           _planCatalog = <String, PricingPlanCatalogEntry>{
             for (final entry in planCatalog) entry.tierKey: entry,
+          };
+        }
+        if (entitlements != null && entitlements.isNotEmpty) {
+          _entitlements = <String, FeatureEntitlementEntry>{
+            for (final entry in entitlements)
+              '${entry.tierKey}::${entry.featureSlug}': entry,
           };
         }
         _loading = false;
@@ -271,6 +297,45 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     await _runAndRefresh(() async {
       await widget.gateway.updatePlanPricing(command);
     }, successHint: 'Plan pricing updated.');
+  }
+
+  /// Phase 5a — pull the live feature-entitlements matrix. Best-effort: any
+  /// error (endpoint not deployed, demo gateway, transient failure) returns
+  /// null so the caller keeps the default ladder. The in-memory demo
+  /// gateway returns a seeded matrix, so demo mode still shows an editable
+  /// matrix offline.
+  Future<List<FeatureEntitlementEntry>?> _fetchEntitlements() async {
+    try {
+      return await widget.gateway.listEntitlements();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Phase 5a — toggle whether one plan includes one feature. Saves through
+  /// the gateway
+  /// (`PATCH /v1/admin/pricing/entitlements/{tier_key}/{feature_slug}`,
+  /// idempotent + audited at the proxy) and refreshes on success. A save
+  /// error surfaces inline via `_runAndRefresh`'s `_actionError` banner.
+  Future<void> _onToggleEntitlement(
+    FeatureEntitlementEntry entry,
+    bool enabled,
+  ) async {
+    final tierName =
+        findPricingTierTemplate(entry.tierKey)?.displayName ?? entry.tierKey;
+    final featureName = featureSlugDisplayName(entry.featureSlug);
+    await _runAndRefresh(() async {
+      await widget.gateway.updateEntitlement(
+        FeatureEntitlementUpdateCommand(
+          tierKey: entry.tierKey,
+          featureSlug: entry.featureSlug,
+          enabled: enabled,
+          idempotencyKey: _nextIdempotencyKey(),
+        ),
+      );
+    }, successHint: enabled
+        ? '$tierName now includes $featureName.'
+        : '$tierName no longer includes $featureName.');
   }
 
   /// Phase 2 — pull live month-to-date spend for one operator so the
@@ -410,8 +475,9 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   }
 
   Widget _buildBoundedBody() {
-    if (_view == _PricingView.plans) {
-      // The plan map is its own scroll view; no master/detail floor.
+    if (_view == _PricingView.plans || _view == _PricingView.features) {
+      // The plan map + features matrix are each their own scroll view; no
+      // master/detail floor.
       return _buildBody();
     }
     return LayoutBuilder(
@@ -454,6 +520,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         catalog: _planCatalog,
         editingEnabled: widget.editingEnabled,
         onEditPlanPricing: _onEditPlanPricing,
+      );
+    }
+    if (_view == _PricingView.features) {
+      return _EntitlementsMatrixView(
+        key: const Key('admin_pricing_features_view'),
+        entitlements: _entitlements,
+        editingEnabled: widget.editingEnabled,
+        onToggle: _onToggleEntitlement,
       );
     }
     return _buildBusinessesBody();
@@ -795,32 +869,46 @@ class _ViewTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Horizontally scrollable so the three pills never overflow on a
+    // narrow (compact) width; the pill visuals are unchanged. shrinkWrap
+    // via Align keeps the strip left-aligned and intrinsic-width on wide
+    // layouts.
     return Align(
       alignment: Alignment.centerLeft,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        padding: const EdgeInsets.all(4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            _Tab(
-              label: 'Plans',
-              tabKey: const Key('admin_pricing_tab_plans'),
-              selected: selected == _PricingView.plans,
-              onTap: () => onSelect(_PricingView.plans),
-            ),
-            const SizedBox(width: 4),
-            _Tab(
-              label: 'Businesses',
-              tabKey: const Key('admin_pricing_tab_businesses'),
-              selected: selected == _PricingView.businesses,
-              onTap: () => onSelect(_PricingView.businesses),
-            ),
-          ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              _Tab(
+                label: 'Plans',
+                tabKey: const Key('admin_pricing_tab_plans'),
+                selected: selected == _PricingView.plans,
+                onTap: () => onSelect(_PricingView.plans),
+              ),
+              const SizedBox(width: 4),
+              _Tab(
+                label: 'Features',
+                tabKey: const Key('admin_pricing_tab_features'),
+                selected: selected == _PricingView.features,
+                onTap: () => onSelect(_PricingView.features),
+              ),
+              const SizedBox(width: 4),
+              _Tab(
+                label: 'Businesses',
+                tabKey: const Key('admin_pricing_tab_businesses'),
+                selected: selected == _PricingView.businesses,
+                onTap: () => onSelect(_PricingView.businesses),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1171,6 +1259,206 @@ class _MarginTag extends StatelessWidget {
           color: color,
         ).copyWith(fontWeight: FontWeight.w700),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Included features view (Phase 5a — editable feature-entitlements matrix).
+// ---------------------------------------------------------------------------
+
+/// Shows which features each of the six plans includes, with a per-cell
+/// on/off toggle. Reads the live `feature_entitlements` matrix (falling
+/// back to the default cumulative ladder offline) and saves each toggle
+/// through `PATCH /v1/admin/pricing/entitlements/{tier_key}/{feature_slug}`.
+/// FOUNDATION ONLY: recording the matrix does not gate the app yet
+/// (deferred Phase 5d). Matches the Plans view look (the same surface card
+/// + accent tokens), not a new style. When `editingEnabled` is false the
+/// switches render disabled (the `ff_support` read-only walkthrough).
+class _EntitlementsMatrixView extends StatelessWidget {
+  const _EntitlementsMatrixView({
+    super.key,
+    required this.entitlements,
+    required this.editingEnabled,
+    required this.onToggle,
+  });
+
+  /// Live (or default) entitlements keyed by `tier_key::feature_slug`.
+  final Map<String, FeatureEntitlementEntry> entitlements;
+  final bool editingEnabled;
+
+  /// Called with the current entry + the requested new value when a cell
+  /// is toggled.
+  final void Function(FeatureEntitlementEntry entry, bool enabled) onToggle;
+
+  FeatureEntitlementEntry _entryFor(String tierKey, String slug) {
+    return entitlements['$tierKey::$slug'] ??
+        FeatureEntitlementEntry(
+          tierKey: tierKey,
+          featureSlug: slug,
+          enabled: false,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Material ancestor so the per-cell Switch widgets (which require one)
+    // render. Transparent so it does not paint over the screen surface.
+    return Material(
+      type: MaterialType.transparency,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'What each plan includes. Turn a feature on or off for a plan. '
+              'This sets the plan map; it does not change what any business '
+              'sees yet.',
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 16),
+            for (final template in kPricingTierTemplates) ...<Widget>[
+              _EntitlementsPlanRow(
+                template: template,
+                entries: <FeatureEntitlementEntry>[
+                  for (final slug in kFeatureSlugOrder)
+                    _entryFor(template.tierKey, slug),
+                ],
+                editingEnabled: editingEnabled,
+                onToggle: onToggle,
+              ),
+              const SizedBox(height: 12),
+            ],
+            _EntitlementsFootnote(editingEnabled: editingEnabled),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One plan's row in the included-features matrix: the plan name plus a
+/// wrapped set of per-feature on/off toggles. Uses the same surface card
+/// as the Plans view so the two tabs read as one screen.
+class _EntitlementsPlanRow extends StatelessWidget {
+  const _EntitlementsPlanRow({
+    required this.template,
+    required this.entries,
+    required this.editingEnabled,
+    required this.onToggle,
+  });
+
+  final PricingTierTemplate template;
+  final List<FeatureEntitlementEntry> entries;
+  final bool editingEnabled;
+  final void Function(FeatureEntitlementEntry entry, bool enabled) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key('admin_pricing_entitlements_row_${template.tierKey}'),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            template.displayName,
+            style: AppTextStyles.mono16(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 18,
+            runSpacing: 12,
+            children: <Widget>[
+              for (final entry in entries)
+                _EntitlementCell(
+                  entry: entry,
+                  editingEnabled: editingEnabled,
+                  onToggle: onToggle,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One on/off cell: a feature label + a Switch. The switch is disabled
+/// when editing is off (read-only walkthrough); the proxy enforces the
+/// same gate server-side.
+class _EntitlementCell extends StatelessWidget {
+  const _EntitlementCell({
+    required this.entry,
+    required this.editingEnabled,
+    required this.onToggle,
+  });
+
+  final FeatureEntitlementEntry entry;
+  final bool editingEnabled;
+  final void Function(FeatureEntitlementEntry entry, bool enabled) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    // Fixed-width cell so the Wrap lays cells out in even columns. The
+    // Row fills that width (default MainAxisSize.max) so the Flexible text
+    // gets a bounded width — a min-sized Row would hand the Flexible
+    // unbounded width and overflow.
+    return SizedBox(
+      width: 180,
+      child: Row(
+        children: <Widget>[
+          Switch(
+            key: Key(
+              'admin_pricing_entitlement_toggle_'
+              '${entry.tierKey}_${entry.featureSlug}',
+            ),
+            value: entry.enabled,
+            onChanged: editingEnabled
+                ? (value) => onToggle(entry, value)
+                : null,
+            activeThumbColor: AppColors.sunsetDark,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              featureSlugDisplayName(entry.featureSlug),
+              style: AppTextStyles.body13(
+                color: entry.enabled
+                    ? AppColors.textPrimary
+                    : AppColors.textMuted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EntitlementsFootnote extends StatelessWidget {
+  const _EntitlementsFootnote({required this.editingEnabled});
+
+  final bool editingEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return OperatorWebBanner(
+      icon: Icons.info_outline,
+      message: editingEnabled
+          ? 'These switches record which features each plan includes. They '
+                'are a starting default you can adjust. Changing them does '
+                'not yet show or hide anything for a business.'
+          : 'These switches record which features each plan includes (view '
+                'only). They do not yet show or hide anything for a '
+                'business.',
     );
   }
 }
