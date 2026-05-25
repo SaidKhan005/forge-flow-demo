@@ -278,26 +278,9 @@ class _FunctionPane extends StatelessWidget {
           ? Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
-                child: AdminCard(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: AppTextStyles.sectionTitle(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Select a business, org unit, or location to open this setup function.',
-                        style: AppTextStyles.body13(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: _PickBusinessFirstState(
+                  title: title,
+                  onBackToBusinessAccounts: onBackToBusinessAccounts,
                 ),
               ),
             )
@@ -315,6 +298,88 @@ class _FunctionPane extends StatelessWidget {
               ],
             )
           : child!,
+    );
+  }
+}
+
+class _PickBusinessFirstState extends StatelessWidget {
+  const _PickBusinessFirstState({
+    required this.title,
+    required this.onBackToBusinessAccounts,
+  });
+
+  final String title;
+  final VoidCallback? onBackToBusinessAccounts;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      key: const Key('admin_setup_workspace_pick_business_first_state'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.sunset.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.apartment_outlined,
+                  size: 20,
+                  color: AppColors.sunsetDark,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pick a business first',
+                      style: AppTextStyles.sectionTitle(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$title needs a selected business account before it can open.',
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Open Business accounts, choose the business, then this tab will load with that business selected.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          if (onBackToBusinessAccounts != null) ...[
+            const SizedBox(height: 18),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                key: const Key(
+                  'admin_setup_workspace_pick_business_first_link',
+                ),
+                onPressed: onBackToBusinessAccounts,
+                icon: const Icon(Icons.apartment_outlined, size: 18),
+                label: const Text('Open Business accounts'),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
