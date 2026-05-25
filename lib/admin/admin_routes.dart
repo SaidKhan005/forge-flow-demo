@@ -18,6 +18,7 @@ import '../auth/auth_session.dart';
 import '../auth/fresh_mfa_resolver.dart';
 import '../auth/permission_keys.dart';
 import '../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
+import '../operator_web/services/operator_web_csv_download.dart';
 import '../theme/app_theme.dart';
 import '../theme/scope_icons.dart';
 import 'admin_auth_gate.dart';
@@ -2221,6 +2222,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
             canExportAuditLog: canExportAuditLog,
             hierarchyScope: selectedScope,
             auditScopeRootNode: scopeSnapshot.data,
+            onCsvReady: downloadOperatorWebCsv,
             onBackToBusinessAccounts: onBackToBusinessAccounts,
           );
         },
@@ -2262,7 +2264,8 @@ Widget _buildAuditedSupportActions(BuildContext context) {
     functionTitle: 'Audit log',
     showWorkspaceHeader: false,
     description:
-        'Review audit history, active sessions, and guarded support actions.',
+        'Review audit history for the selected operator, then narrow '
+        'entries by time window, action, or team member.',
     operatorGateway: operatorGateway,
     hierarchyGateway: sessionsGateway,
     initialScope: initialScope,
@@ -2507,9 +2510,9 @@ class _AuditedSupportActionsRouteShellState
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Audit and support work is scoped to one operator. Choose '
-                    'an operator once, then move between Team, Access, and '
-                    'Audit without choosing again.',
+                    'Audit log review is scoped to one operator. Choose an '
+                    'operator once, then use the same audit controls as the '
+                    'operator console.',
                     style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 16),
@@ -2540,6 +2543,7 @@ class _AuditedSupportActionsRouteShellState
       canIssuePairedErasure: widget.canIssuePairedErasure,
       canExportAuditLog: widget.canExportAuditLog,
       hierarchyScope: widget.initialScope,
+      onCsvReady: downloadOperatorWebCsv,
       onChangeOperator: _openPicker,
       onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
     );

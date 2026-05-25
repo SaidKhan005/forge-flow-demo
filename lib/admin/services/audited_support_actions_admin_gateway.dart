@@ -94,6 +94,36 @@ extension AuditLogTimeWindowWire on AuditLogTimeWindow {
 /// `actor_kind` enum. F&F admin surface admits all three values per
 /// the parity contract § Audit Log line 141; operator self-service
 /// auto-clamps to `team_member` only.
+enum AuditLogScopeType { operatorWide, orgUnit, location }
+
+extension AuditLogScopeTypeWire on AuditLogScopeType {
+  String get wire {
+    switch (this) {
+      case AuditLogScopeType.operatorWide:
+        return 'operator_wide';
+      case AuditLogScopeType.orgUnit:
+        return 'org_unit';
+      case AuditLogScopeType.location:
+        return 'location';
+    }
+  }
+}
+
+@immutable
+class AuditLogScope {
+  const AuditLogScope({
+    required this.scopeType,
+    this.orgUnitId,
+    this.locationFilter,
+  });
+
+  final AuditLogScopeType scopeType;
+  final String? orgUnitId;
+  final String? locationFilter;
+
+  bool get isOperatorWide => scopeType == AuditLogScopeType.operatorWide;
+}
+
 enum AuditActorKind { teamMember, forgeAdmin, servicePrincipal }
 
 extension AuditActorKindWire on AuditActorKind {
@@ -133,6 +163,7 @@ AuditActorKind auditActorKindFromWire(String wire) {
 class AuditLogFilters {
   const AuditLogFilters({
     this.actorUserId,
+    this.actorUserIds = const <String>[],
     this.actions = const <String>[],
     this.targetKind,
     this.targetId,
@@ -147,6 +178,11 @@ class AuditLogFilters {
   /// Picked actor (user picker single-select). Null means no actor
   /// filter applied.
   final String? actorUserId;
+
+  /// Picked actors (chip multi-select). Empty means no actor filter
+  /// applied. Kept alongside [actorUserId] for backwards-compatible
+  /// tests and callers that still drive the old single-select shape.
+  final List<String> actorUserIds;
 
   /// Locked enum multi-select. Empty means no action filter.
   final List<String> actions;
@@ -172,6 +208,7 @@ class AuditLogFilters {
 
   AuditLogFilters copyWith({
     Object? actorUserId = _undef,
+    List<String>? actorUserIds,
     List<String>? actions,
     Object? targetKind = _undef,
     Object? targetId = _undef,
@@ -184,6 +221,7 @@ class AuditLogFilters {
       actorUserId: identical(actorUserId, _undef)
           ? this.actorUserId
           : actorUserId as String?,
+      actorUserIds: actorUserIds ?? this.actorUserIds,
       actions: actions ?? this.actions,
       targetKind: identical(targetKind, _undef)
           ? this.targetKind
@@ -206,6 +244,7 @@ class AuditLogFilters {
 
   bool get isEmpty =>
       actorUserId == null &&
+      actorUserIds.isEmpty &&
       actions.isEmpty &&
       targetKind == null &&
       (targetId == null || targetId!.trim().isEmpty) &&
@@ -444,6 +483,7 @@ abstract class AuditedSupportActionsAdminGateway {
     required String operatorId,
     AuditLogFilters filters = AuditLogFilters.empty,
     String? cursor,
+    AuditLogScope? scope,
   });
 
   /// CSV export. Gated on `admin.audit_log.export` per the parity
@@ -456,6 +496,7 @@ abstract class AuditedSupportActionsAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    AuditLogScope? scope,
   });
 
   // ── Actions panel ──────────────────────────────────────────────────
@@ -557,6 +598,8 @@ class HttpAuditedSupportActionsAdminGateway
   final Duration _timeout;
 
   static const String auditLogPath = '/v1/admin/auth/audit-log';
+  static const String auditLogHierarchyPath =
+      '/v1/admin/auth/audit-log/hierarchy';
   static const String auditLogExportPath = '/v1/admin/auth/audit-log/export';
   static const String membersPath = '/v1/admin/auth/users';
   static const String mfaResetPathPrefix = '/v1/admin/auth/users/';
@@ -572,10 +615,22 @@ class HttpAuditedSupportActionsAdminGateway
     required String operatorId,
     AuditLogFilters filters = AuditLogFilters.empty,
     String? cursor,
+    AuditLogScope? scope,
   }) async {
+    if (scope != null && !scope.isOperatorWide) {
+      return _listAuditLogByHierarchy(
+        operatorId: operatorId,
+        filters: filters,
+        cursor: cursor,
+        scope: scope,
+      );
+    }
     final query = <String, String>{
       'operator_id': operatorId,
-      if (filters.actorUserId != null) 'actor_user_id': filters.actorUserId!,
+      if (filters.actorUserIds.isNotEmpty)
+        'actor_user_id': filters.actorUserIds.join(',')
+      else if (filters.actorUserId != null)
+        'actor_user_id': filters.actorUserId!,
       if (filters.actions.isNotEmpty) 'actions': filters.actions.join(','),
       if (filters.targetKind != null) 'target_kind': filters.targetKind!,
       if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)
@@ -605,6 +660,47 @@ class HttpAuditedSupportActionsAdminGateway
     );
   }
 
+  Future<AuditLogPage> _listAuditLogByHierarchy({
+    required String operatorId,
+    required AuditLogFilters filters,
+    required AuditLogScope scope,
+    String? cursor,
+  }) async {
+    final range = _rangeFor(filters);
+    final query = <String, String>{
+      'operator_id': operatorId,
+      'scope_type': scope.scopeType.wire,
+      if (scope.orgUnitId != null) 'org_unit_id': scope.orgUnitId!,
+      if (scope.locationFilter != null)
+        'location_filter': scope.locationFilter!,
+      if (range.$1 != null) 'from': range.$1!.toUtc().toIso8601String(),
+      if (range.$2 != null) 'to': range.$2!.toUtc().toIso8601String(),
+      if (filters.actorUserIds.length == 1)
+        'actor_user_id': filters.actorUserIds.single
+      else if (filters.actorUserIds.isEmpty && filters.actorUserId != null)
+        'actor_user_id': filters.actorUserId!,
+      if (filters.actions.length == 1) 'action': filters.actions.single,
+      'limit': '200',
+      if (cursor != null && cursor.isNotEmpty) 'before_id': cursor,
+    };
+    final body = await _send(
+      method: 'GET',
+      path: auditLogHierarchyPath,
+      queryParameters: query,
+      extraHeaders: const <String, String>{'admin_reason': 'Audit log review'},
+    );
+    final rows = (body['rows'] as List?) ?? const [];
+    final parsed = <AuditLogRow>[
+      for (final row in rows)
+        if (row is Map) _auditRowFromHierarchyJson(row.cast<String, Object?>()),
+    ];
+    final next = body['next_cursor'];
+    return AuditLogPage(
+      rows: _filterRowsClientSide(parsed, filters),
+      nextCursor: next is String && next.isNotEmpty ? next : null,
+    );
+  }
+
   @override
   Future<String> exportAuditLogCsv({
     required String operatorId,
@@ -613,6 +709,7 @@ class HttpAuditedSupportActionsAdminGateway
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
+    AuditLogScope? scope,
   }) async {
     _requireEditable(actorIsForgeAdmin, 'exportAuditLogCsv');
     _requireAdminReason(adminReason, 'exportAuditLogCsv');
@@ -622,7 +719,10 @@ class HttpAuditedSupportActionsAdminGateway
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
-        if (filters.actorUserId != null) 'actor_user_id': filters.actorUserId,
+        if (filters.actorUserIds.isNotEmpty)
+          'actor_user_id': filters.actorUserIds.join(',')
+        else if (filters.actorUserId != null)
+          'actor_user_id': filters.actorUserId,
         if (filters.actions.isNotEmpty) 'actions': filters.actions,
         if (filters.targetKind != null) 'target_kind': filters.targetKind,
         if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)
@@ -886,6 +986,7 @@ class HttpAuditedSupportActionsAdminGateway
     Map<String, String> queryParameters = const <String, String>{},
     Map<String, Object?>? jsonBody,
     String? idempotencyKey,
+    Map<String, String> extraHeaders = const <String, String>{},
   }) async {
     final token = await bearerTokenProvider();
     var uri = baseUri.resolve(path);
@@ -895,6 +996,7 @@ class HttpAuditedSupportActionsAdminGateway
     final request = http.Request(method, uri)
       ..headers['authorization'] = 'Bearer $token'
       ..headers['accept'] = 'application/json';
+    request.headers.addAll(extraHeaders);
     if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
       request.headers['Idempotency-Key'] = idempotencyKey;
     }
@@ -967,6 +1069,105 @@ AuditLogRow _auditRowFromJson(Map<String, Object?> json) {
   );
 }
 
+AuditLogRow _auditRowFromHierarchyJson(Map<String, Object?> json) {
+  final payloadRaw = json['payload'];
+  final occurredAt = _dateTimeField(json, 'occurred_at');
+  return AuditLogRow(
+    eventId: _firstStringField(json, const <String>['event_id', 'id']),
+    action: _stringField(json, 'action'),
+    occurredAt: occurredAt,
+    actorUserId: _optionalString(json['actor_user_id']) ?? '',
+    actorDisplayName:
+        _optionalString(json['actor_display_name']) ??
+        _optionalString(json['actor_principal_id']) ??
+        '',
+    actorEmail: _optionalString(json['actor_email']) ?? '',
+    actorKind: _auditActorKindFromAnyWire(json['actor_kind']?.toString()),
+    actorRole:
+        _optionalString(json['actor_role']) ??
+        _optionalString(json['actor_role_label']) ??
+        _optionalString(json['actor_display_role']),
+    operatorId: _stringField(json, 'operator_id'),
+    targetKind: _optionalString(json['target_kind']) ?? '',
+    targetId: _optionalString(json['target_id']) ?? '',
+    payload: payloadRaw is Map
+        ? payloadRaw.cast<String, Object?>()
+        : const <String, Object?>{},
+    businessDate: json['business_date'] == null
+        ? DateTime.utc(occurredAt.year, occurredAt.month, occurredAt.day)
+        : _dateTimeField(json, 'business_date'),
+    adminReason: _optionalString(json['admin_reason']),
+    rowHash: _optionalString(json['row_hash']),
+  );
+}
+
+AuditActorKind _auditActorKindFromAnyWire(String? raw) {
+  switch (raw) {
+    case 'team_member':
+    case 'user':
+      return AuditActorKind.teamMember;
+    case 'forge_admin':
+    case 'admin':
+      return AuditActorKind.forgeAdmin;
+    case 'service_principal':
+    case 'service_account':
+      return AuditActorKind.servicePrincipal;
+  }
+  return AuditActorKind.teamMember;
+}
+
+(DateTime?, DateTime?) _rangeFor(AuditLogFilters filters) {
+  final now = DateTime.now().toUtc();
+  switch (filters.timeWindow) {
+    case AuditLogTimeWindow.last24h:
+      return (now.subtract(const Duration(hours: 24)), null);
+    case AuditLogTimeWindow.last7d:
+      return (now.subtract(const Duration(days: 7)), null);
+    case AuditLogTimeWindow.last30d:
+      return (now.subtract(const Duration(days: 30)), null);
+    case AuditLogTimeWindow.last90d:
+      return (now.subtract(const Duration(days: 90)), null);
+    case AuditLogTimeWindow.customRange:
+      return (filters.customRangeFrom, filters.customRangeTo);
+    case null:
+      return (null, null);
+  }
+}
+
+List<AuditLogRow> _filterRowsClientSide(
+  List<AuditLogRow> rows,
+  AuditLogFilters filters,
+) {
+  Iterable<AuditLogRow> filtered = rows;
+  if (filters.actorUserIds.isNotEmpty) {
+    final wanted = filters.actorUserIds.toSet();
+    filtered = filtered.where((row) => wanted.contains(row.actorUserId));
+  } else if (filters.actorUserId != null) {
+    filtered = filtered.where((row) => row.actorUserId == filters.actorUserId);
+  }
+  if (filters.actions.isNotEmpty) {
+    final wanted = filters.actions.toSet();
+    filtered = filtered.where((row) => wanted.contains(row.action));
+  }
+  final targetKind = filters.targetKind?.trim().toLowerCase();
+  if (targetKind != null && targetKind.isNotEmpty) {
+    filtered = filtered.where(
+      (row) => row.targetKind.toLowerCase().contains(targetKind),
+    );
+  }
+  final targetId = filters.targetId?.trim().toLowerCase();
+  if (targetId != null && targetId.isNotEmpty) {
+    filtered = filtered.where(
+      (row) => row.targetId.toLowerCase().contains(targetId),
+    );
+  }
+  if (filters.actorKinds.isNotEmpty) {
+    final wanted = filters.actorKinds.toSet();
+    filtered = filtered.where((row) => wanted.contains(row.actorKind));
+  }
+  return filtered.toList(growable: false);
+}
+
 SupportActionsMember _memberFromJson(Map<String, Object?> json) {
   final status =
       _optionalString(json['status']) ??
@@ -1025,6 +1226,14 @@ String _stringField(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is String && value.isNotEmpty) return value;
   throw StateError('missing string field $key');
+}
+
+String _firstStringField(Map<String, Object?> json, List<String> keys) {
+  for (final key in keys) {
+    final value = json[key];
+    if (value is String && value.isNotEmpty) return value;
+  }
+  throw StateError('missing string field ${keys.join('/')}');
 }
 
 bool _boolField(Map<String, Object?> json, String key) {

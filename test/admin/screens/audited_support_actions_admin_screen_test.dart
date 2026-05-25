@@ -1,12 +1,10 @@
-// Phase 11A.14 - Audited support actions screen widget tests.
+// Phase 11A.14 - Admin Audit log tab parity tests.
 //
-// Coverage focuses on the parity-contract surface: the audit log
-// table renders after picking an operator, the Actions panel
-// affordances are gated on the MFA-required claim flags, the
-// admin_reason dialog blocks empty submissions, every write captures
-// the F&F admin's UID + a non-empty admin_reason on both the
-// audit_logs row AND the admin_action_log provenance row, and
-// view-only mode hides every mutate affordance.
+// Ops/operator-web is the authority for the visible audit-log UX.
+// These tests pin the admin tab to the same header, filters, row
+// rendering, list states, and CSV export feedback. The left
+// business/scope picker lives in the admin workspace shell and is the
+// intentional exception.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,7 +16,7 @@ import 'package:forge_and_flow/admin/services/admin_audit_chain_anchors_gateway.
 import 'package:forge_and_flow/admin/services/audited_support_actions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_audited_support_actions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
-import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/web_team_audit_log_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 import '../../_test_helpers/widget_pump_helpers.dart';
@@ -46,104 +44,154 @@ void main() {
     });
   }
 
-  InMemoryAuditedSupportActionsAdminGateway buildDemoGateway() {
+  InMemoryAuditedSupportActionsAdminGateway buildDemoGateway({DateTime? at}) {
     return InMemoryAuditedSupportActionsAdminGateway(
-      auditLogByOperator: kDemoAuditLogByOperator(),
+      auditLogByOperator: kDemoAuditLogByOperator(at: at),
       membersByOperator: kDemoSupportActionsMembersByOperator(),
     );
   }
 
-  group('audit log + actions panel render', () {
-    testWidgets('renders Actions panel + Audit log card after operator pick', (
+  Future<void> pumpScreen(
+    WidgetTester tester, {
+    InMemoryAuditedSupportActionsAdminGateway? gateway,
+    AdminAuditChainAnchorsGateway? anchorsGateway,
+    bool canExportAuditLog = false,
+    DateTime Function()? anchorBadgeClock,
+    AdminHierarchyScopeIntent? hierarchyScope,
+    Future<void> Function(WebAuditLogCsvExport export)? onCsvReady,
+    Future<void> Function(String value)? copyToClipboard,
+  }) async {
+    await tester.pumpWidget(
+      wrap(
+        AuditedSupportActionsAdminScreen(
+          gateway: gateway ?? buildDemoGateway(),
+          anchorsGateway: anchorsGateway,
+          actorUserId: 'demo-super-admin',
+          pickedOperator: demoPick(),
+          canExportAuditLog: canExportAuditLog,
+          anchorBadgeClock: anchorBadgeClock,
+          hierarchyScope: hierarchyScope,
+          onCsvReady: onCsvReady,
+          copyToClipboard: copyToClipboard,
+        ),
+      ),
+    );
+    await pumpEventually(tester);
+  }
+
+  group('ops parity surface', () {
+    testWidgets('renders the ops-shaped audit tab and no old admin panels', (
       tester,
     ) async {
       wideViewport(tester);
-      final gateway = buildDemoGateway();
-      final sessionsGateway = InMemoryRolesHierarchySessionsAdminGateway(
-        rolesByOperator: kDemoRolesByOperator(),
-        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
-        locationsByOperator: kDemoHierarchyLocationsByOperator(),
-        sessionsByOperator: kDemoSessionsByOperator(),
-      );
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            sessionsGateway: sessionsGateway,
-            hierarchyScope: const AdminHierarchyScopeIntent.location(
-              operatorId: kDemoDinerOperatorId,
-              operatorName: 'Demo Diner Co.',
-              locationId: kDemoDinerLocationToronto,
-              locationName: 'Toronto Yorkville',
-              valueState: AdminHierarchyScopeValueState.locationOnly,
-              effectiveValueLabel: 'Toronto Yorkville',
-              allowedActionsLabel: 'Security actions audit logged',
-            ),
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-            canResetMfaFactors: true,
-            canIssuePairedErasure: true,
-            canExportAuditLog: true,
-          ),
-        ),
-      );
-      await pumpEventually(tester);
+      await pumpScreen(tester, canExportAuditLog: true);
 
       expect(
         find.byKey(const Key('admin_audited_support_actions_screen')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('admin_asa_actions_panel')), findsOneWidget);
-      expect(find.byKey(const Key('admin_asa_scope_banner')), findsOneWidget);
+      expect(find.byIcon(Icons.fact_check_outlined), findsOneWidget);
+      expect(find.text('Audit log'), findsOneWidget);
       expect(
-        find.text('Location: Demo Diner Co. / Toronto Yorkville'),
+        find.byKey(const Key('admin_asa_audit_log_subtitle')),
         findsOneWidget,
       );
-      expect(find.text('Location only'), findsOneWidget);
-      expect(find.text('Effective: Toronto Yorkville'), findsOneWidget);
-      expect(find.text('Security actions audit logged'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'Every change someone made to your team, your roles',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_asa_audit_log_export_button')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_asa_filters')), findsOneWidget);
+      expect(find.byKey(const Key('admin_asa_audit_log_list')), findsOneWidget);
+
+      expect(find.byKey(const Key('admin_asa_actions_panel')), findsNothing);
       expect(
         find.byKey(const Key('admin_security_sessions_panel')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
-        find.byKey(
-          const Key('admin_rhs_session_row_session-diner-owner-mobile'),
-        ),
-        findsOneWidget,
+        find.byKey(const Key('admin_asa_audit_scope_picker')),
+        findsNothing,
       );
-      expect(find.byKey(const Key('admin_asa_audit_log')), findsOneWidget);
-      expect(
-        find.byKey(const Key('admin_asa_action_group_recovery')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_asa_action_group_data_protection')),
-        findsOneWidget,
-      );
-      // Each Actions panel row carries a stable key + button.
-      expect(
-        find.byKey(const Key('admin_asa_action_reset_mfa')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_asa_action_password_reset')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('admin_asa_action_erasure')), findsOneWidget);
+      expect(find.byKey(const Key('admin_asa_scope_banner')), findsNothing);
+      expect(find.textContaining('Cursor-paginated rows'), findsNothing);
     });
 
-    testWidgets('audit log card lists seeded rows', (tester) async {
+    testWidgets('lists seeded rows with ops row copy and actor chips', (
+      tester,
+    ) async {
       wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
+      await pumpScreen(tester);
+
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-1')),
+        findsOneWidget,
+      );
+      expect(find.text('Invited team member'), findsWidgets);
+      expect(
+        find.text('Dana Owner \u2022 owner@demo-diner.test'),
+        findsOneWidget,
+      );
+      expect(find.text('team'), findsWidgets);
+      expect(find.text('F&F admin'), findsWidgets);
+      expect(find.text('auth_session:'), findsOneWidget);
+      expect(find.text('session-diner-owner-mobile'), findsOneWidget);
+      expect(find.text('team.users.invite'), findsNothing);
+      expect(find.textContaining('Target:'), findsNothing);
+    });
+  });
+
+  group('filters', () {
+    testWidgets('exposes ops chips only', (tester) async {
+      wideViewport(tester);
+      await pumpScreen(tester);
+
+      for (final suffix in <String>['24h', '7d', '30d', '90d']) {
+        expect(
+          find.byKey(Key('admin_asa_audit_log_time_window_$suffix')),
+          findsOneWidget,
+        );
+      }
+      expect(
+        find.byKey(const Key('admin_asa_audit_log_time_window_custom')),
+        findsOneWidget,
+      );
+      for (final action in WebAuditLogActions.catalog) {
+        expect(
+          find.byKey(
+            Key('admin_asa_audit_log_action_${action.replaceAll('.', '_')}'),
           ),
+          findsOneWidget,
+        );
+      }
+      expect(
+        find.byKey(
+          const Key('admin_asa_audit_log_actor_demo-user-diner-owner'),
         ),
+        findsOneWidget,
+      );
+      expect(find.text('Team member'), findsOneWidget);
+
+      expect(
+        find.byKey(const Key('admin_asa_filter_target_kind')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('admin_asa_filter_target_id')), findsNothing);
+      expect(find.byKey(const Key('admin_asa_filter_apply')), findsNothing);
+      expect(find.text('Actor kind'), findsNothing);
+    });
+
+    testWidgets('action chips apply immediately', (tester) async {
+      wideViewport(tester);
+      await pumpScreen(tester);
+
+      await tester.tap(
+        find.byKey(const Key('admin_asa_audit_log_action_team_users_invite')),
       );
       await pumpEventually(tester);
 
@@ -153,457 +201,72 @@ void main() {
       );
       expect(
         find.byKey(const Key('admin_asa_audit_row_seed-diner-2')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const Key('admin_asa_audit_row_seed-diner-3')),
-        findsOneWidget,
+        findsNothing,
       );
     });
 
-    testWidgets('audit rows show actor name, role, and email when present', (
+    testWidgets('left workspace location scope feeds the audit query', (
       tester,
     ) async {
       wideViewport(tester);
-      final gateway = InMemoryAuditedSupportActionsAdminGateway(
+      final ts = DateTime.utc(2026, 5, 5, 12);
+      final gateway = _RecordingAuditGateway(
         auditLogByOperator: <String, List<AuditLogRow>>{
           kDemoDinerOperatorId: <AuditLogRow>[
-            AuditLogRow(
-              eventId: 'actor-full',
-              action: 'auth.password.change',
-              occurredAt: DateTime.utc(2026, 5, 6, 12, 30),
-              actorUserId: 'demo-user-diner-owner',
-              actorDisplayName: 'Dana Owner',
-              actorEmail: 'owner@demo-diner.test',
-              actorKind: AuditActorKind.teamMember,
-              actorRole: 'Owner',
-              operatorId: kDemoDinerOperatorId,
-              targetKind: 'user',
-              targetId: 'demo-user-diner-owner',
-              payload: const <String, Object?>{},
-              businessDate: DateTime.utc(2026, 5, 6),
-            ),
-          ],
-        },
-        membersByOperator: kDemoSupportActionsMembersByOperator(),
-      );
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      expect(
-        find.text('Dana Owner - Owner - owner@demo-diner.test'),
-        findsOneWidget,
-      );
-    });
-  });
-
-  group('Actions panel gating', () {
-    testWidgets('Reset MFA disabled when canResetMfaFactors is false', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      final button = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
-      );
-      expect(button.onPressed, isNull);
-    });
-
-    testWidgets('Reset MFA enabled when canResetMfaFactors is true', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-            canResetMfaFactors: true,
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      final button = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
-      );
-      expect(button.onPressed, isNotNull);
-    });
-
-    testWidgets('Issue erasure disabled when canIssuePairedErasure is false', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      final button = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_asa_action_erasure_btn')),
-      );
-      expect(button.onPressed, isNull);
-    });
-
-    testWidgets('view-only mode hides every mutate affordance', (tester) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-ff-support',
-            pickedOperator: demoPick(),
-            editingEnabled: false,
-            canResetMfaFactors: true,
-            canIssuePairedErasure: true,
-            canExportAuditLog: true,
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      expect(
-        find.byKey(const Key('admin_asa_readonly_banner')),
-        findsOneWidget,
-      );
-      // CSV export is hidden because canExport is the AND of editing
-      // + canExportAuditLog; editingEnabled=false collapses both.
-      expect(find.byKey(const Key('admin_asa_audit_log_export')), findsNothing);
-      // Action buttons render but are disabled (editing=false).
-      final resetBtn = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
-      );
-      final passwordBtn = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_asa_action_password_reset_btn')),
-      );
-      final erasureBtn = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_asa_action_erasure_btn')),
-      );
-      expect(resetBtn.onPressed, isNull);
-      expect(passwordBtn.onPressed, isNull);
-      expect(erasureBtn.onPressed, isNull);
-    });
-
-    testWidgets('password reset excludes pending invite-only users', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = InMemoryAuditedSupportActionsAdminGateway(
-        auditLogByOperator: kDemoAuditLogByOperator(),
-        membersByOperator: const <String, List<SupportActionsMember>>{
-          kDemoDinerOperatorId: <SupportActionsMember>[
-            SupportActionsMember(
-              userId: 'invite-only-user',
-              email: 'invite-only@demo.test',
-              displayName: 'Invite Only',
-              mfaEnrolled: false,
-              canReceivePasswordReset: false,
-              passwordResetBlockedReason: 'Pending invite',
+            _auditRow(id: 'loc-a-row', occurredAt: ts, locationId: 'loc-a'),
+            _auditRow(
+              id: 'loc-b-row',
+              occurredAt: ts.subtract(const Duration(minutes: 1)),
+              locationId: 'loc-b',
             ),
           ],
         },
       );
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
+
+      await pumpScreen(
+        tester,
+        gateway: gateway,
+        hierarchyScope: const AdminHierarchyScopeIntent.location(
+          operatorId: kDemoDinerOperatorId,
+          locationId: 'loc-a',
         ),
       );
-      await pumpEventually(tester);
-
-      final passwordResetButton = find.byKey(
-        const Key('admin_asa_action_password_reset_btn'),
-      );
-      await tester.ensureVisible(passwordResetButton);
-      await pumpEventually(tester);
-      await tester.tap(passwordResetButton);
-      await pumpEventually(tester);
 
       expect(
-        find.text(
-          'No active member can receive a password reset yet. Pending invite-only users must accept their invite first.',
-        ),
+        find.byKey(const Key('admin_asa_audit_row_loc-a-row')),
         findsOneWidget,
       );
-      final submit = tester.widget<FilledButton>(
-        find.byKey(const Key('admin_asa_member_picker_submit')),
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_loc-b-row')),
+        findsNothing,
       );
-      expect(submit.onPressed, isNull);
+      expect(gateway.scopes.last?.scopeType, AuditLogScopeType.location);
+      expect(gateway.scopes.last?.locationFilter, 'loc-a');
+      expect(gateway.listMembersCalls, 0);
     });
-  });
 
-  group('Reset MFA write path', () {
-    testWidgets(
-      'Reset MFA dialog flow writes audit_logs + admin_action_log with admin_reason',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-              canResetMfaFactors: true,
-            ),
-          ),
-        );
-        await pumpEventually(tester);
-
-        await tester.ensureVisible(
-          find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
-        );
-        await tester.tap(
-          find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
-        );
-        await pumpEventually(tester);
-
-        // Member picker opens.
-        expect(
-          find.byKey(const Key('admin_asa_member_picker_dialog')),
-          findsOneWidget,
-        );
-        await tester.tap(
-          find.byKey(const Key('admin_asa_member_picker_submit')),
-        );
-        await pumpEventually(tester);
-
-        // Reason dialog opens; submit empty first to assert the guard.
-        await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-        await pumpEventually(tester);
-        expect(find.text('Add a reason before continuing.'), findsOneWidget);
-
-        await tester.enterText(
-          find.byKey(const Key('admin_asa_reason_field')),
-          'walkthrough verification',
-        );
-        await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-        await pumpEventually(tester);
-
-        expect(gateway.capturedAdminActionLog, hasLength(1));
-        final entry = gateway.capturedAdminActionLog.single;
-        expect(entry.action, equals(SupportActionsAuditAction.resetMfaFactors));
-        expect(entry.readerUserId, equals('demo-super-admin'));
-        expect(entry.adminReason, equals('walkthrough verification'));
-        // Audit log row also captured.
-        final audits = gateway.capturedAuditLogFor(kDemoDinerOperatorId);
-        final newRow = audits.firstWhere(
-          (r) => r.action == SupportActionsAuditAction.resetMfaFactors,
-        );
-        expect(newRow.actorKind, equals(AuditActorKind.forgeAdmin));
-        expect(newRow.adminReason, equals('walkthrough verification'));
-      },
-    );
-  });
-
-  group('Reset MFA reason dialog blocks empty submissions', () {
-    testWidgets('cancelling the reason dialog writes no audit row', (
-      tester,
-    ) async {
+    testWidgets('custom range chip opens the ops date dialog', (tester) async {
       wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-            canResetMfaFactors: true,
-          ),
-        ),
-      );
-      await pumpEventually(tester);
+      await pumpScreen(tester);
 
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
-      );
-      await tester.tap(find.byKey(const Key('admin_asa_action_reset_mfa_btn')));
-      await pumpEventually(tester);
-      await tester.tap(find.byKey(const Key('admin_asa_member_picker_submit')));
-      await pumpEventually(tester);
-
-      await tester.tap(find.byKey(const Key('admin_asa_reason_cancel')));
-      await pumpEventually(tester);
-
-      expect(gateway.capturedAdminActionLog, isEmpty);
-    });
-  });
-
-  group('parity contract filter set', () {
-    testWidgets(
-      'filter bar exposes actor + target_kind + target_id + time_window + actor_kind + action multi-select',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
-          ),
-        );
-        await pumpEventually(tester);
-
-        expect(find.byKey(const Key('admin_asa_filter_actor')), findsOneWidget);
-        expect(
-          find.byKey(const Key('admin_asa_filter_target_kind')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_filter_target_id')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_filter_time_window')),
-          findsOneWidget,
-        );
-        // actor_kind multi-select chips (F&F admin surface only).
-        for (final kind in AuditActorKind.values) {
-          expect(
-            find.byKey(Key('admin_asa_filter_actor_kind_${kind.wire}')),
-            findsOneWidget,
-            reason: 'expected actor_kind chip for ${kind.wire}',
-          );
-        }
-        // action multi-select chips against the full filterable set.
-        for (final action in kAuditLogFilterableActions) {
-          expect(
-            find.byKey(Key('admin_asa_filter_action_$action')),
-            findsOneWidget,
-            reason: 'expected action chip for $action',
-          );
-        }
-      },
-    );
-
-    testWidgets('selecting an action chip and applying narrows the table', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      await tester.ensureVisible(
-        find.byKey(
-          const Key('admin_asa_filter_action_admin.session.force_logout'),
-        ),
-      );
       await tester.tap(
-        find.byKey(
-          const Key('admin_asa_filter_action_admin.session.force_logout'),
-        ),
-      );
-      await pumpEventually(tester);
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_asa_filter_apply')),
-      );
-      await tester.tap(find.byKey(const Key('admin_asa_filter_apply')));
-      await pumpEventually(tester);
-
-      // Only the admin.session.force_logout fixture row remains.
-      expect(
-        find.byKey(const Key('admin_asa_audit_row_seed-diner-3')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_asa_audit_row_seed-diner-1')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_asa_audit_row_seed-diner-2')),
-        findsNothing,
-      );
-    });
-
-    testWidgets('selecting Custom range reveals the from/to date pickers', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
-        ),
+        find.byKey(const Key('admin_asa_audit_log_time_window_custom')),
       );
       await pumpEventually(tester);
 
-      // Hidden by default.
-      expect(
-        find.byKey(const Key('admin_asa_filter_custom_from')),
-        findsNothing,
-      );
-      // Open the time-window dropdown and pick Custom range.
-      await tester.tap(find.byKey(const Key('admin_asa_filter_time_window')));
-      await pumpEventually(tester);
-      await tester.tap(find.text('Custom range').last);
-      await pumpEventually(tester);
-
-      expect(
-        find.byKey(const Key('admin_asa_filter_custom_from')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_asa_filter_custom_to')),
-        findsOneWidget,
-      );
+      expect(find.text('Choose audit log dates'), findsOneWidget);
     });
   });
 
-  group('parity contract row rendering', () {
-    testWidgets('target_id copy button copies to system clipboard', (
+  group('rows', () {
+    testWidgets('target copy uses ops clipboard and snackbar copy', (
       tester,
     ) async {
       wideViewport(tester);
-      final gateway = buildDemoGateway();
-      // Stub the clipboard channel so the test can observe writes
-      // without depending on the host platform's clipboard.
       final calls = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -618,529 +281,220 @@ void main() {
             .setMockMethodCallHandler(SystemChannels.platform, null);
       });
 
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
+      await pumpScreen(tester);
+      await tester.ensureVisible(
+        find.byKey(
+          const Key('operator_web_audit_log_row_seed-diner-3_copy_target'),
         ),
       );
-      await pumpEventually(tester);
-
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_asa_audit_row_copy_target_seed-diner-3')),
-      );
-      await pumpEventually(tester);
       await tester.tap(
-        find.byKey(const Key('admin_asa_audit_row_copy_target_seed-diner-3')),
+        find.byKey(
+          const Key('operator_web_audit_log_row_seed-diner-3_copy_target'),
+        ),
       );
       await pumpEventually(tester);
 
       expect(calls, equals(<String>['session-diner-owner-mobile']));
-    });
-
-    testWidgets('View payload toggle reveals + hides the formatted payload', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
-        ),
-      );
-      await pumpEventually(tester);
-
-      // Default: payload hidden.
       expect(
-        find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
-        findsNothing,
-      );
-      await tester.ensureVisible(
-        find.byKey(
-          const Key('admin_asa_audit_row_payload_toggle_seed-diner-3'),
-        ),
-      );
-      await tester.tap(
-        find.byKey(
-          const Key('admin_asa_audit_row_payload_toggle_seed-diner-3'),
-        ),
-      );
-      await pumpEventually(tester);
-
-      expect(
-        find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
+        find.text('Copied session-diner-owner-mobile to clipboard.'),
         findsOneWidget,
       );
-      // Payload contents render the canonical key.
-      expect(find.textContaining('user_id'), findsWidgets);
+    });
 
-      // Toggle off again.
+    testWidgets('payload toggle uses ops JSON formatting', (tester) async {
+      wideViewport(tester);
+      await pumpScreen(tester);
+
+      expect(
+        find.byKey(
+          const Key('operator_web_audit_log_row_seed-diner-3_payload'),
+        ),
+        findsNothing,
+      );
       await tester.tap(
         find.byKey(
-          const Key('admin_asa_audit_row_payload_toggle_seed-diner-3'),
+          const Key('operator_web_audit_log_row_seed-diner-3_payload_toggle'),
         ),
       );
       await pumpEventually(tester);
+
       expect(
-        find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
-        findsNothing,
+        find.byKey(
+          const Key('operator_web_audit_log_row_seed-diner-3_payload'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('"user_id": "demo-user-diner-owner"'),
+        findsOneWidget,
       );
     });
   });
 
-  group('cursor pagination', () {
-    testWidgets(
-      'Load more button appears when nextCursor is non-null and appends rows',
-      (tester) async {
-        wideViewport(tester);
-        // 250 seeded rows triggers cursor pagination (page size = 200).
-        final ts = DateTime.utc(2026, 5, 5, 12);
-        final manyRows = <AuditLogRow>[
-          for (var i = 0; i < 250; i++)
-            AuditLogRow(
-              eventId: 'pg-${i.toString().padLeft(3, '0')}',
-              action: 'auth.password.change',
-              occurredAt: ts.subtract(Duration(minutes: i)),
-              actorUserId: 'demo-user-diner-owner',
-              actorDisplayName: 'Dana Owner',
-              actorEmail: 'owner@demo-diner.test',
-              actorKind: AuditActorKind.teamMember,
-              operatorId: kDemoDinerOperatorId,
-              targetKind: 'user',
-              targetId: 'demo-user-diner-owner',
-              payload: const <String, Object?>{},
-              businessDate: DateTime.utc(ts.year, ts.month, ts.day),
-            ),
-        ];
-        final gateway = InMemoryAuditedSupportActionsAdminGateway(
-          auditLogByOperator: <String, List<AuditLogRow>>{
-            kDemoDinerOperatorId: manyRows,
-          },
-          membersByOperator: kDemoSupportActionsMembersByOperator(),
-        );
-
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
-          ),
-        );
-        await pumpEventually(tester);
-
-        // First page: 200 rows; Load more visible.
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_pg-000')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_pg-199')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_pg-200')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_audit_log_load_more')),
-          findsOneWidget,
-        );
-
-        await tester.ensureVisible(
-          find.byKey(const Key('admin_asa_audit_log_load_more')),
-        );
-        await tester.tap(
-          find.byKey(const Key('admin_asa_audit_log_load_more')),
-        );
-        await pumpEventually(tester);
-
-        // After Load more: row 200+ visible, button is gone (no more rows).
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_pg-200')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_audit_row_pg-249')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_audit_log_load_more')),
-          findsNothing,
-        );
-      },
-    );
-  });
-
-  group('humanizer + payload formatter helpers', () {
-    test('humanizeAuditAction maps the contract example', () {
-      expect(
-        humanizeAuditAction('team.users.invite'),
-        equals('Invited team member'),
-      );
-      // Falls through to the raw key for unknown actions so unknown
-      // vocabulary stays diagnosable.
-      expect(humanizeAuditAction('foo.bar.baz'), equals('foo.bar.baz'));
-    });
-
-    test('formatAuditTimestamp keeps the canonical UTC ISO suffix', () {
-      final formatted = formatAuditTimestamp(DateTime.utc(2026, 5, 6, 12, 30));
-      expect(formatted.contains('local'), isTrue);
-      expect(formatted.contains('UTC 2026-05-06T12:30:00.000Z'), isTrue);
-    });
-
-    test('formatPayload sorts keys and renders nested maps indented', () {
-      final out = formatPayload(<String, Object?>{
-        'user_id': 'u1',
-        'mfa_enrolled': const <String, Object?>{'from': true, 'to': false},
-      });
-      // Sorted: mfa_enrolled, user_id.
-      final mfaIdx = out.indexOf('mfa_enrolled');
-      final userIdx = out.indexOf('user_id');
-      expect(mfaIdx, lessThan(userIdx));
-      expect(out.contains('  from: true'), isTrue);
-      expect(out.contains('  to: false'), isTrue);
-    });
-  });
-
-  group('CODE_OPS_DEBT carry-over #2 grace-window chip', () {
-    testWidgets('reversible state shows countdown label and Reverse button', (
+  group('pagination and export', () {
+    testWidgets('Load more appends rows inside the ops-style list', (
       tester,
     ) async {
       wideViewport(tester);
-      final fixedNow = DateTime.utc(2026, 5, 8, 12, 0);
+      final ts = DateTime.utc(2026, 5, 5, 12);
+      final manyRows = <AuditLogRow>[
+        for (var i = 0; i < 250; i++)
+          AuditLogRow(
+            eventId: 'pg-${i.toString().padLeft(3, '0')}',
+            action: WebAuditLogActions.authPasswordChanged,
+            occurredAt: ts.subtract(Duration(minutes: i)),
+            actorUserId: 'demo-user-diner-owner',
+            actorDisplayName: 'Dana Owner',
+            actorEmail: 'owner@demo-diner.test',
+            actorKind: AuditActorKind.teamMember,
+            operatorId: kDemoDinerOperatorId,
+            targetKind: 'user',
+            targetId: 'demo-user-diner-owner',
+            payload: const <String, Object?>{},
+            businessDate: DateTime.utc(ts.year, ts.month, ts.day),
+          ),
+      ];
       final gateway = InMemoryAuditedSupportActionsAdminGateway(
-        auditLogByOperator: kDemoAuditLogByOperator(at: fixedNow),
+        auditLogByOperator: <String, List<AuditLogRow>>{
+          kDemoDinerOperatorId: manyRows,
+        },
         membersByOperator: kDemoSupportActionsMembersByOperator(),
-        clock: () => fixedNow,
       );
-      // Screen-side clock matches the gateway's "now" so the chip
-      // mounts inside the 24h grace window.
-      final viewNow = fixedNow;
 
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-            canIssuePairedErasure: true,
-            graceWindowClock: () => viewNow,
-            // Use a far-future tick interval so `pumpAndSettle`
-            // does not chase the periodic timer; the chip's
-            // initial build is what we are asserting against.
-            graceWindowTickInterval: const Duration(days: 30),
-          ),
-        ),
+      await pumpScreen(tester, gateway: gateway);
+
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_pg-199')),
+        findsOneWidget,
       );
+      expect(find.byKey(const Key('admin_asa_audit_row_pg-200')), findsNothing);
+      expect(find.byType(TextButton), findsWidgets);
+
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_asa_audit_log_load_more')),
+      );
+      await tester.tap(find.byKey(const Key('admin_asa_audit_log_load_more')));
       await pumpEventually(tester);
 
-      // Chip is hidden before any erasure runs.
       expect(
-        find.byKey(const Key('admin_asa_grace_window_chip')),
+        find.byKey(const Key('admin_asa_audit_row_pg-249')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_asa_audit_log_load_more')),
         findsNothing,
       );
-
-      // Drive an erasure through the action panel.
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_asa_action_erasure_btn')),
-      );
-      await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
-      await pumpEventually(tester);
-      await tester.tap(find.byKey(const Key('admin_asa_member_picker_submit')));
-      await pumpEventually(tester);
-      await tester.enterText(
-        find.byKey(const Key('admin_asa_reason_field')),
-        'walkthrough verification',
-      );
-      await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-      await pumpEventually(tester);
-
-      // Chip is mounted, label shows the countdown, and the
-      // Reverse button is enabled while inside the window.
-      expect(
-        find.byKey(const Key('admin_asa_grace_window_chip')),
-        findsOneWidget,
-      );
-      final label = tester.widget<Text>(
-        find.byKey(const Key('admin_asa_grace_window_chip_label')),
-      );
-      expect(label.data, contains('Erasure reversible'));
-      expect(label.data, contains('remaining'));
-      expect(
-        find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
-        findsOneWidget,
-      );
     });
 
-    testWidgets(
-      'expired state hides Reverse button and shows "Erasure final"',
-      (tester) async {
-        wideViewport(tester);
-        final fixedNow = DateTime.utc(2026, 5, 8, 12, 0);
-        // Gateway computes `gracePeriodEndsAt = fixedNow + 24h`; the
-        // screen-side clock starts 30h in the future so the chip is
-        // mounted past the boundary on its very first build. This
-        // avoids racing the periodic ticker (which would force
-        // `pumpAndSettle` to chase a moving fake clock).
-        final gateway = InMemoryAuditedSupportActionsAdminGateway(
-          auditLogByOperator: kDemoAuditLogByOperator(at: fixedNow),
-          membersByOperator: kDemoSupportActionsMembersByOperator(),
-          clock: () => fixedNow,
-        );
-        final viewNow = fixedNow.add(const Duration(hours: 30));
-
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-              canIssuePairedErasure: true,
-              graceWindowClock: () => viewNow,
-              graceWindowTickInterval: const Duration(days: 30),
-            ),
-          ),
-        );
-        await pumpEventually(tester);
-
-        await tester.ensureVisible(
-          find.byKey(const Key('admin_asa_action_erasure_btn')),
-        );
-        await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
-        await pumpEventually(tester);
-        await tester.tap(
-          find.byKey(const Key('admin_asa_member_picker_submit')),
-        );
-        await pumpEventually(tester);
-        await tester.enterText(
-          find.byKey(const Key('admin_asa_reason_field')),
-          'walkthrough verification',
-        );
-        await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-        await pumpEventually(tester);
-
-        // Chip mounted past the 24h boundary - shows "Erasure final"
-        // and offers no reverse affordance.
-        final label = tester.widget<Text>(
-          find.byKey(const Key('admin_asa_grace_window_chip_label')),
-        );
-        expect(label.data, equals('Erasure final'));
-        expect(
-          find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
-          findsNothing,
-        );
-      },
-    );
-
-    testWidgets(
-      'tapping Reverse erasure calls reversePiiErasure on the gateway',
-      (tester) async {
-        wideViewport(tester);
-        final fixedNow = DateTime.utc(2026, 5, 8, 12, 0);
-        final gateway = _RecordingErasureGateway(
-          auditLogByOperator: kDemoAuditLogByOperator(at: fixedNow),
-          membersByOperator: kDemoSupportActionsMembersByOperator(),
-          clock: () => fixedNow,
-        );
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-              canIssuePairedErasure: true,
-              graceWindowClock: () => fixedNow,
-              // Use a far-future tick interval so `pumpAndSettle`
-              // does not chase the periodic timer; the chip's
-              // initial build is what we are asserting against.
-              graceWindowTickInterval: const Duration(days: 30),
-            ),
-          ),
-        );
-        await pumpEventually(tester);
-
-        await tester.ensureVisible(
-          find.byKey(const Key('admin_asa_action_erasure_btn')),
-        );
-        await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
-        await pumpEventually(tester);
-        await tester.tap(
-          find.byKey(const Key('admin_asa_member_picker_submit')),
-        );
-        await pumpEventually(tester);
-        await tester.enterText(
-          find.byKey(const Key('admin_asa_reason_field')),
-          'walkthrough verification',
-        );
-        await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-        await pumpEventually(tester);
-
-        expect(gateway.reverseCallCount, equals(0));
-        await tester.ensureVisible(
-          find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
-        );
-        await tester.tap(
-          find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
-        );
-        await pumpEventually(tester);
-
-        expect(gateway.reverseCallCount, equals(1));
-        // Chip clears once the reverse outcome lands.
-        expect(
-          find.byKey(const Key('admin_asa_grace_window_chip')),
-          findsNothing,
-        );
-      },
-    );
-
-    test('formatGraceWindowRemaining truncates to compact two-unit form', () {
-      final base = DateTime.utc(2026, 5, 8, 12);
-      expect(
-        formatGraceWindowRemaining(
-          now: base,
-          endsAt: base.add(const Duration(hours: 14, minutes: 23)),
-        ),
-        equals('14h 23m'),
-      );
-      expect(
-        formatGraceWindowRemaining(
-          now: base,
-          endsAt: base.add(const Duration(minutes: 45, seconds: 12)),
-        ),
-        equals('45m 12s'),
-      );
-      expect(
-        formatGraceWindowRemaining(
-          now: base,
-          endsAt: base.subtract(const Duration(minutes: 1)),
-        ),
-        equals('0m'),
-      );
-    });
-  });
-
-  group('audit-chain integrity badge', () {
-    testWidgets('renders the healthy badge for a healthy snapshot', (
+    testWidgets('CSV export uses the ops header flow and feedback', (
       tester,
     ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
-      final now = DateTime.utc(2026, 5, 7, 6);
-      final anchorsGateway = InMemoryAdminAuditChainAnchorsGateway(
-        snapshot: AdminAuditChainAnchorSnapshot(
-          status: AdminAuditChainAnchorStatus.healthy,
-          anchoredAt: now.subtract(const Duration(hours: 4)),
-          lastAnchorBlobAt: now.subtract(const Duration(hours: 4)),
-          chainDate: DateTime.utc(2026, 5, 6),
-        ),
+      final calls = <String>[];
+      final downloads = <WebAuditLogCsvExport>[];
+
+      await pumpScreen(
+        tester,
+        gateway: gateway,
+        canExportAuditLog: true,
+        copyToClipboard: (value) async => calls.add(value),
+        onCsvReady: (export) async => downloads.add(export),
       );
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            anchorsGateway: anchorsGateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-            anchorBadgeClock: () => now,
-          ),
-        ),
+      await tester.tap(
+        find.byKey(const Key('admin_asa_audit_log_export_button')),
       );
       await pumpEventually(tester);
 
+      expect(calls.single, contains('event_id,occurred_at,action'));
+      expect(downloads, hasLength(1));
       expect(
-        find.byKey(const Key('admin_audit_log_integrity_badge')),
+        find.byKey(const Key('admin_asa_audit_log_export_message')),
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const Key('admin_audit_log_integrity_badge_healthy_title'),
-        ),
+        find.text('Downloaded audit log CSV and copied it to your clipboard.'),
         findsOneWidget,
       );
-      expect(find.text('Audit chain healthy'), findsOneWidget);
+      expect(find.textContaining('Audit log CSV ready'), findsOneWidget);
+      expect(find.byKey(const Key('admin_asa_reason_dialog')), findsNothing);
       expect(
-        find.text('Anchored at 02:00 UTC. Last anchor 4 hours ago.'),
-        findsOneWidget,
+        gateway
+            .capturedAuditLogFor(kDemoDinerOperatorId)
+            .any(
+              (row) =>
+                  row.action == SupportActionsAuditAction.auditExportRequested,
+            ),
+        isTrue,
+      );
+    });
+  });
+
+  group('helpers and integrity badge', () {
+    test('helpers mirror ops labels, timestamp, and JSON payload', () {
+      expect(
+        humanizeAuditAction(WebAuditLogActions.teamUsersDeactivate),
+        equals('Suspended team member'),
+      );
+      expect(humanizeAuditAction('foo.bar.baz'), equals('Baz'));
+      expect(
+        formatAuditTimestamp(DateTime.utc(2026, 5, 6, 12, 30)),
+        isNot(contains('UTC')),
+      );
+      expect(formatPayload(const <String, Object?>{}), equals('(no payload)'));
+      expect(
+        formatPayload(const <String, Object?>{
+          'user_id': 'u1',
+          'mfa_enrolled': <String, Object?>{'from': true, 'to': false},
+        }),
+        contains('"mfa_enrolled"'),
       );
     });
 
-    testWidgets(
-      'null gateway renders the neutral unknown state; screen still renders',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            AuditedSupportActionsAdminScreen(
-              gateway: gateway,
-              // No anchorsGateway → null → neutral unknown, never crash.
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
-          ),
-        );
-        await pumpEventually(tester);
-
-        // Badge renders the neutral unknown state.
-        expect(
-          find.byKey(const Key('admin_audit_log_integrity_badge')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('admin_audit_log_integrity_badge_unknown_title'),
-          ),
-          findsOneWidget,
-        );
-        expect(find.text('Audit chain status unknown'), findsOneWidget);
-        // The rest of the screen still renders (no crash on null gateway).
-        expect(
-          find.byKey(const Key('admin_audited_support_actions_screen')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_actions_panel')),
-          findsOneWidget,
-        );
-      },
-    );
-  });
-
-  group('zero em dashes in operator-facing literals', () {
-    testWidgets('rendered text never contains an em dash', (tester) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      // Wire a healthy anchor gateway so the integrity badge's copy is
-      // also swept for em dashes in this render.
-      final anchorsGateway = InMemoryAdminAuditChainAnchorsGateway(
-        clock: () => DateTime.utc(2026, 5, 7, 6),
-      );
-      await tester.pumpWidget(
-        wrap(
-          AuditedSupportActionsAdminScreen(
-            gateway: gateway,
-            anchorsGateway: anchorsGateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-            editingEnabled: false,
-            anchorBadgeClock: () => DateTime.utc(2026, 5, 7, 6),
-          ),
+    test('formatGraceWindowRemaining keeps compact two-unit form', () {
+      expect(
+        formatGraceWindowRemaining(
+          now: DateTime.utc(2026, 5, 8, 12),
+          endsAt: DateTime.utc(2026, 5, 9, 14, 7),
         ),
+        equals('26h 7m'),
       );
-      await pumpEventually(tester);
+    });
 
-      final texts = tester.widgetList<Text>(find.byType(Text));
-      for (final t in texts) {
-        final data = t.data;
+    testWidgets('renders healthy and unknown integrity states', (tester) async {
+      wideViewport(tester);
+      await pumpScreen(
+        tester,
+        anchorsGateway: InMemoryAdminAuditChainAnchorsGateway(
+          clock: () => DateTime.utc(2026, 5, 7, 6),
+        ),
+        anchorBadgeClock: () => DateTime.utc(2026, 5, 7, 6),
+      );
+      expect(
+        find.byKey(const Key('admin_audit_log_integrity_badge_healthy_title')),
+        findsOneWidget,
+      );
+
+      await pumpScreen(tester);
+      expect(
+        find.byKey(const Key('admin_audit_log_integrity_badge_unknown_title')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_asa_audit_log_list')), findsOneWidget);
+    });
+
+    testWidgets('rendered audit tab copy has no em dash', (tester) async {
+      wideViewport(tester);
+      await pumpScreen(
+        tester,
+        anchorsGateway: InMemoryAdminAuditChainAnchorsGateway(
+          clock: () => DateTime.utc(2026, 5, 7, 6),
+        ),
+        anchorBadgeClock: () => DateTime.utc(2026, 5, 7, 6),
+      );
+
+      for (final text in tester.widgetList<Text>(find.byType(Text))) {
+        final data = text.data;
         if (data == null) continue;
         expect(data.contains('—'), isFalse, reason: data);
       }
@@ -1148,39 +502,61 @@ void main() {
   });
 }
 
-/// Test-only gateway: extends the in-memory demo gateway just to count
-/// `reversePiiErasure` invocations so the chip-test can assert that
-/// tapping the "Reverse erasure" affordance actually fires the
-/// existing reversal seam.
-class _RecordingErasureGateway
-    extends InMemoryAuditedSupportActionsAdminGateway {
-  _RecordingErasureGateway({
-    super.auditLogByOperator,
-    super.membersByOperator,
-    super.clock,
-  });
+AuditLogRow _auditRow({
+  required String id,
+  required DateTime occurredAt,
+  required String locationId,
+}) {
+  return AuditLogRow(
+    eventId: id,
+    action: WebAuditLogActions.teamUsersInvite,
+    occurredAt: occurredAt,
+    actorUserId: 'demo-user-diner-owner',
+    actorDisplayName: 'Dana Owner',
+    actorEmail: 'owner@demo-diner.test',
+    actorKind: AuditActorKind.teamMember,
+    operatorId: kDemoDinerOperatorId,
+    targetKind: 'user',
+    targetId: 'demo-user-diner-owner',
+    payload: <String, Object?>{'location_id': locationId},
+    businessDate: DateTime.utc(
+      occurredAt.year,
+      occurredAt.month,
+      occurredAt.day,
+    ),
+  );
+}
 
-  int reverseCallCount = 0;
+class _RecordingAuditGateway extends InMemoryAuditedSupportActionsAdminGateway {
+  _RecordingAuditGateway({
+    required Map<String, List<AuditLogRow>> auditLogByOperator,
+  }) : super(
+         auditLogByOperator: auditLogByOperator,
+         membersByOperator: const <String, List<SupportActionsMember>>{},
+       );
+
+  final List<AuditLogScope?> scopes = <AuditLogScope?>[];
+  int listMembersCalls = 0;
 
   @override
-  Future<UserPiiErasureReverseSummary> reversePiiErasure({
+  Future<AuditLogPage> listAuditLog({
     required String operatorId,
-    required String targetUserId,
-    required String erasureId,
-    required String idempotencyKey,
-    required String actorUserId,
-    required bool actorIsForgeAdmin,
-    String? reversalReason,
+    AuditLogFilters filters = AuditLogFilters.empty,
+    String? cursor,
+    AuditLogScope? scope,
   }) {
-    reverseCallCount += 1;
-    return super.reversePiiErasure(
+    scopes.add(scope);
+    return super.listAuditLog(
       operatorId: operatorId,
-      targetUserId: targetUserId,
-      erasureId: erasureId,
-      idempotencyKey: idempotencyKey,
-      actorUserId: actorUserId,
-      actorIsForgeAdmin: actorIsForgeAdmin,
-      reversalReason: reversalReason,
+      filters: filters,
+      cursor: cursor,
+      scope: scope,
     );
+  }
+
+  @override
+  Future<List<SupportActionsMember>> listMembers({required String operatorId}) {
+    listMembersCalls += 1;
+    throw StateError('audit tab should not load members');
   }
 }

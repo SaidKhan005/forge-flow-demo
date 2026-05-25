@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../operator_web/services/operator_web_csv_download.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../widgets/console/console_screen_body.dart';
@@ -182,6 +183,7 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
                       canResetMfaFactors: canResetMfaFactors,
                       canIssuePairedErasure: canIssuePairedErasure,
                       canExportAuditLog: canExportAuditLog,
+                      onCsvReady: downloadOperatorWebCsv,
                       onChangeOperator: onChangeOperator,
                     ),
                     VendorConnectionsAdminMount(
