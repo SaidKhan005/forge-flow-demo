@@ -157,14 +157,24 @@ Resume notes: `memory/project_phase_pause_2026_05_03.md`,
 | `8.5`, `11W.9` | Outward-vendor freeze |
 | `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze |
 
-**`11A.3.x` graphify-candidates — paused-by-design note (2026-05-07):** the
-graphify candidate review proxy routes (`tool/advisor_proxy/advisor_proxy.dart`
-`graph_candidates_not_configured` / `graph_candidates_unavailable` 503s)
-ship as scaffolding and intentionally 503 without a hand-staged
-`tool/advisor_proxy/graphify_candidates/candidates/` bundle. Confirmed
-operator decision to keep this in the AI-paused set; do **not** build the
-bundle staging automation during the freeze. Resume when `11b` / `11A.3.x`
-unpause; first task on resume is graphify-candidates bundle staging.
+**Advisor-launch carve-out (2026-05-25):** the **Advisor Knowledge
+Activation** plan
+(`docs/phases/advisor_knowledge_activation/advisor_knowledge_activation_plan.md`)
+is the operator-driven ACTIVE work against the Phase 11b advisor portion
+listed above; that portion is no longer frozen. The rest of the AI-freeze
+set (`12.0`–`12.5`, `11A.11`, `10b`, `9.8` advisor portion) stays paused.
+
+**`11A.3.x` graphify-candidates — status update (2026-05-25, supersedes the
+2026-05-07 paused-by-design note):** now governed by the Advisor Knowledge
+Activation plan (Workstream C). The candidate-review gateway is bound in
+the proxy and a candidate bundle is staged under
+`tool/advisor_proxy/graphify_candidates/candidates/`, so the original
+"first task on resume is bundle staging" is DONE (plan C1 = code-complete).
+Remaining before the review surface lights up: confirm the deployed image
+ships the candidate artifacts + `corpus_manifest.yaml` to the runtime
+path; make the candidate-content decision (the staged bundle is
+Barrio-handbook-heavy, vs regenerate F&F-only); and the Connections-tab
+redesign (plan C2). The canonical-graph write path stays op-gated.
 
 ## Prompt Fetch Map
 
@@ -175,6 +185,7 @@ unpause; first task on resume is graphify-candidates bundle staging.
 | `9.8` | `phase_9_8/*` |
 | `*.live.*` | `phase_8_live_rollout/phase_8_live_rollout_plan.md` |
 | `8.5`, `9.5`/`9.75`, `11b*`, `11W.9`, `12.*` | matching `docs/phases/**` doc |
+| Advisor knowledge / chat UI / graph candidates | `advisor_knowledge_activation/advisor_knowledge_activation_plan.md` |
 
 ## North Star
 
