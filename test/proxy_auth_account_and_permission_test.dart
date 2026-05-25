@@ -141,6 +141,86 @@ void main() {
       },
     );
 
+    test(
+      'Plans & Limits 5b follow-up: GET account info serializes the '
+      "operator's own plan + trial when set",
+      () async {
+        await withRealHttp(() async {
+          // Pin the proxy → operator-web wire contract for the
+          // operator's OWN plan + trial. The account read is
+          // self-scoped (operator reads its own `operators` row via the
+          // operator-scoped join), NOT the admin pricing routes. The
+          // operator-web live source maps these onto the session so the
+          // "Your plan" screen lights up on live.
+          final expires = DateTime.utc(2026, 6, 4, 12);
+          final gateway = RecordingAccountInfoGateway(
+            subscriptionTier: 'premium',
+            trialMode: true,
+            trialExpiresAt: expires,
+          );
+          final harness = await RouteHarness.start(
+            accountInfoGateway: gateway,
+          );
+          try {
+            final response = await harness.get(authAccountInfoPath);
+            final body = response.json;
+
+            expect(response.statusCode, equals(200));
+            // Self-scoped to the authenticated operator (not the
+            // ?user_id query param, not an admin gate).
+            expect(
+              gateway.requests.single.actorUserId,
+              equals(proxyAuthUserId),
+            );
+            expect(
+              gateway.requests.single.operatorId,
+              equals(proxyAuthOperatorId),
+            );
+            expect(body['subscription_tier'], equals('premium'));
+            expect(body['trial_mode'], isTrue);
+            expect(
+              body['trial_expires_at'],
+              equals(expires.toIso8601String()),
+            );
+            // Still no scope identifiers leak onto the read.
+            expect(body.containsKey('operator_id'), isFalse);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'Plans & Limits 5b follow-up: GET account info serializes plan + '
+      'trial as null/false when unset',
+      () async {
+        await withRealHttp(() async {
+          // An operator on no trial with an unprojected tier still sees
+          // explicit null / false so the operator-web client parses the
+          // payload and falls back to the honest "could not load your
+          // plan yet" state rather than tripping a malformed_response.
+          final gateway = RecordingAccountInfoGateway();
+          final harness = await RouteHarness.start(
+            accountInfoGateway: gateway,
+          );
+          try {
+            final response = await harness.get(authAccountInfoPath);
+            final body = response.json;
+
+            expect(response.statusCode, equals(200));
+            expect(body.containsKey('subscription_tier'), isTrue);
+            expect(body['subscription_tier'], isNull);
+            expect(body['trial_mode'], isFalse);
+            expect(body.containsKey('trial_expires_at'), isTrue);
+            expect(body['trial_expires_at'], isNull);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('GET account info does not require Team permission', () async {
       await withRealHttp(() async {
         final gateway = RecordingAccountInfoGateway();

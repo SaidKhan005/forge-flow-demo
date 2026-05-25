@@ -116,6 +116,9 @@ class SelfProfileRepositoryRow {
     this.lastLoginAt,
     this.passwordUpdatedAt,
     this.logoUrl,
+    this.subscriptionTier,
+    this.trialMode = false,
+    this.trialExpiresAt,
   });
 
   final String displayName;
@@ -133,6 +136,29 @@ class SelfProfileRepositoryRow {
   /// has not uploaded one. Mirrors the operator-web Account screen's
   /// logo surface and feeds the mobile shell brand-mark.
   final String? logoUrl;
+
+  /// Plans & Limits Phase 5b follow-up — the operator's subscription
+  /// tier, joined from `public.operators.subscription_tier` (one of the
+  /// six operator-approved keys: pilot / starter / premium / elite /
+  /// pro / enterprise). Operator-scoped via the `op.operator_id =
+  /// u.operator_id` join so it reads the authenticated operator's OWN
+  /// row (HP #4 isolation). Null only when the join misses; the live
+  /// operator-web session projects it so the "Your plan" screen renders
+  /// a real plan instead of the honest "could not load" state.
+  final String? subscriptionTier;
+
+  /// Plans & Limits Phase 5b follow-up — whether the operator is on a
+  /// Pilot free preview (`public.operators.trial_mode`, Phase 4a).
+  /// Defaults false so a missing column / old row reads as "not on a
+  /// trial". Drives the "Your plan" free-preview countdown.
+  final bool trialMode;
+
+  /// Plans & Limits Phase 5b follow-up — UTC instant the Pilot free
+  /// preview ends (`public.operators.trial_expires_at`, Phase 4a). Null
+  /// when the operator is not on a trial. The `operators_trial_expiry_
+  /// consistency_check` keeps this non-null exactly when [trialMode] is
+  /// true.
+  final DateTime? trialExpiresAt;
 }
 
 class MfaRecoveryAdminRecipientRow {
@@ -475,7 +501,16 @@ class UsersRepository extends OperatorScopedRepository {
         // identity table (one row per `operator_id`); the join is
         // operator-scoped via u.operator_id so RLS-ready isolation
         // (HP #4) carries through.
-        'op.logo_url '
+        'op.logo_url, '
+        // Plans & Limits Phase 5b follow-up — project the operator's
+        // own plan + trial off the SAME operator-scoped `op` join so the
+        // live operator-web "Your plan" screen lights up. subscription_tier
+        // (Phase 0, CHECK-pinned), trial_mode + trial_expires_at (Phase 4a)
+        // are existing operators columns; this read needs no new schema
+        // and no admin gate — the operator reads its own row.
+        'op.subscription_tier, '
+        'op.trial_mode, '
+        'op.trial_expires_at '
         'from users u '
         'left join public.operators op '
         '  on op.operator_id = u.operator_id '
@@ -499,7 +534,8 @@ class UsersRepository extends OperatorScopedRepository {
         'group by u.user_id, u.display_name, u.first_name, u.last_name, '
         'u.email, u.status, l.name, primary_l.name, pr.display_name, '
         'u.last_active_at, u.last_login_at, u.password_set_at, '
-        'op.logo_url '
+        'op.logo_url, op.subscription_tier, op.trial_mode, '
+        'op.trial_expires_at '
         'limit 1',
         parameters: <String, Object?>{
           'operator_id': operatorId,
@@ -1593,6 +1629,14 @@ class UsersRepository extends OperatorScopedRepository {
     final lastLoginAt = row['last_login_at'];
     final passwordUpdatedAt = row['password_updated_at'];
     final rawLogoUrl = row['logo_url'];
+    // Plans & Limits Phase 5b follow-up — decode the operator's own
+    // plan + trial off the same `op` join. Mirrors the decode shapes in
+    // operators_repository.dart: subscription_tier is a plain String,
+    // trial_mode coalesces to false when absent, trial_expires_at is a
+    // nullable timestamp.
+    final rawSubscriptionTier = row['subscription_tier'];
+    final rawTrialMode = row['trial_mode'];
+    final rawTrialExpiresAt = row['trial_expires_at'];
     return SelfProfileRepositoryRow(
       displayName: displayName,
       email: email,
@@ -1607,6 +1651,14 @@ class UsersRepository extends OperatorScopedRepository {
           : null,
       logoUrl: rawLogoUrl is String && rawLogoUrl.trim().isNotEmpty
           ? rawLogoUrl.trim()
+          : null,
+      subscriptionTier:
+          rawSubscriptionTier is String && rawSubscriptionTier.trim().isNotEmpty
+          ? rawSubscriptionTier.trim()
+          : null,
+      trialMode: (rawTrialMode as bool?) ?? false,
+      trialExpiresAt: rawTrialExpiresAt is DateTime
+          ? rawTrialExpiresAt.toUtc()
           : null,
     );
   }

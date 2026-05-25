@@ -265,7 +265,12 @@ class FixedSnapshotResolver implements ProxyPermissionSnapshotResolver {
 }
 
 class RecordingAccountInfoGateway implements AccountInfoGateway {
-  RecordingAccountInfoGateway({this.logoUrl});
+  RecordingAccountInfoGateway({
+    this.logoUrl,
+    this.subscriptionTier,
+    this.trialMode = false,
+    this.trialExpiresAt,
+  });
 
   /// Wave 2 W-5-mobile-FU-2 — optional brand-mark URL the recording
   /// gateway folds into the `AccountInfo` it returns. Null by default
@@ -273,6 +278,16 @@ class RecordingAccountInfoGateway implements AccountInfoGateway {
   /// tests opt in to a non-null value to pin the proxy → mobile
   /// round-trip of `operators.logo_url`.
   final String? logoUrl;
+
+  /// Plans & Limits Phase 5b follow-up — optional plan + trial the
+  /// recording gateway folds into the `AccountInfo`. Null/false by
+  /// default so existing tests stay byte-identical; the new wire tests
+  /// opt in to pin the proxy → operator-web round-trip of the
+  /// operator's own `subscription_tier` / `trial_mode` /
+  /// `trial_expires_at`.
+  final String? subscriptionTier;
+  final bool trialMode;
+  final DateTime? trialExpiresAt;
 
   final requests = <AccountInfoRequest>[];
 
@@ -290,6 +305,9 @@ class RecordingAccountInfoGateway implements AccountInfoGateway {
       lastActiveAt: DateTime.utc(2026, 4, 28, 12),
       passwordUpdatedAt: DateTime.utc(2026, 4, 20, 9),
       logoUrl: logoUrl,
+      subscriptionTier: subscriptionTier,
+      trialMode: trialMode,
+      trialExpiresAt: trialExpiresAt,
     );
   }
 }
