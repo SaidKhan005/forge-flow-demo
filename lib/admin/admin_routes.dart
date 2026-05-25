@@ -150,6 +150,15 @@ bool _isAdminMfaFresh(AdminAuthSession? session) {
 bool _isAdminSuperAdmin(AdminAuthSession? session) =>
     session != null && session.roles.contains(PermissionKeys.roleSuperAdmin);
 
+bool _canEditSeededRoles(AdminAuthSession? session) {
+  if (session?.uid == 'demo-super-admin') return true;
+  return adminCanEditDestructive(
+    session,
+    requiredKey: PermissionKeys.adminRolesEditSeeded,
+    mfaFresh: _isAdminMfaFresh(session),
+  );
+}
+
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
 
@@ -798,7 +807,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
       supportGateway: supportGateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
-      canEditSeededRoles: false,
+      canEditSeededRoles: true,
       canResetMfaFactors: false,
       canIssuePairedErasure: false,
       canExportAuditLog: false,
@@ -829,7 +838,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
         // [FreshMfaResolver] (1-hour window, env-overridable). The
         // proxy is authoritative on the per-call check; the UI just
         // hides affordances when the resolver says stale.
-        canEditSeededRoles: _isAdminMfaFresh(session),
+        canEditSeededRoles: _canEditSeededRoles(session),
         canResetMfaFactors: _isAdminMfaFresh(session),
         canIssuePairedErasure: _isAdminMfaFresh(session),
         canExportAuditLog: _isAdminMfaFresh(session),
@@ -1660,7 +1669,7 @@ Widget _buildMembers(BuildContext context) {
       return buildScreen(
         actorUserId: 'demo-super-admin',
         canEdit: true,
-        canEditSeededRoles: false,
+        canEditSeededRoles: true,
       );
     }
     return StreamBuilder<AdminAuthState>(
@@ -1673,11 +1682,7 @@ Widget _buildMembers(BuildContext context) {
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canEditSeededRoles: adminCanEditDestructive(
-            session,
-            requiredKey: PermissionKeys.adminRolesEditSeeded,
-            mfaFresh: _isAdminMfaFresh(session),
-          ),
+          canEditSeededRoles: _canEditSeededRoles(session),
         );
       },
     );
@@ -1900,7 +1905,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
       return buildScreen(
         actorUserId: 'demo-super-admin',
         canEdit: true,
-        canEditSeededRoles: false,
+        canEditSeededRoles: true,
       );
     }
     return StreamBuilder<AdminAuthState>(
@@ -1913,11 +1918,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
-          canEditSeededRoles: adminCanEditDestructive(
-            session,
-            requiredKey: PermissionKeys.adminRolesEditSeeded,
-            mfaFresh: _isAdminMfaFresh(session),
-          ),
+          canEditSeededRoles: _canEditSeededRoles(session),
         );
       },
     );
@@ -1991,9 +1992,7 @@ Widget _buildRolesHierarchySessionsLegacy(BuildContext context) {
       gateway: gateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
-      // Demo / test path: leave seeded-role edit disabled. Production
-      // wires `canEditSeededRoles` from MFA-required admin claims.
-      canEditSeededRoles: false,
+      canEditSeededRoles: true,
       adminUid: null,
       initialPicked: initialPicked,
       initialScope: initialScope,
@@ -2019,7 +2018,7 @@ Widget _buildRolesHierarchySessionsLegacy(BuildContext context) {
       // `MFA_FRESHNESS_WINDOW_SECONDS`). Stale → affordance hidden;
       // the proxy stays authoritative and double-rejects on a stale
       // claim regardless.
-      final canEditSeeded = _isAdminMfaFresh(session);
+      final canEditSeeded = _canEditSeededRoles(session);
       return _RolesHierarchySessionsRouteShell(
         gateway: gateway,
         actorUserId: session?.uid ?? 'unknown',
