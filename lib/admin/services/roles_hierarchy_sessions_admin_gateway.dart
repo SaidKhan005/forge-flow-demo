@@ -1286,6 +1286,10 @@ const Map<String, String> kRoleDisplayNamesForAdmin = <String, String>{
   'operator_general_manager': 'General Manager',
   'location_manager': 'Location Manager',
   'supervisor': 'Supervisor',
+  'finance_analyst': 'Finance Analyst',
+  'auditor_compliance': 'Auditor / Compliance',
+  'training_lead': 'Training Lead',
+  'team_admin': 'Team Admin',
 };
 
 String roleAdminDisplayLabel(RoleAdminRow row) {

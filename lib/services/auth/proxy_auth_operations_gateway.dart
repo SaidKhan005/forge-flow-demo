@@ -297,16 +297,13 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   Future<SelfProfilePatched> patchSelfProfile(
     SelfProfilePatchCommand command,
   ) async {
-    final response = await _patch(
-      selfProfilePath,
-      <String, Object?>{
-        // Both `display_name` and `email` are optional on the wire; the
-        // proxy validates at least one is present + the email shape
-        // before calling the gateway.
-        if (command.displayName != null) 'display_name': command.displayName,
-        if (command.email != null) 'email': command.email,
-      },
-    );
+    final response = await _patch(selfProfilePath, <String, Object?>{
+      // Both `display_name` and `email` are optional on the wire; the
+      // proxy validates at least one is present + the email shape
+      // before calling the gateway.
+      if (command.displayName != null) 'display_name': command.displayName,
+      if (command.email != null) 'email': command.email,
+    });
     _expectStatus(response, 200);
     final rawUser = response.body['user'];
     if (rawUser is! Map) {
@@ -326,8 +323,9 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       email: email,
       displayName: displayName,
       emailChanged: emailChangedRaw is bool ? emailChangedRaw : false,
-      displayNameChanged:
-          displayNameChangedRaw is bool ? displayNameChangedRaw : false,
+      displayNameChanged: displayNameChangedRaw is bool
+          ? displayNameChangedRaw
+          : false,
     );
   }
 
@@ -392,6 +390,16 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     return TeamRolePatched(
       role: _roleFromJson(response, response.body['role']),
       bumpedUsers: bumpedUsers,
+    );
+  }
+
+  @override
+  Future<TeamRolePatched> editSeededRolePermissions(
+    TeamSeededRolePermissionsEditCommand command,
+  ) {
+    throw UnsupportedError(
+      'seeded-role permission edits are F&F-admin only and are not '
+      'available through the operator auth gateway',
     );
   }
 
@@ -667,9 +675,7 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     if (rawOrgUnit is! Map) {
       throw _malformed(response, 'org unit rename response was incomplete');
     }
-    return TeamOrgUnitRenamed(
-      orgUnit: _orgUnitFromJson(response, rawOrgUnit),
-    );
+    return TeamOrgUnitRenamed(orgUnit: _orgUnitFromJson(response, rawOrgUnit));
   }
 
   @override
