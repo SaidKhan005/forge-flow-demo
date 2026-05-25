@@ -586,10 +586,7 @@ class _PollingAndPricingAdminScreenState
           if (widget.showPageHeader ||
               !widget.editingEnabled ||
               _actionError != null)
-            Padding(
-              // Pinned header + banners keep operator-web edge insets; the
-              // scrollable body below carries its own OperatorWebScreenBody
-              // padding so it is not double-padded. Header gating unchanged.
+            OperatorWebScreenFrame(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -721,13 +718,14 @@ class _PollingAndPricingAdminScreenState
             ),
           ],
           const SizedBox(height: 16),
-          const PlainEnglishExplainerCard(),
-          const SizedBox(height: 16),
-          TierDefinitionsCard(
-            definitions: _definitions,
-            editingEnabled: _locationMutationEnabled,
-            onEdit: _onEditDefinition,
+          _PollingSetupOverviewPanel(
+            scope: _scope,
+            visibleRows: _filteredAssignments,
+            visibleRequests: _visibleChangeRequests,
+            visibleRollup: _visibleRollup,
           ),
+          const SizedBox(height: 16),
+          const PlainEnglishExplainerCard(),
           const SizedBox(height: 16),
           PerLocationTierAssignmentTable(
             rows: _filteredAssignments,
@@ -747,6 +745,12 @@ class _PollingAndPricingAdminScreenState
             onOperatorNameFilterChanged: (v) =>
                 setState(() => _operatorNameFilter = v),
             onVendorFilterChanged: (v) => setState(() => _vendorFilter = v),
+          ),
+          const SizedBox(height: 16),
+          TierDefinitionsCard(
+            definitions: _definitions,
+            editingEnabled: _locationMutationEnabled,
+            onEdit: _onEditDefinition,
           ),
           const SizedBox(height: 16),
           MarginRollupCard(
@@ -901,6 +905,133 @@ class _ScopedPollingActionCard extends StatelessWidget {
       child: Text(
         'This saves one polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower setting overrides it.',
         style: AppTextStyles.body13(color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
+class _PollingSetupOverviewPanel extends StatelessWidget {
+  const _PollingSetupOverviewPanel({
+    required this.scope,
+    required this.visibleRows,
+    required this.visibleRequests,
+    required this.visibleRollup,
+  });
+
+  final AdminHierarchyScopeIntent? scope;
+  final List<TierAssignmentAdminRow> visibleRows;
+  final List<TierChangeRequest> visibleRequests;
+  final TierMarginRollup visibleRollup;
+
+  @override
+  Widget build(BuildContext context) {
+    final assignedCount = visibleRows
+        .where((row) => row.assignment != null)
+        .length;
+    final pendingRequests = visibleRequests
+        .where((request) => request.status == TierChangeRequestStatus.pending)
+        .length;
+    final margin = visibleRollup.totalMonthlyMarginCents;
+    final marginColor = margin > 0
+        ? AppColors.positive
+        : margin < 0
+        ? AppColors.negative
+        : AppColors.textMuted;
+    final scopeLabel = scope == null ? 'All operators' : scope!.displayLabel;
+
+    return OperatorWebPanel(
+      key: const Key('admin_polling_setup_overview_panel'),
+      title: 'Setup overview',
+      subtitle: scopeLabel,
+      tone: OperatorWebPanelTone.highlight,
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: <Widget>[
+          _OverviewMetric(
+            label: 'Locations shown',
+            value: '${visibleRows.length}',
+            icon: Icons.storefront_outlined,
+            color: AppColors.sunsetDark,
+          ),
+          _OverviewMetric(
+            label: 'Assigned',
+            value: '$assignedCount',
+            icon: Icons.check_circle_outline,
+            color: assignedCount == 0
+                ? AppColors.textMuted
+                : AppColors.positive,
+          ),
+          _OverviewMetric(
+            label: 'Pending requests',
+            value: '$pendingRequests',
+            icon: Icons.inbox_outlined,
+            color: pendingRequests == 0
+                ? AppColors.textMuted
+                : AppColors.warning,
+          ),
+          _OverviewMetric(
+            label: 'Monthly margin',
+            value: formatCents(margin),
+            icon: Icons.trending_up_outlined,
+            color: marginColor,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverviewMetric extends StatelessWidget {
+  const _OverviewMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 152, maxWidth: 232),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: color.withValues(alpha: 0.26), width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

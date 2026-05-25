@@ -141,33 +141,25 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
                 DataCell(
                   Text(
                     entry.tierKey.wire,
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
                   Text(
                     '${entry.assignmentCount}',
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
                   Text(
                     formatCents(entry.totalMonthlyPriceCents),
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
                   Text(
                     formatCents(entry.totalMonthlyVendorCostCents),
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
@@ -191,10 +183,7 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
 
   /// Per-vendor monthly-cost table with each vendor's share of total
   /// cost, or an empty-state line. Extracted from [build] verbatim.
-  static Widget _perVendorBreakdown(
-    TierMarginRollup rollup,
-    int totalCost,
-  ) {
+  static Widget _perVendorBreakdown(TierMarginRollup rollup, int totalCost) {
     if (rollup.perVendor.isEmpty) {
       return Text(
         'No per-vendor cost data yet.',
@@ -229,9 +218,7 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
                 DataCell(
                   Text(
                     formatCents(entry.totalMonthlyVendorCostCents),
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
@@ -239,9 +226,7 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
                     totalCost <= 0
                         ? '-'
                         : '${(entry.totalMonthlyVendorCostCents * 100 / totalCost).toStringAsFixed(1)}%',
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
               ],
