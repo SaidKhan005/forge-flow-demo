@@ -25,15 +25,27 @@ class OperatorWebScreenBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      key: scrollKey,
-      padding: padding,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxContentWidth),
-          child: child,
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final resolvedPadding = padding.resolve(Directionality.of(context));
+        final availableWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth -
+                  resolvedPadding.left -
+                  resolvedPadding.right
+            : maxContentWidth;
+        final boundedWidth =
+            availableWidth.isFinite && availableWidth < maxContentWidth
+            ? availableWidth.clamp(0.0, maxContentWidth)
+            : maxContentWidth;
+        return SingleChildScrollView(
+          key: scrollKey,
+          padding: padding,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(width: boundedWidth, child: child),
+          ),
+        );
+      },
     );
   }
 }
