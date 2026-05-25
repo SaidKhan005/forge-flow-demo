@@ -1076,35 +1076,24 @@ Widget _buildCorpus(BuildContext context) {
 Widget _buildIntegrations(BuildContext context) {
   final gateway = AdminConsoleServicesScope.integrationGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  return _buildScopedAdminWorkspace(
-    context: context,
-    routeId: kAdminIntegrationsRouteId,
-    functionTitle: 'Connected services',
-    description:
-        'Review platform services and vendor API reachability for the selected hierarchy scope.',
-    functionBuilder: (context, selectedScope, selection) {
-      Widget buildScreen({required bool canEdit}) {
-        return IntegrationAdminScreen(
-          key: ValueKey<String>('integrations-${selectedScope.cacheKey}'),
-          gateway: gateway,
-          editingEnabled: canEdit,
-          hierarchyScope: selectedScope,
-          scopeLocationIds: selection.locationIds,
-        );
-      }
+  Widget buildScreen({required bool canEdit}) {
+    return IntegrationAdminScreen(
+      key: const ValueKey<String>('integrations-platform'),
+      gateway: gateway,
+      editingEnabled: canEdit,
+    );
+  }
 
-      if (source == null) {
-        return buildScreen(canEdit: true);
-      }
-      return StreamBuilder<AdminAuthState>(
-        stream: source.stream,
-        initialData: source.current,
-        builder: (context, snapshot) {
-          final session = adminSessionOf(snapshot.data);
-          final canEdit = _isAdminSuperAdmin(session);
-          return buildScreen(canEdit: canEdit);
-        },
-      );
+  if (source == null) {
+    return buildScreen(canEdit: true);
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final session = adminSessionOf(snapshot.data);
+      final canEdit = _isAdminSuperAdmin(session);
+      return buildScreen(canEdit: canEdit);
     },
   );
 }

@@ -165,12 +165,6 @@ void main() {
           IntegrationAdminScreen(
             gateway: InMemoryIntegrationAdminGateway(),
             editingEnabled: false,
-            hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
-              operatorId: 'op-1',
-              orgUnitId: 'ou-1',
-              operatorName: 'Demo Diner Co.',
-              orgUnitName: 'Downtown',
-            ),
           ),
         ),
       );
@@ -192,7 +186,7 @@ void main() {
       );
       expect(
         find.byKey(const Key('admin_integrations_scope_note')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.text('Where this applies'), findsNothing);
       expect(
