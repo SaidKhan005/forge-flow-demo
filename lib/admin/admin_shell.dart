@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/scope_icons.dart';
+import '../widgets/console/console_surface.dart';
 import 'admin_button_styles.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
@@ -825,40 +826,11 @@ class _AdminSideNav extends StatelessWidget {
   }) {
     return showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => OperatorWebDialog(
         key: const Key('admin_pick_business_first_dialog'),
-        backgroundColor: AppColors.backgroundSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        title: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.sunset.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                scopeIcon(kind: ScopeEntityKind.business),
-                size: 19,
-                color: AppColors.sunsetDark,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Pick a business first',
-                style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          '$routeTitle needs a business account before it can open. '
-          'Go to Business accounts and pick the business you want to work on.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
+        title: 'Pick a business first',
+        icon: Icons.apartment_outlined,
+        maxWidth: 400,
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
@@ -874,6 +846,11 @@ class _AdminSideNav extends StatelessWidget {
             label: const Text('Open Business accounts'),
           ),
         ],
+        child: Text(
+          '$routeTitle needs a business account before it can open. '
+          'Go to Business accounts and pick the business you want to work on.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
       ),
     );
   }
