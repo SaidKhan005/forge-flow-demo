@@ -1,19 +1,25 @@
-// Phase 11A.6 — Observability admin screen widget tests.
+// Phase 11A.6 — AI Metrics (observability) admin screen widget tests.
 //
-// Drives `ObservabilityAdminScreen` against an
-// `InMemoryObservabilityAdminGateway` so the click path runs end-to-
-// end without a backend or real proxy. Coverage:
+// Drives the redesigned `ObservabilityAdminScreen` (four plain-English
+// tabs: Money / Customers / Reliability / Knowledge) against an
+// `InMemoryObservabilityAdminGateway` so the click path runs end-to-end
+// without a backend or real proxy. Coverage:
 //
 //   * Initial render is manual-only and does not fetch.
-//   * Confirmed manual fetch shows all seven tabs and the as-of strip.
-//   * Cost telemetry rows render across the full axis tuple
-//     (operator / location / staff / workflow / usage_class /
-//     query_class) so phase_11A lines 356-359 are exercised.
-//   * Operator dormancy flags 30+ days silent.
-//   * Underwater margin row surfaces the negative chip.
-//   * Cap event stream renders the rows.
-//   * Graph observability renders approved / inferred / rejected /
-//     isolated counts plus projection age and traversal p95.
+//   * Confirmed manual fetch shows the four tabs, hero cards, and the
+//     as-of strip.
+//   * Scope AND month (current / previous) pass through to the gateway
+//     request; switching month re-fetches with the new bucket.
+//   * Each tab renders its key panels:
+//       - Money: cost donut, saved-answer reuse, cost controls.
+//       - Customers: top spenders + needs-attention (losing money /
+//         limit hits / inactive).
+//       - Reliability: speed, background jobs, hosting, live sync.
+//       - Knowledge: graph counts + freshness.
+//   * "Losing money" renders an honest "Not available yet" empty state
+//     when no margin (pricing) rows are present — never $0.
+//   * Cloud Run unknown instance count renders "unknown", not 0.
+//   * "View account" drill-down dispatches an operators route intent.
 //   * Manual refresh re-fetches the envelope (no auto-poll).
 //   * Stacked in-flight refresh requests do not double-fire.
 
@@ -23,6 +29,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
+import 'package:forge_and_flow/admin/admin_routes.dart'
+    show kAdminOperatorsRouteId;
 import 'package:forge_and_flow/admin/models/observability_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/observability_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/observability_admin_gateway.dart';
@@ -37,7 +45,17 @@ void main() {
     home: child,
   );
 
-  /// Same large-viewport setup as the health screen test — six tabs +
+  /// A route-handoff host so the "View account" drill-down has a handoff
+  /// to dispatch into. Captures the intents the screen emits.
+  Widget wrapWithHandoff(Widget child, List<AdminRouteIntent> captured) => wrap(
+    AdminRouteHandoff(
+      selectedRouteId: 'observability',
+      onSelectRoute: captured.add,
+      child: child,
+    ),
+  );
+
+  /// Same large-viewport setup as the health screen test — four tabs +
   /// scrollable section cards do not fit the default 800x600 viewport.
   void setLargeViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1440, 1024);
@@ -82,7 +100,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Check AI Metrics'), findsOneWidget);
-    expect(find.textContaining('system metrics'), findsNothing);
     expect(find.byKey(const Key('admin_observability_tabs')), findsNothing);
   });
 
@@ -124,11 +141,12 @@ void main() {
       gateway.requests.single.locationIds,
       equals(<String>{'loc-a', 'loc-b'}),
     );
+    // Month defaults to the current calendar-month bucket.
+    expect(gateway.requests.single.month, equals(ObservabilityMonth.current));
   });
 
-  testWidgets('confirmed manual fetch renders seven tabs + as-of strip', (
-    tester,
-  ) async {
+  testWidgets('confirmed manual fetch renders four tabs, hero cards, as-of '
+      'strip', (tester) async {
     setLargeViewport(tester);
     final gateway = InMemoryObservabilityAdminGateway(
       envelope: kObservabilityAdminDemoEnvelope,
@@ -145,52 +163,103 @@ void main() {
 
     expect(find.byKey(const Key('admin_observability_screen')), findsOneWidget);
     expect(find.byKey(const Key('admin_observability_tabs')), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_observability_tab_cost')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_tab_top')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_tab_operators')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_tab_cap_events')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_tab_graph')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_tab_projection_retries')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_tab_cloud_run')),
-      findsOneWidget,
-    );
+    for (final suffix in const <String>[
+      'money',
+      'customers',
+      'reliability',
+      'knowledge',
+    ]) {
+      expect(
+        find.byKey(Key('admin_observability_tab_$suffix')),
+        findsOneWidget,
+        reason: 'expected the $suffix tab',
+      );
+    }
+    // Four hero summary cards.
+    for (final hero in const <String>[
+      'spend',
+      'customers',
+      'speed',
+      'knowledge',
+    ]) {
+      expect(
+        find.byKey(Key('admin_observability_hero_$hero')),
+        findsOneWidget,
+        reason: 'expected the $hero hero card',
+      );
+    }
     expect(
       find.byKey(const Key('admin_observability_as_of_strip')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('admin_observability_metrics_key')),
-      findsOneWidget,
-    );
-    expect(find.text('Metrics key'), findsOneWidget);
-    expect(find.textContaining('Losing money'), findsWidgets);
-    expect(find.text('Limit events'), findsWidgets);
-    expect(find.textContaining('reached a usage limit'), findsOneWidget);
-    expect(find.textContaining('Retry dead letters'), findsOneWidget);
   });
 
-  testWidgets('cost telemetry rows render across the full axis tuple', (
+  testWidgets('switching to Last month re-fetches with the previous bucket', (
     tester,
   ) async {
+    setLargeViewport(tester);
+    final gateway = _RecordingObservabilityGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+
+    expect(gateway.requests.length, equals(1));
+    expect(gateway.requests.last.month, equals(ObservabilityMonth.current));
+
+    // Switching month re-fetches without a second confirm dialog.
+    await tester.tap(
+      find.byKey(const Key('admin_observability_month_previous')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_observability_confirm_dialog')),
+      findsNothing,
+    );
+    expect(gateway.requests.length, equals(2));
+    expect(gateway.requests.last.month, equals(ObservabilityMonth.previous));
+  });
+
+  testWidgets('month selector does NOT fetch before the first confirmed run', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = _RecordingObservabilityGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // No envelope loaded yet — picking a month must not trigger a fetch
+    // (manual-run gate still applies).
+    await tester.tap(
+      find.byKey(const Key('admin_observability_month_previous')),
+    );
+    await tester.pumpAndSettle();
+    expect(gateway.requests, isEmpty);
+
+    // The first confirmed run then uses the stored previous bucket.
+    await runCheck(tester);
+    expect(gateway.requests.single.month, equals(ObservabilityMonth.previous));
+  });
+
+  testWidgets('Money tab renders the cost donut, reuse bars, and cost '
+      'controls', (tester) async {
     setLargeViewport(tester);
     final gateway = InMemoryObservabilityAdminGateway(
       envelope: kObservabilityAdminDemoEnvelope,
@@ -204,66 +273,30 @@ void main() {
       ),
     );
     await runCheck(tester);
-
-    // Cost tab is selected by default; backend request group IDs stay
-    // inside the advanced disclosure.
+    // Money is the default tab.
     expect(
-      find.byKey(const Key('admin_observability_request_group_advanced')),
+      find.byKey(const Key('admin_observability_section_cost_telemetry')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('admin_observability_request_group_key')),
-      findsNothing,
-    );
-    await tester.tap(
-      find.byKey(const Key('admin_observability_request_group_advanced')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('admin_observability_request_group_key')),
+      find.byKey(const Key('admin_observability_cost_donut')),
       findsOneWidget,
     );
-    expect(find.text('Advisor answers'), findsWidgets);
-    // Per-(operator, location, query_class) row.
+    // Cost summed by query_class -> a legend row per use case.
     expect(
-      find.byKey(
-        const Key(
-          'admin_observability_cost_row_'
-          '00000000-0000-4000-8000-000000000001_'
-          '00000000-0000-4000-8000-0000000000a1_none_none_advisor_qa',
-        ),
-      ),
+      find.byKey(const Key('admin_observability_cost_legend_advisor_qa')),
       findsOneWidget,
     );
-    // Per-(operator, location, staff, query_class) row exercises the
-    // staff axis from phase_11A line 356.
     expect(
-      find.byKey(
-        const Key(
-          'admin_observability_cost_row_'
-          '00000000-0000-4000-8000-000000000001_'
-          '00000000-0000-4000-8000-0000000000a1_'
-          '00000000-0000-4000-8000-0000000000s1_none_coach_qa',
-        ),
-      ),
+      find.byKey(const Key('admin_observability_section_cache_hit_rates')),
       findsOneWidget,
     );
-    // Per-(operator, location, workflow, query_class) row exercises
-    // the workflow axis from phase_11A line 357.
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_cost_row_'
-          '00000000-0000-4000-8000-000000000001_'
-          '00000000-0000-4000-8000-0000000000a1_none_'
-          '00000000-0000-4000-8000-0000000000w1_wf_pl',
-        ),
-      ),
-      findsOneWidget,
-    );
-    // Per-query_class cache hit rate / model mix / batch share render.
     expect(
       find.byKey(const Key('admin_observability_cache_hit_rate_advisor_qa')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_section_cost_controls')),
       findsOneWidget,
     );
     expect(
@@ -274,9 +307,15 @@ void main() {
       find.byKey(const Key('admin_observability_batch_mode_share_wf_pl')),
       findsOneWidget,
     );
+    // Coaching help routes 45% to the detailed model (ceiling 40%) ->
+    // over-target tag.
+    expect(
+      find.byKey(const Key('admin_observability_model_mix_over_coach_qa')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('column labels expose plain-language tooltip help across tabs', (
+  testWidgets('Customers tab renders top spenders and needs-attention rows', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -292,81 +331,63 @@ void main() {
       ),
     );
     await runCheck(tester);
-
-    expect(
-      find.byTooltip(
-        'Operator, location, staff, and workflow scope for this cost row.',
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.byKey(const Key('admin_observability_tab_top')));
-    await tester.pumpAndSettle();
-    expect(
-      find.byTooltip(
-        'Whether this row is an operator, staff member, or workflow.',
-      ),
-      findsWidgets,
-    );
-
     await tester.tap(
-      find.byKey(const Key('admin_observability_tab_operators')),
+      find.byKey(const Key('admin_observability_tab_customers')),
     );
     await tester.pumpAndSettle();
+
     expect(
-      find.byTooltip(
-        'Whether the operator has been active recently or needs follow-up.',
+      find.byKey(const Key('admin_observability_section_top_spenders')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_section_needs_attention')),
+      findsOneWidget,
+    );
+    // Default 7d window: Demo Diner Co. is the top spender.
+    expect(
+      find.byKey(
+        const Key(
+          'admin_observability_spender_7d_operator_Demo Diner Co.',
+        ),
+      ),
+      findsOneWidget,
+    );
+    // Sunset Cafe Group is underwater (revenue $0 - cost $0.42) and
+    // inactive (32 days silent) -> attention rows.
+    expect(
+      find.byKey(
+        const Key(
+          'admin_observability_attention_losing_'
+          '00000000-0000-4000-8000-000000000002',
+        ),
       ),
       findsOneWidget,
     );
     expect(
-      find.byTooltip('Plan revenue minus estimated AI cost for this window.'),
-      findsOneWidget,
-    );
-
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_cap_events')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byTooltip('Operator, use case, and time that hit a usage limit.'),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.byKey(const Key('admin_observability_tab_graph')));
-    await tester.pumpAndSettle();
-    expect(
-      find.byTooltip(
-        'Knowledge items that are not connected to a confirmed relationship yet.',
+      find.byKey(
+        const Key(
+          'admin_observability_attention_inactive_'
+          '00000000-0000-4000-8000-000000000002',
+        ),
       ),
       findsOneWidget,
     );
-
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_projection_retries')),
-    );
-    await tester.pumpAndSettle();
+    // Demo Diner Co. hit a limit -> limit-hit attention row.
     expect(
-      find.byTooltip(
-        'Jobs that reached the retry limit or were recorded as non-replayable failures.',
+      find.byKey(
+        const Key(
+          'admin_observability_attention_limit_'
+          '00000000-0000-4000-8000-000000000001',
+        ),
       ),
       findsOneWidget,
     );
-
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_cloud_run')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byTooltip(
-        'Readable service area being measured. Route paths are in advanced details.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.byTooltip('Current active hosting instances.'), findsOneWidget);
   });
 
-  testWidgets('operator dormancy flags 30+ days silent', (tester) async {
+  testWidgets('top spenders window selector switches between 1d / 7d / 30d', (
+    tester,
+  ) async {
     setLargeViewport(tester);
     final gateway = InMemoryObservabilityAdminGateway(
       envelope: kObservabilityAdminDemoEnvelope,
@@ -381,57 +402,176 @@ void main() {
     );
     await runCheck(tester);
     await tester.tap(
-      find.byKey(const Key('admin_observability_tab_operators')),
+      find.byKey(const Key('admin_observability_tab_customers')),
     );
     await tester.pumpAndSettle();
 
-    // Demo Diner Co. is active (not dormant).
+    // Switch to 30d; a 30d-only staff spender row appears.
+    await tester.tap(find.byKey(const Key('admin_observability_window_30d')));
+    await tester.pumpAndSettle();
     expect(
       find.byKey(
         const Key(
-          'admin_observability_dormancy_row_'
-          '00000000-0000-4000-8000-000000000001',
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_dormancy_flag_'
-          '00000000-0000-4000-8000-000000000001',
-        ),
-      ),
-      findsNothing,
-    );
-    // Sunset Cafe Group last_active_at = 2026-04-01; as_of =
-    // 2026-05-03 -> 32 days silent -> inactive chip rendered.
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_dormancy_flag_'
-          '00000000-0000-4000-8000-000000000002',
+          'admin_observability_spender_30d_staff_Owner @ Demo Diner Co.',
         ),
       ),
       findsOneWidget,
     );
   });
 
-  testWidgets('null last_active_at renders as never-active dormant '
-      '(no silent collapse to as_of)', (tester) async {
+  testWidgets('Losing money shows an honest "Not available yet" empty state '
+      'when no pricing rows are present (no phantom \$0)', (tester) async {
     setLargeViewport(tester);
-    // Build an envelope where one operator has a missing
-    // last_active_at — the parser must NOT default it to as_of, and
-    // the dormancy flag must trip because never-active is the
-    // strongest skip-precompute signal.
+    // Margins is the pricing-backed surface. With it empty the section
+    // must NOT render $0 rows; it renders the honest unavailable note.
     final envelope = <String, Object?>{
       ...kObservabilityAdminDemoEnvelope,
-      'dormancy': <Map<String, Object?>>[
+      'margins': const <Map<String, Object?>>[],
+    };
+    final gateway = InMemoryObservabilityAdminGateway(envelope: envelope);
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_customers')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_observability_losing_money_unavailable')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Not available yet'), findsOneWidget);
+    // No underwater row was synthesized.
+    expect(
+      find.byKey(
+        const Key(
+          'admin_observability_attention_losing_'
+          '00000000-0000-4000-8000-000000000002',
+        ),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('View account drill-down dispatches an operators route intent', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final captured = <AdminRouteIntent>[];
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrapWithHandoff(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+        captured,
+      ),
+    );
+    await runCheck(tester);
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_customers')),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap the "View account" link on the inactive Sunset Cafe Group row.
+    final link = find.byKey(
+      const Key(
+        'admin_observability_attention_view_inactive_'
+        '00000000-0000-4000-8000-000000000002',
+      ),
+    );
+    await tester.ensureVisible(link);
+    await tester.pumpAndSettle();
+    await tester.tap(link);
+    await tester.pump();
+
+    expect(captured, isNotEmpty);
+    final intent = captured.last;
+    expect(intent.routeId, equals(kAdminOperatorsRouteId));
+    expect(
+      intent.operatorLocationScope?.operatorId,
+      equals('00000000-0000-4000-8000-000000000002'),
+    );
+  });
+
+  testWidgets('Reliability tab renders speed, background jobs, and hosting', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_reliability')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_observability_section_speed')),
+      findsOneWidget,
+    );
+    // Per-route latency lives in System health -> a link-out hint, not
+    // invented numbers.
+    expect(
+      find.byKey(const Key('admin_observability_speed_health_link')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_section_background_jobs')),
+      findsOneWidget,
+    );
+    // Demo seed has 1 dead-lettered job -> "stuck" stat + hint.
+    expect(
+      find.byKey(const Key('admin_observability_jobs_dead_lettered')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_jobs_stuck_hint')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_section_cloud_run_instances')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_cloud_run_advisor-proxy')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Cloud Run unknown instance count renders "unknown", not 0', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    // A service reporting instance_count 0 is "unknown", never a hard 0.
+    final envelope = <String, Object?>{
+      ...kObservabilityAdminDemoEnvelope,
+      'cloud_run': <Map<String, Object?>>[
         <String, Object?>{
-          'operator_id': '00000000-0000-4000-8000-000000000099',
-          'business_name': 'Never-Active Cafe',
-          'subscription_tier': 'pilot',
-          // last_active_at intentionally absent.
+          'service_name': 'advisor-proxy',
+          'instance_count': 0,
+          'revision_id': 'advisor-proxy-00037-n1k',
+          'min_instances': 1,
+          'max_instances': 8,
         },
       ],
     };
@@ -446,147 +586,20 @@ void main() {
     );
     await runCheck(tester);
     await tester.tap(
-      find.byKey(const Key('admin_observability_tab_operators')),
+      find.byKey(const Key('admin_observability_tab_reliability')),
     );
     await tester.pumpAndSettle();
 
     expect(
       find.byKey(
-        const Key(
-          'admin_observability_dormancy_flag_'
-          '00000000-0000-4000-8000-000000000099',
-        ),
+        const Key('admin_observability_cloud_run_unknown_advisor-proxy'),
       ),
       findsOneWidget,
     );
-    expect(find.text('never active - inactive'), findsOneWidget);
+    expect(find.textContaining('unknown'), findsWidgets);
   });
 
-  testWidgets('cost telemetry truncation hint surfaces when capped', (
-    tester,
-  ) async {
-    setLargeViewport(tester);
-    // Seed > kObservabilityCostTelemetryLimit rows so the in-memory
-    // gateway clamps and the truncated meta flag is true.
-    final overflowRows = <Map<String, Object?>>[
-      for (var i = 0; i < kObservabilityCostTelemetryLimit + 5; i++)
-        <String, Object?>{
-          'operator_id':
-              '00000000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
-          'location_id': null,
-          'staff_id': null,
-          'workflow_id': null,
-          'usage_class': 'advisor_qa',
-          'query_class': 'advisor_qa',
-          'total_usd': 0.10 + i * 0.01,
-          'request_count': 10 + i,
-        },
-    ];
-    final envelope = <String, Object?>{
-      ...kObservabilityAdminDemoEnvelope,
-      'cost_telemetry': overflowRows,
-    };
-    final gateway = InMemoryObservabilityAdminGateway(envelope: envelope);
-    await tester.pumpWidget(
-      wrap(
-        ObservabilityAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-    await runCheck(tester);
-
-    expect(
-      find.byKey(const Key('admin_observability_cost_truncated')),
-      findsOneWidget,
-    );
-    await tester.tap(
-      find.byKey(const Key('admin_observability_request_group_advanced')),
-    );
-    await tester.pumpAndSettle();
-    // Filter chip and Apply button are present.
-    expect(
-      find.byKey(const Key('admin_observability_cost_query_class_filter')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key('admin_observability_cost_query_class_filter_apply'),
-      ),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('applying a query_class filter narrows the cost table and '
-      'echoes the active filter chip', (tester) async {
-    setLargeViewport(tester);
-    final gateway = InMemoryObservabilityAdminGateway(
-      envelope: kObservabilityAdminDemoEnvelope,
-    );
-    await tester.pumpWidget(
-      wrap(
-        ObservabilityAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-    await runCheck(tester);
-
-    // Default state: no active filter chip.
-    expect(
-      find.byKey(const Key('admin_observability_cost_query_class_filter_chip')),
-      findsNothing,
-    );
-    await tester.tap(
-      find.byKey(const Key('admin_observability_request_group_advanced')),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.enterText(
-      find.byKey(const Key('admin_observability_cost_query_class_filter')),
-      'wf_pl',
-    );
-    await tester.tap(
-      find.byKey(
-        const Key('admin_observability_cost_query_class_filter_apply'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    // Active filter chip echoes the current scope.
-    expect(
-      find.byKey(const Key('admin_observability_cost_query_class_filter_chip')),
-      findsOneWidget,
-    );
-    // After filtering to wf_pl, only the workflow row from the
-    // demo seed remains in the cost table.
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_cost_row_'
-          '00000000-0000-4000-8000-000000000001_'
-          '00000000-0000-4000-8000-0000000000a1_none_'
-          '00000000-0000-4000-8000-0000000000w1_wf_pl',
-        ),
-      ),
-      findsOneWidget,
-    );
-    // The advisor_qa rows are gone after filtering.
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_cost_row_'
-          '00000000-0000-4000-8000-000000000001_'
-          '00000000-0000-4000-8000-0000000000a1_none_none_advisor_qa',
-        ),
-      ),
-      findsNothing,
-    );
-  });
-
-  testWidgets('underwater margin row surfaces the negative chip', (
+  testWidgets('Knowledge tab renders graph counts and freshness', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -603,113 +616,28 @@ void main() {
     );
     await runCheck(tester);
     await tester.tap(
-      find.byKey(const Key('admin_observability_tab_operators')),
-    );
-    await tester.pumpAndSettle();
-
-    // Demo Diner Co. revenue \$199 - cost \$29.51 = +\$169.49 → not
-    // underwater.
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_margin_underwater_'
-          '00000000-0000-4000-8000-000000000001',
-        ),
-      ),
-      findsNothing,
-    );
-    // Sunset Cafe Group revenue \$0 - cost \$0.42 → underwater.
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_margin_underwater_'
-          '00000000-0000-4000-8000-000000000002',
-        ),
-      ),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('cap event stream renders rows on the cap events tab', (
-    tester,
-  ) async {
-    setLargeViewport(tester);
-    final gateway = InMemoryObservabilityAdminGateway(
-      envelope: kObservabilityAdminDemoEnvelope,
-    );
-    await tester.pumpWidget(
-      wrap(
-        ObservabilityAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-    await runCheck(tester);
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_cap_events')),
+      find.byKey(const Key('admin_observability_tab_knowledge')),
     );
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(
-        const Key(
-          'admin_observability_cap_event_'
-          '00000000-0000-4000-8000-0000000000e1',
-        ),
-      ),
+      find.byKey(const Key('admin_observability_section_graph_counts')),
       findsOneWidget,
     );
+    for (final stat in const <String>[
+      'graph_approved_nodes',
+      'graph_approved_edges',
+      'graph_inferred_approved',
+      'graph_isolated_nodes',
+    ]) {
+      expect(
+        find.byKey(Key('admin_observability_$stat')),
+        findsOneWidget,
+        reason: 'expected the $stat knowledge stat',
+      );
+    }
     expect(
-      find.byKey(
-        const Key(
-          'admin_observability_cap_event_'
-          '00000000-0000-4000-8000-0000000000e2',
-        ),
-      ),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('graph observability renders all phase_11A counts', (
-    tester,
-  ) async {
-    setLargeViewport(tester);
-    final gateway = InMemoryObservabilityAdminGateway(
-      envelope: kObservabilityAdminDemoEnvelope,
-    );
-    await tester.pumpWidget(
-      wrap(
-        ObservabilityAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-    await runCheck(tester);
-    await tester.tap(find.byKey(const Key('admin_observability_tab_graph')));
-    await tester.pumpAndSettle();
-
-    // Phase_11A lines 351-353 require approved/inferred-approved/
-    // rejected/isolated counts + projection age + traversal p95.
-    expect(
-      find.byKey(const Key('admin_observability_graph_approved_nodes')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_graph_approved_edges')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_graph_inferred_approved')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_graph_rejected')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_graph_isolated_nodes')),
+      find.byKey(const Key('admin_observability_section_graph_freshness')),
       findsOneWidget,
     );
     expect(
@@ -718,146 +646,6 @@ void main() {
     );
     expect(
       find.byKey(const Key('admin_observability_graph_traversal_p95')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('projection retry status and dead letters render', (
-    tester,
-  ) async {
-    setLargeViewport(tester);
-    final gateway = InMemoryObservabilityAdminGateway(
-      envelope: kObservabilityAdminDemoEnvelope,
-    );
-    await tester.pumpWidget(
-      wrap(
-        ObservabilityAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-    await runCheck(tester);
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_projection_retries')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const Key('admin_observability_projection_retry_pending')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key('admin_observability_projection_retry_dead_lettered'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_projection_retry_active_active-retry-0001',
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key(
-          'admin_observability_projection_retry_dead_letter_dead-retry-0001',
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Pending'), findsOneWidget);
-    expect(find.text('Waiting'), findsWidgets);
-    expect(find.text('Dead-lettered'), findsWidgets);
-    expect(find.textContaining('service period missing'), findsOneWidget);
-    expect(find.textContaining('0 closed / 1 open'), findsOneWidget);
-    expect(find.textContaining('Before projector input'), findsOneWidget);
-  });
-
-  testWidgets('cloud run + route latency render on the cloud run tab', (
-    tester,
-  ) async {
-    setLargeViewport(tester);
-    final gateway = InMemoryObservabilityAdminGateway(
-      envelope: kObservabilityAdminDemoEnvelope,
-    );
-    await tester.pumpWidget(
-      wrap(
-        ObservabilityAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-    await runCheck(tester);
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_cloud_run')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(
-        const Key('admin_observability_route_latency__v1_advisor_answer'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_cloud_run_advisor-proxy')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_cloud_run_admin-proxy')),
-      findsOneWidget,
-    );
-    expect(find.text('/v1/advisor/answer'), findsNothing);
-    expect(find.text('advisor-proxy-00037-n1k'), findsNothing);
-
-    await tester.tap(
-      find.byKey(const Key('admin_observability_route_latency_advanced')),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('/v1/advisor/answer'), findsOneWidget);
-
-    final hostingAdvanced = find.byKey(
-      const Key('admin_observability_hosting_advanced'),
-    );
-    await tester.ensureVisible(hostingAdvanced);
-    await tester.pumpAndSettle();
-    await tester.tap(hostingAdvanced);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('advisor-proxy-00037-n1k'), findsOneWidget);
-  });
-
-  testWidgets('top-N renders 1d / 7d / 30d sections', (tester) async {
-    setLargeViewport(tester);
-    final gateway = InMemoryObservabilityAdminGateway(
-      envelope: kObservabilityAdminDemoEnvelope,
-    );
-    await tester.pumpWidget(
-      wrap(
-        ObservabilityAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-    await runCheck(tester);
-    await tester.tap(find.byKey(const Key('admin_observability_tab_top')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const Key('admin_observability_section_top_1d')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_section_top_7d')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_observability_section_top_30d')),
       findsOneWidget,
     );
   });
@@ -877,35 +665,22 @@ void main() {
     );
     await runCheck(tester);
 
-    // Default demo envelope has 2 cap events.
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_cap_events')),
-    );
-    await tester.pumpAndSettle();
+    // Default demo envelope has cache-hit rows -> reuse bars present.
     expect(
-      find.byKey(
-        const Key(
-          'admin_observability_cap_event_'
-          '00000000-0000-4000-8000-0000000000e1',
-        ),
-      ),
+      find.byKey(const Key('admin_observability_cache_hit_rate_advisor_qa')),
       findsOneWidget,
     );
 
-    // Re-seed with an envelope that has zero cap events; manual
+    // Re-seed with an envelope that has zero cache-hit rows; manual
     // refresh should consume the new envelope.
     final reseeded = <String, Object?>{
       ...kObservabilityAdminDemoEnvelope,
-      'cap_events': const <Map<String, Object?>>[],
+      'cache_hit_rates': const <Map<String, Object?>>[],
     };
     gateway.setEnvelope(reseeded);
     await runCheck(tester);
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_cap_events')),
-    );
-    await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('admin_observability_cap_events_empty')),
+      find.byKey(const Key('admin_observability_cache_hit_rates_empty')),
       findsOneWidget,
     );
   });
@@ -936,8 +711,7 @@ void main() {
     expect(
       gateway.fetchCount,
       equals(1),
-      reason:
-          'manual observability calls must not stack while one is in flight',
+      reason: 'manual observability calls must not stack while one is in flight',
     );
     await tester.pump(const Duration(milliseconds: 55));
     expect(gateway.fetchCount, equals(1));
@@ -949,84 +723,116 @@ void main() {
     await tester.pump();
   });
 
-  // ─── Phase 10a.4 — Realtime bridge tripwires section ───────────────
-  testWidgets(
-    'tripwire section renders one row per Q22 metric and the worst-wins pill',
-    (tester) async {
-      setLargeViewport(tester);
-      final observability = InMemoryObservabilityAdminGateway(
-        envelope: kObservabilityAdminDemoEnvelope,
-      );
-      // Seeded: bridge_lag yellow (90s), undelivered green (5),
-      // publish error red (10%), notify queue green (5%). Worst-wins
-      // → red header pill.
-      final tripwires = InMemoryRealtimeTripwireAdminGateway(
-        snapshot: RealtimeTripwireSnapshot.fromJson(<String, Object?>{
-          'status': 'red',
-          'metrics': <String, Object?>{
-            'event_outbox_bridge_lag_seconds': <String, Object?>{
-              'value': 90,
-              'status': 'yellow',
-              'thresholds': <String, Object?>{'yellow': 60, 'red': 300},
-            },
-            'event_outbox_undelivered_count': <String, Object?>{
-              'value': 5,
-              'status': 'green',
-              'thresholds': <String, Object?>{'yellow': 10000, 'red': 100000},
-            },
-            'event_outbox_publish_error_rate': <String, Object?>{
-              'value': 0.10,
-              'status': 'red',
-              'thresholds': <String, Object?>{'yellow': 0.01, 'red': 0.05},
-            },
-            'pg_notification_queue_usage': <String, Object?>{
-              'value': 0.05,
-              'status': 'green',
-              'thresholds': <String, Object?>{'yellow': 0.10, 'red': 0.25},
-            },
+  // ─── Phase 10a.4 — live sync (Realtime bridge tripwires) ───────────
+  testWidgets('live sync section renders one row per Q22 metric and the '
+      'worst-wins pill', (tester) async {
+    setLargeViewport(tester);
+    final observability = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    // Seeded: bridge_lag yellow (90s), undelivered green (5), publish
+    // error red (10%), notify queue green (5%). Worst-wins → red pill.
+    final tripwires = InMemoryRealtimeTripwireAdminGateway(
+      snapshot: RealtimeTripwireSnapshot.fromJson(<String, Object?>{
+        'status': 'red',
+        'metrics': <String, Object?>{
+          'event_outbox_bridge_lag_seconds': <String, Object?>{
+            'value': 90,
+            'status': 'yellow',
+            'thresholds': <String, Object?>{'yellow': 60, 'red': 300},
           },
-          'breaches': const <Object?>[],
-          'checked_at': '2026-05-03T12:00:00.000Z',
-        }),
-      );
-      await tester.pumpWidget(
-        wrap(
-          ObservabilityAdminScreen(
-            gateway: observability,
-            tripwireGateway: tripwires,
-            now: () => DateTime.utc(2026, 5, 3, 12),
-          ),
+          'event_outbox_undelivered_count': <String, Object?>{
+            'value': 5,
+            'status': 'green',
+            'thresholds': <String, Object?>{'yellow': 10000, 'red': 100000},
+          },
+          'event_outbox_publish_error_rate': <String, Object?>{
+            'value': 0.10,
+            'status': 'red',
+            'thresholds': <String, Object?>{'yellow': 0.01, 'red': 0.05},
+          },
+          'pg_notification_queue_usage': <String, Object?>{
+            'value': 0.05,
+            'status': 'green',
+            'thresholds': <String, Object?>{'yellow': 0.10, 'red': 0.25},
+          },
+        },
+        'breaches': const <Object?>[],
+        'checked_at': '2026-05-03T12:00:00.000Z',
+      }),
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: observability,
+          tripwireGateway: tripwires,
+          now: () => DateTime.utc(2026, 5, 3, 12),
         ),
-      );
-      await runCheck(tester);
+      ),
+    );
+    await runCheck(tester);
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_reliability')),
+    );
+    await tester.pumpAndSettle();
 
-      // Section is mounted above the tab bar.
+    expect(
+      find.byKey(const Key('admin_observability_section_live_sync')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_bridge_tripwires_section')),
+      findsOneWidget,
+    );
+
+    // One row per Q22 metric (4 total).
+    for (final metric in OutboxTripwireMetric.values) {
+      final key = outboxTripwireMetricKey(metric);
       expect(
-        find.byKey(const Key('admin_observability_bridge_tripwires_section')),
+        find.byKey(Key('admin_observability_bridge_tripwire_row_$key')),
         findsOneWidget,
+        reason: 'expected a row for $key in the live sync section',
       );
-      expect(find.text('Realtime bridge tripwires'), findsOneWidget);
+    }
 
-      // One row per Q22 metric (4 total).
-      for (final metric in OutboxTripwireMetric.values) {
-        final key = outboxTripwireMetricKey(metric);
-        expect(
-          find.byKey(Key('admin_observability_bridge_tripwire_row_$key')),
-          findsOneWidget,
-          reason: 'expected a row for $key in the bridge tripwires section',
-        );
-      }
+    // Worst-wins pill is red because publish_error_rate breached red
+    // even though bridge_lag is only yellow.
+    expect(
+      find.byKey(const Key('admin_observability_bridge_tripwire_status_red')),
+      findsOneWidget,
+    );
+  });
 
-      // Worst-wins header pill is red because publish_error_rate
-      // breached red even though bridge_lag is only yellow.
-      expect(
-        find.byKey(const Key('admin_observability_bridge_tripwire_status_red')),
-        findsOneWidget,
-      );
-    },
-  );
+  testWidgets('live sync section is hidden when no tripwire gateway is wired', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_reliability')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_observability_section_live_sync')),
+      findsNothing,
+    );
+  });
 }
 
+/// Blocks every fetch on a Completer so a test can assert the in-flight
+/// guard. Records the requests it receives.
 class _BlockingObservabilityGateway implements ObservabilityAdminGateway {
   int fetchCount = 0;
   final List<Completer<ObservabilityEnvelope>> _pending =
@@ -1048,5 +854,24 @@ class _BlockingObservabilityGateway implements ObservabilityAdminGateway {
   void completeOldest(ObservabilityEnvelope envelope) {
     if (_pending.isEmpty) return;
     _pending.removeAt(0).complete(envelope);
+  }
+}
+
+/// Resolves immediately from a seeded envelope while recording the
+/// requests, so month-passthrough + re-fetch behaviour can be asserted.
+class _RecordingObservabilityGateway implements ObservabilityAdminGateway {
+  _RecordingObservabilityGateway({required Map<String, Object?> envelope})
+    : _envelope = envelope;
+
+  final Map<String, Object?> _envelope;
+  final List<ObservabilityFetchRequest> requests =
+      <ObservabilityFetchRequest>[];
+
+  @override
+  Future<ObservabilityEnvelope> fetch([
+    ObservabilityFetchRequest request = const ObservabilityFetchRequest(),
+  ]) async {
+    requests.add(request);
+    return ObservabilityEnvelope.fromJson(_envelope);
   }
 }
