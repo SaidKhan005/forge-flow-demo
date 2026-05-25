@@ -37,6 +37,7 @@
 //     this slice.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -504,7 +505,7 @@ class _AuditedSupportActionsAdminScreenState
     final reason = await _promptAdminReason('Export the filtered audit log');
     if (reason == null) return;
     await _runAndRefresh(() async {
-      await widget.gateway.exportAuditLogCsv(
+      final csv = await widget.gateway.exportAuditLogCsv(
         operatorId: widget.pickedOperator.operatorId,
         filters: _filters,
         idempotencyKey: _nextIdempotencyKey('audit-log-export'),
@@ -512,7 +513,8 @@ class _AuditedSupportActionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       );
-    }, successHint: 'Export queued. Audit row written.');
+      await Clipboard.setData(ClipboardData(text: csv));
+    }, successHint: 'Copied audit log CSV to your clipboard.');
   }
 
   // --- Actions panel actions ---------------------------------------------
@@ -828,8 +830,7 @@ class _AuditScopePickerCard extends StatelessWidget {
     return OperatorWebPanel(
       key: const Key('admin_asa_audit_scope_picker'),
       title: 'Audit log filter',
-      subtitle:
-          'Pick a business, region, district, or location in the tree.',
+      subtitle: 'Pick a business, region, district, or location in the tree.',
       child: InheritanceTree(
         rootNode: rootNode,
         onNodeTap: onNodeTap,
@@ -1043,10 +1044,10 @@ class _ActionsPanelCard extends StatelessWidget {
             children: <Widget>[
               _ActionRow(
                 keyId: 'admin_asa_action_erasure',
-                title: 'Issue paired-approval erasure',
+                title: 'Issue erasure request',
                 description:
-                    'Records a right-to-erasure request that a second F&F admin '
-                    'must confirm before any data is overwritten. Multi-factor '
+                    'Records a right-to-erasure request with a 24-hour reverse '
+                    'window before the erasure becomes final. Multi-factor '
                     'sign-in required.',
                 buttonLabel: 'Issue erasure',
                 enabled: editingEnabled && canIssuePairedErasure,
@@ -1312,275 +1313,316 @@ class _FiltersBar extends StatefulWidget {
 
 class _FiltersBarState extends State<_FiltersBar> {
   late AuditLogFilters _draft = widget.filters;
-  late final TextEditingController _targetIdController = TextEditingController(
-    text: widget.filters.targetId ?? '',
-  );
 
   @override
-  void dispose() {
-    _targetIdController.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant _FiltersBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.filters, widget.filters)) {
+      _draft = widget.filters;
+    }
   }
 
-  Future<void> _pickFromDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _draft.customRangeFrom?.toLocal() ?? now,
-      firstDate: DateTime(now.year - 2),
-      lastDate: now,
-    );
-    if (picked == null) return;
-    setState(() => _draft = _draft.copyWith(customRangeFrom: picked.toUtc()));
-  }
-
-  Future<void> _pickToDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _draft.customRangeTo?.toLocal() ?? now,
-      firstDate: DateTime(now.year - 2),
-      lastDate: now,
-    );
-    if (picked == null) return;
-    setState(() => _draft = _draft.copyWith(customRangeTo: picked.toUtc()));
-  }
-
-  void _apply() {
-    final next = _draft.copyWith(
-      targetId: _targetIdController.text.trim().isEmpty
-          ? null
-          : _targetIdController.text.trim(),
-    );
+  void _setFilters(AuditLogFilters next) {
+    setState(() => _draft = next);
     widget.onApply(next);
   }
 
+  Future<void> _pickCustomRange() async {
+    final initialRange =
+        _draft.customRangeFrom != null && _draft.customRangeTo != null
+        ? DateTimeRange(
+            start: _draft.customRangeFrom!.toLocal(),
+            end: _draft.customRangeTo!.toLocal(),
+          )
+        : DateTimeRange(
+            start: DateTime.now().subtract(const Duration(days: 30)),
+            end: DateTime.now(),
+          );
+    final picked = await showOperatorWebDateRangeDialog(
+      context: context,
+      firstDate: DateTime(2024),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      initialRange: initialRange,
+      title: 'Choose audit log dates',
+    );
+    if (picked == null || !mounted) return;
+    _setFilters(
+      _draft.copyWith(
+        timeWindow: AuditLogTimeWindow.customRange,
+        customRangeFrom: _startOfDayUtc(picked.start),
+        customRangeTo: _endOfDayUtc(picked.end),
+      ),
+    );
+  }
+
+  static DateTime? _startOfDayUtc(DateTime? day) {
+    if (day == null) return null;
+    final local = day.toLocal();
+    return DateTime(local.year, local.month, local.day).toUtc();
+  }
+
+  static DateTime? _endOfDayUtc(DateTime? day) {
+    if (day == null) return null;
+    final local = day.toLocal();
+    return DateTime(
+      local.year,
+      local.month,
+      local.day,
+      23,
+      59,
+      59,
+      999,
+    ).toUtc();
+  }
+
+  Set<String> get _selectedActors => _draft.effectiveActorUserIds.toSet();
+  Set<String> get _selectedActions => _draft.actions.toSet();
+
   @override
   Widget build(BuildContext context) {
-    final showCustomRange = _draft.timeWindow == AuditLogTimeWindow.customRange;
-    return Column(
+    return Container(
       key: const Key('admin_asa_filters'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Row(
-          children: [
-            const Icon(
-              Icons.filter_list,
-              size: 18,
-              color: AppColors.sunsetDark,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Filters',
+            style: AppTextStyles.mono14(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Filters',
-                style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-              ),
-            ),
-            // Operator-web parity declutter: the "Audit rows are newest first"
-            // helper note was removed (web's audit filters have no equivalent
-            // note; "newest first" is already stated in the audit-log card
-            // subtitle).
-          ],
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          children: <Widget>[
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<String?>(
-                key: const Key('admin_asa_filter_actor'),
-                initialValue: _draft.actorUserId,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Actor',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<String?>>[
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Any actor'),
-                  ),
-                  for (final m in widget.members)
-                    DropdownMenuItem<String?>(
-                      value: m.userId,
-                      child: Text('${m.displayName} (${m.email})'),
-                    ),
-                ],
-                onChanged: (v) =>
-                    setState(() => _draft = _draft.copyWith(actorUserId: v)),
-              ),
-            ),
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<String?>(
-                key: const Key('admin_asa_filter_target_kind'),
-                initialValue: _draft.targetKind,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Target kind',
-                  border: OutlineInputBorder(),
-                ),
-                items: const <DropdownMenuItem<String?>>[
-                  DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Any kind'),
-                  ),
-                  DropdownMenuItem<String?>(value: 'user', child: Text('User')),
-                  DropdownMenuItem<String?>(
-                    value: 'auth_session',
-                    child: Text('Session'),
-                  ),
-                  DropdownMenuItem<String?>(
-                    value: 'team_role',
-                    child: Text('Role'),
-                  ),
-                  DropdownMenuItem<String?>(
-                    value: 'org_unit',
-                    child: Text('Org unit'),
-                  ),
-                  DropdownMenuItem<String?>(
-                    value: 'mfa_factor',
-                    child: Text('Two-factor sign-in factor'),
-                  ),
-                  DropdownMenuItem<String?>(
-                    value: 'audit_log_export',
-                    child: Text('Audit log export'),
-                  ),
-                ],
-                onChanged: (v) =>
-                    setState(() => _draft = _draft.copyWith(targetKind: v)),
-              ),
-            ),
-            SizedBox(
-              width: 220,
-              child: TextField(
-                key: const Key('admin_asa_filter_target_id'),
-                controller: _targetIdController,
-                decoration: const InputDecoration(
-                  labelText: 'Target ID',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<AuditLogTimeWindow>(
-                key: const Key('admin_asa_filter_time_window'),
-                // Web parity (audit_log_screen.dart): fixed time windows
-                // only, defaulting to the last 30 days. The admin-only
-                // "Any time" option is removed so the set matches web.
-                initialValue:
-                    _draft.timeWindow ?? AuditLogTimeWindow.last30d,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Time window',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<AuditLogTimeWindow>>[
-                  for (final w in AuditLogTimeWindow.values)
-                    DropdownMenuItem<AuditLogTimeWindow>(
-                      value: w,
-                      child: Text(w.displayLabel),
-                    ),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _draft = _draft.copyWith(timeWindow: v));
-                },
-              ),
-            ),
-          ],
-        ),
-        if (showCustomRange) ...<Widget>[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: <Widget>[
-              OutlinedButton.icon(
-                key: const Key('admin_asa_filter_custom_from'),
-                onPressed: _pickFromDate,
-                style: AdminButtonStyles.secondary(),
-                icon: const Icon(Icons.calendar_today, size: 14),
-                label: Text(
-                  _draft.customRangeFrom == null
-                      ? 'Pick from date'
-                      : 'From: ${_formatDate(_draft.customRangeFrom!)}',
-                ),
-              ),
-              OutlinedButton.icon(
-                key: const Key('admin_asa_filter_custom_to'),
-                onPressed: _pickToDate,
-                style: AdminButtonStyles.secondary(),
-                icon: const Icon(Icons.calendar_today, size: 14),
-                label: Text(
-                  _draft.customRangeTo == null
-                      ? 'Pick to date'
-                      : 'To: ${_formatDate(_draft.customRangeTo!)}',
-                ),
-              ),
-            ],
           ),
-        ],
-        const SizedBox(height: 12),
-        Text(
-          'Action',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 4),
-        Wrap(
-          spacing: 6,
-          runSpacing: 4,
-          children: <Widget>[
-            for (final action in kAuditLogFilterableActions)
-              FilterChip(
-                key: Key('admin_asa_filter_action_$action'),
-                tooltip: action,
-                label: Text(humanizeAuditAction(action)),
-                selected: _draft.actions.contains(action),
-                onSelected: (selected) {
-                  final next = List<String>.of(_draft.actions);
-                  if (selected) {
-                    if (!next.contains(action)) next.add(action);
-                  } else {
-                    next.remove(action);
-                  }
-                  setState(() => _draft = _draft.copyWith(actions: next));
-                },
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: 320,
-          child: _ActorKindMultiSelect(
-            value: _draft.actorKinds,
+          const SizedBox(height: 10),
+          _AdminAuditTimeWindowChips(
+            selected: _draft.timeWindow ?? AuditLogTimeWindow.last30d,
+            customFrom: _draft.customRangeFrom,
+            customTo: _draft.customRangeTo,
+            onChanged: (window) {
+              _setFilters(_draft.copyWith(timeWindow: window));
+            },
+            onPickCustom: _pickCustomRange,
+          ),
+          const SizedBox(height: 12),
+          _AdminAuditActionPicker(
+            selected: _selectedActions,
             onChanged: (next) =>
-                setState(() => _draft = _draft.copyWith(actorKinds: next)),
+                _setFilters(_draft.copyWith(actions: next.toList())),
           ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            key: const Key('admin_asa_filter_apply'),
-            style: AdminButtonStyles.primary,
-            onPressed: _apply,
-            child: const Text('Apply filters'),
+          if (widget.members.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            _AdminAuditActorPicker(
+              members: widget.members,
+              selected: _selectedActors,
+              onChanged: (next) =>
+                  _setFilters(_draft.copyWith(actorUserIds: next.toList())),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminAuditTimeWindowChips extends StatelessWidget {
+  const _AdminAuditTimeWindowChips({
+    required this.selected,
+    required this.customFrom,
+    required this.customTo,
+    required this.onChanged,
+    required this.onPickCustom,
+  });
+
+  final AuditLogTimeWindow selected;
+  final DateTime? customFrom;
+  final DateTime? customTo;
+  final ValueChanged<AuditLogTimeWindow> onChanged;
+  final Future<void> Function() onPickCustom;
+
+  static const List<(AuditLogTimeWindow, String, String)> _options =
+      <(AuditLogTimeWindow, String, String)>[
+        (AuditLogTimeWindow.last24h, 'Last 24 hours', '24h'),
+        (AuditLogTimeWindow.last7d, 'Last 7 days', '7d'),
+        (AuditLogTimeWindow.last30d, 'Last 30 days', '30d'),
+        (AuditLogTimeWindow.last90d, 'Last 90 days', '90d'),
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final customLabel =
+        selected == AuditLogTimeWindow.customRange &&
+            customFrom != null &&
+            customTo != null
+        ? '${_fmt(customFrom!)} to ${_fmt(customTo!)}'
+        : 'Custom range';
+    return Wrap(
+      key: const Key('admin_asa_filter_time_window'),
+      spacing: 6,
+      runSpacing: 6,
+      children: <Widget>[
+        for (final option in _options)
+          _AdminAuditChoiceChip(
+            chipKey: Key('admin_asa_filter_time_window_${option.$3}'),
+            label: option.$2,
+            isActive: selected == option.$1,
+            onTap: () => onChanged(option.$1),
           ),
+        _AdminAuditChoiceChip(
+          chipKey: const Key('admin_asa_filter_time_window_custom'),
+          label: customLabel,
+          isActive: selected == AuditLogTimeWindow.customRange,
+          onTap: onPickCustom,
         ),
       ],
     );
   }
 
-  static String _formatDate(DateTime utc) {
+  static String _fmt(DateTime utc) {
     final local = utc.toLocal();
     final y = local.year.toString().padLeft(4, '0');
     final m = local.month.toString().padLeft(2, '0');
     final d = local.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
+  }
+}
+
+class _AdminAuditActionPicker extends StatelessWidget {
+  const _AdminAuditActionPicker({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final Set<String> selected;
+  final ValueChanged<Set<String>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Action',
+          style: AppTextStyles.mono11(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          key: const Key('admin_asa_filter_action'),
+          spacing: 6,
+          runSpacing: 6,
+          children: <Widget>[
+            for (final action in kAuditLogFilterableActions)
+              _AdminAuditChoiceChip(
+                chipKey: Key('admin_asa_filter_action_$action'),
+                tooltip: action,
+                label: humanizeAuditAction(action),
+                isActive: selected.contains(action),
+                onTap: () {
+                  final next = Set<String>.from(selected);
+                  if (next.contains(action)) {
+                    next.remove(action);
+                  } else {
+                    next.add(action);
+                  }
+                  onChanged(next);
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AdminAuditActorPicker extends StatelessWidget {
+  const _AdminAuditActorPicker({
+    required this.members,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<SupportActionsMember> members;
+  final Set<String> selected;
+  final ValueChanged<Set<String>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final actors = List<SupportActionsMember>.of(members)
+      ..sort(
+        (a, b) =>
+            _labelFor(a).toLowerCase().compareTo(_labelFor(b).toLowerCase()),
+      );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Team member',
+          style: AppTextStyles.mono11(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          key: const Key('admin_asa_filter_actor'),
+          spacing: 6,
+          runSpacing: 6,
+          children: <Widget>[
+            for (final member in actors)
+              _AdminAuditChoiceChip(
+                chipKey: Key('admin_asa_filter_actor_${member.userId}'),
+                label: _labelFor(member),
+                isActive: selected.contains(member.userId),
+                onTap: () {
+                  final next = Set<String>.from(selected);
+                  if (next.contains(member.userId)) {
+                    next.remove(member.userId);
+                  } else {
+                    next.add(member.userId);
+                  }
+                  onChanged(next);
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static String _labelFor(SupportActionsMember member) {
+    final displayName = member.displayName.trim();
+    if (displayName.isNotEmpty) return displayName;
+    final email = member.email.trim();
+    return email.isEmpty ? member.userId : email;
+  }
+}
+
+class _AdminAuditChoiceChip extends StatelessWidget {
+  const _AdminAuditChoiceChip({
+    required this.chipKey,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final Key chipKey;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      key: chipKey,
+      tooltip: tooltip,
+      selected: isActive,
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
+      onSelected: (_) => onTap(),
+    );
   }
 }
 
@@ -1595,59 +1637,20 @@ const List<String> kAuditLogFilterableActions = <String>[
   'team.users.deactivate',
   'team.users.reactivate',
   'team.users.soft_delete',
+  'team.users.reset_password',
+  'team.users.reset_mfa',
   'team.roles.create_custom',
-  'team.roles.delete_custom',
-  'team.roles.edit_seeded',
-  'team.org_unit.move',
-  'team.location.move',
+  'team.roles.assign',
+  'team.roles.revoke',
   'team.session.force_logout',
-  'auth.password.change',
-  'auth.mfa.enroll',
-  'admin.session.force_logout',
-  'admin.users.reset_mfa_factors',
-  'admin.users.reset_password',
-  'admin.users.erasure.requested',
-  'admin.users.erasure.confirmed',
+  'team.org_unit.move',
+  'auth.user.signed_in',
+  'auth.session_revoked',
+  'auth.password_changed',
+  'auth.mfa_totp_enrolled',
+  'auth.mfa_factor_removed',
   'audit.export.requested',
 ];
-
-class _ActorKindMultiSelect extends StatelessWidget {
-  const _ActorKindMultiSelect({required this.value, required this.onChanged});
-
-  final List<AuditActorKind> value;
-  final ValueChanged<List<AuditActorKind>> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return InputDecorator(
-      decoration: const InputDecoration(
-        labelText: 'Actor kind',
-        border: OutlineInputBorder(),
-      ),
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
-        children: <Widget>[
-          for (final kind in AuditActorKind.values)
-            FilterChip(
-              key: Key('admin_asa_filter_actor_kind_${kind.wire}'),
-              label: Text(kind.displayLabel),
-              selected: value.contains(kind),
-              onSelected: (selected) {
-                final next = List<AuditActorKind>.of(value);
-                if (selected) {
-                  if (!next.contains(kind)) next.add(kind);
-                } else {
-                  next.remove(kind);
-                }
-                onChanged(next);
-              },
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 class _AuditRowTile extends StatefulWidget {
   const _AuditRowTile({super.key, required this.row});
@@ -1664,15 +1667,14 @@ class _AuditRowTileState extends State<_AuditRowTile> {
   Future<void> _copyTargetId() async {
     await Clipboard.setData(ClipboardData(text: widget.row.targetId));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Copied target ID to clipboard.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied ${widget.row.targetId} to clipboard.')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final hasPayload = row.payload.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Container(
@@ -1696,25 +1698,27 @@ class _AuditRowTileState extends State<_AuditRowTile> {
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
+                    horizontal: 6,
+                    vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.backgroundSurface,
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(999),
+                    color: _auditActorKindChipBg(row.actorKind),
+                    border: Border.all(
+                      color: _auditActorKindChipFg(
+                        row.actorKind,
+                      ).withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                   child: Text(
-                    row.actorKind.displayLabel,
-                    style: AppTextStyles.mono11(color: AppColors.textMuted),
+                    _auditActorKindChipLabel(row.actorKind),
+                    style: AppTextStyles.mono7(
+                      color: _auditActorKindChipFg(row.actorKind),
+                    ),
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              row.action,
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
             ),
             const SizedBox(height: 6),
             Text(
@@ -1724,10 +1728,17 @@ class _AuditRowTileState extends State<_AuditRowTile> {
             const SizedBox(height: 4),
             Row(
               children: <Widget>[
+                Text(
+                  '${row.targetKind}:',
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                ),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Target: ${row.targetKind} / ${row.targetId}',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                    row.targetId,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.mono11(color: AppColors.textPrimary),
                   ),
                 ),
                 IconButton(
@@ -1750,49 +1761,42 @@ class _AuditRowTileState extends State<_AuditRowTile> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Occurred ${formatAuditTimestamp(row.occurredAt)}',
+              formatAuditTimestamp(row.occurredAt),
               style: AppTextStyles.mono11(color: AppColors.textMuted),
             ),
             if (row.adminReason != null && row.adminReason!.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
-                'F&F admin reason: ${row.adminReason}',
+                'Admin reason: ${row.adminReason}',
                 style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),
             ],
-            if (hasPayload) ...<Widget>[
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: Key('admin_asa_audit_row_payload_toggle_${row.eventId}'),
-                  onPressed: () =>
-                      setState(() => _payloadExpanded = !_payloadExpanded),
-                  icon: Icon(
-                    _payloadExpanded ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
-                  ),
-                  label: Text(
-                    _payloadExpanded ? 'Hide payload' : 'View payload',
-                  ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: Key('admin_asa_audit_row_payload_toggle_${row.eventId}'),
+                onPressed: () =>
+                    setState(() => _payloadExpanded = !_payloadExpanded),
+                child: Text(_payloadExpanded ? 'Hide payload' : 'View payload'),
+              ),
+            ),
+            if (_payloadExpanded)
+              Container(
+                key: Key('admin_asa_audit_row_payload_${row.eventId}'),
+                margin: const EdgeInsets.only(top: 4),
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundMid,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: SelectableText(
+                  formatPayload(row.payload),
+                  style: AppTextStyles.mono11(color: AppColors.textPrimary),
                 ),
               ),
-              if (_payloadExpanded)
-                Container(
-                  key: Key('admin_asa_audit_row_payload_${row.eventId}'),
-                  margin: const EdgeInsets.only(top: 4),
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundDeep,
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: SelectableText(
-                    formatPayload(row.payload),
-                    style: AppTextStyles.mono11(color: AppColors.textSecondary),
-                  ),
-                ),
-            ],
           ],
         ),
       ),
@@ -1809,28 +1813,72 @@ String humanizeAuditAction(String action) {
     case 'team.users.invite':
       return 'Invited team member';
     case 'team.users.deactivate':
-      return 'Deactivated team member';
+      return 'Suspended team member';
     case 'team.users.reactivate':
       return 'Reactivated team member';
     case 'team.users.soft_delete':
       return 'Soft-deleted team member';
+    case 'team.users.reset_password':
+      return 'Sent password reset email';
+    case 'team.users.reset_mfa':
+      return 'Reset two-factor sign-in';
     case 'team.roles.create_custom':
       return 'Created custom role';
-    case 'team.roles.delete_custom':
-      return 'Deleted custom role';
-    case 'team.roles.edit_seeded':
-      return 'Edited seeded role permissions';
+    case 'team.roles.assign':
+      return 'Assigned role';
+    case 'team.roles.revoke':
+      return 'Revoked role grant';
     case 'team.org_unit.move':
-      return 'Moved org unit';
-    case 'team.location.move':
-      return 'Moved location';
+      return 'Moved an org unit';
     case 'team.session.force_logout':
-      // Wave 2 AC-1 follow-up (`AC-1-FU-team-session-force-logout-label`,
-      // resolved 2026-05-14): operator-web's matching label at
-      // `web_team_audit_log_gateway.dart:214` is "Signed out a team
-      // member session"; mirror that wording so the chip set reads the
-      // same across both consoles.
       return 'Signed out a team member session';
+    case 'auth.user.signed_in':
+    case 'auth.signed_in':
+      return 'Sign-in';
+    case 'auth.session_revoked':
+      return 'Session revoked';
+    case 'auth.all_sessions_revoked':
+      return 'Signed out of all devices';
+    case 'auth.user.password_changed':
+    case 'auth.password_changed':
+      return 'Password changed';
+    case 'auth.password_reset_requested':
+      return 'Password reset requested';
+    case 'auth.password_reset_confirmed':
+      return 'Password reset completed';
+    case 'auth.mfa_totp_enrolled':
+      return 'Two-factor sign-in enabled';
+    case 'auth.mfa_totp_enroll_failed':
+      return 'Two-factor sign-in setup failed';
+    case 'auth.user.mfa_factor_removed':
+    case 'auth.mfa_factor_removed':
+      return 'Two-factor sign-in disabled';
+    case 'auth.user.mfa_recovery_requested':
+    case 'auth.mfa_recovery_requested':
+      return 'Two-factor sign-in recovery requested';
+    case 'auth.role_grant_created':
+      return 'Role grant added';
+    case 'auth.role_grant_revoked':
+      return 'Role grant revoked';
+    case 'auth.custom_role_created':
+      return 'Custom role created';
+    case 'auth.custom_role_updated':
+      return 'Custom role updated';
+    case 'auth.custom_role_deleted':
+      return 'Custom role deleted';
+    case 'auth.invite_created':
+      return 'Invite created';
+    case 'auth.invite_revoked':
+    case 'invite.cancel':
+      return 'Invite cancelled';
+    case 'auth.invite_accepted':
+      return 'Invite accepted';
+    case 'auth.user_suspended':
+      return 'User suspended';
+    case 'auth.user_reactivated':
+      return 'User reactivated';
+    case 'auth.user_soft_deleted':
+      return 'User soft-deleted';
     case 'admin.session.force_logout':
       return 'Forced session logout';
     case 'admin.users.reset_mfa_factors':
@@ -1844,11 +1892,21 @@ String humanizeAuditAction(String action) {
     case 'audit.export.requested':
       return 'Exported audit log';
     case 'auth.password.change':
-      return 'Changed password';
+      return 'Password changed';
     case 'auth.mfa.enroll':
-      return 'Enrolled two-factor sign-in factor';
+      return 'Two-factor sign-in enabled';
     default:
-      return action;
+      final tail = action.contains('.')
+          ? action.substring(action.lastIndexOf('.') + 1)
+          : action;
+      if (tail.isEmpty) return action;
+      final words = tail.split('_');
+      final first = words.first;
+      final head = first.isEmpty
+          ? ''
+          : first.substring(0, 1).toUpperCase() + first.substring(1);
+      final rest = words.skip(1).join(' ');
+      return rest.isEmpty ? head : '$head $rest';
   }
 }
 
@@ -1856,21 +1914,50 @@ String _auditActorIdentityLabel(AuditLogRow row) {
   final name = row.actorDisplayName.trim().isEmpty
       ? row.actorUserId
       : row.actorDisplayName.trim();
-  final role = row.actorRole?.trim().isNotEmpty == true
-      ? row.actorRole!.trim()
-      : row.actorKind.displayLabel;
   final email = row.actorEmail.trim();
-  if (email.isEmpty) return '$name - $role - email unavailable';
-  return '$name - $role - $email';
+  if (email.isEmpty || email == name) return name;
+  return '$name • $email';
+}
+
+String _auditActorKindChipLabel(AuditActorKind kind) {
+  switch (kind) {
+    case AuditActorKind.teamMember:
+      return 'team';
+    case AuditActorKind.forgeAdmin:
+      return 'F&F admin';
+    case AuditActorKind.servicePrincipal:
+      return 'service';
+  }
+}
+
+Color _auditActorKindChipFg(AuditActorKind kind) {
+  switch (kind) {
+    case AuditActorKind.teamMember:
+      return AppColors.sunsetDark;
+    case AuditActorKind.forgeAdmin:
+      return AppColors.negative;
+    case AuditActorKind.servicePrincipal:
+      return AppColors.textSecondary;
+  }
+}
+
+Color _auditActorKindChipBg(AuditActorKind kind) {
+  switch (kind) {
+    case AuditActorKind.teamMember:
+      return AppColors.sunset.withValues(alpha: 0.15);
+    case AuditActorKind.forgeAdmin:
+      return AppColors.negative.withValues(alpha: 0.15);
+    case AuditActorKind.servicePrincipal:
+      return AppColors.borderSubtle.withValues(alpha: 0.5);
+  }
 }
 
 /// Format an audit `occurred_at` timestamp for display. The contract
 /// pins operator-local timezone (`phase_7_55_time_boundary_contract.md`);
 /// without a per-operator tz lookup at this layer the surface falls
 /// back to the browser's local timezone, which is the closest
-/// approximation available client-side. The UTC ISO timestamp is
-/// included after the local representation so forensic review can
-/// cross-reference the canonical chain.
+/// approximation available client-side. Mirrors operator web's compact
+/// `yyyy-MM-dd HH:mm` rendering.
 @visibleForTesting
 String formatAuditTimestamp(DateTime utc) {
   final local = utc.toLocal();
@@ -1879,32 +1966,21 @@ String formatAuditTimestamp(DateTime utc) {
   final d = local.day.toString().padLeft(2, '0');
   final hh = local.hour.toString().padLeft(2, '0');
   final mm = local.minute.toString().padLeft(2, '0');
-  return '$y-$m-$d $hh:$mm local (UTC ${utc.toUtc().toIso8601String()})';
+  return '$y-$m-$d $hh:$mm';
 }
 
 /// Render the `audit_logs.payload` JSONB diff in a readable form.
-/// Sorts top-level keys for stable output and indents nested maps
-/// one level. Exposed for widget tests so the "View payload" pin can
-/// assert against the rendered text directly.
+/// Exposed for widget tests so the "View payload" pin can assert
+/// against the rendered JSON directly.
 @visibleForTesting
 String formatPayload(Map<String, Object?> payload) {
-  if (payload.isEmpty) return '(empty payload)';
-  final keys = payload.keys.toList()..sort();
-  final buf = StringBuffer();
-  for (final key in keys) {
-    final value = payload[key];
-    if (value is Map) {
-      buf.writeln('$key:');
-      final nested = (value).cast<String, Object?>();
-      final nestedKeys = nested.keys.toList()..sort();
-      for (final nk in nestedKeys) {
-        buf.writeln('  $nk: ${nested[nk]}');
-      }
-    } else {
-      buf.writeln('$key: $value');
-    }
+  if (payload.isEmpty) return '(no payload)';
+  try {
+    const encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(payload);
+  } catch (_) {
+    return payload.toString();
   }
-  return buf.toString().trimRight();
 }
 
 // ---------------------------------------------------------------------

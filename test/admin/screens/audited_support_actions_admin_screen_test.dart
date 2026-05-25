@@ -198,10 +198,7 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(
-        find.text('Dana Owner - Owner - owner@demo-diner.test'),
-        findsOneWidget,
-      );
+      expect(find.text('Dana Owner • owner@demo-diner.test'), findsOneWidget);
     });
   });
 
@@ -463,7 +460,7 @@ void main() {
 
   group('parity contract filter set', () {
     testWidgets(
-      'filter bar exposes actor + target_kind + target_id + time_window + actor_kind + action multi-select',
+      'filter bar mirrors operator-web chips without admin-only target controls',
       (tester) async {
         wideViewport(tester);
         final gateway = buildDemoGateway();
@@ -479,27 +476,42 @@ void main() {
         await pumpEventually(tester);
 
         expect(find.byKey(const Key('admin_asa_filter_actor')), findsOneWidget);
+        expect(find.text('Team member'), findsOneWidget);
+        expect(find.text('Actor'), findsNothing);
         expect(
-          find.byKey(const Key('admin_asa_filter_target_kind')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_asa_filter_target_id')),
+          find.byKey(const Key('admin_asa_filter_actor_demo-user-diner-owner')),
           findsOneWidget,
         );
         expect(
           find.byKey(const Key('admin_asa_filter_time_window')),
           findsOneWidget,
         );
-        // actor_kind multi-select chips (F&F admin surface only).
+        for (final key in const <String>['24h', '7d', '30d', '90d']) {
+          expect(
+            find.byKey(Key('admin_asa_filter_time_window_$key')),
+            findsOneWidget,
+            reason: 'expected time-window chip for $key',
+          );
+        }
+        expect(
+          find.byKey(const Key('admin_asa_filter_time_window_custom')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('admin_asa_filter_target_kind')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('admin_asa_filter_target_id')),
+          findsNothing,
+        );
+        expect(find.byKey(const Key('admin_asa_filter_apply')), findsNothing);
         for (final kind in AuditActorKind.values) {
           expect(
             find.byKey(Key('admin_asa_filter_actor_kind_${kind.wire}')),
-            findsOneWidget,
-            reason: 'expected actor_kind chip for ${kind.wire}',
+            findsNothing,
           );
         }
-        // action multi-select chips against the full filterable set.
         for (final action in kAuditLogFilterableActions) {
           expect(
             find.byKey(Key('admin_asa_filter_action_$action')),
@@ -510,7 +522,7 @@ void main() {
       },
     );
 
-    testWidgets('selecting an action chip and applying narrows the table', (
+    testWidgets('selecting an action chip immediately narrows the table', (
       tester,
     ) async {
       wideViewport(tester);
@@ -527,29 +539,20 @@ void main() {
       await pumpEventually(tester);
 
       await tester.ensureVisible(
-        find.byKey(
-          const Key('admin_asa_filter_action_admin.session.force_logout'),
-        ),
+        find.byKey(const Key('admin_asa_filter_action_team.users.invite')),
       );
       await tester.tap(
-        find.byKey(
-          const Key('admin_asa_filter_action_admin.session.force_logout'),
-        ),
+        find.byKey(const Key('admin_asa_filter_action_team.users.invite')),
       );
-      await pumpEventually(tester);
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_asa_filter_apply')),
-      );
-      await tester.tap(find.byKey(const Key('admin_asa_filter_apply')));
       await pumpEventually(tester);
 
-      // Only the admin.session.force_logout fixture row remains.
+      // Only the team.users.invite fixture row remains.
       expect(
-        find.byKey(const Key('admin_asa_audit_row_seed-diner-3')),
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-1')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('admin_asa_audit_row_seed-diner-1')),
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-3')),
         findsNothing,
       );
       expect(
@@ -558,7 +561,7 @@ void main() {
       );
     });
 
-    testWidgets('selecting Custom range reveals the from/to date pickers', (
+    testWidgets('actor chips support multi-select and filter immediately', (
       tester,
     ) async {
       wideViewport(tester);
@@ -574,29 +577,104 @@ void main() {
       );
       await pumpEventually(tester);
 
-      // Hidden by default.
-      expect(
-        find.byKey(const Key('admin_asa_filter_custom_from')),
-        findsNothing,
+      await tester.tap(
+        find.byKey(const Key('admin_asa_filter_actor_demo-user-diner-owner')),
       );
-      // Open the time-window dropdown and pick Custom range.
-      await tester.tap(find.byKey(const Key('admin_asa_filter_time_window')));
       await pumpEventually(tester);
-      await tester.tap(find.text('Custom range').last);
+      await tester.tap(
+        find.byKey(const Key('admin_asa_filter_actor_demo-user-diner-manager')),
+      );
       await pumpEventually(tester);
 
       expect(
-        find.byKey(const Key('admin_asa_filter_custom_from')),
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-1')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('admin_asa_filter_custom_to')),
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-2')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('admin_asa_audit_row_seed-diner-3')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('selecting Custom range opens the shared date-range dialog', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await tester.tap(
+        find.byKey(const Key('admin_asa_filter_time_window_custom')),
+      );
+      await pumpEventually(tester);
+
+      expect(find.text('Choose audit log dates'), findsOneWidget);
     });
   });
 
   group('parity contract row rendering', () {
+    testWidgets('export copies CSV to clipboard and refreshes export row', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      final calls = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'Clipboard.setData') {
+              final data = call.arguments as Map<Object?, Object?>;
+              calls.add(data['text'] as String);
+            }
+            return null;
+          });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+
+      await tester.pumpWidget(
+        wrap(
+          AuditedSupportActionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            canExportAuditLog: true,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await tester.tap(find.byKey(const Key('admin_asa_audit_log_export')));
+      await pumpEventually(tester);
+      await tester.enterText(
+        find.byKey(const Key('admin_asa_reason_field')),
+        'support export',
+      );
+      await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
+      await pumpEventually(tester);
+
+      expect(calls, hasLength(1));
+      expect(calls.single, contains('event_id,occurred_at,action'));
+      expect(
+        find.text('Copied audit log CSV to your clipboard.'),
+        findsOneWidget,
+      );
+      expect(find.text('Exported audit log'), findsWidgets);
+    });
+
     testWidgets('target_id copy button copies to system clipboard', (
       tester,
     ) async {
@@ -787,27 +865,25 @@ void main() {
         equals('Invited team member'),
       );
       // Falls through to the raw key for unknown actions so unknown
-      // vocabulary stays diagnosable.
-      expect(humanizeAuditAction('foo.bar.baz'), equals('foo.bar.baz'));
+      // vocabulary stays readable like operator web.
+      expect(humanizeAuditAction('foo.bar.baz'), equals('Baz'));
     });
 
     test('formatAuditTimestamp keeps the canonical UTC ISO suffix', () {
       final formatted = formatAuditTimestamp(DateTime.utc(2026, 5, 6, 12, 30));
-      expect(formatted.contains('local'), isTrue);
-      expect(formatted.contains('UTC 2026-05-06T12:30:00.000Z'), isTrue);
+      expect(formatted, matches(RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$')));
     });
 
-    test('formatPayload sorts keys and renders nested maps indented', () {
+    test('formatPayload renders operator-web style JSON', () {
       final out = formatPayload(<String, Object?>{
         'user_id': 'u1',
         'mfa_enrolled': const <String, Object?>{'from': true, 'to': false},
       });
-      // Sorted: mfa_enrolled, user_id.
-      final mfaIdx = out.indexOf('mfa_enrolled');
-      final userIdx = out.indexOf('user_id');
-      expect(mfaIdx, lessThan(userIdx));
-      expect(out.contains('  from: true'), isTrue);
-      expect(out.contains('  to: false'), isTrue);
+      expect(out, contains('"user_id": "u1"'));
+      expect(out, contains('"mfa_enrolled": {'));
+      expect(out, contains('"from": true'));
+      expect(out, contains('"to": false'));
+      expect(formatPayload(const <String, Object?>{}), equals('(no payload)'));
     });
   });
 
@@ -1061,9 +1137,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const Key('admin_audit_log_integrity_badge_healthy_title'),
-        ),
+        find.byKey(const Key('admin_audit_log_integrity_badge_healthy_title')),
         findsOneWidget,
       );
       expect(find.text('Audit chain healthy'), findsOneWidget);
