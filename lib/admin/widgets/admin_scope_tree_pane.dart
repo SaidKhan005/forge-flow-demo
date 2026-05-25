@@ -21,6 +21,8 @@ import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'admin_responsive_layout.dart';
 
+const Duration _kScopeAttentionPulseDuration = Duration(milliseconds: 5200);
+
 /// Resolved set of location ids for a selected hierarchy scope.
 ///
 /// Moved here from `admin_setup_workspace.dart` (where it was
@@ -93,8 +95,8 @@ class AdminScopeTreePane extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: ValueKey<int>(attentionPulseToken),
       tween: Tween<double>(begin: attentionPulseToken > 0 ? 1 : 0, end: 0),
-      duration: const Duration(milliseconds: 900),
-      curve: Curves.easeOutCubic,
+      duration: _kScopeAttentionPulseDuration,
+      curve: Curves.easeInCubic,
       builder: (context, pulse, child) {
         return Container(
           key: const Key('admin_setup_workspace_scope_pane'),

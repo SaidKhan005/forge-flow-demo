@@ -981,6 +981,19 @@ void main() {
       );
       expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
       expect(tester.takeException(), isNull);
+
+      await tester.pump(const Duration(milliseconds: 3000));
+
+      final laterScopePane = tester.widget<Container>(
+        find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      );
+      final laterDecoration = laterScopePane.decoration! as BoxDecoration;
+      final laterBorder = laterDecoration.border! as Border;
+      expect(
+        laterBorder.top.color.a,
+        greaterThan(0.10),
+        reason: 'The business selector cue should stay visible for seconds.',
+      );
     },
   );
 
