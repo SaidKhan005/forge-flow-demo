@@ -400,7 +400,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.link_outlined,
     section: AdminRouteSection.operations,
     subtitle:
-        'Review location-scoped vendor connections; super admins can connect, test, disconnect, and inspect logs.',
+        'Review location-scoped vendor connections; super admins can connect, test, and disconnect vendors.',
     builder: _buildVendorIntegrations,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -750,6 +750,8 @@ Widget _buildSupportOperatorView(BuildContext context) {
       AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
   final supportGateway =
       AdminConsoleServicesScope.auditedSupportActionsAdminGatewayOf(context);
+  final vendorConnectionsGateway =
+      AdminConsoleServicesScope.vendorConnectionsGatewayOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
     context,
   );
@@ -787,6 +789,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
       membersGateway: membersGateway,
       rolesGateway: rolesGateway,
       supportGateway: supportGateway,
+      vendorConnectionsGateway: vendorConnectionsGateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
       canEditSeededRoles: false,
@@ -812,6 +815,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
         membersGateway: membersGateway,
         rolesGateway: rolesGateway,
         supportGateway: supportGateway,
+        vendorConnectionsGateway: vendorConnectionsGateway,
         actorUserId: session?.uid ?? 'unknown',
         editingEnabled: canEdit,
         // CODE_OPS_DEBT Theme A item 1 — resolved off the JWT
@@ -839,6 +843,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
     required this.membersGateway,
     required this.rolesGateway,
     required this.supportGateway,
+    required this.vendorConnectionsGateway,
     required this.actorUserId,
     required this.editingEnabled,
     required this.canEditSeededRoles,
@@ -855,6 +860,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
   final MembersAdminGateway membersGateway;
   final RolesHierarchySessionsAdminGateway rolesGateway;
   final AuditedSupportActionsAdminGateway supportGateway;
+  final VendorConnectionsGateway? vendorConnectionsGateway;
   final String actorUserId;
   final bool editingEnabled;
   final bool canEditSeededRoles;
@@ -967,6 +973,7 @@ class _SupportOperatorViewRouteShellState
       membersGateway: widget.membersGateway,
       rolesGateway: widget.rolesGateway,
       supportGateway: widget.supportGateway,
+      vendorConnectionsGateway: widget.vendorConnectionsGateway,
       actorUserId: widget.actorUserId,
       pickedOperator: picked,
       editingEnabled: widget.editingEnabled,
