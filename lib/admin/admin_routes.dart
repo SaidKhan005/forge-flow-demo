@@ -1558,7 +1558,7 @@ OperatorPickerResult? _pickerResultFromScope(
     operatorBusinessName: scope.operatorName ?? 'Selected operator',
     locationName: hasLocation
         ? scope.locationName ?? 'Selected location'
-        : 'Business scope',
+        : 'Business',
   );
 }
 

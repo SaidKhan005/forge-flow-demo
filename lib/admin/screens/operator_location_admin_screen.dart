@@ -1630,7 +1630,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                   key: const Key('admin_hierarchy_business_scope_row'),
                   icon: scopeIcon(kind: ScopeEntityKind.business),
                   label: widget.bundle.operator.businessName,
-                  subtitle: 'Business scope',
+                  subtitle: 'Business',
                   selected:
                       widget.selectedScope.scopeType ==
                       AdminHierarchyScopeType.business,

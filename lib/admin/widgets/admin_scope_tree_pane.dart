@@ -194,7 +194,7 @@ class AdminScopeBusinessTreeCard extends StatelessWidget {
             key: Key('admin_setup_scope_business_${tree.operator.operatorId}'),
             icon: scopeIcon(kind: ScopeEntityKind.business),
             label: tree.operator.businessName,
-            detail: 'Business scope',
+            detail: 'Business',
             selected: selectedScope?.cacheKey == businessScope.cacheKey,
             depth: 0,
             onTap: () => onSelectScope(businessScope),
@@ -236,7 +236,7 @@ class AdminScopeBusinessTreeCard extends StatelessWidget {
           key: Key('admin_setup_scope_org_unit_${unit.orgUnitId}'),
           icon: scopeIcon(kind: ScopeEntityKind.orgUnit),
           label: unit.name,
-          detail: 'Org unit scope',
+          detail: 'Org unit',
           selected: selectedScope?.cacheKey == scope.cacheKey,
           depth: parentPath.length + 1,
           onTap: () => onSelectScope(scope),
@@ -271,7 +271,7 @@ class AdminScopeBusinessTreeCard extends StatelessWidget {
       key: Key('admin_setup_scope_location_${location.locationId}'),
       icon: scopeIcon(kind: ScopeEntityKind.location),
       label: location.name,
-      detail: 'Location scope',
+      detail: 'Location',
       selected: selectedScope?.cacheKey == scope.cacheKey,
       depth: parentPath.length + 1,
       onTap: () => onSelectScope(scope),
@@ -397,7 +397,10 @@ class AdminScopeTree {
     }
     for (final location in locations) {
       _locationsByOrgUnit
-          .putIfAbsent(location.orgUnitId, () => <AdminScopeWorkspaceLocation>[])
+          .putIfAbsent(
+            location.orgUnitId,
+            () => <AdminScopeWorkspaceLocation>[],
+          )
           .add(location);
     }
   }
