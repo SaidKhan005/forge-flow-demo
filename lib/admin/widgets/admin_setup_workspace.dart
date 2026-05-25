@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_header_visibility.dart';
 
 import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
@@ -179,7 +180,10 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
                 key: const ValueKey<String>(
                   'admin_setup_function_all_businesses',
                 ),
-                child: widget.allBusinessesBuilder!(context),
+                child: ConsoleHeaderVisibility(
+                  suppressTitle: widget.showWorkspaceHeader,
+                  child: widget.allBusinessesBuilder!(context),
+                ),
               );
             } else if (_selectedScope == null) {
               functionChild = null;
@@ -188,10 +192,13 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
                 key: ValueKey<String>(
                   'admin_setup_function_${_selectedScope!.cacheKey}',
                 ),
-                child: widget.functionBuilder(
-                  context,
-                  _selectedScope!,
-                  selection!,
+                child: ConsoleHeaderVisibility(
+                  suppressTitle: widget.showWorkspaceHeader,
+                  child: widget.functionBuilder(
+                    context,
+                    _selectedScope!,
+                    selection!,
+                  ),
                 ),
               );
             }
@@ -362,9 +369,7 @@ class _WorkspaceHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 if (description != null) ...[
                   const SizedBox(height: 4),
@@ -389,4 +394,3 @@ class _WorkspaceHeader extends StatelessWidget {
     );
   }
 }
-

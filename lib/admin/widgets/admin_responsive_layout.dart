@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_header_visibility.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -79,6 +80,14 @@ class AdminPageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final suppressTitle = ConsoleHeaderVisibility.suppressTitleOf(context);
+    if (suppressTitle && trailing == null) {
+      return const SizedBox.shrink();
+    }
+    if (suppressTitle) {
+      return Align(alignment: Alignment.centerRight, child: trailing!);
+    }
+
     final titleText = Text(
       title,
       style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
