@@ -22,7 +22,7 @@ void main() {
 
       expect(scope.inheritanceLabel, 'Set at this scope');
       expect(scope.effectiveValueLabel, 'Business scope');
-      expect(scope.allowedActionsLabel, 'Review selected scope');
+      expect(scope.allowedActionsLabel, 'Review');
       expect(
         dataAccuracy.allowsLocationMutation(scope, editingEnabled: true),
         isFalse,
@@ -57,7 +57,7 @@ void main() {
 
       expect(scope.inheritanceLabel, 'Set at this scope');
       expect(scope.effectiveValueLabel, 'Org unit scope');
-      expect(scope.allowedActionsLabel, 'Assign selected scope');
+      expect(scope.allowedActionsLabel, 'Assign');
       expect(
         pollingPricing.includesOperatorLocation(
           scope,
@@ -68,7 +68,7 @@ void main() {
       );
       expect(
         pollingPricing.restrictionCopy(scope),
-        contains('covered locations inherit'),
+        contains('Covered locations inherit'),
       );
     });
 

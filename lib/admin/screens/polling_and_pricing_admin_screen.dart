@@ -682,8 +682,8 @@ class _PollingAndPricingAdminScreenState
               selectedScope: adminScopeLevel(_scope!.scopeType),
               scopeName: _scope!.displayLabel,
               effectiveValueSummary:
-                  'Polling setup for the selected scope. Covered locations '
-                  'inherit it until a lower scope overrides it.',
+                  'Covered locations inherit this polling setup until a lower '
+                  'scope overrides it.',
               backendOnlyHelpTitle: 'How this scope applies',
               backendOnlyExplainer: _scopeRestrictionCopy!,
             ),
@@ -707,7 +707,8 @@ class _PollingAndPricingAdminScreenState
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'This scope only covers $_singleCoveredLocationName. Adjusting polling setup here is equivalent to a per-location change. There are no other locations under this scope to inherit from.',
+                  'Only $_singleCoveredLocationName is included here, so this '
+                  'change is equivalent to a per-location update.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ),
@@ -890,16 +891,16 @@ class _ScopedPollingActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebPanel(
       key: const Key('admin_polling_setup_scope_action_card'),
-      title: 'Assign selected ${scope.scopeType.label.toLowerCase()}',
+      title: 'Assign polling setup',
       trailing: FilledButton.icon(
         key: const Key('admin_polling_setup_scope_assign'),
         style: AdminButtonStyles.primary,
         onPressed: onPressed,
         icon: const Icon(Icons.payments_outlined),
-        label: const Text('Assign scope'),
+        label: const Text('Assign'),
       ),
       child: Text(
-        'This saves one scoped polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower scope overrides it.',
+        'This saves one polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower setting overrides it.',
         style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
     );

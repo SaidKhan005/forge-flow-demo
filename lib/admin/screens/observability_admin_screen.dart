@@ -58,6 +58,7 @@ import '../admin_routes.dart' show kAdminOperatorsRouteId;
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
+import '../widgets/admin_observability_run_controls.dart';
 import '../widgets/admin_run_check_controls.dart';
 
 /// One tab in the redesigned AI Metrics screen.
@@ -273,28 +274,16 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
             final showManualPrompt =
                 !_loading && _envelope == null && _loadError == null;
             final children = <Widget>[
-              _ObservabilityActionsRow(
-                lastRefreshed: _lastRefreshed,
-                onRunCheck: _confirmAndRefresh,
-                loading: _loading || _refreshing,
-                month: _month,
-                onSelectMonth: _selectMonth,
-              ),
-              const SizedBox(height: 12),
-              // AI Metrics is scope-specific, so HP#11 stays as one honest
-              // muted line; scope still flows to the gateway fetch unchanged.
-              if (widget.hierarchyScope != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'Showing ${widget.hierarchyScope!.scopeType.label.toLowerCase()} '
-                    'scope: ${widget.hierarchyScope!.displayLabel}. Cost, usage, and '
-                    'customers are for this scope; hosting and the knowledge graph '
-                    'stay platform-wide.',
-                    key: const Key('admin_observability_scope_note'),
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
-                  ),
+              if (!showManualPrompt) ...<Widget>[
+                _ObservabilityActionsRow(
+                  lastRefreshed: _lastRefreshed,
+                  onRunCheck: _confirmAndRefresh,
+                  loading: _loading || _refreshing,
+                  month: _month,
+                  onSelectMonth: _selectMonth,
                 ),
+                const SizedBox(height: 12),
+              ],
               if (_loadError != null)
                 _ErrorBanner(
                   key: const Key('admin_observability_load_error'),
@@ -315,7 +304,13 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                     ),
                   ),
                 ),
-              if (showManualPrompt) const _ManualRunPrompt(),
+              if (showManualPrompt)
+                AdminObservabilityManualRunPrompt(
+                  onRunCheck: _confirmAndRefresh,
+                  loading: _loading || _refreshing,
+                  month: _month,
+                  onSelectMonth: _selectMonth,
+                ),
             ];
             final column = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -418,7 +413,7 @@ class _ObservabilityActionsRow extends StatelessWidget {
       spacing: 12,
       runSpacing: 8,
       children: <Widget>[
-        _MonthSelector(
+        AdminObservabilityMonthSelector(
           month: month,
           onSelectMonth: onSelectMonth,
           enabled: !loading,
@@ -443,93 +438,6 @@ class _ObservabilityActionsRow extends StatelessWidget {
           loading: loading,
         ),
       ],
-    );
-  }
-}
-
-/// "This month / Last month" segmented control. Threads the
-/// [ObservabilityMonth] bucket into the fetch. Only current / previous
-/// are offered because `usage_logs` is a monthly rollup (Metric Honesty
-/// Doctrine; finer windows would be dishonest).
-class _MonthSelector extends StatelessWidget {
-  const _MonthSelector({
-    required this.month,
-    required this.onSelectMonth,
-    required this.enabled,
-  });
-
-  final ObservabilityMonth month;
-  final ValueChanged<ObservabilityMonth> onSelectMonth;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_observability_month_selector'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _MonthSegment(
-            keyName: 'admin_observability_month_current',
-            label: 'This month',
-            selected: month == ObservabilityMonth.current,
-            enabled: enabled,
-            onTap: () => onSelectMonth(ObservabilityMonth.current),
-          ),
-          _MonthSegment(
-            keyName: 'admin_observability_month_previous',
-            label: 'Last month',
-            selected: month == ObservabilityMonth.previous,
-            enabled: enabled,
-            onTap: () => onSelectMonth(ObservabilityMonth.previous),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MonthSegment extends StatelessWidget {
-  const _MonthSegment({
-    required this.keyName,
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final String keyName;
-  final String label;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      key: Key(keyName),
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.sunset : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: AppTextStyles.body12(
-            color: selected
-                ? AppColors.backgroundSurface
-                : AppColors.textSecondary,
-          ).copyWith(fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
-        ),
-      ),
     );
   }
 }
@@ -565,41 +473,6 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
           text: 'Live staging metrics can take a few moments to load.',
         ),
       ],
-    );
-  }
-}
-
-class _ManualRunPrompt extends StatelessWidget {
-  const _ManualRunPrompt();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_observability_manual_prompt'),
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'Check AI Metrics',
-            style: AppTextStyles.body14(
-              color: AppColors.textPrimary,
-            ).copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Run a metrics check to see the latest cost, usage, and customer signals.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -657,7 +530,7 @@ class _HeroCards extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 14.0;
+        const gap = 16.0;
         final columns = constraints.maxWidth >= 900 ? 4 : 2;
         final cardWidth =
             (constraints.maxWidth - (gap * (columns - 1))) / columns;
@@ -718,7 +591,10 @@ class _HeroCards extends StatelessWidget {
                   ? '1 item not linked yet.'
                   : '${graph.isolatedNodeCount} items not linked yet.',
               pill: graph.isolatedNodeCount > 0
-                  ? const _HeroPill(label: 'Review suggested', tone: _HeroTone.watch)
+                  ? const _HeroPill(
+                      label: 'Review suggested',
+                      tone: _HeroTone.watch,
+                    )
                   : const _HeroPill(label: 'Up to date', tone: _HeroTone.ok),
             ),
           ],
@@ -810,20 +686,28 @@ class _HeroCard extends StatelessWidget {
     return Container(
       key: Key(keyName),
       width: width,
+      constraints: const BoxConstraints(minHeight: 178),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: AppColors.textPrimary.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Container(height: 3, color: accent),
+            Container(height: 4, color: accent),
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -831,15 +715,18 @@ class _HeroCard extends StatelessWidget {
                   Row(
                     children: <Widget>[
                       Container(
-                        width: 32,
-                        height: 32,
+                        width: 40,
+                        height: 40,
                         decoration: BoxDecoration(
                           color: accent.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.24),
+                          ),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Icon(icon, size: 18, color: accent),
+                        child: Icon(icon, size: 21, color: accent),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           label,
@@ -852,25 +739,25 @@ class _HeroCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 14),
                   Text(
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.mono20(
+                    style: AppTextStyles.mono28(
                       color: AppColors.textPrimary,
                       weight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
                     caption,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                   if (pill != null) ...<Widget>[
-                    const SizedBox(height: 9),
+                    const SizedBox(height: 12),
                     pill!,
                   ],
                 ],
@@ -912,7 +799,8 @@ class _MoneyTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_cache_hit_rates',
             title: 'Saved answer reuse',
-            subtitle: 'Higher is cheaper. Reusing a saved answer avoids paying for a new one.',
+            subtitle:
+                'Higher is cheaper. Reusing a saved answer avoids paying for a new one.',
             child: envelope.cacheHitRates.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cache_hit_rates_empty',
@@ -963,7 +851,8 @@ class _MoneyTab extends StatelessWidget {
                 const SizedBox(height: 18),
                 _SubHead(
                   text: 'Lower-cost batch work',
-                  hint: 'Higher is cheaper. Batch work is billed at a lower rate.',
+                  hint:
+                      'Higher is cheaper. Batch work is billed at a lower rate.',
                 ),
                 const SizedBox(height: 8),
                 if (envelope.batchModeShare.isEmpty)
@@ -1207,7 +1096,10 @@ class _LegendSwatch extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 6),
-        Text(label, style: AppTextStyles.body12(color: AppColors.textSecondary)),
+        Text(
+          label,
+          style: AppTextStyles.body12(color: AppColors.textSecondary),
+        ),
       ],
     );
   }
@@ -1420,7 +1312,8 @@ class _CustomersTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_top_spenders',
             title: 'Top spenders',
-            subtitle: 'The businesses, staff, and workflows using the most AI budget.',
+            subtitle:
+                'The businesses, staff, and workflows using the most AI budget.',
             child: _TopSpenders(envelope: envelope),
           ),
           _Panel(
@@ -1531,15 +1424,16 @@ class _WindowSelector extends StatelessWidget {
                 ),
                 child: Text(
                   entry.$2,
-                  style: AppTextStyles.body12(
-                    color: window == entry.$1
-                        ? AppColors.backgroundSurface
-                        : AppColors.textSecondary,
-                  ).copyWith(
-                    fontWeight: window == entry.$1
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                  ),
+                  style:
+                      AppTextStyles.body12(
+                        color: window == entry.$1
+                            ? AppColors.backgroundSurface
+                            : AppColors.textSecondary,
+                      ).copyWith(
+                        fontWeight: window == entry.$1
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
                 ),
               ),
             ),
@@ -1916,7 +1810,8 @@ class _ReliabilityTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_background_jobs',
             title: 'Background jobs',
-            subtitle: 'Shift and open-period projection work waiting, running, or stuck.',
+            subtitle:
+                'Shift and open-period projection work waiting, running, or stuck.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
@@ -1938,7 +1833,9 @@ class _ReliabilityTab extends StatelessWidget {
                       keyName: 'admin_observability_jobs_dead_lettered',
                       value: '${counts.deadLettered}',
                       label: 'Stuck',
-                      caption: counts.deadLettered > 0 ? 'Needs a person' : null,
+                      caption: counts.deadLettered > 0
+                          ? 'Needs a person'
+                          : null,
                       alert: counts.deadLettered > 0,
                     ),
                     _Stat(
@@ -1965,7 +1862,8 @@ class _ReliabilityTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_cloud_run_instances',
             title: 'Hosting capacity',
-            subtitle: 'Servers running each AI service. Platform-wide, not per business.',
+            subtitle:
+                'Servers running each AI service. Platform-wide, not per business.',
             child: envelope.cloudRun.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cloud_run_empty',
@@ -1988,7 +1886,8 @@ class _ReliabilityTab extends StatelessWidget {
             _Panel(
               keyName: 'admin_observability_section_live_sync',
               title: 'Live sync',
-              subtitle: 'Whether updates are flowing from the database to the apps.',
+              subtitle:
+                  'Whether updates are flowing from the database to the apps.',
               child: _LiveSync(snapshot: tripwires, error: tripwireError),
             ),
         ],
@@ -2035,7 +1934,10 @@ class _StatGrid extends StatelessWidget {
           runSpacing: gap,
           children: <Widget>[
             for (final stat in stats)
-              SizedBox(width: itemWidth, child: _StatBlock(stat: stat)),
+              SizedBox(
+                width: itemWidth,
+                child: _StatBlock(stat: stat),
+              ),
           ],
         );
       },
@@ -2119,11 +2021,7 @@ class _HostingRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: <Widget>[
-          const Icon(
-            Icons.dns_outlined,
-            size: 20,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.dns_outlined, size: 20, color: AppColors.textMuted),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
@@ -2138,8 +2036,9 @@ class _HostingRow extends StatelessWidget {
             Text.rich(
               TextSpan(
                 text: '${service.instanceCount}',
-                style: AppTextStyles.mono16(color: AppColors.textPrimary)
-                    .copyWith(fontWeight: FontWeight.w700),
+                style: AppTextStyles.mono16(
+                  color: AppColors.textPrimary,
+                ).copyWith(fontWeight: FontWeight.w700),
                 children: <InlineSpan>[
                   TextSpan(
                     text: ' running',
@@ -2162,8 +2061,9 @@ class _HostingRow extends StatelessWidget {
               children: <Widget>[
                 Text(
                   '—',
-                  style: AppTextStyles.mono16(color: AppColors.textMuted)
-                      .copyWith(fontWeight: FontWeight.w700),
+                  style: AppTextStyles.mono16(
+                    color: AppColors.textMuted,
+                  ).copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -2264,7 +2164,9 @@ class _LiveSyncRow extends StatelessWidget {
         SizedBox(
           width: 96,
           child: Text(
-            row.value == null ? '—' : _formatTripwireValue(row.metric, row.value!),
+            row.value == null
+                ? '—'
+                : _formatTripwireValue(row.metric, row.value!),
             style: AppTextStyles.mono11(color: AppColors.textPrimary),
           ),
         ),
@@ -2301,7 +2203,8 @@ class _KnowledgeTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_graph_counts',
             title: 'What the advisor knows',
-            subtitle: 'Approved facts and links, system suggestions, and anything not linked yet.',
+            subtitle:
+                'Approved facts and links, system suggestions, and anything not linked yet.',
             child: _StatGrid(
               stats: <_Stat>[
                 _Stat(
@@ -2335,7 +2238,8 @@ class _KnowledgeTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_graph_freshness',
             title: 'Knowledge freshness',
-            subtitle: 'How recently the advisor knowledge was rebuilt and how fast it answers.',
+            subtitle:
+                'How recently the advisor knowledge was rebuilt and how fast it answers.',
             child: _StatGrid(
               stats: <_Stat>[
                 _Stat(
@@ -2551,7 +2455,10 @@ class _TripwirePill extends StatelessWidget {
         border: Border.all(color: palette.border, width: 1),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(palette.label, style: AppTextStyles.chipLabel(color: palette.text)),
+      child: Text(
+        palette.label,
+        style: AppTextStyles.chipLabel(color: palette.text),
+      ),
     );
   }
 }
@@ -2571,7 +2478,10 @@ class _RowTripwirePill extends StatelessWidget {
         border: Border.all(color: palette.border, width: 1),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(palette.label, style: AppTextStyles.chipLabel(color: palette.text)),
+      child: Text(
+        palette.label,
+        style: AppTextStyles.chipLabel(color: palette.text),
+      ),
     );
   }
 }
@@ -2801,9 +2711,7 @@ String _formatUsd(double value) {
   final abs = value.abs();
   final fixed = abs >= 100 ? value.roundToDouble() : value;
   final hasCents = abs < 100;
-  final str = hasCents
-      ? fixed.toStringAsFixed(2)
-      : fixed.toStringAsFixed(0);
+  final str = hasCents ? fixed.toStringAsFixed(2) : fixed.toStringAsFixed(0);
   final parts = str.split('.');
   final intPart = parts[0];
   final buffer = StringBuffer();

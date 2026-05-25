@@ -201,20 +201,15 @@ class _VendorConnectionsAdminMountState
   }
 
   Widget _embeddedLocationRequiredPanel(AdminHierarchyScopeIntent? scope) {
-    final selectedScopeLabel = scope == null
-        ? 'No hierarchy scope selected'
-        : '${scope.scopeType.label}: ${scope.displayLabel}';
     return OperatorWebPanel(
       key: const Key('admin_vendor_connections_location_required'),
       title: 'Choose a location',
       subtitle:
-          'Vendor setup is location-only. Business and org-unit scopes narrow '
-          'the hierarchy context, but connect, test, disconnect, and sync-log '
-          'controls need a specific location.',
+          'Vendor setup needs a specific location for connect, test, '
+          'disconnect, and sync-log controls.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          AdminDetailRow(label: 'Selected scope', value: selectedScopeLabel),
           const AdminDetailRow(
             label: 'Edit controls',
             value: 'Location required',
@@ -283,25 +278,6 @@ class _VendorConnectionsAdminMountState
       color: AppColors.backgroundDeep,
       child: Column(
         children: <Widget>[
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 160),
-            child: SingleChildScrollView(
-              key: const Key('admin_vendor_connections_scope_context'),
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 920),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      if (scope != null)
-                        _VendorConnectionsScopeContext(scope: scope),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
           Expanded(child: content),
         ],
       ),
@@ -334,65 +310,6 @@ class _VendorConnectionsAdminMountState
                   )
                 : null,
           );
-  }
-}
-
-class _VendorConnectionsScopeContext extends StatelessWidget {
-  const _VendorConnectionsScopeContext({required this.scope});
-
-  final AdminHierarchyScopeIntent scope;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_vendor_connections_selected_scope'),
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.peacock.withValues(alpha: 0.08),
-        border: Border.all(
-          color: AppColors.peacock.withValues(alpha: 0.28),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.account_tree_outlined,
-            size: 18,
-            color: AppColors.peacockDark,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Selected ${scope.scopeType.label.toLowerCase()} scope',
-                  style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  scope.displayLabel,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.body14(color: AppColors.textPrimary),
-                ),
-                if (!scope.isLocationScope) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    'Select a location in Business accounts to configure vendor integrations.',
-                    style: AppTextStyles.body12(color: AppColors.textSecondary),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -444,9 +361,6 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedScopeLabel = scope == null
-        ? 'No hierarchy scope selected'
-        : '${scope!.scopeType.label}: ${scope!.displayLabel}';
     return ColoredBox(
       color: AppColors.backgroundDeep,
       child: SingleChildScrollView(
@@ -495,7 +409,8 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Business and org-unit scopes narrow the hierarchy context, but vendor setup remains location-only. Select a location scope to show connect, test, disconnect, and sync-log controls.',
+                                  'Choose a location to show connect, test, '
+                                  'disconnect, and sync-log controls.',
                                   style: AppTextStyles.body13(
                                     color: AppColors.textSecondary,
                                   ),
@@ -506,10 +421,6 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      AdminDetailRow(
-                        label: 'Selected scope',
-                        value: selectedScopeLabel,
-                      ),
                       const AdminDetailRow(
                         label: 'Edit controls',
                         value: 'Location required',

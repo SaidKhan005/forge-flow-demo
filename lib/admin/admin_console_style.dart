@@ -5,7 +5,7 @@ import '../theme/app_theme.dart';
 class AdminConsoleLayout {
   const AdminConsoleLayout._();
 
-  static const double sideNavWidth = 280;
+  static const double sideNavWidth = 304;
   static const double maxContentWidth = 1120;
   static const double narrowContentWidth = 760;
   static const double emptyStateMaxWidth = 460;

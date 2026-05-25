@@ -965,8 +965,7 @@ Widget _buildPricing(BuildContext context) {
     context: context,
     routeId: kAdminPricingRouteId,
     functionTitle: 'Plans and limits',
-    description:
-        'Review plan status and usage limits for the selected hierarchy scope.',
+    description: 'Review plan status and usage limits.',
     functionBuilder: (context, selectedScope, selection) {
       if (source == null) {
         return PricingTierAdminScreen(
@@ -1022,8 +1021,7 @@ Widget _buildCorpus(BuildContext context) {
     context: context,
     routeId: kAdminCorpusRouteId,
     functionTitle: 'Knowledge Base',
-    description:
-        'Review knowledge content and relationship review for the selected scope.',
+    description: 'Review knowledge content and relationship review.',
     functionBuilder: (context, selectedScope, selection) {
       final targetOperatorId = selectedScope.operatorId;
       final targetLocationId = selectedScope.locationId;
@@ -1069,8 +1067,7 @@ Widget _buildIntegrations(BuildContext context) {
     context: context,
     routeId: kAdminIntegrationsRouteId,
     functionTitle: 'Connected services',
-    description:
-        'Review platform services and vendor API reachability for the selected hierarchy scope.',
+    description: 'Review platform services and vendor API reachability.',
     functionBuilder: (context, selectedScope, selection) {
       Widget buildScreen({required bool canEdit}) {
         return IntegrationAdminScreen(
@@ -1116,8 +1113,7 @@ Widget _buildObservability(BuildContext context) {
     context: context,
     routeId: kAdminObservabilityRouteId,
     functionTitle: 'AI Metrics',
-    description:
-        'Review AI cost, usage, reliability, and hosting signals for the selected hierarchy scope.',
+    description: 'Review AI cost, usage, reliability, and hosting signals.',
     functionBuilder: (context, selectedScope, selection) =>
         ObservabilityAdminScreen(
           key: ValueKey<String>('observability-${selectedScope.cacheKey}'),
@@ -1145,7 +1141,7 @@ Widget _buildFeatureFlags(BuildContext context) {
     routeId: kAdminFeatureFlagsRouteId,
     functionTitle: 'Launch controls',
     description:
-        'Turn rollout controls on or off for the selected hierarchy scope with audit-backed confirmation.',
+        'Turn rollout controls on or off with audit-backed confirmation.',
     functionBuilder: (context, selectedScope, selection) {
       Widget buildScreen({required bool canEdit}) {
         return FeatureFlagsAdminScreen(
@@ -1308,7 +1304,7 @@ Widget _buildDataAccuracy(BuildContext context) {
     functionTitle: 'Covers and Wage Data Accuracy',
     showWorkspaceHeader: false,
     description:
-        'Review covers, wage data, vendor filters, and audit history for the selected scope.',
+        'Review covers, wage data, vendor filters, and audit history.',
     operatorGateway: operatorGateway,
     hierarchyGateway: hierarchyGateway,
     initialScope: initialScope,
@@ -1516,7 +1512,7 @@ Widget _buildTimingSetup(BuildContext context) {
     functionTitle: 'Timing',
     showWorkspaceHeader: false,
     description:
-        'Edit timezone, business day, week start, and service periods for the selected hierarchy scope.',
+        'Edit timezone, business day, week start, and service periods.',
     operatorGateway: operatorGateway,
     hierarchyGateway: hierarchyGateway,
     initialScope: initialScope,
@@ -1651,7 +1647,7 @@ Widget _buildMembers(BuildContext context) {
     functionTitle: 'Team members',
     showWorkspaceHeader: false,
     description:
-        'Manage members, invites, role assignments, and access policy for the selected scope.',
+        'Manage members, invites, role assignments, and access policy.',
     operatorGateway: operatorGateway,
     hierarchyGateway: rolesGateway,
     initialScope: initialScope,
@@ -1865,7 +1861,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
     functionTitle: 'Roles & permissions',
     showWorkspaceHeader: false,
     description:
-        'Review hierarchy, roles, permission policy, and active sessions for the selected scope.',
+        'Review hierarchy, roles, permission policy, and active sessions.',
     operatorGateway: operatorGateway,
     hierarchyGateway: gateway,
     initialScope: initialScope,
@@ -2185,7 +2181,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
     functionTitle: 'Audit log',
     showWorkspaceHeader: false,
     description:
-        'Review audit history, active sessions, and guarded support actions for the selected scope.',
+        'Review audit history, active sessions, and guarded support actions.',
     operatorGateway: operatorGateway,
     hierarchyGateway: sessionsGateway,
     initialScope: initialScope,
@@ -2499,7 +2495,7 @@ Widget _buildDebugConsole(BuildContext context) {
   return AdminSetupWorkspace(
     functionTitle: 'Support logs',
     description:
-        'Review support-safe requests, relationship help, and account help for the selected scope.',
+        'Review support-safe requests, relationship help, and account help.',
     operatorGateway: operatorGateway,
     hierarchyGateway: hierarchyGateway,
     initialScope: initialScope,

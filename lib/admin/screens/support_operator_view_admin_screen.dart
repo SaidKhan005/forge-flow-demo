@@ -64,7 +64,7 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
               AdminPageHeader(
                 title: 'Support workspace',
                 subtitle:
-                    '${pickedOperator.operatorBusinessName}: one scoped view '
+                    '${pickedOperator.operatorBusinessName}: one view '
                     'for people, access, security, audit, and vendors.',
                 trailing: onChangeOperator == null
                     ? null
@@ -88,7 +88,7 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
                     tone: AppColors.sunset,
                   ),
                   AdminStatItem(
-                    label: 'Location scope',
+                    label: 'Location',
                     value: pickedOperator.locationName,
                     icon: Icons.location_on_outlined,
                     tone: AppColors.peacock,

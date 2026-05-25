@@ -231,16 +231,6 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               children: [
                 const _Header(),
                 const SizedBox(height: 14),
-                if (widget.hierarchyScope != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      'Showing ${widget.hierarchyScope!.scopeType.label.toLowerCase()} '
-                      'scope: ${widget.hierarchyScope!.displayLabel}. Vendor reachability follows this hierarchy; platform service keys remain shared ecosystem keys.',
-                      key: const Key('admin_integrations_scope_note'),
-                      style: AppTextStyles.body12(color: AppColors.textMuted),
-                    ),
-                  ),
                 if (!widget.editingEnabled)
                   const _ReadOnlyBanner(
                     key: Key('admin_integrations_readonly_banner'),
