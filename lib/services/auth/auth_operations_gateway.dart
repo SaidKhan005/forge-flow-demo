@@ -850,6 +850,24 @@ class TeamRolePatched {
   final int bumpedUsers;
 }
 
+class TeamSeededRolePermissionsEditCommand {
+  const TeamSeededRolePermissionsEditCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.roleId,
+    required this.permissionKeys,
+    this.reason,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String roleId;
+  final List<String> permissionKeys;
+  final String? reason;
+}
+
 class TeamRoleDeleteCommand {
   const TeamRoleDeleteCommand({
     required this.actorUserId,
@@ -1376,15 +1394,17 @@ abstract class AuthOperationsGateway {
   /// Wave 2 W-3 — self-service profile edit. The proxy route guard
   /// resolves the target user from the verified bearer token; the
   /// gateway never trusts a client-supplied target id.
-  Future<SelfProfilePatched> patchSelfProfile(
-    SelfProfilePatchCommand command,
-  );
+  Future<SelfProfilePatched> patchSelfProfile(SelfProfilePatchCommand command);
 
   Future<TeamRoleCatalogListed> listRoles(TeamRoleCatalogListCommand command);
 
   Future<TeamRoleCreated> createRole(TeamRoleCreateCommand command);
 
   Future<TeamRolePatched> patchRole(TeamRolePatchCommand command);
+
+  Future<TeamRolePatched> editSeededRolePermissions(
+    TeamSeededRolePermissionsEditCommand command,
+  );
 
   Future<TeamRoleDeleted> deleteRole(TeamRoleDeleteCommand command);
 
@@ -1498,9 +1518,7 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
-  Future<SelfProfilePatched> patchSelfProfile(
-    SelfProfilePatchCommand command,
-  ) {
+  Future<SelfProfilePatched> patchSelfProfile(SelfProfilePatchCommand command) {
     throw StateError(_message);
   }
 
@@ -1516,6 +1534,13 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
 
   @override
   Future<TeamRolePatched> patchRole(TeamRolePatchCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamRolePatched> editSeededRolePermissions(
+    TeamSeededRolePermissionsEditCommand command,
+  ) {
     throw StateError(_message);
   }
 

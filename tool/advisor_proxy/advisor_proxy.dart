@@ -7422,9 +7422,7 @@ Future<void> routeRequest(
           // because the proxy's model id already carries the version.
           final completed = pipelineResult.completion;
           final statsModelId = completed?.modelId ?? finalTelemetry.modelUsed;
-          final latencyMs = clock()
-              .difference(requestStartedAt)
-              .inMilliseconds;
+          final latencyMs = clock().difference(requestStartedAt).inMilliseconds;
           final requestStats = ProxyRequestStats(
             usageClass: usageClass,
             resultStatus: 'success',
@@ -9036,7 +9034,10 @@ Future<void> routeRequest(
 
             if (request.method == 'POST' &&
                 authOperationPath == adminAuthRolesPath) {
-              if (!await requirePermission('team.roles.create_custom')) return;
+              final permissionKey = path == adminAuthRolesPath
+                  ? 'admin.roles.create_custom'
+                  : 'team.roles.create_custom';
+              if (!await requirePermission(permissionKey)) return;
               final roleKey = _nonBlankString(body['role_key']);
               final displayName = _nonBlankString(body['display_name']);
               if (roleKey == null || displayName == null) {
@@ -9076,9 +9077,67 @@ Future<void> routeRequest(
               return;
             }
 
+            if (request.method == 'POST' &&
+                path.startsWith(adminAuthRolePrefix) &&
+                path.endsWith('/permissions')) {
+              if (!await requirePermission('admin.roles.edit_seeded')) return;
+              final roleId = _seededRolePermissionsRoleId(path);
+              if (roleId == null) {
+                _writeJson(response, 404, <String, Object?>{
+                  'error': 'not found',
+                  'method': request.method,
+                  'path': path,
+                });
+                return;
+              }
+              final reason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['reason']);
+              if (reason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_admin_reason',
+                  'message': 'admin_reason is required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthRolePrefix$roleId/permissions',
+                key: idempotencyKey,
+                compute: () async {
+                  final patched = await authOperationsGateway
+                      .editSeededRolePermissions(
+                        TeamSeededRolePermissionsEditCommand(
+                          actorUserId: scope.userId,
+                          operatorId: scope.operatorId,
+                          locationId: scope.locationId,
+                          roleId: roleId,
+                          permissionKeys: _permissionKeyList(
+                            body['permission_keys'],
+                          ),
+                          reason: reason,
+                        ),
+                      );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'role': _teamRoleToJson(patched.role),
+                      'bumped_users': patched.bumpedUsers,
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
             if (request.method == 'PATCH' &&
                 authOperationPath.startsWith(adminAuthRolePrefix)) {
-              if (!await requirePermission('team.roles.create_custom')) return;
+              final permissionKey = path.startsWith(adminAuthRolePrefix)
+                  ? 'admin.roles.create_custom'
+                  : 'team.roles.create_custom';
+              if (!await requirePermission(permissionKey)) return;
               final roleId = _pathSuffix(
                 authOperationPath,
                 adminAuthRolePrefix,
@@ -9124,7 +9183,10 @@ Future<void> routeRequest(
 
             if (request.method == 'DELETE' &&
                 authOperationPath.startsWith(adminAuthRolePrefix)) {
-              if (!await requirePermission('team.roles.create_custom')) return;
+              final permissionKey = path.startsWith(adminAuthRolePrefix)
+                  ? 'admin.roles.delete_custom'
+                  : 'team.roles.create_custom';
+              if (!await requirePermission(permissionKey)) return;
               final roleId = _pathSuffix(
                 authOperationPath,
                 adminAuthRolePrefix,
@@ -14780,8 +14842,8 @@ Future<void> _routePricingAdmin({
     // seeding belongs on the client/writer side and is wired in a
     // follow-up slice; this route provisions the trial flag only.
     if (action == 'start-pilot') {
-      final trialDays = _optionalBodyInt(body, 'trial_days') ??
-          kPilotTrialDefaultDays;
+      final trialDays =
+          _optionalBodyInt(body, 'trial_days') ?? kPilotTrialDefaultDays;
       if (trialDays < 1 || trialDays > kPilotTrialMaxDays) {
         throw _AdminInputError(
           statusCode: 400,
@@ -16432,6 +16494,11 @@ bool _isAdminAuthOperation(String path, String method) {
   if (method == 'POST' && p == adminAuthRolesPath) {
     return true;
   }
+  if (method == 'POST' &&
+      path.startsWith(adminAuthRolePrefix) &&
+      path.endsWith('/permissions')) {
+    return true;
+  }
   if (method == 'PATCH' && p.startsWith(adminAuthRolePrefix)) {
     return true;
   }
@@ -16701,6 +16768,18 @@ String? _pathSuffix(String path, String prefix) {
   final suffix = path.substring(prefix.length);
   if (suffix.isEmpty || suffix.contains('/')) return null;
   return Uri.decodeComponent(suffix);
+}
+
+String? _seededRolePermissionsRoleId(String path) {
+  if (!path.startsWith(adminAuthRolePrefix) || !path.endsWith('/permissions')) {
+    return null;
+  }
+  final suffix = path.substring(adminAuthRolePrefix.length);
+  final parts = suffix.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != 'permissions') {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
 }
 
 ({String operatorId, String locationId})? _pathPairSuffix(
@@ -17085,6 +17164,29 @@ List<TeamRolePermissionUpdate> _rolePermissionUpdates(Object? raw) {
     );
   }
   return List<TeamRolePermissionUpdate>.unmodifiable(updates);
+}
+
+List<String> _permissionKeyList(Object? raw) {
+  if (raw is! List) {
+    throw const AuthOperationRejected(
+      code: 'invalid_role_permissions',
+      message: 'permission_keys must be a list',
+      statusCode: 400,
+    );
+  }
+  final keys = <String>[];
+  for (final item in raw) {
+    final key = _nonBlankString(item);
+    if (key == null) {
+      throw const AuthOperationRejected(
+        code: 'invalid_role_permissions',
+        message: 'each permission key must be a non-empty string',
+        statusCode: 400,
+      );
+    }
+    keys.add(key);
+  }
+  return List<String>.unmodifiable(keys);
 }
 
 String? _stringValue(Object? value) {

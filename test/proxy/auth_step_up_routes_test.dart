@@ -77,33 +77,35 @@ void main() {
       expect(spec, isNull);
     });
 
-    test('matches every distinct sensitive surface listed in the slice doc',
-        () {
-      // Sanity check that the V1 registry covers the four surfaces
-      // the slice doc enumerates: account edits, password change,
-      // MFA enroll, role mutations, billing, vendor applicability.
-      // Picks one canonical path per surface.
-      final probes = <(String, String)>[
-        ('PATCH', '/v1/operator/account'),
-        ('POST', '/v1/auth/password/change'),
-        ('POST', '/v1/auth/mfa/totp/begin'),
-        ('POST', '/v1/admin/auth/roles'),
-        ('PATCH', '/v1/admin/auth/roles/abc'),
-        ('POST', '/v1/auth/team/role-grants'),
-        ('PATCH', '/v1/admin/pricing/operators/op-1'),
-        ('PATCH', '/v1/admin/pricing/usage-caps'),
-        ('POST', '/v1/admin/vendor-applicability/wage'),
-      ];
-      for (final probe in probes) {
-        final spec =
-            lookupStepUpRoute(method: probe.$1, path: probe.$2);
-        expect(
-          spec,
-          isNotNull,
-          reason: '${probe.$1} ${probe.$2} should be flagged sensitive',
-        );
-      }
-    });
+    test(
+      'matches every distinct sensitive surface listed in the slice doc',
+      () {
+        // Sanity check that the V1 registry covers the four surfaces
+        // the slice doc enumerates: account edits, password change,
+        // MFA enroll, role mutations, billing, vendor applicability.
+        // Picks one canonical path per surface.
+        final probes = <(String, String)>[
+          ('PATCH', '/v1/operator/account'),
+          ('POST', '/v1/auth/password/change'),
+          ('POST', '/v1/auth/mfa/totp/begin'),
+          ('POST', '/v1/admin/auth/roles'),
+          ('PATCH', '/v1/admin/auth/roles/abc'),
+          ('POST', '/v1/admin/auth/roles/abc/permissions'),
+          ('POST', '/v1/auth/team/role-grants'),
+          ('PATCH', '/v1/admin/pricing/operators/op-1'),
+          ('PATCH', '/v1/admin/pricing/usage-caps'),
+          ('POST', '/v1/admin/vendor-applicability/wage'),
+        ];
+        for (final probe in probes) {
+          final spec = lookupStepUpRoute(method: probe.$1, path: probe.$2);
+          expect(
+            spec,
+            isNotNull,
+            reason: '${probe.$1} ${probe.$2} should be flagged sensitive',
+          );
+        }
+      },
+    );
   });
 
   group('StepUpPolicy.evaluate', () {
@@ -149,30 +151,34 @@ void main() {
       expect(out, isA<StepUpRequirementSkipServicePrincipal>());
     });
 
-    test('returns ChallengeNeeded(missing_auth_time) when auth_time is null',
-        () {
-      final out = policy.evaluate(
-        spec: spec,
-        authTime: null,
-        actorKind: 'user',
-        now: now,
-      );
-      expect(out, isA<StepUpRequirementChallengeNeeded>());
-      final needed = out as StepUpRequirementChallengeNeeded;
-      expect(needed.reason, 'missing_auth_time');
-    });
+    test(
+      'returns ChallengeNeeded(missing_auth_time) when auth_time is null',
+      () {
+        final out = policy.evaluate(
+          spec: spec,
+          authTime: null,
+          actorKind: 'user',
+          now: now,
+        );
+        expect(out, isA<StepUpRequirementChallengeNeeded>());
+        final needed = out as StepUpRequirementChallengeNeeded;
+        expect(needed.reason, 'missing_auth_time');
+      },
+    );
 
-    test('returns FreshEnough when auth_time is inside the freshness window',
-        () {
-      final out = policy.evaluate(
-        spec: spec,
-        // 60 seconds ago (well inside the 5-minute window).
-        authTime: now.subtract(const Duration(seconds: 60)),
-        actorKind: 'user',
-        now: now,
-      );
-      expect(out, isA<StepUpRequirementFreshEnough>());
-    });
+    test(
+      'returns FreshEnough when auth_time is inside the freshness window',
+      () {
+        final out = policy.evaluate(
+          spec: spec,
+          // 60 seconds ago (well inside the 5-minute window).
+          authTime: now.subtract(const Duration(seconds: 60)),
+          actorKind: 'user',
+          now: now,
+        );
+        expect(out, isA<StepUpRequirementFreshEnough>());
+      },
+    );
 
     test('returns ChallengeNeeded(auth_time_stale) when auth_time is older '
         'than the window', () {
@@ -209,10 +215,7 @@ void main() {
       // RFC 9470: Bearer + comma-separated params; quoted strings for
       // strings, bare numeric for max_age.
       expect(header, startsWith('Bearer '));
-      expect(
-        header,
-        contains('error="insufficient_user_authentication"'),
-      );
+      expect(header, contains('error="insufficient_user_authentication"'));
       expect(header, contains('acr_values="urn:mfa"'));
       expect(header, contains('max_age=300'));
       expect(
@@ -270,24 +273,27 @@ void main() {
       expect(gateway.consumeCalls, isEmpty);
     });
 
-    test('admits a sensitive route when actor is a service principal', () async {
-      final gateway = _FakeStepUpGateway();
-      final router = buildRouter(gateway: gateway);
-      final result = await router.dispatch(
-        method: 'POST',
-        path: '/v1/auth/password/change',
-        operatorId: _opA,
-        locationId: _locA,
-        userId: _userA,
-        actorKind: 'service_principal',
-        authTime: null,
-        presentedChallengeId: null,
-        sourceDeviceFingerprint: null,
-        now: () => now,
-      );
-      expect(result, isA<StepUpDispatchAdmit>());
-      expect(gateway.emitCalls, isEmpty);
-    });
+    test(
+      'admits a sensitive route when actor is a service principal',
+      () async {
+        final gateway = _FakeStepUpGateway();
+        final router = buildRouter(gateway: gateway);
+        final result = await router.dispatch(
+          method: 'POST',
+          path: '/v1/auth/password/change',
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          actorKind: 'service_principal',
+          authTime: null,
+          presentedChallengeId: null,
+          sourceDeviceFingerprint: null,
+          now: () => now,
+        );
+        expect(result, isA<StepUpDispatchAdmit>());
+        expect(gateway.emitCalls, isEmpty);
+      },
+    );
 
     test('admits a sensitive route when auth_time is fresh', () async {
       final gateway = _FakeStepUpGateway();
@@ -308,8 +314,7 @@ void main() {
       expect(gateway.emitCalls, isEmpty);
     });
 
-    test(
-        'emits 401 + RFC 9470 challenge when auth_time is stale and no '
+    test('emits 401 + RFC 9470 challenge when auth_time is stale and no '
         'replay header is present', () async {
       final gateway = _FakeStepUpGateway(
         emitReturning: 'CHALLENGE_AAAA_BBBB_CCCC',
@@ -362,115 +367,114 @@ void main() {
       expect(gateway.emitCalls.single.routePath, '/v1/auth/password/change');
       expect(gateway.emitCalls.single.requiredAcr, 'urn:mfa');
       expect(gateway.emitCalls.single.requiredFreshnessSeconds, 300);
-      expect(
-        gateway.emitCalls.single.sourceDeviceFingerprint,
-        'fp-1',
-      );
+      expect(gateway.emitCalls.single.sourceDeviceFingerprint, 'fp-1');
 
       // Audit sink saw exactly one challenge_emitted event.
       expect(auditSink.emitted, hasLength(1));
-      expect(
-        auditSink.emitted.single.challengeId,
-        'CHALLENGE_AAAA_BBBB_CCCC',
-      );
+      expect(auditSink.emitted.single.challengeId, 'CHALLENGE_AAAA_BBBB_CCCC');
       expect(auditSink.emitted.single.reason, 'auth_time_stale');
       expect(auditSink.consumed, isEmpty);
     });
 
-    test('emits a fresh challenge when auth_time is missing entirely',
-        () async {
-      final gateway = _FakeStepUpGateway(emitReturning: 'CID_MISSING');
-      final router = buildRouter(gateway: gateway);
-      final result = await router.dispatch(
-        method: 'POST',
-        path: '/v1/auth/password/change',
-        operatorId: _opA,
-        locationId: _locA,
-        userId: _userA,
-        actorKind: 'user',
-        authTime: null,
-        presentedChallengeId: null,
-        sourceDeviceFingerprint: null,
-        now: () => now,
-      );
-      expect(result, isA<StepUpDispatchChallenge>());
-      final challenge = result as StepUpDispatchChallenge;
-      expect(challenge.body['reason'], 'missing_auth_time');
-      expect(challenge.body['challenge_id'], 'CID_MISSING');
-    });
-
-    test('admits when a presented challenge_id consumes successfully', () async {
-      final consumedAt = now.add(const Duration(seconds: 30));
-      final gateway = _FakeStepUpGateway(
-        consumeReturning: StepUpChallengeConsumed(
-          challengeId: 'CID_REPLAYED',
+    test(
+      'emits a fresh challenge when auth_time is missing entirely',
+      () async {
+        final gateway = _FakeStepUpGateway(emitReturning: 'CID_MISSING');
+        final router = buildRouter(gateway: gateway);
+        final result = await router.dispatch(
+          method: 'POST',
+          path: '/v1/auth/password/change',
           operatorId: _opA,
           locationId: _locA,
           userId: _userA,
-          routePath: '/v1/auth/password/change',
-          requiredAcr: 'urn:mfa',
-          requiredFreshnessSeconds: 300,
-          consumedAt: consumedAt,
-        ),
-      );
-      final auditSink = _RecordingStepUpAuditSink();
-      final router = buildRouter(gateway: gateway, auditSink: auditSink);
-
-      final result = await router.dispatch(
-        method: 'POST',
-        path: '/v1/auth/password/change',
-        operatorId: _opA,
-        locationId: _locA,
-        userId: _userA,
-        actorKind: 'user',
-        // Still stale — but the presented id should win.
-        authTime: now.subtract(const Duration(minutes: 10)),
-        presentedChallengeId: 'CID_REPLAYED',
-        sourceDeviceFingerprint: null,
-        now: () => now,
-      );
-      expect(result, isA<StepUpDispatchAdmit>());
-      expect(gateway.emitCalls, isEmpty);
-      expect(gateway.consumeCalls, hasLength(1));
-      expect(auditSink.consumed, hasLength(1));
-      expect(auditSink.consumed.single.challengeId, 'CID_REPLAYED');
-    });
+          actorKind: 'user',
+          authTime: null,
+          presentedChallengeId: null,
+          sourceDeviceFingerprint: null,
+          now: () => now,
+        );
+        expect(result, isA<StepUpDispatchChallenge>());
+        final challenge = result as StepUpDispatchChallenge;
+        expect(challenge.body['reason'], 'missing_auth_time');
+        expect(challenge.body['challenge_id'], 'CID_MISSING');
+      },
+    );
 
     test(
-        'replay protection: presenting a CONSUMED challenge_id returns 410',
-        () async {
-      final gateway = _FakeStepUpGateway(
-        consumeReturning: null,
-        replayState: StepUpChallengeState(
+      'admits when a presented challenge_id consumes successfully',
+      () async {
+        final consumedAt = now.add(const Duration(seconds: 30));
+        final gateway = _FakeStepUpGateway(
+          consumeReturning: StepUpChallengeConsumed(
+            challengeId: 'CID_REPLAYED',
+            operatorId: _opA,
+            locationId: _locA,
+            userId: _userA,
+            routePath: '/v1/auth/password/change',
+            requiredAcr: 'urn:mfa',
+            requiredFreshnessSeconds: 300,
+            consumedAt: consumedAt,
+          ),
+        );
+        final auditSink = _RecordingStepUpAuditSink();
+        final router = buildRouter(gateway: gateway, auditSink: auditSink);
+
+        final result = await router.dispatch(
+          method: 'POST',
+          path: '/v1/auth/password/change',
           operatorId: _opA,
+          locationId: _locA,
           userId: _userA,
-          routePath: '/v1/auth/password/change',
-          expiresAt: now.add(const Duration(minutes: 4)),
-          // Consumed earlier.
-          consumedAt: now.subtract(const Duration(minutes: 1)),
-        ),
-      );
-      final router = buildRouter(gateway: gateway);
-      final result = await router.dispatch(
-        method: 'POST',
-        path: '/v1/auth/password/change',
-        operatorId: _opA,
-        locationId: _locA,
-        userId: _userA,
-        actorKind: 'user',
-        authTime: now.subtract(const Duration(minutes: 10)),
-        presentedChallengeId: 'CID_REPLAY',
-        sourceDeviceFingerprint: null,
-        now: () => now,
-      );
-      expect(result, isA<StepUpDispatchReject>());
-      final reject = result as StepUpDispatchReject;
-      expect(reject.statusCode, 410);
-      expect(reject.body['error'], 'step_up_challenge_already_consumed');
-    });
+          actorKind: 'user',
+          // Still stale — but the presented id should win.
+          authTime: now.subtract(const Duration(minutes: 10)),
+          presentedChallengeId: 'CID_REPLAYED',
+          sourceDeviceFingerprint: null,
+          now: () => now,
+        );
+        expect(result, isA<StepUpDispatchAdmit>());
+        expect(gateway.emitCalls, isEmpty);
+        expect(gateway.consumeCalls, hasLength(1));
+        expect(auditSink.consumed, hasLength(1));
+        expect(auditSink.consumed.single.challengeId, 'CID_REPLAYED');
+      },
+    );
 
     test(
-        'cross-operator isolation: challenge minted in op-2 cannot be '
+      'replay protection: presenting a CONSUMED challenge_id returns 410',
+      () async {
+        final gateway = _FakeStepUpGateway(
+          consumeReturning: null,
+          replayState: StepUpChallengeState(
+            operatorId: _opA,
+            userId: _userA,
+            routePath: '/v1/auth/password/change',
+            expiresAt: now.add(const Duration(minutes: 4)),
+            // Consumed earlier.
+            consumedAt: now.subtract(const Duration(minutes: 1)),
+          ),
+        );
+        final router = buildRouter(gateway: gateway);
+        final result = await router.dispatch(
+          method: 'POST',
+          path: '/v1/auth/password/change',
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          actorKind: 'user',
+          authTime: now.subtract(const Duration(minutes: 10)),
+          presentedChallengeId: 'CID_REPLAY',
+          sourceDeviceFingerprint: null,
+          now: () => now,
+        );
+        expect(result, isA<StepUpDispatchReject>());
+        final reject = result as StepUpDispatchReject;
+        expect(reject.statusCode, 410);
+        expect(reject.body['error'], 'step_up_challenge_already_consumed');
+      },
+    );
+
+    test('cross-operator isolation: challenge minted in op-2 cannot be '
         'replayed by op-1', () async {
       // Predicate fails (op mismatch) -> consume returns null.
       // lookupForReplayCheck returns the cross-tenant snapshot but its
@@ -506,8 +510,7 @@ void main() {
       expect(reject.body['error'], kStepUpErrorCode);
     });
 
-    test(
-        'route-binding: challenge minted for /password/change cannot be '
+    test('route-binding: challenge minted for /password/change cannot be '
         'replayed against an admin role mutation', () async {
       // The Postgres consume predicate would reject this (route_path
       // mismatch); we simulate by returning null from consume and
@@ -574,10 +577,8 @@ void main() {
       expect(reject.statusCode, 401);
     });
 
-    test(
-        'fresh caller that nonetheless presents a challenge_id has it '
-        'consumed best-effort (defense-in-depth) and is admitted',
-        () async {
+    test('fresh caller that nonetheless presents a challenge_id has it '
+        'consumed best-effort (defense-in-depth) and is admitted', () async {
       final consumedAt = now.add(const Duration(seconds: 5));
       final gateway = _FakeStepUpGateway(
         consumeReturning: StepUpChallengeConsumed(
@@ -616,10 +617,7 @@ void main() {
     test('isSensitive helper agrees with lookupStepUpRoute', () {
       final router = buildRouter();
       expect(
-        router.isSensitive(
-          method: 'POST',
-          path: '/v1/auth/password/change',
-        ),
+        router.isSensitive(method: 'POST', path: '/v1/auth/password/change'),
         isTrue,
       );
       expect(
@@ -703,14 +701,16 @@ class _FakeStepUpGateway implements StepUpChallengesGateway {
     required String sourceActorKind,
     required String? sourceDeviceFingerprint,
   }) async {
-    emitCalls.add(_EmitCall(
-      operatorId: operatorId,
-      userId: userId,
-      routePath: routePath,
-      requiredAcr: requiredAcr,
-      requiredFreshnessSeconds: requiredFreshnessSeconds,
-      sourceDeviceFingerprint: sourceDeviceFingerprint,
-    ));
+    emitCalls.add(
+      _EmitCall(
+        operatorId: operatorId,
+        userId: userId,
+        routePath: routePath,
+        requiredAcr: requiredAcr,
+        requiredFreshnessSeconds: requiredFreshnessSeconds,
+        sourceDeviceFingerprint: sourceDeviceFingerprint,
+      ),
+    );
     return emitReturning;
   }
 
@@ -722,12 +722,14 @@ class _FakeStepUpGateway implements StepUpChallengesGateway {
     required String callerRoutePath,
     required String challengeId,
   }) async {
-    consumeCalls.add(_ConsumeCall(
-      callerOperatorId: callerOperatorId,
-      callerUserId: callerUserId,
-      callerRoutePath: callerRoutePath,
-      challengeId: challengeId,
-    ));
+    consumeCalls.add(
+      _ConsumeCall(
+        callerOperatorId: callerOperatorId,
+        callerUserId: callerUserId,
+        callerRoutePath: callerRoutePath,
+        challengeId: challengeId,
+      ),
+    );
     return consumeReturning;
   }
 
@@ -754,10 +756,7 @@ class _RecordedEmitted {
 }
 
 class _RecordedConsumed {
-  const _RecordedConsumed({
-    required this.challengeId,
-    required this.routePath,
-  });
+  const _RecordedConsumed({required this.challengeId, required this.routePath});
 
   final String challengeId;
   final String routePath;
@@ -780,11 +779,13 @@ class _RecordingStepUpAuditSink implements StepUpAuditSink {
     required String reason,
     required DateTime occurredAt,
   }) async {
-    emitted.add(_RecordedEmitted(
-      challengeId: challengeId,
-      reason: reason,
-      routePath: routePath,
-    ));
+    emitted.add(
+      _RecordedEmitted(
+        challengeId: challengeId,
+        reason: reason,
+        routePath: routePath,
+      ),
+    );
   }
 
   @override
@@ -792,9 +793,8 @@ class _RecordingStepUpAuditSink implements StepUpAuditSink {
     required StepUpChallengeConsumed row,
     required DateTime occurredAt,
   }) async {
-    consumed.add(_RecordedConsumed(
-      challengeId: row.challengeId,
-      routePath: row.routePath,
-    ));
+    consumed.add(
+      _RecordedConsumed(challengeId: row.challengeId, routePath: row.routePath),
+    );
   }
 }
