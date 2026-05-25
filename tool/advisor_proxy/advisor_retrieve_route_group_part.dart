@@ -94,6 +94,16 @@ Future<void> _handleAdvisorRetrieve({
   required CorpusRetrievalService retrievalService,
   AdvisorQueryEmbeddingGateway? embeddingGateway,
   String? voyageApiKey,
+  // Slice A3 — OPTIONAL server-side rerank gateway + its key. When both are
+  // wired (production) the TEXT-QUERY path fetches a larger candidate pool,
+  // reranks it against the query text via Voyage `rerank-2.5`, and returns
+  // the top max_results reordered by rerank score. When [rerankGateway] is
+  // null (tests/scaffold) OR no candidates come back, behavior is UNCHANGED
+  // (A2b vector-only order) — full back-compat. HP #7: [voyageRerankApiKey]
+  // is never logged or returned to the client. The PRE-COMPUTED-embedding
+  // path has no query text, so it CANNOT rerank and stays vector-only.
+  AdvisorRerankGateway? rerankGateway,
+  String? voyageRerankApiKey,
   // HP #9 metering handles — threaded from the dispatch site in
   // [routeRequest] after the operator JWT has been resolved. Optional so
   // existing tests that drive the route without the accounting stack keep
@@ -108,6 +118,12 @@ Future<void> _handleAdvisorRetrieve({
 
   final rawQuery = body['query'];
   final rawEmbedding = body['query_embedding'];
+
+  // Slice A3 — the trimmed query text, captured on the text-query path so
+  // the rerank step (after max_results is parsed) can score candidates
+  // against it. Stays null on the pre-computed-embedding path, which by
+  // construction has no query text and therefore cannot rerank.
+  String? rerankQueryText;
 
   if (rawQuery != null) {
     // ── Path A: text query → server-side embedding (A2b) ──────────────
@@ -131,6 +147,8 @@ Future<void> _handleAdvisorRetrieve({
     }
 
     final trimmedQuery = rawQuery.trim();
+    // Slice A3 — remember the query text for the rerank step further down.
+    rerankQueryText = trimmedQuery;
 
     // ── HP #9 cap-check BEFORE the provider call ──────────────────────
     // Estimate input tokens (Voyage bills input tokens only). ceil(chars/4)
@@ -357,17 +375,147 @@ Future<void> _handleAdvisorRetrieve({
     return;
   }
 
+  // ── Decide whether the rerank step is active ──────────────────────────
+  // Slice A3 — rerank runs ONLY when (a) a rerank gateway is wired,
+  // (b) its key is present, and (c) we are on the text-query path (so we
+  // have the query text to score against). The pre-computed-embedding path
+  // leaves [rerankQueryText] null and therefore stays vector-only — it has
+  // no query text, so there is nothing to feed the cross-encoder. When any
+  // condition is unmet the route behaves exactly as the A2b baseline.
+  final rerankActive = rerankGateway != null &&
+      voyageRerankApiKey != null &&
+      rerankQueryText != null;
+
   // ── Delegate to service ───────────────────────────────────────────────
+  // When reranking, pull a LARGER candidate pool so the cross-encoder has
+  // more than the final K to choose from; the pool is bounded to keep the
+  // rerank token cost (and latency) predictable. Pool size mirrors the
+  // plan: clamp(max(maxResults*4, 20), .., 100). When NOT reranking, fetch
+  // exactly maxResults (unchanged A2b behavior).
+  final int retrieveCount;
+  if (rerankActive) {
+    final pool = maxResults * 4;
+    retrieveCount = pool < 20
+        ? 20
+        : pool > 100
+            ? 100
+            : pool;
+  } else {
+    retrieveCount = maxResults;
+  }
+
   final chunks = await retrievalService.retrieve(
     queryEmbedding: embedding,
     graphScope: graphScope,
     restaurantId: restaurantId,
-    maxResults: maxResults,
+    maxResults: retrieveCount,
   );
+
+  // ── Optional rerank reordering (text-query path, gateway wired) ───────
+  // Reorder the candidate pool by Voyage rerank-2.5 relevance, then keep
+  // the top maxResults. No candidates → nothing to rerank, fall through to
+  // the vector-only order (which is already empty/short). HP #9: the rerank
+  // spend is metered below from the ACTUAL returned token count.
+  var orderedChunks = chunks;
+  if (rerankActive && chunks.isNotEmpty) {
+    final candidates = <RerankCandidate>[
+      for (final chunk in chunks)
+        RerankCandidate(id: chunk.chunkId, text: chunk.text),
+    ];
+
+    final AdvisorRerankResult rerankResult;
+    try {
+      rerankResult = await rerankGateway.rerank(
+        // HP #7: key stays in the call stack, never logged or returned.
+        apiKey: voyageRerankApiKey,
+        model: AdvisorProviderConstants.voyageRerankModelId,
+        queryText: rerankQueryText,
+        candidates: candidates,
+        // top_k is an optimization; we still re-clamp to maxResults below.
+        topK: maxResults,
+      );
+    } on AdvisorRerankException catch (e) {
+      // Surface the (safe, truncated) message in the proxy log; return a
+      // typed 503 to the caller. The full provider error is not
+      // client-visible and the key is never in the message.
+      log(
+        LogSeverity.warning,
+        'advisor_retrieve.rerank_failed',
+        fields: <String, Object?>{'message': e.message},
+      );
+      _writeJson(response, 503, const <String, Object?>{
+        'error': 'rerank_unavailable',
+        'message': 'could not rerank results; please retry',
+      });
+      return;
+    }
+
+    // Map chunk_id → chunk so we can emit the chunks in rerank order. The
+    // provider already validated 1:1 + known-ids, so every ranked id is a
+    // candidate we sent; the lookup cannot miss.
+    final byId = <String, RetrievedChunk>{
+      for (final chunk in chunks) chunk.chunkId: chunk,
+    };
+    final reordered = <RetrievedChunk>[
+      for (final r in rerankResult.ranking)
+        if (byId[r.id] != null) byId[r.id]!,
+    ];
+    // Keep the top maxResults after reordering.
+    orderedChunks =
+        reordered.length > maxResults ? reordered.sublist(0, maxResults) : reordered;
+
+    // ── HP #9 record the Voyage rerank spend AFTER a successful call ──
+    // A DISTINCT cost class from the embedding spend recorded above
+    // (kVoyageRerankUsageClass = 'voyage_rerank'). Cost is computed from
+    // the ACTUAL provider-returned token count via the Voyage rerank rate,
+    // attributed to the caller's operator_id/location_id, through the SAME
+    // accounting path the embedding + Anthropic answer use (HP #8: no
+    // parallel stack). A single text-query request therefore records TWO
+    // usage_logs rows — one embedding, one rerank — which is correct
+    // (two distinct provider calls). Metering only runs when the
+    // accounting store + operator are wired (production); tests/scaffolds
+    // skip it. NOTE: no second cap-check/recordAllowed here — the cap-check
+    // at the head of the text-query path gates the whole request; the
+    // rerank cost is recorded to usage_logs for per-class attribution.
+    if (accountingStore != null && operator != null) {
+      final rerankRate = LlmCostRateRegistry.rateFor(
+        AdvisorProviderConstants.voyageRerankModelId,
+      );
+      // Rerank bills total processed tokens as input → outputTokens: 0.
+      // Unknown model (rate == null) charges 0, preserving the registry's
+      // fail-open contract; rerank-2.5 is registered so this resolves to
+      // the 5 cents/MTok rate in practice.
+      final rerankCostCents = rerankRate == null
+          ? 0
+          : rerankRate.costCentsFor(
+              inputTokens: rerankResult.totalTokens,
+              outputTokens: 0,
+            );
+      final rerankClock = clock ?? DateTime.now;
+      await accountingStore.commitUsageLog(
+        operator: operator,
+        usageClass: kVoyageRerankUsageClass,
+        telemetry: ProxyUsageTelemetry(
+          // Fixed rerank-class label for the rerank cost class.
+          queryClass: 'rerank',
+          cacheHit: false,
+          // llmTier/modelUsed carry the Voyage provider+model for this cost
+          // class. HP #7: no key, only the public provider/model id.
+          llmTier: AdvisorProviderConstants.voyageProviderId,
+          modelUsed: AdvisorProviderConstants.voyageRerankModelId,
+        ),
+        estimate: ProxyUsageChargeEstimate(
+          tokenCount: rerankResult.totalTokens,
+          costCents: rerankCostCents,
+        ),
+        now: rerankClock().toUtc(),
+      );
+    }
+  }
 
   _writeJson(response, 200, <String, Object?>{
     'chunks': <Map<String, Object?>>[
-      for (final chunk in chunks)
+      for (final chunk in orderedChunks)
         <String, Object?>{
           'chunk_id': chunk.chunkId,
           'doc_id': chunk.docId,
