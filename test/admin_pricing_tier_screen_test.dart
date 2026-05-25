@@ -6,13 +6,19 @@
 // `InMemoryObservabilityAdminGateway` for the read-only spend / margin
 // / cap-breach figures) so the click path runs end-to-end without a
 // backend. The screen opens on the read-only "Plans" tab; the
-// master/detail business list lives behind the "Businesses" tab, so
-// most tests switch to it first via [openBusinessesTab]. Coverage:
+// Businesses tab now shows the detail for the business the left scope
+// tree (`hierarchyScope`) selects — there is no per-business master list
+// of its own — so most tests pass a [businessScope] and switch to the
+// tab via [openBusinessesTab]. Coverage:
 //
 //   * Plans tab renders the laddered six-plan map (read-only).
-//   * Businesses tab lists every seeded operator with a margin % and
-//     spend joined from observability.
-//   * Empty state renders when no operators are seeded.
+//   * Businesses tab shows the scope-selected operator's detail directly
+//     (no master list), with margin % and spend joined from
+//     observability.
+//   * "No operators on file" empty state renders when the gateway returns
+//     no businesses.
+//   * "Choose a business" empty state renders when businesses exist but
+//     the scope resolves no operator (no crash, no random pick).
 //   * Apply-template flow seeds Premium cap rows.
 //   * Inline edit flow rewrites a usage cap (use case is a dropdown).
 //   * Spend-vs-cap bar joins observability cost telemetry to a cap.
@@ -24,6 +30,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_app.dart';
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/models/pricing_tier_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/pricing_tier_admin_screen.dart';
@@ -39,6 +46,13 @@ void main() {
     theme: AppTheme.themeData,
     home: child,
   );
+
+  // The left scope tree is the single business selector now. A
+  // business-level scope for the operator under test stands in for the
+  // tree having that business picked, so the Businesses tab renders that
+  // operator's detail directly.
+  AdminHierarchyScopeIntent businessScope(String operatorId) =>
+      AdminHierarchyScopeIntent.business(operatorId: operatorId);
 
   Future<void> openBusinessesTab(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('admin_pricing_tab_businesses')));
@@ -141,60 +155,147 @@ void main() {
     );
   }
 
-  testWidgets('Businesses tab lists one row per seeded operator', (
-    tester,
-  ) async {
-    final gateway = InMemoryPricingTierAdminGateway(
-      seed: <PricingOperatorBundle>[
-        seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
-        seedBundle(
-          operatorId: 'op-2',
-          businessName: 'Beta Bistro',
-          caps: <UsageCapRow>[seedCap(operatorId: 'op-2', locationId: 'loc-2')],
+  testWidgets(
+    'Businesses tab shows the scope-selected operator detail (no master '
+    'list)',
+    (tester) async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
+          seedBundle(
+            operatorId: 'op-2',
+            businessName: 'Beta Bistro',
+            caps: <UsageCapRow>[
+              seedCap(operatorId: 'op-2', locationId: 'loc-2'),
+            ],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(
+          PricingTierAdminScreen(
+            gateway: gateway,
+            observabilityGateway: observabilityFor('op-2'),
+            // The scope tree has Beta Bistro (op-2) picked.
+            hierarchyScope: businessScope('op-2'),
+          ),
         ),
-      ],
-    );
-    await tester.pumpWidget(
-      wrap(
-        PricingTierAdminScreen(
-          gateway: gateway,
-          observabilityGateway: observabilityFor('op-2'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
+      // Opens on the read-only Plans tab.
+      expect(find.byKey(const Key('admin_pricing_plans_view')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_pricing_plan_card_starter')),
+        findsOneWidget,
+      );
+
+      await openBusinessesTab(tester);
+      // No per-business master list and no per-business rows: the left
+      // scope tree is the single selector now.
+      expect(
+        find.byKey(const Key('admin_pricing_operator_list')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('admin_pricing_row_op-1')), findsNothing);
+      expect(find.byKey(const Key('admin_pricing_row_op-2')), findsNothing);
+
+      // The scope-selected operator's detail renders directly.
+      expect(
+        find.byKey(const Key('admin_pricing_detail_op-2')),
+        findsOneWidget,
+      );
+      expect(find.text('Advisor answers'), findsOneWidget);
+      expect(find.text('cap-op-2_advisor_qa'), findsNothing);
+
+      final capDetails = find.byKey(
+        const Key('admin_pricing_cap_details_cap-op-2_advisor_qa'),
+      );
+      await tester.ensureVisible(capDetails);
+      await tester.pumpAndSettle();
+      await tester.tap(capDetails);
+      await tester.pumpAndSettle();
+      expect(find.text('Use case ID'), findsOneWidget);
+      expect(find.text('advisor_qa'), findsOneWidget);
+      expect(find.text('cap-op-2_advisor_qa'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Businesses tab shows the pick-a-business empty state when the scope '
+    'resolves no operator',
+    (tester) async {
+      // Businesses exist, but no scope is provided, so the scope tree has
+      // resolved no business. The tab must show a clean empty state, not
+      // crash and not silently pick a random business.
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
+          seedBundle(operatorId: 'op-2', businessName: 'Beta Bistro'),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(PricingTierAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      await openBusinessesTab(tester);
+
+      expect(
+        find.byKey(const Key('admin_pricing_pick_business')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Choose a business in the scope panel to see its plan and limits.'),
+        findsOneWidget,
+      );
+      // No detail is shown and no business was auto-selected.
+      expect(
+        find.byKey(const Key('admin_pricing_detail_op-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_detail_op-2')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Businesses tab shows the pick-a-business empty state when the scoped '
+    'operator is absent from the gateway result',
+    (tester) async {
+      // The scope resolves an operator the gateway does not return (e.g. a
+      // stale or cross-tenant selection). Falls back to the empty state
+      // rather than crashing or showing the wrong business.
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(operatorId: 'op-present', businessName: 'Present Co'),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(
+          PricingTierAdminScreen(
+            gateway: gateway,
+            hierarchyScope: businessScope('op-absent'),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      await openBusinessesTab(tester);
 
-    expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
-    // Opens on the read-only Plans tab.
-    expect(find.byKey(const Key('admin_pricing_plans_view')), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_pricing_plan_card_starter')),
-      findsOneWidget,
-    );
-
-    await openBusinessesTab(tester);
-    expect(find.byKey(const Key('admin_pricing_row_op-1')), findsOneWidget);
-    expect(find.byKey(const Key('admin_pricing_row_op-2')), findsOneWidget);
-    expect(find.text('Alpha Cafe'), findsWidgets);
-    expect(find.text('Beta Bistro'), findsWidgets);
-    expect(find.text('advisor_qa'), findsNothing);
-
-    await tester.tap(find.byKey(const Key('admin_pricing_row_op-2')));
-    await tester.pumpAndSettle();
-    expect(find.text('Advisor answers'), findsOneWidget);
-    expect(find.text('cap-op-2_advisor_qa'), findsNothing);
-
-    final capDetails = find.byKey(
-      const Key('admin_pricing_cap_details_cap-op-2_advisor_qa'),
-    );
-    await tester.ensureVisible(capDetails);
-    await tester.pumpAndSettle();
-    await tester.tap(capDetails);
-    await tester.pumpAndSettle();
-    expect(find.text('Use case ID'), findsOneWidget);
-    expect(find.text('advisor_qa'), findsOneWidget);
-    expect(find.text('cap-op-2_advisor_qa'), findsOneWidget);
-  });
+      expect(
+        find.byKey(const Key('admin_pricing_pick_business')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_detail_op-present')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('Plans tab renders the laddered six-plan map (read-only)', (
     tester,
@@ -507,6 +608,7 @@ void main() {
         PricingTierAdminScreen(
           gateway: gateway,
           observabilityGateway: observability,
+          hierarchyScope: businessScope('op-spend'),
         ),
       ),
     );
@@ -518,7 +620,9 @@ void main() {
     expect(find.text('25%'), findsWidgets);
   });
 
-  testWidgets('stacks master/detail panes on compact widths', (tester) async {
+  testWidgets('renders the scoped detail single-pane on compact widths', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(520, 720);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -537,13 +641,22 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          hierarchyScope: businessScope('op-compact'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await openBusinessesTab(tester);
 
+    // No master list at any width: just the scoped detail, rendered
+    // single-pane without clipping on a narrow surface.
     expect(
       find.byKey(const Key('admin_pricing_operator_list')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const Key('admin_pricing_detail_op-compact')),
@@ -572,7 +685,14 @@ void main() {
         seedBundle(operatorId: 'op-prem', tier: 'starter'),
       ],
     );
-    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          hierarchyScope: businessScope('op-prem'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await openBusinessesTab(tester);
 
@@ -610,7 +730,14 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          hierarchyScope: businessScope('op-edit'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await openBusinessesTab(tester);
 
@@ -647,7 +774,14 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          hierarchyScope: businessScope('op-del'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await openBusinessesTab(tester);
 
@@ -682,7 +816,14 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          hierarchyScope: businessScope('op-keep'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await openBusinessesTab(tester);
 
@@ -712,7 +853,13 @@ void main() {
       ],
     );
     await tester.pumpWidget(
-      wrap(PricingTierAdminScreen(gateway: gateway, editingEnabled: false)),
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          editingEnabled: false,
+          hierarchyScope: businessScope('op-ro-del'),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     await openBusinessesTab(tester);
@@ -729,7 +876,14 @@ void main() {
         seedBundle(operatorId: 'op-add', primaryLocationId: 'loc-add'),
       ],
     );
-    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          hierarchyScope: businessScope('op-add'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await openBusinessesTab(tester);
 
@@ -785,7 +939,13 @@ void main() {
         ],
       );
       await tester.pumpWidget(
-        wrap(PricingTierAdminScreen(gateway: gateway, editingEnabled: false)),
+        wrap(
+          PricingTierAdminScreen(
+            gateway: gateway,
+            editingEnabled: false,
+            hierarchyScope: businessScope('op-readonly'),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       await openBusinessesTab(tester);
@@ -926,7 +1086,14 @@ void main() {
         seedBundle(operatorId: 'op-no-loc', primaryLocationId: null),
       ],
     );
-    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(
+      wrap(
+        PricingTierAdminScreen(
+          gateway: gateway,
+          hierarchyScope: businessScope('op-no-loc'),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await openBusinessesTab(tester);
 
@@ -966,7 +1133,14 @@ void main() {
           ),
         ],
       );
-      await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+      await tester.pumpWidget(
+        wrap(
+          PricingTierAdminScreen(
+            gateway: gateway,
+            hierarchyScope: businessScope('op-diff'),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       await openBusinessesTab(tester);
 
@@ -1042,7 +1216,14 @@ void main() {
           ),
         ],
       );
-      await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+      await tester.pumpWidget(
+        wrap(
+          PricingTierAdminScreen(
+            gateway: gateway,
+            hierarchyScope: businessScope('op-ent'),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       await openBusinessesTab(tester);
 
