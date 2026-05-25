@@ -953,6 +953,489 @@ List<FeatureEntitlementEntry> buildDefaultFeatureEntitlements() {
   return entries;
 }
 
+// ---------------------------------------------------------------------------
+// Plans and limits V1 - hierarchy-scoped custom contracts.
+// ---------------------------------------------------------------------------
+
+/// Scope selected in the admin hierarchy tree for scoped commercial terms.
+enum ScopedPricingContractScopeType {
+  business('business'),
+  orgUnit('org_unit'),
+  location('location');
+
+  const ScopedPricingContractScopeType(this.wireValue);
+
+  final String wireValue;
+
+  static ScopedPricingContractScopeType fromWireValue(String raw) {
+    for (final value in ScopedPricingContractScopeType.values) {
+      if (value.wireValue == raw) return value;
+    }
+    throw ArgumentError.value(raw, 'scope_type', 'unknown scoped contract');
+  }
+}
+
+/// Whether the selected hierarchy node has its own override, inherits one,
+/// or falls through to the global plan catalog.
+enum ScopedPricingContractOverrideStatus {
+  setHere('set_here'),
+  inherited('inherited'),
+  catalogDefault('catalog_default');
+
+  const ScopedPricingContractOverrideStatus(this.wireValue);
+
+  final String wireValue;
+
+  static ScopedPricingContractOverrideStatus fromWireValue(String raw) {
+    for (final value in ScopedPricingContractOverrideStatus.values) {
+      if (value.wireValue == raw) return value;
+    }
+    throw ArgumentError.value(raw, 'override_status', 'unknown status');
+  }
+}
+
+/// Kind of source that supplied the effective commercial terms.
+enum ScopedPricingContractInheritedSourceType {
+  scopedOverride('scoped_override'),
+  catalogDefault('catalog_default');
+
+  const ScopedPricingContractInheritedSourceType(this.wireValue);
+
+  final String wireValue;
+
+  static ScopedPricingContractInheritedSourceType fromWireValue(String raw) {
+    for (final value in ScopedPricingContractInheritedSourceType.values) {
+      if (value.wireValue == raw) return value;
+    }
+    throw ArgumentError.value(
+      raw,
+      'source_type',
+      'unknown scoped contract source',
+    );
+  }
+}
+
+/// Business, org-unit, or location node used by the scoped-contract resolver.
+@immutable
+class ScopedPricingContractScope {
+  const ScopedPricingContractScope({
+    required this.operatorId,
+    required this.scopeType,
+    this.orgUnitId,
+    this.locationId,
+    this.displayName,
+  });
+
+  final String operatorId;
+  final ScopedPricingContractScopeType scopeType;
+  final String? orgUnitId;
+  final String? locationId;
+  final String? displayName;
+
+  static ScopedPricingContractScope fromJson(Map<String, Object?> json) {
+    return ScopedPricingContractScope(
+      operatorId: json['operator_id']! as String,
+      scopeType: ScopedPricingContractScopeType.fromWireValue(
+        json['scope_type']! as String,
+      ),
+      orgUnitId: json['org_unit_id'] as String?,
+      locationId: json['location_id'] as String?,
+      displayName: json['display_name'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    ...toRequestJson(),
+    if (displayName != null && displayName!.isNotEmpty)
+      'display_name': displayName,
+  };
+
+  /// Request/query shape. Labels stay response-only so writes carry only IDs.
+  Map<String, Object?> toRequestJson() => <String, Object?>{
+    'operator_id': operatorId,
+    'scope_type': scopeType.wireValue,
+    if (orgUnitId != null && orgUnitId!.isNotEmpty) 'org_unit_id': orgUnitId,
+    if (locationId != null && locationId!.isNotEmpty)
+      'location_id': locationId,
+  };
+
+  Map<String, String> toQueryParameters() => <String, String>{
+    'operator_id': operatorId,
+    'scope_type': scopeType.wireValue,
+    if (orgUnitId != null && orgUnitId!.isNotEmpty) 'org_unit_id': orgUnitId!,
+    if (locationId != null && locationId!.isNotEmpty)
+      'location_id': locationId!,
+  };
+}
+
+/// The effective scoped commercial terms after hierarchy inheritance.
+@immutable
+class ScopedPricingContractValue {
+  const ScopedPricingContractValue({
+    required this.tierKey,
+    this.monthlyUsd,
+    this.firstNSeats,
+    this.firstSeatUsd,
+    this.additionalSeatUsd,
+    this.onboardingMinUsd,
+    this.onboardingMaxUsd,
+    this.advisorCapMonthlyUsd,
+    this.billingOwnerOrgUnitId,
+    this.effectiveFrom,
+    this.effectiveUntil,
+    this.contractLabel,
+    this.internalNote,
+    this.updatedAt,
+    this.updatedBy,
+  });
+
+  final String tierKey;
+  final double? monthlyUsd;
+  final int? firstNSeats;
+  final double? firstSeatUsd;
+  final double? additionalSeatUsd;
+  final double? onboardingMinUsd;
+  final double? onboardingMaxUsd;
+  final double? advisorCapMonthlyUsd;
+  final String? billingOwnerOrgUnitId;
+  final DateTime? effectiveFrom;
+  final DateTime? effectiveUntil;
+  final String? contractLabel;
+  final String? internalNote;
+  final DateTime? updatedAt;
+  final String? updatedBy;
+
+  ScopedPricingContractValue copyWith({
+    String? tierKey,
+    double? monthlyUsd,
+    int? firstNSeats,
+    double? firstSeatUsd,
+    double? additionalSeatUsd,
+    double? onboardingMinUsd,
+    double? onboardingMaxUsd,
+    double? advisorCapMonthlyUsd,
+    String? billingOwnerOrgUnitId,
+    DateTime? effectiveFrom,
+    DateTime? effectiveUntil,
+    String? contractLabel,
+    String? internalNote,
+    DateTime? updatedAt,
+    String? updatedBy,
+  }) {
+    return ScopedPricingContractValue(
+      tierKey: tierKey ?? this.tierKey,
+      monthlyUsd: monthlyUsd ?? this.monthlyUsd,
+      firstNSeats: firstNSeats ?? this.firstNSeats,
+      firstSeatUsd: firstSeatUsd ?? this.firstSeatUsd,
+      additionalSeatUsd: additionalSeatUsd ?? this.additionalSeatUsd,
+      onboardingMinUsd: onboardingMinUsd ?? this.onboardingMinUsd,
+      onboardingMaxUsd: onboardingMaxUsd ?? this.onboardingMaxUsd,
+      advisorCapMonthlyUsd:
+          advisorCapMonthlyUsd ?? this.advisorCapMonthlyUsd,
+      billingOwnerOrgUnitId:
+          billingOwnerOrgUnitId ?? this.billingOwnerOrgUnitId,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
+      effectiveUntil: effectiveUntil ?? this.effectiveUntil,
+      contractLabel: contractLabel ?? this.contractLabel,
+      internalNote: internalNote ?? this.internalNote,
+      updatedAt: updatedAt ?? this.updatedAt,
+      updatedBy: updatedBy ?? this.updatedBy,
+    );
+  }
+
+  static ScopedPricingContractValue fromJson(Map<String, Object?> json) {
+    return ScopedPricingContractValue(
+      tierKey: json['tier_key']! as String,
+      monthlyUsd: _asNullableDouble(json['monthly_usd']),
+      firstNSeats: _asNullableInt(json['first_n_seats']),
+      firstSeatUsd: _asNullableDouble(json['first_seat_usd']),
+      additionalSeatUsd: _asNullableDouble(json['additional_seat_usd']),
+      onboardingMinUsd: _asNullableDouble(json['onboarding_min_usd']),
+      onboardingMaxUsd: _asNullableDouble(json['onboarding_max_usd']),
+      advisorCapMonthlyUsd: _asNullableDouble(
+        json['advisor_cap_monthly_usd'] ??
+            json['advisor_spend_cap_monthly_usd'],
+      ),
+      billingOwnerOrgUnitId: json['billing_owner_org_unit_id'] as String?,
+      effectiveFrom: _asNullableDateTime(json['effective_from']),
+      effectiveUntil: _asNullableDateTime(json['effective_until']),
+      contractLabel: json['contract_label'] as String?,
+      internalNote: json['internal_note'] as String?,
+      updatedAt: _asNullableDateTime(json['updated_at']),
+      updatedBy: json['updated_by'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'tier_key': tierKey,
+    'monthly_usd': monthlyUsd,
+    'first_n_seats': firstNSeats,
+    'first_seat_usd': firstSeatUsd,
+    'additional_seat_usd': additionalSeatUsd,
+    'onboarding_min_usd': onboardingMinUsd,
+    'onboarding_max_usd': onboardingMaxUsd,
+    'advisor_cap_monthly_usd': advisorCapMonthlyUsd,
+    'billing_owner_org_unit_id': billingOwnerOrgUnitId,
+    'effective_from': effectiveFrom?.toUtc().toIso8601String(),
+    'effective_until': effectiveUntil?.toUtc().toIso8601String(),
+    'contract_label': contractLabel,
+    'internal_note': internalNote,
+    if (updatedAt != null) 'updated_at': updatedAt!.toUtc().toIso8601String(),
+    if (updatedBy != null) 'updated_by': updatedBy,
+  };
+}
+
+/// Source that supplied the effective value: a scoped override or the
+/// global catalog default.
+@immutable
+class ScopedPricingContractInheritedSource {
+  const ScopedPricingContractInheritedSource({
+    required this.sourceType,
+    this.scope,
+    this.overrideId,
+    this.displayName,
+    this.tierKey,
+  });
+
+  final ScopedPricingContractInheritedSourceType sourceType;
+  final ScopedPricingContractScope? scope;
+  final String? overrideId;
+  final String? displayName;
+  final String? tierKey;
+
+  static ScopedPricingContractInheritedSource fromJson(
+    Map<String, Object?> json,
+  ) {
+    final sourceTypeRaw = json['source_type'] as String?;
+    final scopeRaw = json['scope'];
+    final scope = scopeRaw is Map
+        ? ScopedPricingContractScope.fromJson(scopeRaw.cast<String, Object?>())
+        : (json['scope_type'] == null
+              ? null
+              : ScopedPricingContractScope.fromJson(json));
+    return ScopedPricingContractInheritedSource(
+      sourceType: sourceTypeRaw == null
+          ? (scope == null
+                ? ScopedPricingContractInheritedSourceType.catalogDefault
+                : ScopedPricingContractInheritedSourceType.scopedOverride)
+          : ScopedPricingContractInheritedSourceType.fromWireValue(
+              sourceTypeRaw,
+            ),
+      scope: scope,
+      overrideId:
+          json['override_id'] as String? ??
+          json['contract_override_id'] as String?,
+      displayName: json['display_name'] as String?,
+      tierKey: json['tier_key'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'source_type': sourceType.wireValue,
+    if (scope != null) 'scope': scope!.toJson(),
+    if (overrideId != null) 'override_id': overrideId,
+    if (displayName != null) 'display_name': displayName,
+    if (tierKey != null) 'tier_key': tierKey,
+  };
+}
+
+/// The hierarchy node that a save or clear action will mutate.
+@immutable
+class ScopedPricingContractMutationTarget {
+  const ScopedPricingContractMutationTarget({
+    required this.scope,
+    this.existingOverrideId,
+    this.canSave = true,
+    this.canDelete = false,
+  });
+
+  final ScopedPricingContractScope scope;
+  final String? existingOverrideId;
+  final bool canSave;
+  final bool canDelete;
+
+  static ScopedPricingContractMutationTarget fromJson(
+    Map<String, Object?> json,
+  ) {
+    final scopeRaw = json['scope'];
+    final scope = scopeRaw is Map
+        ? ScopedPricingContractScope.fromJson(scopeRaw.cast<String, Object?>())
+        : ScopedPricingContractScope.fromJson(json);
+    return ScopedPricingContractMutationTarget(
+      scope: scope,
+      existingOverrideId:
+          json['existing_override_id'] as String? ??
+          json['override_id'] as String? ??
+          json['contract_override_id'] as String?,
+      canSave: _asBool(json['can_save'] ?? true),
+      canDelete: _asBool(json['can_delete'] ?? false),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'scope': scope.toJson(),
+    'existing_override_id': existingOverrideId,
+    'can_save': canSave,
+    'can_delete': canDelete,
+  };
+}
+
+/// Effective resolver response for the Businesses tab scoped contract panel.
+@immutable
+class ScopedPricingContractEffectiveResponse {
+  const ScopedPricingContractEffectiveResponse({
+    required this.selectedScope,
+    required this.overrideStatus,
+    required this.inheritedSource,
+    required this.effectiveValue,
+    required this.mutationTarget,
+  });
+
+  final ScopedPricingContractScope selectedScope;
+  final ScopedPricingContractOverrideStatus overrideStatus;
+  final ScopedPricingContractInheritedSource inheritedSource;
+  final ScopedPricingContractValue effectiveValue;
+  final ScopedPricingContractMutationTarget mutationTarget;
+
+  static ScopedPricingContractEffectiveResponse fromEnvelope(
+    Map<String, Object?> json,
+  ) {
+    final nested =
+        json['effective_contract'] ??
+        json['effective'] ??
+        json['contract'] ??
+        json['scoped_contract'];
+    if (nested is Map) {
+      return fromJson(nested.cast<String, Object?>());
+    }
+    return fromJson(json);
+  }
+
+  static ScopedPricingContractEffectiveResponse fromJson(
+    Map<String, Object?> json,
+  ) {
+    final selectedScope = ScopedPricingContractScope.fromJson(
+      (json['selected_scope'] as Map).cast<String, Object?>(),
+    );
+    final effectiveRaw =
+        json['effective_value'] ?? json['effective_contract_value'];
+    final inheritedRaw = json['inherited_source'];
+    return ScopedPricingContractEffectiveResponse(
+      selectedScope: selectedScope,
+      overrideStatus: ScopedPricingContractOverrideStatus.fromWireValue(
+        json['override_status']! as String,
+      ),
+      inheritedSource: inheritedRaw is Map
+          ? ScopedPricingContractInheritedSource.fromJson(
+              inheritedRaw.cast<String, Object?>(),
+            )
+          : const ScopedPricingContractInheritedSource(
+              sourceType:
+                  ScopedPricingContractInheritedSourceType.catalogDefault,
+              displayName: 'Global plan catalog',
+            ),
+      effectiveValue: ScopedPricingContractValue.fromJson(
+        (effectiveRaw as Map).cast<String, Object?>(),
+      ),
+      mutationTarget: json['mutation_target'] is Map
+          ? ScopedPricingContractMutationTarget.fromJson(
+              (json['mutation_target'] as Map).cast<String, Object?>(),
+            )
+          : ScopedPricingContractMutationTarget(scope: selectedScope),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'selected_scope': selectedScope.toJson(),
+    'override_status': overrideStatus.wireValue,
+    'inherited_source': inheritedSource.toJson(),
+    'effective_value': effectiveValue.toJson(),
+    'mutation_target': mutationTarget.toJson(),
+  };
+}
+
+/// Seed/read model for one persisted scoped override.
+@immutable
+class ScopedPricingContractOverride {
+  const ScopedPricingContractOverride({
+    required this.id,
+    required this.scope,
+    required this.value,
+  });
+
+  final String id;
+  final ScopedPricingContractScope scope;
+  final ScopedPricingContractValue value;
+
+  static ScopedPricingContractOverride fromJson(Map<String, Object?> json) {
+    final scopeRaw = json['scope'];
+    final valueRaw = json['value'];
+    return ScopedPricingContractOverride(
+      id: json['id']! as String,
+      scope: scopeRaw is Map
+          ? ScopedPricingContractScope.fromJson(scopeRaw.cast<String, Object?>())
+          : ScopedPricingContractScope.fromJson(json),
+      value: valueRaw is Map
+          ? ScopedPricingContractValue.fromJson(valueRaw.cast<String, Object?>())
+          : ScopedPricingContractValue.fromJson(json),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'scope': scope.toJson(),
+    'value': value.toJson(),
+  };
+}
+
+/// Save or replace a scoped custom contract. Goes to
+/// `PUT /v1/admin/pricing/scoped-contracts`.
+@immutable
+class ScopedPricingContractSaveCommand {
+  const ScopedPricingContractSaveCommand({
+    required this.targetScope,
+    required this.value,
+    required this.adminReason,
+    required this.idempotencyKey,
+    this.contractOverrideId,
+  });
+
+  final ScopedPricingContractScope targetScope;
+  final ScopedPricingContractValue value;
+  final String adminReason;
+  final String idempotencyKey;
+  final String? contractOverrideId;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    ...targetScope.toRequestJson(),
+    if (contractOverrideId != null) 'id': contractOverrideId,
+    ...value.toJson(),
+    'admin_reason': adminReason,
+  };
+}
+
+/// Clear one scoped custom contract. Goes to
+/// `DELETE /v1/admin/pricing/scoped-contracts/{id}`.
+@immutable
+class ScopedPricingContractDeleteCommand {
+  const ScopedPricingContractDeleteCommand({
+    required this.contractOverrideId,
+    required this.selectedScope,
+    required this.adminReason,
+    required this.idempotencyKey,
+  });
+
+  final String contractOverrideId;
+  final ScopedPricingContractScope selectedScope;
+  final String adminReason;
+  final String idempotencyKey;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    ...selectedScope.toRequestJson(),
+    'admin_reason': adminReason,
+  };
+}
+
 bool _asBool(Object? raw) {
   if (raw is bool) return raw;
   if (raw is num) return raw != 0;
@@ -991,6 +1474,16 @@ int? _asNullableInt(Object? raw) {
   if (raw is String) {
     if (raw.isEmpty) return null;
     return int.tryParse(raw);
+  }
+  return null;
+}
+
+DateTime? _asNullableDateTime(Object? raw) {
+  if (raw == null) return null;
+  if (raw is DateTime) return raw;
+  if (raw is String) {
+    if (raw.isEmpty) return null;
+    return DateTime.parse(raw);
   }
   return null;
 }

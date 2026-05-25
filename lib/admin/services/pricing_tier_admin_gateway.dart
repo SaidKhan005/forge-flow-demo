@@ -94,6 +94,22 @@ abstract class PricingTierAdminGateway {
   Future<FeatureEntitlementEntry> updateEntitlement(
     FeatureEntitlementUpdateCommand command,
   );
+
+  /// Plans and limits V1 - resolve the scoped custom contract for the
+  /// selected business, org-unit, or location hierarchy node.
+  Future<ScopedPricingContractEffectiveResponse> fetchEffectiveScopedContract(
+    ScopedPricingContractScope scope,
+  );
+
+  /// Save or replace a scoped custom contract.
+  Future<ScopedPricingContractEffectiveResponse> saveScopedContract(
+    ScopedPricingContractSaveCommand command,
+  );
+
+  /// Clear a scoped custom contract and return the newly effective value.
+  Future<ScopedPricingContractEffectiveResponse> deleteScopedContract(
+    ScopedPricingContractDeleteCommand command,
+  );
 }
 
 class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
@@ -119,6 +135,11 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
   static const String plansPrefix = '$plansPath/';
   static const String entitlementsPath = '/v1/admin/pricing/entitlements';
   static const String entitlementsPrefix = '$entitlementsPath/';
+  static const String scopedContractsPath =
+      '/v1/admin/pricing/scoped-contracts';
+  static const String scopedContractsEffectivePath =
+      '$scopedContractsPath/effective';
+  static const String scopedContractsPrefix = '$scopedContractsPath/';
 
   // Idempotency key generation lives in the screen layer
   // (`_PricingTierAdminScreenState._nextIdempotencyKey`) so a single
@@ -245,14 +266,60 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
     );
   }
 
+  @override
+  Future<ScopedPricingContractEffectiveResponse> fetchEffectiveScopedContract(
+    ScopedPricingContractScope scope,
+  ) async {
+    final body = await _send(
+      method: 'GET',
+      path: scopedContractsEffectivePath,
+      queryParameters: scope.toQueryParameters(),
+    );
+    return ScopedPricingContractEffectiveResponse.fromEnvelope(body);
+  }
+
+  @override
+  Future<ScopedPricingContractEffectiveResponse> saveScopedContract(
+    ScopedPricingContractSaveCommand command,
+  ) async {
+    final body = await _send(
+      method: 'PUT',
+      path: scopedContractsPath,
+      idempotencyKey: command.idempotencyKey,
+      jsonBody: command.toJson(),
+    );
+    return ScopedPricingContractEffectiveResponse.fromEnvelope(body);
+  }
+
+  @override
+  Future<ScopedPricingContractEffectiveResponse> deleteScopedContract(
+    ScopedPricingContractDeleteCommand command,
+  ) async {
+    final body = await _send(
+      method: 'DELETE',
+      path:
+          '$scopedContractsPrefix${Uri.encodeComponent(command.contractOverrideId)}',
+      idempotencyKey: command.idempotencyKey,
+      jsonBody: command.toJson(),
+    );
+    return ScopedPricingContractEffectiveResponse.fromEnvelope(body);
+  }
+
   Future<Map<String, Object?>> _send({
     required String method,
     required String path,
     Map<String, Object?>? jsonBody,
     String? idempotencyKey,
+    Map<String, String>? queryParameters,
   }) async {
     final token = await bearerTokenProvider();
-    final uri = baseUri.resolve(path);
+    final resolved = baseUri.resolve(path);
+    final uri = queryParameters == null || queryParameters.isEmpty
+        ? resolved
+        : resolved.replace(queryParameters: <String, String>{
+            ...resolved.queryParameters,
+            ...queryParameters,
+          });
     final request = http.Request(method, uri)
       ..headers['authorization'] = 'Bearer $token'
       ..headers['accept'] = 'application/json';
@@ -306,6 +373,7 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
 ///   * `monthly_cap_usd` / `per_invocation_cap_usd` must be >= 0.
 ///   * `usage_class` must be non-blank.
 ///   * `apply-template` rejects an unknown `tier_key`.
+///   * scoped-contract writes require `admin_reason`.
 class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
   InMemoryPricingTierAdminGateway({
     Iterable<PricingOperatorBundle> seed = const <PricingOperatorBundle>[],
@@ -314,6 +382,8 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     String? actorUserId,
     Iterable<PricingPlanCatalogEntry>? planCatalogSeed,
     Iterable<FeatureEntitlementEntry>? entitlementsSeed,
+    Iterable<ScopedPricingContractOverride> scopedContractsSeed =
+        const <ScopedPricingContractOverride>[],
   }) : _now = now ?? DateTime.now,
        _idGenerator = idGenerator ?? _randomId,
        _actorUserId = actorUserId,
@@ -335,6 +405,10 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
          for (final entry
              in (entitlementsSeed ?? buildDefaultFeatureEntitlements()))
            '${entry.tierKey}::${entry.featureSlug}': entry,
+       },
+       _scopedContracts = <String, _MutableScopedContractOverride>{
+         for (final entry in scopedContractsSeed)
+           entry.id: _MutableScopedContractOverride.from(entry),
        };
 
   final DateTime Function() _now;
@@ -343,6 +417,7 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
   final Map<String, _MutableBundle> _bundles;
   final Map<String, PricingPlanCatalogEntry> _planCatalog;
   final Map<String, FeatureEntitlementEntry> _entitlements;
+  final Map<String, _MutableScopedContractOverride> _scopedContracts;
 
   /// Per-key cache so a retried mutation on the in-memory gateway
   /// returns the prior result instead of mutating again - mirrors the
@@ -607,6 +682,234 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     return updated;
   }
 
+  @override
+  Future<ScopedPricingContractEffectiveResponse> fetchEffectiveScopedContract(
+    ScopedPricingContractScope scope,
+  ) async {
+    return _resolveScopedContract(scope);
+  }
+
+  @override
+  Future<ScopedPricingContractEffectiveResponse> saveScopedContract(
+    ScopedPricingContractSaveCommand command,
+  ) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is ScopedPricingContractEffectiveResponse) return cached;
+    _requireAdminReason(command.adminReason, 'saveScopedContract');
+    _validateScope(command.targetScope);
+    _validateScopedContractValue(command.value);
+    _bundleOrThrow(command.targetScope.operatorId);
+    final prior = _findExactScopedOverride(command.targetScope);
+    final id = command.contractOverrideId ?? prior?.id ?? _idGenerator();
+    final value = command.value.copyWith(
+      updatedAt: _now().toUtc(),
+      updatedBy: _actorUserId,
+    );
+    _scopedContracts[id] = _MutableScopedContractOverride(
+      id: id,
+      scope: command.targetScope,
+      value: value,
+    );
+    final result = _resolveScopedContract(command.targetScope);
+    _idempotentResults[command.idempotencyKey] = result;
+    return result;
+  }
+
+  @override
+  Future<ScopedPricingContractEffectiveResponse> deleteScopedContract(
+    ScopedPricingContractDeleteCommand command,
+  ) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is ScopedPricingContractEffectiveResponse) return cached;
+    _requireAdminReason(command.adminReason, 'deleteScopedContract');
+    _validateScope(command.selectedScope);
+    _bundleOrThrow(command.selectedScope.operatorId);
+    final removed = _scopedContracts.remove(command.contractOverrideId);
+    if (removed == null) {
+      throw const PricingTierAdminGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_scoped_contract',
+        message: 'scoped contract override not found',
+      );
+    }
+    final result = _resolveScopedContract(command.selectedScope);
+    _idempotentResults[command.idempotencyKey] = result;
+    return result;
+  }
+
+  ScopedPricingContractEffectiveResponse _resolveScopedContract(
+    ScopedPricingContractScope selectedScope,
+  ) {
+    _validateScope(selectedScope);
+    final bundle = _bundleOrThrow(selectedScope.operatorId);
+    final selected = _scopeWithDisplayName(selectedScope);
+    final exact = _findExactScopedOverride(selectedScope);
+    if (exact != null) {
+      return _buildEffectiveResponse(
+        selectedScope: selected,
+        overrideStatus: ScopedPricingContractOverrideStatus.setHere,
+        sourceOverride: exact,
+        effectiveValue: exact.value,
+        exactOverride: exact,
+      );
+    }
+    final inherited = _findInheritedScopedOverride(selectedScope);
+    if (inherited != null) {
+      return _buildEffectiveResponse(
+        selectedScope: selected,
+        overrideStatus: ScopedPricingContractOverrideStatus.inherited,
+        sourceOverride: inherited,
+        effectiveValue: inherited.value,
+      );
+    }
+    final value = _catalogValueFor(bundle.subscriptionTier);
+    return ScopedPricingContractEffectiveResponse(
+      selectedScope: selected,
+      overrideStatus: ScopedPricingContractOverrideStatus.catalogDefault,
+      inheritedSource: ScopedPricingContractInheritedSource(
+        sourceType: ScopedPricingContractInheritedSourceType.catalogDefault,
+        displayName: 'Global plan catalog',
+        tierKey: value.tierKey,
+      ),
+      effectiveValue: value,
+      mutationTarget: ScopedPricingContractMutationTarget(
+        scope: selected,
+        canSave: true,
+      ),
+    );
+  }
+
+  ScopedPricingContractEffectiveResponse _buildEffectiveResponse({
+    required ScopedPricingContractScope selectedScope,
+    required ScopedPricingContractOverrideStatus overrideStatus,
+    required _MutableScopedContractOverride sourceOverride,
+    required ScopedPricingContractValue effectiveValue,
+    _MutableScopedContractOverride? exactOverride,
+  }) {
+    return ScopedPricingContractEffectiveResponse(
+      selectedScope: selectedScope,
+      overrideStatus: overrideStatus,
+      inheritedSource: ScopedPricingContractInheritedSource(
+        sourceType: ScopedPricingContractInheritedSourceType.scopedOverride,
+        scope: _scopeWithDisplayName(sourceOverride.scope),
+        overrideId: sourceOverride.id,
+        displayName: _scopeDisplayName(sourceOverride.scope),
+        tierKey: sourceOverride.value.tierKey,
+      ),
+      effectiveValue: effectiveValue,
+      mutationTarget: ScopedPricingContractMutationTarget(
+        scope: selectedScope,
+        existingOverrideId: exactOverride?.id,
+        canSave: true,
+        canDelete: exactOverride != null,
+      ),
+    );
+  }
+
+  _MutableScopedContractOverride? _findExactScopedOverride(
+    ScopedPricingContractScope scope,
+  ) {
+    final key = _scopeKey(scope);
+    for (final entry in _scopedContracts.values) {
+      if (_scopeKey(entry.scope) == key) return entry;
+    }
+    return null;
+  }
+
+  _MutableScopedContractOverride? _findInheritedScopedOverride(
+    ScopedPricingContractScope scope,
+  ) {
+    for (final candidate in _parentScopes(scope)) {
+      final override = _findExactScopedOverride(candidate);
+      if (override != null) return override;
+    }
+    return null;
+  }
+
+  List<ScopedPricingContractScope> _parentScopes(
+    ScopedPricingContractScope scope,
+  ) {
+    switch (scope.scopeType) {
+      case ScopedPricingContractScopeType.business:
+        return const <ScopedPricingContractScope>[];
+      case ScopedPricingContractScopeType.orgUnit:
+        return <ScopedPricingContractScope>[
+          ScopedPricingContractScope(
+            operatorId: scope.operatorId,
+            scopeType: ScopedPricingContractScopeType.business,
+          ),
+        ];
+      case ScopedPricingContractScopeType.location:
+        return <ScopedPricingContractScope>[
+          if (scope.orgUnitId != null && scope.orgUnitId!.isNotEmpty)
+            ScopedPricingContractScope(
+              operatorId: scope.operatorId,
+              scopeType: ScopedPricingContractScopeType.orgUnit,
+              orgUnitId: scope.orgUnitId,
+            ),
+          ScopedPricingContractScope(
+            operatorId: scope.operatorId,
+            scopeType: ScopedPricingContractScopeType.business,
+          ),
+        ];
+    }
+  }
+
+  ScopedPricingContractValue _catalogValueFor(String tierKey) {
+    final catalog =
+        _planCatalog[tierKey] ??
+        _planCatalog['enterprise'] ??
+        buildFallbackPlanCatalog().last;
+    return ScopedPricingContractValue(
+      tierKey: catalog.tierKey,
+      monthlyUsd: catalog.monthlyUsd,
+      firstNSeats: catalog.firstNSeats,
+      firstSeatUsd: catalog.firstSeatUsd,
+      additionalSeatUsd: catalog.additionalSeatUsd,
+      onboardingMinUsd: catalog.onboardingMinUsd,
+      onboardingMaxUsd: catalog.onboardingMaxUsd,
+    );
+  }
+
+  ScopedPricingContractScope _scopeWithDisplayName(
+    ScopedPricingContractScope scope,
+  ) {
+    return ScopedPricingContractScope(
+      operatorId: scope.operatorId,
+      scopeType: scope.scopeType,
+      orgUnitId: scope.orgUnitId,
+      locationId: scope.locationId,
+      displayName: scope.displayName ?? _scopeDisplayName(scope),
+    );
+  }
+
+  String _scopeDisplayName(ScopedPricingContractScope scope) {
+    switch (scope.scopeType) {
+      case ScopedPricingContractScopeType.business:
+        return _bundles[scope.operatorId]?.businessName ?? scope.operatorId;
+      case ScopedPricingContractScopeType.orgUnit:
+        return scope.displayName ?? scope.orgUnitId ?? 'Org unit';
+      case ScopedPricingContractScopeType.location:
+        final bundle = _bundles[scope.operatorId];
+        if (bundle?.primaryLocationId == scope.locationId &&
+            bundle?.primaryLocationName != null) {
+          return bundle!.primaryLocationName!;
+        }
+        return scope.displayName ?? scope.locationId ?? 'Location';
+    }
+  }
+
+  static String _scopeKey(ScopedPricingContractScope scope) {
+    switch (scope.scopeType) {
+      case ScopedPricingContractScopeType.business:
+        return '${scope.operatorId}|business';
+      case ScopedPricingContractScopeType.orgUnit:
+        return '${scope.operatorId}|org_unit|${scope.orgUnitId ?? ''}';
+      case ScopedPricingContractScopeType.location:
+        return '${scope.operatorId}|location|${scope.locationId ?? ''}';
+    }
+  }
+
   _MutableBundle _bundleOrThrow(String operatorId) {
     final bundle = _bundles[operatorId];
     if (bundle == null) {
@@ -672,6 +975,71 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     }
   }
 
+  static void _validateScope(ScopedPricingContractScope scope) {
+    if (scope.operatorId.trim().isEmpty) {
+      throw const PricingTierAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'missing_operator_id',
+        message: 'operator_id is required',
+      );
+    }
+    switch (scope.scopeType) {
+      case ScopedPricingContractScopeType.business:
+        return;
+      case ScopedPricingContractScopeType.orgUnit:
+        if (scope.orgUnitId == null || scope.orgUnitId!.trim().isEmpty) {
+          throw const PricingTierAdminGatewayError(
+            statusCode: 400,
+            errorCode: 'missing_org_unit_id',
+            message: 'org_unit scope requires org_unit_id',
+          );
+        }
+        return;
+      case ScopedPricingContractScopeType.location:
+        if (scope.locationId == null || scope.locationId!.trim().isEmpty) {
+          throw const PricingTierAdminGatewayError(
+            statusCode: 400,
+            errorCode: 'missing_location_id',
+            message: 'location scope requires location_id',
+          );
+        }
+        return;
+    }
+  }
+
+  static void _validateScopedContractValue(ScopedPricingContractValue value) {
+    _validatePlanTierKey(value.tierKey);
+    _validateNullableNonNegative(value.monthlyUsd, field: 'monthly_usd');
+    _validateNullableNonNegativeInt(value.firstNSeats, field: 'first_n_seats');
+    _validateNullableNonNegative(value.firstSeatUsd, field: 'first_seat_usd');
+    _validateNullableNonNegative(
+      value.additionalSeatUsd,
+      field: 'additional_seat_usd',
+    );
+    _validateNullableNonNegative(
+      value.onboardingMinUsd,
+      field: 'onboarding_min_usd',
+    );
+    _validateNullableNonNegative(
+      value.onboardingMaxUsd,
+      field: 'onboarding_max_usd',
+    );
+    _validateNullableNonNegative(
+      value.advisorCapMonthlyUsd,
+      field: 'advisor_cap_monthly_usd',
+    );
+  }
+
+  static void _requireAdminReason(String adminReason, String operation) {
+    if (adminReason.trim().isEmpty) {
+      throw PricingTierAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'missing_admin_reason',
+        message: '$operation requires a non-empty admin_reason',
+      );
+    }
+  }
+
   /// A null money field is allowed (genuine SQL NULL: e.g. Enterprise has
   /// no monthly price, no-seat plans have null seat fees); a present value
   /// must be a non-negative finite number.
@@ -710,6 +1078,28 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
 /// idempotency key is a no-op (mirrors the proxy's idempotent DELETE).
 class _DeletedSentinel {
   const _DeletedSentinel();
+}
+
+class _MutableScopedContractOverride {
+  _MutableScopedContractOverride({
+    required this.id,
+    required this.scope,
+    required this.value,
+  });
+
+  factory _MutableScopedContractOverride.from(
+    ScopedPricingContractOverride entry,
+  ) {
+    return _MutableScopedContractOverride(
+      id: entry.id,
+      scope: entry.scope,
+      value: entry.value,
+    );
+  }
+
+  final String id;
+  final ScopedPricingContractScope scope;
+  final ScopedPricingContractValue value;
 }
 
 class _MutableBundle {
