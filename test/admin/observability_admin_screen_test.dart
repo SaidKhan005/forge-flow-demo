@@ -739,6 +739,241 @@ void main() {
     await tester.pump();
   });
 
+  // ─── Use case filter (whole-page, client-side over the envelope) ───
+  testWidgets('use-case selector is present after a run and defaults to All', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+
+    final selector = find.byKey(
+      const Key('admin_observability_use_case_selector'),
+    );
+    expect(selector, findsOneWidget);
+    // Defaults to All: the chip shows "All" and the full-breakdown spend
+    // caption ("Across every use case this month.").
+    expect(find.descendant(of: selector, matching: find.text('All')), findsOneWidget);
+    expect(
+      find.text('Across every use case this month.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('selecting a use case scopes the hero spend and the Money panels '
+      'to that class', (tester) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+
+    // The hero "AI spend" value lives inside the spend hero card; scope to
+    // it so the donut center total / legend amounts do not collide.
+    Finder heroSpendText(String dollars) => find.descendant(
+      of: find.byKey(const Key('admin_observability_hero_spend')),
+      matching: find.text(dollars),
+    );
+
+    // Baseline (All): hero spend is the cross-class total ($29.93) and the
+    // coach_qa / wf_pl reuse + model-mix rows are present.
+    expect(heroSpendText('\$29.93'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_observability_cache_hit_rate_coach_qa')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_model_mix_wf_pl')),
+      findsOneWidget,
+    );
+
+    // Filter to Advisor answers.
+    await tester.tap(
+      find.byKey(const Key('admin_observability_use_case_selector')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('admin_observability_use_case_advisor_qa')),
+    );
+    await tester.pumpAndSettle();
+
+    // Hero spend now sums only advisor_qa rows ($18.42 + $0.42 = $18.84) and
+    // the caption names the class (caption is unique to the hero tile).
+    expect(heroSpendText('\$18.84'), findsOneWidget);
+    expect(heroSpendText('\$29.93'), findsNothing);
+    expect(find.text('Advisor answers this month.'), findsOneWidget);
+
+    // Saved-answer reuse + model-mix narrow to advisor_qa: the other
+    // classes' bars are gone.
+    expect(
+      find.byKey(const Key('admin_observability_cache_hit_rate_advisor_qa')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_cache_hit_rate_coach_qa')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_model_mix_advisor_qa')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_model_mix_wf_pl')),
+      findsNothing,
+    );
+    // advisor_qa has no batch-share row -> the panel shows its honest
+    // empty state (no phantom zero).
+    expect(
+      find.byKey(const Key('admin_observability_batch_mode_share_empty')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('donut keeps the full breakdown and highlights the selected use '
+      'case', (tester) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+
+    await tester.tap(
+      find.byKey(const Key('admin_observability_use_case_selector')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('admin_observability_use_case_advisor_qa')),
+    );
+    await tester.pumpAndSettle();
+
+    // The donut still renders, and every class's legend row is still there
+    // (NOT collapsed to one slice): coach_qa + wf_pl rows survive.
+    expect(
+      find.byKey(const Key('admin_observability_cost_donut')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_cost_legend_coach_qa')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_cost_legend_wf_pl')),
+      findsOneWidget,
+    );
+    // The advisor_qa row carries the highlighted key (renamed when chosen).
+    expect(
+      find.byKey(
+        const Key('admin_observability_cost_legend_advisor_qa_highlighted'),
+      ),
+      findsOneWidget,
+    );
+    // Sub-caption names the highlighted use case.
+    expect(
+      find.text('All use cases. Advisor answers highlighted.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('selecting a use case shows the platform-wide note on Customers, '
+      'Reliability, Knowledge; All hides it', (tester) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+
+    // Filter to Workflow planning.
+    await tester.tap(
+      find.byKey(const Key('admin_observability_use_case_selector')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('admin_observability_use_case_wf_pl')),
+    );
+    await tester.pumpAndSettle();
+
+    Future<void> openTab(String suffix) async {
+      await tester.tap(find.byKey(Key('admin_observability_tab_$suffix')));
+      await tester.pumpAndSettle();
+    }
+
+    await openTab('customers');
+    expect(
+      find.byKey(const Key('admin_observability_use_case_note_customers')),
+      findsOneWidget,
+    );
+    await openTab('reliability');
+    expect(
+      find.byKey(const Key('admin_observability_use_case_note_reliability')),
+      findsOneWidget,
+    );
+    await openTab('knowledge');
+    expect(
+      find.byKey(const Key('admin_observability_use_case_note_knowledge')),
+      findsOneWidget,
+    );
+
+    // Switch back to All -> the notes disappear.
+    await openTab('customers');
+    await tester.tap(
+      find.byKey(const Key('admin_observability_use_case_selector')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('admin_observability_use_case_all')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_observability_use_case_note_customers')),
+      findsNothing,
+    );
+    await openTab('reliability');
+    expect(
+      find.byKey(const Key('admin_observability_use_case_note_reliability')),
+      findsNothing,
+    );
+    await openTab('knowledge');
+    expect(
+      find.byKey(const Key('admin_observability_use_case_note_knowledge')),
+      findsNothing,
+    );
+  });
+
   // ─── Phase 10a.4 — live sync (Realtime bridge tripwires) ───────────
   testWidgets('live sync section renders one row per Q22 metric and the '
       'worst-wins pill', (tester) async {
