@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
+import '../../services/auth/role_key_generator.dart';
 import '../../theme/app_theme.dart';
 
 enum SettingsRolePermissionState { allow, deny, inherit }
@@ -78,6 +79,7 @@ class SettingsRoleEditorDialog extends StatefulWidget {
     required this.role,
     required this.onSubmit,
     this.permissionKeys = const <String>{},
+    this.existingRoleKeys = const <String>{},
     this.readOnly = false,
   });
 
@@ -93,6 +95,10 @@ class SettingsRoleEditorDialog extends StatefulWidget {
   /// catalog defined in [PermissionKeys.all].
   final Set<String> permissionKeys;
 
+  /// Existing backend keys in the catalog. Creation uses this only to
+  /// generate a collision-free key behind the scenes.
+  final Set<String> existingRoleKeys;
+
   /// When true, Save is hidden and every text + permission control is
   /// disabled regardless of [TeamRoleCatalogEntry.isEditable]. The
   /// catalog section uses this for the **View** affordance offered to
@@ -107,10 +113,7 @@ class SettingsRoleEditorDialog extends StatefulWidget {
       _SettingsRoleEditorDialogState();
 }
 
-final _roleKeyRegExp = RegExp(r'^[a-z][a-z0-9_]{2,63}$');
-
 class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
-  late final TextEditingController _roleKey;
   late final TextEditingController _displayName;
   late final TextEditingController _description;
   late final Map<String, SettingsRolePermissionState> _initialStates;
@@ -128,10 +131,8 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
   void initState() {
     super.initState();
     final role = widget.role;
-    _roleKey = TextEditingController(text: role?.roleKey ?? '');
     _displayName = TextEditingController(text: role?.displayName ?? '');
     _description = TextEditingController(text: role?.description ?? '');
-    _roleKey.addListener(_handleTextChanged);
     _displayName.addListener(_handleTextChanged);
     _initialStates = _statesFromRole(role);
     _states = Map<String, SettingsRolePermissionState>.from(_initialStates);
@@ -157,9 +158,7 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
 
   @override
   void dispose() {
-    _roleKey.removeListener(_handleTextChanged);
     _displayName.removeListener(_handleTextChanged);
-    _roleKey.dispose();
     _displayName.dispose();
     _description.dispose();
     super.dispose();
@@ -172,15 +171,6 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
   bool get _canSubmit {
     if (!_isEditable) return false;
     if (_displayName.text.trim().isEmpty) return false;
-    if (_isCreate) {
-      final key = _roleKey.text.trim();
-      if (key.isEmpty) return false;
-      // Mirrors `lib/services/auth/repository_auth_operations_gateway.dart`
-      // role-key validation so the operator does not round-trip the
-      // proxy to learn the rule. 3–64 chars, lowercase letter prefix,
-      // a–z / 0–9 / underscore body.
-      if (!_roleKeyRegExp.hasMatch(key)) return false;
-    }
     return true;
   }
 
@@ -203,7 +193,12 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
     final result = SettingsRoleEditorResult(
       isCreate: _isCreate,
       roleId: widget.role?.roleId ?? '',
-      roleKey: _isCreate ? _roleKey.text.trim() : widget.role!.roleKey,
+      roleKey: _isCreate
+          ? generateRoleKeyFromDisplayName(
+              _displayName.text.trim(),
+              existingKeys: widget.existingRoleKeys,
+            )
+          : widget.role!.roleKey,
       displayName: _displayName.text.trim(),
       description: _description.text.trim(),
       permissionUpdates: updates,
@@ -259,21 +254,6 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
                       '${protectedRole.roleKey} cannot be edited from this '
                       'surface.',
                       style: AppTextStyles.body12(color: AppColors.textMuted),
-                    ),
-                  ),
-                if (_isCreate)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: TextField(
-                      key: const Key('settings_role_editor_role_key'),
-                      controller: _roleKey,
-                      enabled: !_busy,
-                      decoration: const InputDecoration(
-                        labelText: 'Role key (a-z, 0-9, underscore)',
-                        helperText: 'kitchen_lead, prep_supervisor, ...',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
                     ),
                   ),
                 TextField(

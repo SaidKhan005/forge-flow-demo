@@ -29,6 +29,7 @@ import '../../auth/permission_keys.dart';
 import '../../domain/hierarchy/org_unit_depth_rule.dart';
 import '../../domain/models/inheritance_tree_node.dart';
 import '../../services/auth/custom_role_validator.dart';
+import '../../services/auth/role_key_generator.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../widgets/inheritance_tree.dart';
@@ -704,13 +705,10 @@ String _selectedScopeLabel(AdminHierarchyScopeIntent scope) {
 }
 
 IconData _scopeIcon(AdminHierarchyScopeType type) => switch (type) {
-      AdminHierarchyScopeType.business =>
-        scopeIcon(kind: ScopeEntityKind.business),
-      AdminHierarchyScopeType.orgUnit =>
-        scopeIcon(kind: ScopeEntityKind.orgUnit),
-      AdminHierarchyScopeType.location =>
-        scopeIcon(kind: ScopeEntityKind.location),
-    };
+  AdminHierarchyScopeType.business => scopeIcon(kind: ScopeEntityKind.business),
+  AdminHierarchyScopeType.orgUnit => scopeIcon(kind: ScopeEntityKind.orgUnit),
+  AdminHierarchyScopeType.location => scopeIcon(kind: ScopeEntityKind.location),
+};
 
 /// Map the admin shell's working hierarchy scope onto the shared
 /// [RoleScope] the [CustomRoleValidator] understands, so the admin
@@ -2643,12 +2641,10 @@ class CreateCustomRoleDialog extends StatefulWidget {
 
 class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   final _displayNameController = TextEditingController();
-  final _roleKeyController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _reasonController = TextEditingController();
   final Set<String> _selectedPermissionKeys = <String>{};
   String? _displayNameError;
-  String? _roleKeyError;
   String? _permissionsError;
   String? _reasonError;
 
@@ -2669,7 +2665,6 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   void dispose() {
     _displayNameController.removeListener(_onDisplayNameChanged);
     _displayNameController.dispose();
-    _roleKeyController.dispose();
     _descriptionController.dispose();
     _reasonController.dispose();
     super.dispose();
@@ -2677,7 +2672,6 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
 
   void _onSubmit() {
     final displayName = _displayNameController.text.trim();
-    final roleKey = _roleKeyController.text.trim();
     final reason = _reasonController.text.trim();
     final effectivePermissions = PermissionKeyMetadataCatalog.expandImplies(
       _selectedPermissionKeys,
@@ -2686,22 +2680,20 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
       _displayNameError = displayName.isEmpty
           ? 'Choose a name for this role.'
           : null;
-      _roleKeyError = roleKey.isEmpty
-          ? 'Choose a key for this role.'
-          : widget.existingRoleKeys.contains(roleKey)
-          ? 'A role with this key already exists.'
-          : null;
       _permissionsError = effectivePermissions.isEmpty
           ? 'Pick at least one permission for this role.'
           : null;
       _reasonError = reason.isEmpty ? 'Add a reason before continuing.' : null;
     });
     if (_displayNameError != null ||
-        _roleKeyError != null ||
         _permissionsError != null ||
         _reasonError != null) {
       return;
     }
+    final roleKey = generateRoleKeyFromDisplayName(
+      displayName,
+      existingKeys: widget.existingRoleKeys,
+    );
     Navigator.of(context).pop(
       CustomRoleDraft(
         roleKey: roleKey,
@@ -2756,16 +2748,6 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
                 labelText: 'Display name',
                 border: const OutlineInputBorder(),
                 errorText: _displayNameError,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              key: const Key('admin_rhs_create_custom_role_key'),
-              controller: _roleKeyController,
-              decoration: InputDecoration(
-                labelText: 'Role key',
-                border: const OutlineInputBorder(),
-                errorText: _roleKeyError,
               ),
             ),
             const SizedBox(height: 10),

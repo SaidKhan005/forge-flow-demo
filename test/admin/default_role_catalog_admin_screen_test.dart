@@ -56,7 +56,6 @@ void main() {
 
   Future<void> addDefaultRole(
     WidgetTester tester, {
-    String roleKey = 'location_manager',
     String displayName = 'Location Manager',
   }) async {
     final addRole = find.byKey(
@@ -70,10 +69,6 @@ void main() {
     await tester.enterText(
       find.byKey(const Key('admin_default_role_catalog_add_role_display_name')),
       displayName,
-    );
-    await tester.enterText(
-      find.byKey(const Key('admin_default_role_catalog_add_role_key')),
-      roleKey,
     );
     await tester.enterText(
       find.byKey(const Key('admin_default_role_catalog_add_role_description')),
@@ -156,10 +151,14 @@ void main() {
       find.byKey(const Key('admin_default_role_catalog_role_dialog_0')),
       findsOneWidget,
     );
-    final roleKey = tester.widget<TextFormField>(
+    expect(
       find.byKey(const Key('admin_default_role_catalog_draft_role_key_0')),
+      findsNothing,
     );
-    expect(roleKey.initialValue, equals('operator_owner'));
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_draft_display_name_0')),
+      findsOneWidget,
+    );
     await tester.tap(
       find.byKey(const Key('admin_default_role_catalog_role_dialog_done_0')),
     );

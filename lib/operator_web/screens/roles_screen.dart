@@ -285,6 +285,7 @@ class _RolesScreenState extends State<RolesScreen> {
           session: widget.session,
           gateway: widget.gateway,
           existing: role,
+          existingRoleKeys: <String>{for (final role in _roles) role.roleKey},
           idempotencyKeyFactory: widget.idempotencyKeyFactory,
         ),
       ),
