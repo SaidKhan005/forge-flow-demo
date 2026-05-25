@@ -994,6 +994,7 @@ Widget _buildPricing(BuildContext context) {
     routeId: kAdminPricingRouteId,
     functionTitle: 'Plans and limits',
     description: 'Review plan status and usage limits.',
+    showWorkspaceHeader: false,
     functionBuilder: (context, selectedScope, selection) {
       if (source == null) {
         return PricingTierAdminScreen(
@@ -1050,6 +1051,7 @@ Widget _buildCorpus(BuildContext context) {
     routeId: kAdminCorpusRouteId,
     functionTitle: 'Knowledge Base',
     description: 'Review knowledge content and relationship review.',
+    showWorkspaceHeader: false,
     functionBuilder: (context, selectedScope, selection) {
       final targetOperatorId = selectedScope.operatorId;
       final targetLocationId = selectedScope.locationId;
@@ -1161,6 +1163,7 @@ Widget _buildFeatureFlags(BuildContext context) {
     functionTitle: 'Launch controls',
     description:
         'Turn rollout controls on or off with audit-backed confirmation.',
+    showWorkspaceHeader: false,
     functionBuilder: (context, selectedScope, selection) {
       Widget buildScreen({required bool canEdit}) {
         return FeatureFlagsAdminScreen(
@@ -1371,7 +1374,7 @@ Widget _buildPollingPricing(BuildContext context) {
         initialScope: operatorScope,
         initialHierarchyScope: selectedScope,
         scopeLocationIds: selection.locationIds,
-        showPageHeader: false,
+        showPageHeader: true,
         showScopeControls: false,
       );
     }
@@ -1389,7 +1392,7 @@ Widget _buildPollingPricing(BuildContext context) {
           initialScope: operatorScope,
           initialHierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
-          showPageHeader: false,
+          showPageHeader: true,
           showScopeControls: false,
         );
       },
@@ -1398,6 +1401,7 @@ Widget _buildPollingPricing(BuildContext context) {
 
   return AdminSetupWorkspace(
     functionTitle: 'Polling Setup',
+    showWorkspaceHeader: false,
     description:
         'Choose the hierarchy scope, assign vendor polling tiers, and estimate operating cost.',
     operatorGateway: operatorGateway,
