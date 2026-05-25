@@ -165,7 +165,7 @@ class AdminRunCheckLaunchPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 760;
+        final wide = constraints.maxWidth >= 1600;
         final visual = _LaunchPanelIcon(icon: icon);
         final copy = _LaunchPanelCopy(
           title: title,

@@ -816,7 +816,7 @@ class _Header extends StatelessWidget {
           'Recent activity for the business you picked. Open a row for the '
           'details support needs.',
       subtitleKey: const Key('admin_debug_console_subtitle'),
-      collapseBelowWidth: 640,
+      collapseBelowWidth: 980,
       actions: <Widget>[
         AdminRefreshHeaderActions(
           maxWidth: 460,

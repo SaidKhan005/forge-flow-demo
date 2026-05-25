@@ -20,6 +20,8 @@ import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../utils/iana_timezones.dart';
 import '../../widgets/console/console_action_bar.dart';
+import '../../widgets/console/console_screen_body.dart';
+import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
@@ -357,11 +359,12 @@ class _OperatorLocationAdminScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ColoredBox(
       key: const Key('admin_operators_screen'),
       color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+      child: OperatorWebScreenFrame(
+        maxContentWidth: _kBusinessAccountDetailMaxWidth,
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -753,9 +756,9 @@ class _BusinessAccountsHeader extends StatelessWidget {
     // The "New business" onboarding action now lives at the top of the
     // left scope pane (see `_buildNewBusinessButton`); this header is
     // the page title only.
-    return Text(
-      'Business accounts',
-      style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
+    return const OperatorWebScreenHeader(
+      icon: Icons.apartment_outlined,
+      title: 'Business accounts',
     );
   }
 }

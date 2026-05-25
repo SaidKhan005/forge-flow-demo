@@ -477,14 +477,13 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canSave =
-        _canEdit && !_submitting && _periods.validation.isValid;
+    final canSave = _canEdit && !_submitting && _periods.validation.isValid;
     return ColoredBox(
       key: const Key('admin_timing_setup_screen'),
       color: AppColors.backgroundDeep,
       child: OperatorWebScreenBody(
         scrollKey: const Key('admin_timing_setup_screen_body'),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         maxContentWidth: 880,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -639,7 +638,6 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
       ),
     );
   }
-
 }
 
 /// Timing-editable parity: shared seeded in-memory write fallback so
@@ -846,8 +844,9 @@ class _AdminTimezoneDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected =
-        controller.text.trim().isEmpty ? 'UTC' : controller.text.trim();
+    final selected = controller.text.trim().isEmpty
+        ? 'UTC'
+        : controller.text.trim();
     final options = <String>[
       if (!kBusinessTimingAllowedIanaTimezones.contains(selected)) selected,
       ...kBusinessTimingAllowedIanaTimezones,
@@ -1051,8 +1050,7 @@ class _AdminEffectiveTimingSummary extends StatelessWidget {
         if (snapshot.hasError) {
           return const _TimingMessageCard(
             title: 'Effective timing could not load',
-            body:
-                'Refresh Business Accounts and try this setup screen again.',
+            body: 'Refresh Business Accounts and try this setup screen again.',
           );
         }
         if (location == null) {
@@ -1078,8 +1076,7 @@ class _AdminEffectiveTimingSummary extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              if (!selectedScope.isLocationScope &&
-                  scopeLocationIds.length > 1)
+              if (!selectedScope.isLocationScope && scopeLocationIds.length > 1)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Container(
@@ -1087,8 +1084,10 @@ class _AdminEffectiveTimingSummary extends StatelessWidget {
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: AppColors.cardGlow,
-                      border:
-                          Border.all(color: AppColors.borderSubtle, width: 1),
+                      border: Border.all(
+                        color: AppColors.borderSubtle,
+                        width: 1,
+                      ),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -1198,8 +1197,9 @@ class _ResolvedTimingFields extends StatelessWidget {
         }
         final AdminEffectiveTimingProjection projection;
         try {
-          projection =
-              AdminBusinessTimingResolutionProjection.project(resolution);
+          projection = AdminBusinessTimingResolutionProjection.project(
+            resolution,
+          );
         } on BusinessTimingProfileResolutionException {
           return Padding(
             key: const Key('admin_timing_resolution_error'),
@@ -1213,8 +1213,7 @@ class _ResolvedTimingFields extends StatelessWidget {
         }
         final effective = projection.effective;
         final sourceLabel = projection.provenance.detailLabel;
-        final timezoneValue =
-            resolution.ianaTimezone?.trim().isNotEmpty == true
+        final timezoneValue = resolution.ianaTimezone?.trim().isNotEmpty == true
             ? resolution.ianaTimezone!.trim()
             : effective.businessTimezone;
         final periods = effective.servicePeriodDefinitions.toList()
@@ -1263,8 +1262,8 @@ class _ResolvedTimingFields extends StatelessWidget {
                           '${period.startLocalTime} to ${period.endLocalTime}',
                       daysLabel:
                           AdminBusinessTimingResolutionProjection.daysLabel(
-                        period.applicableDays,
-                      ),
+                            period.applicableDays,
+                          ),
                     ),
                   Padding(
                     padding: const EdgeInsets.only(top: 4),

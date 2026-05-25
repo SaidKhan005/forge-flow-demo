@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
+import '../../widgets/console/console_screen_body.dart';
+import '../../widgets/console/console_screen_header.dart';
 import '../admin_button_styles.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/members_admin_gateway.dart';
@@ -53,30 +55,33 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 4,
-      child: Container(
+      child: ColoredBox(
         key: const Key('admin_support_operator_view_screen'),
         color: AppColors.backgroundDeep,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+        child: OperatorWebScreenFrame(
+          maxContentWidth: 1320,
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              AdminPageHeader(
+              OperatorWebScreenHeader(
+                icon: Icons.support_agent_outlined,
                 title: 'Support workspace',
                 subtitle:
                     '${pickedOperator.operatorBusinessName}: one view '
                     'for people, access, security, audit, and vendors.',
-                trailing: onChangeOperator == null
-                    ? null
-                    : OutlinedButton.icon(
-                        key: const Key(
-                          'admin_support_operator_view_change_business',
-                        ),
-                        onPressed: onChangeOperator,
-                        style: AdminButtonStyles.secondary(),
-                        icon: const Icon(Icons.swap_horiz, size: 16),
-                        label: const Text('Change business'),
+                actions: <Widget>[
+                  if (onChangeOperator != null)
+                    OutlinedButton.icon(
+                      key: const Key(
+                        'admin_support_operator_view_change_business',
                       ),
+                      onPressed: onChangeOperator,
+                      style: AdminButtonStyles.secondary(),
+                      icon: const Icon(Icons.swap_horiz, size: 16),
+                      label: const Text('Change business'),
+                    ),
+                ],
               ),
               const SizedBox(height: 14),
               AdminStatStrip(

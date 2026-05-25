@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
@@ -21,7 +22,6 @@ import '../admin_route_handoff.dart';
 import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
-import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_scope_notice_adapter.dart';
 import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 import '../widgets/admin_hierarchy_scope_prompt.dart';
@@ -595,15 +595,17 @@ class _PollingAndPricingAdminScreenState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   if (widget.showPageHeader) ...[
-                    AdminPageHeader(
+                    OperatorWebScreenHeader(
+                      icon: Icons.payments_outlined,
                       title: 'Polling Setup',
                       subtitle:
                           'This surface is for F&F admins only. Operators cannot see it. Set vendor polling tiers, cost basis, and margin.',
-                      leading: widget.onBackToBusinessAccounts == null
-                          ? null
-                          : AdminBusinessAccountsBackButton(
-                              onPressed: widget.onBackToBusinessAccounts,
-                            ),
+                      actions: <Widget>[
+                        if (widget.onBackToBusinessAccounts != null)
+                          AdminBusinessAccountsBackButton(
+                            onPressed: widget.onBackToBusinessAccounts,
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 14),
                   ],

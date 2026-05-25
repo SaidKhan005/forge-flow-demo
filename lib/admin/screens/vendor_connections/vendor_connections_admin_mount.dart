@@ -282,11 +282,7 @@ class _VendorConnectionsAdminMountState
 
     return ColoredBox(
       color: AppColors.backgroundDeep,
-      child: Column(
-        children: <Widget>[
-          Expanded(child: content),
-        ],
-      ),
+      child: Column(children: <Widget>[Expanded(child: content)]),
     );
   }
 
@@ -367,81 +363,77 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.backgroundDeep,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_vendor_connections_location_required_scroll'),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      maxContentWidth: 760,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          OperatorWebScreenHeader(
+            icon: Icons.cable_outlined,
+            title: 'Vendor integrations',
+            subtitle:
+                'Vendor credentials are connected, tested, disconnected, and logged per location.',
+            actions: <Widget>[
+              if (onBackToBusinessAccounts != null)
+                AdminBusinessAccountsBackButton(
+                  onPressed: onBackToBusinessAccounts,
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          AdminCard(
+            key: const Key('admin_vendor_connections_location_required'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                AdminPageHeader(
-                  title: 'Vendor integrations',
-                  subtitle:
-                      'Vendor credentials are connected, tested, disconnected, and logged per location.',
-                  leading: onBackToBusinessAccounts == null
-                      ? null
-                      : AdminBusinessAccountsBackButton(
-                          onPressed: onBackToBusinessAccounts,
-                        ),
-                ),
-                const SizedBox(height: 14),
-                AdminCard(
-                  key: const Key('admin_vendor_connections_location_required'),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Icon(
+                      // canonical location icon (mirrors scopeIcon(location)); this empty state illustrates a LOCATION
+                      Icons.place_outlined,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          const Icon(
-                            // canonical location icon (mirrors scopeIcon(location)); this empty state illustrates a LOCATION
-                            Icons.place_outlined,
-                            size: 20,
-                            color: AppColors.textMuted,
+                          Text(
+                            'Choose a location before editing vendor integrations',
+                            style: AppTextStyles.sectionTitle(
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  'Choose a location before editing vendor integrations',
-                                  style: AppTextStyles.sectionTitle(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Choose a location to show connect, test, '
-                                  'disconnect, and sync-log controls.',
-                                  style: AppTextStyles.body13(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 6),
+                          Text(
+                            'Choose a location to show connect, test, '
+                            'disconnect, and sync-log controls.',
+                            style: AppTextStyles.body13(
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      const AdminDetailRow(
-                        label: 'Edit controls',
-                        value: 'Location required',
-                      ),
-                      const AdminDetailRow(
-                        label: 'Global services',
-                        value: 'Connected services remains separate',
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const AdminDetailRow(
+                  label: 'Edit controls',
+                  value: 'Location required',
+                ),
+                const AdminDetailRow(
+                  label: 'Global services',
+                  value: 'Connected services remains separate',
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -458,83 +450,80 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.backgroundDeep,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+    return OperatorWebScreenBody(
+      scrollKey: const Key('admin_vendor_connections_not_wired_scroll'),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      maxContentWidth: 760,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          OperatorWebScreenHeader(
+            icon: Icons.cable_outlined,
+            title: 'Vendor integrations',
+            subtitle:
+                'Live provider summary is available in Connected services. Per-location lifecycle actions stay disabled here until the proxy route has production bindings.',
+            actions: <Widget>[
+              if (onBackToBusinessAccounts != null)
+                AdminBusinessAccountsBackButton(
+                  onPressed: onBackToBusinessAccounts,
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          AdminCard(
+            key: const Key('admin_vendor_connections_not_wired'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                AdminPageHeader(
-                  title: 'Vendor integrations',
-                  subtitle:
-                      'Live provider summary is available in Connected services. Per-location lifecycle actions stay disabled here until the proxy route has production bindings.',
-                  leading: onBackToBusinessAccounts == null
-                      ? null
-                      : AdminBusinessAccountsBackButton(
-                          onPressed: onBackToBusinessAccounts,
-                        ),
-                ),
-                const SizedBox(height: 14),
-                AdminCard(
-                  key: const Key('admin_vendor_connections_not_wired'),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Icon(
+                      Icons.lock_outline,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          const Icon(
-                            Icons.lock_outline,
-                            size: 20,
-                            color: AppColors.textMuted,
+                          Text(
+                            'Lifecycle actions are not live for $locationName',
+                            style: AppTextStyles.sectionTitle(
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  'Lifecycle actions are not live for $locationName',
-                                  style: AppTextStyles.sectionTitle(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Connect, test, disconnect, and sync-log actions are not exposed from this admin route in preview. This page is intentionally read-only rather than showing demo vendor data.',
-                                  style: AppTextStyles.body13(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 6),
+                          Text(
+                            'Connect, test, disconnect, and sync-log actions are not exposed from this admin route in preview. This page is intentionally read-only rather than showing demo vendor data.',
+                            style: AppTextStyles.body13(
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      const AdminDetailRow(
-                        label: 'Current admin status',
-                        value: 'Not routed',
-                      ),
-                      const AdminDetailRow(
-                        label: 'Safe live view',
-                        value: 'Connected services',
-                      ),
-                      const AdminDetailRow(
-                        label: 'Mutation state',
-                        value: 'Disabled until backend bindings exist',
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                AdminDetailRow(label: 'Location', value: locationName),
+                const AdminDetailRow(
+                  label: 'Current admin status',
+                  value: 'Not routed',
+                ),
+                const AdminDetailRow(
+                  label: 'Safe live view',
+                  value: 'Connected services',
+                ),
+                const AdminDetailRow(
+                  label: 'Mutation state',
+                  value: 'Disabled until backend bindings exist',
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
