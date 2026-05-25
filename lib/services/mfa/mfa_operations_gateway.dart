@@ -22,6 +22,7 @@ class MfaTotpBeginCommand {
     this.authorizationIdToken = '',
     required this.userEmail,
     required this.issuerName,
+    this.idempotencyKey = '',
   });
 
   final String actorUserId;
@@ -30,6 +31,15 @@ class MfaTotpBeginCommand {
   final String authorizationIdToken;
   final String userEmail;
   final String issuerName;
+
+  /// Caller-stable idempotency key for the begin write. The client-side
+  /// [ProxyMfaOperationsGateway] forwards it as the `Idempotency-Key`
+  /// header; one enroll attempt reuses the SAME key on begin and
+  /// confirm so a retried confirm replays against the same
+  /// `proxy_requests` UNIQUE row. Defaults to empty for server-side
+  /// construction, where the proxy persists the header it received
+  /// rather than reading this field.
+  final String idempotencyKey;
 }
 
 class MfaTotpConfirmCommand {
@@ -41,6 +51,7 @@ class MfaTotpConfirmCommand {
     required this.factorId,
     required this.oneTimeCode,
     required this.issuerName,
+    this.idempotencyKey = '',
   });
 
   final String actorUserId;
@@ -50,6 +61,12 @@ class MfaTotpConfirmCommand {
   final String factorId;
   final String oneTimeCode;
   final String issuerName;
+
+  /// Caller-stable idempotency key for the confirm write. Reused from
+  /// the matching [MfaTotpBeginCommand] of the SAME enroll attempt (see
+  /// that field's note). Defaults to empty for server-side
+  /// construction.
+  final String idempotencyKey;
 }
 
 class MfaTotpConfirmCompleted {
