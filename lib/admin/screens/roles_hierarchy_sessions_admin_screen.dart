@@ -1023,9 +1023,17 @@ class PermissionKeyChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(
-            permissionHumanLabel(permissionKey),
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          // The chip sits in a Wrap, so its slot is capped at the panel
+          // width. A long human label must ellipsize inside that cap rather
+          // than overflow the Row (the cap is generous; ellipsis only ever
+          // bites the rare extra-long label at constrained widths).
+          Flexible(
+            child: Text(
+              permissionHumanLabel(permissionKey),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
           ),
           if (mfa) ...<Widget>[
             const SizedBox(width: 6),
