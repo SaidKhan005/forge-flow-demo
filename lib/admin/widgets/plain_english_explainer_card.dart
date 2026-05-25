@@ -36,18 +36,33 @@ class PlainEnglishExplainerCard extends StatelessWidget {
               style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
             ),
             const SizedBox(height: 12),
-            Text(
-              kExplainerParagraph1,
-              style: AppTextStyles.body13(color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              kExplainerParagraph2,
-              style: AppTextStyles.body13(color: AppColors.textPrimary),
-            ),
+            const PlainEnglishExplainerBody(),
           ],
         ),
       ),
+    );
+  }
+}
+
+class PlainEnglishExplainerBody extends StatelessWidget {
+  const PlainEnglishExplainerBody({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          PlainEnglishExplainerCard.kExplainerParagraph1,
+          style: AppTextStyles.body13(color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          PlainEnglishExplainerCard.kExplainerParagraph2,
+          style: AppTextStyles.body13(color: AppColors.textPrimary),
+        ),
+      ],
     );
   }
 }

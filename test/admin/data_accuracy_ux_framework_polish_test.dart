@@ -9,6 +9,7 @@ import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/data_accuracy_audit_history_panel.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_data_accuracy_table.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_tier_assignment_table.dart';
+import 'package:forge_and_flow/admin/widgets/plain_english_explainer_card.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
@@ -776,7 +777,7 @@ void main() {
       expect(find.text('Duckworth Street'), findsNothing);
     });
 
-    testWidgets('polling setup overview and requests use admin labels', (
+    testWidgets('polling setup uses a lean header and admin labels', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(1400, 1000));
@@ -832,24 +833,49 @@ void main() {
 
       expect(
         find.byKey(const Key('admin_polling_setup_overview_panel')),
+        findsNothing,
+      );
+      expect(find.text('Setup overview'), findsNothing);
+      expect(
+        find.text(
+          'Set vendor cadence, tier price, cost basis, and margin for admin-managed locations.',
+        ),
+        findsNothing,
+      );
+      expect(
+        find.text(
+          'Assign polling tiers and review cost and margin by location.',
+        ),
         findsOneWidget,
       );
-      expect(find.text('Locations shown'), findsOneWidget);
-      expect(find.text('Assigned'), findsOneWidget);
-      expect(find.text('Pending requests'), findsOneWidget);
-      expect(find.text('Monthly margin'), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_polling_setup_info_button')),
+        findsOneWidget,
+      );
+      expect(find.text('About this surface'), findsNothing);
+      expect(
+        find.text(PlainEnglishExplainerCard.kExplainerParagraph1),
+        findsNothing,
+      );
       expect(find.text('Tier change: Regular to Premium'), findsOneWidget);
       expect(find.text('Pending'), findsOneWidget);
 
-      final overviewY = tester
-          .getTopLeft(
-            find.byKey(const Key('admin_polling_setup_overview_panel')),
-          )
-          .dy;
+      await tester.tap(
+        find.byKey(const Key('admin_polling_setup_info_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('About this surface'), findsOneWidget);
+      expect(
+        find.text(PlainEnglishExplainerCard.kExplainerParagraph1),
+        findsOneWidget,
+      );
+
+      final headerY = tester.getTopLeft(find.text('Polling Setup')).dy;
       final assignmentsY = tester
           .getTopLeft(find.byKey(const Key('admin_tier_assignment_table')))
           .dy;
-      expect(overviewY, lessThan(assignmentsY));
+      expect(headerY, lessThan(assignmentsY));
     });
 
     testWidgets('tier assignment dialog uses human tier labels', (
