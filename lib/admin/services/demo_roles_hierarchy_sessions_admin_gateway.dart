@@ -1004,6 +1004,66 @@ class InMemoryRolesHierarchySessionsAdminGateway
     _idempotentResults[idempotencyKey] = const Object();
   }
 
+  /// Demo store-sync: register a location added through the SEPARATE
+  /// [InMemoryOperatorLocationAdminGateway] as an active hierarchy leaf,
+  /// so the hierarchy-tree actions (delete / move / suspend / reactivate)
+  /// resolve it. Without this the two in-memory demo gateways keep
+  /// divergent location stores and every action on a freshly-added
+  /// location 404s with `unknown_location`.
+  ///
+  /// Idempotent and additive: if a live leaf with [locationId] already
+  /// exists for the operator it is left as-is; a previously soft-deleted
+  /// leaf is revived (re-added active) so add->remove->add round-trips
+  /// work. This mutates only the in-memory store and writes no audit row
+  /// (the add was already audited on the operator gateway side, and the
+  /// HierarchyLocationLeaf is a pure read-model mirror here). Demo /
+  /// share-preview only.
+  void registerDemoLocation({
+    required String operatorId,
+    required String locationId,
+    required String name,
+    required String orgUnitId,
+  }) {
+    final locations = _locationsFor(operatorId);
+    final index = locations.indexWhere((l) => l.locationId == locationId);
+    final leaf = HierarchyLocationLeaf(
+      locationId: locationId,
+      name: name,
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+    );
+    if (index < 0) {
+      locations.add(leaf);
+    } else {
+      // Revive a soft-deleted leaf (deletedAt cleared) or refresh
+      // name / org unit for a re-add of the same id.
+      locations[index] = leaf;
+    }
+  }
+
+  /// Demo store-sync: drop the hierarchy leaf for a location removed
+  /// through the operator gateway so the two in-memory stores stay in
+  /// lockstep. Soft-deletes (sets `deletedAt`) to mirror
+  /// [deleteLocation]; a no-op when the leaf is absent. Demo /
+  /// share-preview only.
+  void removeDemoLocation({
+    required String operatorId,
+    required String locationId,
+  }) {
+    final locations = _locationsFor(operatorId);
+    final index = locations.indexWhere((l) => l.locationId == locationId);
+    if (index < 0 || locations[index].isDeleted) return;
+    final prev = locations[index];
+    locations[index] = HierarchyLocationLeaf(
+      locationId: prev.locationId,
+      name: prev.name,
+      operatorId: prev.operatorId,
+      orgUnitId: prev.orgUnitId,
+      suspendedAt: prev.suspendedAt,
+      deletedAt: _clock().toUtc(),
+    );
+  }
+
   @visibleForTesting
   void clearAuditEventsForTesting() {
     _auditLog.clear();
