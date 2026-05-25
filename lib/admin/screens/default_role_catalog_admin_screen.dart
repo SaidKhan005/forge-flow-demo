@@ -548,31 +548,37 @@ class _StatusStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, size: 18, color: AppColors.sunsetDark),
-          const SizedBox(width: 10),
+          _RoleIconBadge(
+            icon: icon,
+            background: AppColors.sunsetDark.withValues(alpha: 0.10),
+            foreground: AppColors.sunsetDark,
+            size: 42,
+            iconSize: 21,
+          ),
+          const SizedBox(width: 14),
           Expanded(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 2,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
                   title,
-                  style: AppTextStyles.body13(
+                  style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
-                  ).copyWith(fontWeight: FontWeight.w700),
+                  ),
                 ),
+                const SizedBox(height: 3),
                 Text(
                   detail,
-                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -613,6 +619,10 @@ class _DraftEditorPanel extends StatelessWidget {
     return OperatorWebPanel(
       key: const Key('admin_default_role_catalog_draft_panel'),
       title: 'Role list',
+      subtitle:
+          'Review the platform-only roles and the business starter roles '
+          'that seed every new account.',
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       trailing: !draftEqualsCurrent
           ? _Pill(
               key: const Key('admin_default_role_catalog_draft_dirty_pill'),
@@ -644,7 +654,7 @@ class _DraftEditorPanel extends StatelessWidget {
               canEdit: canEdit,
               onOpenRole: onOpenRole,
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           AdminActionBar(
             alignment: WrapAlignment.end,
             children: <Widget>[
@@ -685,10 +695,68 @@ String _roleTitle(Map<String, Object?> role) {
 String _roleKey(Map<String, Object?> role) =>
     ((role['role_key'] as String?) ?? '').trim();
 
+String _roleDescription(Map<String, Object?> role) {
+  final description = ((role['description'] as String?) ?? '').trim();
+  if (description.isNotEmpty) return description;
+  return 'No description added yet.';
+}
+
+int _roleAllowPermissionCount(Map<String, Object?> role) {
+  final permissions = role['permissions'];
+  if (permissions is! Iterable<Object?>) return 0;
+  var count = 0;
+  for (final entry in permissions) {
+    if (entry is! Map<String, Object?>) continue;
+    final permissionKey = ((entry['permission_key'] as String?) ?? '').trim();
+    final effect = ((entry['effect'] as String?) ?? 'allow')
+        .trim()
+        .toLowerCase();
+    if (permissionKey.isNotEmpty && effect != 'deny') {
+      count++;
+    }
+  }
+  return count;
+}
+
+String _rolePermissionSummary(Map<String, Object?> role) {
+  if (_roleKey(role) == PermissionKeys.roleSuperAdmin) {
+    return 'All permissions';
+  }
+  final count = _roleAllowPermissionCount(role);
+  if (count == 0) return 'No permissions';
+  return '$count ${count == 1 ? 'permission' : 'permissions'}';
+}
+
 bool _isPlatformRoleDefinition(Map<String, Object?> role) {
   final roleKey = _roleKey(role);
   return roleKey == PermissionKeys.roleSuperAdmin ||
       roleKey == PermissionKeys.roleFfSupport;
+}
+
+IconData _catalogRoleIcon(Map<String, Object?> role) {
+  switch (_roleKey(role)) {
+    case PermissionKeys.roleSuperAdmin:
+      return Icons.admin_panel_settings_outlined;
+    case PermissionKeys.roleFfSupport:
+      return Icons.support_agent_outlined;
+    case 'operator_owner':
+      return Icons.verified_user_outlined;
+    case 'operator_general_manager':
+      return Icons.groups_2_outlined;
+    case 'location_manager':
+      return Icons.storefront_outlined;
+    case 'supervisor':
+      return Icons.event_available_outlined;
+    case 'finance_analyst':
+      return Icons.payments_outlined;
+    case 'auditor_compliance':
+      return Icons.fact_check_outlined;
+    case 'training_lead':
+      return Icons.school_outlined;
+    case 'team_admin':
+      return Icons.group_add_outlined;
+  }
+  return Icons.badge_outlined;
 }
 
 class _IndexedCatalogRole {
@@ -725,24 +793,22 @@ class _CompactRoleList extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         if (platform.isNotEmpty) ...<Widget>[
-          _CatalogRoleSubgroupLabel(
+          _CatalogRoleGroup(
             key: const Key('admin_default_role_catalog_platform_group'),
-            label: 'Forge & Flow internal (${platform.length})',
-          ),
-          const SizedBox(height: 6),
-          _CatalogRoleListBox(
+            title: 'Forge & Flow internal (${platform.length})',
+            subtitle: 'Platform staff access before a business is selected.',
+            icon: Icons.shield_outlined,
             roles: platform,
             canEdit: canEdit,
             onOpenRole: onOpenRole,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
         ],
-        _CatalogRoleSubgroupLabel(
+        _CatalogRoleGroup(
           key: const Key('admin_default_role_catalog_business_group'),
-          label: 'Business defaults (${business.length})',
-        ),
-        const SizedBox(height: 6),
-        _CatalogRoleListBox(
+          title: 'Business defaults (${business.length})',
+          subtitle: 'Starter roles copied into every new business account.',
+          icon: Icons.business_center_outlined,
           roles: business,
           canEdit: canEdit,
           onOpenRole: onOpenRole,
@@ -752,32 +818,20 @@ class _CompactRoleList extends StatelessWidget {
   }
 }
 
-class _CatalogRoleSubgroupLabel extends StatelessWidget {
-  const _CatalogRoleSubgroupLabel({super.key, required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 2),
-      child: Text(
-        label,
-        style: AppTextStyles.mono11(
-          color: AppColors.textSecondary,
-        ).copyWith(fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-}
-
-class _CatalogRoleListBox extends StatelessWidget {
-  const _CatalogRoleListBox({
+class _CatalogRoleGroup extends StatelessWidget {
+  const _CatalogRoleGroup({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
     required this.roles,
     required this.canEdit,
     required this.onOpenRole,
   });
 
+  final String title;
+  final String subtitle;
+  final IconData icon;
   final List<_IndexedCatalogRole> roles;
   final bool canEdit;
   final Future<void> Function(int index) onOpenRole;
@@ -786,24 +840,110 @@ class _CatalogRoleListBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            for (var i = 0; i < roles.length; i++)
-              _RoleListRow(
-                key: Key(
-                  'admin_default_role_catalog_draft_row_${roles[i].index}',
+            _CatalogRoleGroupHeader(
+              title: title,
+              subtitle: subtitle,
+              icon: icon,
+              count: roles.length,
+            ),
+            if (roles.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                child: Text(
+                  'No roles in this group yet.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
-                index: roles[i].index,
-                role: roles[i].role,
-                canEdit: canEdit,
-                isLast: i == roles.length - 1,
-                onOpen: onOpenRole,
+              )
+            else
+              for (var i = 0; i < roles.length; i++)
+                _RoleListRow(
+                  key: Key(
+                    'admin_default_role_catalog_draft_row_${roles[i].index}',
+                  ),
+                  index: roles[i].index,
+                  role: roles[i].role,
+                  canEdit: canEdit,
+                  isLast: i == roles.length - 1,
+                  onOpen: onOpenRole,
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CatalogRoleGroupHeader extends StatelessWidget {
+  const _CatalogRoleGroupHeader({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.count,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.borderSubtle.withValues(alpha: 0.85),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 15, 18, 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _RoleIconBadge(
+              icon: icon,
+              background: AppColors.backgroundSurface,
+              foreground: AppColors.sunsetDark,
+              size: 40,
+              iconSize: 21,
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    title,
+                    style: AppTextStyles.sectionTitle(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(width: 12),
+            _Pill(
+              label: '$count ${count == 1 ? 'role' : 'roles'}',
+              background: AppColors.backgroundSurface,
+              foreground: AppColors.textSecondary,
+            ),
           ],
         ),
       ),
@@ -829,6 +969,9 @@ class _RoleListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final roleKey = _roleKey(role);
+    final platformRole = _isPlatformRoleDefinition(role);
+    final iconColor = platformRole ? AppColors.sunsetDark : AppColors.peacockDark;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
@@ -841,27 +984,135 @@ class _RoleListRow extends StatelessWidget {
       child: InkWell(
         onTap: () => onOpen(index),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+          padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
+              _RoleIconBadge(
+                icon: _catalogRoleIcon(role),
+                background: iconColor.withValues(alpha: 0.10),
+                foreground: iconColor,
+                size: 46,
+                iconSize: 23,
+              ),
+              const SizedBox(width: 16),
               Expanded(
-                child: Text(
-                  _roleTitle(role),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.body14(
-                    color: AppColors.textPrimary,
-                  ).copyWith(fontWeight: FontWeight.w700),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      _roleTitle(role),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.sectionTitle(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _roleDescription(role),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: <Widget>[
+                        _RoleMetaChip(
+                          icon: Icons.key_outlined,
+                          label: roleKey.isEmpty ? 'missing key' : roleKey,
+                        ),
+                        _RoleMetaChip(
+                          icon: Icons.rule_outlined,
+                          label: _rolePermissionSummary(role),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Icon(
-                canEdit ? Icons.edit_outlined : Icons.visibility_outlined,
-                color: AppColors.textMuted,
-                size: 18,
+              const SizedBox(width: 14),
+              Tooltip(
+                message: canEdit ? 'Edit role' : 'View role',
+                child: Icon(
+                  canEdit ? Icons.edit_outlined : Icons.visibility_outlined,
+                  color: AppColors.textMuted,
+                  size: 22,
+                ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleIconBadge extends StatelessWidget {
+  const _RoleIconBadge({
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.size,
+    required this.iconSize,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+  final double size;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: foreground, size: iconSize),
+      ),
+    );
+  }
+}
+
+class _RoleMetaChip extends StatelessWidget {
+  const _RoleMetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(
+          color: AppColors.borderSubtle.withValues(alpha: 0.80),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, color: AppColors.textMuted, size: 14),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: AppTextStyles.mono10(
+                color: AppColors.textSecondary,
+              ).copyWith(fontWeight: FontWeight.w700),
+            ),
+          ],
         ),
       ),
     );
