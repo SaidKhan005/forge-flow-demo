@@ -531,8 +531,6 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
                   icon: Icons.payments_outlined,
                   title: 'Plans and limits',
                   collapseBelowWidth: 0,
-                  subtitle:
-                      'Set each business\'s Forge & Flow AI plan and the limits that keep advisor spend predictable. Operators never see this.',
                 ),
                 const SizedBox(height: 14),
                 if (!widget.editingEnabled)
@@ -1136,15 +1134,10 @@ class _PlansMapView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'How the six plans ladder up. Each plan includes everything below it and raises the included AI allowance. Margins are estimates from the pricing model.',
-            style: AppTextStyles.body13(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
               const minCardWidth = 200.0;
-              const spacing = 14.0;
+              const spacing = 16.0;
               final columns = (constraints.maxWidth / (minCardWidth + spacing))
                   .floor()
                   .clamp(1, kPricingTierTemplates.length);
@@ -1157,6 +1150,7 @@ class _PlansMapView extends StatelessWidget {
                   for (final template in kPricingTierTemplates)
                     SizedBox(
                       width: cardWidth,
+                      height: 260,
                       child: _PlanCard(
                         template: template,
                         entry: catalog[template.tierKey],
@@ -1168,30 +1162,8 @@ class _PlansMapView extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(height: 14),
-          _PlanMapFootnote(editingEnabled: editingEnabled),
         ],
       ),
-    );
-  }
-}
-
-class _PlanMapFootnote extends StatelessWidget {
-  const _PlanMapFootnote({required this.editingEnabled});
-
-  final bool editingEnabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebBanner(
-      icon: Icons.info_outline,
-      message: editingEnabled
-          ? 'Plan prices come from the pricing catalog. Use "Edit pricing" on '
-                'a plan to change its monthly fee, per-seat ramp, or onboarding '
-                'range. The dollar limits in Businesses cap AI cost, not the '
-                'subscription price.'
-          : 'Plan prices come from the pricing catalog (view only). The dollar '
-                'limits in Businesses cap AI cost, not the subscription price.',
     );
   }
 }
@@ -1227,9 +1199,9 @@ class _PlanCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -1237,38 +1209,22 @@ class _PlanCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             template.displayName,
-            style: AppTextStyles.mono16(
+            style: AppTextStyles.body14(
               color: AppColors.textPrimary,
             ).copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 3),
           _priceRow(monthly),
-          const SizedBox(height: 3),
-          Text(
-            seatText,
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          const SizedBox(height: 12),
+          _PlanCardDetail(label: 'Seats', value: _trimEndingPeriod(seatText)),
+          _PlanCardDetail(
+            label: 'Advisor cap',
+            value: advisorCap == null ? 'Custom' : '${_money(advisorCap)}/mo',
           ),
-          const SizedBox(height: 9),
-          Text(
-            presentation?.includes ?? template.summary,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 9),
-          Text(
-            advisorCap == null
-                ? 'Custom limits'
-                : 'Advisor cap ${_money(advisorCap)}/mo',
-            style: AppTextStyles.mono11(
-              color: AppColors.textPrimary,
-            ).copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 10),
-          _MarginTag(label: presentation?.marginEstimate ?? ''),
+          _PlanCardDetail(label: 'Onboarding', value: onboardingText),
           const SizedBox(height: 8),
-          Text(
-            'Onboarding $onboardingText',
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
-          ),
+          _MarginTag(label: presentation?.marginEstimate ?? ''),
+          const Spacer(),
           ..._editButton(),
         ],
       ),
@@ -1366,6 +1322,48 @@ class _PlanCard extends StatelessWidget {
       if (cap.usageClass == 'advisor_qa') return cap.monthlyCapUsd;
     }
     return null;
+  }
+
+  static String _trimEndingPeriod(String value) {
+    final trimmed = value.trim();
+    if (trimmed.endsWith('.')) return trimmed.substring(0, trimmed.length - 1);
+    return trimmed;
+  }
+}
+
+class _PlanCardDetail extends StatelessWidget {
+  const _PlanCardDetail({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 78,
+            child: Text(
+              label,
+              style: AppTextStyles.body11(color: AppColors.textMuted),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body11(
+                color: AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1706,16 +1704,16 @@ class _OperatorPricingDetail extends StatelessWidget {
             onEdit: onEditScopedContract,
             onClear: onClearScopedContract,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           _PlanMarginCard(bundle: bundle, spend: spend),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           if (hits.isNotEmpty) ...<Widget>[
             _RecentHitsCard(hits: hits),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
           ],
           if (editingEnabled) ...<Widget>[
             _PlanPresetsCard(bundle: bundle, onApplyTemplate: onApplyTemplate),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
           ],
           _UsageLimitsCard(
             bundle: bundle,
@@ -1760,6 +1758,7 @@ class _ScopedContractCard extends StatelessWidget {
     final value = contract?.effectiveValue;
     return OperatorWebPanel(
       title: 'Custom contract',
+      padding: const EdgeInsets.all(16),
       trailing: editingEnabled
           ? Wrap(
               spacing: 8,
@@ -1806,33 +1805,95 @@ class _ScopedContractCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            AdminDetailRow(
-              label: 'Selected scope',
-              value: contract?.selectedScope.displayName ?? bundle.businessName,
+            const SizedBox(height: 12),
+            _PricingSummaryGrid(
+              items: <_PricingSummaryItem>[
+                _PricingSummaryItem(
+                  label: 'Scope',
+                  value:
+                      contract?.selectedScope.displayName ??
+                      bundle.businessName,
+                ),
+                _PricingSummaryItem(
+                  label: 'Plan',
+                  value: _tierDisplayName(
+                    value?.tierKey ?? bundle.subscriptionTier,
+                  ),
+                ),
+                _PricingSummaryItem(
+                  label: 'Monthly',
+                  value: _money(value?.monthlyUsd),
+                ),
+                _PricingSummaryItem(
+                  label: 'Advisor cap',
+                  value: value?.advisorCapMonthlyUsd == null
+                      ? 'Custom'
+                      : '${_money(value!.advisorCapMonthlyUsd)}/mo',
+                ),
+                if (value?.contractLabel != null &&
+                    value!.contractLabel!.isNotEmpty)
+                  _PricingSummaryItem(
+                    label: 'Contract',
+                    value: value.contractLabel!,
+                  ),
+              ],
             ),
-            AdminDetailRow(
-              label: 'Effective plan',
-              value: _tierDisplayName(
-                value?.tierKey ?? bundle.subscriptionTier,
-              ),
-            ),
-            AdminDetailRow(
-              label: 'Monthly terms',
-              value: _money(value?.monthlyUsd),
-            ),
-            AdminDetailRow(
-              label: 'Advisor cap',
-              value: value?.advisorCapMonthlyUsd == null
-                  ? 'Custom'
-                  : '${_money(value!.advisorCapMonthlyUsd)}/mo',
-            ),
-            if (value?.contractLabel != null &&
-                value!.contractLabel!.isNotEmpty)
-              AdminDetailRow(label: 'Contract', value: value.contractLabel!),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _PricingSummaryItem {
+  const _PricingSummaryItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+}
+
+class _PricingSummaryGrid extends StatelessWidget {
+  const _PricingSummaryGrid({required this.items});
+
+  final List<_PricingSummaryItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth < 520 ? 2 : 4;
+        const spacing = 16.0;
+        final itemWidth =
+            (constraints.maxWidth - (columns - 1) * spacing) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: 14,
+          children: <Widget>[
+            for (final item in items)
+              SizedBox(
+                width: itemWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      item.label,
+                      style: AppTextStyles.body11(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body14(
+                        color: AppColors.textPrimary,
+                      ).copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1871,43 +1932,41 @@ class _PlanMarginCard extends StatelessWidget {
     final presentation = findPricingPlanPresentation(bundle.subscriptionTier);
     return OperatorWebPanel(
       title: 'Plan and margin',
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            _tierDisplayName(bundle.subscriptionTier),
-            style: AppTextStyles.display20(color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            presentation?.priceLine ?? 'Plan price set per contract',
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            presentation?.includes ?? 'Custom plan.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 26,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: <Widget>[
-              _MetricCell(
-                value: _money(spend.spendUsd),
-                label: 'Spent this month',
+          _PricingSummaryGrid(
+            items: <_PricingSummaryItem>[
+              _PricingSummaryItem(
+                label: 'Plan',
+                value: _tierDisplayName(bundle.subscriptionTier),
               ),
-              _MetricCell(value: _money(spend.revenueUsd), label: 'Revenue'),
-              _MarginPill(spend: spend),
+              _PricingSummaryItem(
+                label: 'Pricing',
+                value: presentation?.priceLine ?? 'Per contract',
+              ),
+              _PricingSummaryItem(
+                label: 'Spent',
+                value: _money(spend.spendUsd),
+              ),
+              _PricingSummaryItem(
+                label: 'Revenue',
+                value: _money(spend.revenueUsd),
+              ),
+              _PricingSummaryItem(
+                label: 'Currency',
+                value: bundle.preferredCurrency,
+              ),
+              _PricingSummaryItem(
+                label: 'Primary location',
+                value: _primaryLocationLabel(bundle),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
-          AdminDetailRow(label: 'Currency', value: bundle.preferredCurrency),
-          AdminDetailRow(
-            label: 'Primary location',
-            value: _primaryLocationLabel(bundle),
-          ),
+          const SizedBox(height: 14),
+          _MarginPill(spend: spend),
+          const SizedBox(height: 4),
           _PricingAdvancedDetails(
             keyName: 'admin_pricing_operator_details_${bundle.operatorId}',
             title: 'Plan details',
@@ -1923,31 +1982,6 @@ class _PlanMarginCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _MetricCell extends StatelessWidget {
-  const _MetricCell({required this.value, required this.label});
-
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          value,
-          style: AppTextStyles.mono16(
-            color: AppColors.textPrimary,
-          ).copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 1),
-        Text(label, style: AppTextStyles.mono11(color: AppColors.textMuted)),
-      ],
     );
   }
 }
@@ -1987,6 +2021,7 @@ class _RecentHitsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebPanel(
       title: 'Recent limit hits',
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -2046,6 +2081,7 @@ class _PlanPresetsCard extends StatelessWidget {
     final current = bundle.subscriptionTier.trim().toLowerCase();
     return OperatorWebPanel(
       title: 'Change plan',
+      padding: const EdgeInsets.all(16),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -2161,6 +2197,7 @@ class _UsageLimitsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebPanel(
       title: 'Usage limits',
+      padding: const EdgeInsets.all(16),
       trailing: editingEnabled
           ? AdminActionButton(
               key: const Key('admin_pricing_add_cap_button'),
@@ -2244,16 +2281,16 @@ String _contractStatusLabel(ScopedPricingContractEffectiveResponse? contract) {
 }
 
 String _contractSourceLabel(ScopedPricingContractEffectiveResponse? contract) {
-  if (contract == null) return 'Effective terms load from the pricing catalog.';
+  if (contract == null) return 'Pricing catalog';
   final source = contract.inheritedSource;
   if (contract.overrideStatus == ScopedPricingContractOverrideStatus.setHere) {
-    return 'This scope owns these terms.';
+    return contract.selectedScope.displayName ?? 'Selected scope';
   }
   if (contract.overrideStatus ==
       ScopedPricingContractOverrideStatus.catalogDefault) {
-    return source.displayName ?? 'Inherited from global plan catalog.';
+    return source.displayName ?? 'Global catalog';
   }
-  return 'Inherited from ${source.displayName ?? source.scope?.displayName ?? 'parent scope'}.';
+  return source.displayName ?? source.scope?.displayName ?? 'Parent scope';
 }
 
 /// Inheritance source label: DISPLAY ONLY. A cap whose `location_id`
@@ -2572,6 +2609,7 @@ class _ScopedContractDialogState extends State<_ScopedContractDialog> {
       key: const Key('admin_pricing_scoped_contract_dialog'),
       title: 'Edit custom contract',
       icon: Icons.assignment_outlined,
+      maxWidth: 540,
       actions: <Widget>[
         AdminActionButton(
           key: const Key('admin_pricing_contract_cancel_button'),
@@ -2594,17 +2632,19 @@ class _ScopedContractDialogState extends State<_ScopedContractDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                AdminDetailRow(
-                  label: 'Scope',
-                  value: widget.scope.displayName ?? 'Selected scope',
+                _DialogSection(
+                  title: 'Scope',
+                  child: AdminDetailRow(
+                    label: 'Selected scope',
+                    value: widget.scope.displayName ?? 'Selected scope',
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Expanded(
-                      child: _LabelledField(
-                        label: 'Monthly terms (USD)',
+                _DialogSection(
+                  title: 'Terms',
+                  child: _DialogFieldGrid(
+                    children: <Widget>[
+                      _LabelledField(
+                        label: 'Monthly terms',
                         controller: _monthly,
                         fieldKey: const Key('admin_pricing_contract_monthly'),
                         keyboardType: const TextInputType.numberWithOptions(
@@ -2617,11 +2657,8 @@ class _ScopedContractDialogState extends State<_ScopedContractDialog> {
                         ],
                         validator: _optionalDecimalValidator,
                       ),
-                    ),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: _LabelledField(
-                        label: 'Advisor cap (USD)',
+                      _LabelledField(
+                        label: 'Advisor cap',
                         controller: _advisorCap,
                         fieldKey: const Key(
                           'admin_pricing_contract_advisor_cap',
@@ -2636,19 +2673,26 @@ class _ScopedContractDialogState extends State<_ScopedContractDialog> {
                         ],
                         validator: _optionalDecimalValidator,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                _LabelledField(
-                  label: 'Contract label',
-                  controller: _label,
-                  fieldKey: const Key('admin_pricing_contract_label'),
-                ),
-                _LabelledField(
-                  label: 'Internal note',
-                  controller: _note,
-                  fieldKey: const Key('admin_pricing_contract_note'),
-                  maxLines: 3,
+                _DialogSection(
+                  title: 'Notes',
+                  child: Column(
+                    children: <Widget>[
+                      _LabelledField(
+                        label: 'Contract label',
+                        controller: _label,
+                        fieldKey: const Key('admin_pricing_contract_label'),
+                      ),
+                      _LabelledField(
+                        label: 'Internal note',
+                        controller: _note,
+                        fieldKey: const Key('admin_pricing_contract_note'),
+                        maxLines: 3,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -2771,6 +2815,7 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
       key: const Key('admin_pricing_plan_dialog'),
       title: 'Edit $displayName pricing',
       icon: Icons.payments_outlined,
+      maxWidth: 540,
       actions: <Widget>[
         AdminActionButton(
           key: const Key('admin_pricing_plan_cancel_button'),
@@ -2793,32 +2838,28 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(
-                    'Leave a field blank for "none" (for example a custom-contract plan has no monthly price, and a plan with no per-seat fee has blank seat fields).',
-                    style: AppTextStyles.mono11(color: AppColors.textMuted),
-                  ),
-                ),
-                _LabelledField(
-                  label: 'Monthly fee (USD, blank for custom)',
-                  controller: _monthly,
-                  fieldKey: const Key('admin_pricing_plan_monthly'),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: <TextInputFormatter>[
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'^[0-9]*\.?[0-9]*'),
+                _DialogSection(
+                  title: 'Price',
+                  child: _LabelledField(
+                    label: 'Monthly fee',
+                    controller: _monthly,
+                    fieldKey: const Key('admin_pricing_plan_monthly'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
                     ),
-                  ],
-                  validator: _optionalDecimalValidator,
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^[0-9]*\.?[0-9]*'),
+                      ),
+                    ],
+                    validator: _optionalDecimalValidator,
+                  ),
                 ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Expanded(
-                      child: _LabelledField(
+                _DialogSection(
+                  title: 'Seats',
+                  child: _DialogFieldGrid(
+                    children: <Widget>[
+                      _LabelledField(
                         label: 'First seats',
                         controller: _firstNSeats,
                         fieldKey: const Key('admin_pricing_plan_first_n_seats'),
@@ -2828,11 +2869,8 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
                         ],
                         validator: _optionalIntValidator,
                       ),
-                    ),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: _LabelledField(
-                        label: 'First seat (USD)',
+                      _LabelledField(
+                        label: 'First seat',
                         controller: _firstSeat,
                         fieldKey: const Key('admin_pricing_plan_first_seat'),
                         keyboardType: const TextInputType.numberWithOptions(
@@ -2845,11 +2883,8 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
                         ],
                         validator: _optionalDecimalValidator,
                       ),
-                    ),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: _LabelledField(
-                        label: 'Added seat (USD)',
+                      _LabelledField(
+                        label: 'Added seat',
                         controller: _additionalSeat,
                         fieldKey: const Key(
                           'admin_pricing_plan_additional_seat',
@@ -2864,15 +2899,15 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
                         ],
                         validator: _optionalDecimalValidator,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Expanded(
-                      child: _LabelledField(
-                        label: 'Onboarding min (USD)',
+                _DialogSection(
+                  title: 'Onboarding',
+                  child: _DialogFieldGrid(
+                    children: <Widget>[
+                      _LabelledField(
+                        label: 'Minimum',
                         controller: _onboardingMin,
                         fieldKey: const Key(
                           'admin_pricing_plan_onboarding_min',
@@ -2887,11 +2922,8 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
                         ],
                         validator: _optionalDecimalValidator,
                       ),
-                    ),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: _LabelledField(
-                        label: 'Onboarding max (USD)',
+                      _LabelledField(
+                        label: 'Maximum',
                         controller: _onboardingMax,
                         fieldKey: const Key(
                           'admin_pricing_plan_onboarding_max',
@@ -2906,8 +2938,8 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
                         ],
                         validator: _optionalDecimalValidator,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -3019,6 +3051,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
       key: const Key('admin_pricing_cap_dialog'),
       title: editing ? 'Edit usage limit' : 'Add usage limit',
       icon: Icons.speed_outlined,
+      maxWidth: 540,
       actions: <Widget>[
         AdminActionButton(
           key: const Key('admin_pricing_cap_cancel_button'),
@@ -3049,8 +3082,8 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                       style: AppTextStyles.mono11(color: AppColors.negative),
                     ),
                   ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                _DialogSection(
+                  title: 'Use case',
                   child: _UseCaseField(
                     fieldKey: const Key('admin_pricing_cap_usage_class'),
                     value: _usageClass,
@@ -3065,12 +3098,12 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                     },
                   ),
                 ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Expanded(
-                      child: _LabelledField(
-                        label: 'Monthly limit (USD)',
+                _DialogSection(
+                  title: 'Limits',
+                  child: _DialogFieldGrid(
+                    children: <Widget>[
+                      _LabelledField(
+                        label: 'Monthly limit',
                         controller: _monthly,
                         fieldKey: const Key('admin_pricing_cap_monthly'),
                         keyboardType: const TextInputType.numberWithOptions(
@@ -3083,11 +3116,8 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                         ],
                         validator: _decimalValidator,
                       ),
-                    ),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: _LabelledField(
-                        label: 'Per request limit (USD)',
+                      _LabelledField(
+                        label: 'Per request limit',
                         controller: _perInvocation,
                         fieldKey: const Key('admin_pricing_cap_per_invocation'),
                         keyboardType: const TextInputType.numberWithOptions(
@@ -3100,22 +3130,27 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                         ],
                         validator: _decimalValidator,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                _LabelledField(
-                  label: 'Staff member ID (optional)',
-                  controller: _staffId,
-                  fieldKey: const Key('admin_pricing_cap_staff_id'),
-                  hintText: 'Leave blank for all staff',
-                  enabled: !editing,
-                ),
-                _LabelledField(
-                  label: 'Workflow ID (optional)',
-                  controller: _workflowId,
-                  fieldKey: const Key('admin_pricing_cap_workflow_id'),
-                  hintText: 'Leave blank for all workflows',
-                  enabled: !editing,
+                _DialogSection(
+                  title: 'Scope',
+                  child: _DialogFieldGrid(
+                    children: <Widget>[
+                      _LabelledField(
+                        label: 'Staff member',
+                        controller: _staffId,
+                        fieldKey: const Key('admin_pricing_cap_staff_id'),
+                        enabled: !editing,
+                      ),
+                      _LabelledField(
+                        label: 'Workflow',
+                        controller: _workflowId,
+                        fieldKey: const Key('admin_pricing_cap_workflow_id'),
+                        enabled: !editing,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -3201,13 +3236,71 @@ class _UseCaseField extends StatelessWidget {
   }
 
   InputDecoration _decoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
+    return _compactFieldDecoration(label);
+  }
+}
+
+class _DialogSection extends StatelessWidget {
+  const _DialogSection({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 3,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: AppColors.sunset,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: AppTextStyles.body14(
+                  color: AppColors.textPrimary,
+                ).copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
       ),
+    );
+  }
+}
+
+class _DialogFieldGrid extends StatelessWidget {
+  const _DialogFieldGrid({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final requestedCount = children.length > 3 ? 3 : children.length;
+        final count = constraints.maxWidth < 420 ? 1 : requestedCount;
+        const spacing = 10.0;
+        final width = (constraints.maxWidth - (count - 1) * spacing) / count;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: 0,
+          children: <Widget>[
+            for (final child in children) SizedBox(width: width, child: child),
+          ],
+        );
+      },
     );
   }
 }
@@ -3220,7 +3313,6 @@ class _LabelledField extends StatelessWidget {
     this.validator,
     this.keyboardType,
     this.inputFormatters,
-    this.hintText,
     this.enabled = true,
     this.maxLines = 1,
   });
@@ -3231,7 +3323,6 @@ class _LabelledField extends StatelessWidget {
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
   final List<TextInputFormatter>? inputFormatters;
-  final String? hintText;
   final bool enabled;
   final int maxLines;
 
@@ -3247,22 +3338,33 @@ class _LabelledField extends StatelessWidget {
         enabled: enabled,
         maxLines: maxLines,
         validator: validator,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
-          hintText: hintText,
-          hintStyle: AppTextStyles.mono11(color: AppColors.textMuted),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(6),
-            borderSide: const BorderSide(
-              color: AppColors.borderSubtle,
-              width: 1,
-            ),
-          ),
-        ),
+        decoration: _compactFieldDecoration(label),
       ),
     );
   }
+}
+
+InputDecoration _compactFieldDecoration(String label) {
+  return InputDecoration(
+    labelText: label,
+    isDense: true,
+    filled: true,
+    fillColor: AppColors.backgroundSurface,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+    labelStyle: AppTextStyles.body11(color: AppColors.textMuted),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(6),
+      borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(6),
+      borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(6),
+      borderSide: const BorderSide(color: AppColors.sunsetDark, width: 1.2),
+    ),
+  );
 }
 
 class _ErrorBanner extends StatelessWidget {
