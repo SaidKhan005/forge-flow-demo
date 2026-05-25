@@ -30,6 +30,18 @@ import 'package:forge_and_flow/admin/screens/corpus_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/corpus_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+/// B-r1: flips the screen-level "Show technical details" toggle ON.
+/// The toggle is OFF by default, hiding machine-flavored details (raw
+/// IDs, content hashes, version IDs) and the per-card disclosures.
+/// Tests that need those visible call this first.
+Future<void> _enableTechDetails(WidgetTester tester) async {
+  final toggle = find.byKey(const Key('admin_corpus_tech_details_toggle'));
+  await tester.ensureVisible(toggle);
+  await tester.pumpAndSettle();
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -112,6 +124,12 @@ void main() {
     expect(find.byKey(const Key('admin_corpus_current_v1')), findsNothing);
     expect(find.textContaining('sha256'), findsNothing);
     expect(find.textContaining('aaaaaaaaaaaa'), findsNothing);
+
+    // B-r1: machine-flavored details (and the per-card "Technical
+    // details" disclosure) only render when the screen-level "Show
+    // technical details" toggle is ON. Flip it on before reaching for
+    // the chunk disclosure.
+    await _enableTechDetails(tester);
 
     final chunkDetails = find.byKey(
       const Key('admin_corpus_chunk_details_methodology_seed.md#000'),
@@ -578,20 +596,25 @@ void main() {
       await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
       await tester.pumpAndSettle();
 
-      // The disclosure key must exist (machine IDs are behind it).
+      // B-r1: with the screen-level "Show technical details" toggle OFF
+      // (the default), the per-card disclosures are hidden entirely and
+      // no raw IDs/hashes appear anywhere.
       expect(
         find.byKey(
           const Key('admin_corpus_chunk_details_methodology_seed.md#000'),
         ),
-        findsOneWidget,
-        reason: 'technical-details ExpansionTile must exist for chunk',
+        findsNothing,
+        reason: 'tech disclosure must be hidden while the toggle is OFF',
       );
-
-      // Before opening the disclosure, raw IDs are not visible.
+      expect(
+        find.byKey(const Key('admin_corpus_version_details_v-b2')),
+        findsNothing,
+        reason: 'version tech disclosure must be hidden while the toggle is OFF',
+      );
       expect(
         find.textContaining('methodology_seed.md#000'),
         findsNothing,
-        reason: 'raw chunk ID must not appear in primary label before disclosure',
+        reason: 'raw chunk ID must not appear in primary label',
       );
       expect(
         find.textContaining('sha256'),
@@ -599,14 +622,24 @@ void main() {
         reason: 'sha256 label must not appear in primary label',
       );
 
-      // The version-level technical-details disclosure also exists.
+      // Flip the toggle ON: the disclosures now render (machine IDs are
+      // reachable behind them).
+      await _enableTechDetails(tester);
+      expect(
+        find.byKey(
+          const Key('admin_corpus_chunk_details_methodology_seed.md#000'),
+        ),
+        findsOneWidget,
+        reason: 'technical-details ExpansionTile must exist for chunk when ON',
+      );
       expect(
         find.byKey(const Key('admin_corpus_version_details_v-b2')),
         findsOneWidget,
-        reason: 'technical-details ExpansionTile must exist for version',
+        reason: 'technical-details ExpansionTile must exist for version when ON',
       );
 
-      // Raw version ID not visible in primary label (check the detail panel).
+      // The raw version ID still stays inside the disclosure, not the
+      // primary label, even with the toggle ON.
       expect(
         find.text('v-b2'),
         findsNothing,
@@ -733,7 +766,15 @@ void main() {
         findsOneWidget,
       );
 
-      // Technical-details disclosure still exists (B2 carryover).
+      // B-r1: the per-card technical-details disclosure is hidden while
+      // the screen-level toggle is OFF (the default); flip it on, then
+      // the disclosure renders (B2 carryover, now gated by the toggle).
+      expect(
+        find.byKey(const Key('admin_corpus_chunk_details_doc_a.md#001')),
+        findsNothing,
+        reason: 'tech disclosure stays hidden while the toggle is OFF',
+      );
+      await _enableTechDetails(tester);
       expect(
         find.byKey(const Key('admin_corpus_chunk_details_doc_a.md#001')),
         findsOneWidget,

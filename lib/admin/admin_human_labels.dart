@@ -150,6 +150,47 @@ String adminRequestUseCaseLabelWithId(String id) {
   return '${adminRequestUseCaseLabel(trimmed)} ($trimmed)';
 }
 
+/// Plain-English copy for the admin "Knowledge base" screen
+/// (`corpus_admin_screen.dart`). The B-r1 redesign frames the screen
+/// around what the advisor knows, so the operator-facing strings live
+/// here (one place to read, one place to keep plain). Mirrors the
+/// approved UX preview at
+/// `docs/_mockups/knowledge_base_redesign_preview.html`.
+///
+/// No-em-dash law (CLAUDE.md "UX no-em-dash law"): none of these use a
+/// U+2014 em dash. Label/value separators use a colon; clauses join
+/// with a full stop or comma.
+class AdminKnowledgeBaseCopy {
+  const AdminKnowledgeBaseCopy._();
+
+  /// Screen title: frames the page around the advisor's knowledge,
+  /// not the storage mechanism. The nav label stays "Knowledge base".
+  static const String title = 'What the advisor knows';
+
+  /// One-line orientation copy under the title.
+  static const String subtitle =
+      'Add knowledge, see how topics connect, and keep a history you '
+      'can roll back. Only F and F staff can see this.';
+
+  /// Trailing header badge. The whole screen is internal-only.
+  static const String staffOnlyBadge = 'Staff only';
+
+  /// Screen-level toggle that reveals machine-flavored details (raw
+  /// IDs, content hashes, confidence scores, version IDs). Off by
+  /// default so the everyday view stays free of machine noise.
+  static const String showTechnicalDetails = 'Show technical details';
+
+  /// Tooltip on the toggle: says plainly what it does and that it
+  /// starts off.
+  static const String showTechnicalDetailsHint =
+      'Reveals technical IDs and scores for power users. Off by default.';
+
+  /// Read-only (ff_support) banner. Support staff can look but not
+  /// change anything; full admin access is required to edit.
+  static const String readOnlyBanner =
+      'You are viewing only. Making changes needs full admin access.';
+}
+
 String adminHumanDateTime(DateTime when) {
   final local = when.toLocal();
   final month = _adminMonthNames[local.month - 1];
