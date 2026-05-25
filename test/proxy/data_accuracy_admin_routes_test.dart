@@ -124,6 +124,33 @@ void main() {
       });
     });
 
+    test(
+      'GET selected data accuracy row uses single-row admin helper',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeDataAccuracyAdminGateway();
+          final ctx = await spinUp(customGateway: gateway);
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '${adminDataAccuracySettingsPrefix}op-1/loc-1',
+              ),
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.loadDataAccuracyRowCalls, equals(1));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            final row = body['row'] as Map<String, Object?>;
+            expect(row['operator_id'], equals('op-1'));
+            expect(row['location_id'], equals('loc-1'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
     test('PUT assignment rejects ff_support write callers', () async {
       await withRealHttp(() async {
         final gateway = _FakeDataAccuracyAdminGateway();
@@ -275,6 +302,51 @@ void main() {
       },
     );
 
+    test('PATCH full settings uses settings-save helper', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeDataAccuracyAdminGateway();
+        final ctx = await spinUp(customGateway: gateway);
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve('${adminDataAccuracySettingsPrefix}op-1/loc-1'),
+            body: const <String, Object?>{
+              'covers_source_per_service_period': <String, Object?>{
+                'breakfast': 'manual',
+              },
+              'covers_manual_entries': <String, Object?>{
+                '2026-06-02': <String, Object?>{'breakfast': 12},
+              },
+              'wage_source': 'manual_mix',
+              'walk_in_handling_mode': 'walk_ins_tracked_separately',
+              'walk_in_manual_entries': <String, Object?>{
+                '2026-06-02|breakfast': 7,
+              },
+              'reason_note': 'Save the selected row',
+            },
+            idempotencyKey: 'data-accuracy-settings-full-1',
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.settingsSaveCalls, equals(1));
+          expect(gateway.settingsOverrideCalls, equals(0));
+          expect(
+            gateway.lastCoversManualEntries,
+            equals(<String, Map<String, int>>{
+              '2026-06-02': <String, int>{'breakfast': 12},
+            }),
+          );
+          expect(
+            gateway.lastWalkInManualEntries,
+            equals(<String, int>{'2026-06-02|breakfast': 7}),
+          );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('PATCH data accuracy requires Idempotency-Key', () async {
       await withRealHttp(() async {
         final gateway = _FakeDataAccuracyAdminGateway();
@@ -393,6 +465,55 @@ void main() {
             );
             expect(gateway.settingsOverrideCalls, equals(0));
             expect(ctx.idempotencyStore.reserveCalls, equals(0));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH manual covers saves and clears through admin helpers',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeDataAccuracyAdminGateway();
+          final ctx = await spinUp(customGateway: gateway);
+          try {
+            final uri = ctx.baseUri.resolve(
+              '${adminDataAccuracySettingsPrefix}op-1/loc-1/manual-covers',
+            );
+            final save = await _httpJson(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'business_date': '2026-06-02',
+                'service_period_key': 'breakfast',
+                'covers': 18,
+                'reason_note': 'Set breakfast covers',
+              },
+              idempotencyKey: 'data-accuracy-manual-covers-save-1',
+            );
+            final clear = await _httpJson(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'business_date': '2026-06-02',
+                'service_period_key': 'breakfast',
+                'clear': true,
+                'reason_note': 'Clear breakfast covers',
+              },
+              idempotencyKey: 'data-accuracy-manual-covers-clear-1',
+            );
+            expect(save.statusCode, equals(200));
+            expect(clear.statusCode, equals(200));
+            expect(gateway.manualCoversSaveCalls, equals(1));
+            expect(gateway.manualCoversClearCalls, equals(1));
+            expect(gateway.lastBusinessDate, equals('2026-06-02'));
+            expect(gateway.lastServicePeriodKey, equals('breakfast'));
+            expect(gateway.lastCovers, equals(18));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -562,6 +683,32 @@ void main() {
       },
     );
 
+    test(
+      'GET selected polling assignment uses single-assignment helper',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeDataAccuracyAdminGateway();
+          final ctx = await spinUp(customGateway: gateway);
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '${adminPollingPricingAssignmentsPrefix}op-1/loc-1',
+              ),
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.loadTierAssignmentCalls, equals(1));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            final assignment = body['assignment'] as Map<String, Object?>;
+            expect(assignment['tier_key'], equals('premium'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
     test('CORS preflight allows polling-pricing write methods', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -613,12 +760,21 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   String? lastActorUserId;
   String? lastScopeType;
   String? lastServicePeriodKey;
+  String? lastBusinessDate;
+  int? lastCovers;
   Map<String, String>? lastCoversSourcePerServicePeriod;
+  Map<String, Map<String, int>>? lastCoversManualEntries;
+  Map<String, int>? lastWalkInManualEntries;
   List<String>? lastClearCoversSourcePerServicePeriod;
   bool lastClearWageSource = false;
   bool lastClearWalkInHandlingMode = false;
+  int loadDataAccuracyRowCalls = 0;
   int assignTierCalls = 0;
+  int loadTierAssignmentCalls = 0;
+  int settingsSaveCalls = 0;
   int settingsOverrideCalls = 0;
+  int manualCoversSaveCalls = 0;
+  int manualCoversClearCalls = 0;
   int scopeOverrideCalls = 0;
   int scopeAssignCalls = 0;
   int servicePeriodListCalls = 0;
@@ -632,6 +788,18 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   }) async {
     lastActorUserId = actorUserId;
     return const <Map<String, Object?>>[];
+  }
+
+  @override
+  Future<Map<String, Object?>?> loadDataAccuracyRow({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    loadDataAccuracyRowCalls += 1;
+    return _dataAccuracyRow(operatorId: operatorId, locationId: locationId);
   }
 
   @override
@@ -660,6 +828,93 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     lastCoversSourcePerServicePeriod = coversSourcePerServicePeriod;
     settingsOverrideCalls += 1;
     return const <String, Object?>{'ok': true};
+  }
+
+  @override
+  Future<Map<String, Object?>?> saveDataAccuracySettings({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    Map<String, String>? coversSourcePerServicePeriod,
+    Map<String, Map<String, int>> coversManualEntries =
+        const <String, Map<String, int>>{},
+    String? wageSource,
+    String? walkInHandlingMode,
+    Map<String, int> walkInManualEntries = const <String, int>{},
+    String? reasonNote,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastCoversSourcePerServicePeriod = coversSourcePerServicePeriod;
+    lastCoversManualEntries = coversManualEntries;
+    lastWalkInManualEntries = walkInManualEntries;
+    settingsSaveCalls += 1;
+    return <String, Object?>{
+      'operator_ref': <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+      'settings': _settingsRow(
+        operatorId: operatorId,
+        locationId: locationId,
+        coversManualEntries: coversManualEntries,
+        walkInManualEntries: walkInManualEntries,
+      ),
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>?> saveDataAccuracyManualCovers({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required int covers,
+    String? reasonNote,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastBusinessDate = businessDate;
+    lastServicePeriodKey = servicePeriodKey;
+    lastCovers = covers;
+    manualCoversSaveCalls += 1;
+    return <String, Object?>{
+      'operator_ref': <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+      'settings': _settingsRow(
+        operatorId: operatorId,
+        locationId: locationId,
+        coversManualEntries: <String, Map<String, int>>{
+          businessDate: <String, int>{servicePeriodKey: covers},
+        },
+      ),
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>?> clearDataAccuracyManualCovers({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    String? reasonNote,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastBusinessDate = businessDate;
+    lastServicePeriodKey = servicePeriodKey;
+    manualCoversClearCalls += 1;
+    return <String, Object?>{
+      'operator_ref': <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+      'settings': _settingsRow(operatorId: operatorId, locationId: locationId),
+    };
   }
 
   @override
@@ -790,6 +1045,18 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   }
 
   @override
+  Future<Map<String, Object?>?> loadTierAssignment({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    loadTierAssignmentCalls += 1;
+    return _assignment(operatorId: operatorId, locationId: locationId);
+  }
+
+  @override
   Future<Map<String, Object?>?> assignTier({
     required String actorUserId,
     required String operatorId,
@@ -910,6 +1177,50 @@ Future<_HttpResponseData> _httpJson(
   return _HttpResponseData(raw.statusCode, responseBody);
 }
 
+Map<String, Object?> _dataAccuracyRow({
+  required String operatorId,
+  required String locationId,
+}) {
+  return <String, Object?>{
+    'operator_id': operatorId,
+    'business_name': 'Demo Diner',
+    'location_id': locationId,
+    'location_name': 'Downtown',
+    'settings': _settingsRow(operatorId: operatorId, locationId: locationId),
+  };
+}
+
+Map<String, Object?> _settingsRow({
+  required String operatorId,
+  required String locationId,
+  Map<String, Map<String, int>> coversManualEntries =
+      const <String, Map<String, int>>{},
+  Map<String, int> walkInManualEntries = const <String, int>{},
+}) {
+  return <String, Object?>{
+    'setting_id': 'setting-1',
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'covers_source_per_service_period': const <String, Object?>{
+      'breakfast': 'manual',
+    },
+    'covers_manual_entries': <String, Object?>{
+      for (final entry in coversManualEntries.entries)
+        entry.key: <String, Object?>{
+          for (final nested in entry.value.entries) nested.key: nested.value,
+        },
+    },
+    'wage_source': 'manual_mix',
+    'walk_in_handling_mode': 'walk_ins_tracked_separately',
+    'walk_in_manual_entries': <String, Object?>{
+      for (final entry in walkInManualEntries.entries) entry.key: entry.value,
+    },
+    'created_at': '2026-05-01T00:00:00.000Z',
+    'updated_at': '2026-05-01T00:00:00.000Z',
+    'updated_by': 'user_admin',
+  };
+}
+
 Map<String, Object?> _servicePeriodRow({
   required String operatorId,
   required String locationId,
@@ -929,6 +1240,27 @@ Map<String, Object?> _servicePeriodRow({
     'created_at': '2026-05-01T00:00:00.000Z',
     'updated_at': '2026-05-01T00:00:00.000Z',
     'updated_by': 'user_admin',
+  };
+}
+
+Map<String, Object?> _assignment({
+  required String operatorId,
+  required String locationId,
+}) {
+  return <String, Object?>{
+    'assignment_id': 'assignment-1',
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'tier_key': 'premium',
+    'polling_cadence_per_vendor_seconds': const <String, Object?>{
+      'quickbooks_time': 60,
+    },
+    'monthly_price_cents': 19900,
+    'vendor_api_cost_estimate_cents_monthly': 4800,
+    'effective_at': '2026-05-01T00:00:00.000Z',
+    'effective_until': null,
+    'assigned_by_admin_user_id': 'user_admin',
+    'created_at': '2026-05-01T00:00:00.000Z',
   };
 }
 
