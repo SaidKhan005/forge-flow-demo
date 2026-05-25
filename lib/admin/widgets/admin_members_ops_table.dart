@@ -4,6 +4,7 @@ import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 
 import '../../theme/app_theme.dart';
 import '../services/members_admin_gateway.dart';
+import 'admin_action_controls.dart';
 
 typedef AdminMemberAction = Future<void> Function(MemberAdminRow row);
 typedef AdminInviteAction = Future<void> Function(MemberInviteRow invite);
@@ -151,20 +152,16 @@ class AdminMembersPaginationBar extends StatelessWidget {
             style: AppTextStyles.mono10(color: AppColors.textMuted),
           ),
           const Spacer(),
-          IconButton(
+          AdminIconAction(
             key: const Key('admin_members_pagination_prev'),
             onPressed: canPrev ? onPrevious : null,
-            icon: const Icon(Icons.chevron_left, size: 18),
-            color: AppColors.sunsetDark,
-            disabledColor: AppColors.borderSubtle,
+            icon: Icons.chevron_left,
             tooltip: 'Previous page',
           ),
-          IconButton(
+          AdminIconAction(
             key: const Key('admin_members_pagination_next'),
             onPressed: canNext ? onNext : null,
-            icon: const Icon(Icons.chevron_right, size: 18),
-            color: AppColors.sunsetDark,
-            disabledColor: AppColors.borderSubtle,
+            icon: Icons.chevron_right,
             tooltip: 'Next page',
           ),
         ],
@@ -293,10 +290,13 @@ class _InviteCancelCell extends StatelessWidget {
                   color: AppColors.sunsetDark,
                 ),
               )
-            : TextButton(
+            : AdminActionButton(
                 key: Key('admin_members_invite_cancel_${invite.inviteId}'),
+                label: 'Cancel',
                 onPressed: () => onCancel(invite),
-                child: const Text('Cancel'),
+                role: AdminActionRole.dangerSecondary,
+                compact: true,
+                minWidth: 76,
               ),
       ),
     );
@@ -664,18 +664,14 @@ class _RowEditButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton.icon(
+    return AdminActionButton(
       key: Key('admin_members_row_edit_${row.userId}'),
-      icon: const Icon(Icons.edit_outlined, size: 16),
-      label: const Text('Edit'),
-      style: TextButton.styleFrom(
-        foregroundColor: AppColors.sunsetDark,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        minimumSize: const Size(0, 32),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-      ),
+      label: 'Edit',
+      icon: Icons.edit_outlined,
       onPressed: () => onEdit(row),
+      role: AdminActionRole.quiet,
+      compact: true,
+      minWidth: 64,
     );
   }
 }

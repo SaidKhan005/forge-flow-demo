@@ -68,6 +68,37 @@ void main() {
     await pumpEventually(tester);
   }
 
+  Future<void> openLocationOverflow(
+    WidgetTester tester,
+    String locationId,
+  ) async {
+    final menu = find.byKey(Key('admin_location_more_$locationId'));
+    await tester.ensureVisible(menu);
+    await pumpEventually(tester);
+    await tester.tap(menu);
+    await pumpEventually(tester);
+  }
+
+  Future<void> tapLocationOverflowAction(
+    WidgetTester tester,
+    String locationId,
+    Key actionKey,
+  ) async {
+    await openLocationOverflow(tester, locationId);
+    await tester.tap(find.byKey(actionKey));
+    await pumpEventually(tester);
+  }
+
+  Future<void> dismissOverflow(WidgetTester tester) async {
+    await tester.tapAt(const Offset(8, 8));
+    await pumpEventually(tester);
+  }
+
+  bool popupMenuItemEnabled(WidgetTester tester, Key key) {
+    final item = tester.widget<PopupMenuItem<Object?>>(find.byKey(key));
+    return item.enabled;
+  }
+
   testWidgets('Account profile action edits the business contact email', (
     tester,
   ) async {
@@ -414,10 +445,12 @@ void main() {
       const Key('admin_hierarchy_location_loc-x'),
     );
 
-    final removeButton = tester.widget<OutlinedButton>(
-      find.byKey(const Key('admin_location_remove_loc-x')),
+    await openLocationOverflow(tester, 'loc-x');
+    expect(
+      popupMenuItemEnabled(tester, const Key('admin_location_remove_loc-x')),
+      isFalse,
     );
-    expect(removeButton.onPressed, isNull);
+    await dismissOverflow(tester);
   });
 
   testWidgets('editingEnabled false hides operator and location mutations', (
@@ -456,7 +489,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const Key('admin_location_remove_loc-seed-1')),
+      find.byKey(const Key('admin_location_more_loc-seed-1')),
       findsNothing,
     );
   });
@@ -513,13 +546,11 @@ void main() {
       tester,
       Key('admin_hierarchy_location_${added.locationId}'),
     );
-    final removeButton = find.byKey(
+    await tapLocationOverflowAction(
+      tester,
+      added.locationId,
       Key('admin_location_remove_${added.locationId}'),
     );
-    await tester.ensureVisible(removeButton);
-    await pumpEventually(tester);
-    await tester.tap(removeButton);
-    await pumpEventually(tester);
     expect(find.byKey(const Key('admin_confirm_dialog')), findsOneWidget);
     await tester.tap(find.byKey(const Key('admin_confirm_confirm_button')));
     await pumpEventually(tester);

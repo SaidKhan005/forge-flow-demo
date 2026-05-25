@@ -29,11 +29,11 @@ import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_members_ops_table.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import 'invite_member_admin_dialog.dart';
@@ -732,16 +732,17 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         icon: Icons.cancel_schedule_send_outlined,
         maxWidth: 480,
         actions: <Widget>[
-          TextButton(
+          AdminActionButton(
             key: const Key('admin_members_cancel_invite_keep'),
+            label: 'Keep invite',
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep invite'),
+            role: AdminActionRole.quiet,
           ),
-          FilledButton(
+          AdminActionButton(
             key: const Key('admin_members_cancel_invite_confirm_button'),
-            style: AdminButtonStyles.primary,
+            label: 'Cancel invite',
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Cancel invite'),
+            role: AdminActionRole.danger,
           ),
         ],
         child: Text(
@@ -948,33 +949,23 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     }
     if (widget.onChangeOperator != null) {
       children.add(
-        OutlinedButton.icon(
+        AdminActionButton(
           key: const Key('admin_members_change_operator'),
+          label: 'Change operator',
           onPressed: widget.onChangeOperator,
-          style: AdminButtonStyles.secondary(),
-          icon: const Icon(Icons.swap_horiz, size: 16),
-          label: const Text('Change operator'),
+          icon: Icons.swap_horiz,
         ),
       );
     }
     if (widget.editingEnabled) {
       children.add(
-        SizedBox(
-          height: 48,
-          child: FilledButton.icon(
-            key: const Key('admin_members_invite_button'),
-            onPressed: _onInvite,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.sunset,
-              foregroundColor: AppColors.backgroundSurface,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              textStyle: AppTextStyles.display16(
-                color: AppColors.backgroundSurface,
-              ),
-            ),
-            icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
-            label: const Text('Invite member'),
-          ),
+        AdminActionButton(
+          key: const Key('admin_members_invite_button'),
+          label: 'Invite member',
+          onPressed: _onInvite,
+          icon: Icons.person_add_alt_1_outlined,
+          role: AdminActionRole.primary,
+          minWidth: 132,
         ),
       );
     }
@@ -1056,14 +1047,10 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               style: AppTextStyles.body13(color: AppColors.textPrimary),
             ),
             const SizedBox(height: 14),
-            OutlinedButton(
+            AdminActionButton(
               key: const Key('admin_members_load_retry'),
+              label: 'Retry',
               onPressed: _refresh,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.sunsetDark,
-                side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-              ),
-              child: const Text('Retry'),
             ),
           ],
         ),
@@ -1247,14 +1234,13 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
             ),
           ),
           if (activeFilters.isNotEmpty)
-            TextButton.icon(
+            AdminActionButton(
               key: const Key('admin_members_clear_filters'),
+              label: 'Clear filters',
               onPressed: widget.onClearFilters,
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.sunsetDark,
-              ),
-              icon: const Icon(Icons.close, size: 16),
-              label: const Text('Clear filters'),
+              icon: Icons.close,
+              role: AdminActionRole.quiet,
+              compact: true,
             ),
         ],
       ),
@@ -1398,16 +1384,20 @@ class _EmailConflictUsageTile extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           if (sameOperator && onShowConflict != null)
-            TextButton(
+            AdminActionButton(
               key: Key('admin_members_email_conflict_show_${usage.email}'),
+              label: 'Show row',
               onPressed: () => onShowConflict!(usage),
-              child: const Text('Show row'),
+              role: AdminActionRole.quiet,
+              compact: true,
             )
           else if (!sameOperator && onChangeOperator != null)
-            TextButton(
+            AdminActionButton(
               key: Key('admin_members_email_conflict_change_${usage.email}'),
+              label: 'Change operator',
               onPressed: onChangeOperator,
-              child: const Text('Change operator'),
+              role: AdminActionRole.quiet,
+              compact: true,
             ),
         ],
       ),
@@ -1620,16 +1610,17 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
       icon: Icons.manage_accounts_outlined,
       maxWidth: 540,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_members_display_name_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_members_display_name_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Save',
           onPressed: _onSubmit,
-          child: const Text('Save'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: SingleChildScrollView(
@@ -1813,16 +1804,17 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
       icon: Icons.edit_note,
       maxWidth: 520,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_members_reason_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_members_reason_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Confirm',
           onPressed: _onSubmit,
-          child: const Text('Confirm'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(

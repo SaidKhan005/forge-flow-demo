@@ -52,6 +52,7 @@ import '../services/admin_business_timing_profiles_gateway.dart'
         InMemoryAdminBusinessTimingProfilesGateway;
 import '../services/admin_business_timing_resolution_gateway.dart';
 import '../services/operator_location_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 // Reuse operator-web's PURE PRESENTATIONAL service-period editor (it
 // imports only Flutter + theme, with no operator-web session / gateway
@@ -620,12 +621,10 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
                 height: 46,
                 child: FilledButton(
                   key: const Key('admin_timing_editor_save'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                    padding: const EdgeInsets.symmetric(horizontal: 22),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
+                  style: AdminButtonStyles.primary.copyWith(
+                    minimumSize: const WidgetStatePropertyAll(Size(164, 46)),
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 22),
                     ),
                   ),
                   onPressed: canSave ? _save : null,
@@ -642,14 +641,11 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
                 ),
               ),
               if (_existingProfile != null)
-                SizedBox(
-                  height: 46,
-                  child: OutlinedButton.icon(
-                    key: const Key('admin_timing_editor_reset'),
-                    onPressed: _submitting ? null : _resetToLoadedProfile,
-                    icon: const Icon(Icons.undo_outlined, size: 16),
-                    label: const Text('Reset to inherited'),
-                  ),
+                AdminActionButton(
+                  key: const Key('admin_timing_editor_reset'),
+                  label: 'Reset to inherited',
+                  onPressed: _submitting ? null : _resetToLoadedProfile,
+                  icon: Icons.undo_outlined,
                 ),
             ],
           ),
@@ -1057,16 +1053,17 @@ class _AdminTimingReasonDialogState extends State<_AdminTimingReasonDialog> {
       maxWidth: 460,
       showCloseButton: false,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_timing_reason_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_timing_reason_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Confirm',
           onPressed: _onSubmit,
-          child: const Text('Confirm'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(
