@@ -15,14 +15,34 @@
 // the cross-tenant seam, per-row dispatch stays scoped via the
 // vendor-side broker / sink under the dispatcher's hood.
 //
+// What this file DOES do beyond the raw SELECT:
+//
+//   * Applicability turn-off (deny model). After loading the connected
+//     rows, the source drops any row whose current effective
+//     `vendor_applicability` polling winner for that
+//     `(operator_id, location_id)` is `enabled = FALSE`. A poll-only
+//     vendor is polled BY DEFAULT — it is skipped ONLY when an admin
+//     has explicitly turned polling OFF for it at that scope. Empty
+//     config (no row at all) or an `enabled = TRUE` winner means the
+//     vendor is polled. This is a turn-off, NOT an allow-list. The
+//     turn-off set is resolved per distinct `(operator_id,
+//     location_id)` through [VendorApplicabilityRepository]
+//     `.listCurrentForOperator(settingKind: 'polling', enabledOnly:
+//     false)`, which applies the canonical precedence (location >
+//     operator > global, latest `effective_from`, `effective_until IS
+//     NULL`) on the winner. The skip is strictly scoped: a turn-off at
+//     location A never excludes the same vendor at location B or under
+//     a different operator. Webhook (non-poll-only) vendors are
+//     unaffected here — they are not polled on cadence anyway.
+//
 // What this file deliberately does NOT do:
 //
 //   * Filter by polling cadence — that lives in
 //     `IntegrationSyncWorkerDispatch._resolveCadenceForRow` (Lane
 //     `.0a`) and the scheduler-side cadence picker (Lane `.3`). The
-//     source returns every connected row; cadence-based skipping
-//     happens at dispatch time so the resolver's `tier_assignment_*`
-//     audit log rows still surface.
+//     source returns every connected row (minus applicability
+//     turn-offs); cadence-based skipping happens at dispatch time so
+//     the resolver's `tier_assignment_*` audit log rows still surface.
 //   * Order by anything but `(operator_id, location_id, vendor_id)` —
 //     ordering is stable for reproducible Cloud Run logs but does not
 //     attempt fairness across operators.
@@ -38,8 +58,10 @@
 //     tenant-scoped via the broker / canonical sink.
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/operator_scoped_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/vendor_applicability_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
+import 'package:forge_and_flow/services/settings/applicability_metadata_schemas.dart';
 
 import 'dispatch.dart';
 import 'main.dart';
@@ -51,7 +73,17 @@ import 'main.dart';
 class PostgresSyncWorkerSource extends OperatorScopedRepository
     implements SyncWorkerSource {
   PostgresSyncWorkerSource({required TenantTransactionWrapper tenantWrapper})
-      : super(tenantWrapper);
+      : _vendorApplicabilityRepository =
+            VendorApplicabilityRepository(tenantWrapper),
+        super(tenantWrapper);
+
+  /// Reuses the existing repository (no new DB pool) to resolve the
+  /// per-(operator, location) polling turn-off set. Built off the SAME
+  /// [TenantTransactionWrapper] the source enumerates connections with,
+  /// so RLS / `SET LOCAL` discipline matches. The repository's
+  /// `listCurrentForOperator` runs `withTenant`, which scopes the read
+  /// to the asked operator + location.
+  final VendorApplicabilityRepository _vendorApplicabilityRepository;
 
   /// Sentinel cursor passed when the watermark row is absent (first
   /// poll for this connection — backfill worker has not landed yet).
@@ -103,10 +135,89 @@ class PostgresSyncWorkerSource extends OperatorScopedRepository
       },
       reason: 'integration_sync_worker.list_connected_connections',
     );
+
+    // Applicability turn-off (deny model). Resolve the set of vendors
+    // an admin turned OFF for polling, scoped per distinct
+    // (operator_id, location_id) present in the connected rows, then
+    // drop matching rows. Default is poll-on: a vendor with no row or
+    // an enabled=true winner is never in this set. Computed AFTER the
+    // claim SELECT commits so the per-(operator, location) tenant reads
+    // do not contend with the `FOR UPDATE` lock above.
+    final turnedOff = await _resolvePollingTurnedOffVendors(rows);
+
     for (final row in rows) {
+      if (turnedOff.contains(
+        _scopedVendorKey(row.operatorId, row.locationId, row.vendorId),
+      )) {
+        // Admin turned polling OFF for this vendor at this exact
+        // (operator, location). Skip it; the dispatcher never sees it.
+        continue;
+      }
       yield row;
     }
   }
+
+  /// Builds the turned-off set as `operator_id|location_id|vendor_id`
+  /// keys. For each distinct (operator_id, location_id) among [rows],
+  /// reads the current effective `vendor_applicability` polling winners
+  /// (`enabledOnly: false`, so disabled winners are returned) and keeps
+  /// the ones whose winner is `enabled == false`. The repository
+  /// applies the canonical precedence (location > operator > global,
+  /// latest effective_from, effective_until IS NULL) before the
+  /// enabled check, so a more-specific enabled=false winner suppresses
+  /// the vendor and a more-specific enabled=true winner re-enables it.
+  ///
+  /// Keying every entry by its source (operator_id, location_id) is
+  /// what keeps the skip strictly scoped: a turn-off resolved for
+  /// location A is stored under A's key only and can never match a row
+  /// at location B or under another operator.
+  Future<Set<String>> _resolvePollingTurnedOffVendors(
+    List<ConnectorConnectionRow> rows,
+  ) async {
+    final scopes = <String, _OperatorLocationScope>{};
+    for (final row in rows) {
+      final key = _operatorLocationKey(row.operatorId, row.locationId);
+      scopes.putIfAbsent(
+        key,
+        () => _OperatorLocationScope(row.operatorId, row.locationId),
+      );
+    }
+    if (scopes.isEmpty) return const <String>{};
+
+    final turnedOff = <String>{};
+    for (final scope in scopes.values) {
+      final winners = await _vendorApplicabilityRepository
+          .listCurrentForOperator(
+        operatorId: scope.operatorId,
+        locationId: scope.locationId,
+        actorUserId: kSyncWorkerServicePrincipalId,
+        settingKind: VendorApplicabilitySettingKind.polling,
+        enabledOnly: false,
+      );
+      for (final winner in winners) {
+        if (!winner.enabled) {
+          turnedOff.add(
+            _scopedVendorKey(
+              scope.operatorId,
+              scope.locationId,
+              winner.vendorSlug,
+            ),
+          );
+        }
+      }
+    }
+    return turnedOff;
+  }
+
+  static String _operatorLocationKey(String operatorId, String locationId) =>
+      '$operatorId|$locationId';
+
+  static String _scopedVendorKey(
+    String operatorId,
+    String locationId,
+    String vendorId,
+  ) =>
+      '$operatorId|$locationId|$vendorId';
 
   static ConnectorConnectionRow _rowFromPostgres(Map<String, Object?> row) {
     final lastModifiedSeen = row['last_modified_seen'];
@@ -154,4 +265,15 @@ class PostgresSyncWorkerSource extends OperatorScopedRepository
     // to `vendor_not_registered` cleanly.
     return IntegrationCategory.pos;
   }
+}
+
+/// One distinct `(operator_id, location_id)` the polling turn-off set
+/// is resolved for. The map key dedupes scopes so the per-scope tenant
+/// read in [PostgresSyncWorkerSource._resolvePollingTurnedOffVendors]
+/// runs once per (operator, location), not once per connected row.
+class _OperatorLocationScope {
+  const _OperatorLocationScope(this.operatorId, this.locationId);
+
+  final String operatorId;
+  final String locationId;
 }
