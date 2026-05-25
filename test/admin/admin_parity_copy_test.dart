@@ -165,12 +165,6 @@ void main() {
           IntegrationAdminScreen(
             gateway: InMemoryIntegrationAdminGateway(),
             editingEnabled: false,
-            hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
-              operatorId: 'op-1',
-              orgUnitId: 'ou-1',
-              operatorName: 'Demo Diner Co.',
-              orgUnitName: 'Downtown',
-            ),
           ),
         ),
       );

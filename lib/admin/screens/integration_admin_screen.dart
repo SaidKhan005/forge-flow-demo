@@ -43,7 +43,6 @@ import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_console_style.dart';
-import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
 import '../services/integration_admin_gateway.dart';
@@ -55,14 +54,10 @@ class IntegrationAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.editingEnabled = true,
-    this.hierarchyScope,
-    this.scopeLocationIds = const <String>{},
     this.idempotencyKeyFactory,
   });
 
   final IntegrationAdminGateway gateway;
-  final AdminHierarchyScopeIntent? hierarchyScope;
-  final Set<String> scopeLocationIds;
 
   /// When false, the screen hides every rotate affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
@@ -110,7 +105,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
       _loadError = null;
     });
     try {
-      final bundle = await widget.gateway.list(scope: _scopeFilter);
+      final bundle = await widget.gateway.list();
       if (!mounted) return;
       setState(() {
         _bundle = bundle;
@@ -281,8 +276,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
         children: [
           OperatorWebPanel(
             title: 'Service Access',
-            subtitle:
-                'Platform keys F&F uses to call model, embedding, database, and email providers. Saved rows show only a preview; a new key is revealed once after replacement.',
+            subtitle: 'Platform provider keys. Saved rows show a preview only.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -301,7 +295,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
           OperatorWebPanel(
             title: 'Vendor connector catalog',
             subtitle:
-                'Grouped by the operational system each vendor feeds. Status reflects global vendor API health; operator edits live on Operator Web.',
+                'Global vendor API health. Operator edits stay on Operator Web.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -323,8 +317,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
           const SizedBox(height: 16),
           OperatorWebPanel(
             title: 'Shared Services',
-            subtitle:
-                'Shared platform services used across operators, such as exchange rates and outbound email. These are separate from per-location vendor integrations.',
+            subtitle: 'Platform utilities used across operators.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -343,16 +336,6 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
       if (r.keyKind == kind) return r;
     }
     return null;
-  }
-
-  AdminIntegrationScopeFilter? get _scopeFilter {
-    final scope = widget.hierarchyScope;
-    if (scope == null) return null;
-    return AdminIntegrationScopeFilter(
-      operatorId: scope.operatorId,
-      locationId: scope.locationId,
-      locationIds: widget.scopeLocationIds,
-    );
   }
 }
 
@@ -508,55 +491,86 @@ class _VendorCatalogGroupBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final readyCount = statuses.where((status) {
+      return status.apiReachable == true ||
+          status.statusLabel.toLowerCase().contains('reachable');
+    }).length;
+    return Container(
       key: Key('admin_integrations_vendor_group_${group.keyName}'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          group.label,
-          style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep.withValues(alpha: 0.38),
+        border: Border.all(
+          color: AppColors.borderSubtle.withValues(alpha: 0.7),
+          width: 1,
         ),
-        const SizedBox(height: 3),
-        Text(
-          group.description,
-          style: AppTextStyles.body12(color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 8),
-        for (final status in statuses) _StatusRowTile(status),
-      ],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(group.icon, size: 17, color: AppColors.sunsetDark),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  group.label,
+                  style: AppTextStyles.body14(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              _CatalogCountChip(
+                label: '$readyCount/${statuses.length} reachable',
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 780 ? 2 : 1;
+              final gap = columns == 2 ? 10.0 : 0.0;
+              final width = columns == 2
+                  ? (constraints.maxWidth - gap) / 2
+                  : constraints.maxWidth;
+              return Wrap(
+                spacing: gap,
+                runSpacing: 8,
+                children: [
+                  for (final status in statuses)
+                    SizedBox(
+                      width: width,
+                      child: _StatusRowTile(status, compact: true),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
 
 enum _VendorCatalogGroup {
-  pos(
-    keyName: 'pos',
-    label: 'POS',
-    description:
-        'Sales, checks, covers, and closed-order timing for the operating spine.',
-  ),
-  labor(
-    keyName: 'labor',
-    label: 'Labor',
-    description:
-        'Schedules, punches, and role data for labor variance and planning.',
-  ),
+  pos(keyName: 'pos', label: 'POS', icon: Icons.point_of_sale_outlined),
+  labor(keyName: 'labor', label: 'Labor', icon: Icons.badge_outlined),
   reservation(
     keyName: 'reservation',
     label: 'Reservation',
-    description:
-        'Bookings, party sizes, and reservation pacing for demand context.',
+    icon: Icons.event_available_outlined,
   );
 
   const _VendorCatalogGroup({
     required this.keyName,
     required this.label,
-    required this.description,
+    required this.icon,
   });
 
   final String keyName;
   final String label;
-  final String description;
+  final IconData icon;
 }
 
 _VendorCatalogGroup _groupForVendor(VendorConnectorStatus status) {
@@ -595,16 +609,17 @@ _VendorCatalogGroup _fallbackGroupForVendorId(String vendorId) {
 }
 
 class _StatusRowTile extends StatelessWidget {
-  const _StatusRowTile(this.status);
+  const _StatusRowTile(this.status, {this.compact = false});
 
   final VendorConnectorStatus status;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       key: Key('admin_integrations_status_${status.id}'),
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: compact ? EdgeInsets.zero : const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: compact ? 9 : 10),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(
@@ -614,7 +629,9 @@ class _StatusRowTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: compact
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Column(
@@ -625,17 +642,25 @@ class _StatusRowTile extends StatelessWidget {
                   status.displayName,
                   style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  status.detailMessage,
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
+                if (!compact && status.detailMessage.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    status.detailMessage,
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
+                ],
                 if (status.healthSourceLabel != null ||
                     status.unlockLabel != null) ...[
                   const SizedBox(height: 4),
                   Text(
-                    _semanticsLine(status),
-                    style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    compact
+                        ? _compactSemanticsLine(status)
+                        : _semanticsLine(status),
+                    maxLines: compact ? 1 : null,
+                    overflow: compact ? TextOverflow.ellipsis : null,
+                    style: compact
+                        ? AppTextStyles.body12(color: AppColors.textMuted)
+                        : AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
                 ],
               ],
@@ -665,6 +690,36 @@ class _StatusRowTile extends StatelessWidget {
       if (status.unlockLabel != null) 'Setup: ${status.unlockLabel}',
     ];
     return parts.join(' - ');
+  }
+
+  String _compactSemanticsLine(VendorConnectorStatus status) {
+    final setup = status.unlockLabel;
+    if (setup != null && setup.trim().isNotEmpty) return setup;
+    final source = status.healthSourceLabel;
+    if (source != null && source.trim().isNotEmpty) return source;
+    return status.detailMessage;
+  }
+}
+
+class _CatalogCountChip extends StatelessWidget {
+  const _CatalogCountChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono10(color: AppColors.textMuted),
+      ),
+    );
   }
 }
 
