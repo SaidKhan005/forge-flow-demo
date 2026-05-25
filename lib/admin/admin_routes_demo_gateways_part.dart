@@ -24,75 +24,155 @@ final AdminBusinessTimingResolutionGateway _defaultTimingResolutionDemoGateway =
 final AdminBusinessTimingProfilesGateway _defaultTimingProfilesDemoGateway =
     InMemoryAdminBusinessTimingProfilesGateway();
 
-/// Demo gateway shared by walkthrough + admin shell when no
-/// production scope is mounted. Seeded with two fixture operators
-/// so the click path has something to show on first paint without
-/// asking the F&F admin to manually run onboarding.
+/// A wired demo operator + hierarchy gateway pair. The operator
+/// gateway's `addLocation` / `removeLocation` mirror into the SAME
+/// hierarchy gateway so delete / move / suspend / reactivate succeed on
+/// freshly-added locations (the two stores would otherwise diverge).
+typedef DemoOperatorHierarchyGateways = ({
+  InMemoryOperatorLocationAdminGateway operatorGateway,
+  InMemoryRolesHierarchySessionsAdminGateway hierarchyGateway,
+});
+
+/// Per-id-namespace counter source for locations ADDED through a demo
+/// operator/location gateway. Each added id lives in its own `…e0…` hex
+/// namespace so it can never collide with a seeded operator (`…001` /
+/// `…002`), seeded location (`…a1` / `…a2` / `…b1`), or seeded org-unit
+/// (`…d0x` / `…s01`) id. [InMemoryOperatorLocationAdminGateway]'s shared
+/// static [_randomId] starts at `…001` — which is exactly the demo
+/// operator id — so without an explicit generator the FIRST added
+/// location was stamped with the OPERATOR's id, the source of the
+/// `location 00000000-…-001 not found` 404 (operatorId and locationId
+/// must differ).
+String Function() _demoAddedLocationIdGenerator() {
+  var counter = 0;
+  return () {
+    counter += 1;
+    final hex = counter.toRadixString(16).padLeft(11, '0');
+    return '00000000-0000-4000-8000-e$hex';
+  };
+}
+
+/// Builds a fresh, fully-wired demo operator + hierarchy pair from the
+/// shared kDemoMode fixtures. The operator gateway is seeded with the
+/// two fixture businesses ([kDemoOperatorBundles]); the hierarchy
+/// gateway with the matching roles / org-units / location-leaves /
+/// sessions. The add/remove mirror closes over THIS pair's hierarchy
+/// gateway, and each pair gets its own added-location id counter, so the
+/// result is self-contained (safe for per-test isolation).
+DemoOperatorHierarchyGateways _buildWiredDemoGateways() {
+  final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+    rolesByOperator: kDemoRolesByOperator(),
+    orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+    locationsByOperator: kDemoHierarchyLocationsByOperator(),
+    sessionsByOperator: kDemoSessionsByOperator(),
+  );
+  final operatorGateway = InMemoryOperatorLocationAdminGateway(
+    idGenerator: _demoAddedLocationIdGenerator(),
+    seed: kDemoOperatorBundles(),
+    onLocationAdded: (location) =>
+        _mirrorDemoLocationAddToHierarchy(hierarchyGateway, location),
+    onLocationRemoved: ({required operatorId, required locationId}) =>
+        hierarchyGateway.softDeleteDemoLocationLeaf(
+          operatorId: operatorId,
+          locationId: locationId,
+        ),
+  );
+  return (operatorGateway: operatorGateway, hierarchyGateway: hierarchyGateway);
+}
+
+/// Fresh, fully-wired demo operator + hierarchy pair for tests that want
+/// to exercise the demo gateways exactly as the admin shell wires them
+/// (added locations mirrored into the hierarchy store) WITHOUT sharing
+/// the long-lived singleton state. Each call returns an independent pair.
+@visibleForTesting
+DemoOperatorHierarchyGateways
+buildWiredDemoOperatorAndHierarchyGatewaysForTesting() =>
+    _buildWiredDemoGateways();
+
+/// The process-wide wired pair the admin shell falls back to when no
+/// production scope is mounted (kDemoMode / share-preview walkthrough).
+final DemoOperatorHierarchyGateways _defaultDemoGateways =
+    _buildWiredDemoGateways();
+
+/// Demo operator/location gateway shared by walkthrough + admin shell
+/// when no production scope is mounted. Seeded with two fixture
+/// operators so the click path has something to show on first paint
+/// without asking the F&F admin to manually run onboarding. Part of
+/// [_defaultDemoGateways]; added locations are mirrored into the paired
+/// hierarchy gateway (which owns delete / move / suspend / reactivate).
 final OperatorLocationAdminGateway _defaultDemoGateway =
-    InMemoryOperatorLocationAdminGateway(
-      seed: <OperatorAdminBundle>[
-        OperatorAdminBundle(
-          operator: OperatorAdminRecord(
-            operatorId: '00000000-0000-4000-8000-000000000001',
-            businessName: 'Demo Diner Co.',
-            ownerEmail: 'owner@demo-diner.test',
-            subscriptionTier: 'pro',
-            preferredCurrency: 'CAD',
-            primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
-            suspendedAt: null,
-            createdAt: DateTime.utc(2026, 1, 12, 14, 30),
-            updatedAt: DateTime.utc(2026, 4, 1, 10, 0),
-          ),
-          locations: <LocationAdminRecord>[
-            LocationAdminRecord(
-              locationId: '00000000-0000-4000-8000-0000000000a1',
-              operatorId: '00000000-0000-4000-8000-000000000001',
-              name: 'Toronto Yorkville',
-              address: '123 Main St, Toronto, ON',
-              timezone: 'America/Toronto',
-              businessDayRolloverHour: 4,
-              createdAt: DateTime.utc(2026, 1, 12, 14, 30),
-              updatedAt: DateTime.utc(2026, 1, 12, 14, 30),
-            ),
-            LocationAdminRecord(
-              locationId: '00000000-0000-4000-8000-0000000000a2',
-              operatorId: '00000000-0000-4000-8000-000000000001',
-              name: 'Vancouver Robson',
-              address: '456 Robson St, Vancouver, BC',
-              timezone: 'America/Vancouver',
-              businessDayRolloverHour: 4,
-              createdAt: DateTime.utc(2026, 2, 1, 9, 0),
-              updatedAt: DateTime.utc(2026, 2, 1, 9, 0),
-            ),
-          ],
-        ),
-        OperatorAdminBundle(
-          operator: OperatorAdminRecord(
-            operatorId: '00000000-0000-4000-8000-000000000002',
-            businessName: 'Sunset Cafe Group',
-            ownerEmail: 'owner@sunset-cafe.test',
-            subscriptionTier: 'pilot',
-            preferredCurrency: 'USD',
-            primaryLocationId: '00000000-0000-4000-8000-0000000000b1',
-            suspendedAt: null,
-            createdAt: DateTime.utc(2026, 3, 5, 11, 0),
-            updatedAt: DateTime.utc(2026, 4, 18, 12, 0),
-          ),
-          locations: <LocationAdminRecord>[
-            LocationAdminRecord(
-              locationId: '00000000-0000-4000-8000-0000000000b1',
-              operatorId: '00000000-0000-4000-8000-000000000002',
-              name: 'Brooklyn Williamsburg',
-              address: '78 Bedford Ave, Brooklyn, NY',
-              timezone: 'America/New_York',
-              businessDayRolloverHour: 5,
-              createdAt: DateTime.utc(2026, 3, 5, 11, 0),
-              updatedAt: DateTime.utc(2026, 3, 5, 11, 0),
-            ),
-          ],
-        ),
-      ],
-    );
+    _defaultDemoGateways.operatorGateway;
+
+/// The two fixture operators the kDemoMode / share-preview admin shell
+/// shows on first paint (Demo Diner Co. + Sunset Cafe Group). Extracted
+/// from the inline `_defaultDemoGateway` seed so a fresh wired pair can
+/// reuse the exact same fixtures (see
+/// [buildWiredDemoOperatorAndHierarchyGatewaysForTesting]). The
+/// operator + primary-location ids line up with the hierarchy demo seed
+/// in `kDemoHierarchyLocationsByOperator()` and the pricing / data-
+/// accuracy demos so the walkthrough hops between surfaces consistently.
+List<OperatorAdminBundle> kDemoOperatorBundles() => <OperatorAdminBundle>[
+  OperatorAdminBundle(
+    operator: OperatorAdminRecord(
+      operatorId: '00000000-0000-4000-8000-000000000001',
+      businessName: 'Demo Diner Co.',
+      ownerEmail: 'owner@demo-diner.test',
+      subscriptionTier: 'pro',
+      preferredCurrency: 'CAD',
+      primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
+      suspendedAt: null,
+      createdAt: DateTime.utc(2026, 1, 12, 14, 30),
+      updatedAt: DateTime.utc(2026, 4, 1, 10, 0),
+    ),
+    locations: <LocationAdminRecord>[
+      LocationAdminRecord(
+        locationId: '00000000-0000-4000-8000-0000000000a1',
+        operatorId: '00000000-0000-4000-8000-000000000001',
+        name: 'Toronto Yorkville',
+        address: '123 Main St, Toronto, ON',
+        timezone: 'America/Toronto',
+        businessDayRolloverHour: 4,
+        createdAt: DateTime.utc(2026, 1, 12, 14, 30),
+        updatedAt: DateTime.utc(2026, 1, 12, 14, 30),
+      ),
+      LocationAdminRecord(
+        locationId: '00000000-0000-4000-8000-0000000000a2',
+        operatorId: '00000000-0000-4000-8000-000000000001',
+        name: 'Vancouver Robson',
+        address: '456 Robson St, Vancouver, BC',
+        timezone: 'America/Vancouver',
+        businessDayRolloverHour: 4,
+        createdAt: DateTime.utc(2026, 2, 1, 9, 0),
+        updatedAt: DateTime.utc(2026, 2, 1, 9, 0),
+      ),
+    ],
+  ),
+  OperatorAdminBundle(
+    operator: OperatorAdminRecord(
+      operatorId: '00000000-0000-4000-8000-000000000002',
+      businessName: 'Sunset Cafe Group',
+      ownerEmail: 'owner@sunset-cafe.test',
+      subscriptionTier: 'pilot',
+      preferredCurrency: 'USD',
+      primaryLocationId: '00000000-0000-4000-8000-0000000000b1',
+      suspendedAt: null,
+      createdAt: DateTime.utc(2026, 3, 5, 11, 0),
+      updatedAt: DateTime.utc(2026, 4, 18, 12, 0),
+    ),
+    locations: <LocationAdminRecord>[
+      LocationAdminRecord(
+        locationId: '00000000-0000-4000-8000-0000000000b1',
+        operatorId: '00000000-0000-4000-8000-000000000002',
+        name: 'Brooklyn Williamsburg',
+        address: '78 Bedford Ave, Brooklyn, NY',
+        timezone: 'America/New_York',
+        businessDayRolloverHour: 5,
+        createdAt: DateTime.utc(2026, 3, 5, 11, 0),
+        updatedAt: DateTime.utc(2026, 3, 5, 11, 0),
+      ),
+    ],
+  ),
+];
 
 /// 11A.2 fallback pricing gateway. Mirrors the two demo operators
 /// from `_defaultDemoGateway` so the walkthrough can hop between
@@ -943,15 +1023,48 @@ final MembersAdminGateway _defaultMembersAdminDemoGateway =
 /// Phase 11A.13 - Roles + Hierarchy + Sessions demo gateway. Reuses
 /// the operators on the Members demo so the walkthrough can hop
 /// straight from the Members surface into Roles / Hierarchy /
-/// Sessions for the same operator.
+/// Sessions for the same operator. Part of [_defaultDemoGateways] so it
+/// shares add/remove state with the operator gateway.
 final RolesHierarchySessionsAdminGateway
 _defaultRolesHierarchySessionsAdminDemoGateway =
-    InMemoryRolesHierarchySessionsAdminGateway(
-      rolesByOperator: kDemoRolesByOperator(),
-      orgUnitsByOperator: kDemoOrgUnitsByOperator(),
-      locationsByOperator: kDemoHierarchyLocationsByOperator(),
-      sessionsByOperator: kDemoSessionsByOperator(),
-    );
+    _defaultDemoGateways.hierarchyGateway;
+
+/// Mirrors a location added through a demo operator gateway into its
+/// paired [hierarchyGateway] so delete / move / suspend / reactivate all
+/// succeed on it. Resolves the leaf's parent org unit from the added
+/// record (`parentOrgUnitId`), falling back to the operator's business
+/// root org unit when that is missing so the leaf still renders + stays
+/// operable. Demo-only; see [_buildWiredDemoGateways].
+void _mirrorDemoLocationAddToHierarchy(
+  InMemoryRolesHierarchySessionsAdminGateway hierarchyGateway,
+  LocationAdminRecord location,
+) {
+  final orgUnitId =
+      location.parentOrgUnitId ??
+      _demoBusinessRootOrgUnitId(hierarchyGateway, location.operatorId);
+  if (orgUnitId == null) return;
+  hierarchyGateway.registerDemoLocationLeaf(
+    operatorId: location.operatorId,
+    locationId: location.locationId,
+    name: location.name,
+    orgUnitId: orgUnitId,
+  );
+}
+
+/// Best-effort business-root org-unit id for [operatorId] in
+/// [hierarchyGateway]: the root is the org unit with no parent. Returns
+/// null when the operator has no seeded org units (then the add mirror
+/// is skipped and the location simply has no hierarchy leaf, matching
+/// the pre-existing un-parented demo behaviour).
+String? _demoBusinessRootOrgUnitId(
+  InMemoryRolesHierarchySessionsAdminGateway hierarchyGateway,
+  String operatorId,
+) {
+  for (final unit in hierarchyGateway.demoOrgUnitsSnapshot(operatorId)) {
+    if (unit.parentOrgUnitId == null && !unit.isDeleted) return unit.orgUnitId;
+  }
+  return null;
+}
 
 /// Phase 11A.14 - Audited support actions demo gateway. Seeded with
 /// the audit-log entries + members fixture from
