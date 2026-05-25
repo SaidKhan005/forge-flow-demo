@@ -6259,6 +6259,328 @@ class RepositoryDataAccuracyAdminProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>?> loadDataAccuracyRow({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
+      final rows = await exec.query(
+        'select '
+        'o.operator_id::text as operator_id, '
+        'o.business_name, '
+        'l.location_id::text as location_id, '
+        'l.name as location_name, '
+        's.setting_id::text as setting_id, '
+        's.covers_source_per_service_period, s.covers_manual_entries, '
+        's.wage_source, s.walk_in_handling_mode, '
+        's.walk_in_manual_entries, '
+        's.created_at, s.updated_at, s.updated_by, '
+        's.covers_source_per_service_period_source, '
+        's.wage_source_source, s.walk_in_handling_mode_source, '
+        'timing.service_period_definitions '
+        'from operators o '
+        'join locations l on l.operator_id = o.operator_id '
+        'left join effective_data_accuracy_settings_v s '
+        'on s.operator_id = l.operator_id '
+        'and s.location_id = l.location_id '
+        '$_currentServicePeriodDefinitionsJoin'
+        'where o.operator_id = @operator_id::uuid '
+        'and l.location_id = @location_id::uuid '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.data_accuracy.row.load',
+        adminReason: adminReason,
+        payload: <String, Object?>{'found': rows.isNotEmpty},
+      );
+      if (rows.isEmpty) return null;
+      return _dataAccuracyRowJson(rows.single);
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>?> saveDataAccuracySettings({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    Map<String, String>? coversSourcePerServicePeriod,
+    Map<String, Map<String, int>> coversManualEntries =
+        const <String, Map<String, int>>{},
+    String? wageSource,
+    String? walkInHandlingMode,
+    Map<String, int> walkInManualEntries = const <String, int>{},
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    _validateCoversPerServicePeriod(coversSourcePerServicePeriod);
+    _validateCoversManualEntries(coversManualEntries);
+    _validateWageSource(wageSource);
+    _validateWalkInHandlingMode(walkInHandlingMode);
+    _validateWalkInManualEntries(walkInManualEntries);
+    return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
+      final ref = await _operatorLocationRef(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (ref == null) return null;
+      final before = await _currentDataAccuracySettings(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      final rows = await exec.query(
+        'insert into data_accuracy_settings ('
+        'operator_id, location_id, covers_manual_entries, wage_source, '
+        'walk_in_handling_mode, walk_in_manual_entries, updated_by) '
+        'values (@operator_id::uuid, @location_id::uuid, '
+        '@manual_entries::jsonb, @wage_source, '
+        '@walk_in_handling_mode, @walk_in_manual_entries::jsonb, '
+        '@updated_by) '
+        'on conflict (operator_id, location_id) do update set '
+        'covers_manual_entries = ('
+        'select coalesce(jsonb_object_agg('
+        'coalesce(existing_day.key, incoming_day.key), '
+        "coalesce(existing_day.value, '{}'::jsonb) || "
+        "coalesce(incoming_day.value, '{}'::jsonb)"
+        "), '{}'::jsonb) "
+        'from jsonb_each(coalesce('
+        'data_accuracy_settings.covers_manual_entries, '
+        "'{}'::jsonb)) existing_day "
+        'full join jsonb_each(coalesce('
+        'excluded.covers_manual_entries, '
+        "'{}'::jsonb)) incoming_day "
+        'on existing_day.key = incoming_day.key'
+        '), '
+        'wage_source = excluded.wage_source, '
+        'walk_in_handling_mode = excluded.walk_in_handling_mode, '
+        'walk_in_manual_entries = excluded.walk_in_manual_entries, '
+        'updated_at = now(), updated_by = excluded.updated_by '
+        'returning setting_id::text as setting_id',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'manual_entries': jsonEncode(coversManualEntries),
+          'wage_source': wageSource ?? 'vendor',
+          'walk_in_handling_mode': walkInHandlingMode ?? 'reservations_only',
+          'walk_in_manual_entries': jsonEncode(walkInManualEntries),
+          'updated_by': actorUserId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 503,
+          code: 'data_accuracy_settings_write_failed',
+          message: 'data accuracy settings write returned no row',
+        );
+      }
+      final suppliedCovers = <String, String>{...?coversSourcePerServicePeriod};
+      if (suppliedCovers.isNotEmpty) {
+        await _writeCoversSourcePerServicePeriod(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+          covers: suppliedCovers,
+          updatedBy: actorUserId,
+        );
+      }
+      final after = await _currentDataAccuracySettings(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (after == null) return null;
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.data_accuracy.settings.save',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'diff': _settingsDiff(before, after),
+          if (reasonNote != null) 'reason_note': reasonNote,
+          'admin_reason': adminReason,
+        },
+      );
+      return <String, Object?>{'operator_ref': ref, 'settings': after};
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>?> saveDataAccuracyManualCovers({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required int covers,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    _validateBusinessDate(businessDate);
+    _validateServicePeriodKey(servicePeriodKey);
+    if (covers < 0) {
+      throw const DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'invalid_covers',
+        message: 'covers must be a non-negative integer',
+      );
+    }
+    return _writeManualCovers(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      servicePeriodKey: servicePeriodKey,
+      covers: covers,
+      clear: false,
+      reasonNote: reasonNote,
+      adminReason: adminReason,
+    );
+  }
+
+  @override
+  Future<Map<String, Object?>?> clearDataAccuracyManualCovers({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    _validateBusinessDate(businessDate);
+    _validateServicePeriodKey(servicePeriodKey);
+    return _writeManualCovers(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      servicePeriodKey: servicePeriodKey,
+      clear: true,
+      reasonNote: reasonNote,
+      adminReason: adminReason,
+    );
+  }
+
+  Future<Map<String, Object?>?> _writeManualCovers({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    int? covers,
+    required bool clear,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
+      final ref = await _operatorLocationRef(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (ref == null) return null;
+      final before = await _currentDataAccuracySettings(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      final rows = await exec.query(
+        clear
+            ? 'insert into data_accuracy_settings ('
+                  'operator_id, location_id, covers_manual_entries, '
+                  'updated_by) '
+                  "values (@operator_id::uuid, @location_id::uuid, '{}'::jsonb, "
+                  '@updated_by) '
+                  'on conflict (operator_id, location_id) do update set '
+                  'covers_manual_entries = ('
+                  'select coalesce(jsonb_object_agg(day.key, day.value), '
+                  "'{}'::jsonb) "
+                  'from jsonb_each(coalesce('
+                  'data_accuracy_settings.covers_manual_entries, '
+                  "'{}'::jsonb) || jsonb_build_object("
+                  '@business_date, coalesce('
+                  'data_accuracy_settings.covers_manual_entries '
+                  "-> @business_date, '{}'::jsonb"
+                  ') - @service_period_key)) day '
+                  "where day.value <> '{}'::jsonb"
+                  '), '
+                  'updated_at = now(), updated_by = excluded.updated_by '
+                  'returning setting_id::text as setting_id'
+            : 'insert into data_accuracy_settings ('
+                  'operator_id, location_id, covers_manual_entries, updated_by) '
+                  'values ('
+                  '@operator_id::uuid, @location_id::uuid, '
+                  'jsonb_build_object('
+                  '@business_date, jsonb_build_object(@service_period_key, @covers::int)'
+                  '), @updated_by) '
+                  'on conflict (operator_id, location_id) do update set '
+                  'covers_manual_entries = coalesce('
+                  'data_accuracy_settings.covers_manual_entries, '
+                  "'{}'::jsonb) || jsonb_build_object("
+                  '@business_date, coalesce('
+                  'data_accuracy_settings.covers_manual_entries '
+                  "-> @business_date, '{}'::jsonb"
+                  ') || jsonb_build_object(@service_period_key, @covers::int)), '
+                  'updated_at = now(), updated_by = excluded.updated_by '
+                  'returning setting_id::text as setting_id',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'business_date': businessDate,
+          'service_period_key': servicePeriodKey,
+          if (covers != null) 'covers': covers,
+          'updated_by': actorUserId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 503,
+          code: 'data_accuracy_manual_covers_write_failed',
+          message: 'manual covers write returned no row',
+        );
+      }
+      final after = await _currentDataAccuracySettings(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (after == null) return null;
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: clear
+            ? 'admin.data_accuracy.manual_covers.clear'
+            : 'admin.data_accuracy.manual_covers.save',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'diff': _settingsDiff(before, after),
+          'business_date': businessDate,
+          'service_period_key': servicePeriodKey,
+          if (covers != null) 'covers': covers,
+          if (reasonNote != null) 'reason_note': reasonNote,
+          'admin_reason': adminReason,
+        },
+      );
+      return <String, Object?>{'operator_ref': ref, 'settings': after};
+    }, reason: adminReason);
+  }
+
+  @override
   Future<Map<String, Object?>?> overrideDataAccuracy({
     required String actorUserId,
     required String operatorId,
@@ -6854,6 +7176,38 @@ class RepositoryDataAccuracyAdminProxyGateway
       return <Map<String, Object?>>[
         for (final row in rows) _assignmentRowJson(row),
       ];
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>?> loadTierAssignment({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
+      final ref = await _operatorLocationRef(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (ref == null) return null;
+      final assignment = await _currentTierAssignment(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.polling_pricing.assignment.load',
+        adminReason: adminReason,
+        payload: <String, Object?>{'found': assignment != null},
+      );
+      return assignment;
     }, reason: adminReason);
   }
 
@@ -7823,11 +8177,20 @@ class RepositoryDataAccuracyAdminProxyGateway
     final diff = <String, Object?>{};
     final beforeCovers = _jsonMap(before?['covers_source_per_service_period']);
     final afterCovers = _jsonMap(after['covers_source_per_service_period']);
-    if (!_jsonObjectMapEquals(beforeCovers, afterCovers)) {
+    if (!_jsonDeepEquals(beforeCovers, afterCovers)) {
       diff['covers_source_per_service_period'] = <String, Object?>{
         'from': beforeCovers,
         'to': afterCovers,
       };
+    }
+    for (final field in <String>[
+      'covers_manual_entries',
+      'walk_in_manual_entries',
+    ]) {
+      final from = _jsonMap(before?[field]);
+      final to = _jsonMap(after[field]);
+      if (_jsonDeepEquals(from, to)) continue;
+      diff[field] = <String, Object?>{'from': from, 'to': to};
     }
     const fields = <String>['wage_source', 'walk_in_handling_mode'];
     for (final field in fields) {
@@ -7842,17 +8205,8 @@ class RepositoryDataAccuracyAdminProxyGateway
     return diff;
   }
 
-  static bool _jsonObjectMapEquals(
-    Map<String, Object?> before,
-    Map<String, Object?> after,
-  ) {
-    if (before.length != after.length) return false;
-    for (final entry in before.entries) {
-      if (!after.containsKey(entry.key) || after[entry.key] != entry.value) {
-        return false;
-      }
-    }
-    return true;
+  static bool _jsonDeepEquals(Object? before, Object? after) {
+    return jsonEncode(before) == jsonEncode(after);
   }
 
   static Map<String, Object?> _servicePeriodSettingDiff(
@@ -7934,6 +8288,36 @@ class RepositoryDataAccuracyAdminProxyGateway
     value.forEach((key, coversSource) {
       _validateServicePeriodKey(key);
       _validateServicePeriodCoversSource(coversSource);
+    });
+  }
+
+  static void _validateCoversManualEntries(
+    Map<String, Map<String, int>> value,
+  ) {
+    value.forEach((businessDate, entries) {
+      _validateBusinessDate(businessDate);
+      entries.forEach((servicePeriodKey, covers) {
+        _validateServicePeriodKey(servicePeriodKey);
+        if (covers >= 0) return;
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 400,
+          code: 'invalid_covers_manual_entries',
+          message: 'covers_manual_entries values must be non-negative integers',
+        );
+      });
+    });
+  }
+
+  static void _validateWalkInManualEntries(Map<String, int> value) {
+    value.forEach((key, walkIns) {
+      if (key.trim().isEmpty || walkIns < 0) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 400,
+          code: 'invalid_walk_in_manual_entries',
+          message:
+              'walk_in_manual_entries keys must be non-empty strings and values must be non-negative integers',
+        );
+      }
     });
   }
 
@@ -10050,10 +10434,7 @@ class RepositoryObservabilityAdminProxyGateway
       );
       final capEventRows = await exec.query(
         _observabilityCapEventsSql,
-        parameters: <String, Object?>{
-          'limit': _capEventsLimit,
-          ...scopeParams,
-        },
+        parameters: <String, Object?>{'limit': _capEventsLimit, ...scopeParams},
       );
       final graphRows = await exec.query(_observabilityGraphSql);
       final graphRow = graphRows.isEmpty
@@ -10266,8 +10647,8 @@ class RepositoryObservabilityAdminProxyGateway
     // the "Hosting" advanced details always names a revision. The service
     // name prefers the gateway's configured name (the canonical id the
     // admin recognizes) over the reader's parsed value.
-    final serviceName = (_cloudRunServiceName != null &&
-            _cloudRunServiceName.isNotEmpty)
+    final serviceName =
+        (_cloudRunServiceName != null && _cloudRunServiceName.isNotEmpty)
         ? _cloudRunServiceName
         : capacity.serviceName;
     final revisionId = capacity.servingRevisionId ?? _cloudRunRevision ?? '';
