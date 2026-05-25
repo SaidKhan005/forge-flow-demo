@@ -65,6 +65,21 @@ class _AdminConsoleAppState extends State<AdminConsoleApp> {
       title: 'Forge & Flow Admin Console',
       debugShowCheckedModeBanner: false,
       theme: AdminButtonStyles.applyTo(AppTheme.themeData),
+      // Match the mobile readability contract's respect-for-OS-scaling rule,
+      // but give the dense admin console a larger default floor. Because this
+      // sits at the MaterialApp root, every admin route, overlay, menu, picker,
+      // and dialog inherits the same clearer text scale.
+      builder: (context, child) {
+        final media = MediaQuery.of(context);
+        final readableTextScaler = media.textScaler.clamp(
+          minScaleFactor: 1.12,
+          maxScaleFactor: 1.3,
+        );
+        return MediaQuery(
+          data: media.copyWith(textScaler: readableTextScaler),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: AdminAuthGate(
         source: widget.authSource,
         adminShellBuilder: (context, session) => AdminShell(

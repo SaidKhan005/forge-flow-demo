@@ -131,7 +131,7 @@ class OperatorWebDialog extends StatelessWidget {
     required this.child,
     required this.actions,
     this.icon,
-    this.maxWidth = 460,
+    this.maxWidth = 520,
     this.showCloseButton = true,
     this.onClose,
   });
@@ -146,11 +146,14 @@ class OperatorWebDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = (MediaQuery.sizeOf(context).height - 56)
+        .clamp(320.0, 900.0)
+        .toDouble();
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
+        constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.backgroundSurface,
@@ -165,7 +168,7 @@ class OperatorWebDialog extends StatelessWidget {
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -193,9 +196,19 @@ class OperatorWebDialog extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                child,
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: SingleChildScrollView(
+                    child: DefaultTextStyle.merge(
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                      child: child,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 AdminDialogActionBar(children: actions),
               ],
             ),
@@ -250,7 +263,7 @@ Future<T?> showOperatorWebDialog<T>({
   required Widget child,
   required List<Widget> actions,
   IconData? icon,
-  double maxWidth = 460,
+  double maxWidth = 520,
 }) {
   return showDialog<T>(
     context: context,
