@@ -48,12 +48,13 @@
     },
     {
       "name": "admin-web-static",
-      "runtimeExecutable": "C:\\Users\\blund\\AppData\\Local\\Pub\\Cache\\bin\\dhttpd.bat",
+      "runtimeExecutable": "C:\\Users\\saidu\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
       "runtimeArgs": [
-        "--path",
-        "build/web",
-        "--port",
-        "8186"
+        "-m",
+        "http.server",
+        "8186",
+        "--directory",
+        "C:/Git Local Repos/_ff_qa_preview/build/web"
       ],
       "port": 8186
     },
