@@ -133,6 +133,7 @@ AuditActorKind auditActorKindFromWire(String wire) {
 class AuditLogFilters {
   const AuditLogFilters({
     this.actorUserId,
+    this.actorUserIds = const <String>[],
     this.actions = const <String>[],
     this.targetKind,
     this.targetId,
@@ -147,6 +148,17 @@ class AuditLogFilters {
   /// Picked actor (user picker single-select). Null means no actor
   /// filter applied.
   final String? actorUserId;
+
+  /// Operator-web parity: the visible actor picker is multi-select.
+  /// [actorUserId] stays for existing admin call sites and older tests.
+  final List<String> actorUserIds;
+
+  List<String> get effectiveActorUserIds {
+    if (actorUserIds.isNotEmpty) return actorUserIds;
+    final single = actorUserId?.trim();
+    if (single == null || single.isEmpty) return const <String>[];
+    return <String>[single];
+  }
 
   /// Locked enum multi-select. Empty means no action filter.
   final List<String> actions;
@@ -172,6 +184,7 @@ class AuditLogFilters {
 
   AuditLogFilters copyWith({
     Object? actorUserId = _undef,
+    List<String>? actorUserIds,
     List<String>? actions,
     Object? targetKind = _undef,
     Object? targetId = _undef,
@@ -180,10 +193,16 @@ class AuditLogFilters {
     Object? customRangeTo = _undef,
     List<AuditActorKind>? actorKinds,
   }) {
+    final nextActorUserIds = actorUserIds ??
+        (identical(actorUserId, _undef) ? this.actorUserIds : const <String>[]);
+    final nextActorUserId = actorUserIds != null
+        ? (actorUserIds.length == 1 ? actorUserIds.single : null)
+        : identical(actorUserId, _undef)
+            ? this.actorUserId
+            : actorUserId as String?;
     return AuditLogFilters(
-      actorUserId: identical(actorUserId, _undef)
-          ? this.actorUserId
-          : actorUserId as String?,
+      actorUserId: nextActorUserId,
+      actorUserIds: nextActorUserIds,
       actions: actions ?? this.actions,
       targetKind: identical(targetKind, _undef)
           ? this.targetKind
@@ -205,7 +224,7 @@ class AuditLogFilters {
   }
 
   bool get isEmpty =>
-      actorUserId == null &&
+      effectiveActorUserIds.isEmpty &&
       actions.isEmpty &&
       targetKind == null &&
       (targetId == null || targetId!.trim().isEmpty) &&
@@ -573,9 +592,10 @@ class HttpAuditedSupportActionsAdminGateway
     AuditLogFilters filters = AuditLogFilters.empty,
     String? cursor,
   }) async {
+    final actorUserIds = filters.effectiveActorUserIds;
     final query = <String, String>{
       'operator_id': operatorId,
-      if (filters.actorUserId != null) 'actor_user_id': filters.actorUserId!,
+      if (actorUserIds.isNotEmpty) 'actor_user_id': actorUserIds.join(','),
       if (filters.actions.isNotEmpty) 'actions': filters.actions.join(','),
       if (filters.targetKind != null) 'target_kind': filters.targetKind!,
       if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)
@@ -616,13 +636,14 @@ class HttpAuditedSupportActionsAdminGateway
   }) async {
     _requireEditable(actorIsForgeAdmin, 'exportAuditLogCsv');
     _requireAdminReason(adminReason, 'exportAuditLogCsv');
+    final actorUserIds = filters.effectiveActorUserIds;
     final body = await _send(
       method: 'POST',
       path: auditLogExportPath,
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
-        if (filters.actorUserId != null) 'actor_user_id': filters.actorUserId,
+        if (actorUserIds.isNotEmpty) 'actor_user_id': actorUserIds.join(','),
         if (filters.actions.isNotEmpty) 'actions': filters.actions,
         if (filters.targetKind != null) 'target_kind': filters.targetKind,
         if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)

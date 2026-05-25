@@ -9,6 +9,7 @@
 // location-required copy while location scopes mount the shared widget.
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
@@ -94,6 +95,20 @@ class _VendorConnectionsAdminMountState
 
   bool get _hasHierarchyContext {
     return widget.selectedScope != null || widget.scopeOptions.isNotEmpty;
+  }
+
+  Future<void> _openConnectFlow(VendorConnectFlowStart flow) async {
+    if (flow.flowKind != VendorConnectFlowKind.oauthRedirect) return;
+    final uri = Uri.tryParse(flow.redirectUrl);
+    if (uri == null) {
+      throw VendorConnectionsGatewayError(
+        message: 'The admin proxy returned an invalid connection URL.',
+        remediation:
+            'Select the location again and retry. If it repeats, check the '
+            'admin integration OAuth route binding for this vendor.',
+      );
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -201,6 +216,7 @@ class _VendorConnectionsAdminMountState
         gateway: widget.gateway,
         canMutate: widget.canMutate,
         showHeader: false,
+        onConnectFlowStarted: _openConnectFlow,
       ),
     );
   }
@@ -282,11 +298,7 @@ class _VendorConnectionsAdminMountState
 
     return ColoredBox(
       color: AppColors.backgroundDeep,
-      child: Column(
-        children: <Widget>[
-          Expanded(child: content),
-        ],
-      ),
+      child: Column(children: <Widget>[Expanded(child: content)]),
     );
   }
 
@@ -309,6 +321,7 @@ class _VendorConnectionsAdminMountState
             locationNameOverride: location.locationName,
             gateway: resolvedGateway,
             canMutate: widget.canMutate,
+            onConnectFlowStarted: _openConnectFlow,
             headerLeading:
                 widget.embedded && widget.onBackToBusinessAccounts != null
                 ? AdminBusinessAccountsBackButton(

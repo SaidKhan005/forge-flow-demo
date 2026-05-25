@@ -37,6 +37,7 @@
 //     this slice.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -504,7 +505,7 @@ class _AuditedSupportActionsAdminScreenState
     final reason = await _promptAdminReason('Export the filtered audit log');
     if (reason == null) return;
     await _runAndRefresh(() async {
-      await widget.gateway.exportAuditLogCsv(
+      final csv = await widget.gateway.exportAuditLogCsv(
         operatorId: widget.pickedOperator.operatorId,
         filters: _filters,
         idempotencyKey: _nextIdempotencyKey('audit-log-export'),
@@ -512,7 +513,8 @@ class _AuditedSupportActionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       );
-    }, successHint: 'Export queued. Audit row written.');
+      await Clipboard.setData(ClipboardData(text: csv));
+    }, successHint: 'Copied audit log CSV to your clipboard.');
   }
 
   // --- Actions panel actions ---------------------------------------------
@@ -1312,275 +1314,317 @@ class _FiltersBar extends StatefulWidget {
 
 class _FiltersBarState extends State<_FiltersBar> {
   late AuditLogFilters _draft = widget.filters;
-  late final TextEditingController _targetIdController = TextEditingController(
-    text: widget.filters.targetId ?? '',
-  );
 
   @override
-  void dispose() {
-    _targetIdController.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant _FiltersBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.filters, widget.filters)) {
+      _draft = widget.filters;
+    }
   }
 
-  Future<void> _pickFromDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _draft.customRangeFrom?.toLocal() ?? now,
-      firstDate: DateTime(now.year - 2),
-      lastDate: now,
-    );
-    if (picked == null) return;
-    setState(() => _draft = _draft.copyWith(customRangeFrom: picked.toUtc()));
-  }
-
-  Future<void> _pickToDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _draft.customRangeTo?.toLocal() ?? now,
-      firstDate: DateTime(now.year - 2),
-      lastDate: now,
-    );
-    if (picked == null) return;
-    setState(() => _draft = _draft.copyWith(customRangeTo: picked.toUtc()));
-  }
-
-  void _apply() {
-    final next = _draft.copyWith(
-      targetId: _targetIdController.text.trim().isEmpty
-          ? null
-          : _targetIdController.text.trim(),
-    );
+  void _setFilters(AuditLogFilters next) {
+    setState(() => _draft = next);
     widget.onApply(next);
   }
 
+  Future<void> _pickCustomRange() async {
+    final initialRange =
+        _draft.customRangeFrom != null && _draft.customRangeTo != null
+        ? DateTimeRange(
+            start: _draft.customRangeFrom!.toLocal(),
+            end: _draft.customRangeTo!.toLocal(),
+          )
+        : DateTimeRange(
+            start: DateTime.now().subtract(const Duration(days: 30)),
+            end: DateTime.now(),
+          );
+    final picked = await showOperatorWebDateRangeDialog(
+      context: context,
+      firstDate: DateTime(2024),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      initialRange: initialRange,
+      title: 'Choose audit log dates',
+    );
+    if (picked == null || !mounted) return;
+    _setFilters(
+      _draft.copyWith(
+        timeWindow: AuditLogTimeWindow.customRange,
+        customRangeFrom: _startOfDayUtc(picked.start),
+        customRangeTo: _endOfDayUtc(picked.end),
+      ),
+    );
+  }
+
+  static DateTime? _startOfDayUtc(DateTime? day) {
+    if (day == null) return null;
+    final local = day.toLocal();
+    return DateTime(local.year, local.month, local.day).toUtc();
+  }
+
+  static DateTime? _endOfDayUtc(DateTime? day) {
+    if (day == null) return null;
+    final local = day.toLocal();
+    return DateTime(
+      local.year,
+      local.month,
+      local.day,
+      23,
+      59,
+      59,
+      999,
+    ).toUtc();
+  }
+
+  Set<String> get _selectedActors => _draft.effectiveActorUserIds.toSet();
+  Set<String> get _selectedActions => _draft.actions.toSet();
+
   @override
   Widget build(BuildContext context) {
-    final showCustomRange = _draft.timeWindow == AuditLogTimeWindow.customRange;
-    return Column(
+    return Container(
       key: const Key('admin_asa_filters'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Row(
-          children: [
-            const Icon(
-              Icons.filter_list,
-              size: 18,
-              color: AppColors.sunsetDark,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Filters',
+            style: AppTextStyles.mono14(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Filters',
-                style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-              ),
-            ),
-            // Operator-web parity declutter: the "Audit rows are newest first"
-            // helper note was removed (web's audit filters have no equivalent
-            // note; "newest first" is already stated in the audit-log card
-            // subtitle).
-          ],
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          children: <Widget>[
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<String?>(
-                key: const Key('admin_asa_filter_actor'),
-                initialValue: _draft.actorUserId,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Actor',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<String?>>[
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Any actor'),
-                  ),
-                  for (final m in widget.members)
-                    DropdownMenuItem<String?>(
-                      value: m.userId,
-                      child: Text('${m.displayName} (${m.email})'),
-                    ),
-                ],
-                onChanged: (v) =>
-                    setState(() => _draft = _draft.copyWith(actorUserId: v)),
-              ),
-            ),
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<String?>(
-                key: const Key('admin_asa_filter_target_kind'),
-                initialValue: _draft.targetKind,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Target kind',
-                  border: OutlineInputBorder(),
-                ),
-                items: const <DropdownMenuItem<String?>>[
-                  DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Any kind'),
-                  ),
-                  DropdownMenuItem<String?>(value: 'user', child: Text('User')),
-                  DropdownMenuItem<String?>(
-                    value: 'auth_session',
-                    child: Text('Session'),
-                  ),
-                  DropdownMenuItem<String?>(
-                    value: 'team_role',
-                    child: Text('Role'),
-                  ),
-                  DropdownMenuItem<String?>(
-                    value: 'org_unit',
-                    child: Text('Org unit'),
-                  ),
-                  DropdownMenuItem<String?>(
-                    value: 'mfa_factor',
-                    child: Text('Two-factor sign-in factor'),
-                  ),
-                  DropdownMenuItem<String?>(
-                    value: 'audit_log_export',
-                    child: Text('Audit log export'),
-                  ),
-                ],
-                onChanged: (v) =>
-                    setState(() => _draft = _draft.copyWith(targetKind: v)),
-              ),
-            ),
-            SizedBox(
-              width: 220,
-              child: TextField(
-                key: const Key('admin_asa_filter_target_id'),
-                controller: _targetIdController,
-                decoration: const InputDecoration(
-                  labelText: 'Target ID',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<AuditLogTimeWindow>(
-                key: const Key('admin_asa_filter_time_window'),
-                // Web parity (audit_log_screen.dart): fixed time windows
-                // only, defaulting to the last 30 days. The admin-only
-                // "Any time" option is removed so the set matches web.
-                initialValue:
-                    _draft.timeWindow ?? AuditLogTimeWindow.last30d,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Time window',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<AuditLogTimeWindow>>[
-                  for (final w in AuditLogTimeWindow.values)
-                    DropdownMenuItem<AuditLogTimeWindow>(
-                      value: w,
-                      child: Text(w.displayLabel),
-                    ),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _draft = _draft.copyWith(timeWindow: v));
-                },
-              ),
-            ),
-          ],
-        ),
-        if (showCustomRange) ...<Widget>[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: <Widget>[
-              OutlinedButton.icon(
-                key: const Key('admin_asa_filter_custom_from'),
-                onPressed: _pickFromDate,
-                style: AdminButtonStyles.secondary(),
-                icon: const Icon(Icons.calendar_today, size: 14),
-                label: Text(
-                  _draft.customRangeFrom == null
-                      ? 'Pick from date'
-                      : 'From: ${_formatDate(_draft.customRangeFrom!)}',
-                ),
-              ),
-              OutlinedButton.icon(
-                key: const Key('admin_asa_filter_custom_to'),
-                onPressed: _pickToDate,
-                style: AdminButtonStyles.secondary(),
-                icon: const Icon(Icons.calendar_today, size: 14),
-                label: Text(
-                  _draft.customRangeTo == null
-                      ? 'Pick to date'
-                      : 'To: ${_formatDate(_draft.customRangeTo!)}',
-                ),
-              ),
-            ],
           ),
-        ],
-        const SizedBox(height: 12),
-        Text(
-          'Action',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 4),
-        Wrap(
-          spacing: 6,
-          runSpacing: 4,
-          children: <Widget>[
-            for (final action in kAuditLogFilterableActions)
-              FilterChip(
-                key: Key('admin_asa_filter_action_$action'),
-                tooltip: action,
-                label: Text(humanizeAuditAction(action)),
-                selected: _draft.actions.contains(action),
-                onSelected: (selected) {
-                  final next = List<String>.of(_draft.actions);
-                  if (selected) {
-                    if (!next.contains(action)) next.add(action);
-                  } else {
-                    next.remove(action);
-                  }
-                  setState(() => _draft = _draft.copyWith(actions: next));
-                },
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: 320,
-          child: _ActorKindMultiSelect(
-            value: _draft.actorKinds,
+          const SizedBox(height: 10),
+          _AdminAuditTimeWindowChips(
+            selected: _draft.timeWindow ?? AuditLogTimeWindow.last30d,
+            customFrom: _draft.customRangeFrom,
+            customTo: _draft.customRangeTo,
+            onChanged: (window) {
+              _setFilters(_draft.copyWith(timeWindow: window));
+            },
+            onPickCustom: _pickCustomRange,
+          ),
+          const SizedBox(height: 12),
+          _AdminAuditActionPicker(
+            selected: _selectedActions,
             onChanged: (next) =>
-                setState(() => _draft = _draft.copyWith(actorKinds: next)),
+                _setFilters(_draft.copyWith(actions: next.toList())),
           ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            key: const Key('admin_asa_filter_apply'),
-            style: AdminButtonStyles.primary,
-            onPressed: _apply,
-            child: const Text('Apply filters'),
+          if (widget.members.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            _AdminAuditActorPicker(
+              members: widget.members,
+              selected: _selectedActors,
+              onChanged: (next) =>
+                  _setFilters(_draft.copyWith(actorUserIds: next.toList())),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminAuditTimeWindowChips extends StatelessWidget {
+  const _AdminAuditTimeWindowChips({
+    required this.selected,
+    required this.customFrom,
+    required this.customTo,
+    required this.onChanged,
+    required this.onPickCustom,
+  });
+
+  final AuditLogTimeWindow selected;
+  final DateTime? customFrom;
+  final DateTime? customTo;
+  final ValueChanged<AuditLogTimeWindow> onChanged;
+  final Future<void> Function() onPickCustom;
+
+  static const List<(AuditLogTimeWindow, String, String)> _options =
+      <(AuditLogTimeWindow, String, String)>[
+        (AuditLogTimeWindow.last24h, 'Last 24 hours', '24h'),
+        (AuditLogTimeWindow.last7d, 'Last 7 days', '7d'),
+        (AuditLogTimeWindow.last30d, 'Last 30 days', '30d'),
+        (AuditLogTimeWindow.last90d, 'Last 90 days', '90d'),
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final customLabel =
+        selected == AuditLogTimeWindow.customRange &&
+            customFrom != null &&
+            customTo != null
+        ? '${_fmt(customFrom!)} to ${_fmt(customTo!)}'
+        : 'Custom range';
+    return Wrap(
+      key: const Key('admin_asa_filter_time_window'),
+      spacing: 6,
+      runSpacing: 6,
+      children: <Widget>[
+        for (final option in _options)
+          _AdminAuditChoiceChip(
+            chipKey: Key('admin_asa_filter_time_window_${option.$3}'),
+            label: option.$2,
+            isActive: selected == option.$1,
+            onTap: () => onChanged(option.$1),
           ),
+        _AdminAuditChoiceChip(
+          chipKey: const Key('admin_asa_filter_time_window_custom'),
+          label: customLabel,
+          isActive: selected == AuditLogTimeWindow.customRange,
+          onTap: onPickCustom,
         ),
       ],
     );
   }
 
-  static String _formatDate(DateTime utc) {
+  static String _fmt(DateTime utc) {
     final local = utc.toLocal();
     final y = local.year.toString().padLeft(4, '0');
     final m = local.month.toString().padLeft(2, '0');
     final d = local.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
+  }
+}
+
+class _AdminAuditActionPicker extends StatelessWidget {
+  const _AdminAuditActionPicker({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final Set<String> selected;
+  final ValueChanged<Set<String>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Action',
+          style: AppTextStyles.mono11(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          key: const Key('admin_asa_filter_action'),
+          spacing: 6,
+          runSpacing: 6,
+          children: <Widget>[
+            for (final action in kAuditLogFilterableActions)
+              _AdminAuditChoiceChip(
+                chipKey: Key('admin_asa_filter_action_$action'),
+                tooltip: action,
+                label: humanizeAuditAction(action),
+                isActive: selected.contains(action),
+                onTap: () {
+                  final next = Set<String>.from(selected);
+                  if (next.contains(action)) {
+                    next.remove(action);
+                  } else {
+                    next.add(action);
+                  }
+                  onChanged(next);
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AdminAuditActorPicker extends StatelessWidget {
+  const _AdminAuditActorPicker({
+    required this.members,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<SupportActionsMember> members;
+  final Set<String> selected;
+  final ValueChanged<Set<String>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final actors = List<SupportActionsMember>.of(members)
+      ..sort(
+        (a, b) => _labelFor(a).toLowerCase().compareTo(
+          _labelFor(b).toLowerCase(),
+        ),
+      );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Team member',
+          style: AppTextStyles.mono11(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          key: const Key('admin_asa_filter_actor'),
+          spacing: 6,
+          runSpacing: 6,
+          children: <Widget>[
+            for (final member in actors)
+              _AdminAuditChoiceChip(
+                chipKey: Key('admin_asa_filter_actor_${member.userId}'),
+                label: _labelFor(member),
+                isActive: selected.contains(member.userId),
+                onTap: () {
+                  final next = Set<String>.from(selected);
+                  if (next.contains(member.userId)) {
+                    next.remove(member.userId);
+                  } else {
+                    next.add(member.userId);
+                  }
+                  onChanged(next);
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static String _labelFor(SupportActionsMember member) {
+    final displayName = member.displayName.trim();
+    if (displayName.isNotEmpty) return displayName;
+    final email = member.email.trim();
+    return email.isEmpty ? member.userId : email;
+  }
+}
+
+class _AdminAuditChoiceChip extends StatelessWidget {
+  const _AdminAuditChoiceChip({
+    required this.chipKey,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final Key chipKey;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      key: chipKey,
+      tooltip: tooltip,
+      selected: isActive,
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
+      onSelected: (_) => onTap(),
+    );
   }
 }
 
@@ -1595,59 +1639,20 @@ const List<String> kAuditLogFilterableActions = <String>[
   'team.users.deactivate',
   'team.users.reactivate',
   'team.users.soft_delete',
+  'team.users.reset_password',
+  'team.users.reset_mfa',
   'team.roles.create_custom',
-  'team.roles.delete_custom',
-  'team.roles.edit_seeded',
-  'team.org_unit.move',
-  'team.location.move',
+  'team.roles.assign',
+  'team.roles.revoke',
   'team.session.force_logout',
-  'auth.password.change',
-  'auth.mfa.enroll',
-  'admin.session.force_logout',
-  'admin.users.reset_mfa_factors',
-  'admin.users.reset_password',
-  'admin.users.erasure.requested',
-  'admin.users.erasure.confirmed',
+  'team.org_unit.move',
+  'auth.user.signed_in',
+  'auth.session_revoked',
+  'auth.password_changed',
+  'auth.mfa_totp_enrolled',
+  'auth.mfa_factor_removed',
   'audit.export.requested',
 ];
-
-class _ActorKindMultiSelect extends StatelessWidget {
-  const _ActorKindMultiSelect({required this.value, required this.onChanged});
-
-  final List<AuditActorKind> value;
-  final ValueChanged<List<AuditActorKind>> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return InputDecorator(
-      decoration: const InputDecoration(
-        labelText: 'Actor kind',
-        border: OutlineInputBorder(),
-      ),
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
-        children: <Widget>[
-          for (final kind in AuditActorKind.values)
-            FilterChip(
-              key: Key('admin_asa_filter_actor_kind_${kind.wire}'),
-              label: Text(kind.displayLabel),
-              selected: value.contains(kind),
-              onSelected: (selected) {
-                final next = List<AuditActorKind>.of(value);
-                if (selected) {
-                  if (!next.contains(kind)) next.add(kind);
-                } else {
-                  next.remove(kind);
-                }
-                onChanged(next);
-              },
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 class _AuditRowTile extends StatefulWidget {
   const _AuditRowTile({super.key, required this.row});
