@@ -37,6 +37,7 @@ import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'corpus_admin_chunk_view.dart';
 import 'operator_picker_screen.dart';
@@ -355,10 +356,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                 labelColor: AppColors.textPrimary,
                 unselectedLabelColor: AppColors.textSecondary,
                 tabs: <Widget>[
-                  Tab(
-                    key: Key('admin_corpus_versions_tab'),
-                    text: 'Knowledge',
-                  ),
+                  Tab(key: Key('admin_corpus_versions_tab'), text: 'Knowledge'),
                   Tab(
                     key: Key('admin_corpus_graph_candidates_tab'),
                     text: 'Connections',
@@ -494,12 +492,12 @@ class _VersionsTab extends StatelessWidget {
                 ),
                 if (editingEnabled) ...[
                   const SizedBox(height: 16),
-                  FilledButton.icon(
+                  AdminActionButton(
                     key: const Key('admin_corpus_first_upload_button'),
+                    label: 'Upload a document',
                     onPressed: busy ? null : onUploadPressed,
-                    style: AdminButtonStyles.primary,
-                    icon: const Icon(Icons.upload_file_outlined, size: 16),
-                    label: const Text('Upload a document'),
+                    icon: Icons.upload_file_outlined,
+                    role: AdminActionRole.primary,
                   ),
                 ],
               ],
@@ -912,12 +910,12 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
             onReject: _toggleReject,
             onEdit: _onEditPressed,
             trailing: widget.editingEnabled && diff.extracted.isNotEmpty
-                ? FilledButton.icon(
+                ? AdminActionButton(
                     key: const Key('admin_corpus_graph_bulk_approve_extracted'),
+                    label: 'Bulk approve all',
                     onPressed: _busy ? null : _bulkApproveExtracted,
-                    style: AdminButtonStyles.primary,
-                    icon: const Icon(Icons.done_all_outlined, size: 16),
-                    label: const Text('Bulk approve all'),
+                    icon: Icons.done_all_outlined,
+                    role: AdminActionRole.primary,
                   )
                 : null,
           ),
@@ -977,14 +975,14 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                           'operator workspace for this session.',
                 action: widget.onPickOperator == null
                     ? null
-                    : FilledButton.icon(
+                    : AdminActionButton(
                         key: const Key(
                           'admin_corpus_graph_pick_operator_button',
                         ),
+                        label: 'Choose operator',
                         onPressed: _busy ? null : widget.onPickOperator,
-                        style: AdminButtonStyles.primary,
-                        icon: const Icon(Icons.swap_horiz_outlined, size: 16),
-                        label: const Text('Choose operator'),
+                        icon: Icons.swap_horiz_outlined,
+                        role: AdminActionRole.primary,
                       ),
               ),
             ),
@@ -1002,12 +1000,15 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
               ),
             ),
           if (widget.editingEnabled)
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            AdminActionBar(
+              alignment: WrapAlignment.start,
               children: <Widget>[
-                FilledButton.icon(
+                AdminActionButton(
                   key: const Key('admin_corpus_graph_commit_button'),
+                  label:
+                      'Apply decisions (${_approveQueue.length + _rejectQueue.length + _editQueue.length} '
+                      'decision'
+                      '${(_approveQueue.length + _rejectQueue.length + _editQueue.length) == 1 ? '' : 's'})',
                   // Disabled when no decisions are queued, when a
                   // commit is already in flight, OR when the host
                   // (admin_routes.dart) has not picked a target
@@ -1017,27 +1018,22 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       (!_hasQueuedDecisions || _busy || !widget.hasTarget)
                       ? null
                       : _onCommitBatch,
-                  style: AdminButtonStyles.primary,
-                  icon: const Icon(Icons.check_circle_outline, size: 16),
-                  label: Text(
-                    'Apply decisions (${_approveQueue.length + _rejectQueue.length + _editQueue.length} '
-                    'decision'
-                    '${(_approveQueue.length + _rejectQueue.length + _editQueue.length) == 1 ? '' : 's'})',
-                  ),
+                  icon: Icons.check_circle_outline,
+                  role: AdminActionRole.primary,
                 ),
-                OutlinedButton.icon(
+                AdminActionButton(
                   key: const Key('admin_corpus_graph_candidates_discard_queue'),
+                  label: 'Clear selections',
                   onPressed: (!_hasQueuedDecisions || _busy)
                       ? null
                       : _discardQueue,
-                  icon: const Icon(Icons.clear, size: 16),
-                  label: const Text('Clear selections'),
+                  icon: Icons.clear,
                 ),
-                OutlinedButton.icon(
+                AdminActionButton(
                   key: const Key('admin_corpus_age_rebuild_button'),
+                  label: 'Rebuild relationship search',
                   onPressed: _busy ? null : _onAgeRebuild,
-                  icon: const Icon(Icons.refresh_outlined, size: 16),
-                  label: const Text('Rebuild relationship search'),
+                  icon: Icons.refresh_outlined,
                 ),
               ],
             ),
@@ -1292,20 +1288,18 @@ class _GraphCandidateRow extends StatelessWidget {
                   ),
                   onPressed: busy ? null : onReject,
                   style: AdminButtonStyles.reject(selected: queuedForReject),
-                  icon: Icon(
-                    Icons.close_outlined,
-                    size: 14,
-                  ),
+                  icon: Icon(Icons.close_outlined, size: 14),
                   label: Text(queuedForReject ? 'Selected' : 'Reject'),
                 ),
-                OutlinedButton.icon(
+                AdminActionButton(
                   key: Key(
                     'admin_corpus_graph_candidate_edit_'
                     '${candidate.candidateId}',
                   ),
+                  label: queuedForEdit ? 'Edit queued' : 'Edit',
                   onPressed: busy ? null : onEdit,
-                  icon: const Icon(Icons.edit_outlined, size: 14),
-                  label: Text(queuedForEdit ? 'Edit queued' : 'Edit'),
+                  icon: Icons.edit_outlined,
+                  compact: true,
                 ),
               ],
             ),
@@ -1365,7 +1359,7 @@ class _TypeChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: AppColors.peacock.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
       ),
       child: Text(
         label,
@@ -1404,7 +1398,7 @@ class _StagedDecisionChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
       ),
       child: Text('Selection: $label', style: AppTextStyles.mono11(color: fg)),
     );
@@ -1435,7 +1429,7 @@ class _ConfidenceChip extends StatelessWidget {
         color: low
             ? AppColors.warningBadgeBg
             : AppColors.positive.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
       ),
       child: Text(
         low ? 'Low confidence ($scoreText)' : 'Confidence $scoreText',
@@ -1492,13 +1486,14 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
       title: 'Edit relationship suggestion',
       maxWidth: 480,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_corpus_graph_candidates_edit_dialog_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Queue edit',
           onPressed: () {
             final editedType = _typeController.text.trim();
             final reason = _reasonController.text.trim();
@@ -1523,7 +1518,7 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
               ),
             );
           },
-          child: const Text('Queue edit'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(
@@ -1660,12 +1655,12 @@ class _VersionList extends StatelessWidget {
           if (editingEnabled)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: FilledButton.icon(
+              child: AdminActionButton(
                 key: const Key('admin_corpus_upload_button'),
+                label: 'Upload a document',
                 onPressed: busy ? null : onUploadPressed,
-                style: AdminButtonStyles.primary,
-                icon: const Icon(Icons.upload_file_outlined, size: 16),
-                label: const Text('Upload a document'),
+                icon: Icons.upload_file_outlined,
+                role: AdminActionRole.primary,
               ),
             ),
           const Divider(height: 1, color: AppColors.borderSubtle),
@@ -1747,18 +1742,16 @@ class _VersionList extends StatelessWidget {
                             const SizedBox(height: 8),
                             Align(
                               alignment: Alignment.centerLeft,
-                              child: OutlinedButton.icon(
+                              child: AdminActionButton(
                                 key: Key(
                                   'admin_corpus_rollback_${v.versionId}',
                                 ),
+                                label: 'Restore',
                                 onPressed: busy
                                     ? null
                                     : () => onRollbackPressed(v),
-                                icon: const Icon(
-                                  Icons.history_outlined,
-                                  size: 14,
-                                ),
-                                label: const Text('Restore'),
+                                icon: Icons.history_outlined,
+                                compact: true,
                               ),
                             ),
                           ],
@@ -1815,7 +1808,9 @@ class _VersionDetail extends StatelessWidget {
               children: [
                 _DetailRow(
                   label: 'Status',
-                  value: version.isCurrent ? 'Live now' : 'Replaced by a newer version',
+                  value: version.isCurrent
+                      ? 'Live now'
+                      : 'Replaced by a newer version',
                 ),
                 _DetailRow(
                   label: 'Created',
@@ -1930,20 +1925,19 @@ class _StagedDiffCard extends StatelessWidget {
             keyPrefix: 'inactivated',
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          AdminActionBar(
+            alignment: WrapAlignment.start,
             children: <Widget>[
-              FilledButton(
+              AdminActionButton(
                 key: const Key('admin_corpus_commit_button'),
+                label: 'Publish content',
                 onPressed: busy ? null : onCommit,
-                style: AdminButtonStyles.primary,
-                child: const Text('Publish content'),
+                role: AdminActionRole.primary,
               ),
-              OutlinedButton(
+              AdminActionButton(
                 key: const Key('admin_corpus_discard_button'),
+                label: 'Clear preview',
                 onPressed: busy ? null : onDiscard,
-                child: const Text('Clear preview'),
               ),
             ],
           ),
@@ -2120,7 +2114,7 @@ class _CurrentChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: AppColors.positive.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
       ),
       child: Text(
         'Current',
@@ -2237,16 +2231,17 @@ class _ConfirmDialog extends StatelessWidget {
       title: title,
       onClose: () => Navigator.of(context).pop(false),
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_corpus_confirm_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_corpus_confirm_ok'),
-          style: AdminButtonStyles.primary,
+          label: confirmLabel,
           onPressed: () => Navigator.of(context).pop(true),
-          child: Text(confirmLabel),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Text(
@@ -2301,13 +2296,14 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
         title: 'Demo upload',
         maxWidth: 520,
         actions: <Widget>[
-          TextButton(
+          AdminActionButton(
+            label: 'Cancel',
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            role: AdminActionRole.quiet,
           ),
-          FilledButton(
+          AdminActionButton(
             key: const Key('admin_corpus_demo_picker_submit'),
-            style: AdminButtonStyles.primary,
+            label: 'Preview upload',
             onPressed: () {
               final fileName = fileNameController.text.trim();
               final body = controller.text;
@@ -2325,7 +2321,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
                 ),
               );
             },
-            child: const Text('Preview upload'),
+            role: AdminActionRole.primary,
           ),
         ],
         child: Column(

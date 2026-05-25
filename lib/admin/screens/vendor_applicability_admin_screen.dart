@@ -30,7 +30,27 @@ import '../admin_button_styles.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/vendor_applicability_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import 'vendor_applicability_vendor_catalog.dart';
+
+ButtonStyle _adminSegmentedButtonStyle() {
+  return ButtonStyle(
+    minimumSize: const WidgetStatePropertyAll(
+      Size(0, AdminButtonStyles.controlHeight),
+    ),
+    padding: const WidgetStatePropertyAll(
+      EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    ),
+    shape: WidgetStatePropertyAll(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
+      ),
+    ),
+    textStyle: WidgetStatePropertyAll(
+      AppTextStyles.buttonLabel(color: AppColors.textPrimary),
+    ),
+  );
+}
 
 class VendorApplicabilityAdminScreen extends StatefulWidget {
   const VendorApplicabilityAdminScreen({
@@ -182,9 +202,9 @@ class _VendorApplicabilityAdminScreenState
   ) {
     final scope = _scopeRank(a).compareTo(_scopeRank(b));
     if (scope != 0) return scope;
-    final vendor = _vendorLabel(a.vendorSlug).compareTo(
-      _vendorLabel(b.vendorSlug),
-    );
+    final vendor = _vendorLabel(
+      a.vendorSlug,
+    ).compareTo(_vendorLabel(b.vendorSlug));
     if (vendor != 0) return vendor;
     final key = a.settingKey.compareTo(b.settingKey);
     if (key != 0) return key;
@@ -436,10 +456,7 @@ class _VendorApplicabilityAdminScreenState
         key: const Key('admin_vendor_applicability_list'),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
         children: [
-          _SectionLabel(
-            text: 'Current rules',
-            count: current.length,
-          ),
+          _SectionLabel(text: 'Current rules', count: current.length),
           const SizedBox(height: 10),
           if (current.isEmpty)
             const _MutedNote(
@@ -520,19 +537,19 @@ class _Toolbar extends StatelessWidget {
               style: AppTextStyles.body14(color: AppColors.textPrimary),
             ),
           ),
-          IconButton(
+          AdminIconAction(
             key: const Key('admin_vendor_applicability_refresh'),
+            icon: Icons.refresh_outlined,
             tooltip: 'Refresh',
             onPressed: saving ? null : onRefresh,
-            icon: const Icon(Icons.refresh_outlined),
           ),
           const SizedBox(width: 8),
-          FilledButton.icon(
+          AdminActionButton(
             key: const Key('admin_vendor_applicability_add'),
-            style: AdminButtonStyles.primary,
+            label: saving ? 'Saving...' : 'Add rule',
             onPressed: editingEnabled && !saving ? onAdd : null,
-            icon: const Icon(Icons.add_outlined, size: 18),
-            label: Text(saving ? 'Saving...' : 'Add rule'),
+            icon: Icons.add_outlined,
+            role: AdminActionRole.primary,
           ),
         ],
       ),
@@ -617,9 +634,7 @@ class _RuleCard extends StatelessWidget {
                   children: [
                     Text(
                       vendorLabel,
-                      style: AppTextStyles.body14(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
                     ),
                     _CategoryChip(vendorSlug: row.vendorSlug),
                     _EnabledPill(enabled: row.enabled),
@@ -627,17 +642,18 @@ class _RuleCard extends StatelessWidget {
                 ),
               ),
               if (editingEnabled) ...[
-                IconButton(
+                AdminIconAction(
                   key: Key('admin_vendor_applicability_edit_${row.id}'),
+                  icon: Icons.edit_outlined,
                   tooltip: 'Edit rule',
-                  icon: const Icon(Icons.edit_outlined, size: 18),
                   onPressed: saving ? null : onEdit,
                 ),
-                IconButton(
+                AdminIconAction(
                   key: Key('admin_vendor_applicability_end_${row.id}'),
+                  icon: Icons.event_busy_outlined,
                   tooltip: 'Stop using this vendor',
-                  icon: const Icon(Icons.event_busy_outlined, size: 18),
                   onPressed: saving ? null : onEnd,
+                  destructive: true,
                 ),
               ],
             ],
@@ -676,7 +692,7 @@ class _EnabledPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         border: Border.all(color: color.withValues(alpha: 0.42), width: 1),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
       ),
       child: Text(
         enabled ? 'Allowed' : 'Blocked',
@@ -707,7 +723,10 @@ class _AppliesToChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SummaryChip(label: 'Applies to: $label', icon: Icons.place_outlined);
+    return _SummaryChip(
+      label: 'Applies to: $label',
+      icon: Icons.place_outlined,
+    );
   }
 }
 
@@ -724,7 +743,7 @@ class _SummaryChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -860,10 +879,7 @@ class _HistoryRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            range,
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
+          Text(range, style: AppTextStyles.body12(color: AppColors.textMuted)),
         ],
       ),
     );
@@ -1124,9 +1140,7 @@ class _VendorApplicabilityEditDialogState
           return;
         }
         if (_locationId == null) {
-          setState(
-            () => _error = 'Choose a location (or pick all operators).',
-          );
+          setState(() => _error = 'Choose a location (or pick all operators).');
           return;
         }
         operatorId = _operatorId;
@@ -1174,16 +1188,17 @@ class _VendorApplicabilityEditDialogState
       title: _isEditing ? 'Edit rule' : 'Add rule',
       maxWidth: 580,
       actions: [
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_vendor_applicability_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_vendor_applicability_submit'),
-          style: AdminButtonStyles.primary,
+          label: _isEditing ? 'Save rule' : 'Add rule',
           onPressed: _submit,
-          child: Text(_isEditing ? 'Save rule' : 'Add rule'),
+          role: AdminActionRole.primary,
         ),
       ],
       // The friendly form can be taller than the dialog surface (vendor
@@ -1306,6 +1321,7 @@ class _VendorApplicabilityEditDialogState
         const SizedBox(height: 6),
         SegmentedButton<bool>(
           key: const Key('admin_vendor_applicability_enabled'),
+          style: _adminSegmentedButtonStyle(),
           segments: const <ButtonSegment<bool>>[
             ButtonSegment<bool>(value: true, label: Text('Yes, allowed')),
             ButtonSegment<bool>(value: false, label: Text('No, blocked')),
@@ -1577,10 +1593,14 @@ class _VendorApplicabilityEditDialogState
             children: [
               for (final period in _servicePeriods)
                 InputChip(
-                  key: Key(
-                    'admin_vendor_applicability_service_period_$period',
-                  ),
+                  key: Key('admin_vendor_applicability_service_period_$period'),
                   label: Text(period),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      AdminButtonStyles.radius,
+                    ),
+                    side: const BorderSide(color: AppColors.borderSubtle),
+                  ),
                   onDeleted: () => setState(() {
                     _servicePeriods.remove(period);
                     _syncJsonFromFriendlyFields();
@@ -1604,11 +1624,13 @@ class _VendorApplicabilityEditDialogState
               ),
             ),
             const SizedBox(width: 8),
-            OutlinedButton(
-              key: const Key('admin_vendor_applicability_service_period_button'),
-              style: AdminButtonStyles.secondary(),
+            AdminActionButton(
+              key: const Key(
+                'admin_vendor_applicability_service_period_button',
+              ),
+              label: 'Add',
               onPressed: _addServicePeriod,
-              child: const Text('Add'),
+              compact: true,
             ),
           ],
         ),
@@ -1658,6 +1680,7 @@ class _VendorApplicabilityEditDialogState
         const SizedBox(height: 6),
         SegmentedButton<String>(
           key: const Key('admin_vendor_applicability_tier_key'),
+          style: _adminSegmentedButtonStyle(),
           segments: const <ButtonSegment<String>>[
             ButtonSegment<String>(value: 'standard', label: Text('Standard')),
             ButtonSegment<String>(value: 'premium', label: Text('Premium')),
@@ -1752,13 +1775,14 @@ class _VendorApplicabilityEditDialogState
           ),
           if (_userEditedJson) ...[
             const SizedBox(height: 6),
-            TextButton(
+            AdminActionButton(
               key: const Key('admin_vendor_applicability_reset_json'),
+              label: 'Reset to the details above',
               onPressed: () => setState(() {
                 _userEditedJson = false;
                 _metadataJson.text = _prettyJson(_buildMetadata());
               }),
-              child: const Text('Reset to the details above'),
+              role: AdminActionRole.quiet,
             ),
           ],
         ],
@@ -1778,10 +1802,7 @@ class _FieldLabel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: AppTextStyles.body14(color: AppColors.textPrimary),
-        ),
+        Text(label, style: AppTextStyles.body14(color: AppColors.textPrimary)),
         if (example != null) ...[
           const SizedBox(height: 2),
           Text(
@@ -1815,10 +1836,7 @@ class _CheckRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       child: Row(
         children: [
-          Checkbox(
-            value: value,
-            onChanged: (v) => onChanged(v ?? false),
-          ),
+          Checkbox(value: value, onChanged: (v) => onChanged(v ?? false)),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
@@ -1981,14 +1999,15 @@ class _ReasonDialogState extends State<_ReasonDialog> {
       title: widget.title,
       maxWidth: 420,
       actions: [
-        TextButton(
+        AdminActionButton(
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
-          style: AdminButtonStyles.primary,
+        AdminActionButton(
+          label: 'Continue',
           onPressed: _submit,
-          child: const Text('Continue'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(

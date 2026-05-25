@@ -87,9 +87,9 @@ import '../../services/auth/custom_role_validator.dart' show RoleScope;
 import '../../services/auth/role_key_generator.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/role_permission_picker.dart';
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/default_role_catalog_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import 'default_role_catalog_publish_dialog.dart';
 
 /// Role tiers granted `team.roles.default_catalog.view` by the seeded
@@ -645,34 +645,28 @@ class _DraftEditorPanel extends StatelessWidget {
               onOpenRole: onOpenRole,
             ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 6,
+          AdminActionBar(
             alignment: WrapAlignment.end,
             children: <Widget>[
               if (canEdit)
-                OutlinedButton.icon(
+                AdminActionButton(
                   key: const Key('admin_default_role_catalog_add_role'),
+                  label: 'Add role',
                   onPressed: onAddRole,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Add role'),
-                  style: AdminButtonStyles.secondary(),
+                  icon: Icons.add,
                 ),
               if (canEdit && !draftEqualsCurrent)
-                OutlinedButton(
+                AdminActionButton(
                   key: const Key('admin_default_role_catalog_discard_draft'),
+                  label: 'Discard changes',
                   onPressed: onDiscardDraft,
-                  style: AdminButtonStyles.secondary(
-                    foregroundColor: AppColors.textPrimary,
-                    borderColor: AppColors.borderSubtle,
-                  ),
-                  child: const Text('Discard changes'),
+                  role: AdminActionRole.quiet,
                 ),
-              FilledButton(
+              AdminActionButton(
                 key: const Key('admin_default_role_catalog_publish_button'),
+                label: 'Publish',
                 onPressed: canPublish ? onPublish : null,
-                style: AdminButtonStyles.primary,
-                child: const Text('Publish'),
+                role: AdminActionRole.primary,
               ),
             ],
           ),
@@ -864,16 +858,17 @@ class _AddDefaultRoleDialogState extends State<_AddDefaultRoleDialog> {
       icon: Icons.person_add_alt_outlined,
       maxWidth: 780,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_default_role_catalog_add_role_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_default_role_catalog_add_role_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Add role',
           onPressed: _submit,
-          child: const Text('Add role'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: SizedBox(
@@ -1038,23 +1033,19 @@ class _RoleEditorDialogState extends State<_RoleEditorDialog> {
       maxWidth: 840,
       actions: <Widget>[
         if (widget.canEdit && widget.onRemove != null)
-          OutlinedButton.icon(
+          AdminActionButton(
             key: Key('admin_default_role_catalog_draft_remove_${widget.index}'),
+            label: 'Remove',
             onPressed: _remove,
-            icon: const Icon(Icons.delete_outline, size: 16),
-            label: const Text('Remove'),
-            style: AdminButtonStyles.secondary(
-              foregroundColor: AppColors.negative,
-              borderColor: AppColors.negative.withValues(alpha: 0.55),
-            ),
+            icon: Icons.delete_outline,
+            role: AdminActionRole.dangerSecondary,
           ),
-        OutlinedButton(
+        AdminActionButton(
           key: Key(
             'admin_default_role_catalog_role_dialog_done_${widget.index}',
           ),
+          label: 'Done',
           onPressed: () => Navigator.of(context).pop(),
-          style: AdminButtonStyles.secondary(),
-          child: const Text('Done'),
         ),
       ],
       child: ConstrainedBox(

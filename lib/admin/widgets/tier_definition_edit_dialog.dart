@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_surface.dart';
-import '../admin_button_styles.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import 'admin_action_controls.dart';
 import 'per_vendor_cadence_editor.dart';
 
 class TierDefinitionEditResult {
@@ -135,17 +135,17 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
       icon: Icons.tune_outlined,
       maxWidth: 640,
       actions: <Widget>[
-        OutlinedButton(
+        AdminActionButton(
           key: const Key('admin_tier_definition_dialog_cancel'),
-          style: AdminButtonStyles.secondary(),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_tier_definition_dialog_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Save changes',
           onPressed: _onSubmit,
-          child: const Text('Save changes'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Flexible(
