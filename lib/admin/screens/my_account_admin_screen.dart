@@ -2359,121 +2359,104 @@ class _AdminEnrollMfaDialogState extends State<_AdminEnrollMfaDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('admin_enroll_mfa_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Set up your authenticator app',
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Open your authenticator app, add a new account, and either '
-                  'scan the QR code below or paste the secret. Then enter the '
-                  '6-digit code your app shows.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 14),
-                Center(
-                  child: Container(
-                    key: const Key('admin_enroll_mfa_qr'),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(
-                        color: AppColors.borderSubtle,
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: QrImageView(
-                      data: widget.enrollment.otpAuthUrl,
-                      version: QrVersions.auto,
-                      size: 148,
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Setup link',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  widget.enrollment.otpAuthUrl,
-                  key: const Key('admin_enroll_mfa_otpauth'),
-                  style: AppTextStyles.body13(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Secret',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  widget.enrollment.secretBase32,
-                  key: const Key('admin_enroll_mfa_secret'),
-                  style: AppTextStyles.body14(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '6-digit code',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                ),
-                const SizedBox(height: 4),
-                TextField(
-                  key: const Key('admin_enroll_mfa_code_field'),
-                  controller: _codeController,
-                  enabled: !_submitting,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(6),
-                  ],
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 10),
-                  _AdminDialogError(
-                    key: const Key('admin_enroll_mfa_error'),
-                    message: _error!,
-                  ),
-                ],
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      key: const Key('admin_enroll_mfa_cancel'),
-                      onPressed: _submitting
-                          ? null
-                          : () => Navigator.of(context).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      key: const Key('admin_enroll_mfa_confirm'),
-                      onPressed: _canSubmit ? _confirm : null,
-                      child: Text(_submitting ? 'Confirming...' : 'Confirm'),
-                    ),
-                  ],
-                ),
-              ],
+      title: 'Set up your authenticator app',
+      icon: Icons.security_outlined,
+      maxWidth: 540,
+      actions: [
+        TextButton(
+          key: const Key('admin_enroll_mfa_cancel'),
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_enroll_mfa_confirm'),
+          onPressed: _canSubmit ? _confirm : null,
+          child: Text(_submitting ? 'Confirming...' : 'Confirm'),
+        ),
+      ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Open your authenticator app, add a new account, and either '
+              'scan the QR code below or paste the secret. Then enter the '
+              '6-digit code your app shows.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-          ),
+            const SizedBox(height: 14),
+            Center(
+              child: Container(
+                key: const Key('admin_enroll_mfa_qr'),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: QrImageView(
+                  data: widget.enrollment.otpAuthUrl,
+                  version: QrVersions.auto,
+                  size: 148,
+                  backgroundColor: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Setup link',
+              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            ),
+            const SizedBox(height: 4),
+            SelectableText(
+              widget.enrollment.otpAuthUrl,
+              key: const Key('admin_enroll_mfa_otpauth'),
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Secret',
+              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            ),
+            const SizedBox(height: 4),
+            SelectableText(
+              widget.enrollment.secretBase32,
+              key: const Key('admin_enroll_mfa_secret'),
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '6-digit code',
+              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            ),
+            const SizedBox(height: 4),
+            TextField(
+              key: const Key('admin_enroll_mfa_code_field'),
+              controller: _codeController,
+              enabled: !_submitting,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              _AdminDialogError(
+                key: const Key('admin_enroll_mfa_error'),
+                message: _error!,
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -2582,77 +2565,63 @@ class _AdminChangePasswordDialogState
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('admin_change_password_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Change your password',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Enter your current password, then choose a new one. Use at '
-                'least 12 characters with a number and a symbol.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              _PasswordField(
-                fieldKey: const Key('admin_change_password_current'),
-                label: 'Current password',
-                controller: _currentController,
-                enabled: !_submitting,
-              ),
-              const SizedBox(height: 12),
-              _PasswordField(
-                fieldKey: const Key('admin_change_password_new'),
-                label: 'New password',
-                controller: _newController,
-                enabled: !_submitting,
-              ),
-              const SizedBox(height: 12),
-              _PasswordField(
-                fieldKey: const Key('admin_change_password_confirm'),
-                label: 'Confirm new password',
-                controller: _confirmController,
-                enabled: !_submitting,
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                _AdminDialogError(
-                  key: const Key('admin_change_password_error'),
-                  message: _error!,
-                ),
-              ],
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    key: const Key('admin_change_password_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('admin_change_password_save'),
-                    onPressed: _canSubmit ? _submit : null,
-                    child: Text(_submitting ? 'Saving...' : 'Change password'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+      title: 'Change your password',
+      icon: Icons.lock_reset_outlined,
+      maxWidth: 540,
+      actions: [
+        TextButton(
+          key: const Key('admin_change_password_cancel'),
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
         ),
+        FilledButton(
+          key: const Key('admin_change_password_save'),
+          onPressed: _canSubmit ? _submit : null,
+          child: Text(_submitting ? 'Saving...' : 'Change password'),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Enter your current password, then choose a new one. Use at '
+            'least 12 characters with a number and a symbol.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          _PasswordField(
+            fieldKey: const Key('admin_change_password_current'),
+            label: 'Current password',
+            controller: _currentController,
+            enabled: !_submitting,
+          ),
+          const SizedBox(height: 12),
+          _PasswordField(
+            fieldKey: const Key('admin_change_password_new'),
+            label: 'New password',
+            controller: _newController,
+            enabled: !_submitting,
+          ),
+          const SizedBox(height: 12),
+          _PasswordField(
+            fieldKey: const Key('admin_change_password_confirm'),
+            label: 'Confirm new password',
+            controller: _confirmController,
+            enabled: !_submitting,
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            _AdminDialogError(
+              key: const Key('admin_change_password_error'),
+              message: _error!,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -2733,79 +2702,61 @@ class _AdminMfaRecoveryDialogState extends State<_AdminMfaRecoveryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('admin_mfa_recovery_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Lost your authenticator?',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'If you can no longer get codes from your authenticator app, '
-                'we will email the account on file with the next step. A '
-                'Forge & Flow ecosystem admin reviews every recovery '
-                'request.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Account email',
-                style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-              ),
-              const SizedBox(height: 4),
-              TextField(
-                key: const Key('admin_mfa_recovery_email_field'),
-                controller: _emailController,
-                enabled: !_submitting,
-                keyboardType: TextInputType.emailAddress,
-                inputFormatters: [
-                  FilteringTextInputFormatter.deny(RegExp(r'\s')),
-                ],
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                _AdminDialogError(
-                  key: const Key('admin_mfa_recovery_error'),
-                  message: _error!,
-                ),
-              ],
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    key: const Key('admin_mfa_recovery_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('admin_mfa_recovery_submit'),
-                    onPressed: _canSubmit ? _submit : null,
-                    child: Text(
-                      _submitting ? 'Requesting...' : 'Request recovery',
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+      title: 'Lost your authenticator?',
+      icon: Icons.help_outline,
+      maxWidth: 540,
+      actions: [
+        TextButton(
+          key: const Key('admin_mfa_recovery_cancel'),
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
         ),
+        FilledButton(
+          key: const Key('admin_mfa_recovery_submit'),
+          onPressed: _canSubmit ? _submit : null,
+          child: Text(_submitting ? 'Requesting...' : 'Request recovery'),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'If you can no longer get codes from your authenticator app, '
+            'we will email the account on file with the next step. A '
+            'Forge & Flow ecosystem admin reviews every recovery '
+            'request.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Account email',
+            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+          ),
+          const SizedBox(height: 4),
+          TextField(
+            key: const Key('admin_mfa_recovery_email_field'),
+            controller: _emailController,
+            enabled: !_submitting,
+            keyboardType: TextInputType.emailAddress,
+            inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            _AdminDialogError(
+              key: const Key('admin_mfa_recovery_error'),
+              message: _error!,
+            ),
+          ],
+        ],
       ),
     );
   }
