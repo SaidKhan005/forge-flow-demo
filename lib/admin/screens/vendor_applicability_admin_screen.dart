@@ -20,6 +20,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
@@ -321,91 +322,77 @@ class _VendorApplicabilityAdminScreenState
     final currentRows = _currentRows;
     final allowedCount = currentRows.where((row) => row.enabled).length;
     final blockedCount = currentRows.length - allowedCount;
-    // Centre + focused width cap so this dense settings table fits inside
-    // the admin shell beside the left nav without clipping its actions.
-    return Container(
+    return ColoredBox(
       key: const Key('admin_vendor_applicability_screen'),
       color: AppColors.backgroundDeep,
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 920),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const OperatorWebScreenHeader(
-                  icon: Icons.rule_outlined,
-                  title: 'Vendor Applicability',
-                  collapseBelowWidth: 0,
-                  subtitle:
-                      'Choose which vendors are allowed to power wage, covers, '
-                      'and data freshness settings.',
-                ),
-                const SizedBox(height: 14),
-                if (!widget.editingEnabled)
-                  const _InlineBanner(
-                    key: Key('admin_vendor_applicability_readonly'),
-                    icon: Icons.lock_outline,
-                    message:
-                        'Only super admins can change vendor applicability. '
-                        'This view is read-only for support.',
-                  ),
-                if (_actionError != null)
-                  _InlineBanner(
-                    key: const Key('admin_vendor_applicability_action_error'),
-                    icon: Icons.warning_amber_rounded,
-                    message: _actionError!,
-                    isError: true,
-                  ),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundSurface,
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: TabBar(
-                    controller: _tabController,
-                    labelColor: AppColors.textPrimary,
-                    unselectedLabelColor: AppColors.textMuted,
-                    indicatorColor: AppColors.sunsetDark,
-                    tabs: [for (final tab in _tabs) Tab(text: tab.label)],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _Toolbar(
-                  guide: spec.guide,
-                  allowedCount: allowedCount,
-                  blockedCount: blockedCount,
-                  saving: _saving,
-                  editingEnabled: widget.editingEnabled,
-                  onAdd: _openAddDialog,
-                  onRefresh: _refresh,
-                ),
-                const SizedBox(height: 12),
-                // White surface tile behind the body so the main content
-                // matches the tab bar and toolbar tiles. Flat Container so
-                // the list keeps the bounded height its internal scroll
-                // needs at small widget-test viewports.
-                Expanded(
-                  child: Container(
-                    key: const Key('admin_vendor_applicability_body_surface'),
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundSurface,
-                      border: Border.all(
-                        color: AppColors.borderSubtle,
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: _buildBody(),
-                  ),
-                ),
-              ],
+      child: OperatorWebScreenFrame(
+        maxContentWidth: 960,
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const OperatorWebScreenHeader(
+              icon: Icons.rule_outlined,
+              title: 'Vendor Applicability',
+              collapseBelowWidth: 0,
+              subtitle:
+                  'Choose which vendors are allowed to power wage, covers, '
+                  'and data freshness settings.',
             ),
-          ),
+            const SizedBox(height: 14),
+            if (!widget.editingEnabled)
+              const _InlineBanner(
+                key: Key('admin_vendor_applicability_readonly'),
+                icon: Icons.lock_outline,
+                message:
+                    'Only super admins can change vendor applicability. '
+                    'This view is read-only for support.',
+              ),
+            if (_actionError != null)
+              _InlineBanner(
+                key: const Key('admin_vendor_applicability_action_error'),
+                icon: Icons.warning_amber_rounded,
+                message: _actionError!,
+                isError: true,
+              ),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSurface,
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                labelColor: AppColors.textPrimary,
+                unselectedLabelColor: AppColors.textMuted,
+                indicatorColor: AppColors.sunsetDark,
+                tabs: [for (final tab in _tabs) Tab(text: tab.label)],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _Toolbar(
+              guide: spec.guide,
+              allowedCount: allowedCount,
+              blockedCount: blockedCount,
+              saving: _saving,
+              editingEnabled: widget.editingEnabled,
+              onAdd: _openAddDialog,
+              onRefresh: _refresh,
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Container(
+                key: const Key('admin_vendor_applicability_body_surface'),
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundSurface,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: _buildBody(),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -529,61 +516,47 @@ class _Toolbar extends StatelessWidget {
             ),
           ],
         );
-        final summary = Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        final summary = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               guide,
               key: const Key('admin_vendor_applicability_guide'),
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-            _ToolbarStat(label: 'Allowed', count: allowedCount),
-            _ToolbarStat(label: 'Blocked', count: blockedCount),
+            const SizedBox(height: 4),
+            Text(
+              '$allowedCount allowed, $blockedCount blocked',
+              style: AppTextStyles.mono11(color: AppColors.textMuted),
+            ),
           ],
         );
-        if (constraints.maxWidth < 720) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              summary,
-              const SizedBox(height: 10),
-              Align(alignment: Alignment.centerRight, child: actions),
-            ],
-          );
-        }
-        return Row(
-          children: [
-            Expanded(child: summary),
-            const SizedBox(width: 14),
-            actions,
-          ],
+        final child = constraints.maxWidth < 720
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  summary,
+                  const SizedBox(height: 12),
+                  Align(alignment: Alignment.centerRight, child: actions),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: summary),
+                  const SizedBox(width: 18),
+                  actions,
+                ],
+              );
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: child,
         );
       },
-    );
-  }
-}
-
-class _ToolbarStat extends StatelessWidget {
-  const _ToolbarStat({required this.label, required this.count});
-
-  final String label;
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '$label: $count',
-        style: AppTextStyles.mono11(color: AppColors.textMuted),
-      ),
     );
   }
 }
@@ -639,16 +612,9 @@ class _RuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final summaryChips = friendlyMetadataChips(
-      settingKind: row.settingKind,
-      metadata: row.metadata,
-    );
-    final details = summaryChips.isEmpty
-        ? 'No special handling'
-        : summaryChips.join(', ');
     return Container(
       key: ValueKey('vendor_applicability_${row.id}'),
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
@@ -658,25 +624,25 @@ class _RuleCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-            flex: 3,
+            flex: 4,
             child: _RuleTextBlock(
               title: vendorLabel,
               subtitle: vendorCategoryLabel(row.vendorSlug),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 16),
           SizedBox(width: 88, child: _EnabledPill(enabled: row.enabled)),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: _RuleTextBlock(title: appliesTo, subtitle: 'Scope'),
-          ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 16),
           Expanded(
             flex: 4,
+            child: _RuleTextBlock(title: appliesTo, subtitle: 'Scope'),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 2,
             child: _RuleTextBlock(
-              title: details,
-              subtitle: 'Since ${_formatDate(row.effectiveFrom)}',
+              title: _formatDate(row.effectiveFrom),
+              subtitle: 'Effective since',
             ),
           ),
           if (editingEnabled)
@@ -1052,8 +1018,8 @@ class _VendorApplicabilityEditDialogState
     }
 
     final metadata = initial?.metadata ?? const <String, Object?>{};
-    _scopeExpanded = _scope != _AppliesToScope.allOperators;
-    _detailsExpanded = _hasSpecialDetails(metadata);
+    _scopeExpanded = false;
+    _detailsExpanded = false;
     _seedFriendlyFieldsFromMetadata(metadata);
     _metadataJson.text = _prettyJson(_buildMetadata());
   }
@@ -1095,20 +1061,6 @@ class _VendorApplicabilityEditDialogState
         }
         break;
     }
-  }
-
-  bool _hasSpecialDetails(Map<String, Object?> metadata) {
-    switch (widget.settingKind) {
-      case VendorApplicabilitySettingKind.wage:
-        return metadata.isNotEmpty;
-      case VendorApplicabilitySettingKind.covers:
-        return metadata.isNotEmpty;
-      case VendorApplicabilitySettingKind.polling:
-        final tier = metadata['tier_key'];
-        return (tier is String && tier != 'standard') ||
-            metadata['polling_seconds_override'] != null;
-    }
-    return metadata.isNotEmpty;
   }
 
   // Builds the narrow per-kind metadata map from the friendly fields,
@@ -1254,10 +1206,13 @@ class _VendorApplicabilityEditDialogState
 
   @override
   Widget build(BuildContext context) {
+    final bodyMaxHeight = (MediaQuery.sizeOf(context).height - 220)
+        .clamp(380.0, 620.0)
+        .toDouble();
     return OperatorWebDialog(
       key: const Key('admin_vendor_applicability_edit_dialog'),
       title: _isEditing ? 'Edit rule' : 'Add rule',
-      maxWidth: 580,
+      maxWidth: 760,
       actions: [
         TextButton(
           key: const Key('admin_vendor_applicability_cancel'),
@@ -1271,14 +1226,8 @@ class _VendorApplicabilityEditDialogState
           child: Text(_isEditing ? 'Save rule' : 'Add rule'),
         ),
       ],
-      // The friendly form can be taller than the dialog surface (vendor
-      // picker + allowed toggle + applies-to + optional fields + advanced
-      // editor + reason). [OperatorWebDialog] lays its body out in a
-      // min-height column, so cap the scroll area to a fraction of the
-      // viewport: the form then scrolls inside the dialog instead of
-      // overflowing, and the dialog still fits on screen.
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: 360),
+        constraints: BoxConstraints(maxHeight: bodyMaxHeight),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1293,16 +1242,24 @@ class _VendorApplicabilityEditDialogState
                 ),
                 const SizedBox(height: 14),
               ],
-              _buildVendorPicker(),
-              const SizedBox(height: 14),
-              _buildAllowedToggle(),
-              const SizedBox(height: 14),
+              _DialogGroup(
+                title: 'Rule',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildVendorPicker(),
+                    const SizedBox(height: 18),
+                    _buildAllowedToggle(),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               _buildAppliesTo(),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               _buildOptionalFields(),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               _buildAdvanced(),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               _FieldLabel(
                 label: 'Why are you making this change?',
                 example: 'Saved with the audit log. Example: Ticket VA-200.',
@@ -1346,9 +1303,24 @@ class _VendorApplicabilityEditDialogState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FieldLabel(
-          label: 'Vendor',
-          example: 'Filtered to vendors that fit this setting.',
+        Row(
+          children: [
+            const Expanded(child: _FieldLabel(label: 'Vendor')),
+            TextButton.icon(
+              key: const Key('admin_vendor_applicability_show_all_vendors'),
+              onPressed: () =>
+                  setState(() => _showAllVendors = !_showAllVendors),
+              icon: Icon(
+                _showAllVendors
+                    ? Icons.filter_alt_off_outlined
+                    : Icons.filter_alt_outlined,
+                size: 16,
+              ),
+              label: Text(
+                _showAllVendors ? 'Show fitting vendors' : 'Show all',
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
@@ -1360,20 +1332,6 @@ class _VendorApplicabilityEditDialogState
           items: items,
           onChanged: (value) => setState(() => _vendorSlug = value),
         ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            key: const Key('admin_vendor_applicability_show_all_vendors'),
-            onPressed: () => setState(() => _showAllVendors = !_showAllVendors),
-            icon: Icon(
-              _showAllVendors
-                  ? Icons.filter_alt_off_outlined
-                  : Icons.filter_alt_outlined,
-              size: 16,
-            ),
-            label: Text(_showAllVendors ? 'Show fitting vendors' : 'Show all'),
-          ),
-        ),
       ],
     );
   }
@@ -1382,11 +1340,7 @@ class _VendorApplicabilityEditDialogState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FieldLabel(
-          label: 'Status',
-          example:
-              'Allowed appears to operators. Blocked keeps it unavailable.',
-        ),
+        const _FieldLabel(label: 'Status'),
         const SizedBox(height: 6),
         SegmentedButton<bool>(
           key: const Key('admin_vendor_applicability_enabled'),
@@ -1556,7 +1510,7 @@ class _VendorApplicabilityEditDialogState
     }
     return _AdvancedFold(
       foldKey: const Key('admin_vendor_applicability_details_toggle'),
-      title: 'Special handling',
+      title: 'Special handling: ${_specialHandlingSummary()}',
       expanded: _detailsExpanded,
       onToggle: () => setState(() => _detailsExpanded = !_detailsExpanded),
       child: Column(
@@ -1572,6 +1526,15 @@ class _VendorApplicabilityEditDialogState
         ],
       ),
     );
+  }
+
+  String _specialHandlingSummary() {
+    final chips = friendlyMetadataChips(
+      settingKind: widget.settingKind,
+      metadata: _buildMetadata(),
+    );
+    if (chips.isEmpty) return 'None';
+    return chips.join(', ');
   }
 
   Widget _buildWageFields() {
@@ -1793,7 +1756,7 @@ class _VendorApplicabilityEditDialogState
   Widget _buildAdvanced() {
     return _AdvancedFold(
       foldKey: const Key('admin_vendor_applicability_advanced_toggle'),
-      title: 'Advanced',
+      title: 'Advanced settings',
       expanded: _advancedExpanded,
       onToggle: () => setState(() => _advancedExpanded = !_advancedExpanded),
       child: Column(
@@ -1842,6 +1805,39 @@ class _VendorApplicabilityEditDialogState
               child: const Text('Reset to the details above'),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DialogGroup extends StatelessWidget {
+  const _DialogGroup({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: AppTextStyles.mono12(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
         ],
       ),
     );
@@ -1981,8 +1977,9 @@ class _AdvancedFold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1990,9 +1987,9 @@ class _AdvancedFold extends StatelessWidget {
           InkWell(
             key: foldKey,
             onTap: onToggle,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
                 children: [
                   Icon(
@@ -2017,7 +2014,7 @@ class _AdvancedFold extends StatelessWidget {
           ),
           if (expanded)
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
               child: child,
             ),
         ],
