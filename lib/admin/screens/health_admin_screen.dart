@@ -1068,8 +1068,7 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
       confirmButtonKey: Key('admin_health_confirm_run'),
       icon: Icons.health_and_safety_outlined,
       title: 'Run system check',
-      description:
-          'This reads live staging health and dependency status and can take a few minutes.',
+      description: 'Refresh the current system health snapshot from staging.',
       confirmLabel: 'Run system check',
       facts: [
         AdminRunCheckFact(
