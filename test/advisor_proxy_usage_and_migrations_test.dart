@@ -425,6 +425,90 @@ void main() {
       );
     });
 
+    // Plans & Limits V1 (5c): the operator's plan drives the model ceiling.
+    // Isolate the plan effect by holding the query class to a nuanced one
+    // (`recommendation`) so a Sonnet-capable plan reaches its ceiling; the
+    // cost-lever downgrade is asserted separately below.
+    test('plan drives the model ceiling: pilot/starter -> Haiku, '
+        'premium/elite/pro/enterprise -> Sonnet', () {
+      const router = SubscriptionLlmTierRouter();
+
+      const haikuPlans = <String>['pilot', 'starter'];
+      for (final plan in haikuPlans) {
+        expect(
+          router.tierFor(subscriptionTier: plan, queryClass: 'recommendation'),
+          equals(ProxyLlmTier.haiku),
+          reason: '$plan must cap at Haiku regardless of query class',
+        );
+      }
+
+      const sonnetPlans = <String>['premium', 'elite', 'pro', 'enterprise'];
+      for (final plan in sonnetPlans) {
+        expect(
+          router.tierFor(subscriptionTier: plan, queryClass: 'recommendation'),
+          equals(ProxyLlmTier.sonnet),
+          reason: '$plan must be allowed up to Sonnet for nuanced synthesis',
+        );
+      }
+    });
+
+    test('plan key is case- and whitespace-insensitive', () {
+      const router = SubscriptionLlmTierRouter();
+
+      expect(
+        router.tierFor(
+          subscriptionTier: '  PREMIUM ',
+          queryClass: 'recommendation',
+        ),
+        equals(ProxyLlmTier.sonnet),
+      );
+      expect(
+        router.tierFor(
+          subscriptionTier: 'Starter',
+          queryClass: 'recommendation',
+        ),
+        equals(ProxyLlmTier.haiku),
+      );
+    });
+
+    test('unknown / missing / legacy plan falls back to the Haiku default', () {
+      const router = SubscriptionLlmTierRouter();
+
+      // Unknown garbage + empty string must not crash; both default to Haiku.
+      for (final plan in const <String>['', 'gold', 'launch', 'basic']) {
+        expect(
+          router.tierFor(subscriptionTier: plan, queryClass: 'recommendation'),
+          equals(ProxyLlmTier.haiku),
+          reason: 'tier "$plan" must fall back to the safe Haiku default',
+        );
+      }
+    });
+
+    test('cost lever downgrades a Sonnet-capable plan on a cheap query but '
+        'never upgrades a Haiku-capped plan', () {
+      const router = SubscriptionLlmTierRouter();
+
+      // Sonnet-capable plan + cheap (non-nuanced) query class -> Haiku.
+      expect(
+        router.tierFor(
+          subscriptionTier: 'premium',
+          queryClass: 'methodology_lookup',
+        ),
+        equals(ProxyLlmTier.haiku),
+        reason: 'cheap query class downgrades a Sonnet plan to Haiku',
+      );
+
+      // Haiku-capped plan + nuanced query class -> still Haiku (no upgrade).
+      expect(
+        router.tierFor(
+          subscriptionTier: 'starter',
+          queryClass: 'recommendation',
+        ),
+        equals(ProxyLlmTier.haiku),
+        reason: 'query class can never upgrade a Haiku-capped plan to Sonnet',
+      );
+    });
+
     test(
       'prompt cache builder marks stable blocks and keys by corpus version',
       () {
