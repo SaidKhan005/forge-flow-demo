@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forge &amp; Flow Admin: System health (redesign preview)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#F8EDE6; --bg-mid:#EFE8E0; --surface:#FFFFFF; --glow:#F4EFE8;
+    --sunset:#CC7A3E; --sunset-dark:#9A5C2A;
+    --peacock:#0E8080; --peacock-dark:#0A6060; --ocean:#14B4AC;
+    --text:#2C2C2C; --text-2:#5A524A; --muted:#857B70;
+    --border:#E2DBD1; --positive:#256B29; --negative:#C62828; --warning:#997000;
+    --r-card:12px; --r-small:7px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg-deep);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px;display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+  .pf{font-family:"Playfair Display",Georgia,serif}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+  svg{display:block}
+
+  .ribbon{background:rgba(20,180,172,.09);border-bottom:1px solid rgba(20,180,172,.28);color:var(--peacock-dark);font-size:12px;padding:6px 22px;display:flex;gap:8px;align-items:center}
+  .ribbon .dot{width:6px;height:6px;border-radius:999px;background:var(--ocean);flex:0 0 auto}
+  .ribbon b{font-weight:700}
+
+  header.bar{height:74px;flex:0 0 auto;background:var(--bg-deep);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 22px;}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand .mark{width:36px;height:36px;border-radius:999px;background:radial-gradient(circle at 30% 30%,#E8A87C,var(--sunset) 55%,var(--sunset-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px}
+  .brand .t1{font-size:17px;font-weight:700} .brand .t2{font-size:10px;font-weight:600;color:var(--sunset-dark);letter-spacing:.4px}
+  .spacer{flex:1 1 auto}
+  .scope-btn{display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:7px 13px;max-width:380px}
+  .scope-btn:hover{border-color:var(--sunset)}
+  .scope-btn .ic{color:var(--sunset-dark)}
+  .scope-btn .lbl-k{font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .scope-btn .lbl-v{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .scope-btn .lbl-v .sep{color:var(--muted);font-weight:500;padding:0 6px}
+  .pill{font-size:11px;font-weight:600;border-radius:999px;padding:4px 11px;background:rgba(14,128,128,.10);color:var(--peacock-dark)}
+
+  .shell{flex:1 1 auto;display:flex;min-height:0}
+  nav.side{width:210px;flex:0 0 auto;background:var(--bg-mid);border-right:1px solid var(--border);padding:12px 8px;overflow:auto}
+  .grp{font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:14px 10px 5px}
+  .grp:first-child{padding-top:2px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-small);cursor:pointer;color:var(--text-2);margin:2px 0}
+  .nav-item:hover{background:rgba(204,122,62,.06)}
+  .nav-item.sel{background:rgba(204,122,62,.11);color:var(--text);font-weight:600}
+  .nav-item .nic{color:var(--text-2)} .nav-item.sel .nic{color:var(--sunset-dark)}
+  .nav-item .lab{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* scope pane (LEFT) - intentionally left as-is */
+  .scopepane{width:248px;flex:0 0 auto;background:var(--bg-mid);border-right:1px solid var(--border);overflow:auto;position:relative}
+  .scopepane .sp-h{padding:15px 16px 8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .scopepane .sp-t{font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+  .unchg{font-size:9.5px;font-weight:700;color:var(--peacock-dark);background:rgba(14,128,128,.10);border:1px solid rgba(14,128,128,.25);border-radius:999px;padding:2px 8px}
+  .tree{padding:4px 10px 16px}
+  .tnode{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r-small);cursor:default;color:var(--text-2);font-size:13px}
+  .tnode .tic{color:var(--muted);flex:0 0 auto}
+  .tnode.sel{background:rgba(204,122,62,.11);color:var(--text);font-weight:600}
+  .tnode.sel .tic{color:var(--sunset-dark)}
+  .tnode.l1{margin-left:0}.tnode.l2{margin-left:16px}.tnode.l3{margin-left:32px}
+  .scopepane .sp-note{margin:2px 14px 16px;font-size:11.5px;color:var(--muted);line-height:1.45;border-top:1px dashed var(--border);padding-top:11px}
+
+  main.content{flex:1 1 auto;overflow:auto}
+  .frame{max-width:1080px;margin:0 auto;padding:24px 30px 70px}
+
+  /* preview controls */
+  .pvc{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--glow);border:1px solid var(--border);border-radius:999px;padding:7px 9px 7px 16px;margin-bottom:22px;font-size:12.5px;color:var(--muted)}
+  .pvc .lab{font-weight:600}
+  .seg-toggle{display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:3px;font-size:12.5px}
+  .seg-toggle .seg{padding:6px 14px;border-radius:999px;cursor:pointer;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+  .seg-toggle .seg.on{background:rgba(204,122,62,.14);color:var(--sunset-dark)}
+  .pvc .sw{margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .tog{cursor:pointer;border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-weight:600;color:var(--muted);background:var(--surface);display:flex;align-items:center;gap:7px;user-select:none}
+  .tog.on{background:rgba(204,122,62,.13);color:var(--sunset-dark);border-color:var(--sunset)}
+  .tog .knob{width:26px;height:15px;border-radius:999px;background:#D8CFC4;position:relative;transition:.15s}
+  .tog .knob::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:999px;background:#fff;transition:.15s}
+  .tog.on .knob{background:var(--sunset)} .tog.on .knob::after{left:13px}
+
+  .page-h{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .page-h .htext{flex:1 1 340px;min-width:0}
+  .page-h .ttlrow{display:flex;align-items:center;gap:11px}
+  .page-h .hic{color:var(--sunset-dark);flex:0 0 auto}
+  .page-h h1{margin:0;font-size:21px;font-weight:700}
+  .page-h p{margin:6px 0 0;font-size:13px;color:var(--muted);max-width:560px;line-height:1.45}
+  .h-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .checked{font-size:11.5px;color:var(--muted)}
+
+  .btn{border:none;border-radius:8px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;background:var(--sunset);color:#fff;display:inline-flex;align-items:center;gap:7px;font-family:inherit}
+  .btn:hover{background:var(--sunset-dark)}
+  .btn.sec{background:transparent;color:var(--sunset-dark);border:1px solid var(--sunset)} .btn.sec:hover{background:rgba(204,122,62,.08)}
+  .btn.sm{padding:6px 11px;font-size:12px}
+
+  /* ===== AFTER ===== */
+  .summary{display:flex;align-items:flex-start;gap:14px;border-radius:var(--r-card);padding:17px 19px;margin-bottom:16px;border:1px solid var(--border);background:var(--surface)}
+  .summary.good{background:rgba(37,107,41,.07);border-color:rgba(37,107,41,.30)}
+  .summary.warn{background:rgba(153,112,0,.08);border-color:rgba(153,112,0,.32)}
+  .summary.bad{background:rgba(198,40,40,.07);border-color:rgba(198,40,40,.32)}
+  .summary .sic{flex:0 0 auto;width:38px;height:38px;border-radius:999px;display:flex;align-items:center;justify-content:center;color:#fff}
+  .summary.good .sic{background:var(--positive)} .summary.warn .sic{background:var(--warning)} .summary.bad .sic{background:var(--negative)}
+  .summary .sx{flex:1;min-width:0}
+  .summary .sh{font-size:18px;font-weight:700}
+  .summary .ss{font-size:13px;color:var(--text-2);margin-top:3px;line-height:1.45}
+  .attn-list{margin-top:13px;display:flex;flex-direction:column;gap:7px}
+  .attn{display:flex;align-items:center;gap:11px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-small);padding:10px 13px;cursor:pointer}
+  .attn:hover{border-color:var(--sunset)}
+  .attn .ad{width:9px;height:9px;border-radius:999px;flex:0 0 auto}
+  .attn .an{font-weight:600;font-size:13.5px;flex:1;min-width:0}
+  .attn .atab{font-size:11.5px;color:var(--muted);flex:0 0 auto}
+  .attn .ago{color:var(--muted);flex:0 0 auto}
+  .ad.fail{background:var(--negative)} .ad.warn{background:var(--warning)} .ad.good{background:var(--positive)} .ad.info{background:#B9AE9F}
+
+  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px;margin-bottom:18px;width:fit-content;flex-wrap:wrap}
+  .tabs .tab{padding:8px 16px;border-radius:999px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:8px}
+  .tabs .tab.on{background:rgba(204,122,62,.13);color:var(--sunset-dark)}
+  .tabs .tab .cnt{font-size:10.5px;font-weight:700;border-radius:999px;min-width:17px;height:17px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;background:rgba(198,40,40,.13);color:var(--negative)}
+  .tabs .tab .cnt.warn{background:rgba(153,112,0,.16);color:var(--warning)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(322px,1fr));gap:12px}
+  .hc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:14px 16px}
+  .hc.fail{border-color:rgba(198,40,40,.40)} .hc.warn{border-color:rgba(153,112,0,.40)}
+  .hc-top{display:flex;align-items:center;gap:10px}
+  .hc-name{font-size:14.5px;font-weight:700;flex:1;min-width:0}
+  .spill{font-size:11.5px;font-weight:700;border-radius:999px;padding:3px 11px;flex:0 0 auto;display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .spill .pd{width:7px;height:7px;border-radius:999px}
+  .spill.good{background:rgba(37,107,41,.12);color:var(--positive)} .spill.good .pd{background:var(--positive)}
+  .spill.warn{background:rgba(153,112,0,.15);color:var(--warning)} .spill.warn .pd{background:var(--warning)}
+  .spill.fail{background:rgba(198,40,40,.12);color:var(--negative)} .spill.fail .pd{background:var(--negative)}
+  .spill.info{background:var(--glow);color:var(--muted)} .spill.info .pd{background:#B9AE9F}
+  .hc-line{font-size:13px;color:var(--text-2);margin-top:9px;line-height:1.5}
+  .block-tag{font-size:10.5px;font-weight:700;color:var(--negative);text-transform:uppercase;letter-spacing:.4px;margin-left:7px}
+  .hc-det-toggle{margin-top:11px;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--sunset-dark);cursor:pointer;user-select:none}
+  .hc-det-toggle .chev{transition:.15s}
+  .hc.open .hc-det-toggle .chev{transform:rotate(90deg)}
+  .hc-det{display:none;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);line-height:1.7}
+  .hc.open .hc-det,body.showtech .hc-det{display:block}
+  body.showtech .hc-det-toggle{display:none}
+  .hc-det .row{display:flex;gap:8px}
+  .hc-det .k{color:var(--muted);min-width:78px;flex:0 0 auto}
+  .hc-det .v{color:var(--text-2)}
+
+  /* ===== BEFORE (recreates today's screen) ===== */
+  .b-block{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:11px 14px;margin-bottom:12px}
+  .b-bannerbad{background:var(--surface);border:2px solid var(--negative);border-radius:6px;padding:11px 14px;margin-bottom:12px;display:flex;gap:10px;align-items:flex-start;color:var(--negative);font-size:13px}
+  .b-key{display:flex;gap:16px;flex-wrap:wrap}
+  .b-keyi{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2)}
+  .b-chip{font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;border:1px solid}
+  .b-chip.r{color:var(--negative);border-color:var(--negative);background:rgba(198,40,40,.10)}
+  .b-chip.y{color:var(--warning);border-color:var(--warning);background:rgba(153,112,0,.12)}
+  .b-chip.n{color:var(--muted);border-color:#B9AE9F;background:var(--glow)}
+  .b-chip.g{color:var(--positive);border-color:var(--positive);background:rgba(37,107,41,.10)}
+  .b-defs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;font-size:12px}
+  .b-defs b{color:var(--text)} .b-defs span{color:var(--text-2)}
+  .b-deps{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .b-deps .dl{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .b-overall{display:flex;align-items:center;gap:10px;font-size:14px}
+  .b-overall .od{width:10px;height:10px;border-radius:999px}
+  .b-tabs{display:flex;gap:14px;border-bottom:1px solid var(--border);margin:14px 0 14px}
+  .b-tabs .bt{padding:9px 2px;font-size:13px;color:var(--text-2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .b-tabs .bt.on{color:var(--text);font-weight:600;border-bottom-color:var(--sunset)}
+  .b-sect{margin-bottom:16px}
+  .b-sect .st{font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:9px}
+  .b-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(252px,1fr));gap:12px}
+  .b-tile{border:1px solid rgba(221,214,204,.7);border-radius:6px;padding:11px 12px;background:var(--surface)}
+  .b-tile .tt{display:flex;align-items:center;gap:8px}
+  .b-tile .tn{font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .b-tile .tchip{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px;border:1px solid;flex:0 0 auto;white-space:nowrap}
+  .b-tile .val{font-family:"IBM Plex Mono",monospace;font-size:14px;font-weight:700;margin-top:7px}
+  .b-tile .st2{font-size:12px;color:var(--text-2);margin-top:4px}
+  .b-tile .desc{font-size:12px;color:var(--text-2);margin-top:4px;line-height:1.4}
+  .b-tile .meta{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);margin-top:4px;word-break:break-word}
+  .b-tile .next{font-size:12px;margin-top:7px;line-height:1.4}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--text);color:#fff;padding:11px 18px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:80}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(max-width:880px){.scopepane{display:none}}
+</style>
+</head>
+<body>
+  <div class="ribbon"><span class="dot"></span><span><b>Redesign preview.</b> Demo data, not a live business. Right pane only &mdash; the scope tree on the left is unchanged.</span></div>
+
+  <header class="bar">
+    <div class="brand"><div class="mark">F&amp;F</div><div><div class="t1">Forge &amp; Flow</div><div class="t2">ADMIN CONSOLE</div></div></div>
+    <div class="spacer"></div>
+    <div class="scope-btn" id="scopeBtn"><span class="ic" data-ic="pin"></span><span><div class="lbl-k">Viewing</div><div class="lbl-v">Platform <span class="sep">&rsaquo;</span> all businesses</div></span><span data-ic="chev"></span></div>
+    <span class="pill">Ecosystem admin</span>
+  </header>
+
+  <div class="shell">
+    <nav class="side" id="side"></nav>
+
+    <aside class="scopepane">
+      <div class="sp-h"><span class="sp-t">Scope</span><span class="unchg">Unchanged</span></div>
+      <div class="tree">
+        <div class="tnode l1 sel"><span class="tic" data-ic="globe"></span>Platform (all)</div>
+        <div class="tnode l2"><span class="tic" data-ic="building"></span>Demo Diner Co.</div>
+        <div class="tnode l3"><span class="tic" data-ic="pin"></span>Toronto Yorkville</div>
+        <div class="tnode l2"><span class="tic" data-ic="building"></span>Sunset Cafe Group</div>
+        <div class="tnode l2"><span class="tic" data-ic="building"></span>Harbor Grill</div>
+      </div>
+      <div class="sp-note">This pane stays exactly as it is today. The redesign only changes the panel on the right.</div>
+    </aside>
+
+    <main class="content"><div class="frame" id="frame"></div></main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const P=(d)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`;
+const SVG=(i,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24">${i}</svg>`;
+const C=(cx,cy,r)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="1.7"/>`;
+const ICONS={
+  chev:SVG(P("M6 9l6 6 6-6"),15),
+  chevr:SVG(P("M9 6l6 6-6 6"),14),
+  pin:SVG(P("M12 21s-6-5-6-10a6 6 0 0 1 12 0c0 5-6 10-6 10z")+C(12,11,2.2)),
+  globe:SVG(C(12,12,8)+P("M4 12h16M12 4c2.5 2.5 2.5 13.5 0 16M12 4c-2.5 2.5-2.5 13.5 0 16")),
+  building:SVG(P("M4 21V4h9v17")+P("M13 9h7v12h-7")+P("M7 8h2M7 12h2M7 16h2M16 13h1M16 17h1")),
+  tune:SVG(P("M4 7h9")+P("M17 7h3")+C(15,7,2.1)+P("M4 17h3")+P("M11 17h9")+C(9,17,2.1)),
+  book:SVG(P("M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z")+P("M5 19.5A1.5 1.5 0 0 1 6.5 18H19v3H6.5A1.5 1.5 0 0 1 5 19.5z")),
+  insights:SVG(P("M4 20V11")+P("M10 20V5")+P("M16 20v-6")+P("M3 20h18")),
+  health:SVG(`<rect x="3" y="4.5" width="18" height="12" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8 20.5h8M12 16.5v4")+P("M6 10.5h2.5l1.3-3 2 5 1.4-2.5H17")),
+  bug:SVG(`<rect x="8" y="8" width="8" height="11" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8 12H4M16 12h4M8 16.5H4.5M16 16.5h3.5M9 8.2 7.6 5.6M15 8.2 16.4 5.6M12 4.5V8")),
+  link:SVG(P("M9 15l6-6")+P("M10.5 6.5l1.4-1.4a4 4 0 0 1 5.6 5.6L16 12.2")+P("M13.5 17.5 12 19a4 4 0 0 1-5.6-5.6L8 11.8")),
+  flag:SVG(P("M5.5 21V4")+P("M5.5 4.5h11l-2 3 2 3h-11")),
+  star:SVG(P("M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z")),
+  person:SVG(C(12,8,3.4)+P("M5 20.5c0-4 3.5-6.2 7-6.2s7 2.2 7 6.2")),
+  bell:SVG(P("M6 9.5a6 6 0 0 1 12 0c0 4.5 1.8 5.5 1.8 5.5H4.2S6 14 6 9.5")+P("M10 19a2 2 0 0 0 4 0")),
+  refresh:SVG(P("M20 11a8 8 0 0 0-14-4L4 9")+P("M4 13a8 8 0 0 0 14 4l2-2")+P("M4 5v4h4M20 19v-4h-4")),
+  check:SVG(P("M5 13l4 4L19 7"),22),
+  alert:SVG(P("M12 4 21 20H3z")+P("M12 10v4")+`<circle cx="12" cy="17.2" r="1" fill="currentColor" stroke="none"/>`,22),
+  warn:SVG(P("M12 4 21 20H3z")+P("M12 10v4")+`<circle cx="12" cy="17.2" r="1" fill="currentColor" stroke="none"/>`,22),
+};
+function paintIcons(root=document){root.querySelectorAll('[data-ic]').forEach(el=>{if(el.dataset.done)return;el.innerHTML=ICONS[el.dataset.ic]||'';el.dataset.done='1';});}
+
+const SECTIONS=[
+  {grp:'Operations',items:[{id:'accounts',label:'Business accounts',ic:'building'},{id:'polling',label:'Polling setup',ic:'refresh'}]},
+  {grp:'AI',items:[{id:'plans',label:'Plans & limits',ic:'tune'},{id:'kb',label:'Knowledge base',ic:'book'},{id:'metrics',label:'AI Metrics',ic:'insights'}]},
+  {grp:'System monitoring',items:[{id:'health',label:'System health',ic:'health'},{id:'logs',label:'Support logs',ic:'bug'}]},
+  {grp:'Service setup',items:[{id:'connected',label:'Connected services',ic:'link'},{id:'launch',label:'Launch controls',ic:'flag'}]},
+  {grp:'Your account',items:[{id:'me',label:'My account',ic:'person'},{id:'notif',label:'Notifications',ic:'bell'}]},
+];
+
+// group -> tab copy
+const TABS=[
+  {id:'advisor',label:'Advisor data',blabel:'Advisor data'},
+  {id:'app',label:'App service',blabel:'App service'},
+  {id:'infra',label:'Behind the scenes',blabel:'Ecosystem'},
+];
+
+// Every metric. st: good|warn|fail ; tier 1=critical 2=important 3=info.
+// Plain "line" drives the new card; the b* fields recreate today's tile.
+const METRICS=[
+  {g:'advisor',st:'fail',tier:1,name:'Relationship lookups',
+   line:'Lookups are slow right now, which can make advisor answers feel sluggish. Worth fixing before you rely on this environment.',
+   val:'847 ms',target:'under 200 ms',src:'age_traversal_probe',owner:'not set',
+   bname:'Relationship lookup p95',desc:'How fast relationship lookups respond at the 95th percentile.',limits:'red_above: 500 · yellow_above: 200',
+   next:'Treat this as blocking. Fix the source, then rerun the system check.'},
+  {g:'advisor',st:'warn',tier:2,name:'Relationship search freshness',
+   line:'The relationship search is reading an older snapshot than usual, so brand-new connections may not show up yet.',
+   val:'42 min old',target:'under 15 min',src:'age_projection_probe',owner:'platform-data',
+   bname:'Relationship search age',desc:'Age of the projected relationship graph the search reads from.',limits:'yellow_above: 900 · red_above: 3600',
+   next:'Investigate this important signal and rerun the check after the source recovers.'},
+  {g:'advisor',st:'good',tier:1,name:'Data freshness',
+   line:'Advisor data is up to date.',
+   val:'on time',target:'all data current',src:'rollup_freshness_probe',owner:'platform-data',
+   bname:'Data freshness',desc:'Whether each rollup grain is current.',limits:null,next:'No action needed for this producer.'},
+  {g:'advisor',st:'good',tier:2,name:'Search quality',
+   line:'Search is returning the right results.',
+   val:'0.97',target:'0.90 or higher',src:'vector_recall_probe',owner:'platform-data',
+   bname:'Search quality',desc:'Recall of the vector search index.',limits:'green_at_or_above: 0.90',next:'No action needed for this producer.'},
+  {g:'advisor',st:'good',tier:2,name:'Search speed',
+   line:'Searches are coming back quickly.',
+   val:'38 ms',target:'under 150 ms',src:'vector_latency_probe',owner:'platform-data',
+   bname:'Search p50',desc:'Median vector query latency.',limits:'yellow_above: 150 · red_above: 400',next:'No action needed for this producer.'},
+
+  {g:'app',st:'warn',tier:1,name:'Server error rate',
+   line:'A few app requests are coming back as errors. Keep an eye on it; if it climbs, check the service logs.',
+   val:'1.8%',target:'under 1%',src:'proxy_5xx_probe',owner:'platform-proxy',
+   bname:'Server error rate',desc:'Share of proxy requests returning HTTP 5xx.',limits:'yellow_above: 0.01 · red_above: 0.05',
+   next:'Investigate this critical signal and rerun the check after the source recovers.'},
+  {g:'app',st:'good',tier:1,name:'AI text provider safeguard',
+   line:'The safety switch for the AI text provider is off (normal). Requests are flowing.',
+   val:'closed',target:'closed',src:'circuit_breaker_probe',owner:'platform-proxy',
+   bname:'Anthropic safeguard',desc:'Circuit breaker state for the Anthropic provider.',limits:null,next:'No action needed for this producer.'},
+  {g:'app',st:'good',tier:1,name:'AI search provider safeguard',
+   line:'The safety switch for the AI search provider is off (normal).',
+   val:'closed',target:'closed',src:'circuit_breaker_probe',owner:'platform-proxy',
+   bname:'Voyage safeguard',desc:'Circuit breaker state for the Voyage provider.',limits:null,next:'No action needed for this producer.'},
+  {g:'app',st:'good',tier:2,name:'Saved answer reuse',
+   line:'We are reusing saved answers well, which keeps AI cost down.',
+   val:'64%',target:'higher is better',src:'response_cache_probe',owner:'platform-proxy',
+   bname:'Saved answer reuse',desc:'Response cache hit rate.',limits:null,next:'No action needed for this producer.'},
+  {g:'app',st:'good',tier:2,name:'App speed',
+   line:'App requests are responding quickly.',
+   val:'410 ms',target:'under 1500 ms',src:'proxy_latency_probe',owner:'platform-proxy',
+   bname:'App request p99',desc:'99th percentile proxy request latency.',limits:'yellow_above: 1500 · red_above: 3000',next:'No action needed for this producer.'},
+  {g:'app',st:'good',tier:2,name:'Spending limits reached',
+   line:'No AI spending limits have been hit.',
+   val:'0',target:'0',src:'usage_caps_probe',owner:'platform-proxy',
+   bname:'Limit reached count',desc:'Number of usage-cap breaches.',limits:null,next:'No action needed for this producer.'},
+
+  {g:'infra',st:'good',tier:1,name:'Scheduled jobs',
+   line:'Background jobs are running on schedule.',
+   val:'running',target:'running',src:'pg_cron_probe',owner:'platform-infra',
+   bname:'Scheduled jobs',desc:'pg_cron scheduler liveness.',limits:null,next:'No action needed for this producer.'},
+  {g:'infra',st:'good',tier:2,name:'Failed background jobs',
+   line:'No background jobs failed in the last day.',
+   val:'0',target:'0',src:'pg_cron_fail_probe',owner:'platform-infra',
+   bname:'Failed scheduled jobs',desc:'pg_cron jobs failed in 24h.',limits:null,next:'No action needed for this producer.'},
+  {g:'infra',st:'good',tier:1,name:'Database matches the app',
+   line:'The database structure matches what the app expects.',
+   val:'0 differences',target:'0',src:'migration_drift_probe',owner:'platform-infra',
+   bname:'Database drift',desc:'Count of unapplied or extra migrations.',limits:null,next:'No action needed for this producer.'},
+  {g:'infra',st:'good',tier:2,name:'Waiting notifications',
+   line:'No notifications are stuck waiting to send.',
+   val:'0',target:'low',src:'event_outbox_probe',owner:'platform-infra',
+   bname:'Waiting notifications',desc:'Undelivered event_outbox rows.',limits:null,next:'No action needed for this producer.'},
+  {g:'infra',st:'good',tier:1,name:'Activity log',
+   line:'The activity log is keeping up.',
+   val:'2 s behind',target:'under 60 s',src:'audit_chain_probe',owner:'platform-infra',
+   bname:'Audit log delay',desc:'Audit hash-chain lag in seconds.',limits:'yellow_above: 60 · red_above: 300',next:'No action needed for this producer.'},
+  {g:'infra',st:'good',tier:1,name:'Sign-in keys',
+   line:'Sign-in security keys are reachable.',
+   val:'reachable',target:'reachable',src:'firebase_jwks_probe',owner:'platform-auth',
+   bname:'Sign-in key check',desc:'Firebase JWKS fetch liveness.',limits:null,next:'No action needed for this producer.'},
+  {g:'infra',st:'good',tier:3,name:'Servers handling traffic',
+   line:'3 servers are handling traffic right now.',
+   val:'3',target:'context only',src:'cloud_run_probe',owner:'platform-infra',
+   bname:'Hosting instances',desc:'Cloud Run active instance count.',limits:null,next:'Helpful context for support follow-up.'},
+];
+
+const ST_LABEL={good:'Good',warn:'Needs attention',fail:'Failing',info:'Info'};
+const TIER_LABEL={1:'Critical',2:'Important',3:'Info'};
+const ord={fail:0,warn:1,good:2,info:3};
+let state={mode:'after',tab:'advisor',tech:false,allclear:false,openCards:{}};
+
+// effective status (allclear demo flips warn/fail to good)
+function eff(m){ if(state.allclear && (m.st==='warn'||m.st==='fail')) return 'good'; return m.st; }
+function pillKind(m){ const s=eff(m); if(s==='good' && m.tier===3) return 'info'; return s; }
+function isAttn(m){ const s=eff(m); return s==='fail'||s==='warn'; }
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function renderNav(){
+  document.getElementById('side').innerHTML=SECTIONS.map(s=>`<div class="grp">${s.grp}</div>`+
+    s.items.map(it=>`<div class="nav-item ${it.id==='health'?'sel':''}"><span class="nic" data-ic="${it.ic}"></span><span class="lab">${it.label}</span></div>`).join('')).join('');
+  paintIcons(document.getElementById('side'));
+}
+
+/* ---------- AFTER ---------- */
+function summaryBlock(){
+  const fails=METRICS.filter(m=>eff(m)==='fail');
+  const warns=METRICS.filter(m=>eff(m)==='warn');
+  const crit=fails.filter(m=>m.tier===1);
+  const total=METRICS.length, attn=fails.length+warns.length;
+  let kind,icon,head,sub;
+  if(attn===0){ kind='good';icon='check';head='Everything looks good';sub=`All ${total} checks passed. Last checked just now.`; }
+  else if(crit.length){ kind='bad';icon='alert';
+    head=`Action needed: ${crit.length} critical check${crit.length>1?'s are':' is'} failing`;
+    const rest=attn-crit.length; sub=`Fix the cause before relying on this environment.${rest>0?` ${rest} other item${rest>1?'s':''} also need${rest>1?'':'s'} a look.`:''}`; }
+  else { kind='warn';icon='warn';head=`${attn} thing${attn>1?'s':''} need${attn>1?'':'s'} attention`;sub='Everything else is running normally.'; }
+
+  const list=[...fails,...warns].map(m=>{
+    const tab=TABS.find(t=>t.id===m.g).label;
+    return `<div class="attn" data-jump="${m.g}"><span class="ad ${eff(m)}"></span><span class="an">${esc(m.name)}</span><span class="atab">${esc(tab)}</span><span class="ago" data-ic="chevr"></span></div>`;
+  }).join('');
+
+  return `<div class="summary ${kind}">
+      <div class="sic" data-ic="${icon}"></div>
+      <div class="sx"><div class="sh">${head}</div><div class="ss">${sub}</div>
+        ${attn?`<div class="attn-list">${list}</div>`:''}
+      </div>
+    </div>`;
+}
+function healthCard(m){
+  const s=eff(m), pk=pillKind(m), open=state.openCards[m.bname];
+  const block=(m.tier===1 && s==='fail')?`<span class="block-tag">blocking</span>`:'';
+  return `<div class="hc ${s} ${open?'open':''}" data-card="${esc(m.bname)}">
+    <div class="hc-top"><div class="hc-name">${esc(m.name)}</div>
+      <span class="spill ${pk}"><span class="pd"></span>${ST_LABEL[pk]}</span></div>
+    <div class="hc-line">${esc(m.line)}${block}</div>
+    <div class="hc-det-toggle" data-dettoggle="${esc(m.bname)}"><span class="chev" data-ic="chevr"></span>Details</div>
+    <div class="hc-det">
+      <div class="row"><span class="k">Measured</span><span class="v mono">${esc(m.val)}</span></div>
+      <div class="row"><span class="k">Healthy</span><span class="v mono">${esc(m.target)}</span></div>
+      <div class="row"><span class="k">Checked</span><span class="v">just now</span></div>
+      <div class="row"><span class="k">Signal</span><span class="v mono">${esc(m.src)}</span></div>
+      <div class="row"><span class="k">Owner</span><span class="v">${esc(m.owner)}</span></div>
+    </div></div>`;
+}
+function afterTab(){
+  const items=METRICS.filter(m=>m.g===state.tab).sort((a,b)=>ord[eff(a)]-ord[eff(b)]);
+  return `<div class="grid">${items.map(healthCard).join('')}</div>`;
+}
+function tabsBar(){
+  return `<div class="tabs">`+TABS.map(t=>{
+    const attn=METRICS.filter(m=>m.g===t.id&&isAttn(m));
+    const hasFail=attn.some(m=>eff(m)==='fail');
+    const badge=attn.length?`<span class="cnt ${hasFail?'':'warn'}">${attn.length}</span>`:'';
+    return `<div class="tab ${state.tab===t.id?'on':''}" data-tab="${t.id}">${t.label}${badge}</div>`;
+  }).join('')+`</div>`;
+}
+function renderAfter(){
+  return summaryBlock()+tabsBar()+afterTab();
+}
+
+/* ---------- BEFORE (today) ---------- */
+function beforeTile(m){
+  const s=eff(m);
+  const tchipCls=s==='fail'?(m.tier===1?'r':m.tier===2?'y':'n'):s==='warn'?'y':s==='good'?'g':'n';
+  const comp=s==='fail'?'Fail':s==='warn'?'Check':s==='good'?'Good':'No data';
+  const stateLab=s==='fail'?'Failing':s==='warn'?'Needs attention':s==='good'?'Good':'No data';
+  return `<div class="b-tile">
+    <div class="tt"><div class="tn">${esc(m.bname)}</div><span class="b-chip tchip ${tchipCls}">${TIER_LABEL[m.tier]}: ${comp}</span></div>
+    <div class="val">${esc(m.val)}</div>
+    <div class="st2">Producer state: ${stateLab}</div>
+    <div class="desc">${esc(m.desc)}</div>
+    ${m.limits?`<div class="meta">limits: ${esc(m.limits)}</div>`:''}
+    <div class="meta">Source: ${esc(m.src)}</div>
+    <div class="meta">Owner: ${m.owner==='not set'?'Unassigned in health envelope':esc(m.owner)}</div>
+    <div class="meta">Checked: May 24, 2026 at 3:14 PM EDT</div>
+    <div class="next" style="color:${s==='fail'?'var(--negative)':s==='warn'?'var(--warning)':'var(--text-2)'}">Next step: ${esc(m.next)}</div>
+  </div>`;
+}
+const B_SECTIONS={
+  advisor:[['Advisor content freshness',['Data freshness']],['Relationship graph',['Relationship lookup p95','Relationship search age']],['Search index',['Search quality','Search p50']]],
+  app:[['Provider safeguards',['Anthropic safeguard','Voyage safeguard']],['Saved response reuse',['Saved answer reuse']],['Retries and usage limits',['Server error rate','App request p99','Limit reached count']]],
+  infra:[['Database background work',['Scheduled jobs','Failed scheduled jobs','Database drift']],['Audit and notifications',['Audit log delay','Waiting notifications']],['Sign-in and hosting',['Sign-in key check','Hosting instances']]],
+};
+function byB(name){return METRICS.find(m=>m.bname===name);}
+function beforeTab(){
+  return B_SECTIONS[state.tab].map(([title,names])=>`<div class="b-sect"><div class="st">${title}</div><div class="b-grid">${names.map(n=>{const m=byB(n);return m?beforeTile(m):'';}).join('')}</div></div>`).join('');
+}
+function renderBefore(){
+  const anyFail=METRICS.some(m=>eff(m)==='fail');
+  const overall=anyFail?['var(--negative)','Failing']:METRICS.some(m=>eff(m)==='warn')?['var(--warning)','Needs attention']:['var(--positive)','Good'];
+  return `
+  ${anyFail?`<div class="b-bannerbad"><span data-ic="warn" style="flex:0 0 auto"></span><div><b>Critical checks are failing. Fix the cause before relying on this environment.</b><br>Critical checks affected: Relationship lookup p95</div></div>`:''}
+  <div class="b-block"><div class="b-key">
+    <div class="b-keyi"><span class="b-chip r">Critical</span> Core service and data-safety checks.</div>
+    <div class="b-keyi"><span class="b-chip y">Important</span> Reliability, freshness, and cost signals.</div>
+    <div class="b-keyi"><span class="b-chip n">Info</span> Helpful context for support follow-up.</div>
+  </div></div>
+  <div class="b-block"><div class="b-defs">
+    <div><b>Advisor data</b><span> - Knowledge, vectors, and rollups the advisor uses to answer accurately.</span></div>
+    <div><b>App service</b><span> - The backend services that serve admin, advisor, and workflow requests.</span></div>
+    <div><b>Ecosystem</b><span> - Shared database, search, queues, and scheduled work that keep the app running.</span></div>
+    <div><b>Service checks</b><span> - Read-only pings that confirm each required service answered successfully.</span></div>
+  </div></div>
+  <div class="b-block"><div class="b-deps"><span class="dl">Service checks</span>
+    <span class="b-chip g">Database: Good</span><span class="b-chip ${anyFail?'r':'g'}">Relationship graph: ${anyFail?'Failing':'Good'}</span><span class="b-chip g">Search index: Good</span><span class="b-chip g">Sign-in: Good</span><span class="b-chip g">Hosting: Good</span>
+  </div></div>
+  <div class="b-block"><div class="b-overall"><span class="od" style="background:${overall[0]}"></span>Overall status: ${overall[1]}</div></div>
+  <div class="b-tabs">${TABS.map(t=>`<div class="bt ${state.tab===t.id?'on':''}" data-tab="${t.id}">${t.blabel}</div>`).join('')}</div>
+  ${beforeTab()}`;
+}
+
+/* ---------- frame ---------- */
+function renderFrame(){
+  const techRow = state.mode==='after'
+    ? `<span class="tog ${state.tech?'on':''}" id="techTog"><span class="knob"></span>Technical details</span>
+       <span class="tog ${state.allclear?'on':''}" id="clearTog"><span class="knob"></span>Simulate: all clear</span>`
+    : `<span style="font-size:12px;color:var(--muted)">Today's screen shows every field at once, in code-style type.</span>`;
+
+  document.getElementById('frame').innerHTML=`
+    <div class="pvc">
+      <span class="lab">Preview:</span>
+      <div class="seg-toggle"><div class="seg ${state.mode==='after'?'on':''}" data-mode="after">After (new)</div><div class="seg ${state.mode==='before'?'on':''}" data-mode="before">Before (today)</div></div>
+      <span class="sw">${techRow}</span>
+    </div>
+
+    <div class="page-h">
+      <div class="htext"><div class="ttlrow"><span class="hic" data-ic="health"></span><h1 class="pf">System health</h1></div>
+        <p>${state.mode==='after'?'A read-only check of the advisor data, the app service, and the platform behind it.':'Run a read-only check of advisor data, app service, and platform services.'}</p></div>
+      <div class="h-actions"><button class="btn" id="runBtn"><span data-ic="refresh"></span>Run system check</button><span class="checked">Last checked: May 24, 2026 at 3:14 PM EDT</span></div>
+    </div>
+
+    ${state.mode==='after'?renderAfter():renderBefore()}`;
+
+  document.body.classList.toggle('showtech',state.mode==='after'&&state.tech);
+  paintIcons(document.getElementById('frame'));
+  wire();
+}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1900);}
+function wire(){
+  document.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{state.mode=el.dataset.mode;renderFrame();});
+  document.querySelectorAll('[data-tab]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.tab;renderFrame();});
+  document.querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.jump;renderFrame();});
+  const tt=document.getElementById('techTog'); if(tt)tt.onclick=()=>{state.tech=!state.tech;renderFrame();};
+  const ct=document.getElementById('clearTog'); if(ct)ct.onclick=()=>{state.allclear=!state.allclear;renderFrame();};
+  document.querySelectorAll('[data-dettoggle]').forEach(el=>el.onclick=()=>{const k=el.dataset.dettoggle;state.openCards[k]=!state.openCards[k];renderFrame();});
+  const rb=document.getElementById('runBtn'); if(rb)rb.onclick=()=>toast('Reads live staging health. Read-only, usually a few seconds.');
+}
+document.getElementById('scopeBtn').onclick=()=>toast('Opens the business and location picker (unchanged).');
+
+renderNav();renderFrame();paintIcons(document.querySelector('header.bar'));
+</script>
+</body>
+</html>
