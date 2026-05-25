@@ -298,83 +298,58 @@ void main() {
     });
   });
 
-  group('admin-only action asymmetry vs operator self-service', () {
-    testWidgets(
-      'Restore soft-deleted action surfaces ONLY on soft-deleted rows',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = InMemoryMembersAdminGateway(
-          membersByOperator: kDemoMembersByOperator(),
-          invitesByOperator: kDemoInvitesByOperator(),
-        );
-        await tester.pumpWidget(
-          wrap(
-            MembersAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
+  group('operator-web row action parity', () {
+    testWidgets('row actions use inline Edit plus overflow menu', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = InMemoryMembersAdminGateway(
+        membersByOperator: kDemoMembersByOperator(),
+        invitesByOperator: kDemoInvitesByOperator(),
+      );
+      await tester.pumpWidget(
+        wrap(
+          MembersAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
           ),
-        );
-        await pumpEventually(tester);
+        ),
+      );
+      await pumpEventually(tester);
 
-        // The archived row exposes Restore; active rows do NOT.
-        expect(
-          find.byKey(
-            const Key(
-              'admin_members_action_restore_demo-user-diner-staff-archived',
-            ),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('admin_members_action_restore_demo-user-diner-owner'),
-          ),
-          findsNothing,
-        );
-      },
-    );
+      expect(
+        find.byKey(const Key('admin_members_row_edit_demo-user-diner-owner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_members_row_actions_demo-user-diner-owner'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_members_pagination')), findsOneWidget);
+      expect(
+        find.byKey(
+          const Key('admin_members_row_actions_demo-user-diner-staff-archived'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Restore soft-deleted'), findsNothing);
+      expect(find.text('Grant role'), findsNothing);
 
-    testWidgets(
-      'Override role grant surfaces on active rows but never on soft-deleted',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = InMemoryMembersAdminGateway(
-          membersByOperator: kDemoMembersByOperator(),
-          invitesByOperator: kDemoInvitesByOperator(),
-        );
-        await tester.pumpWidget(
-          wrap(
-            MembersAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
-          ),
-        );
-        await pumpEventually(tester);
+      await tester.tap(
+        find.byKey(
+          const Key('admin_members_row_actions_demo-user-diner-owner'),
+        ),
+      );
+      await pumpEventually(tester);
+      expect(find.text('Reset password'), findsOneWidget);
+      expect(find.text('Reset two-factor sign-in'), findsOneWidget);
+      expect(find.text('Remove from team'), findsOneWidget);
+    });
 
-        expect(
-          find.byKey(
-            const Key(
-              'admin_members_action_override_role_demo-user-diner-owner',
-            ),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key(
-              'admin_members_action_override_role_demo-user-diner-staff-archived',
-            ),
-          ),
-          findsNothing,
-        );
-      },
-    );
-
-    testWidgets('Override role grant sends custom role_id from role catalog', (
+    testWidgets('Edit member sends custom role_id from role catalog', (
       tester,
     ) async {
       wideViewport(tester);
@@ -418,23 +393,19 @@ void main() {
       await pumpEventually(tester);
 
       await tester.tap(
-        find.byKey(
-          const Key('admin_members_action_override_role_demo-user-diner-owner'),
-        ),
+        find.byKey(const Key('admin_members_row_edit_demo-user-diner-owner')),
       );
       await pumpEventually(tester);
-      await tester.tap(
-        find.byKey(const Key('admin_members_override_role_select')),
-      );
+      await tester.tap(find.byKey(const Key('admin_members_role_field')));
       await pumpEventually(tester);
       await tester.tap(find.text('Floor Captain').last);
       await pumpEventually(tester);
       await tester.enterText(
-        find.byKey(const Key('admin_members_override_role_reason')),
+        find.byKey(const Key('admin_members_display_name_reason')),
         'support-ticket-custom-role',
       );
       await tester.tap(
-        find.byKey(const Key('admin_members_override_role_submit')),
+        find.byKey(const Key('admin_members_display_name_submit')),
       );
       await pumpEventually(tester);
 
@@ -481,25 +452,17 @@ void main() {
           'demo-user-diner-supervisor',
           'demo-user-diner-staff-archived',
         ];
-        const actions = <String>[
-          'edit_name',
-          'suspend',
-          'reactivate',
-          'soft_delete',
-          'reset_password',
-          'reset_mfa',
-          'force_logout',
-          'restore',
-          'override_role',
-        ];
         for (final user in userIds) {
-          for (final action in actions) {
-            expect(
-              find.byKey(Key('admin_members_action_${action}_$user')),
-              findsNothing,
-              reason: 'view-only mode must hide $action affordance on $user',
-            );
-          }
+          expect(
+            find.byKey(Key('admin_members_row_edit_$user')),
+            findsNothing,
+            reason: 'view-only mode must hide edit affordance on $user',
+          );
+          expect(
+            find.byKey(Key('admin_members_row_actions_$user')),
+            findsNothing,
+            reason: 'view-only mode must hide menu affordance on $user',
+          );
         }
       },
     );
@@ -532,9 +495,11 @@ void main() {
 
         await tester.tap(
           find.byKey(
-            const Key('admin_members_action_suspend_demo-user-diner-owner'),
+            const Key('admin_members_row_actions_demo-user-diner-owner'),
           ),
         );
+        await pumpEventually(tester);
+        await tester.tap(find.text('Suspend').last);
         await pumpEventually(tester);
 
         // Reason dialog should be visible.
@@ -590,9 +555,7 @@ void main() {
         await pumpEventually(tester);
 
         await tester.tap(
-          find.byKey(
-            const Key('admin_members_action_edit_name_demo-user-diner-owner'),
-          ),
+          find.byKey(const Key('admin_members_row_edit_demo-user-diner-owner')),
         );
         await pumpEventually(tester);
         expect(
@@ -650,9 +613,7 @@ void main() {
         await pumpEventually(tester);
 
         await tester.tap(
-          find.byKey(
-            const Key('admin_members_action_edit_name_demo-user-diner-owner'),
-          ),
+          find.byKey(const Key('admin_members_row_edit_demo-user-diner-owner')),
         );
         await pumpEventually(tester);
         expect(
@@ -715,9 +676,11 @@ void main() {
 
         await tester.tap(
           find.byKey(
-            const Key('admin_members_action_suspend_demo-user-diner-owner'),
+            const Key('admin_members_row_actions_demo-user-diner-owner'),
           ),
         );
+        await pumpEventually(tester);
+        await tester.tap(find.text('Suspend').last);
         await pumpEventually(tester);
 
         await tester.tap(find.byKey(const Key('admin_members_reason_cancel')));
@@ -1462,7 +1425,7 @@ void main() {
   });
 
   group('merged People/access/roles surface', () {
-    testWidgets('renders compact role policy on People', (tester) async {
+    testWidgets('does not render role policy on Team members', (tester) async {
       wideViewport(tester);
       final gateway = InMemoryMembersAdminGateway(
         membersByOperator: kDemoMembersByOperator(),
@@ -1496,29 +1459,18 @@ void main() {
       expect(find.text('Default roles'), findsNothing);
       expect(find.text('Custom roles'), findsNothing);
       expect(find.text('Human permissions'), findsNothing);
-      expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
+      expect(find.byKey(const Key('admin_rhs_roles_tab')), findsNothing);
       expect(
         find.byKey(const Key('admin_rhs_permission_explainer')),
         findsNothing,
       );
       expect(
         find.byKey(const Key('admin_rhs_role_row_role-seed-operator-owner')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const Key('admin_rhs_role_row_role-seed-supervisor')),
         findsNothing,
-      );
-
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_rhs_roles_seeded_toggle')),
-      );
-      await pumpEventually(tester);
-      await tester.tap(find.byKey(const Key('admin_rhs_roles_seeded_toggle')));
-      await pumpEventually(tester);
-      expect(
-        find.byKey(const Key('admin_rhs_role_row_role-seed-supervisor')),
-        findsOneWidget,
       );
     });
 
