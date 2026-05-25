@@ -23,12 +23,25 @@
 // attention, then good, then no-data). The third tab is renamed from
 // "Ecosystem" to "Behind the scenes".
 //
+// Slice 3 declutters the calm default:
+//   * The two always-on legends (the colour priority key and the
+//     plain-English section definitions) now live behind ONE
+//     "What these labels mean" info button (key
+//     `admin_health_legend_info`). They are absent from the body until
+//     the popover is opened.
+//   * The dependency "Service checks" strip is gated behind the
+//     "Show technical details" switch (any failing dependency is already
+//     surfaced loudly by the red summary), so it is absent by default.
+//   * The body is still centred and capped at 1120 logical px on a wide
+//     viewport (the shared OperatorWebScreenFrame).
+//
 // Coverage:
 //   * Initial render is manual-only and does not fetch.
 //   * Manual check carries the selected hierarchy scope to the gateway.
-//   * Confirmed manual fetch shows three tabs + the dependencies strip,
-//     a green summary, and the "Behind the scenes" label (not
-//     "Ecosystem").
+//   * Confirmed manual fetch shows three tabs + a green summary + the
+//     "Behind the scenes" label (not "Ecosystem"); the legends and the
+//     dependency strip are gated (absent by default), reachable via the
+//     info button / the tech-details switch respectively.
 //   * The 503 path and a tier-1 metric fail both render the summary's
 //     red "Action needed" state.
 //   * A tier-2 yellow shows the amber summary, lists the offending
