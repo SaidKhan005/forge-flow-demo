@@ -1288,6 +1288,12 @@ Widget _buildVendorApplicability(BuildContext context) {
 
 Widget _buildDataAccuracy(BuildContext context) {
   final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
+  final vendorApplicabilityGateway =
+      AdminConsoleServicesScope.vendorApplicabilityGatewayOf(context);
+  final vendorConnectionsGateway =
+      AdminConsoleServicesScope.vendorConnectionsGatewayOf(context);
+  final timingResolutionGateway =
+      AdminConsoleServicesScope.timingResolutionGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
   final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
@@ -1309,6 +1315,9 @@ Widget _buildDataAccuracy(BuildContext context) {
         key: ValueKey<String>('data-accuracy-${selectedScope.cacheKey}'),
         gateway: gateway,
         actorUserId: 'demo-super-admin',
+        timingResolutionGateway: timingResolutionGateway,
+        vendorApplicabilityGateway: vendorApplicabilityGateway,
+        vendorConnectionsGateway: vendorConnectionsGateway,
         initialScope: operatorScope,
         initialHierarchyScope: selectedScope,
         scopeLocationIds: selection.locationIds,
@@ -1328,6 +1337,9 @@ Widget _buildDataAccuracy(BuildContext context) {
           key: ValueKey<String>('data-accuracy-${selectedScope.cacheKey}'),
           gateway: gateway,
           actorUserId: session?.uid ?? 'unknown',
+          timingResolutionGateway: timingResolutionGateway,
+          vendorApplicabilityGateway: vendorApplicabilityGateway,
+          vendorConnectionsGateway: vendorConnectionsGateway,
           editingEnabled: canEdit,
           initialScope: operatorScope,
           initialHierarchyScope: selectedScope,
