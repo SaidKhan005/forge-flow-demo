@@ -1208,22 +1208,11 @@ class _AdminMfaRemovalPending extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: SizedBox(
-              height: 38,
+              height: AdminButtonStyles.controlHeight,
               child: OutlinedButton(
                 key: const Key('admin_my_account_mfa_cancel_removal_button'),
                 onPressed: onCancel,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.sunsetDark,
-                  side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  textStyle: AppTextStyles.mono14(
-                    color: AppColors.sunsetDark,
-                    weight: FontWeight.w600,
-                  ),
-                ),
+                style: AdminButtonStyles.secondary(),
                 child: const Text('Cancel removal'),
               ),
             ),
@@ -1660,24 +1649,13 @@ class _AdminFreshnessRemedy extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: SizedBox(
-              height: 38,
+              height: AdminButtonStyles.controlHeight,
               child: OutlinedButton.icon(
                 key: const Key('admin_my_account_two_factor_sign_in_again'),
                 onPressed: onSignInAgain,
                 icon: const Icon(Icons.login, size: 16),
                 label: const Text('Sign in again'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.negative,
-                  side: const BorderSide(color: AppColors.negative, width: 1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  textStyle: AppTextStyles.mono14(
-                    color: AppColors.negative,
-                    weight: FontWeight.w600,
-                  ),
-                ),
+                style: AdminButtonStyles.dangerSecondary(),
               ),
             ),
           ),
@@ -3113,10 +3091,7 @@ class _AdminTurnOffMfaDialog extends StatelessWidget {
                   FilledButton(
                     key: const Key('admin_mfa_turn_off_confirm'),
                     onPressed: () => Navigator.of(context).pop(true),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.negative,
-                      foregroundColor: AppColors.backgroundSurface,
-                    ),
+                    style: AdminButtonStyles.danger,
                     child: const Text('Request removal'),
                   ),
                 ],
