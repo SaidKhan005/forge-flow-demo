@@ -516,7 +516,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       builder: (_) => _DisplayNameEditDialog(row: row),
     );
     if (result == null) return;
-    final emailChanged = result.email != null &&
+    final emailChanged =
+        result.email != null &&
         result.email!.trim().toLowerCase() != row.email.toLowerCase();
     final displayNameChanged =
         result.displayName.trim() != row.displayName.trim();
@@ -769,10 +770,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       builder: (context) => AlertDialog(
         key: const Key('admin_members_cancel_invite_confirm'),
         backgroundColor: AppColors.backgroundSurface,
-        title: Text(
-          'Cancel invite',
-          style: AdminButtonStyles.dialogTitleStyle,
-        ),
+        title: Text('Cancel invite', style: AdminButtonStyles.dialogTitleStyle),
         content: Text(
           'Cancel the pending invite for ${invite.email}? Their link will '
           'stop working. You can send a new invite later if they still '
@@ -795,7 +793,9 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final reason = await _promptAdminReason('Cancel invite for ${invite.email}');
+    final reason = await _promptAdminReason(
+      'Cancel invite for ${invite.email}',
+    );
     if (reason == null) return;
     setState(() => _busyInviteIds.add(invite.inviteId));
     try {
@@ -909,6 +909,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
                 '${widget.pickedOperator.operatorBusinessName}: members, '
                 'invites, role grants, and access scopes. Changes require a reason.',
             actions: _buildHeaderActions(),
+            collapseBelowWidth: 980,
           ),
           const SizedBox(height: 14),
           if (!widget.editingEnabled)
@@ -1242,10 +1243,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
           : OutlinedButton.icon(
               key: const Key('admin_members_clear_filters'),
               onPressed: widget.onClearFilters,
-              style: AdminButtonStyles.secondary(
-                minWidth: 120,
-                minHeight: 40,
-              ),
+              style: AdminButtonStyles.secondary(minWidth: 120, minHeight: 40),
               icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
               label: const Text('Clear filters'),
             ),
@@ -2080,10 +2078,7 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
     return AlertDialog(
       key: const Key('admin_members_display_name_dialog'),
       backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Edit member',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
+      title: Text('Edit member', style: AdminButtonStyles.dialogTitleStyle),
       content: SizedBox(
         width: 480,
         child: Column(
@@ -2123,8 +2118,7 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
                 subtitle: _confirmEmailViolated
                     ? Text(
                         'You must confirm before saving an email change.',
-                        style:
-                            AppTextStyles.body12(color: AppColors.negative),
+                        style: AppTextStyles.body12(color: AppColors.negative),
                       )
                     : null,
                 value: _confirmEmail,
