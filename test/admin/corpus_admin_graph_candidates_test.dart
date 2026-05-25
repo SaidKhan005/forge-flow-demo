@@ -27,6 +27,19 @@ import 'package:forge_and_flow/admin/screens/corpus_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/corpus_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+/// B-r1: flips the screen-level "Show technical details" toggle ON. The
+/// toggle is OFF by default, hiding the per-card "Technical details"
+/// disclosures (review engine / version / source commit). Tests that
+/// reach for those details flip it on first. Mirrors the helper in
+/// `corpus_admin_screen_test.dart`.
+Future<void> _enableTechDetails(WidgetTester tester) async {
+  final toggle = find.byKey(const Key('admin_corpus_tech_details_toggle'));
+  await tester.ensureVisible(toggle);
+  await tester.pumpAndSettle();
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -208,6 +221,12 @@ void main() {
     );
     expect(find.textContaining('fixture-commit'), findsNothing);
     expect(find.textContaining('methodology_seed.md'), findsNothing);
+
+    // B-r1: the per-card "Technical details" disclosure (review engine /
+    // version / source commit) now sits behind the screen-level "Show
+    // technical details" toggle, OFF by default. Flip it on before
+    // reaching for the advanced disclosure.
+    await _enableTechDetails(tester);
 
     await tester.tap(
       find.byKey(const Key('admin_corpus_graph_review_advanced')),
