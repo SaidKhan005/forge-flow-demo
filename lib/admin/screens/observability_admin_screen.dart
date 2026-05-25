@@ -509,7 +509,7 @@ class _ObservabilityHeader extends StatelessWidget {
       icon: Icons.insights_outlined,
       title: 'AI Metrics',
       subtitle: 'Review advisor usage, cost, reliability, and activity.',
-      collapseBelowWidth: 760,
+      collapseBelowWidth: 980,
       actions: showActions
           ? <Widget>[
               AdminRefreshHeaderActions(

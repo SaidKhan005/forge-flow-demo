@@ -968,7 +968,7 @@ class _HealthHeader extends StatelessWidget {
       title: 'System health',
       titleKey: const Key('admin_health_title'),
       subtitle: 'Run read-only checks for core services and dependencies.',
-      collapseBelowWidth: 640,
+      collapseBelowWidth: 980,
       actions: showActions
           ? <Widget>[
               AdminRefreshHeaderActions(
