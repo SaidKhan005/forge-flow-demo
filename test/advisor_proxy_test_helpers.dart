@@ -19,6 +19,7 @@
 // collisions with the many local-variable usages of `claims` inside the
 // migrated tests). Behaviour is byte-identical to the pre-split source.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -870,6 +871,38 @@ class RecordingLlmProvider implements ProxyLlmProvider {
   }
 }
 
+/// A non-timeout provider Exception (e.g. a transport / 5xx / parse
+/// failure). An `Exception` — not an `Error` — so the proxy's
+/// `on Exception` provider-failure catch handles it (and P1b.2 records
+/// `result_status='error'`).
+class _FakeLlmProviderException implements Exception {
+  const _FakeLlmProviderException(this.message);
+  final String message;
+  @override
+  String toString() => 'FakeLlmProviderException: $message';
+}
+
+/// LLM provider double that fails the (non-pipeline) provider call. The
+/// proxy early-returns 503 `llm_provider_unavailable`; P1b.2 records a
+/// failure stats row. [timeout] selects the failure mode:
+///   false -> generic provider Exception  -> result_status 'error'
+///   true  -> TimeoutException            -> result_status 'timeout'
+class ThrowingLlmProvider implements ProxyLlmProvider {
+  ThrowingLlmProvider({this.timeout = false});
+
+  final bool timeout;
+  int completeCalls = 0;
+
+  @override
+  Future<ProxyLlmCompletion> complete(ProxyLlmRequest request) async {
+    completeCalls += 1;
+    if (timeout) {
+      throw TimeoutException('fake provider timeout');
+    }
+    throw const _FakeLlmProviderException('fake provider failure');
+  }
+}
+
 class InMemoryAccountingStore implements ProxyAccountingStore {
   InMemoryAccountingStore({required ProxyCapStatus capStatus})
     : _monthlyCapCents = capStatus.monthlyCapCents,
@@ -964,13 +997,19 @@ class InMemoryAccountingStore implements ProxyAccountingStore {
     lastCommittedCostCents = estimate.costCents;
   }
 
-  /// P1b — the last `proxy_request_stats` payload completeRequest was
-  /// handed, so tests can assert the measured latency / real status /
-  /// actor / model / token / cost without a live Postgres. Stays null
-  /// when the route does not pass stats (e.g. an idempotency replay never
-  /// reaches completeRequest).
+  /// P1b — the last `proxy_request_stats` payload the store was handed (via
+  /// the success-path `completeRequest` fold OR the P1b.2 failure-path
+  /// `recordRequestStats` call), so tests can assert the measured latency /
+  /// real status / actor / model / token / cost without a live Postgres.
+  /// Stays null when the route writes no stats (e.g. an idempotency replay
+  /// never reaches completeRequest, and a pre-reservation failure never
+  /// reaches recordRequestStats).
   ProxyRequestStats? lastStats;
   final List<ProxyRequestStats> recordedStats = <ProxyRequestStats>[];
+
+  /// P1b.2 — count of standalone failure/timeout stats writes (distinct
+  /// from the success-path fold counted by [completeCalls]).
+  int recordStatsCalls = 0;
 
   @override
   Future<void> completeRequest({
@@ -986,6 +1025,16 @@ class InMemoryAccountingStore implements ProxyAccountingStore {
       lastStats = stats;
       recordedStats.add(stats);
     }
+  }
+
+  @override
+  Future<void> recordRequestStats({
+    required OperatorContext operator,
+    required ProxyRequestStats stats,
+  }) async {
+    recordStatsCalls += 1;
+    lastStats = stats;
+    recordedStats.add(stats);
   }
 }
 
