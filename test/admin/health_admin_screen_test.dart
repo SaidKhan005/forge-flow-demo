@@ -31,29 +31,16 @@
 // (any dependency failure is already called out by the red summary). The
 // content stays centered and capped at the shared operator-web width.
 //
-// Slice 4 drops the verbose hierarchy scope notice (the "Where this
-// applies" pill / "Section details" expander / source / effective-value
-// block). System health is platform-wide: the proxy `/health` envelope
-// carries no operator/tenant/scope identifiers per
-// docs/contracts/proxy_health_contract.md, so a per-scope block does not
-// belong. Scope still flows to the gateway fetch for request shaping;
-// only the on-screen per-scope block is gone.
+// Slice 4 drops the hierarchy scope UI and request shaping. System
+// health is platform-wide, so the route opens directly and never shows
+// the shared scope picker.
 //
-// Slice 6b declutters the duplicate header. The screen is only ever
-// mounted inside the admin scope-workspace pane, which already renders
-// the "System health" title, subtitle, and selected-scope line above it.
-// The screen's own `_Header` (a second title + subtitle + icon) was the
-// duplicate the operator flagged, so it is gone; a compact right-aligned
-// actions row (the single Run button keyed `admin_health_refresh_button`
-// + the "Last checked" stamp keyed `admin_health_last_refreshed`) renders
-// at the top of the body in every state. The big empty-state prompt card
-// (icon + facts panel + a second Run button) is replaced by a slim hint
-// (key `admin_health_manual_prompt`) with one line; the confirm dialog
-// still carries the Read-only / Timing / Results facts.
+// Slice 6b keeps the route face clean: one local title, one run button,
+// and a larger visual manual-check panel before the first result.
 //
 // Coverage:
 //   * Initial render is manual-only and does not fetch.
-//   * Manual check carries the selected hierarchy scope to the gateway.
+//   * Manual check sends an unscoped health request.
 //   * Confirmed manual fetch shows three tabs, a green summary, and the
 //     "Behind the scenes" label (not "Ecosystem"); opening the legend
 //     popover reveals the priority key + definitions; turning technical
@@ -82,7 +69,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/health_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/health_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/health_admin_gateway.dart';
@@ -164,61 +150,34 @@ void main() {
     expect(find.byKey(const Key('admin_health_manual_prompt')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tabs')), findsNothing);
     expect(find.byKey(const Key('admin_health_summary')), findsNothing);
-    // The duplicate header is gone: the admin workspace pane renders the
-    // "System health" title above the screen, so the screen itself must not
-    // render its own title when pumped standalone.
-    expect(find.text('System health'), findsNothing);
+    expect(find.text('System health'), findsOneWidget);
   });
 
-  testWidgets('manual check carries selected hierarchy scope to gateway', (
-    tester,
-  ) async {
+  testWidgets('manual check sends an unscoped health request', (tester) async {
     setLargeViewport(tester);
     final gateway = _BlockingHealthGateway();
     await tester.pumpWidget(
       wrap(
         HealthAdminScreen(
           gateway: gateway,
-          hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
-            operatorId: 'op-a',
-            orgUnitId: 'ou-a',
-            operatorName: 'Demo Diner',
-            orgUnitName: 'Downtown',
-          ),
-          scopeLocationIds: const <String>{'loc-a', 'loc-b'},
           now: () => DateTime.utc(2026, 5, 2, 12),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    // The verbose hierarchy scope notice was removed (System health is
-    // platform-wide: the /health envelope carries no scope identifiers per
-    // docs/contracts/proxy_health_contract.md). No replacement scope note
-    // renders because the workspace scope picker already carries that job.
-    expect(
-      find.byKey(const Key('admin_health_scope_notice')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_health_platform_note')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('admin_health_scope_notice')), findsNothing);
+    expect(find.byKey(const Key('admin_health_platform_note')), findsNothing);
 
     await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('admin_health_confirm_run')));
     await tester.pump();
 
-    // Scope still flows to the gateway fetch (request shaping is unchanged);
-    // only the on-screen per-scope block was dropped.
     expect(gateway.fetchCount, equals(1));
-    expect(gateway.requests.single.operatorId, equals('op-a'));
+    expect(gateway.requests.single.operatorId, isNull);
     expect(gateway.requests.single.locationId, isNull);
-    expect(
-      gateway.requests.single.locationIds,
-      equals(<String>{'loc-a', 'loc-b'}),
-    );
+    expect(gateway.requests.single.locationIds, isEmpty);
   });
 
   testWidgets('confirmed manual check renders three tabs with dependencies', (
@@ -317,15 +276,8 @@ void main() {
     // summary (the old banners / overall chip are gone).
     expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
     expect(summaryHeadline(tester), equals('Everything looks good'));
-    expect(
-      find.textContaining('All 3 checks passed.'),
-      findsOneWidget,
-    );
-    // The all-good sub-line now also carries the last-checked phrase.
-    expect(
-      find.text('All 3 checks passed. Last checked just now.'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('All 3 checks passed.'), findsOneWidget);
+    expect(find.text('All 3 checks passed.'), findsOneWidget);
   });
 
   testWidgets('decluttered default hides the legend and dependency strip', (
@@ -380,9 +332,9 @@ void main() {
     // The tabbed body is centered and capped at the shared operator-web
     // content width (1120) even though the viewport is 1600 wide, so the
     // tabs do not span edge-to-edge.
-    final tabsWidth = tester.getSize(
-      find.byKey(const Key('admin_health_tabs')),
-    ).width;
+    final tabsWidth = tester
+        .getSize(find.byKey(const Key('admin_health_tabs')))
+        .width;
     expect(tester.takeException(), isNull);
     expect(tabsWidth, lessThanOrEqualTo(1121));
   });
@@ -411,9 +363,7 @@ void main() {
     // Curated meaning line on the card face (not the next-step text).
     expect(
       textByKey(tester, 'admin_health_tile_rollup_freshness_per_grain_line'),
-      equals(
-        "Whether the advisor's data is current across all time periods.",
-      ),
+      equals("Whether the advisor's data is current across all time periods."),
     );
   });
 
@@ -665,7 +615,7 @@ void main() {
     // (proxy) tab — index 1 — not the default Retrieval tab.
     final json = _greenEnvelope();
     (json['metrics']!
-        as Map<String, Object?>)['circuit_breaker_anthropic_state'] =
+            as Map<String, Object?>)['circuit_breaker_anthropic_state'] =
         <String, Object?>{
           'status': 'red',
           'value': 'open',
@@ -741,8 +691,7 @@ void main() {
     );
     // Reading order: above, or to the left on the same row.
     final failingPrecedes =
-        failing.dy < good.dy ||
-        (failing.dy == good.dy && failing.dx < good.dx);
+        failing.dy < good.dy || (failing.dy == good.dy && failing.dx < good.dx);
     expect(
       failingPrecedes,
       isTrue,

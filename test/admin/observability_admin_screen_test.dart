@@ -364,9 +364,7 @@ void main() {
     // Default 7d window: Demo Diner Co. is the top spender.
     expect(
       find.byKey(
-        const Key(
-          'admin_observability_spender_7d_operator_Demo Diner Co.',
-        ),
+        const Key('admin_observability_spender_7d_operator_Demo Diner Co.'),
       ),
       findsOneWidget,
     );
@@ -728,7 +726,8 @@ void main() {
     expect(
       gateway.fetchCount,
       equals(1),
-      reason: 'manual observability calls must not stack while one is in flight',
+      reason:
+          'manual observability calls must not stack while one is in flight',
     );
     await tester.pump(const Duration(milliseconds: 55));
     expect(gateway.fetchCount, equals(1));
