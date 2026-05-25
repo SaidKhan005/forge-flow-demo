@@ -56,6 +56,7 @@ import '../admin_button_styles.dart';
 import '../services/admin_audit_chain_anchors_gateway.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_audit_log_integrity_badge.dart';
 import 'operator_picker_screen.dart';
 
@@ -936,25 +937,13 @@ class _AuditedSupportActionsAdminScreenState
   List<Widget> _buildHeaderActions() {
     if (!widget.canExportAuditLog) return const <Widget>[];
     return <Widget>[
-      OutlinedButton.icon(
+      AdminActionButton(
         key: const Key('admin_asa_audit_log_export_button'),
+        label: _exporting ? 'Exporting' : 'Export CSV',
         onPressed: _exporting ? null : _onExportCsv,
         icon: _exporting
-            ? const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.sunsetDark,
-                ),
-              )
-            : const Icon(Icons.file_download_outlined, size: 16),
-        label: Text(_exporting ? 'Exporting' : 'Export CSV'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.sunsetDark,
-          side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        ),
+            ? Icons.hourglass_empty_rounded
+            : Icons.file_download_outlined,
       ),
     ];
   }
@@ -1296,29 +1285,15 @@ class _AdminChoiceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return OutlinedButton(
       key: chipKey,
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isActive
-              ? AppColors.sunset.withValues(alpha: 0.18)
-              : AppColors.backgroundMid,
-          border: Border.all(
-            color: isActive
-                ? AppColors.sunset.withValues(alpha: 0.5)
-                : AppColors.borderSubtle,
-          ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          label,
-          style: AppTextStyles.mono11(
-            color: isActive ? AppColors.sunsetDark : AppColors.textSecondary,
-          ).copyWith(fontWeight: isActive ? FontWeight.w700 : FontWeight.w500),
-        ),
+      onPressed: onTap,
+      style: AdminButtonStyles.filter(active: isActive),
+      child: Text(
+        label,
+        style: AppTextStyles.mono11(
+          color: isActive ? AppColors.sunsetDark : AppColors.textSecondary,
+        ).copyWith(fontWeight: isActive ? FontWeight.w700 : FontWeight.w500),
       ),
     );
   }
@@ -1542,11 +1517,10 @@ class _ActionRow extends StatelessWidget {
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
-            child: OutlinedButton(
+            child: AdminActionButton(
               key: Key('${keyId}_btn'),
+              label: buttonLabel,
               onPressed: enabled ? onPressed : null,
-              style: AdminButtonStyles.secondary(),
-              child: Text(buttonLabel),
             ),
           ),
         ],
@@ -1597,23 +1571,14 @@ class _AdminAuditLogList extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Center(
-                child: TextButton.icon(
+                child: AdminActionButton(
                   key: const Key('admin_asa_audit_log_load_more'),
+                  label: loadingMore ? 'Loading next page' : 'Load next page',
                   onPressed: loadingMore ? null : () => onLoadMore(),
                   icon: loadingMore
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.sunsetDark,
-                          ),
-                        )
-                      : const Icon(Icons.expand_more_rounded, size: 16),
-                  label: Text(
-                    loadingMore ? 'Loading next page' : 'Load next page',
-                    style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                  ),
+                      ? Icons.hourglass_empty_rounded
+                      : Icons.expand_more_rounded,
+                  role: AdminActionRole.quiet,
                 ),
               ),
             ),
@@ -1677,14 +1642,11 @@ class _AdminAuditLogError extends StatelessWidget {
             style: AppTextStyles.body13(color: AppColors.textPrimary),
           ),
           const SizedBox(height: 10),
-          OutlinedButton(
+          AdminActionButton(
             key: const Key('admin_asa_audit_log_retry'),
+            label: 'Retry',
             onPressed: () => onRetry(),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.sunsetDark,
-              side: const BorderSide(color: AppColors.sunsetDark, width: 1),
-            ),
-            child: const Text('Retry'),
+            icon: Icons.refresh,
           ),
         ],
       ),
@@ -1746,12 +1708,12 @@ class _AuditLogCard extends StatelessWidget {
       key: const Key('admin_asa_audit_log'),
       title: 'Audit log',
       trailing: canExport
-          ? FilledButton.icon(
+          ? AdminActionButton(
               key: const Key('admin_asa_audit_log_export'),
+              label: 'Export CSV',
               onPressed: onExportCsv,
-              style: AdminButtonStyles.primary,
-              icon: const Icon(Icons.download, size: 16),
-              label: const Text('Export CSV'),
+              icon: Icons.download,
+              role: AdminActionRole.primary,
             )
           : null,
       subtitle:
@@ -1787,20 +1749,13 @@ class _AuditLogCard extends StatelessWidget {
               padding: const EdgeInsets.only(top: 12),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
+                child: AdminActionButton(
                   key: const Key('admin_asa_audit_log_load_more'),
+                  label: loadingMore ? 'Loading next page' : 'Load next page',
                   onPressed: loadingMore ? null : onLoadMore,
-                  style: AdminButtonStyles.secondary(),
                   icon: loadingMore
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.expand_more, size: 16),
-                  label: Text(
-                    loadingMore ? 'Loading next page' : 'Load next page',
-                  ),
+                      ? Icons.hourglass_empty_rounded
+                      : Icons.expand_more,
                 ),
               ),
             ),
@@ -2013,27 +1968,21 @@ class _FiltersBarState extends State<_FiltersBar> {
             spacing: 12,
             runSpacing: 8,
             children: <Widget>[
-              OutlinedButton.icon(
+              AdminActionButton(
                 key: const Key('admin_asa_filter_custom_from'),
+                label: _draft.customRangeFrom == null
+                    ? 'Pick from date'
+                    : 'From: ${_formatDate(_draft.customRangeFrom!)}',
                 onPressed: _pickFromDate,
-                style: AdminButtonStyles.secondary(),
-                icon: const Icon(Icons.calendar_today, size: 14),
-                label: Text(
-                  _draft.customRangeFrom == null
-                      ? 'Pick from date'
-                      : 'From: ${_formatDate(_draft.customRangeFrom!)}',
-                ),
+                icon: Icons.calendar_today,
               ),
-              OutlinedButton.icon(
+              AdminActionButton(
                 key: const Key('admin_asa_filter_custom_to'),
+                label: _draft.customRangeTo == null
+                    ? 'Pick to date'
+                    : 'To: ${_formatDate(_draft.customRangeTo!)}',
                 onPressed: _pickToDate,
-                style: AdminButtonStyles.secondary(),
-                icon: const Icon(Icons.calendar_today, size: 14),
-                label: Text(
-                  _draft.customRangeTo == null
-                      ? 'Pick to date'
-                      : 'To: ${_formatDate(_draft.customRangeTo!)}',
-                ),
+                icon: Icons.calendar_today,
               ),
             ],
           ),
@@ -2078,11 +2027,11 @@ class _FiltersBarState extends State<_FiltersBar> {
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
-          child: FilledButton(
+          child: AdminActionButton(
             key: const Key('admin_asa_filter_apply'),
-            style: AdminButtonStyles.primary,
+            label: 'Apply filters',
             onPressed: _apply,
-            child: const Text('Apply filters'),
+            role: AdminActionRole.primary,
           ),
         ),
       ],
@@ -2226,20 +2175,10 @@ class _AuditRowTileState extends State<_AuditRowTile> {
                     style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                 ),
-                IconButton(
+                AdminIconAction(
                   key: Key('admin_asa_audit_row_copy_target_${row.eventId}'),
                   tooltip: 'Copy target ID',
-                  iconSize: 16,
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 28,
-                    minHeight: 28,
-                  ),
-                  icon: const Icon(
-                    Icons.content_copy_outlined,
-                    color: AppColors.textMuted,
-                  ),
+                  icon: Icons.content_copy_outlined,
                   onPressed: _copyTargetId,
                 ),
               ],
@@ -2260,17 +2199,16 @@ class _AuditRowTileState extends State<_AuditRowTile> {
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton.icon(
+                child: AdminActionButton(
                   key: Key('admin_asa_audit_row_payload_toggle_${row.eventId}'),
+                  label: _payloadExpanded ? 'Hide payload' : 'View payload',
                   onPressed: () =>
                       setState(() => _payloadExpanded = !_payloadExpanded),
-                  icon: Icon(
-                    _payloadExpanded ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
-                  ),
-                  label: Text(
-                    _payloadExpanded ? 'Hide payload' : 'View payload',
-                  ),
+                  icon: _payloadExpanded
+                      ? Icons.expand_less
+                      : Icons.expand_more,
+                  role: AdminActionRole.quiet,
+                  compact: true,
                 ),
               ),
               if (_payloadExpanded)
@@ -2430,12 +2368,12 @@ class _GraceWindowChip extends StatelessWidget {
             ),
           ),
           if (reversible)
-            FilledButton.icon(
+            AdminActionButton(
               key: const Key('admin_asa_grace_window_chip_reverse'),
+              label: 'Reverse erasure',
               onPressed: canReverse ? onReverse : null,
-              style: AdminButtonStyles.primary,
-              icon: const Icon(Icons.undo, size: 14),
-              label: const Text('Reverse erasure'),
+              icon: Icons.undo,
+              role: AdminActionRole.primary,
             ),
         ],
       ),
@@ -2557,16 +2495,16 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
       maxWidth: 460,
       showCloseButton: false,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_asa_reason_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_asa_reason_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Confirm',
           onPressed: _onSubmit,
-          child: const Text('Confirm'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(
@@ -2639,15 +2577,15 @@ class _MemberPickerDialogState extends State<_MemberPickerDialog> {
       maxWidth: 460,
       showCloseButton: false,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_asa_member_picker_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Continue',
           onPressed: widget.members.isEmpty ? null : _onSubmit,
-          child: const Text('Continue'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: widget.members.isEmpty
@@ -2712,15 +2650,15 @@ class _SecondApproverDialogState extends State<_SecondApproverDialog> {
       maxWidth: 480,
       showCloseButton: false,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_asa_second_approver_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Confirm erasure',
           onPressed: _onSubmit,
-          child: const Text('Confirm erasure'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(

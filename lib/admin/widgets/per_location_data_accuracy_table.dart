@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:forge_and_flow/widgets/console/console_action_bar.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import 'admin_action_controls.dart';
 
 enum _SortColumn { operator, location, covers, wage, modifiedBy, modifiedAt }
 
@@ -182,34 +181,31 @@ class _PerLocationDataAccuracyTableState
     ];
 
     final action = widget.editingEnabled
-        ? OperatorWebActionBar(
+        ? AdminActionBar(
             spacing: 6,
             runSpacing: 6,
             children: <Widget>[
-              OutlinedButton.icon(
+              AdminActionButton(
                 key: Key(
                   'admin_data_accuracy_edit_'
                   '${row.operatorRef.operatorId}_${row.operatorRef.locationId}',
                 ),
-                style: AdminButtonStyles.secondary(minWidth: 88, minHeight: 36),
+                label: 'Edit',
                 onPressed: () => widget.onEditRow(row),
-                icon: const Icon(Icons.edit_outlined, size: 14),
-                label: const Text('Edit'),
+                icon: Icons.edit_outlined,
+                compact: true,
               ),
               if (widget.onEditServicePeriod != null)
-                OutlinedButton.icon(
+                AdminActionButton(
                   key: Key(
                     'admin_data_accuracy_service_period_'
                     '${row.operatorRef.operatorId}_'
                     '${row.operatorRef.locationId}',
                   ),
-                  style: AdminButtonStyles.secondary(
-                    minWidth: 88,
-                    minHeight: 36,
-                  ),
+                  label: 'Service period',
                   onPressed: () => widget.onEditServicePeriod!(row),
-                  icon: const Icon(Icons.schedule_outlined, size: 14),
-                  label: const Text('Service period'),
+                  icon: Icons.schedule_outlined,
+                  compact: true,
                 ),
             ],
           )
@@ -558,26 +554,13 @@ class _TableToolbar extends StatelessWidget {
             },
           ),
         ),
-        Tooltip(
-          message: ascending ? 'Sort descending' : 'Sort ascending',
-          child: SizedBox.square(
-            dimension: 42,
-            child: OutlinedButton(
-              key: const Key('admin_data_accuracy_sort_direction'),
-              onPressed: onDirectionPressed,
-              style: AdminButtonStyles.secondary(
-                minWidth: 42,
-                minHeight: 42,
-                padding: EdgeInsets.zero,
-              ),
-              child: Icon(
-                ascending
-                    ? Icons.arrow_upward_outlined
-                    : Icons.arrow_downward_outlined,
-                size: 18,
-              ),
-            ),
-          ),
+        AdminIconAction(
+          key: const Key('admin_data_accuracy_sort_direction'),
+          tooltip: ascending ? 'Sort descending' : 'Sort ascending',
+          onPressed: onDirectionPressed,
+          icon: ascending
+              ? Icons.arrow_upward_outlined
+              : Icons.arrow_downward_outlined,
         ),
       ],
     );

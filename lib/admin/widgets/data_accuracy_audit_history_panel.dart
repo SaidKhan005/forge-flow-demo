@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import 'admin_action_controls.dart';
 
 class DataAccuracyAuditHistoryPanel extends StatefulWidget {
   const DataAccuracyAuditHistoryPanel({
@@ -59,17 +59,15 @@ class _DataAccuracyAuditHistoryPanelState
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton.icon(
+                child: AdminActionButton(
                   key: const Key('admin_data_accuracy_audit_toggle'),
-                  style: AdminButtonStyles.text,
+                  label: _expanded ? 'Hide history' : 'Show history',
                   onPressed: () => setState(() => _expanded = !_expanded),
-                  icon: Icon(
-                    _expanded
-                        ? Icons.expand_less_outlined
-                        : Icons.expand_more_outlined,
-                    size: 18,
-                  ),
-                  label: Text(_expanded ? 'Hide history' : 'Show history'),
+                  icon: _expanded
+                      ? Icons.expand_less_outlined
+                      : Icons.expand_more_outlined,
+                  role: AdminActionRole.quiet,
+                  compact: true,
                 ),
               ),
               if (_expanded) ...[
