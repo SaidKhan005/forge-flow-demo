@@ -177,6 +177,13 @@ export 'advisor_rerank_gateway_part.dart'
         AdvisorRerankException,
         AdvisorRerankResult,
         VoyageHttpRerankGateway;
+// Slice A4.2b — the abstract advisor-conversation CMK resolver type, exported
+// so proxy_bootstrap.dart + main.dart can type the field / param that carries
+// the concrete ProxyAdvisorConversationCmkResolver by importing
+// advisor_proxy.dart only (mirrors the A2b/A3 gateway re-export above). The
+// encryptor + key-length error stay encapsulated in the part file.
+export 'package:forge_and_flow/infrastructure/crypto/advisor_conversation_envelope.dart'
+    show AdvisorConversationCmkResolver;
 export 'log.dart'
     show
         LogSeverity,

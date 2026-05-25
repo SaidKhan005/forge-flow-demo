@@ -60,6 +60,10 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository.dart'
     as weekly_snapshot;
+// Slice A4.2b — operational read repo + encrypted-history sink for the
+// POST /v1/advisor/answer route, wired into ProxyProductionBindings below.
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/shift_records_read_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/advisor_conversation_log_repository.dart';
 import 'package:forge_and_flow/infrastructure/cloud_run/cloud_run_admin_client.dart';
 import 'package:forge_and_flow/infrastructure/kms/gcp_secret_manager_kms_provider.dart';
 import 'package:forge_and_flow/infrastructure/kms/kms_lane_router.dart';
@@ -122,6 +126,11 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyEdgeCandidatesFileName,
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
+// Slice A4.2b — the concrete proxy-side CMK resolver, built ONLY when
+// ADVISOR_CONVERSATION_CMK is provisioned (tryCreate returns null otherwise),
+// then exposed through ProxyProductionBindings as the abstract
+// AdvisorConversationCmkResolver so main.dart can thread it into routeRequest.
+import 'advisor_conversation_cmk_resolver.dart';
 import 'operator_benchmark_overrides_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'audit_log_hierarchy_routes.dart';
@@ -289,6 +298,16 @@ class ProxyProductionBindings {
     // Slice A3 — optional (when null, the text-query path returns the A2b
     // vector-only order with no rerank).
     this.corpusRerankGateway,
+    // Slice A4.2b — POST /v1/advisor/answer bindings. The three operational
+    // read repos + the encrypted-history sink + the (abstract) CMK resolver.
+    // All optional: the answer route fails closed when a required one is
+    // absent (the CMK resolver is null when ADVISOR_CONVERSATION_CMK is not
+    // provisioned, by design — tryCreate returns null).
+    this.advisorAnswerTargetCycleRepository,
+    this.advisorAnswerWeeklyPlanSnapshotRepository,
+    this.advisorAnswerShiftRecordsReadRepository,
+    this.advisorConversationLogRepository,
+    this.advisorConversationCmkResolver,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -749,6 +768,38 @@ class ProxyProductionBindings {
   /// main.dart controls the key lifetime. (Both gateways share the one
   /// VOYAGE_API_KEY secret.)
   final AdvisorRerankGateway? corpusRerankGateway;
+
+  // ── Slice A4.2b — POST /v1/advisor/answer ───────────────────────────────────
+
+  /// Operational read repo (A4.6) backing the `get_active_targets` answer
+  /// tool. Tenant-pool-backed. Optional: when null the operational tools are
+  /// omitted from the answer engine's catalog.
+  final TargetCycleRepository? advisorAnswerTargetCycleRepository;
+
+  /// Operational read repo (A4.6) backing the `get_week_plan` answer tool.
+  /// Tenant-pool-backed. Optional (see [advisorAnswerTargetCycleRepository]).
+  final weekly_snapshot.WeeklyPlanSnapshotRepository?
+      advisorAnswerWeeklyPlanSnapshotRepository;
+
+  /// Operational read repo (A4.6) backing the `get_shift_variance` answer
+  /// tool (and the HP #4 restaurant-scope resolver). Tenant-pool-backed.
+  /// Optional (see [advisorAnswerTargetCycleRepository]).
+  final ShiftRecordsReadRepository? advisorAnswerShiftRecordsReadRepository;
+
+  /// Encrypted advisor-conversation history sink (9.0Σ.h). Tenant-pool-backed.
+  /// Optional: when null the answer route fails closed
+  /// (`advisor_answer_encryption_unavailable`) — there is no answer path that
+  /// skips the encrypted provenance write.
+  final AdvisorConversationLogRepository? advisorConversationLogRepository;
+
+  /// In-process AEAD CMK resolver (A4-ENC) for advisor-conversation turns,
+  /// exposed as the abstract [AdvisorConversationCmkResolver]. Built via
+  /// [ProxyAdvisorConversationCmkResolver.tryCreate], which returns null when
+  /// the optional `ADVISOR_CONVERSATION_CMK` secret is absent — so this field
+  /// is null until the key is provisioned, and the answer route fails closed
+  /// until then (encryption-first). HP #7: the resolver never stores or echoes
+  /// the key bytes.
+  final AdvisorConversationCmkResolver? advisorConversationCmkResolver;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -1875,6 +1926,25 @@ ProxyProductionBindings buildProxyProductionBindings(
     // VOYAGE_API_KEY from config and passes it to routeRequest alongside
     // this gateway (HP #7: key lifetime bounded to a single call stack).
     corpusRerankGateway: VoyageHttpRerankGateway(),
+    // Slice A4.2b — POST /v1/advisor/answer bindings.
+    //
+    // The three operational read repos + the encrypted-history sink are built
+    // against the SAME tenant wrapper as every other operator-scoped repo so
+    // per-request `SET LOCAL` scope is consistent (RLS-ready, HP #4).
+    advisorAnswerTargetCycleRepository: TargetCycleRepository(tenantWrapper),
+    advisorAnswerWeeklyPlanSnapshotRepository:
+        weekly_snapshot.WeeklyPlanSnapshotRepository(tenantWrapper),
+    advisorAnswerShiftRecordsReadRepository:
+        ShiftRecordsReadRepository(tenantWrapper),
+    advisorConversationLogRepository:
+        AdvisorConversationLogRepository(tenantWrapper),
+    // ENCRYPTION-FIRST (A4-ENC): tryCreate returns null when
+    // ADVISOR_CONVERSATION_CMK is not provisioned, so the proxy still boots
+    // and the answer route fails closed until the key is set. HP #7: the
+    // resolver reads the secret only inside one encrypt call and never stores
+    // or echoes the key bytes.
+    advisorConversationCmkResolver:
+        ProxyAdvisorConversationCmkResolver.tryCreate(config),
   );
 }
 
