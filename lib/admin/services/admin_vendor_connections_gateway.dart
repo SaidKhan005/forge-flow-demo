@@ -6,6 +6,7 @@
 
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import '../../integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
@@ -125,10 +126,22 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
         'operator_id': op,
         'location_id': loc,
         'api_key': trimmedKey,
-        if (_clean(apiSecret) != null) 'username': _clean(apiSecret),
+        if (_clean(apiSecret) != null) 'api_secret': _clean(apiSecret),
         if (_clean(module) != null) 'module': _clean(module),
       },
-      idempotencyKey: _nextIdempotencyKey(),
+      idempotencyKey: _stableIdempotencyKey(
+        'admin-vendor-connect-api-key',
+        <Object?>[
+          op,
+          loc,
+          vendor,
+          <String, Object?>{
+            'api_key': trimmedKey,
+            if (_clean(apiSecret) != null) 'api_secret': _clean(apiSecret),
+            if (_clean(module) != null) 'module': _clean(module),
+          },
+        ],
+      ),
     );
     final connectionId =
         _readString(body['connection_id']) ??
@@ -175,7 +188,7 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
       });
     }
     return VendorTestConnectionResult(
-      authValid: body['auth_valid'] == true || body['ok'] == true,
+      authValid: body['auth_valid'] == true,
       elapsedMs: _readInt(body['elapsed_ms']) ?? 0,
       sampleSummary:
           _readString(body['sample_summary']) ??
@@ -196,15 +209,19 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
     final op = _requireScopeValue('operator', operatorId);
     final loc = _requireLocationId(locationId);
     final vendor = _requireScopeValue('vendor', vendorId);
+    final cleanReason = _clean(reason) ?? 'operator_action';
     await _send(
       method: 'POST',
       path: '/v1/admin/integrations/${_pathSegment(vendor)}/disconnect',
       jsonBody: <String, Object?>{
         'operator_id': op,
         'location_id': loc,
-        'reason': _clean(reason) ?? 'operator_action',
+        'reason': cleanReason,
       },
-      idempotencyKey: _nextIdempotencyKey(),
+      idempotencyKey: _stableIdempotencyKey(
+        'admin-vendor-disconnect',
+        <Object?>[op, loc, vendor, cleanReason],
+      ),
     );
   }
 
@@ -215,24 +232,10 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
     required String vendorId,
     int limit = 100,
   }) async {
-    final op = _requireScopeValue('operator', operatorId);
-    final loc = _requireLocationId(locationId);
-    final vendor = _requireScopeValue('vendor', vendorId);
-    final body = await _send(
-      method: 'GET',
-      path: '/v1/admin/integrations/${_pathSegment(vendor)}/logs',
-      queryParameters: <String, String>{
-        'operator_id': op,
-        'location_id': loc,
-        'limit': '$limit',
-      },
+    throw VendorConnectionsGatewayError(
+      message: 'Vendor sync logs are not available yet.',
+      remediation: 'Vendor sync logs ship in a follow-up slice.',
     );
-    final rawLogs = body['logs'];
-    if (rawLogs is! List) return const <VendorSyncLogEntry>[];
-    return <VendorSyncLogEntry>[
-      for (final raw in rawLogs)
-        if (raw is Map<Object?, Object?>) _logFromJson(raw),
-    ];
   }
 
   Future<Map<String, Object?>> _send({
@@ -299,6 +302,31 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
     _idempotencyCounter += 1;
     return 'admin-vendor-${DateTime.now().toUtc().microsecondsSinceEpoch}-'
         '$_idempotencyCounter';
+  }
+
+  static String _stableIdempotencyKey(String action, List<Object?> parts) {
+    final canonical = StringBuffer('admin:$action');
+    for (final part in parts) {
+      canonical.write('|');
+      canonical.write(_canonicaliseIdempotencyPart(part));
+    }
+    final digest = sha256.convert(utf8.encode(canonical.toString()));
+    return 'admin-$action-$digest';
+  }
+
+  static String _canonicaliseIdempotencyPart(Object? part) {
+    if (part == null) return ' ';
+    if (part is Map) {
+      final sortedKeys = part.keys
+          .map((key) => key.toString())
+          .toList(growable: false)
+        ..sort();
+      return '{${sortedKeys.map((key) => '$key=${_canonicaliseIdempotencyPart(part[key])}').join(',')}}';
+    }
+    if (part is Iterable) {
+      return '[${part.map(_canonicaliseIdempotencyPart).join(',')}]';
+    }
+    return part.toString();
   }
 
   static VendorConnectionsBundle _bundleFromJson(
@@ -401,7 +429,6 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
       case 'pending':
         return VendorConnectionFirstBackfillStatus.pending;
       case 'running':
-      case 'enqueued':
         return VendorConnectionFirstBackfillStatus.running;
       case 'succeeded':
         return VendorConnectionFirstBackfillStatus.succeeded;
@@ -492,24 +519,12 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
   }
 
   static bool _firstBackfillStarted(Map<String, Object?> body) {
-    if (body['first_backfill_started'] == true ||
-        body['firstBackfillStarted'] == true) {
-      return true;
-    }
-    final status =
-        _readString(body['first_backfill_status']) ??
-        _readString(body['firstBackfillStatus']);
-    if (status == 'enqueued' || status == 'running' || status == 'succeeded') {
+    if (body['first_backfill_started'] == true) {
       return true;
     }
     final raw = body['first_backfill'];
     if (raw is Map<Object?, Object?>) {
-      final nested = raw['started'];
-      if (nested == true) return true;
-      final nestedStatus = _readString(raw['status']);
-      return nestedStatus == 'enqueued' ||
-          nestedStatus == 'running' ||
-          nestedStatus == 'succeeded';
+      return raw['started'] == true;
     }
     return false;
   }

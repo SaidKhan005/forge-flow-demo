@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -99,6 +100,10 @@ void main() {
       find.byKey(const Key('vendor_connections_section_pos')),
       findsOneWidget,
     );
+    final widget = tester.widget<VendorConnectionsWidget>(
+      find.byType(VendorConnectionsWidget),
+    );
+    expect(widget.onConnectFlowStarted, isNotNull);
   });
 
   testWidgets(
