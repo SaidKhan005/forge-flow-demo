@@ -258,11 +258,11 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
 
   @override
   Widget build(BuildContext context) {
-    // The TabBar requires a Material ancestor; keeping the root as
-    // Material satisfies that without depending on the outer shell.
-    // OperatorWebScreenFrame is a no-scroll wrapper so the fixed-height
-    // tabbed body (Expanded TabBarView) keeps its fill (mirrors the
-    // health screen frame).
+    // The TabBar requires a Material ancestor; keeping the root as Material
+    // satisfies that without depending on the outer shell. The whole surface
+    // is ONE page scroll (actions + hero + tabs + the active tab body),
+    // matching the mockup, rather than each tab body scrolling inside its own
+    // fixed-height pane.
     return Material(
       key: const Key('admin_observability_screen'),
       color: AppColors.backgroundDeep,
@@ -289,9 +289,10 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                   key: const Key('admin_observability_load_error'),
                   message: _loadError!,
                 ),
-              if (_envelope != null) _envelopeBody(_envelope!),
+              if (_envelope != null) ..._envelopeBody(_envelope!),
               if (_loading && _envelope == null)
-                const Expanded(
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 80),
                   child: Center(
                     key: Key('admin_observability_loading'),
                     child: SizedBox(
@@ -312,79 +313,81 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                   onSelectMonth: _selectMonth,
                 ),
             ];
-            final column = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: children,
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
             );
-            if (!showManualPrompt) return column;
-            return SingleChildScrollView(child: column);
           },
         ),
       ),
     );
   }
 
-  Widget _envelopeBody(ObservabilityEnvelope envelope) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _AsOfStrip(envelope: envelope, month: _month),
-          const SizedBox(height: 14),
-          _HeroCards(envelope: envelope),
-          const SizedBox(height: 18),
-          TabBar(
-            key: const Key('admin_observability_tabs'),
-            controller: _tabs,
-            isScrollable: true,
-            labelColor: AppColors.textPrimary,
-            unselectedLabelColor: AppColors.textSecondary,
-            indicatorColor: AppColors.sunset,
-            tabs: <Widget>[
-              for (final tab in _kTabs)
-                Tab(
-                  key: Key('admin_observability_tab_${tab.keySuffix}'),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(tab.icon, size: 16),
-                      const SizedBox(width: 8),
-                      Text(tab.label),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: <Widget>[
-                _MoneyTab(
-                  key: const Key('admin_observability_tab_body_money'),
-                  envelope: envelope,
-                ),
-                _CustomersTab(
-                  key: const Key('admin_observability_tab_body_customers'),
-                  envelope: envelope,
-                ),
-                _ReliabilityTab(
-                  key: const Key('admin_observability_tab_body_reliability'),
-                  envelope: envelope,
-                  tripwireGateway: widget.tripwireGateway,
-                  tripwires: _tripwires,
-                  tripwireError: _tripwireError,
-                ),
-                _KnowledgeTab(
-                  key: const Key('admin_observability_tab_body_knowledge'),
-                  envelope: envelope,
-                ),
-              ],
+  List<Widget> _envelopeBody(ObservabilityEnvelope envelope) {
+    return <Widget>[
+      _AsOfStrip(envelope: envelope, month: _month),
+      _HeroCards(envelope: envelope),
+      const SizedBox(height: 18),
+      TabBar(
+        key: const Key('admin_observability_tabs'),
+        controller: _tabs,
+        isScrollable: true,
+        labelColor: AppColors.textPrimary,
+        unselectedLabelColor: AppColors.textSecondary,
+        indicatorColor: AppColors.sunset,
+        tabs: <Widget>[
+          for (final tab in _kTabs)
+            Tab(
+              key: Key('admin_observability_tab_${tab.keySuffix}'),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(tab.icon, size: 16),
+                  const SizedBox(width: 8),
+                  Text(tab.label),
+                ],
+              ),
             ),
-          ),
         ],
       ),
-    );
+      const SizedBox(height: 16),
+      // Only the active tab body is built, so the page height matches the
+      // visible tab (mirrors the mockup's hidden panels) and the single page
+      // scroll owns all vertical overflow.
+      AnimatedBuilder(
+        animation: _tabs,
+        builder: (context, _) {
+          switch (_tabs.index) {
+            case 0:
+              return _MoneyTab(
+                key: const Key('admin_observability_tab_body_money'),
+                envelope: envelope,
+              );
+            case 1:
+              return _CustomersTab(
+                key: const Key('admin_observability_tab_body_customers'),
+                envelope: envelope,
+              );
+            case 2:
+              return _ReliabilityTab(
+                key: const Key('admin_observability_tab_body_reliability'),
+                envelope: envelope,
+                tripwireGateway: widget.tripwireGateway,
+                tripwires: _tripwires,
+                tripwireError: _tripwireError,
+              );
+            case 3:
+            default:
+              return _KnowledgeTab(
+                key: const Key('admin_observability_tab_body_knowledge'),
+                envelope: envelope,
+              );
+          }
+        },
+      ),
+    ];
   }
 }
 
@@ -480,17 +483,11 @@ class _AsOfStrip extends StatelessWidget {
     final monthLabel = month == ObservabilityMonth.current
         ? 'This month'
         : 'Last month';
-    return Container(
+    return Padding(
       key: const Key('admin_observability_as_of_strip'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Text(
-        'Showing $monthLabel. Hosting and the knowledge graph stay '
-        'platform-wide. Updated ${adminHumanDateTime(envelope.asOf)}.',
+        '$monthLabel · updated ${adminHumanDateTime(envelope.asOf)}',
         style: AppTextStyles.body12(color: AppColors.textMuted),
       ),
     );
@@ -517,76 +514,90 @@ class _HeroCards extends StatelessWidget {
     final speed = _speedSummary(envelope);
     final graph = envelope.graph;
 
+    final cards = <Widget>[
+      _HeroCard(
+        keyName: 'admin_observability_hero_spend',
+        accent: AppColors.sunset,
+        icon: Icons.payments_outlined,
+        label: 'AI spend',
+        value: '\$${_formatUsd(totalSpend)}',
+        caption: 'Across every use case this month.',
+      ),
+      _HeroCard(
+        keyName: 'admin_observability_hero_customers',
+        accent: AppColors.peacock,
+        icon: Icons.storefront_outlined,
+        label: 'Businesses using AI',
+        value: usingAi == null ? '—' : '$usingAi',
+        caption: usingAi == null
+            ? 'No activity reported yet.'
+            : inactive == 0
+            ? 'All active.'
+            : '$inactive inactive.',
+        pill: underwater > 0
+            ? _HeroPill(
+                label: underwater == 1
+                    ? '1 losing money'
+                    : '$underwater losing money',
+                tone: _HeroTone.bad,
+              )
+            : null,
+      ),
+      _HeroCard(
+        keyName: 'admin_observability_hero_speed',
+        accent: AppColors.positive,
+        icon: Icons.speed_outlined,
+        label: 'Speed & uptime',
+        value: speed.headline,
+        caption: speed.caption,
+        pill: speed.pill,
+      ),
+      _HeroCard(
+        keyName: 'admin_observability_hero_knowledge',
+        accent: AppColors.warning,
+        icon: Icons.menu_book_outlined,
+        label: 'Advisor knowledge',
+        value: graph.isolatedNodeCount > 0 ? 'Review' : 'Healthy',
+        caption: graph.isolatedNodeCount == 0
+            ? 'Everything is linked.'
+            : graph.isolatedNodeCount == 1
+            ? '1 item not linked yet.'
+            : '${graph.isolatedNodeCount} items not linked yet.',
+        pill: graph.isolatedNodeCount > 0
+            ? const _HeroPill(label: 'Review suggested', tone: _HeroTone.watch)
+            : const _HeroPill(label: 'Up to date', tone: _HeroTone.ok),
+      ),
+    ];
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 16.0;
-        final columns = constraints.maxWidth >= 900 ? 4 : 2;
-        final cardWidth =
-            (constraints.maxWidth - (gap * (columns - 1))) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: <Widget>[
-            _HeroCard(
-              keyName: 'admin_observability_hero_spend',
-              width: cardWidth,
-              accent: AppColors.sunset,
-              icon: Icons.payments_outlined,
-              label: 'AI spend',
-              value: '\$${_formatUsd(totalSpend)}',
-              caption: 'Across every use case this month.',
+        const gap = 14.0;
+        // Equal-width AND equal-height tiles (IntrinsicHeight + stretch),
+        // mirroring the mockup's `repeat(4, 1fr)` grid: 4-up when wide,
+        // 2x2 when narrow. No more content-sized Wrap with ragged heights.
+        final perRow = constraints.maxWidth >= 900 ? 4 : 2;
+        final rows = <Widget>[];
+        for (var i = 0; i < cards.length; i += perRow) {
+          final end = (i + perRow) > cards.length ? cards.length : i + perRow;
+          final rowCards = cards.sublist(i, end);
+          rows.add(
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  for (var j = 0; j < rowCards.length; j++) ...<Widget>[
+                    if (j > 0) const SizedBox(width: gap),
+                    Expanded(child: rowCards[j]),
+                  ],
+                ],
+              ),
             ),
-            _HeroCard(
-              keyName: 'admin_observability_hero_customers',
-              width: cardWidth,
-              accent: AppColors.peacock,
-              icon: Icons.storefront_outlined,
-              label: 'Businesses using AI',
-              value: usingAi == null ? '—' : '$usingAi',
-              caption: usingAi == null
-                  ? 'No customer activity reported yet.'
-                  : inactive == 0
-                  ? 'All reported businesses are active.'
-                  : '$inactive inactive.',
-              pill: underwater > 0
-                  ? _HeroPill(
-                      label: underwater == 1
-                          ? '1 losing money'
-                          : '$underwater losing money',
-                      tone: _HeroTone.bad,
-                    )
-                  : null,
-            ),
-            _HeroCard(
-              keyName: 'admin_observability_hero_speed',
-              width: cardWidth,
-              accent: AppColors.positive,
-              icon: Icons.speed_outlined,
-              label: 'Speed & uptime',
-              value: speed.headline,
-              caption: speed.caption,
-              pill: speed.pill,
-            ),
-            _HeroCard(
-              keyName: 'admin_observability_hero_knowledge',
-              width: cardWidth,
-              accent: AppColors.warning,
-              icon: Icons.menu_book_outlined,
-              label: 'Advisor knowledge',
-              value: graph.isolatedNodeCount > 0 ? 'Review' : 'Healthy',
-              caption: graph.isolatedNodeCount == 0
-                  ? 'Everything is linked.'
-                  : graph.isolatedNodeCount == 1
-                  ? '1 item not linked yet.'
-                  : '${graph.isolatedNodeCount} items not linked yet.',
-              pill: graph.isolatedNodeCount > 0
-                  ? const _HeroPill(
-                      label: 'Review suggested',
-                      tone: _HeroTone.watch,
-                    )
-                  : const _HeroPill(label: 'Up to date', tone: _HeroTone.ok),
-            ),
-          ],
+          );
+          if (end < cards.length) rows.add(const SizedBox(height: gap));
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rows,
         );
       },
     );
@@ -648,7 +659,6 @@ class _HeroPill extends StatelessWidget {
 class _HeroCard extends StatelessWidget {
   const _HeroCard({
     required this.keyName,
-    required this.width,
     required this.accent,
     required this.icon,
     required this.label,
@@ -658,7 +668,6 @@ class _HeroCard extends StatelessWidget {
   });
 
   final String keyName;
-  final double width;
   final Color accent;
   final IconData icon;
   final String label;
@@ -674,7 +683,6 @@ class _HeroCard extends StatelessWidget {
     // above the body.
     return Container(
       key: Key(keyName),
-      width: width,
       constraints: const BoxConstraints(minHeight: 178),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
@@ -769,7 +777,7 @@ class _MoneyTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final slices = _costByUseCase(envelope);
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1293,7 +1301,7 @@ class _CustomersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1785,7 +1793,7 @@ class _ReliabilityTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final counts = envelope.projectionRetries.statusCounts;
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2184,7 +2192,7 @@ class _KnowledgeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final graph = envelope.graph;
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
