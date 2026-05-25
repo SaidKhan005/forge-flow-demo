@@ -108,22 +108,39 @@ class DemoVendorIntegrationStateFixture {
   /// the `DemoScope` constants so drift fails loudly.
   static const Map<String, DemoVendorIntegrationLocation> _mobileLocationIds =
       <String, DemoVendorIntegrationLocation>{
-    'demo_restaurant_001': DemoVendorIntegrationLocation.downtown,
-    'demo_restaurant_north_loop': DemoVendorIntegrationLocation.northLoop,
-    'demo_restaurant_riverside': DemoVendorIntegrationLocation.riverside,
-    'demo_restaurant_harbour': DemoVendorIntegrationLocation.harbour,
-  };
+        'demo_restaurant_001': DemoVendorIntegrationLocation.downtown,
+        'demo_restaurant_north_loop': DemoVendorIntegrationLocation.northLoop,
+        'demo_restaurant_riverside': DemoVendorIntegrationLocation.riverside,
+        'demo_restaurant_harbour': DemoVendorIntegrationLocation.harbour,
+      };
 
   /// Operator-web `demo-loc-*` ids → logical location. Mirrors
   /// `kDemoTeamLocationsFixture`
   /// (`lib/operator_web/services/demo_team_fixtures.dart`); a test
   /// asserts equality so drift fails loudly.
   static const Map<String, DemoVendorIntegrationLocation>
-      _operatorWebLocationIds = <String, DemoVendorIntegrationLocation>{
+  _operatorWebLocationIds = <String, DemoVendorIntegrationLocation>{
     'demo-loc-downtown': DemoVendorIntegrationLocation.downtown,
     'demo-loc-north-loop': DemoVendorIntegrationLocation.northLoop,
     'demo-loc-riverside': DemoVendorIntegrationLocation.riverside,
     'demo-loc-harbour': DemoVendorIntegrationLocation.harbour,
+  };
+
+  /// Admin Console demo location ids -> logical location. Mirrors the
+  /// location ids in `admin_routes_demo_gateways_part.dart` /
+  /// `demo_members_admin_gateway.dart` so Admin demo wiring can reuse
+  /// this same fixture instead of carrying a second status table.
+  static const Map<String, DemoVendorIntegrationLocation>
+  _adminConsoleLocationIds = <String, DemoVendorIntegrationLocation>{
+    // Demo Diner Co. -> Toronto Yorkville: mixed connected/error demo.
+    '00000000-0000-4000-8000-0000000000a1':
+        DemoVendorIntegrationLocation.downtown,
+    // Demo Diner Co. -> Vancouver Robson: already-live simulated state.
+    '00000000-0000-4000-8000-0000000000a2':
+        DemoVendorIntegrationLocation.riverside,
+    // Sunset Cafe Group -> Brooklyn Williamsburg: clean demo state.
+    '00000000-0000-4000-8000-0000000000b1':
+        DemoVendorIntegrationLocation.harbour,
   };
 
   // Vendor identities reused from `InMemoryVendorConnectionsGateway`'s
@@ -142,96 +159,101 @@ class DemoVendorIntegrationStateFixture {
 
   /// The canonical state table. Order within each location follows
   /// [IntegrationCategory.values] (pos, labor, reservation).
-  static const Map<DemoVendorIntegrationLocation,
-          Map<IntegrationCategory, DemoVendorCategoryState>> _states =
-      <DemoVendorIntegrationLocation,
-          Map<IntegrationCategory, DemoVendorCategoryState>>{
-    DemoVendorIntegrationLocation.downtown:
-        <IntegrationCategory, DemoVendorCategoryState>{
-      IntegrationCategory.pos: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.connected,
-        vendorId: _posVendorId,
-        vendorDisplayName: _posVendorName,
-      ),
-      IntegrationCategory.labor: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.connected,
-        vendorId: _laborVendorId,
-        vendorDisplayName: _laborVendorName,
-      ),
-      IntegrationCategory.reservation: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.error,
-        vendorId: _reservationVendorId,
-        vendorDisplayName: _reservationVendorName,
-        lastErrorMessage: _reservationReauthMessage,
-      ),
-    },
-    DemoVendorIntegrationLocation.northLoop:
-        <IntegrationCategory, DemoVendorCategoryState>{
-      IntegrationCategory.pos: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.connected,
-        vendorId: _posVendorId,
-        vendorDisplayName: _posVendorName,
-      ),
-      IntegrationCategory.labor: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.disconnected,
-        vendorId: _laborVendorId,
-        vendorDisplayName: _laborVendorName,
-      ),
-      IntegrationCategory.reservation: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.disconnected,
-        vendorId: _reservationVendorId,
-        vendorDisplayName: _reservationVendorName,
-      ),
-    },
-    DemoVendorIntegrationLocation.riverside:
-        <IntegrationCategory, DemoVendorCategoryState>{
-      IntegrationCategory.pos: DemoVendorCategoryState(
-        isDemo: false,
-        connectionStatus: ConnectionStatus.connected,
-        vendorId: _posVendorId,
-        vendorDisplayName: _posVendorName,
-      ),
-      IntegrationCategory.labor: DemoVendorCategoryState(
-        isDemo: false,
-        connectionStatus: ConnectionStatus.connected,
-        vendorId: _laborVendorId,
-        vendorDisplayName: _laborVendorName,
-      ),
-      IntegrationCategory.reservation: DemoVendorCategoryState(
-        isDemo: false,
-        connectionStatus: ConnectionStatus.connected,
-        vendorId: _reservationVendorId,
-        vendorDisplayName: _reservationVendorName,
-      ),
-    },
-    DemoVendorIntegrationLocation.harbour:
-        <IntegrationCategory, DemoVendorCategoryState>{
-      IntegrationCategory.pos: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.disconnected,
-        vendorId: _posVendorId,
-        vendorDisplayName: _posVendorName,
-      ),
-      IntegrationCategory.labor: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.disconnected,
-        vendorId: _laborVendorId,
-        vendorDisplayName: _laborVendorName,
-      ),
-      IntegrationCategory.reservation: DemoVendorCategoryState(
-        isDemo: true,
-        connectionStatus: ConnectionStatus.disconnected,
-        vendorId: _reservationVendorId,
-        vendorDisplayName: _reservationVendorName,
-      ),
-    },
-  };
+  static const Map<
+    DemoVendorIntegrationLocation,
+    Map<IntegrationCategory, DemoVendorCategoryState>
+  >
+  _states =
+      <
+        DemoVendorIntegrationLocation,
+        Map<IntegrationCategory, DemoVendorCategoryState>
+      >{
+        DemoVendorIntegrationLocation.downtown:
+            <IntegrationCategory, DemoVendorCategoryState>{
+              IntegrationCategory.pos: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.connected,
+                vendorId: _posVendorId,
+                vendorDisplayName: _posVendorName,
+              ),
+              IntegrationCategory.labor: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.connected,
+                vendorId: _laborVendorId,
+                vendorDisplayName: _laborVendorName,
+              ),
+              IntegrationCategory.reservation: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.error,
+                vendorId: _reservationVendorId,
+                vendorDisplayName: _reservationVendorName,
+                lastErrorMessage: _reservationReauthMessage,
+              ),
+            },
+        DemoVendorIntegrationLocation.northLoop:
+            <IntegrationCategory, DemoVendorCategoryState>{
+              IntegrationCategory.pos: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.connected,
+                vendorId: _posVendorId,
+                vendorDisplayName: _posVendorName,
+              ),
+              IntegrationCategory.labor: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.disconnected,
+                vendorId: _laborVendorId,
+                vendorDisplayName: _laborVendorName,
+              ),
+              IntegrationCategory.reservation: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.disconnected,
+                vendorId: _reservationVendorId,
+                vendorDisplayName: _reservationVendorName,
+              ),
+            },
+        DemoVendorIntegrationLocation.riverside:
+            <IntegrationCategory, DemoVendorCategoryState>{
+              IntegrationCategory.pos: DemoVendorCategoryState(
+                isDemo: false,
+                connectionStatus: ConnectionStatus.connected,
+                vendorId: _posVendorId,
+                vendorDisplayName: _posVendorName,
+              ),
+              IntegrationCategory.labor: DemoVendorCategoryState(
+                isDemo: false,
+                connectionStatus: ConnectionStatus.connected,
+                vendorId: _laborVendorId,
+                vendorDisplayName: _laborVendorName,
+              ),
+              IntegrationCategory.reservation: DemoVendorCategoryState(
+                isDemo: false,
+                connectionStatus: ConnectionStatus.connected,
+                vendorId: _reservationVendorId,
+                vendorDisplayName: _reservationVendorName,
+              ),
+            },
+        DemoVendorIntegrationLocation.harbour:
+            <IntegrationCategory, DemoVendorCategoryState>{
+              IntegrationCategory.pos: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.disconnected,
+                vendorId: _posVendorId,
+                vendorDisplayName: _posVendorName,
+              ),
+              IntegrationCategory.labor: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.disconnected,
+                vendorId: _laborVendorId,
+                vendorDisplayName: _laborVendorName,
+              ),
+              IntegrationCategory.reservation: DemoVendorCategoryState(
+                isDemo: true,
+                connectionStatus: ConnectionStatus.disconnected,
+                vendorId: _reservationVendorId,
+                vendorDisplayName: _reservationVendorName,
+              ),
+            },
+      };
 
   // Deterministic flip metadata for the already-live (Riverside) rows.
   // Fixed epoch + per-category offset — never `DateTime.now()`.
@@ -241,11 +263,12 @@ class DemoVendorIntegrationStateFixture {
   /// console. Unknown ids fall back to a deterministic clean-demo
   /// default (all `is_demo=true`, all disconnected) so a stray scope
   /// never crashes the notifier.
-  static bool knowsLocation(String locationId) =>
-      _resolve(locationId) != null;
+  static bool knowsLocation(String locationId) => _resolve(locationId) != null;
 
   static DemoVendorIntegrationLocation? _resolve(String locationId) =>
-      _mobileLocationIds[locationId] ?? _operatorWebLocationIds[locationId];
+      _mobileLocationIds[locationId] ??
+      _operatorWebLocationIds[locationId] ??
+      _adminConsoleLocationIds[locationId];
 
   static Map<IntegrationCategory, DemoVendorCategoryState> _statesFor(
     String locationId,
@@ -284,8 +307,7 @@ class DemoVendorIntegrationStateFixture {
   static DemoVendorCategoryState stateFor({
     required String locationId,
     required IntegrationCategory category,
-  }) =>
-      _statesFor(locationId)[category]!;
+  }) => _statesFor(locationId)[category]!;
 
   /// How many of this location's three categories have a vendor
   /// connection that renders a row — i.e. `connected` OR `error`
@@ -367,8 +389,7 @@ class DemoVendorIntegrationStateFixture {
   static String _connectionId(
     String locationId,
     DemoVendorCategoryState state,
-  ) =>
-      'demo-conn-${state.vendorId}-$locationId';
+  ) => 'demo-conn-${state.vendorId}-$locationId';
 
   /// The operator-web [VendorConnectionsBundle] for this (operator,
   /// location). `demoFlags` is the SAME per-category `is_demo` as
@@ -381,12 +402,11 @@ class DemoVendorIntegrationStateFixture {
     required String locationName,
   }) {
     final states = _statesFor(locationId);
-    VendorConnectionRow? rowFor(IntegrationCategory category) =>
-        _connectionRow(
-          locationId: locationId,
-          category: category,
-          state: states[category]!,
-        );
+    VendorConnectionRow? rowFor(IntegrationCategory category) => _connectionRow(
+      locationId: locationId,
+      category: category,
+      state: states[category]!,
+    );
     return VendorConnectionsBundle(
       operatorId: operatorId,
       locationId: locationId,
