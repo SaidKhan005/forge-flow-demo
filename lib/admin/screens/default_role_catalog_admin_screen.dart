@@ -425,8 +425,8 @@ class _DefaultRoleCatalogAdminScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _CurrentVersionPanel(current: listing.current),
-        const SizedBox(height: 18),
+        _CatalogStatusStrip(current: listing.current),
+        const SizedBox(height: 12),
         _DraftEditorPanel(
           draft: _draft,
           canEdit: widget.editingEnabled,
@@ -455,11 +455,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return const OperatorWebScreenHeader(
       icon: Icons.shield_outlined,
-      title: 'Default role catalog',
+      title: 'Default roles',
       collapseBelowWidth: 0,
-      subtitle:
-          'Edit the starter roles every business begins with. Publish '
-          'when the draft is ready. Custom roles stay unchanged.',
+      subtitle: 'Manage the starter roles every new business receives.',
     );
   }
 }
@@ -498,58 +496,91 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-class _CurrentVersionPanel extends StatelessWidget {
-  const _CurrentVersionPanel({required this.current});
+class _CatalogStatusStrip extends StatelessWidget {
+  const _CatalogStatusStrip({required this.current});
 
   final DefaultRoleCatalogVersionView? current;
 
   @override
   Widget build(BuildContext context) {
     if (current == null) {
-      return OperatorWebPanel(
+      return _StatusStrip(
         key: const Key('admin_default_role_catalog_current_empty'),
-        title: 'No default catalog published yet',
-        child: Text(
-          'Built-in starter roles are active until the first publish.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
+        icon: Icons.info_outline,
+        title: 'Using built-in starter roles',
+        detail: 'Publish when this list is ready.',
       );
     }
     final c = current!;
-    return OperatorWebPanel(
+    final detail =
+        'v${c.versionNumber} published '
+        '${adminHumanDateTime(c.publishedAt)}';
+    return _StatusStrip(
       key: const Key('admin_default_role_catalog_current_panel'),
+      icon: Icons.check_circle_outline,
       title: 'Current version',
-      trailing: _Pill(
-        label: 'Active',
-        background: AppColors.positive.withValues(alpha: 0.15),
-        foreground: AppColors.positive,
+      detail: detail,
+      trailing: Text(
+        '${c.payload.length} roles',
+        key: const Key('admin_default_role_catalog_current_version'),
+        style: AppTextStyles.mono10(
+          color: AppColors.textSecondary,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+}
+
+class _StatusStrip extends StatelessWidget {
+  const _StatusStrip({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.detail,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String detail;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
         children: <Widget>[
-          Text(
-            'v${c.versionNumber}',
-            key: const Key('admin_default_role_catalog_current_version'),
-            style: AppTextStyles.display20(color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Published by ${c.publishedByUserId} on '
-            '${adminHumanDateTime(c.publishedAt)}',
-            style: AppTextStyles.mono11(color: AppColors.textSecondary),
-          ),
-          if (c.notes != null && c.notes!.trim().isNotEmpty) ...<Widget>[
-            const SizedBox(height: 8),
-            Text(
-              'Notes: ${c.notes!}',
-              style: AppTextStyles.body13(color: AppColors.textPrimary),
+          Icon(icon, size: 18, color: AppColors.sunsetDark),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 2,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: AppTextStyles.body13(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  detail,
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
+                ),
+              ],
             ),
-          ],
-          const SizedBox(height: 8),
-          Text(
-            '${c.payload.length} roles',
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),
+          if (trailing != null) ...<Widget>[
+            const SizedBox(width: 10),
+            trailing!,
+          ],
         ],
       ),
     );
@@ -581,8 +612,7 @@ class _DraftEditorPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebPanel(
       key: const Key('admin_default_role_catalog_draft_panel'),
-      title: 'Default roles',
-      subtitle: 'Changes stay local until Publish.',
+      title: 'Role list',
       trailing: !draftEqualsCurrent
           ? _Pill(
               key: const Key('admin_default_role_catalog_draft_dirty_pill'),
@@ -609,14 +639,11 @@ class _DraftEditorPanel extends StatelessWidget {
               ),
             )
           else
-            for (var i = 0; i < draft.length; i++)
-              _RoleListRow(
-                key: Key('admin_default_role_catalog_draft_row_$i'),
-                index: i,
-                role: draft[i],
-                canEdit: canEdit,
-                onOpen: onOpenRole,
-              ),
+            _CompactRoleList(
+              draft: draft,
+              canEdit: canEdit,
+              onOpenRole: onOpenRole,
+            ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 10,
@@ -655,30 +682,48 @@ class _DraftEditorPanel extends StatelessWidget {
   }
 }
 
-Set<String> _allowKeysFromPermissions(List<Object?> permissions) {
-  final out = <String>{};
-  for (final entry in permissions) {
-    if (entry is Map) {
-      final key = entry['permission_key'];
-      final effect = entry['effect'];
-      if (key is String && effect == 'allow') {
-        out.add(key);
-      }
-    }
-  }
-  return out;
-}
-
-Set<String> _expandedAllowKeysFromRole(Map<String, Object?> role) {
-  final permissions = (role['permissions'] as List?) ?? const <Object?>[];
-  final explicit = _allowKeysFromPermissions(permissions);
-  return PermissionKeyMetadataCatalog.expandImplies(explicit);
-}
-
 String _roleTitle(Map<String, Object?> role) {
   final displayName = ((role['display_name'] as String?) ?? '').trim();
   if (displayName.isNotEmpty) return displayName;
   return 'Untitled role';
+}
+
+class _CompactRoleList extends StatelessWidget {
+  const _CompactRoleList({
+    required this.draft,
+    required this.canEdit,
+    required this.onOpenRole,
+  });
+
+  final List<Map<String, Object?>> draft;
+  final bool canEdit;
+  final Future<void> Function(int index) onOpenRole;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Column(
+          children: <Widget>[
+            for (var i = 0; i < draft.length; i++)
+              _RoleListRow(
+                key: Key('admin_default_role_catalog_draft_row_$i'),
+                index: i,
+                role: draft[i],
+                canEdit: canEdit,
+                isLast: i == draft.length - 1,
+                onOpen: onOpenRole,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _RoleListRow extends StatelessWidget {
@@ -687,75 +732,48 @@ class _RoleListRow extends StatelessWidget {
     required this.index,
     required this.role,
     required this.canEdit,
+    required this.isLast,
     required this.onOpen,
   });
 
   final int index;
   final Map<String, Object?> role;
   final bool canEdit;
+  final bool isLast;
   final Future<void> Function(int index) onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final description = ((role['description'] as String?) ?? '').trim();
-    final permissionCount = _expandedAllowKeysFromRole(role).length;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.backgroundDeep,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        color: AppColors.backgroundSurface,
+        border: Border(
+          bottom: isLast
+              ? BorderSide.none
+              : const BorderSide(color: AppColors.borderSubtle, width: 1),
+        ),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(6),
         onTap: () => onOpen(index),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
           child: Row(
             children: <Widget>[
-              Icon(
-                canEdit ? Icons.edit_outlined : Icons.visibility_outlined,
-                color: AppColors.sunsetDark,
-                size: 18,
-              ),
-              const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      _roleTitle(role),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.body14(
-                        color: AppColors.textPrimary,
-                      ).copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    if (description.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 2),
-                      Text(
-                        description,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.body12(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  _roleTitle(role),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body14(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               const SizedBox(width: 10),
-              _Pill(
-                label: '$permissionCount permissions',
-                background: AppColors.backgroundSurface,
-                foreground: AppColors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.chevron_right,
+              Icon(
+                canEdit ? Icons.edit_outlined : Icons.visibility_outlined,
                 color: AppColors.textMuted,
-                size: 20,
+                size: 18,
               ),
             ],
           ),
