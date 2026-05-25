@@ -9,11 +9,12 @@
 // location-required copy while location scopes mount the shared widget.
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
+import '../../../operator_web/services/operator_web_url_launcher.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/console/console_info_button.dart';
 import '../../../widgets/console/console_screen_body.dart';
 import '../../../widgets/console/console_screen_header.dart';
 import '../../../widgets/console/console_surface.dart';
@@ -108,7 +109,7 @@ class _VendorConnectionsAdminMountState
             'admin integration OAuth route binding for this vendor.',
       );
     }
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await openOperatorWebRedirect(uri.toString());
   }
 
   @override
@@ -160,6 +161,8 @@ class _VendorConnectionsAdminMountState
     final Widget content;
     if (location == null) {
       content = _embeddedLocationRequiredPanel(scope);
+    } else if (!widget.canMutate) {
+      content = _embeddedForbiddenPanel(location.locationName);
     } else if (widget.gateway == null) {
       content = _embeddedNotWiredPanel(location.locationName);
     } else {
@@ -184,6 +187,14 @@ class _VendorConnectionsAdminMountState
             title: 'Vendor integrations',
             subtitle: subtitle,
             actions: <Widget>[
+              OperatorWebInfoButton(
+                title: 'Vendor integrations',
+                tooltip: 'Vendor integrations',
+                body: Text(
+                  'Forge & Flow reads data from the connected services for this location.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
               if (widget.onBackToBusinessAccounts != null)
                 AdminBusinessAccountsBackButton(
                   onPressed: widget.onBackToBusinessAccounts,
@@ -245,30 +256,40 @@ class _VendorConnectionsAdminMountState
     );
   }
 
+  Widget _embeddedForbiddenPanel(String locationName) {
+    return OperatorWebPanel(
+      key: const Key('admin_vendor_connections_forbidden'),
+      title: 'Vendor integrations unavailable',
+      subtitle:
+          'You do not have permission to configure vendor integrations for '
+          'this location.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          AdminDetailRow(label: 'Location', value: locationName),
+          const AdminDetailRow(
+            label: 'Who can connect vendors',
+            value: 'A super admin with integration access',
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _embeddedNotWiredPanel(String locationName) {
     return OperatorWebPanel(
       key: const Key('admin_vendor_connections_not_wired'),
-      title: 'Lifecycle actions are not live',
+      title: 'Vendor integrations gateway is not configured',
       subtitle:
-          'Connect, test, disconnect, and sync-log actions are not exposed '
-          'from this admin route in preview. This page is intentionally '
-          'read-only rather than showing demo vendor data. The live provider '
-          'summary stays available in Connected services.',
+          'This admin route needs the live vendor integrations gateway before '
+          'it can show the same connection workflow as Operator Web.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           AdminDetailRow(label: 'Location', value: locationName),
           const AdminDetailRow(
             label: 'Current admin status',
-            value: 'Not routed',
-          ),
-          const AdminDetailRow(
-            label: 'Safe live view',
-            value: 'Connected services',
-          ),
-          const AdminDetailRow(
-            label: 'Mutation state',
-            value: 'Disabled until backend bindings exist',
+            value: 'Gateway missing',
           ),
         ],
       ),
@@ -304,6 +325,14 @@ class _VendorConnectionsAdminMountState
 
   Widget _buildLocationContent(_VendorConnectionsLocationScope location) {
     final resolvedGateway = widget.gateway;
+    if (!widget.canMutate) {
+      return _VendorLifecycleForbiddenPanel(
+        locationName: location.locationName,
+        onBackToBusinessAccounts: widget.embedded
+            ? widget.onBackToBusinessAccounts
+            : null,
+      );
+    }
     return resolvedGateway == null
         ? _VendorLifecycleUnavailablePanel(
             locationName: location.locationName,
@@ -460,6 +489,60 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
   }
 }
 
+class _VendorLifecycleForbiddenPanel extends StatelessWidget {
+  const _VendorLifecycleForbiddenPanel({
+    required this.locationName,
+    required this.onBackToBusinessAccounts,
+  });
+
+  final String locationName;
+  final VoidCallback? onBackToBusinessAccounts;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.backgroundDeep,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                AdminPageHeader(
+                  title: 'Vendor integrations',
+                  subtitle:
+                      'You do not have permission to configure vendor integrations for this location.',
+                  leading: onBackToBusinessAccounts == null
+                      ? null
+                      : AdminBusinessAccountsBackButton(
+                          onPressed: onBackToBusinessAccounts,
+                        ),
+                ),
+                const SizedBox(height: 14),
+                AdminCard(
+                  key: const Key('admin_vendor_connections_forbidden'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      AdminDetailRow(label: 'Location', value: locationName),
+                      const AdminDetailRow(
+                        label: 'Who can connect vendors',
+                        value: 'A super admin with integration access',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _VendorLifecycleUnavailablePanel extends StatelessWidget {
   const _VendorLifecycleUnavailablePanel({
     required this.locationName,
@@ -484,7 +567,7 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
                 AdminPageHeader(
                   title: 'Vendor integrations',
                   subtitle:
-                      'Live provider summary is available in Connected services. Per-location lifecycle actions stay disabled here until the proxy route has production bindings.',
+                      'This admin route needs the live vendor integrations gateway before it can show the same connection workflow as Operator Web.',
                   leading: onBackToBusinessAccounts == null
                       ? null
                       : AdminBusinessAccountsBackButton(
@@ -511,14 +594,14 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
                                 Text(
-                                  'Lifecycle actions are not live for $locationName',
+                                  'Vendor integrations gateway is not configured for $locationName',
                                   style: AppTextStyles.sectionTitle(
                                     color: AppColors.textPrimary,
                                   ),
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Connect, test, disconnect, and sync-log actions are not exposed from this admin route in preview. This page is intentionally read-only rather than showing demo vendor data.',
+                                  'Connect, test, disconnect, and sync-log actions need the live admin gateway.',
                                   style: AppTextStyles.body13(
                                     color: AppColors.textSecondary,
                                   ),
@@ -531,15 +614,7 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
                       const SizedBox(height: 16),
                       const AdminDetailRow(
                         label: 'Current admin status',
-                        value: 'Not routed',
-                      ),
-                      const AdminDetailRow(
-                        label: 'Safe live view',
-                        value: 'Connected services',
-                      ),
-                      const AdminDetailRow(
-                        label: 'Mutation state',
-                        value: 'Disabled until backend bindings exist',
+                        value: 'Gateway missing',
                       ),
                     ],
                   ),

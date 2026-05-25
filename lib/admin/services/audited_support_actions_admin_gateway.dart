@@ -119,10 +119,11 @@ extension AuditActorKindWire on AuditActorKind {
 }
 
 AuditActorKind auditActorKindFromWire(String wire) {
+  final normalized = wire.trim().toLowerCase();
   for (final kind in AuditActorKind.values) {
-    if (kind.wire == wire) return kind;
+    if (kind.wire == normalized) return kind;
   }
-  throw ArgumentError.value(wire, 'actor_kind', 'unknown actor_kind');
+  return AuditActorKind.teamMember;
 }
 
 /// Audit-log filter clause. Forwarded to the proxy on every list
@@ -252,8 +253,8 @@ class AuditLogRow {
     required this.actorEmail,
     required this.actorKind,
     required this.operatorId,
-    required this.targetKind,
-    required this.targetId,
+    this.targetKind,
+    this.targetId,
     required this.payload,
     required this.businessDate,
     this.actorRole,
@@ -270,8 +271,8 @@ class AuditLogRow {
   final AuditActorKind actorKind;
   final String? actorRole;
   final String operatorId;
-  final String targetKind;
-  final String targetId;
+  final String? targetKind;
+  final String? targetId;
   final Map<String, Object?> payload;
   final DateTime businessDate;
 
@@ -978,8 +979,8 @@ AuditLogRow _auditRowFromJson(Map<String, Object?> json) {
         _optionalString(json['actor_role_label']) ??
         _optionalString(json['actor_display_role']),
     operatorId: _stringField(json, 'operator_id'),
-    targetKind: _stringField(json, 'target_kind'),
-    targetId: _stringField(json, 'target_id'),
+    targetKind: _optionalString(json['target_kind']),
+    targetId: _optionalString(json['target_id']),
     payload: payloadRaw is Map
         ? payloadRaw.cast<String, Object?>()
         : const <String, Object?>{},

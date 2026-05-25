@@ -405,7 +405,9 @@ class Phase80IntegrationRoutes {
             actorUserId: actor.userId,
             vendorId: vendorId,
             apiKey: apiKey,
-            username: _stringField(body, 'username'),
+            username:
+                _stringField(body, 'api_secret') ??
+                _stringField(body, 'username'),
             module: _stringField(body, 'module'),
           );
           final response = await _withFirstBackfillStatus(
@@ -674,8 +676,8 @@ class Phase80IntegrationRoutes {
     required String requestType,
     required String actorUserId,
     required Map<String, Object?> body,
-    required Future<({int statusCode, Map<String, Object?> payload})>
-    Function() compute,
+    required Future<({int statusCode, Map<String, Object?> payload})> Function()
+    compute,
   }) async {
     final response = request.response;
     final store = adminRequestIdempotencyStore;

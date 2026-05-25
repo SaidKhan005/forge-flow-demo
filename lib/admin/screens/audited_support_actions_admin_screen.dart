@@ -58,7 +58,13 @@ import '../widgets/admin_audit_log_integrity_badge.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
-import 'roles_hierarchy_sessions_admin_screen.dart';
+
+class AdminAuditLogCsvExport {
+  const AdminAuditLogCsvExport({required this.csv, required this.filename});
+
+  final String csv;
+  final String filename;
+}
 
 class AuditedSupportActionsAdminScreen extends StatefulWidget {
   const AuditedSupportActionsAdminScreen({
@@ -80,6 +86,8 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.graceWindowClock,
     this.graceWindowTickInterval = const Duration(minutes: 1),
     this.anchorBadgeClock,
+    this.onCsvReady,
+    this.copyToClipboard,
   });
 
   final AuditedSupportActionsAdminGateway gateway;
@@ -165,6 +173,9 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   @visibleForTesting
   final DateTime Function()? anchorBadgeClock;
 
+  final Future<void> Function(AdminAuditLogCsvExport export)? onCsvReady;
+  final Future<void> Function(String value)? copyToClipboard;
+
   @override
   State<AuditedSupportActionsAdminScreen> createState() =>
       _AuditedSupportActionsAdminScreenState();
@@ -174,14 +185,18 @@ class _AuditedSupportActionsAdminScreenState
     extends State<AuditedSupportActionsAdminScreen> {
   bool _loading = true;
   bool _loadingMore = false;
+  bool _exporting = false;
   String? _loadError;
   String? _actionError;
+  String? _exportMessage;
 
   /// Accumulated rows across pagination cursors. Each `Apply filters`
   /// or refresh resets this to the first page; `Load more` appends.
   List<AuditLogRow> _rows = const <AuditLogRow>[];
   String? _nextCursor;
-  List<SupportActionsMember> _members = const <SupportActionsMember>[];
+  final List<SupportActionsMember> _members = const <SupportActionsMember>[];
+  final Map<String, String> _actorPickerCatalog = <String, String>{};
+  final Set<String> _expandedEntryIds = <String>{};
   // Web parity (audit_log_screen.dart defaults to last30d): open on a
   // fixed window rather than the removed admin-only "Any time" state.
   AuditLogFilters _filters = const AuditLogFilters(
@@ -374,23 +389,23 @@ class _AuditedSupportActionsAdminScreenState
     final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
+      _loadingMore = false;
       _loadError = null;
     });
     try {
       final operatorId = widget.pickedOperator.operatorId;
-      final results = await Future.wait<Object>([
-        widget.gateway.listAuditLog(operatorId: operatorId, filters: _filters),
-        widget.gateway.listMembers(operatorId: operatorId),
-      ]);
+      final page = await widget.gateway.listAuditLog(
+        operatorId: operatorId,
+        filters: _filters,
+      );
       if (generation != _refreshGeneration) return;
-      final page = results[0] as AuditLogPage;
-      final members = results[1] as List<SupportActionsMember>;
       if (!mounted) return;
       setState(() {
         _rows = page.rows;
         _nextCursor = page.nextCursor;
-        _members = members;
         _loading = false;
+        _expandedEntryIds.clear();
+        _refreshActorCatalog(page.rows);
       });
     } on AuditedSupportActionsGatewayError catch (error) {
       if (!mounted) return;
@@ -413,6 +428,29 @@ class _AuditedSupportActionsAdminScreenState
     }
   }
 
+  void _refreshActorCatalog(List<AuditLogRow> rows) {
+    for (final row in rows) {
+      final id = row.actorUserId.trim();
+      if (id.isEmpty) continue;
+      final label = row.actorDisplayName.trim().isNotEmpty
+          ? row.actorDisplayName.trim()
+          : row.actorEmail.trim().isNotEmpty
+          ? row.actorEmail.trim()
+          : id;
+      _actorPickerCatalog[id] = label;
+    }
+  }
+
+  void _toggleExpanded(String eventId) {
+    setState(() {
+      if (_expandedEntryIds.contains(eventId)) {
+        _expandedEntryIds.remove(eventId);
+      } else {
+        _expandedEntryIds.add(eventId);
+      }
+    });
+  }
+
   Future<void> _loadMore() async {
     final cursor = _nextCursor;
     if (cursor == null || _loadingMore) return;
@@ -431,6 +469,7 @@ class _AuditedSupportActionsAdminScreenState
         _rows = <AuditLogRow>[..._rows, ...next.rows];
         _nextCursor = next.nextCursor;
         _loadingMore = false;
+        _refreshActorCatalog(next.rows);
       });
     } on AuditedSupportActionsGatewayError catch (error) {
       if (!mounted) return;
@@ -502,9 +541,17 @@ class _AuditedSupportActionsAdminScreenState
   }
 
   Future<void> _onExportCsv() async {
+    if (_exporting || !(widget.editingEnabled && widget.canExportAuditLog)) {
+      return;
+    }
     final reason = await _promptAdminReason('Export the filtered audit log');
     if (reason == null) return;
-    await _runAndRefresh(() async {
+    setState(() {
+      _exporting = true;
+      _exportMessage = null;
+      _actionError = null;
+    });
+    try {
       final csv = await widget.gateway.exportAuditLogCsv(
         operatorId: widget.pickedOperator.operatorId,
         filters: _filters,
@@ -513,12 +560,56 @@ class _AuditedSupportActionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       );
-      await Clipboard.setData(ClipboardData(text: csv));
-    }, successHint: 'Copied audit log CSV to your clipboard.');
+      final export = AdminAuditLogCsvExport(
+        csv: csv,
+        filename: defaultAdminAuditLogCsvFilename(DateTime.now().toUtc()),
+      );
+      final copy = widget.copyToClipboard ?? _defaultCopy;
+      await copy(export.csv);
+      final downloader = widget.onCsvReady;
+      if (downloader != null) {
+        await downloader(export);
+      }
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        _exportMessage = downloader == null
+            ? 'Copied audit log CSV to your clipboard. Paste it into a '
+                  'spreadsheet to save the export.'
+            : 'Downloaded audit log CSV and copied it to your clipboard.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Audit log CSV ready (${export.filename}).')),
+      );
+      await _refresh();
+    } on AuditedSupportActionsForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        _exportMessage = error.message;
+      });
+    } on AuditedSupportActionsGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        _exportMessage = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        _exportMessage = 'Could not export the audit log. Try again.';
+      });
+    }
+  }
+
+  Future<void> _defaultCopy(String value) async {
+    await Clipboard.setData(ClipboardData(text: value));
   }
 
   // --- Actions panel actions ---------------------------------------------
 
+  // ignore: unused_element
   Future<void> _onResetMfa() async {
     if (!widget.canResetMfaFactors) return;
     final member = await _pickMember(
@@ -542,6 +633,7 @@ class _AuditedSupportActionsAdminScreenState
     );
   }
 
+  // ignore: unused_element
   Future<void> _onPasswordReset() async {
     final eligibleMembers = _members
         .where((member) => member.canReceivePasswordReset)
@@ -570,6 +662,7 @@ class _AuditedSupportActionsAdminScreenState
     );
   }
 
+  // ignore: unused_element
   Future<void> _onIssueErasure() async {
     if (!widget.canIssuePairedErasure) return;
     final member = await _pickMember('Issue erasure for which member?');
@@ -677,8 +770,6 @@ class _AuditedSupportActionsAdminScreenState
             now: widget.anchorBadgeClock?.call(),
           ),
           const SizedBox(height: 14),
-          if (!widget.editingEnabled)
-            const _ReadOnlyBanner(key: Key('admin_asa_readonly_banner')),
           if (_actionError != null)
             _ErrorBanner(
               key: const Key('admin_asa_action_error'),
@@ -737,10 +828,7 @@ class _AuditedSupportActionsAdminScreenState
       );
     }
     if (_loadError != null) {
-      return _ErrorBanner(
-        key: const Key('admin_asa_load_error'),
-        message: _loadError!,
-      );
+      return _AuditLogErrorPanel(message: _loadError!, onRetry: _refresh);
     }
     // Outer frame is OperatorWebScreenBody (a SingleChildScrollView), so
     // this body returns a plain Column to avoid nesting a second scroll
@@ -768,42 +856,20 @@ class _AuditedSupportActionsAdminScreenState
           _SecurityHierarchyScopeBanner(scope: _activeScope!),
           const SizedBox(height: 16),
         ],
-        _SupportAuditSummaryStrip(
-          rows: _rows,
-          members: _members,
-          hasMoreRows: _nextCursor != null,
-        ),
-        if (widget.sessionsGateway != null) ...<Widget>[
-          const SizedBox(height: 16),
-          ActiveSessionsAdminPanel(
-            gateway: widget.sessionsGateway!,
-            operatorId: widget.pickedOperator.operatorId,
-            operatorName: widget.pickedOperator.operatorBusinessName,
-            actorUserId: widget.actorUserId,
-            editingEnabled: widget.editingEnabled,
-            idempotencyKeyFactory: widget.idempotencyKeyFactory,
-          ),
-        ],
-        const SizedBox(height: 16),
         _AuditLogCard(
           rows: _rows,
           nextCursor: _nextCursor,
           loadingMore: _loadingMore,
+          exporting: _exporting,
+          exportMessage: _exportMessage,
           filters: _filters,
-          members: _members,
+          actorCatalog: _actorPickerCatalog,
+          expandedEntryIds: _expandedEntryIds,
           canExport: widget.editingEnabled && widget.canExportAuditLog,
           onApplyFilters: _onApplyFilters,
+          onToggleRow: _toggleExpanded,
           onLoadMore: _loadMore,
           onExportCsv: _onExportCsv,
-        ),
-        const SizedBox(height: 16),
-        _ActionsPanelCard(
-          editingEnabled: widget.editingEnabled,
-          canResetMfaFactors: widget.canResetMfaFactors,
-          canIssuePairedErasure: widget.canIssuePairedErasure,
-          onResetMfa: _onResetMfa,
-          onPasswordReset: _onPasswordReset,
-          onIssueErasure: _onIssueErasure,
         ),
       ],
     );
@@ -840,6 +906,7 @@ class _AuditScopePickerCard extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _SupportAuditSummaryStrip extends StatelessWidget {
   const _SupportAuditSummaryStrip({
     required this.rows,
@@ -978,6 +1045,7 @@ class _SecurityScopePill extends StatelessWidget {
 // Actions panel
 // ---------------------------------------------------------------------
 
+// ignore: unused_element
 class _ActionsPanelCard extends StatelessWidget {
   const _ActionsPanelCard({
     required this.editingEnabled,
@@ -1208,10 +1276,14 @@ class _AuditLogCard extends StatelessWidget {
     required this.rows,
     required this.nextCursor,
     required this.loadingMore,
+    required this.exporting,
+    required this.exportMessage,
     required this.filters,
-    required this.members,
+    required this.actorCatalog,
+    required this.expandedEntryIds,
     required this.canExport,
     required this.onApplyFilters,
+    required this.onToggleRow,
     required this.onLoadMore,
     required this.onExportCsv,
   });
@@ -1219,10 +1291,14 @@ class _AuditLogCard extends StatelessWidget {
   final List<AuditLogRow> rows;
   final String? nextCursor;
   final bool loadingMore;
+  final bool exporting;
+  final String? exportMessage;
   final AuditLogFilters filters;
-  final List<SupportActionsMember> members;
+  final Map<String, String> actorCatalog;
+  final Set<String> expandedEntryIds;
   final bool canExport;
   final ValueChanged<AuditLogFilters> onApplyFilters;
+  final ValueChanged<String> onToggleRow;
   final VoidCallback onLoadMore;
   final VoidCallback onExportCsv;
 
@@ -1231,66 +1307,103 @@ class _AuditLogCard extends StatelessWidget {
     return OperatorWebPanel(
       key: const Key('admin_asa_audit_log'),
       title: 'Audit log',
-      trailing: canExport
-          ? FilledButton.icon(
-              key: const Key('admin_asa_audit_log_export'),
-              onPressed: onExportCsv,
-              style: AdminButtonStyles.primary,
-              icon: const Icon(Icons.download, size: 16),
-              label: const Text('Export CSV'),
-            )
-          : null,
+      trailing: _exportButton(),
       subtitle:
           'Cursor-paginated rows scoped to this operator. Sorted newest '
           'first. Filters and the CSV export are audit-logged. Times are '
           'shown in your browser local timezone.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _FiltersBar(
-            filters: filters,
-            members: members,
-            onApply: onApplyFilters,
-          ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty)
-            Padding(
-              key: const Key('admin_asa_audit_log_empty'),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'No audit log entries match the current filters.',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
+        children: _children(),
+      ),
+    );
+  }
+
+  Widget? _exportButton() {
+    if (!canExport) return null;
+    return FilledButton.icon(
+      key: const Key('admin_asa_audit_log_export'),
+      onPressed: exporting ? null : onExportCsv,
+      style: AdminButtonStyles.primary,
+      icon: exporting
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
               ),
             )
-          else
-            for (final row in rows)
-              _AuditRowTile(
-                key: Key('admin_asa_audit_row_${row.eventId}'),
-                row: row,
-              ),
-          if (nextCursor != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  key: const Key('admin_asa_audit_log_load_more'),
-                  onPressed: loadingMore ? null : onLoadMore,
-                  style: AdminButtonStyles.secondary(),
-                  icon: loadingMore
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.expand_more, size: 16),
-                  label: Text(
-                    loadingMore ? 'Loading next page' : 'Load next page',
-                  ),
-                ),
-              ),
-            ),
-        ],
+          : const Icon(Icons.file_download_outlined, size: 16),
+      label: Text(exporting ? 'Exporting' : 'Export CSV'),
+    );
+  }
+
+  List<Widget> _children() {
+    return <Widget>[
+      _FiltersBar(
+        filters: filters,
+        actorCatalog: actorCatalog,
+        onApply: onApplyFilters,
+      ),
+      const SizedBox(height: 12),
+      if (exportMessage != null) _exportMessage(),
+      if (rows.isEmpty) _emptyState() else ..._rowTiles(),
+      if (nextCursor != null) _loadMoreButton(),
+    ];
+  }
+
+  Widget _exportMessage() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        exportMessage!,
+        key: const Key('admin_asa_audit_log_export_message'),
+        style: AppTextStyles.body12(color: AppColors.textPrimary),
+      ),
+    );
+  }
+
+  Widget _emptyState() {
+    return Padding(
+      key: const Key('admin_asa_audit_log_empty'),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Text(
+        'No audit log entries match the current filters.',
+        style: AppTextStyles.body13(color: AppColors.textMuted),
+      ),
+    );
+  }
+
+  Iterable<Widget> _rowTiles() {
+    return rows.map(
+      (row) => _AuditRowTile(
+        key: Key('admin_asa_audit_row_${row.eventId}'),
+        row: row,
+        expanded: expandedEntryIds.contains(row.eventId),
+        onTogglePayload: () => onToggleRow(row.eventId),
+      ),
+    );
+  }
+
+  Widget _loadMoreButton() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          key: const Key('admin_asa_audit_log_load_more'),
+          onPressed: loadingMore ? null : onLoadMore,
+          style: AdminButtonStyles.secondary(),
+          icon: loadingMore
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.expand_more, size: 16),
+          label: Text(loadingMore ? 'Loading next page' : 'Load next page'),
+        ),
       ),
     );
   }
@@ -1299,12 +1412,12 @@ class _AuditLogCard extends StatelessWidget {
 class _FiltersBar extends StatefulWidget {
   const _FiltersBar({
     required this.filters,
-    required this.members,
+    required this.actorCatalog,
     required this.onApply,
   });
 
   final AuditLogFilters filters;
-  final List<SupportActionsMember> members;
+  final Map<String, String> actorCatalog;
   final ValueChanged<AuditLogFilters> onApply;
 
   @override
@@ -1404,7 +1517,13 @@ class _FiltersBarState extends State<_FiltersBar> {
             customFrom: _draft.customRangeFrom,
             customTo: _draft.customRangeTo,
             onChanged: (window) {
-              _setFilters(_draft.copyWith(timeWindow: window));
+              _setFilters(
+                _draft.copyWith(
+                  timeWindow: window,
+                  customRangeFrom: null,
+                  customRangeTo: null,
+                ),
+              );
             },
             onPickCustom: _pickCustomRange,
           ),
@@ -1414,10 +1533,10 @@ class _FiltersBarState extends State<_FiltersBar> {
             onChanged: (next) =>
                 _setFilters(_draft.copyWith(actions: next.toList())),
           ),
-          if (widget.members.isNotEmpty) ...<Widget>[
+          if (widget.actorCatalog.isNotEmpty) ...<Widget>[
             const SizedBox(height: 12),
             _AdminAuditActorPicker(
-              members: widget.members,
+              catalog: widget.actorCatalog,
               selected: _selectedActors,
               onChanged: (next) =>
                   _setFilters(_draft.copyWith(actorUserIds: next.toList())),
@@ -1540,22 +1659,19 @@ class _AdminAuditActionPicker extends StatelessWidget {
 
 class _AdminAuditActorPicker extends StatelessWidget {
   const _AdminAuditActorPicker({
-    required this.members,
+    required this.catalog,
     required this.selected,
     required this.onChanged,
   });
 
-  final List<SupportActionsMember> members;
+  final Map<String, String> catalog;
   final Set<String> selected;
   final ValueChanged<Set<String>> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final actors = List<SupportActionsMember>.of(members)
-      ..sort(
-        (a, b) =>
-            _labelFor(a).toLowerCase().compareTo(_labelFor(b).toLowerCase()),
-      );
+    final actors = catalog.entries.toList(growable: false)
+      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -1569,17 +1685,17 @@ class _AdminAuditActorPicker extends StatelessWidget {
           spacing: 6,
           runSpacing: 6,
           children: <Widget>[
-            for (final member in actors)
+            for (final actor in actors)
               _AdminAuditChoiceChip(
-                chipKey: Key('admin_asa_filter_actor_${member.userId}'),
-                label: _labelFor(member),
-                isActive: selected.contains(member.userId),
+                chipKey: Key('admin_asa_filter_actor_${actor.key}'),
+                label: actor.value,
+                isActive: selected.contains(actor.key),
                 onTap: () {
                   final next = Set<String>.from(selected);
-                  if (next.contains(member.userId)) {
-                    next.remove(member.userId);
+                  if (next.contains(actor.key)) {
+                    next.remove(actor.key);
                   } else {
-                    next.add(member.userId);
+                    next.add(actor.key);
                   }
                   onChanged(next);
                 },
@@ -1588,13 +1704,6 @@ class _AdminAuditActorPicker extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  static String _labelFor(SupportActionsMember member) {
-    final displayName = member.displayName.trim();
-    if (displayName.isNotEmpty) return displayName;
-    final email = member.email.trim();
-    return email.isEmpty ? member.userId : email;
   }
 }
 
@@ -1652,29 +1761,36 @@ const List<String> kAuditLogFilterableActions = <String>[
   'audit.export.requested',
 ];
 
-class _AuditRowTile extends StatefulWidget {
-  const _AuditRowTile({super.key, required this.row});
+class _AuditRowTile extends StatelessWidget {
+  const _AuditRowTile({
+    super.key,
+    required this.row,
+    required this.expanded,
+    required this.onTogglePayload,
+  });
 
   final AuditLogRow row;
-
-  @override
-  State<_AuditRowTile> createState() => _AuditRowTileState();
-}
-
-class _AuditRowTileState extends State<_AuditRowTile> {
-  bool _payloadExpanded = false;
+  final bool expanded;
+  final VoidCallback onTogglePayload;
 
   Future<void> _copyTargetId() async {
-    await Clipboard.setData(ClipboardData(text: widget.row.targetId));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Copied ${widget.row.targetId} to clipboard.')),
-    );
+    final targetId = row.targetId;
+    if (targetId == null || targetId.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: targetId));
+  }
+
+  Future<void> _copyTargetIdFrom(BuildContext context) async {
+    final targetId = row.targetId;
+    if (targetId == null || targetId.trim().isEmpty) return;
+    await _copyTargetId();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Copied $targetId to clipboard.')));
   }
 
   @override
   Widget build(BuildContext context) {
-    final row = widget.row;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Container(
@@ -1725,40 +1841,44 @@ class _AuditRowTileState extends State<_AuditRowTile> {
               _auditActorIdentityLabel(row),
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: <Widget>[
-                Text(
-                  '${row.targetKind}:',
-                  style: AppTextStyles.body13(color: AppColors.textMuted),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    row.targetId,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.mono11(color: AppColors.textPrimary),
+            if (row.targetId != null && row.targetId!.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: <Widget>[
+                  if (row.targetKind != null) ...[
+                    Text(
+                      '${row.targetKind}:',
+                      style: AppTextStyles.body13(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Text(
+                      row.targetId!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.mono11(color: AppColors.textPrimary),
+                    ),
                   ),
-                ),
-                IconButton(
-                  key: Key('admin_asa_audit_row_copy_target_${row.eventId}'),
-                  tooltip: 'Copy target ID',
-                  iconSize: 16,
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 28,
-                    minHeight: 28,
+                  IconButton(
+                    key: Key('admin_asa_audit_row_copy_target_${row.eventId}'),
+                    tooltip: 'Copy target ID',
+                    iconSize: 16,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 28,
+                      minHeight: 28,
+                    ),
+                    icon: const Icon(
+                      Icons.content_copy_outlined,
+                      color: AppColors.textMuted,
+                    ),
+                    onPressed: () => _copyTargetIdFrom(context),
                   ),
-                  icon: const Icon(
-                    Icons.content_copy_outlined,
-                    color: AppColors.textMuted,
-                  ),
-                  onPressed: _copyTargetId,
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
             const SizedBox(height: 4),
             Text(
               formatAuditTimestamp(row.occurredAt),
@@ -1776,12 +1896,11 @@ class _AuditRowTileState extends State<_AuditRowTile> {
               alignment: Alignment.centerLeft,
               child: TextButton(
                 key: Key('admin_asa_audit_row_payload_toggle_${row.eventId}'),
-                onPressed: () =>
-                    setState(() => _payloadExpanded = !_payloadExpanded),
-                child: Text(_payloadExpanded ? 'Hide payload' : 'View payload'),
+                onPressed: onTogglePayload,
+                child: Text(expanded ? 'Hide payload' : 'View payload'),
               ),
             ),
-            if (_payloadExpanded)
+            if (expanded)
               Container(
                 key: Key('admin_asa_audit_row_payload_${row.eventId}'),
                 margin: const EdgeInsets.only(top: 4),
@@ -2103,35 +2222,6 @@ String formatGraceWindowRemaining({
   return '${seconds}s';
 }
 
-class _ReadOnlyBanner extends StatelessWidget {
-  const _ReadOnlyBanner({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: <Widget>[
-          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'View only. Ask a super admin if a support action needs to run.',
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({super.key, required this.message});
 
@@ -2153,6 +2243,51 @@ class _ErrorBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AuditLogErrorPanel extends StatelessWidget {
+  const _AuditLogErrorPanel({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_asa_load_error'),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Icon(Icons.error_outline, size: 18, color: AppColors.negative),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+          ),
+          const SizedBox(width: 12),
+          TextButton(onPressed: () => onRetry(), child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+String defaultAdminAuditLogCsvFilename(DateTime now) {
+  final utc = now.toUtc();
+  final y = utc.year.toString().padLeft(4, '0');
+  final m = utc.month.toString().padLeft(2, '0');
+  final d = utc.day.toString().padLeft(2, '0');
+  final hh = utc.hour.toString().padLeft(2, '0');
+  final mm = utc.minute.toString().padLeft(2, '0');
+  return 'forge_flow_audit_log_$y$m${d}_$hh${mm}_utc.csv';
 }
 
 class _AdminReasonDialog extends StatefulWidget {
