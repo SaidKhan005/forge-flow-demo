@@ -275,6 +275,68 @@ void main() {
       expect(capturedRequests, isEmpty);
     });
 
+    test('malformed profile body raises malformed_business_timing_profile', () {
+      expect(
+        () => BusinessTimingProfileWriteResult.fromJson(
+          <String, Object?>{...profilePayload(), 'profileId': ''},
+        ),
+        throwsA(
+          isA<OperatorWebProxyException>().having(
+            (e) => e.code,
+            'code',
+            'malformed_business_timing_profile',
+          ),
+        ),
+      );
+    });
+
+    test('malformed service-period body raises malformed_service_period', () {
+      expect(
+        () => BusinessTimingProfileWriteResult.fromJson(
+          <String, Object?>{
+            ...profilePayload(
+              periods: <Map<String, Object?>>[
+                <String, Object?>{
+                  'key': 'lunch',
+                  'label': 'Lunch',
+                  'startLocal': '11:00',
+                  // Missing endLocal.
+                },
+              ],
+            ),
+          },
+        ),
+        throwsA(
+          isA<OperatorWebProxyException>().having(
+            (e) => e.code,
+            'code',
+            'malformed_service_period',
+          ),
+        ),
+      );
+    });
+
+    test(
+      'non-map service-period body raises malformed_business_timing_profile',
+      () {
+        expect(
+          () => BusinessTimingProfileWriteResult.fromJson(
+            <String, Object?>{
+              ...profilePayload(),
+              'servicePeriods': <Object?>['not-a-period'],
+            },
+          ),
+          throwsA(
+            isA<OperatorWebProxyException>().having(
+              (e) => e.code,
+              'code',
+              'malformed_business_timing_profile',
+            ),
+          ),
+        );
+      },
+    );
+
     // Slice 2.5 / Gap 28 — DTO carries the three new fields end-to-end.
     test(
       'ServicePeriodCreate.toJson emits applicableDays, shortLabel, sortOrder',

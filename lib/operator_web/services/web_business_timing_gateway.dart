@@ -582,8 +582,15 @@ class BusinessTimingProfileWriteResult {
       weekStartDay: weekStartDay,
       businessDayStartLocal: businessDayStartLocal,
       servicePeriods: periodsRaw
-          .whereType<Map<Object?, Object?>>()
-          .map((p) => ServicePeriod.fromJson(Map<String, Object?>.from(p)))
+          .map(
+            (p) => p is Map<Object?, Object?>
+                ? ServicePeriod.fromJson(Map<String, Object?>.from(p))
+                : throw const OperatorWebProxyException(
+                    code: 'malformed_business_timing_profile',
+                    message:
+                        'The proxy returned a malformed timing profile.',
+                  ),
+          )
           .toList(),
       createdAt: DateTime.parse(createdAtRaw).toUtc(),
       updatedAt: DateTime.parse(updatedAtRaw).toUtc(),
