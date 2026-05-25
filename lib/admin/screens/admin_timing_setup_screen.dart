@@ -652,7 +652,6 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
       key: const Key('admin_timing_setup_screen'),
       scrollKey: const Key('admin_timing_setup_screen_body'),
       maxContentWidth: 520,
-      alignment: Alignment.topLeft,
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
