@@ -133,6 +133,7 @@ AuditActorKind auditActorKindFromWire(String wire) {
 class AuditLogFilters {
   const AuditLogFilters({
     this.actorUserId,
+    this.actorUserIds = const <String>[],
     this.actions = const <String>[],
     this.targetKind,
     this.targetId,
@@ -147,6 +148,11 @@ class AuditLogFilters {
   /// Picked actor (user picker single-select). Null means no actor
   /// filter applied.
   final String? actorUserId;
+
+  /// Picked actors (chip multi-select). Empty means no actor filter
+  /// applied. Kept alongside [actorUserId] for backwards-compatible
+  /// tests and callers that still drive the old single-select shape.
+  final List<String> actorUserIds;
 
   /// Locked enum multi-select. Empty means no action filter.
   final List<String> actions;
@@ -172,6 +178,7 @@ class AuditLogFilters {
 
   AuditLogFilters copyWith({
     Object? actorUserId = _undef,
+    List<String>? actorUserIds,
     List<String>? actions,
     Object? targetKind = _undef,
     Object? targetId = _undef,
@@ -184,6 +191,7 @@ class AuditLogFilters {
       actorUserId: identical(actorUserId, _undef)
           ? this.actorUserId
           : actorUserId as String?,
+      actorUserIds: actorUserIds ?? this.actorUserIds,
       actions: actions ?? this.actions,
       targetKind: identical(targetKind, _undef)
           ? this.targetKind
@@ -206,6 +214,7 @@ class AuditLogFilters {
 
   bool get isEmpty =>
       actorUserId == null &&
+      actorUserIds.isEmpty &&
       actions.isEmpty &&
       targetKind == null &&
       (targetId == null || targetId!.trim().isEmpty) &&
@@ -575,7 +584,10 @@ class HttpAuditedSupportActionsAdminGateway
   }) async {
     final query = <String, String>{
       'operator_id': operatorId,
-      if (filters.actorUserId != null) 'actor_user_id': filters.actorUserId!,
+      if (filters.actorUserIds.isNotEmpty)
+        'actor_user_id': filters.actorUserIds.join(',')
+      else if (filters.actorUserId != null)
+        'actor_user_id': filters.actorUserId!,
       if (filters.actions.isNotEmpty) 'actions': filters.actions.join(','),
       if (filters.targetKind != null) 'target_kind': filters.targetKind!,
       if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)
@@ -622,7 +634,10 @@ class HttpAuditedSupportActionsAdminGateway
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
-        if (filters.actorUserId != null) 'actor_user_id': filters.actorUserId,
+        if (filters.actorUserIds.isNotEmpty)
+          'actor_user_id': filters.actorUserIds
+        else if (filters.actorUserId != null)
+          'actor_user_id': filters.actorUserId,
         if (filters.actions.isNotEmpty) 'actions': filters.actions,
         if (filters.targetKind != null) 'target_kind': filters.targetKind,
         if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)

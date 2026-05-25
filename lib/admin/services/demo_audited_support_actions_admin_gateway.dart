@@ -173,7 +173,10 @@ class InMemoryAuditedSupportActionsAdminGateway
   }) async {
     final all = _logsFor(operatorId);
     Iterable<AuditLogRow> filtered = all;
-    if (filters.actorUserId != null) {
+    if (filters.actorUserIds.isNotEmpty) {
+      final wanted = filters.actorUserIds.toSet();
+      filtered = filtered.where((r) => wanted.contains(r.actorUserId));
+    } else if (filters.actorUserId != null) {
       filtered = filtered.where((r) => r.actorUserId == filters.actorUserId);
     }
     if (filters.actions.isNotEmpty) {
