@@ -174,11 +174,7 @@ void main() {
       await tester.tap(find.text('7shifts').last);
       await tester.pumpAndSettle();
 
-      // Choose "One operator and one location".
-      await tester.tap(
-        find.byKey(const Key('admin_vendor_applicability_scope_toggle')),
-      );
-      await tester.pumpAndSettle();
+      // Scope opens by default so location-scoped rules take fewer clicks.
       await tester.ensureVisible(
         find.byKey(const Key('admin_vendor_applicability_scope_location')),
       );
@@ -261,11 +257,7 @@ void main() {
         await tester.tap(find.text('7shifts').last);
         await tester.pumpAndSettle();
 
-        // Pick location scope but never choose an operator.
-        await tester.tap(
-          find.byKey(const Key('admin_vendor_applicability_scope_toggle')),
-        );
-        await tester.pumpAndSettle();
+        // Scope opens by default; pick location without choosing an operator.
         await tester.ensureVisible(
           find.byKey(const Key('admin_vendor_applicability_scope_location')),
         );

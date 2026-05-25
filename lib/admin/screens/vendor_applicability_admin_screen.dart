@@ -1020,7 +1020,7 @@ class _VendorApplicabilityEditDialogState
   final TextEditingController _pollingMinutes = TextEditingController();
 
   // Progressive disclosure.
-  bool _scopeExpanded = false;
+  bool _scopeExpanded = true;
   bool _detailsExpanded = false;
   bool _advancedExpanded = false;
   late final TextEditingController _settingKey;
@@ -1062,9 +1062,9 @@ class _VendorApplicabilityEditDialogState
     }
 
     final metadata = initial?.metadata ?? const <String, Object?>{};
-    _scopeExpanded = false;
-    _detailsExpanded = false;
     _seedFriendlyFieldsFromMetadata(metadata);
+    _scopeExpanded = true;
+    _detailsExpanded = _buildMetadata().isNotEmpty;
     _metadataJson.text = _prettyJson(_buildMetadata());
   }
 
@@ -1250,13 +1250,14 @@ class _VendorApplicabilityEditDialogState
 
   @override
   Widget build(BuildContext context) {
-    final formMaxHeight = (MediaQuery.sizeOf(context).height - 440)
-        .clamp(300.0, 520.0)
+    final dialogBodyHeight = (MediaQuery.sizeOf(context).height - 240)
+        .clamp(420.0, 740.0)
         .toDouble();
     return OperatorWebDialog(
       key: const Key('admin_vendor_applicability_edit_dialog'),
       title: _isEditing ? 'Edit rule' : 'Add rule',
-      maxWidth: 920,
+      icon: Icons.rule_folder_outlined,
+      maxWidth: 780,
       actions: [
         AdminActionButton(
           key: const Key('admin_vendor_applicability_cancel'),
@@ -1271,47 +1272,51 @@ class _VendorApplicabilityEditDialogState
           role: AdminActionRole.primary,
         ),
       ],
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: formMaxHeight),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_error != null) ...[
-                    OperatorWebBanner(
-                      key: const Key('admin_vendor_applicability_dialog_error'),
-                      icon: Icons.warning_amber_rounded,
-                      message: _error!,
-                      tone: OperatorWebBannerTone.error,
-                    ),
-                    const SizedBox(height: 14),
+      child: SizedBox(
+        width: 720,
+        height: dialogBodyHeight,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_error != null) ...[
+                      OperatorWebBanner(
+                        key: const Key(
+                          'admin_vendor_applicability_dialog_error',
+                        ),
+                        icon: Icons.warning_amber_rounded,
+                        message: _error!,
+                        tone: OperatorWebBannerTone.error,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    _DialogGroup(title: 'Rule', child: _buildRuleBasics()),
+                    const SizedBox(height: 8),
+                    _buildRuleFolds(),
                   ],
-                  _DialogGroup(title: 'Rule', child: _buildRuleBasics()),
-                  const SizedBox(height: 10),
-                  _buildRuleFolds(),
-                ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          _FieldLabel(
-            label: 'Why are you making this change?',
-            example: 'Saved with the audit log. Example: Ticket VA-200.',
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            key: const Key('admin_vendor_applicability_reason'),
-            controller: _reason,
-            minLines: 1,
-            maxLines: 3,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-          ),
-        ],
+            const SizedBox(height: 16),
+            _FieldLabel(
+              label: 'Why are you making this change?',
+              example: 'Saved with the audit log. Example: Ticket VA-200.',
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              key: const Key('admin_vendor_applicability_reason'),
+              controller: _reason,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1319,12 +1324,12 @@ class _VendorApplicabilityEditDialogState
   Widget _buildRuleBasics() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 680) {
+        if (constraints.maxWidth < 620) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildVendorPicker(),
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
               _buildAllowedToggle(),
             ],
           );
@@ -1332,9 +1337,9 @@ class _VendorApplicabilityEditDialogState
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _buildVendorPicker()),
+            Expanded(flex: 12, child: _buildVendorPicker()),
             const SizedBox(width: 22),
-            Expanded(child: _buildAllowedToggle()),
+            Expanded(flex: 10, child: _buildAllowedToggle()),
           ],
         );
       },
@@ -1342,41 +1347,9 @@ class _VendorApplicabilityEditDialogState
   }
 
   Widget _buildRuleFolds() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final appliesTo = _buildAppliesTo();
-        final optionalFields = _buildOptionalFields();
-        final advanced = _buildAdvanced();
-        if (constraints.maxWidth >= 760 &&
-            !_scopeExpanded &&
-            !_detailsExpanded) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: appliesTo),
-                  const SizedBox(width: 10),
-                  Expanded(child: optionalFields),
-                ],
-              ),
-              const SizedBox(height: 10),
-              advanced,
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            appliesTo,
-            const SizedBox(height: 10),
-            optionalFields,
-            const SizedBox(height: 10),
-            advanced,
-          ],
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [_buildAppliesTo(), _buildOptionalFields(), _buildAdvanced()],
     );
   }
 
@@ -1464,7 +1437,8 @@ class _VendorApplicabilityEditDialogState
     final locations = bundle?.locations ?? const <LocationAdminRecord>[];
     return _AdvancedFold(
       foldKey: const Key('admin_vendor_applicability_scope_toggle'),
-      title: 'Applies to: ${_draftScopeLabel()}',
+      title: 'Scope',
+      subtitle: _draftScopeLabel(),
       expanded: _scopeExpanded,
       onToggle: () => setState(() => _scopeExpanded = !_scopeExpanded),
       child: Column(
@@ -1612,7 +1586,8 @@ class _VendorApplicabilityEditDialogState
     }
     return _AdvancedFold(
       foldKey: const Key('admin_vendor_applicability_details_toggle'),
-      title: 'Special handling: ${_specialHandlingSummary()}',
+      title: 'Special handling',
+      subtitle: _specialHandlingSummary(),
       expanded: _detailsExpanded,
       onToggle: () => setState(() => _detailsExpanded = !_detailsExpanded),
       child: Column(
@@ -1866,6 +1841,7 @@ class _VendorApplicabilityEditDialogState
     return _AdvancedFold(
       foldKey: const Key('admin_vendor_applicability_advanced_toggle'),
       title: 'Advanced settings',
+      subtitle: 'Setting key and raw JSON',
       expanded: _advancedExpanded,
       onToggle: () => setState(() => _advancedExpanded = !_advancedExpanded),
       child: Column(
@@ -1929,24 +1905,13 @@ class _DialogGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: AppColors.cardGlow,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            title,
-            style: AppTextStyles.mono12(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
+          Text(title, style: AppTextStyles.uiLabel(color: AppColors.textMuted)),
+          const SizedBox(height: 10),
           child,
         ],
       ),
@@ -2075,60 +2040,71 @@ class _AdvancedFold extends StatelessWidget {
     required this.expanded,
     required this.onToggle,
     required this.child,
+    this.subtitle,
   });
 
   final Key foldKey;
   final String title;
+  final String? subtitle;
   final bool expanded;
   final VoidCallback onToggle;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          InkWell(
-            key: foldKey,
-            onTap: onToggle,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                    color: AppColors.textMuted,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
+    final summary = subtitle?.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 1, color: AppColors.borderSubtle),
+        InkWell(
+          key: foldKey,
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AppTextStyles.body14(
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    ),
+                      if (summary != null && summary.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          summary,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.body12(
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          if (expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: child,
-            ),
-        ],
-      ),
+        ),
+        if (expanded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 0, 0, 16),
+            child: child,
+          ),
+      ],
     );
   }
 }
