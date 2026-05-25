@@ -9,10 +9,11 @@
 //     catalog published yet; the hard-coded fallback is active).
 //   * History - up to 20 prior versions ordered newest first. Each row
 //     expands to show the payload as read-only JSON.
-//   * Draft editor - starts from the current payload (or empty). The
-//     super_admin can add / remove / edit role definitions. The draft
-//     is local widget state only - there is NO backend draft
-//     persistence (intentional; out of scope for B2.2). The
+//   * Draft editor - starts from the current payload (or the built-in
+//     starter payload before the first publish). The super_admin can
+//     add / remove / edit role definitions. The draft is local widget
+//     state only - there is NO backend draft persistence (intentional;
+//     out of scope for B2.2). The
 //     class-level dartdoc captures the limitation; the screen surfaces
 //     a "Discard draft?" warning when the operator leaves with unsaved
 //     changes via the discard button.
@@ -262,7 +263,8 @@ class _DefaultRoleCatalogAdminScreenState
     return jsonEncode(value);
   }
 
-  void _addRole() {
+  Future<void> _addRole() async {
+    final nextIndex = _draft.length;
     setState(() {
       _draft = <Map<String, Object?>>[
         ..._draft,
@@ -274,6 +276,7 @@ class _DefaultRoleCatalogAdminScreenState
         },
       ];
     });
+    await _openRoleDialog(nextIndex);
   }
 
   void _removeRole(int index) {
@@ -282,6 +285,20 @@ class _DefaultRoleCatalogAdminScreenState
       next.removeAt(index);
       _draft = next;
     });
+  }
+
+  Future<void> _openRoleDialog(int index) async {
+    if (index < 0 || index >= _draft.length) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _RoleEditorDialog(
+        index: index,
+        initialRole: _draft[index],
+        canEdit: widget.editingEnabled,
+        onRemove: widget.editingEnabled ? _removeRole : null,
+        onUpdate: widget.editingEnabled ? _updateRole : null,
+      ),
+    );
   }
 
   void _updateRole(int index, String field, Object? value) {
@@ -416,8 +433,7 @@ class _DefaultRoleCatalogAdminScreenState
           canPublish: _canPublish,
           draftEqualsCurrent: _draftEqualsCurrent,
           onAddRole: widget.editingEnabled ? _addRole : null,
-          onRemoveRole: widget.editingEnabled ? _removeRole : null,
-          onUpdateRole: widget.editingEnabled ? _updateRole : null,
+          onOpenRole: _openRoleDialog,
           onDiscardDraft: widget.editingEnabled ? _discardDraft : null,
           onPublish: widget.editingEnabled ? _openPublishDialog : null,
         ),
@@ -442,10 +458,8 @@ class _Header extends StatelessWidget {
       title: 'Default role catalog',
       collapseBelowWidth: 0,
       subtitle:
-          'Edit the starter role set every Forge & Flow business begins '
-          'with. Publish creates a new version; businesses set to follow '
-          'the latest see the change immediately. Customized roles are '
-          'unaffected.',
+          'Edit the starter roles every business begins with. Publish '
+          'when the draft is ready. Custom roles stay unchanged.',
     );
   }
 }
@@ -496,9 +510,7 @@ class _CurrentVersionPanel extends StatelessWidget {
         key: const Key('admin_default_role_catalog_current_empty'),
         title: 'No default catalog published yet',
         child: Text(
-          'Forge & Flow is using the built-in starter roles. Publish '
-          'a first version from the editable draft below to put the '
-          'catalog under change control.',
+          'Built-in starter roles are active until the first publish.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       );
@@ -535,12 +547,8 @@ class _CurrentVersionPanel extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           Text(
-            'Contains ${c.payload.length} role definitions',
+            '${c.payload.length} roles',
             style: AppTextStyles.body12(color: AppColors.textSecondary),
-          ),
-          Text(
-            'Content fingerprint: ${c.payloadSha256.substring(0, 12)}...',
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
           ),
         ],
       ),
@@ -555,8 +563,7 @@ class _DraftEditorPanel extends StatelessWidget {
     required this.canPublish,
     required this.draftEqualsCurrent,
     required this.onAddRole,
-    required this.onRemoveRole,
-    required this.onUpdateRole,
+    required this.onOpenRole,
     required this.onDiscardDraft,
     required this.onPublish,
   });
@@ -566,8 +573,7 @@ class _DraftEditorPanel extends StatelessWidget {
   final bool canPublish;
   final bool draftEqualsCurrent;
   final VoidCallback? onAddRole;
-  final void Function(int index)? onRemoveRole;
-  final void Function(int index, String field, Object? value)? onUpdateRole;
+  final Future<void> Function(int index) onOpenRole;
   final VoidCallback? onDiscardDraft;
   final VoidCallback? onPublish;
 
@@ -575,10 +581,8 @@ class _DraftEditorPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebPanel(
       key: const Key('admin_default_role_catalog_draft_panel'),
-      title: 'Draft',
-      subtitle:
-          'Add, remove, or edit roles below. Drafts are not saved on '
-          'the server - if you leave the page, the changes are lost.',
+      title: 'Draft roles',
+      subtitle: 'Draft changes stay local until Publish.',
       trailing: !draftEqualsCurrent
           ? _Pill(
               key: const Key('admin_default_role_catalog_draft_dirty_pill'),
@@ -606,13 +610,12 @@ class _DraftEditorPanel extends StatelessWidget {
             )
           else
             for (var i = 0; i < draft.length; i++)
-              _RoleEditorRow(
+              _RoleListRow(
                 key: Key('admin_default_role_catalog_draft_row_$i'),
                 index: i,
                 role: draft[i],
                 canEdit: canEdit,
-                onRemove: onRemoveRole,
-                onUpdate: onUpdateRole,
+                onOpen: onOpenRole,
               ),
           const SizedBox(height: 12),
           Wrap(
@@ -652,21 +655,214 @@ class _DraftEditorPanel extends StatelessWidget {
   }
 }
 
-class _RoleEditorRow extends StatelessWidget {
-  const _RoleEditorRow({
+Set<String> _allowKeysFromPermissions(List<Object?> permissions) {
+  final out = <String>{};
+  for (final entry in permissions) {
+    if (entry is Map) {
+      final key = entry['permission_key'];
+      final effect = entry['effect'];
+      if (key is String && effect == 'allow') {
+        out.add(key);
+      }
+    }
+  }
+  return out;
+}
+
+Set<String> _expandedAllowKeysFromRole(Map<String, Object?> role) {
+  final permissions = (role['permissions'] as List?) ?? const <Object?>[];
+  final explicit = _allowKeysFromPermissions(permissions);
+  return PermissionKeyMetadataCatalog.expandImplies(explicit);
+}
+
+String _roleTitle(Map<String, Object?> role) {
+  final displayName = ((role['display_name'] as String?) ?? '').trim();
+  if (displayName.isNotEmpty) return displayName;
+  final roleKey = ((role['role_key'] as String?) ?? '').trim();
+  if (roleKey.isNotEmpty) return roleKey;
+  return 'Untitled role';
+}
+
+class _RoleListRow extends StatelessWidget {
+  const _RoleListRow({
     super.key,
     required this.index,
     required this.role,
+    required this.canEdit,
+    required this.onOpen,
+  });
+
+  final int index;
+  final Map<String, Object?> role;
+  final bool canEdit;
+  final Future<void> Function(int index) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final roleKey = ((role['role_key'] as String?) ?? '').trim();
+    final description = ((role['description'] as String?) ?? '').trim();
+    final permissionCount = _expandedAllowKeysFromRole(role).length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => onOpen(index),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          child: Row(
+            children: <Widget>[
+              Icon(
+                canEdit ? Icons.edit_outlined : Icons.visibility_outlined,
+                color: AppColors.sunsetDark,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      _roleTitle(role),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body14(
+                        color: AppColors.textPrimary,
+                      ).copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      description.isNotEmpty ? description : roleKey,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body12(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              _Pill(
+                label: '$permissionCount permissions',
+                background: AppColors.backgroundSurface,
+                foreground: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.chevron_right,
+                color: AppColors.textMuted,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleEditorDialog extends StatefulWidget {
+  const _RoleEditorDialog({
+    required this.index,
+    required this.initialRole,
     required this.canEdit,
     required this.onRemove,
     required this.onUpdate,
   });
 
   final int index;
-  final Map<String, Object?> role;
+  final Map<String, Object?> initialRole;
   final bool canEdit;
   final void Function(int index)? onRemove;
   final void Function(int index, String field, Object? value)? onUpdate;
+
+  @override
+  State<_RoleEditorDialog> createState() => _RoleEditorDialogState();
+}
+
+class _RoleEditorDialogState extends State<_RoleEditorDialog> {
+  late Map<String, Object?> _role;
+
+  @override
+  void initState() {
+    super.initState();
+    _role = <String, Object?>{...widget.initialRole};
+  }
+
+  void _update(String field, Object? value) {
+    setState(() {
+      _role = <String, Object?>{..._role, field: value};
+    });
+    widget.onUpdate?.call(widget.index, field, value);
+  }
+
+  void _remove() {
+    widget.onRemove?.call(widget.index);
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final availableHeight = MediaQuery.sizeOf(context).height - 140;
+    final maxHeight = availableHeight.clamp(360.0, 720.0).toDouble();
+    return OperatorWebDialog(
+      key: Key('admin_default_role_catalog_role_dialog_${widget.index}'),
+      title: _roleTitle(_role),
+      icon: widget.canEdit ? Icons.edit_outlined : Icons.visibility_outlined,
+      maxWidth: 840,
+      actions: <Widget>[
+        if (widget.canEdit && widget.onRemove != null)
+          OutlinedButton.icon(
+            key: Key('admin_default_role_catalog_draft_remove_${widget.index}'),
+            onPressed: _remove,
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('Remove'),
+            style: AdminButtonStyles.secondary(
+              foregroundColor: AppColors.negative,
+              borderColor: AppColors.negative.withValues(alpha: 0.55),
+            ),
+          ),
+        OutlinedButton(
+          key: Key(
+            'admin_default_role_catalog_role_dialog_done_${widget.index}',
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+          style: AdminButtonStyles.secondary(),
+          child: const Text('Done'),
+        ),
+      ],
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: SingleChildScrollView(
+          child: _RoleEditorForm(
+            index: widget.index,
+            role: _role,
+            canEdit: widget.canEdit,
+            onUpdate: widget.canEdit ? _update : null,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleEditorForm extends StatelessWidget {
+  const _RoleEditorForm({
+    required this.index,
+    required this.role,
+    required this.canEdit,
+    required this.onUpdate,
+  });
+
+  final int index;
+  final Map<String, Object?> role;
+  final bool canEdit;
+  final void Function(String field, Object? value)? onUpdate;
 
   /// Wave 2 S-3 (RP-14) — Extract the role's current allow keys from
   /// the persisted JSON shape (`permissions: [{permission_key, effect}]`).
@@ -717,7 +913,7 @@ class _RoleEditorRow extends StatelessWidget {
       for (final k in expanded)
         <String, Object?>{'permission_key': k, 'effect': 'allow'},
     ];
-    onUpdate?.call(index, 'permissions', next);
+    onUpdate?.call('permissions', next);
   }
 
   @override
@@ -730,87 +926,63 @@ class _RoleEditorRow extends StatelessWidget {
     final displayedAllow = PermissionKeyMetadataCatalog.expandImplies(
       explicitAllow,
     );
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundDeep,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Expanded(
-                child: _Field(
-                  keyValue: Key(
-                    'admin_default_role_catalog_draft_role_key_$index',
-                  ),
-                  label: 'Role key',
-                  initial: roleKey,
-                  enabled: canEdit,
-                  onChanged: (value) =>
-                      onUpdate?.call(index, 'role_key', value),
-                  hint: 'lowercase_snake_case',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              child: _Field(
+                keyValue: Key(
+                  'admin_default_role_catalog_draft_role_key_$index',
                 ),
+                label: 'Role key',
+                initial: roleKey,
+                enabled: canEdit,
+                onChanged: (value) => onUpdate?.call('role_key', value),
+                hint: 'lowercase_snake_case',
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _Field(
-                  keyValue: Key(
-                    'admin_default_role_catalog_draft_display_name_$index',
-                  ),
-                  label: 'Display name',
-                  initial: displayName,
-                  enabled: canEdit,
-                  onChanged: (value) =>
-                      onUpdate?.call(index, 'display_name', value),
-                  hint: 'e.g. Floor Manager',
-                ),
-              ),
-              if (canEdit && onRemove != null)
-                IconButton(
-                  key: Key('admin_default_role_catalog_draft_remove_$index'),
-                  tooltip: 'Remove role',
-                  onPressed: () => onRemove!(index),
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    color: AppColors.negative,
-                    size: 20,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _Field(
-            keyValue: Key(
-              'admin_default_role_catalog_draft_description_$index',
             ),
-            label: 'Description',
-            initial: description,
-            enabled: canEdit,
-            onChanged: (value) => onUpdate?.call(index, 'description', value),
-            hint: 'What this role can do, in plain English.',
-            maxLines: 2,
-          ),
-          const SizedBox(height: 10),
-          RolePermissionPickerCard(
-            key: Key('admin_default_role_catalog_draft_permissions_$index'),
-            selected: displayedAllow,
-            explicit: explicitAllow,
-            // Default-catalog roles are business-scoped (org-wide
-            // permissions are coherent) so the scope-conflict filter
-            // does not engage here.
-            roleScope: RoleScope.business,
-            readOnly: !canEdit,
-            onToggle: _onTogglePermission,
-            keyPrefix: 'admin_default_role_catalog_draft_picker_$index',
-          ),
-        ],
-      ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _Field(
+                keyValue: Key(
+                  'admin_default_role_catalog_draft_display_name_$index',
+                ),
+                label: 'Display name',
+                initial: displayName,
+                enabled: canEdit,
+                onChanged: (value) => onUpdate?.call('display_name', value),
+                hint: 'e.g. Floor Manager',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _Field(
+          keyValue: Key('admin_default_role_catalog_draft_description_$index'),
+          label: 'Description',
+          initial: description,
+          enabled: canEdit,
+          onChanged: (value) => onUpdate?.call('description', value),
+          hint: 'What this role can do, in plain English.',
+          maxLines: 2,
+        ),
+        const SizedBox(height: 10),
+        RolePermissionPickerCard(
+          key: Key('admin_default_role_catalog_draft_permissions_$index'),
+          selected: displayedAllow,
+          explicit: explicitAllow,
+          // Default-catalog roles are business-scoped (org-wide
+          // permissions are coherent) so the scope-conflict filter
+          // does not engage here.
+          roleScope: RoleScope.business,
+          readOnly: !canEdit,
+          onToggle: _onTogglePermission,
+          keyPrefix: 'admin_default_role_catalog_draft_picker_$index',
+        ),
+      ],
     );
   }
 }
@@ -894,7 +1066,7 @@ class _HistoryPanel extends StatelessWidget {
         key: const Key('admin_default_role_catalog_history_empty'),
         title: 'History',
         child: Text(
-          'History will appear here after the first publish.',
+          'No published versions yet.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       );
@@ -902,9 +1074,6 @@ class _HistoryPanel extends StatelessWidget {
     return OperatorWebPanel(
       key: const Key('admin_default_role_catalog_history_panel'),
       title: 'History',
-      subtitle:
-          'Up to 20 most recent versions. Tap a row to see its full role '
-          'definitions.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
