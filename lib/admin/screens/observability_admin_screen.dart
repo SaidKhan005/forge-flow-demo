@@ -61,6 +61,8 @@ import '../services/realtime_tripwire_admin_gateway.dart';
 import '../widgets/admin_observability_run_controls.dart';
 import '../widgets/admin_run_check_controls.dart';
 
+part 'observability_admin_screen_derivations_part.dart';
+
 /// One tab in the redesigned AI Metrics screen.
 class _TabSpec {
   const _TabSpec({
@@ -146,6 +148,11 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
   /// the fetch request. Defaults to the current month.
   ObservabilityMonth _month = ObservabilityMonth.current;
 
+  /// Selected "Use case" filter (`query_class`); null = All. Whole-page
+  /// scope over the already-fetched envelope, so changing it filters
+  /// CLIENT-SIDE and never re-fetches (every class's rows are present).
+  String? _useCase;
+
   // Phase 10a.4 - bridge tripwire (live sync) state. Loads alongside the
   // observability envelope when [widget.tripwireGateway] is wired.
   RealtimeTripwireSnapshot? _tripwires;
@@ -186,6 +193,15 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
     if (_envelope != null && !_refreshing) {
       await _refresh();
     }
+  }
+
+  /// Switch the whole-page "Use case" filter. The fetched envelope already
+  /// carries every class's rows, so this is a pure client-side re-scope:
+  /// store the selection and rebuild. NO re-fetch (the server-side
+  /// `queryClassFilter` is intentionally left unwired).
+  void _selectUseCase(String? id) {
+    if (id == _useCase) return;
+    setState(() => _useCase = id);
   }
 
   Future<void> _refresh() async {
@@ -281,6 +297,8 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                   loading: _loading || _refreshing,
                   month: _month,
                   onSelectMonth: _selectMonth,
+                  useCase: _useCase,
+                  onSelectUseCase: _selectUseCase,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -311,6 +329,8 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                   loading: _loading || _refreshing,
                   month: _month,
                   onSelectMonth: _selectMonth,
+                  useCase: _useCase,
+                  onSelectUseCase: _selectUseCase,
                 ),
             ];
             return SingleChildScrollView(
@@ -328,7 +348,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
   List<Widget> _envelopeBody(ObservabilityEnvelope envelope) {
     return <Widget>[
       _AsOfStrip(envelope: envelope, month: _month),
-      _HeroCards(envelope: envelope),
+      _HeroCards(envelope: envelope, useCase: _useCase),
       const SizedBox(height: 18),
       _ObservabilityTabBar(controller: _tabs),
       const SizedBox(height: 16),
@@ -342,10 +362,12 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
             _MoneyTab(
               key: const Key('admin_observability_tab_body_money'),
               envelope: envelope,
+              useCase: _useCase,
             ),
             _CustomersTab(
               key: const Key('admin_observability_tab_body_customers'),
               envelope: envelope,
+              useCase: _useCase,
             ),
             _ReliabilityTab(
               key: const Key('admin_observability_tab_body_reliability'),
@@ -353,10 +375,12 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
               tripwireGateway: widget.tripwireGateway,
               tripwires: _tripwires,
               tripwireError: _tripwireError,
+              useCase: _useCase,
             ),
             _KnowledgeTab(
               key: const Key('admin_observability_tab_body_knowledge'),
               envelope: envelope,
+              useCase: _useCase,
             ),
           ];
           return tabBodies[_tabs.index];
@@ -464,6 +488,8 @@ class _ObservabilityActionsRow extends StatelessWidget {
     required this.loading,
     required this.month,
     required this.onSelectMonth,
+    required this.useCase,
+    required this.onSelectUseCase,
   });
 
   final DateTime? lastRefreshed;
@@ -471,6 +497,8 @@ class _ObservabilityActionsRow extends StatelessWidget {
   final bool loading;
   final ObservabilityMonth month;
   final ValueChanged<ObservabilityMonth> onSelectMonth;
+  final String? useCase;
+  final ValueChanged<String?> onSelectUseCase;
 
   @override
   Widget build(BuildContext context) {
@@ -480,6 +508,11 @@ class _ObservabilityActionsRow extends StatelessWidget {
       spacing: 12,
       runSpacing: 8,
       children: <Widget>[
+        AdminObservabilityUseCaseSelector(
+          selected: useCase,
+          onSelect: onSelectUseCase,
+          enabled: !loading,
+        ),
         AdminObservabilityMonthSelector(
           month: month,
           onSelectMonth: onSelectMonth,
@@ -565,17 +598,29 @@ class _AsOfStrip extends StatelessWidget {
 /// big number/word and an honest caption; honesty-critical cards (spend
 /// margin, speed) avoid laundering unknown state to green.
 class _HeroCards extends StatelessWidget {
-  const _HeroCards({required this.envelope});
+  const _HeroCards({required this.envelope, required this.useCase});
 
   final ObservabilityEnvelope envelope;
 
+  /// Selected use-case `query_class` (null = All). Only the "AI spend"
+  /// tile narrows to the selected class; the other three are not
+  /// per-use-case and stay unchanged.
+  final String? useCase;
+
   List<Widget> _heroCards() {
-    final totalSpend = _totalSpend(envelope);
     final usingAi = _businessesUsingAi(envelope);
     final inactive = envelope.dormantOperators.length;
     final underwater = envelope.underwaterOperators.length;
     final speed = _speedSummary(envelope);
     final graph = envelope.graph;
+
+    final filtered = useCase;
+    final spendValue = filtered == null
+        ? _totalSpend(envelope)
+        : _spendForUseCase(envelope, filtered);
+    final spendCaption = filtered == null
+        ? 'Across every use case this month.'
+        : '${adminRequestUseCaseLabel(filtered)} this month.';
 
     return <Widget>[
       _HeroCard(
@@ -583,8 +628,8 @@ class _HeroCards extends StatelessWidget {
         accent: AppColors.sunset,
         icon: Icons.payments_outlined,
         label: 'AI spend',
-        value: '\$${_formatUsd(totalSpend)}',
-        caption: 'Across every use case this month.',
+        value: '\$${_formatUsd(spendValue)}',
+        caption: spendCaption,
       ),
       _HeroCard(
         keyName: 'admin_observability_hero_customers',
@@ -837,13 +882,33 @@ class _HeroCard extends StatelessWidget {
 // ── Money tab ────────────────────────────────────────────────────────
 
 class _MoneyTab extends StatelessWidget {
-  const _MoneyTab({super.key, required this.envelope});
+  const _MoneyTab({super.key, required this.envelope, required this.useCase});
 
   final ObservabilityEnvelope envelope;
+
+  /// Selected use-case `query_class` (null = All). The donut ALWAYS shows
+  /// the full cross-class split (that is the point of the card) and just
+  /// highlights the selected class; the reuse / model-mix / batch panels
+  /// narrow to the selected class's rows.
+  final String? useCase;
 
   @override
   Widget build(BuildContext context) {
     final slices = _costByUseCase(envelope);
+    final filtered = useCase;
+    bool keep(String queryClass) => filtered == null || queryClass == filtered;
+    final cacheRows = envelope.cacheHitRates
+        .where((e) => keep(e.queryClass))
+        .toList(growable: false);
+    final modelRows = envelope.modelMix
+        .where((e) => keep(e.queryClass))
+        .toList(growable: false);
+    final batchRows = envelope.batchModeShare
+        .where((e) => keep(e.queryClass))
+        .toList(growable: false);
+    final donutSubtitle = filtered == null
+        ? 'Cost by kind of AI work this month.'
+        : 'All use cases. ${adminRequestUseCaseLabel(filtered)} highlighted.';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -852,20 +917,20 @@ class _MoneyTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_cost_telemetry',
             title: 'Where the money goes',
-            subtitle: 'Cost by kind of AI work this month.',
+            subtitle: donutSubtitle,
             child: slices.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cost_by_use_case_empty',
                     label: 'No cost recorded in this month yet.',
                   )
-                : _CostDonut(slices: slices),
+                : _CostDonut(slices: slices, highlight: filtered),
           ),
           _Panel(
             keyName: 'admin_observability_section_cache_hit_rates',
             title: 'Saved answer reuse',
             subtitle:
                 'Higher is cheaper. Reusing a saved answer avoids paying for a new one.',
-            child: envelope.cacheHitRates.isEmpty
+            child: cacheRows.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cache_hit_rates_empty',
                     label: 'No saved-answer data in this month.',
@@ -873,7 +938,7 @@ class _MoneyTab extends StatelessWidget {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      for (final entry in envelope.cacheHitRates)
+                      for (final entry in cacheRows)
                         _ReuseBar(
                           key: Key(
                             'admin_observability_cache_hit_rate_'
@@ -896,7 +961,7 @@ class _MoneyTab extends StatelessWidget {
                   hint: 'More of the cheaper, faster model is better.',
                 ),
                 const SizedBox(height: 8),
-                if (envelope.modelMix.isEmpty)
+                if (modelRows.isEmpty)
                   const _EmptyState(
                     keyName: 'admin_observability_model_mix_empty',
                     label: 'No model routing data in this month.',
@@ -904,7 +969,7 @@ class _MoneyTab extends StatelessWidget {
                 else ...<Widget>[
                   const _ModelMixLegend(),
                   const SizedBox(height: 6),
-                  for (final entry in envelope.modelMix)
+                  for (final entry in modelRows)
                     _ModelMixBar(
                       key: Key(
                         'admin_observability_model_mix_${entry.queryClass}',
@@ -919,13 +984,13 @@ class _MoneyTab extends StatelessWidget {
                       'Higher is cheaper. Batch work is billed at a lower rate.',
                 ),
                 const SizedBox(height: 8),
-                if (envelope.batchModeShare.isEmpty)
+                if (batchRows.isEmpty)
                   const _EmptyState(
                     keyName: 'admin_observability_batch_mode_share_empty',
                     label: 'No batch work in this month.',
                   )
                 else
-                  for (final entry in envelope.batchModeShare)
+                  for (final entry in batchRows)
                     _BatchShareBar(
                       key: Key(
                         'admin_observability_batch_mode_share_'
@@ -945,9 +1010,14 @@ class _MoneyTab extends StatelessWidget {
 /// Cost-by-use-case donut + legend. Renders a custom-painted ring with a
 /// centered total and one legend row per use case (amount + percent).
 class _CostDonut extends StatelessWidget {
-  const _CostDonut({required this.slices});
+  const _CostDonut({required this.slices, this.highlight});
 
   final List<_CostSlice> slices;
+
+  /// When non-null, the legend row for this `query_class` is emphasized
+  /// (bolder label) to point the operator at the use-case they filtered
+  /// to, without collapsing the full breakdown.
+  final String? highlight;
 
   @override
   Widget build(BuildContext context) {
@@ -991,7 +1061,10 @@ class _CostDonut extends StatelessWidget {
               for (final slice in slices)
                 Padding(
                   key: Key(
-                    'admin_observability_cost_legend_${slice.queryClass}',
+                    highlight == slice.queryClass
+                        ? 'admin_observability_cost_legend_'
+                              '${slice.queryClass}_highlighted'
+                        : 'admin_observability_cost_legend_${slice.queryClass}',
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 7),
                   child: Row(
@@ -1012,7 +1085,11 @@ class _CostDonut extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: AppTextStyles.body13(
                             color: AppColors.textPrimary,
-                          ).copyWith(fontWeight: FontWeight.w600),
+                          ).copyWith(
+                            fontWeight: highlight == slice.queryClass
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1362,9 +1439,18 @@ class _LabeledBar extends StatelessWidget {
 // ── Customers tab ────────────────────────────────────────────────────
 
 class _CustomersTab extends StatelessWidget {
-  const _CustomersTab({super.key, required this.envelope});
+  const _CustomersTab({
+    super.key,
+    required this.envelope,
+    required this.useCase,
+  });
 
   final ObservabilityEnvelope envelope;
+
+  /// Selected use-case `query_class` (null = All). The Customers data is
+  /// per business, not per use case, so a selection only adds an honest
+  /// note; the underlying rows are unchanged.
+  final String? useCase;
 
   @override
   Widget build(BuildContext context) {
@@ -1373,6 +1459,12 @@ class _CustomersTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (useCase != null)
+            const AdminObservabilityScopeNote(
+              key: Key('admin_observability_use_case_note_customers'),
+              message:
+                  'Top spenders and account health are per business, not per use case.',
+            ),
           _Panel(
             keyName: 'admin_observability_section_top_spenders',
             title: 'Top spenders',
@@ -1850,12 +1942,18 @@ class _ReliabilityTab extends StatelessWidget {
     required this.tripwireGateway,
     required this.tripwires,
     required this.tripwireError,
+    required this.useCase,
   });
 
   final ObservabilityEnvelope envelope;
   final RealtimeTripwireAdminGateway? tripwireGateway;
   final RealtimeTripwireSnapshot? tripwires;
   final String? tripwireError;
+
+  /// Selected use-case `query_class` (null = All). Speed, jobs, and
+  /// hosting are platform-wide, so a selection only adds an honest note;
+  /// the underlying data is unchanged.
+  final String? useCase;
 
   @override
   Widget build(BuildContext context) {
@@ -1865,6 +1963,12 @@ class _ReliabilityTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (useCase != null)
+            const AdminObservabilityScopeNote(
+              key: Key('admin_observability_use_case_note_reliability'),
+              message:
+                  'Speed, jobs, and hosting are platform-wide. The use-case filter does not change them.',
+            ),
           _Panel(
             keyName: 'admin_observability_section_speed',
             title: 'Speed & uptime',
@@ -2252,9 +2356,18 @@ class _LiveSyncRow extends StatelessWidget {
 // ── Knowledge tab ────────────────────────────────────────────────────
 
 class _KnowledgeTab extends StatelessWidget {
-  const _KnowledgeTab({super.key, required this.envelope});
+  const _KnowledgeTab({
+    super.key,
+    required this.envelope,
+    required this.useCase,
+  });
 
   final ObservabilityEnvelope envelope;
+
+  /// Selected use-case `query_class` (null = All). The advisor knowledge
+  /// base is platform-wide, so a selection only adds an honest note; the
+  /// underlying data is unchanged.
+  final String? useCase;
 
   @override
   Widget build(BuildContext context) {
@@ -2264,6 +2377,12 @@ class _KnowledgeTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (useCase != null)
+            const AdminObservabilityScopeNote(
+              key: Key('admin_observability_use_case_note_knowledge'),
+              message:
+                  'The advisor knowledge base is platform-wide. The use-case filter does not change it.',
+            ),
           _Panel(
             keyName: 'admin_observability_section_graph_counts',
             title: 'What the advisor knows',
@@ -2631,184 +2750,8 @@ String _liveSyncHeadline(OutboxTripwireStatus status) {
 }
 
 // ── Derivations + formatting ─────────────────────────────────────────
-
-class _CostSlice {
-  const _CostSlice({
-    required this.queryClass,
-    required this.label,
-    required this.amount,
-    required this.color,
-  });
-
-  final String queryClass;
-  final String label;
-  final double amount;
-  final Color color;
-}
-
-class _SpeedSummary {
-  const _SpeedSummary({
-    required this.headline,
-    required this.caption,
-    required this.pill,
-  });
-
-  final String headline;
-  final String caption;
-  final Widget? pill;
-}
-
-/// Sums cost telemetry by `query_class` into donut slices, largest
-/// first. Each slice gets a stable accent from [_kUseCaseAccents].
-List<_CostSlice> _costByUseCase(ObservabilityEnvelope envelope) {
-  final totals = <String, double>{};
-  for (final row in envelope.costTelemetry) {
-    totals[row.queryClass] = (totals[row.queryClass] ?? 0) + row.totalUsd;
-  }
-  final entries = totals.entries.where((e) => e.value > 0).toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
-  return <_CostSlice>[
-    for (var i = 0; i < entries.length; i++)
-      _CostSlice(
-        queryClass: entries[i].key,
-        label: adminRequestUseCaseLabel(entries[i].key),
-        amount: entries[i].value,
-        color: _kUseCaseAccents[i % _kUseCaseAccents.length],
-      ),
-  ];
-}
-
-double _totalSpend(ObservabilityEnvelope envelope) {
-  var sum = 0.0;
-  for (final row in envelope.costTelemetry) {
-    sum += row.totalUsd;
-  }
-  return sum;
-}
-
-/// Count of businesses with reported AI activity. Returns null (→ "—")
-/// when no dormancy/margin rows exist, so the hero card never implies a
-/// hard zero where the producer simply reported nothing.
-int? _businessesUsingAi(ObservabilityEnvelope envelope) {
-  if (envelope.dormancy.isEmpty && envelope.margins.isEmpty) return null;
-  if (envelope.dormancy.isNotEmpty) {
-    return envelope.dormancy.where((d) => !d.isDormant).length;
-  }
-  return envelope.margins.length;
-}
-
-/// Speed hero summary. Per-route latency is empty on this surface
-/// (owned by System health), so the headline avoids inventing a number
-/// and points the operator to System health instead of laundering an
-/// unknown to "Fast".
-_SpeedSummary _speedSummary(ObservabilityEnvelope envelope) {
-  final deadLettered = envelope.projectionRetries.statusCounts.deadLettered;
-  if (deadLettered > 0) {
-    return _SpeedSummary(
-      headline: 'Check',
-      caption: 'Background jobs are stuck. See Reliability.',
-      pill: const _HeroPill(label: 'Needs attention', tone: _HeroTone.watch),
-    );
-  }
-  return const _SpeedSummary(
-    headline: 'See health',
-    caption: 'Response time and uptime live in System health.',
-    pill: _HeroPill(label: 'In System health', tone: _HeroTone.ok),
-  );
-}
-
-/// One cap event per operator (most recent wins) for the "Limit hits"
-/// list, so a runaway operator does not flood the section with rows.
-List<CapEvent> _capEventsByOperator(ObservabilityEnvelope envelope) {
-  final byOperator = <String, CapEvent>{};
-  for (final event in envelope.capEvents) {
-    final existing = byOperator[event.operatorId];
-    if (existing == null || event.occurredAt.isAfter(existing.occurredAt)) {
-      byOperator[event.operatorId] = event;
-    }
-  }
-  return byOperator.values.toList(growable: false);
-}
-
-String _dormancyWhy(OperatorDormancyEntry entry) {
-  if (entry.neverActive) return 'No AI activity yet.';
-  final silent = entry.daysSilent;
-  if (silent == null) return 'No recent AI activity.';
-  return 'No AI activity for $silent days.';
-}
-
-String _spenderAxisLabel(String axis) {
-  switch (axis.trim().toLowerCase()) {
-    case 'operator':
-      return 'Business';
-    case 'staff':
-      return 'Staff member';
-    case 'workflow':
-      return 'Workflow';
-    default:
-      return axis.isEmpty ? 'Scope' : axis;
-  }
-}
-
-String _hostingServiceLabel(String serviceName) {
-  final lower = serviceName.toLowerCase();
-  if (lower.contains('advisor')) return 'Advisor service';
-  if (lower.contains('admin')) return 'Admin service';
-  return 'Hosting service';
-}
-
-/// Plain-English elapsed-time label for the knowledge-freshness card.
-String _ageLabel(int seconds) {
-  if (seconds <= 0) return 'just now';
-  if (seconds < 60) return '${seconds}s ago';
-  final minutes = (seconds / 60).round();
-  if (minutes < 60) return '${minutes}m ago';
-  final hours = (seconds / 3600).round();
-  if (hours < 24) return '${hours}h ago';
-  final days = (seconds / 86400).round();
-  return '${days}d ago';
-}
-
-/// Currency formatter: thousands separator, no cents above $100 so the
-/// hero numbers stay scannable; cents below for small figures.
-String _formatUsd(double value) {
-  final abs = value.abs();
-  final fixed = abs >= 100 ? value.roundToDouble() : value;
-  final hasCents = abs < 100;
-  final str = hasCents ? fixed.toStringAsFixed(2) : fixed.toStringAsFixed(0);
-  final parts = str.split('.');
-  final intPart = parts[0];
-  final buffer = StringBuffer();
-  final digits = intPart.replaceFirst('-', '');
-  final negative = intPart.startsWith('-');
-  for (var i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
-    buffer.write(digits[i]);
-  }
-  final withCommas = '${negative ? '-' : ''}$buffer';
-  return hasCents ? '$withCommas.${parts[1]}' : withCommas;
-}
-
-String _formatTripwireValue(OutboxTripwireMetric metric, num value) {
-  switch (metric) {
-    case OutboxTripwireMetric.bridgeLagSeconds:
-      return '${value.toStringAsFixed(0)} s';
-    case OutboxTripwireMetric.undeliveredCount:
-      return value.toInt().toString();
-    case OutboxTripwireMetric.publishErrorRate:
-    case OutboxTripwireMetric.notifyQueueUsage:
-      return '${(value * 100).toStringAsFixed(2)} %';
-  }
-}
-
-String _formatTripwireThreshold(OutboxTripwireMetric metric, num value) {
-  switch (metric) {
-    case OutboxTripwireMetric.bridgeLagSeconds:
-      return '${value.toStringAsFixed(0)} s';
-    case OutboxTripwireMetric.undeliveredCount:
-      return value.toInt().toString();
-    case OutboxTripwireMetric.publishErrorRate:
-    case OutboxTripwireMetric.notifyQueueUsage:
-      return '${(value * 100).toStringAsFixed(2)} %';
-  }
-}
+//
+// The pure derivation + formatting helpers (and the `_CostSlice` /
+// `_SpeedSummary` value types) live in the `part` file below to keep this
+// screen under its size ceiling. They share this library's scope, imports,
+// and private types unchanged.
