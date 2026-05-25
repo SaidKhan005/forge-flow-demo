@@ -82,6 +82,18 @@ abstract class PricingTierAdminGateway {
   Future<PricingPlanCatalogEntry> updatePlanPricing(
     PricingPlanPricingUpdateCommand command,
   );
+
+  /// Phase 5a — read the editable feature-entitlements matrix
+  /// (`GET /v1/admin/pricing/entitlements`). One entry per (plan, feature)
+  /// pair. The screen's matrix prefers this over the hard-coded default.
+  Future<List<FeatureEntitlementEntry>> listEntitlements();
+
+  /// Phase 5a — toggle one plan/feature pair
+  /// (`PATCH /v1/admin/pricing/entitlements/{tier_key}/{feature_slug}`).
+  /// Returns the updated entitlement row.
+  Future<FeatureEntitlementEntry> updateEntitlement(
+    FeatureEntitlementUpdateCommand command,
+  );
 }
 
 class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
@@ -105,6 +117,8 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
   static const String usageCapsPath = '/v1/admin/pricing/usage-caps';
   static const String plansPath = '/v1/admin/pricing/plans';
   static const String plansPrefix = '$plansPath/';
+  static const String entitlementsPath = '/v1/admin/pricing/entitlements';
+  static const String entitlementsPrefix = '$entitlementsPath/';
 
   // Idempotency key generation lives in the screen layer
   // (`_PricingTierAdminScreenState._nextIdempotencyKey`) so a single
@@ -204,6 +218,33 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
     );
   }
 
+  @override
+  Future<List<FeatureEntitlementEntry>> listEntitlements() async {
+    final body = await _send(method: 'GET', path: entitlementsPath);
+    final list = (body['entitlements'] as List?) ?? const [];
+    return <FeatureEntitlementEntry>[
+      for (final entry in list)
+        FeatureEntitlementEntry.fromJson((entry as Map).cast<String, Object?>()),
+    ];
+  }
+
+  @override
+  Future<FeatureEntitlementEntry> updateEntitlement(
+    FeatureEntitlementUpdateCommand command,
+  ) async {
+    final body = await _send(
+      method: 'PATCH',
+      path:
+          '$entitlementsPrefix${Uri.encodeComponent(command.tierKey)}/'
+          '${Uri.encodeComponent(command.featureSlug)}',
+      idempotencyKey: command.idempotencyKey,
+      jsonBody: command.toJson(),
+    );
+    return FeatureEntitlementEntry.fromJson(
+      (body['entitlement'] as Map).cast<String, Object?>(),
+    );
+  }
+
   Future<Map<String, Object?>> _send({
     required String method,
     required String path,
@@ -272,6 +313,7 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     String Function()? idGenerator,
     String? actorUserId,
     Iterable<PricingPlanCatalogEntry>? planCatalogSeed,
+    Iterable<FeatureEntitlementEntry>? entitlementsSeed,
   }) : _now = now ?? DateTime.now,
        _idGenerator = idGenerator ?? _randomId,
        _actorUserId = actorUserId,
@@ -285,6 +327,14 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
        _planCatalog = <String, PricingPlanCatalogEntry>{
          for (final entry in (planCatalogSeed ?? buildFallbackPlanCatalog()))
            entry.tierKey: entry,
+       },
+       // Phase 5a — demo mode edits the feature matrix offline: seed from
+       // the default cumulative ladder (mirrors the migration seed) and
+       // mutate in place. Keyed by `tier_key::feature_slug`.
+       _entitlements = <String, FeatureEntitlementEntry>{
+         for (final entry
+             in (entitlementsSeed ?? buildDefaultFeatureEntitlements()))
+           '${entry.tierKey}::${entry.featureSlug}': entry,
        };
 
   final DateTime Function() _now;
@@ -292,6 +342,7 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
   final String? _actorUserId;
   final Map<String, _MutableBundle> _bundles;
   final Map<String, PricingPlanCatalogEntry> _planCatalog;
+  final Map<String, FeatureEntitlementEntry> _entitlements;
 
   /// Per-key cache so a retried mutation on the in-memory gateway
   /// returns the prior result instead of mutating again - mirrors the
@@ -524,6 +575,38 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     return updated;
   }
 
+  @override
+  Future<List<FeatureEntitlementEntry>> listEntitlements() async {
+    // Return rows in (tier ladder order, feature display order) so the
+    // matrix renders deterministically regardless of map iteration order.
+    return <FeatureEntitlementEntry>[
+      for (final p in kPricingPlanPresentations)
+        for (final slug in kFeatureSlugOrder)
+          if (_entitlements['${p.tierKey}::$slug'] != null)
+            _entitlements['${p.tierKey}::$slug']!,
+    ];
+  }
+
+  @override
+  Future<FeatureEntitlementEntry> updateEntitlement(
+    FeatureEntitlementUpdateCommand command,
+  ) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is FeatureEntitlementEntry) return cached;
+    _validatePlanTierKey(command.tierKey);
+    _validateFeatureSlug(command.featureSlug);
+    final updated = FeatureEntitlementEntry(
+      tierKey: command.tierKey,
+      featureSlug: command.featureSlug,
+      enabled: command.enabled,
+      updatedAt: _now().toUtc(),
+      updatedBy: _actorUserId,
+    );
+    _entitlements['${command.tierKey}::${command.featureSlug}'] = updated;
+    _idempotentResults[command.idempotencyKey] = updated;
+    return updated;
+  }
+
   _MutableBundle _bundleOrThrow(String operatorId) {
     final bundle = _bundles[operatorId];
     if (bundle == null) {
@@ -574,6 +657,17 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
         errorCode: 'unknown_plan',
         message:
             'tier_key must be one of: ${kPricingTierTemplateKeys.join(', ')}',
+      );
+    }
+  }
+
+  static void _validateFeatureSlug(String featureSlug) {
+    if (!kFeatureSlugKeys.contains(featureSlug)) {
+      throw PricingTierAdminGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_feature',
+        message:
+            'feature_slug must be one of: ${kFeatureSlugKeys.join(', ')}',
       );
     }
   }

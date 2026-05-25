@@ -309,6 +309,128 @@ void main() {
     );
   });
 
+  // ── Phase 5a — Included features (entitlements) matrix tab. ───────
+  testWidgets(
+    'Phase 5a: Included features tab renders a matrix row per plan',
+    (tester) async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[seedBundle()],
+      );
+      await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('admin_pricing_tab_features')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_pricing_features_view')),
+        findsOneWidget,
+      );
+      // One row per plan, each with the advisor toggle present.
+      for (final key in const <String>[
+        'pilot',
+        'starter',
+        'premium',
+        'elite',
+        'pro',
+        'enterprise',
+      ]) {
+        expect(
+          find.byKey(Key('admin_pricing_entitlements_row_$key')),
+          findsOneWidget,
+          reason: 'entitlements row for $key',
+        );
+        expect(
+          find.byKey(Key('admin_pricing_entitlement_toggle_${key}_advisor')),
+          findsOneWidget,
+          reason: 'advisor toggle for $key',
+        );
+      }
+    },
+  );
+
+  testWidgets(
+    'Phase 5a: toggling a cell calls updateEntitlement and persists',
+    (tester) async {
+      var counter = 0;
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[seedBundle()],
+        idempotencyKeyFactory: () => 'k-ent-${counter++}',
+      );
+      // Starter does not include LMS by default.
+      final before = await gateway.listEntitlements();
+      expect(
+        before
+            .firstWhere(
+              (e) => e.tierKey == 'starter' && e.featureSlug == 'lms',
+            )
+            .enabled,
+        isFalse,
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PricingTierAdminScreen(
+            gateway: gateway,
+            idempotencyKeyFactory: () => 'k-ent-${counter++}',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_pricing_tab_features')));
+      await tester.pumpAndSettle();
+
+      final toggle = find.byKey(
+        const Key('admin_pricing_entitlement_toggle_starter_lms'),
+      );
+      expect(toggle, findsOneWidget);
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      // Saved through the gateway: Starter now includes LMS.
+      final after = await gateway.listEntitlements();
+      expect(
+        after
+            .firstWhere(
+              (e) => e.tierKey == 'starter' && e.featureSlug == 'lms',
+            )
+            .enabled,
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'Phase 5a: read-only mode renders the matrix with disabled toggles',
+    (tester) async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[seedBundle()],
+      );
+      await tester.pumpWidget(
+        wrap(
+          PricingTierAdminScreen(gateway: gateway, editingEnabled: false),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_pricing_tab_features')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_pricing_features_view')),
+        findsOneWidget,
+      );
+      // The matrix still renders, but the toggle is disabled (onChanged
+      // null) so a support user cannot mutate it.
+      final toggle = tester.widget<Switch>(
+        find.byKey(
+          const Key('admin_pricing_entitlement_toggle_premium_lms'),
+        ),
+      );
+      expect(toggle.onChanged, isNull);
+    },
+  );
+
   testWidgets(
     'Phase 3: Plans tab falls back to hard-coded pricing when the catalog '
     'read fails',

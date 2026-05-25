@@ -81,6 +81,19 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
   double? lastPlanUpdateMonthlyUsd;
   int? lastPlanUpdateFirstNSeats;
 
+  // Plans & Limits V1 Phase 5a — feature-entitlements matrix.
+  List<Map<String, Object?>> entitlementsResult = const <Map<String, Object?>>[];
+  Map<String, Object?> entitlementUpdateResult = <String, Object?>{
+    'tier_key': 'premium',
+    'feature_slug': 'lms',
+    'enabled': true,
+    'updated_at': '2026-04-30T12:00:00.000Z',
+    'updated_by': 'user_admin',
+  };
+  String? lastEntitlementTierKey;
+  String? lastEntitlementFeatureSlug;
+  bool? lastEntitlementEnabled;
+
   // Plans & Limits V1 Phase 4a — Pilot trial start + convert.
   Map<String, Object?>? startPilotResult = <String, Object?>{
     'operator': <String, Object?>{
@@ -230,6 +243,32 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
     lastPlanUpdateMonthlyUsd = monthlyUsd;
     lastPlanUpdateFirstNSeats = firstNSeats;
     return planUpdateResult;
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listEntitlements({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    return entitlementsResult;
+  }
+
+  @override
+  Future<Map<String, Object?>> setEntitlement({
+    required String actorUserId,
+    required String tierKey,
+    required String featureSlug,
+    required bool enabled,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastEntitlementTierKey = tierKey;
+    lastEntitlementFeatureSlug = featureSlug;
+    lastEntitlementEnabled = enabled;
+    return entitlementUpdateResult;
   }
 
   @override
