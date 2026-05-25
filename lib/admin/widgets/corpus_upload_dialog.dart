@@ -20,10 +20,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_file_picker.dart';
 import '../../widgets/console/console_surface.dart';
+import 'admin_action_controls.dart';
 import 'corpus_upload_drop_zone.dart';
 
 // kDemoMode carve-out: the upload dialog renders a "Use sample file"
@@ -163,18 +163,19 @@ class _CorpusUploadDialogState extends State<_CorpusUploadDialog> {
       title: 'Upload advisor content',
       maxWidth: 480,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_corpus_upload_dialog_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_corpus_upload_dialog_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Preview upload',
           onPressed: picked == null
               ? null
               : () => Navigator.of(context).pop(_buildCommand(picked)),
-          child: const Text('Preview upload'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(
@@ -196,21 +197,19 @@ class _CorpusUploadDialogState extends State<_CorpusUploadDialog> {
             spacing: 8,
             runSpacing: 8,
             children: <Widget>[
-              OutlinedButton.icon(
+              AdminActionButton(
                 key: const Key('admin_corpus_upload_dialog_pick'),
+                label: picked == null ? 'Choose file' : 'Choose another file',
                 onPressed: _picking ? null : _handlePick,
-                icon: const Icon(Icons.attach_file_outlined, size: 16),
-                label: Text(
-                  picked == null ? 'Choose file' : 'Choose another file',
-                ),
+                icon: Icons.attach_file_outlined,
               ),
               if (_kDemoMode)
-                OutlinedButton.icon(
+                AdminActionButton(
                   // kDemoMode carve-out: visible only in demo mode.
                   key: const Key('admin_corpus_upload_dialog_sample'),
+                  label: 'Use sample file',
                   onPressed: _handleUseSampleFile,
-                  icon: const Icon(Icons.science_outlined, size: 16),
-                  label: const Text('Use sample file'),
+                  icon: Icons.science_outlined,
                 ),
             ],
           ),

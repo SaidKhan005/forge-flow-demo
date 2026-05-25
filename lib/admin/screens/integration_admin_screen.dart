@@ -45,6 +45,7 @@ import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
 import '../services/integration_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart'
     show VendorCategory;
 
@@ -755,14 +756,15 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
       title: 'Replace ${widget.keyKind.displayName} key',
       showCloseButton: false,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_integrations_rotate_cancel_button'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_integrations_rotate_submit_button'),
-          style: AdminButtonStyles.primary,
+          label: 'Save key',
           onPressed: () {
             if (!(_formKey.currentState?.validate() ?? false)) return;
             Navigator.of(context).pop(
@@ -773,7 +775,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
               ),
             );
           },
-          child: const Text('Save key'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Form(
@@ -872,10 +874,11 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
       title: '${widget.keyKind.displayName} key saved',
       showCloseButton: false,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_integrations_reveal_close_button'),
+          label: 'Close',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
+          role: AdminActionRole.quiet,
         ),
       ],
       child: Column(
@@ -903,15 +906,13 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
           const SizedBox(height: 10),
           Row(
             children: [
-              FilledButton.icon(
+              AdminActionButton(
                 key: const Key('admin_integrations_reveal_copy_button'),
-                style: AdminButtonStyles.primary,
+                label: _copied ? 'Copied' : 'Copy',
                 onPressed: _copyPlaintext,
-                icon: Icon(
-                  _copied ? Icons.check : Icons.content_copy,
-                  size: 14,
-                ),
-                label: Text(_copied ? 'Copied' : 'Copy'),
+                icon: _copied ? Icons.check : Icons.content_copy,
+                role: AdminActionRole.primary,
+                compact: true,
               ),
             ],
           ),
@@ -956,16 +957,17 @@ class _ConfirmDialog extends StatelessWidget {
       title: title,
       showCloseButton: false,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_integrations_confirm_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_integrations_confirm_ok'),
-          style: AdminButtonStyles.primary,
+          label: confirmLabel,
           onPressed: () => Navigator.of(context).pop(true),
-          child: Text(confirmLabel),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Text(

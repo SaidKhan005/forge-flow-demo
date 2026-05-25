@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_surface.dart';
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import 'admin_action_controls.dart';
 import 'admin_responsive_layout.dart';
 
 class TierDefinitionsCard extends StatelessWidget {
@@ -155,16 +155,14 @@ class _TierDefinitionSubcard extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: OutlinedButton(
+                child: AdminActionButton(
                   key: Key(
                     'admin_tier_definition_edit_${definition.tierKey.wire}',
                   ),
-                  style: AdminButtonStyles.secondary(
-                    minWidth: 80,
-                    minHeight: 32,
-                  ),
+                  label: 'Edit',
                   onPressed: onEdit,
-                  child: const Text('Edit'),
+                  compact: true,
+                  minWidth: 80,
                 ),
               ),
             ),
