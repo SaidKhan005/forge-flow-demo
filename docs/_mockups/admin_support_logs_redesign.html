@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forge &amp; Flow Admin: Support logs (before / after)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#F8EDE6; --bg-mid:#EFE8E0; --surface:#FFFFFF; --glow:#F2ECE4;
+    --sunset:#CC7A3E; --sunset-dark:#9A5C2A;
+    --peacock:#0E8080; --peacock-dark:#0A6060; --ocean:#14B4AC;
+    --text:#2C2C2C; --text-2:#5A524A; --muted:#5E564E;
+    --border:#DDD6CC; --positive:#256B29; --negative:#C62828; --warning:#997000;
+    --r-card:12px; --r-small:7px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg-deep);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px;display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+  svg{display:block}
+
+  .ribbon{background:rgba(20,180,172,.09);border-bottom:1px solid rgba(20,180,172,.28);color:var(--peacock-dark);font-size:12px;padding:6px 22px;display:flex;gap:8px;align-items:center}
+  .ribbon .dot{width:6px;height:6px;border-radius:999px;background:var(--ocean);flex:0 0 auto}
+
+  header.bar{height:74px;flex:0 0 auto;background:var(--bg-deep);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 22px;}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand .mark{width:36px;height:36px;border-radius:999px;background:radial-gradient(circle at 30% 30%,#E8A87C,var(--sunset) 55%,var(--sunset-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px}
+  .brand .t1{font-size:17px;font-weight:700} .brand .t2{font-size:10px;font-weight:600;color:var(--sunset-dark);letter-spacing:.4px}
+  .spacer{flex:1 1 auto}
+  .scope-btn{display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:7px 13px;max-width:380px}
+  .scope-btn:hover{border-color:var(--sunset)}
+  .scope-btn .ic{color:var(--sunset-dark)}
+  .scope-btn .lbl-k{font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .scope-btn .lbl-v{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .scope-btn .lbl-v .sep{color:var(--muted);font-weight:500;padding:0 6px}
+  .pill{font-size:11px;font-weight:600;border-radius:999px;padding:4px 11px;background:rgba(14,128,128,.10);color:var(--peacock-dark)}
+
+  /* before/after toggle strip */
+  .compare{flex:0 0 auto;background:var(--bg-mid);border-bottom:1px solid var(--border);padding:11px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .compare .ba{display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px}
+  .compare .ba .seg{padding:8px 18px;border-radius:999px;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:7px}
+  .compare .ba .seg.on[data-mode="before"]{background:rgba(153,112,0,.15);color:var(--warning)}
+  .compare .ba .seg.on[data-mode="after"]{background:rgba(37,107,41,.13);color:var(--positive)}
+  .compare .cap{font-size:12.5px;color:var(--text-2);max-width:760px;line-height:1.5}
+  .compare .cap b{color:var(--text);font-weight:700}
+
+  .shell{flex:1 1 auto;display:flex;min-height:0}
+  nav.side{width:212px;flex:0 0 auto;background:var(--bg-mid);border-right:1px solid var(--border);padding:12px 8px;overflow:auto}
+  .grp{font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:14px 10px 5px}
+  .grp:first-child{padding-top:2px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-small);cursor:pointer;color:var(--text-2);margin:2px 0}
+  .nav-item:hover{background:rgba(204,122,62,.06)}
+  .nav-item.sel{background:rgba(204,122,62,.11);color:var(--text);font-weight:600}
+  .nav-item .nic{color:var(--text-2)} .nav-item.sel .nic{color:var(--sunset-dark)}
+  .nav-item .lab{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  main.content{flex:1 1 auto;overflow:auto}
+  .frame{max-width:1180px;margin:0 auto;padding:24px 28px 70px}
+
+  /* the support-logs workspace = scope pane (left, unchanged) + content pane (right) */
+  .ws{display:flex;gap:22px;align-items:flex-start}
+  .scopepane{width:236px;flex:0 0 auto}
+  .scopepane .scopenote{font-size:11px;color:var(--muted);background:var(--glow);border:1px dashed var(--border);border-radius:var(--r-small);padding:8px 10px;margin-bottom:10px;line-height:1.45}
+  .scopepane .scopenote b{color:var(--text-2)}
+  .tree{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden}
+  .tnode{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:default;font-size:13px}
+  .tnode:last-child{border-bottom:none}
+  .tnode.sub{padding-left:30px;font-size:12.5px;color:var(--text-2)}
+  .tnode.sel{background:rgba(204,122,62,.10);font-weight:700;border-left:3px solid var(--sunset-dark)}
+  .tnode .tic{color:var(--sunset-dark);flex:0 0 auto}
+  .tnode.sub .tic{color:var(--muted)}
+
+  .pane{flex:1 1 auto;min-width:0}
+
+  /* screen header */
+  .scr-h{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .scr-h .htext{flex:1 1 320px;min-width:0}
+  .scr-h .ttlrow{display:flex;align-items:center;gap:10px}
+  .scr-h .hic{color:var(--sunset-dark)}
+  .scr-h h1{margin:0;font-size:21px;font-weight:700}
+  .scr-h .badge{font-size:10.5px;font-weight:700;border-radius:999px;padding:3px 10px;background:rgba(204,122,62,.13);color:var(--sunset-dark)}
+  .scr-h p{margin:6px 0 0;font-size:13px;color:var(--muted);line-height:1.5;max-width:560px}
+  .scr-h .actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .lastchk{font-size:11px;color:var(--muted)}
+  .lastchk.mono{font-size:10.5px}
+
+  .btn{border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--sunset);color:#fff;display:inline-flex;align-items:center;gap:7px;font-family:inherit}
+  .btn:hover{background:var(--sunset-dark)}
+  .btn.sec{background:transparent;color:var(--sunset-dark);border:1px solid var(--sunset)} .btn.sec:hover{background:rgba(204,122,62,.08)}
+  .btn.ghost{background:transparent;color:var(--text-2);border:1px solid var(--border)} .btn.ghost:hover{background:var(--glow)}
+  .btn.sm{padding:6px 11px;font-size:11.5px}
+
+  /* tabs (before) */
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:14px}
+  .tabs .tab{padding:9px 15px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+  .tabs .tab.on{color:var(--text);border-bottom-color:var(--sunset)}
+
+  /* card / panel */
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:14px}
+  .panel-h{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:13px 16px 0}
+  .panel-b{padding:13px 16px 16px}
+
+  /* search + chips (before) */
+  .search{display:flex;align-items:center;gap:9px;border:1px solid var(--border);border-radius:var(--r-small);padding:8px 11px;color:var(--muted);font-size:13px;background:var(--surface)}
+  .search .ic{color:var(--muted)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .chip{font-size:11px;font-weight:700;border-radius:999px;padding:6px 12px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer}
+  .chip.mono{font-family:"IBM Plex Mono",monospace;font-weight:500}
+  .chip.on{border-color:var(--sunset);background:rgba(204,122,62,.12);color:var(--sunset-dark)}
+  .chip.scopechip{border-style:dashed;color:var(--peacock-dark);background:rgba(14,128,128,.06);border-color:rgba(14,128,128,.4)}
+  .tip{font-size:12px;color:var(--text-2);margin-top:11px;line-height:1.5}
+  .keybox{margin-top:11px;border:1px solid var(--border);border-radius:var(--r-small);background:var(--bg-deep);padding:11px}
+  .keybox .kt{font-size:13px;font-weight:700;margin-bottom:7px}
+  .keybox .kchips{display:flex;gap:8px;flex-wrap:wrap}
+  .keychip{font-size:12px;font-weight:600;border:1px solid var(--border);border-radius:7px;padding:6px 11px;background:var(--surface);cursor:pointer;color:var(--text-2)}
+
+  /* live tail bar (before) */
+  .live{display:flex;align-items:center;gap:9px;border:1px solid var(--border);border-radius:var(--r-small);background:var(--surface);padding:10px 13px;margin-bottom:14px;font-size:13px}
+  .live .rdot{width:13px;height:13px;border-radius:999px;border:2px solid var(--muted);flex:0 0 auto}
+  .live.on .rdot{border-color:var(--positive);background:var(--positive)}
+  .live .lx{flex:1}
+  .switch{width:38px;height:21px;border-radius:999px;background:var(--border);position:relative;cursor:pointer;flex:0 0 auto}
+  .switch i{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:999px;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .switch.on{background:var(--sunset)} .switch.on i{left:19px}
+
+  /* request rows (before) */
+  .rowlist{margin-top:2px}
+  .lrow{border:1px solid var(--border);border-radius:var(--r-small);background:var(--surface);margin-bottom:8px;overflow:hidden}
+  .lrow .top{display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer}
+  .lrow .top:hover{background:var(--glow)}
+  .lrow .chev{color:var(--muted);flex:0 0 auto}
+  .lrow .ctype{flex:3 1 0;min-width:0;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lrow .csum{flex:3 1 0;min-width:0;font-size:12.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lrow .cage{flex:2 1 0;min-width:0;font-size:12.5px;color:var(--muted)}
+  .statpill{font-size:10px;font-weight:700;border-radius:999px;padding:2px 9px;border:1px solid;flex:0 0 auto;font-family:"IBM Plex Mono",monospace}
+  .statpill.success{color:var(--positive);border-color:var(--positive);background:rgba(37,107,41,.13)}
+  .statpill.error{color:var(--negative);border-color:var(--negative);background:rgba(198,40,40,.12)}
+  .statpill.timeout{color:var(--warning);border-color:var(--warning);background:rgba(153,112,0,.14)}
+  .lrow .clat{width:74px;text-align:right;font-size:10px;color:var(--muted);font-family:"IBM Plex Mono",monospace;flex:0 0 auto}
+  .lrow .body{padding:2px 14px 14px 38px;border-top:1px solid var(--border)}
+
+  .meta{display:flex;padding:3px 0;font-size:10.5px;font-family:"IBM Plex Mono",monospace}
+  .meta .k{width:140px;flex:0 0 auto;color:var(--muted);font-weight:700}
+  .meta .v{flex:1;color:var(--text);word-break:break-all}
+  .detsub{font-size:10px;font-family:"IBM Plex Mono",monospace;color:var(--muted);font-weight:700;margin:9px 0 4px}
+  .dump{border:1px solid var(--border);border-radius:5px;background:var(--bg-deep);padding:10px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--text);white-space:pre;overflow:auto}
+  .locked{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--border);border-radius:5px;background:var(--bg-deep);padding:10px;margin-top:9px;font-size:12.5px;color:var(--muted)}
+  .locked .ic{color:var(--muted);flex:0 0 auto;margin-top:1px}
+
+  /* ---- AFTER styling ---- */
+  .toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+  .a-search{flex:1 1 240px;min-width:180px;display:flex;align-items:center;gap:9px;border:1px solid var(--border);border-radius:var(--r-small);padding:9px 12px;color:var(--muted);font-size:13px;background:var(--surface)}
+  .a-search .ic{color:var(--muted)}
+  .sel-ctl{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:var(--r-small);padding:9px 12px;background:var(--surface);font-size:13px;cursor:pointer;color:var(--text);white-space:nowrap}
+  .sel-ctl .k{color:var(--muted);font-size:11.5px}
+  .sel-ctl .ic{color:var(--muted)}
+  .a-live{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:6px 12px;background:var(--surface);font-size:12.5px;color:var(--text-2);cursor:pointer}
+  .a-live .rdot{width:9px;height:9px;border-radius:999px;background:var(--muted)}
+  .a-live.on{border-color:var(--positive);color:var(--positive);background:rgba(37,107,41,.07)} .a-live.on .rdot{background:var(--positive)}
+
+  .a-row{border:1px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:9px;overflow:hidden}
+  .a-row .top{display:flex;align-items:center;gap:13px;padding:13px 15px;cursor:pointer}
+  .a-row .top:hover{background:var(--glow)}
+  .a-dot{width:11px;height:11px;border-radius:999px;flex:0 0 auto}
+  .a-dot.success{background:var(--positive)} .a-dot.error{background:var(--negative)} .a-dot.timeout{background:var(--warning)}
+  .a-main{flex:1;min-width:0}
+  .a-title{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .a-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .a-sub .res{font-weight:600}
+  .a-sub .res.success{color:var(--positive)} .a-sub .res.error{color:var(--negative)} .a-sub .res.timeout{color:var(--warning)}
+  .a-who{font-size:12.5px;color:var(--text-2);flex:0 0 auto;white-space:nowrap}
+  .a-chev{color:var(--muted);flex:0 0 auto}
+  .a-row .body{padding:4px 16px 16px;border-top:1px solid var(--border)}
+
+  .a-sec-h{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:12px 0 7px}
+  .a-fact{display:flex;gap:12px;padding:6px 0;border-top:1px solid var(--glow);font-size:13.5px}
+  .a-fact:first-of-type{border-top:none}
+  .a-fact .k{width:78px;flex:0 0 auto;color:var(--muted)}
+  .a-fact .v{flex:1;color:var(--text);font-weight:500}
+  .a-fact .v.success{color:var(--positive);font-weight:700} .a-fact .v.error{color:var(--negative);font-weight:700} .a-fact .v.timeout{color:var(--warning);font-weight:700}
+
+  .a-tech{margin-top:13px;border:1px solid var(--border);border-radius:var(--r-small);overflow:hidden}
+  .a-tech .th{display:flex;align-items:center;gap:9px;padding:10px 13px;cursor:pointer;font-size:12.5px;color:var(--text-2);font-weight:600;background:var(--bg-deep)}
+  .a-tech .th:hover{background:var(--glow)}
+  .a-tech .th .ic{color:var(--muted)} .a-tech .th .chev{margin-left:auto;color:var(--muted);transition:transform .15s}
+  .a-tech.open .th .chev{transform:rotate(90deg)}
+  .a-tech .tb{display:none;padding:5px 13px 12px}
+  .a-tech.open .tb{display:block}
+  .tref{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--glow);font-size:12px}
+  .tref:first-child{border-top:none}
+  .tref .k{width:118px;flex:0 0 auto;color:var(--muted)}
+  .tref .v{flex:1;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--text);word-break:break-all}
+  .copy{border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:3px 9px;font-size:11px;color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;font-family:inherit}
+  .copy:hover{border-color:var(--sunset);color:var(--sunset-dark)}
+  .a-locked{display:flex;gap:9px;align-items:flex-start;margin-top:12px;font-size:13px;color:var(--text-2);line-height:1.5}
+  .a-locked .ic{color:var(--muted);flex:0 0 auto;margin-top:1px}
+
+  .annot{display:flex;gap:8px;align-items:flex-start;background:rgba(37,107,41,.06);border:1px solid rgba(37,107,41,.25);border-radius:var(--r-small);padding:9px 12px;font-size:12px;color:var(--text-2);margin-bottom:14px;line-height:1.5}
+  .annot .ic{color:var(--positive);flex:0 0 auto;margin-top:1px}
+  .annot.before{background:rgba(153,112,0,.07);border-color:rgba(153,112,0,.3)} .annot.before .ic{color:var(--warning)}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--text);color:#fff;padding:11px 18px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:80}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+  <div class="ribbon"><span class="dot"></span><span>Redesign preview. Demo data, not a live business. Scope picker on the left is intentionally unchanged.</span></div>
+
+  <header class="bar">
+    <div class="brand"><div class="mark">F&amp;F</div><div><div class="t1">Forge &amp; Flow</div><div class="t2">ADMIN CONSOLE</div></div></div>
+    <div class="spacer"></div>
+    <div class="scope-btn" id="scopeBtn"><span class="ic" data-ic="pin"></span><span><div class="lbl-k">Viewing</div><div class="lbl-v">Demo Diner Co.<span class="sep">&rsaquo;</span>Toronto Yorkville</div></span><span data-ic="chev"></span></div>
+    <span class="pill">Ecosystem admin</span>
+  </header>
+
+  <div class="compare">
+    <div class="ba" id="ba">
+      <div class="seg" data-mode="before"><span data-ic="bug"></span>Before (today)</div>
+      <div class="seg on" data-mode="after"><span data-ic="check"></span>After (proposed)</div>
+    </div>
+    <div class="cap" id="cap"></div>
+  </div>
+
+  <div class="shell">
+    <nav class="side" id="side"></nav>
+    <main class="content"><div class="frame" id="frame"></div></main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const P=(d)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`;
+const SVG=(i,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24">${i}</svg>`;
+const C=(cx,cy,r)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="1.7"/>`;
+const ICONS={
+  chev:SVG(P("M6 9l6 6 6-6"),15),
+  chevr:SVG(P("M9 6l6 6-6 6"),15),
+  pin:SVG(P("M12 21s-6-5-6-10a6 6 0 0 1 12 0c0 5-6 10-6 10z")+C(12,11,2.2)),
+  building:SVG(P("M4 21V4h9v17")+P("M13 9h7v12h-7")+P("M7 8h2M7 12h2M7 16h2M16 13h1M16 17h1")),
+  store:SVG(P("M4 9.5 5.5 5h13L20 9.5M4 9.5h16M4 9.5v10.5h16V9.5M4 9.5a2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0")),
+  tune:SVG(P("M4 7h9")+P("M17 7h3")+C(15,7,2.1)+P("M4 17h3")+P("M11 17h9")+C(9,17,2.1)),
+  book:SVG(P("M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z")+P("M5 19.5A1.5 1.5 0 0 1 6.5 18H19v3H6.5A1.5 1.5 0 0 1 5 19.5z")),
+  insights:SVG(P("M4 20V11")+P("M10 20V5")+P("M16 20v-6")+P("M3 20h18")),
+  health:SVG(`<rect x="3" y="4.5" width="18" height="12" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8 20.5h8M12 16.5v4")+P("M6 10.5h2.5l1.3-3 2 5 1.4-2.5H17")),
+  bug:SVG(`<rect x="8" y="8" width="8" height="11" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8 12H4M16 12h4M8 16.5H4.5M16 16.5h3.5M9 8.2 7.6 5.6M15 8.2 16.4 5.6M12 4.5V8")),
+  link:SVG(P("M9 15l6-6")+P("M10.5 6.5l1.4-1.4a4 4 0 0 1 5.6 5.6L16 12.2")+P("M13.5 17.5 12 19a4 4 0 0 1-5.6-5.6L8 11.8")),
+  flag:SVG(P("M5.5 21V4")+P("M5.5 4.5h11l-2 3 2 3h-11")),
+  star:SVG(P("M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z")),
+  person:SVG(C(12,8,3.4)+P("M5 20.5c0-4 3.5-6.2 7-6.2s7 2.2 7 6.2")),
+  bell:SVG(P("M6 9.5a6 6 0 0 1 12 0c0 4.5 1.8 5.5 1.8 5.5H4.2S6 14 6 9.5")+P("M10 19a2 2 0 0 0 4 0")),
+  search:SVG(C(11,11,6)+P("M20 20l-4.5-4.5")),
+  refresh:SVG(P("M20 11a8 8 0 0 0-14-4L4 9")+P("M4 13a8 8 0 0 0 14 4l2-2")+P("M4 5v4h4M20 19v-4h-4")),
+  lock:SVG(`<rect x="5.5" y="10.5" width="13" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"),15),
+  check:SVG(P("M5 12.5 10 17 19 7"),16),
+  copy:SVG(`<rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>`+P("M5 15V5a2 2 0 0 1 2-2h8"),14),
+  wrench:SVG(P("M14.5 6.5a3.5 3.5 0 0 0-4.6 4.4L4 16.8 7.2 20l5.9-5.9a3.5 3.5 0 0 0 4.4-4.6l-2.2 2.2-2.3-.6-.6-2.3z"),15),
+};
+function paintIcons(root=document){root.querySelectorAll('[data-ic]').forEach(el=>{if(el.dataset.done)return;el.innerHTML=ICONS[el.dataset.ic]||'';el.dataset.done='1';});}
+
+const SECTIONS=[
+  {grp:'Operations',items:[{id:'accounts',label:'Business accounts',ic:'building'},{id:'vendorapp',label:'Vendor applicability',ic:'tune'},{id:'polling',label:'Polling setup',ic:'refresh'}]},
+  {grp:'AI',items:[{id:'plans',label:'Plans & limits',ic:'tune'},{id:'kb',label:'Knowledge base',ic:'book'},{id:'metrics',label:'AI Metrics',ic:'insights'}]},
+  {grp:'System monitoring',items:[{id:'health',label:'System health',ic:'health'},{id:'logs',label:'Support logs',ic:'bug'}]},
+  {grp:'Service setup',items:[{id:'connected',label:'Connected services',ic:'link'},{id:'launch',label:'Launch controls',ic:'flag'},{id:'defroles',label:'Default roles',ic:'star'}]},
+  {grp:'Your account',items:[{id:'me',label:'My account',ic:'person'},{id:'notif',label:'Notifications',ic:'bell'}]},
+];
+
+// shared demo data; the same five requests render in both modes
+const ROWS=[
+  {id:'r1',type:'Advisor answers',code:'advisor_qa',status:'success',plain:'Advisor answered a question',
+   age:'2 min ago',when:'May 24, 2026, 3:42 PM',ms:1240,took:'1.2 seconds',
+   who:'Marco Lee',role:'Manager',email:'marco@demodiner.example',
+   reqId:'7f3a9c12-4b8e-4d21-9a7c-2e1f0b6d8a40',idem:'idem-2026-05-24-7f3a9c12',
+   route:'/v1/advisor/qa',method:'POST',code2:200,tokIn:820,tokOut:240,model:'claude-opus-4-7',
+   summary:'/v1/advisor/qa',open:true},
+  {id:'r2',type:'Coaching help',code:'coach_qa',status:'error',plain:'Coaching answer could not be generated',
+   age:'14 min ago',when:'May 24, 2026, 3:30 PM',ms:320,took:'0.3 seconds',
+   who:'Jen Park',role:'Shift lead',email:'jen@demodiner.example',
+   reqId:'b21d77a0-9c14-4f6a-8b03-5d9e2a1c7f88',idem:'idem-2026-05-24-b21d77a0',
+   route:'/v1/coach/qa',method:'POST',code2:503,tokIn:0,tokOut:0,model:'claude-opus-4-7',
+   summary:'/v1/coach/qa',open:false},
+  {id:'r3',type:'Workflow planning',code:'wf_pl',status:'success',plain:'Workflow plan was prepared',
+   age:'1 hr ago',when:'May 24, 2026, 2:38 PM',ms:2100,took:'2.1 seconds',
+   who:'',role:'',email:'',
+   reqId:'5cc0e3b8-1a22-4e90-bb71-77c4f0a9d233',idem:'idem-2026-05-24-5cc0e3b8',
+   route:'/v1/workflow/plan',method:'POST',code2:200,tokIn:1500,tokOut:610,model:'claude-opus-4-7',
+   summary:'/v1/workflow/plan',open:false},
+  {id:'r4',type:'Advisor answers',code:'advisor_qa',status:'timeout',plain:'Advisor request timed out',
+   age:'3 hr ago',when:'May 24, 2026, 12:41 PM',ms:30000,took:'30 seconds (timed out)',
+   who:'Marco Lee',role:'Manager',email:'marco@demodiner.example',
+   reqId:'a9f4421c-6d70-4b18-8e52-0c3b9a7e6f51',idem:'idem-2026-05-24-a9f4421c',
+   route:'/v1/advisor/qa',method:'POST',code2:504,tokIn:760,tokOut:0,model:'claude-opus-4-7',
+   summary:'/v1/advisor/qa',open:false},
+];
+
+let mode='after';
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function renderNav(){
+  document.getElementById('side').innerHTML=SECTIONS.map(s=>`<div class="grp">${s.grp}</div>`+
+    s.items.map(it=>`<div class="nav-item ${it.id==='logs'?'sel':''}"><span class="nic" data-ic="${it.ic}"></span><span class="lab">${it.label}</span></div>`).join('')).join('');
+  paintIcons(document.getElementById('side'));
+}
+
+// left scope pane is identical in both modes (the part we are NOT touching)
+function scopePane(){
+  return `<div class="scopepane">
+    <div class="scopenote"><b>Scope (unchanged).</b> Pick a business or location here. This is the part you asked to leave as is.</div>
+    <div class="tree">
+      <div class="tnode sel"><span class="tic" data-ic="building"></span>Demo Diner Co.</div>
+      <div class="tnode sub"><span class="tic" data-ic="store"></span>Toronto Yorkville</div>
+      <div class="tnode sub"><span class="tic" data-ic="store"></span>Toronto Liberty Village</div>
+      <div class="tnode sub"><span class="tic" data-ic="store"></span>Mississauga Square One</div>
+    </div>
+  </div>`;
+}
+
+/* ============================ BEFORE ============================ */
+function beforeRowTop(r){
+  return `<div class="top" data-row="${r.id}">
+    <span class="chev" data-ic="${r.open?'chev':'chevr'}"></span>
+    <span class="ctype">${esc(r.type)}</span>
+    <span class="csum mono">${esc(r.summary)}</span>
+    <span class="cage">${esc(r.age)}</span>
+    <span class="statpill ${r.status}">${r.status}</span>
+    <span class="clat">${r.ms} ms</span>
+  </div>`;
+}
+function beforeRowBody(r){
+  const dump=`{\n  route: ${r.route}\n  method: ${r.method}\n  status_code: ${r.code2}\n  tokens_in: ${r.tokIn}\n  tokens_out: ${r.tokOut}\n  model: ${r.model}\n}`;
+  const actor=r.who?`${r.who} - ${r.role} - ${r.email}`:'';
+  return `<div class="body">
+    <div class="meta"><span class="k">Request reference</span><span class="v">${r.reqId}</span></div>
+    <div class="meta"><span class="k">Retry reference</span><span class="v">${r.idem}</span></div>
+    <div class="meta"><span class="k">Operator ID</span><span class="v">00000000-0000-4000-8000-000000000001</span></div>
+    <div class="meta"><span class="k">Location ID</span><span class="v">00000000-0000-4000-8000-0000000000a1</span></div>
+    <div class="meta"><span class="k">Request use case</span><span class="v">${esc(r.type)} (${r.code})</span></div>
+    ${actor?`<div class="meta"><span class="k">Actor</span><span class="v">${esc(actor)}</span></div>`:''}
+    <div class="meta"><span class="k">Started</span><span class="v">${esc(r.when)} EDT</span></div>
+    <div class="detsub">Request details</div>
+    <div class="dump">${esc(dump)}</div>
+    <div class="locked"><span class="ic" data-ic="lock"></span><span>This operator has not allowed full request content. Enable the full-content opt-in in Launch controls to view it.</span></div>
+  </div>`;
+}
+function renderBefore(){
+  const rows=ROWS.map(r=>`<div class="lrow">${beforeRowTop(r)}${r.open?beforeRowBody(r):''}</div>`).join('');
+  return `${scopePane()}
+  <div class="pane">
+    <div class="annot before"><span class="ic" data-ic="bug"></span><span>Today's screen. Note the typewriter font, raw IDs, the <b>advisor_qa</b> codes, the code-style <b>{ }</b> details dump, two ways to filter by type, and the full-width live bar.</span></div>
+    <div class="scr-h">
+      <div class="htext"><div class="ttlrow"><span class="hic" data-ic="bug"></span><h1>Support logs</h1><span class="badge">Admin only</span></div>
+        <p>Translate recent backend requests into support-safe details. Use precise references only when support needs a targeted lookup.</p></div>
+      <div class="actions"><button class="btn sec sm"><span data-ic="refresh"></span>Refresh</button><span class="lastchk mono">Last checked: May 24, 2026 at 3:44 PM EDT</span></div>
+    </div>
+    <div class="tabs">
+      <div class="tab on">All requests</div><div class="tab">Relationship Help</div><div class="tab">Account Help</div>
+    </div>
+    <div class="panel">
+      <div class="panel-h">Filters</div>
+      <div class="panel-b">
+        <div class="search"><span class="ic" data-ic="search"></span>Search by request or retry reference</div>
+        <div class="chips">
+          <span class="chip">Status: any</span>
+          <span class="chip">Window: any</span>
+          <span class="chip scopechip">Business: Demo Diner Co.</span>
+          <span class="chip scopechip">Location: Toronto Yorkville</span>
+          <span class="chip mono">Request type: advisor_qa, coach_qa, wf_pl</span>
+        </div>
+        <div class="tip">Tip: choose View logs from a business, org unit, or location to fill the scope filters automatically.</div>
+        <div class="keybox">
+          <div class="kt">Request type key</div>
+          <div class="kchips">
+            <span class="keychip">Advisor answers</span>
+            <span class="keychip">Coaching help</span>
+            <span class="keychip">Workflow planning</span>
+            <span class="keychip">Workflow scheduling</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="live"><span class="rdot"></span><span class="lx">Live refresh off. Turn it on to check for new requests every 5 seconds.</span><span class="switch"><i></i></span></div>
+    <div class="rowlist">${rows}</div>
+  </div>`;
+}
+
+/* ============================ AFTER ============================ */
+const RESULT={success:'Worked',error:'Failed',timeout:'Timed out'};
+function afterRowTop(r){
+  const who=r.who?`<span class="a-who">${esc(r.who)} &middot; ${esc(r.role)}</span>`:'';
+  return `<div class="top" data-arow="${r.id}">
+    <span class="a-dot ${r.status}"></span>
+    <span class="a-main"><div class="a-title">${esc(r.plain)}</div>
+      <div class="a-sub"><span class="res ${r.status}">${RESULT[r.status]}</span> &middot; ${esc(r.age)}</div></span>
+    ${who}
+    <span class="a-chev" data-ic="${r.open?'chev':'chevr'}"></span>
+  </div>`;
+}
+function afterRowBody(r){
+  const whoLine=r.who?`${esc(r.who)} (${esc(r.role)})`:'Not tied to a person';
+  return `<div class="body">
+    <div class="a-sec-h">What happened</div>
+    <div class="a-fact"><span class="k">What</span><span class="v">${esc(r.type)}</span></div>
+    <div class="a-fact"><span class="k">Result</span><span class="v ${r.status}">${RESULT[r.status]}</span></div>
+    <div class="a-fact"><span class="k">When</span><span class="v">${esc(r.when)}</span></div>
+    <div class="a-fact"><span class="k">Who</span><span class="v">${whoLine}</span></div>
+    <div class="a-fact"><span class="k">Took</span><span class="v">${esc(r.took)}</span></div>
+    <div class="a-tech" data-tech="${r.id}">
+      <div class="th"><span class="ic" data-ic="wrench"></span>Technical reference (for engineering)<span class="chev" data-ic="chevr"></span></div>
+      <div class="tb">
+        <div class="tref"><span class="k">Request ref</span><span class="v">${r.reqId}</span><button class="copy" data-copy="${r.reqId}"><span data-ic="copy"></span>Copy</button></div>
+        <div class="tref"><span class="k">Retry ref</span><span class="v">${r.idem}</span><button class="copy" data-copy="${r.idem}"><span data-ic="copy"></span>Copy</button></div>
+        <div class="tref"><span class="k">Route</span><span class="v">${r.method} ${r.route} &rarr; ${r.code2}</span></div>
+        <div class="tref"><span class="k">Model</span><span class="v">${r.model}</span></div>
+        <div class="tref"><span class="k">Tokens</span><span class="v">${r.tokIn} in / ${r.tokOut} out</span></div>
+      </div>
+    </div>
+    <div class="a-locked"><span class="ic" data-ic="lock"></span><span>Full message text is hidden. This business has not turned on full-content sharing.</span></div>
+  </div>`;
+}
+function renderAfter(){
+  const rows=ROWS.map(r=>`<div class="a-row">${afterRowTop(r)}${r.open?afterRowBody(r):''}</div>`).join('');
+  return `${scopePane()}
+  <div class="pane">
+    <div class="annot"><span class="ic" data-ic="check"></span><span>Proposed: plain titles and results, the timing in seconds, one compact filter row (the tabs and the request-type key fold into a single <b>Type</b> menu), live refresh shrinks to a chip, and every ID or code hides under <b>Technical reference</b> until support needs it.</span></div>
+    <div class="scr-h">
+      <div class="htext"><div class="ttlrow"><span class="hic" data-ic="bug"></span><h1>Support logs</h1><span class="badge">Admin only</span></div>
+        <p>See recent activity for the business you picked. Open any row for the details support needs.</p></div>
+      <div class="actions"><div style="display:flex;gap:8px;align-items:center"><span class="a-live" id="aLive"><span class="rdot"></span>Live</span><button class="btn sec sm"><span data-ic="refresh"></span>Refresh</button></div><span class="lastchk">Updated 2 minutes ago</span></div>
+    </div>
+    <div class="toolbar">
+      <div class="a-search"><span class="ic" data-ic="search"></span>Search</div>
+      <div class="sel-ctl" data-pick="Type"><span class="k">Type</span>All activity<span class="ic" data-ic="chev"></span></div>
+      <div class="sel-ctl" data-pick="When"><span class="k">When</span>Any time<span class="ic" data-ic="chev"></span></div>
+      <div class="sel-ctl" data-pick="Result"><span class="k">Result</span>Any<span class="ic" data-ic="chev"></span></div>
+    </div>
+    <div class="rowlist">${rows}</div>
+  </div>`;
+}
+
+const CAPS={
+  before:'<b>Before.</b> The current screen reads like a developer log: monospace everywhere, raw IDs and codes, and a crowded filter area with a separate "request type key" box.',
+  after:'<b>After.</b> Same data, plain words. Engineering detail is one click away under "Technical reference," and the filter area collapses to a single compact row. The left scope picker is untouched.',
+};
+
+function render(){
+  document.getElementById('frame').innerHTML=`<div class="ws">${mode==='before'?renderBefore():renderAfter()}</div>`;
+  document.getElementById('cap').innerHTML=CAPS[mode];
+  document.querySelectorAll('#ba .seg').forEach(s=>s.classList.toggle('on',s.dataset.mode===mode));
+  paintIcons(document.getElementById('frame'));
+  wire();
+}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1800);}
+
+function wire(){
+  // expand/collapse rows in both modes
+  document.querySelectorAll('[data-row]').forEach(el=>el.onclick=()=>{const r=ROWS.find(x=>x.id===el.dataset.row);r.open=!r.open;render();});
+  document.querySelectorAll('[data-arow]').forEach(el=>el.onclick=()=>{const r=ROWS.find(x=>x.id===el.dataset.arow);r.open=!r.open;render();});
+  // technical-reference disclosure (after)
+  document.querySelectorAll('[data-tech] .th').forEach(el=>el.onclick=e=>{e.stopPropagation();el.closest('.a-tech').classList.toggle('open');});
+  document.querySelectorAll('.copy').forEach(el=>el.onclick=e=>{e.stopPropagation();toast('Copied: '+el.dataset.copy);});
+  const live=document.getElementById('aLive');if(live)live.onclick=()=>{live.classList.toggle('on');toast(live.classList.contains('on')?'Live refresh on (every 5 seconds).':'Live refresh off.');};
+  document.querySelectorAll('.live .switch').forEach(el=>el.onclick=()=>{el.classList.toggle('on');el.closest('.live').classList.toggle('on');});
+  document.querySelectorAll('[data-pick]').forEach(el=>el.onclick=()=>toast(el.dataset.pick+' menu (preview).'));
+}
+
+document.getElementById('ba').addEventListener('click',e=>{const s=e.target.closest('.seg');if(!s)return;mode=s.dataset.mode;render();});
+document.getElementById('scopeBtn').onclick=()=>toast('Opens the business and location picker (unchanged).');
+
+renderNav();render();
+</script>
+</body>
+</html>
