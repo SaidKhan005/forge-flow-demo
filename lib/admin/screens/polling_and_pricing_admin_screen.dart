@@ -7,10 +7,11 @@
 //
 // Authority: docs/contracts/data_accuracy_settings_contract.md
 // "Tab 2: Polling & Pricing (F&F-controlled, well-labeled)" section,
-// including the verbatim plain-English explainer card text.
+// including the verbatim plain-English explainer info text.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
@@ -597,8 +598,15 @@ class _PollingAndPricingAdminScreenState
                       icon: Icons.payments_outlined,
                       title: 'Polling Setup',
                       subtitle:
-                          'Set vendor cadence, tier price, cost basis, and margin for admin-managed locations.',
+                          'Assign polling tiers and review cost and margin by location.',
                       actions: <Widget>[
+                        const OperatorWebInfoButton(
+                          key: Key('admin_polling_setup_info_button'),
+                          title: 'About this surface',
+                          tooltip: 'About Polling Setup',
+                          width: 460,
+                          body: PlainEnglishExplainerBody(),
+                        ),
                         if (widget.onBackToBusinessAccounts != null)
                           AdminBusinessAccountsBackButton(
                             onPressed: widget.onBackToBusinessAccounts,
@@ -718,15 +726,6 @@ class _PollingAndPricingAdminScreenState
               onPressed: _onAssignSelectedScope,
             ),
           ],
-          const SizedBox(height: 16),
-          _PollingSetupOverviewPanel(
-            scope: _scope,
-            visibleRows: _filteredAssignments,
-            visibleRequests: _visibleChangeRequests,
-            visibleRollup: _visibleRollup,
-          ),
-          const SizedBox(height: 16),
-          const PlainEnglishExplainerCard(),
           const SizedBox(height: 16),
           PerLocationTierAssignmentTable(
             rows: _filteredAssignments,
@@ -902,133 +901,6 @@ class _ScopedPollingActionCard extends StatelessWidget {
       child: Text(
         'Selected scope: ${scope.displayLabel}. This saves one polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower setting overrides it.',
         style: AppTextStyles.body13(color: AppColors.textSecondary),
-      ),
-    );
-  }
-}
-
-class _PollingSetupOverviewPanel extends StatelessWidget {
-  const _PollingSetupOverviewPanel({
-    required this.scope,
-    required this.visibleRows,
-    required this.visibleRequests,
-    required this.visibleRollup,
-  });
-
-  final AdminHierarchyScopeIntent? scope;
-  final List<TierAssignmentAdminRow> visibleRows;
-  final List<TierChangeRequest> visibleRequests;
-  final TierMarginRollup visibleRollup;
-
-  @override
-  Widget build(BuildContext context) {
-    final assignedCount = visibleRows
-        .where((row) => row.assignment != null)
-        .length;
-    final pendingRequests = visibleRequests
-        .where((request) => request.status == TierChangeRequestStatus.pending)
-        .length;
-    final margin = visibleRollup.totalMonthlyMarginCents;
-    final marginColor = margin > 0
-        ? AppColors.positive
-        : margin < 0
-        ? AppColors.negative
-        : AppColors.textMuted;
-    final scopeLabel = scope == null ? 'All operators' : scope!.displayLabel;
-
-    return OperatorWebPanel(
-      key: const Key('admin_polling_setup_overview_panel'),
-      title: 'Setup overview',
-      subtitle: scopeLabel,
-      tone: OperatorWebPanelTone.highlight,
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: <Widget>[
-          _OverviewMetric(
-            label: 'Locations shown',
-            value: '${visibleRows.length}',
-            icon: Icons.storefront_outlined,
-            color: AppColors.sunsetDark,
-          ),
-          _OverviewMetric(
-            label: 'Assigned',
-            value: '$assignedCount',
-            icon: Icons.check_circle_outline,
-            color: assignedCount == 0
-                ? AppColors.textMuted
-                : AppColors.positive,
-          ),
-          _OverviewMetric(
-            label: 'Pending requests',
-            value: '$pendingRequests',
-            icon: Icons.inbox_outlined,
-            color: pendingRequests == 0
-                ? AppColors.textMuted
-                : AppColors.warning,
-          ),
-          _OverviewMetric(
-            label: 'Monthly margin',
-            value: formatCents(margin),
-            icon: Icons.trending_up_outlined,
-            color: marginColor,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OverviewMetric extends StatelessWidget {
-  const _OverviewMetric({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 152, maxWidth: 232),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: color.withValues(alpha: 0.26), width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  value,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

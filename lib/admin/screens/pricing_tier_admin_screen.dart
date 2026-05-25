@@ -884,28 +884,12 @@ _OperatorSpend _spendForOperator(
   String operatorId,
 ) {
   if (envelope == null) return _OperatorSpend.empty;
-  MarginEstimateEntry? margin;
-  for (final m in envelope.margins) {
-    if (m.operatorId == operatorId) {
-      margin = m;
-      break;
-    }
-  }
+  final margin = _marginForOperator(envelope, operatorId);
   // Spend is the rolling cost the margin row already carries; fall back
   // to summing the per-class cost telemetry for the operator when no
   // margin row is present.
-  double? spend = margin?.costUsd;
-  if (spend == null) {
-    double sum = 0;
-    var sawRow = false;
-    for (final row in envelope.costTelemetry) {
-      if (row.operatorId == operatorId) {
-        sum += row.totalUsd;
-        sawRow = true;
-      }
-    }
-    if (sawRow) spend = sum;
-  }
+  final spend =
+      margin?.costUsd ?? _costTelemetrySpendForOperator(envelope, operatorId);
   final revenue = margin?.revenueUsd;
   final ratio = margin?.marginRatio;
   return _OperatorSpend(
@@ -914,6 +898,31 @@ _OperatorSpend _spendForOperator(
     marginRatio: (margin != null && (revenue ?? 0) > 0) ? ratio : null,
     health: _healthFor(margin, revenue, spend),
   );
+}
+
+MarginEstimateEntry? _marginForOperator(
+  ObservabilityEnvelope envelope,
+  String operatorId,
+) {
+  for (final margin in envelope.margins) {
+    if (margin.operatorId == operatorId) return margin;
+  }
+  return null;
+}
+
+double? _costTelemetrySpendForOperator(
+  ObservabilityEnvelope envelope,
+  String operatorId,
+) {
+  double sum = 0;
+  var sawRow = false;
+  for (final row in envelope.costTelemetry) {
+    if (row.operatorId == operatorId) {
+      sum += row.totalUsd;
+      sawRow = true;
+    }
+  }
+  return sawRow ? sum : null;
 }
 
 _MarginHealth _healthFor(
@@ -1308,11 +1317,15 @@ class _PlanCard extends StatelessWidget {
       // "$0 (self-serve)") when it carries meaning.
       return presentation?.onboardingRange ?? 'Custom';
     }
-    if ((min ?? 0) == 0 && (max ?? 0) == 0) return r'$0 (self-serve)';
-    if (min != null && max != null) {
-      return '${_money(min)} to ${_money(max)}';
-    }
-    return _money(min ?? max);
+    return _onboardingRangeLine(min, max);
+  }
+
+  static String _onboardingRangeLine(double? min, double? max) {
+    final lower = min ?? 0;
+    final upper = max ?? 0;
+    if (lower == 0 && upper == 0) return r'$0 (self-serve)';
+    if (min == null || max == null) return _money(min ?? max);
+    return '${_money(min)} to ${_money(max)}';
   }
 
   static double? _advisorCapUsd(PricingTierTemplate template) {
