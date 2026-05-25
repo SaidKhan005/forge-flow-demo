@@ -37,6 +37,7 @@ class AdminButtonStyles {
       filledButtonTheme: FilledButtonThemeData(style: primary),
       outlinedButtonTheme: OutlinedButtonThemeData(style: secondary()),
       textButtonTheme: TextButtonThemeData(style: text),
+      iconButtonTheme: IconButtonThemeData(style: icon),
     );
   }
 
@@ -168,5 +169,16 @@ class AdminButtonStyles {
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
     textStyle: AppTextStyles.display16(color: AppColors.sunsetDark),
+  );
+
+  static ButtonStyle get icon => IconButton.styleFrom(
+    foregroundColor: AppColors.sunsetDark,
+    disabledForegroundColor: AppColors.textMuted.withValues(alpha: 0.55),
+    highlightColor: AppColors.sunset.withValues(alpha: 0.10),
+    hoverColor: AppColors.sunset.withValues(alpha: 0.08),
+    focusColor: AppColors.sunset.withValues(alpha: 0.10),
+    minimumSize: const Size(42, 42),
+    padding: const EdgeInsets.all(8),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
   );
 }

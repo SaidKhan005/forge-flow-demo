@@ -551,11 +551,7 @@ class _AdminHeaderBar extends StatelessWidget {
         key: const Key('admin_header_signout'),
         tooltip: 'Sign out',
         onPressed: onSignOut,
-        icon: const Icon(
-          Icons.logout_outlined,
-          size: 20,
-          color: AppColors.textSecondary,
-        ),
+        icon: const Icon(Icons.logout_outlined, size: 20),
       );
     }
     return Tooltip(
