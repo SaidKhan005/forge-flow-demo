@@ -92,6 +92,13 @@ void main() {
       await tester.pumpAndSettle();
 
       // Friendly wage authority -> generates authority_basis.
+      // The friendly form scrolls inside the height-capped dialog, so the
+      // optional-field controls can sit below the fold; scroll them into
+      // view before tapping (a real admin scrolls too).
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_wage_authority')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('admin_vendor_applicability_wage_authority')),
       );
@@ -100,6 +107,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // "Only count shifts that have a role" -> requires_job_code.
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_requires_job_code')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('admin_vendor_applicability_requires_job_code')),
       );
@@ -273,6 +284,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // "Which guests count?" -> cover_filter.
+      // Scroll the control into view first: the friendly form scrolls inside
+      // the height-capped dialog and this field can sit below the fold.
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_cover_filter')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('admin_vendor_applicability_cover_filter')),
       );
@@ -285,6 +302,12 @@ void main() {
         find.byKey(const Key('admin_vendor_applicability_service_period_add')),
         'brunch',
       );
+      await tester.ensureVisible(
+        find.byKey(
+          const Key('admin_vendor_applicability_service_period_button'),
+        ),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
           const Key('admin_vendor_applicability_service_period_button'),
@@ -295,6 +318,12 @@ void main() {
         find.byKey(const Key('admin_vendor_applicability_service_period_add')),
         'happy_hour',
       );
+      await tester.ensureVisible(
+        find.byKey(
+          const Key('admin_vendor_applicability_service_period_button'),
+        ),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
           const Key('admin_vendor_applicability_service_period_button'),
