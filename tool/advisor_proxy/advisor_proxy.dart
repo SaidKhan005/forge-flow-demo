@@ -5084,6 +5084,13 @@ abstract class DataAccuracyAdminProxyGateway {
     required String adminReason,
   });
 
+  Future<Map<String, Object?>?> loadDataAccuracyRow({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  });
+
   Future<List<Map<String, Object?>>> listAuditHistory({
     required String actorUserId,
     String? operatorId,
@@ -5098,6 +5105,41 @@ abstract class DataAccuracyAdminProxyGateway {
     Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> saveDataAccuracySettings({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    Map<String, String>? coversSourcePerServicePeriod,
+    Map<String, Map<String, int>> coversManualEntries =
+        const <String, Map<String, int>>{},
+    String? wageSource,
+    String? walkInHandlingMode,
+    Map<String, int> walkInManualEntries = const <String, int>{},
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> saveDataAccuracyManualCovers({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required int covers,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> clearDataAccuracyManualCovers({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
     String? reasonNote,
     required String adminReason,
   });
@@ -5164,6 +5206,13 @@ abstract class DataAccuracyAdminProxyGateway {
 
   Future<List<Map<String, Object?>>> listTierAssignments({
     required String actorUserId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> loadTierAssignment({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
     required String adminReason,
   });
 
@@ -14418,9 +14467,11 @@ bool _isAdminDataAccuracyOperation(String path, String method) {
   if (method == 'GET' &&
       (path == adminDataAccuracyRowsPath ||
           path == adminDataAccuracyAuditHistoryPath ||
+          path.startsWith(adminDataAccuracySettingsPrefix) ||
           path.startsWith(adminDataAccuracyServicePeriodSettingsPrefix) ||
           path == adminPollingPricingTierDefinitionsPath ||
           path == adminPollingPricingAssignmentsPath ||
+          path.startsWith(adminPollingPricingAssignmentsPrefix) ||
           path == adminPollingPricingMarginPath ||
           path == adminPollingPricingChangeRequestsPath)) {
     return true;
@@ -14472,6 +14523,23 @@ Future<void> _routeDataAccuracyAdmin({
       adminReason: '$reasonPrefix:rows',
     );
     _writeJson(response, 200, <String, Object?>{'rows': rows});
+    return;
+  }
+
+  if (method == 'GET' && path.startsWith(adminDataAccuracySettingsPrefix)) {
+    final pair = _pathPairSuffix(path, adminDataAccuracySettingsPrefix);
+    if (pair == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final row = await gateway.loadDataAccuracyRow(
+      actorUserId: actorUserId,
+      operatorId: pair.operatorId,
+      locationId: pair.locationId,
+      adminReason:
+          '$reasonPrefix:settings:${pair.operatorId}:${pair.locationId}',
+    );
+    _writeJson(response, 200, <String, Object?>{'row': row});
     return;
   }
 
@@ -14579,6 +14647,66 @@ Future<void> _routeDataAccuracyAdmin({
   }
 
   if (method == 'PATCH' && path.startsWith(adminDataAccuracySettingsPrefix)) {
+    final manualPair = _dataAccuracyManualCoversPathPair(path);
+    if (manualPair != null) {
+      final bodyError = _validateManualCoversWriteBody(body);
+      if (bodyError != null) {
+        _writeJson(response, bodyError.$1, bodyError.$2);
+        return;
+      }
+      final businessDate = _requireBodyString(body, 'business_date');
+      final servicePeriodKey = _requireBodyString(body, 'service_period_key');
+      final clearManualCovers = _optionalBodyBool(body, 'clear');
+      final reasonNote = _optionalBodyString(body, 'reason_note');
+      await _runAdminIdempotent(
+        response: response,
+        store: idempotencyStore,
+        idempotencyKey: idempotencyKey,
+        requestType: clearManualCovers
+            ? 'admin.data_accuracy.manual_covers_clear'
+            : 'admin.data_accuracy.manual_covers_save',
+        actorUserId: actorUserId,
+        requestBody: body,
+        compute: () async {
+          final result = clearManualCovers
+              ? await gateway.clearDataAccuracyManualCovers(
+                  actorUserId: actorUserId,
+                  operatorId: manualPair.operatorId,
+                  locationId: manualPair.locationId,
+                  businessDate: businessDate,
+                  servicePeriodKey: servicePeriodKey,
+                  reasonNote: reasonNote,
+                  adminReason:
+                      '$reasonPrefix:manual_covers_clear:${manualPair.operatorId}:${manualPair.locationId}:$businessDate:$servicePeriodKey',
+                )
+              : await gateway.saveDataAccuracyManualCovers(
+                  actorUserId: actorUserId,
+                  operatorId: manualPair.operatorId,
+                  locationId: manualPair.locationId,
+                  businessDate: businessDate,
+                  servicePeriodKey: servicePeriodKey,
+                  covers: _optionalBodyInt(body, 'covers')!,
+                  reasonNote: reasonNote,
+                  adminReason:
+                      '$reasonPrefix:manual_covers_save:${manualPair.operatorId}:${manualPair.locationId}:$businessDate:$servicePeriodKey',
+                );
+          if (result == null) {
+            return (
+              statusCode: 404,
+              payload: <String, Object?>{
+                'error': 'unknown_operator_location',
+                'message': 'operator/location pair not found',
+              },
+            );
+          }
+          return (statusCode: 200, payload: result);
+        },
+      );
+      return;
+    }
+  }
+
+  if (method == 'PATCH' && path.startsWith(adminDataAccuracySettingsPrefix)) {
     final pair = _pathPairSuffix(path, adminDataAccuracySettingsPrefix);
     if (pair == null) {
       _writeNotFound(response, request);
@@ -14595,6 +14723,49 @@ Future<void> _routeDataAccuracyAdmin({
       'walk_in_handling_mode',
     );
     final reasonNote = _optionalBodyString(body, 'reason_note');
+    if (body.containsKey('covers_manual_entries') ||
+        body.containsKey('walk_in_manual_entries')) {
+      final coversManualEntries =
+          _optionalBodyNestedNonNegativeIntMap(body, 'covers_manual_entries') ??
+          const <String, Map<String, int>>{};
+      final walkInManualEntries =
+          _optionalBodyNonNegativeIntMap(body, 'walk_in_manual_entries') ??
+          const <String, int>{};
+      await _runAdminIdempotent(
+        response: response,
+        store: idempotencyStore,
+        idempotencyKey: idempotencyKey,
+        requestType: 'admin.data_accuracy.settings_save',
+        actorUserId: actorUserId,
+        requestBody: body,
+        compute: () async {
+          final result = await gateway.saveDataAccuracySettings(
+            actorUserId: actorUserId,
+            operatorId: pair.operatorId,
+            locationId: pair.locationId,
+            coversSourcePerServicePeriod: coversPerServicePeriod,
+            coversManualEntries: coversManualEntries,
+            wageSource: wageSource,
+            walkInHandlingMode: walkInHandlingMode,
+            walkInManualEntries: walkInManualEntries,
+            reasonNote: reasonNote,
+            adminReason:
+                '$reasonPrefix:settings_save:${pair.operatorId}:${pair.locationId}',
+          );
+          if (result == null) {
+            return (
+              statusCode: 404,
+              payload: <String, Object?>{
+                'error': 'unknown_operator_location',
+                'message': 'operator/location pair not found',
+              },
+            );
+          }
+          return (statusCode: 200, payload: result);
+        },
+      );
+      return;
+    }
     await _runAdminIdempotent(
       response: response,
       store: idempotencyStore,
@@ -14746,6 +14917,24 @@ Future<void> _routeDataAccuracyAdmin({
       adminReason: '$reasonPrefix:tier_assignments',
     );
     _writeJson(response, 200, <String, Object?>{'assignments': assignments});
+    return;
+  }
+
+  if (method == 'GET' &&
+      path.startsWith(adminPollingPricingAssignmentsPrefix)) {
+    final pair = _pathPairSuffix(path, adminPollingPricingAssignmentsPrefix);
+    if (pair == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final assignment = await gateway.loadTierAssignment(
+      actorUserId: actorUserId,
+      operatorId: pair.operatorId,
+      locationId: pair.locationId,
+      adminReason:
+          '$reasonPrefix:assignment:${pair.operatorId}:${pair.locationId}',
+    );
+    _writeJson(response, 200, <String, Object?>{'assignment': assignment});
     return;
   }
 
@@ -15099,7 +15288,8 @@ void _assertVendorApplicabilityLocationHasOperator({
     throw const _AdminInputError(
       statusCode: 400,
       code: 'location_requires_operator',
-      message: 'location_id requires operator_id (a location belongs to one '
+      message:
+          'location_id requires operator_id (a location belongs to one '
           'operator)',
     );
   }
@@ -15530,9 +15720,7 @@ Future<void> _routePricingAdmin({
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:entitlements_list',
     );
-    _writeJson(response, 200, <String, Object?>{
-      'entitlements': entitlements,
-    });
+    _writeJson(response, 200, <String, Object?>{'entitlements': entitlements});
     return;
   }
 
@@ -15957,6 +16145,118 @@ Map<String, int>? _optionalBodyPositiveIntMap(
         statusCode: 400,
         code: 'invalid_$field',
         message: '$field values must be positive integers',
+      );
+    }
+    out[key.trim()] = parsed;
+  });
+  return out;
+}
+
+Map<String, int>? _optionalBodyNonNegativeIntMap(
+  Map<String, Object?> body,
+  String field,
+) {
+  if (!body.containsKey(field)) return null;
+  final raw = body[field];
+  if (raw == null) return null;
+  if (raw is! Map) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an object of non-negative integer values',
+    );
+  }
+  final out = <String, int>{};
+  raw.forEach((key, value) {
+    if (key is! String || key.trim().isEmpty) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field keys must be non-empty strings',
+      );
+    }
+    int? parsed;
+    if (value is int) {
+      parsed = value;
+    } else if (value is num && value == value.roundToDouble()) {
+      parsed = value.toInt();
+    } else if (value is String && value.trim().isNotEmpty) {
+      parsed = int.tryParse(value.trim());
+    }
+    if (parsed == null || parsed < 0) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field values must be non-negative integers',
+      );
+    }
+    out[key.trim()] = parsed;
+  });
+  return out;
+}
+
+Map<String, Map<String, int>>? _optionalBodyNestedNonNegativeIntMap(
+  Map<String, Object?> body,
+  String field,
+) {
+  if (!body.containsKey(field)) return null;
+  final raw = body[field];
+  if (raw == null) return null;
+  if (raw is! Map) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message:
+          '$field must be an object of objects with non-negative integer values',
+    );
+  }
+  final out = <String, Map<String, int>>{};
+  raw.forEach((key, value) {
+    if (key is! String || key.trim().isEmpty) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field keys must be non-empty strings',
+      );
+    }
+    if (value is! Map) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field values must be objects',
+      );
+    }
+    out[key.trim()] = _requiredNonNegativeIntMap(value, field);
+  });
+  return out;
+}
+
+Map<String, int> _requiredNonNegativeIntMap(
+  Map<dynamic, dynamic> raw,
+  String field,
+) {
+  final out = <String, int>{};
+  raw.forEach((key, value) {
+    if (key is! String || key.trim().isEmpty) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field nested keys must be non-empty strings',
+      );
+    }
+    int? parsed;
+    if (value is int) {
+      parsed = value;
+    } else if (value is num && value == value.roundToDouble()) {
+      parsed = value.toInt();
+    } else if (value is String && value.trim().isNotEmpty) {
+      parsed = int.tryParse(value.trim());
+    }
+    if (parsed == null || parsed < 0) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field nested values must be non-negative integers',
       );
     }
     out[key.trim()] = parsed;
@@ -17258,6 +17558,24 @@ String? _seededRolePermissionsRoleId(String path) {
   final suffix = path.substring(prefix.length);
   final parts = suffix.split('/');
   if (parts.length != 2 || parts.any((part) => part.isEmpty)) {
+    return null;
+  }
+  return (
+    operatorId: Uri.decodeComponent(parts[0]),
+    locationId: Uri.decodeComponent(parts[1]),
+  );
+}
+
+({String operatorId, String locationId})? _dataAccuracyManualCoversPathPair(
+  String path,
+) {
+  if (!path.startsWith(adminDataAccuracySettingsPrefix)) return null;
+  final suffix = path.substring(adminDataAccuracySettingsPrefix.length);
+  final parts = suffix.split('/');
+  if (parts.length != 3 ||
+      parts[0].isEmpty ||
+      parts[1].isEmpty ||
+      parts[2] != 'manual-covers') {
     return null;
   }
   return (
