@@ -345,11 +345,6 @@ void main() {
       screenKey: Key('admin_integrations_screen'),
     ),
     (
-      routeId: kAdminHealthRouteId,
-      title: 'System health',
-      screenKey: Key('admin_health_screen'),
-    ),
-    (
       routeId: kAdminObservabilityRouteId,
       title: 'AI Metrics',
       screenKey: Key('admin_observability_screen'),
@@ -404,6 +399,39 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('System health opens without the hierarchy workspace', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: superAdmin,
+          authSource: source,
+          initialRouteId: kAdminHealthRouteId,
+        ),
+      ),
+    );
+    await pumpEventually(tester);
+
+    expect(
+      find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('admin_health_screen')), findsOneWidget);
+    expect(find.byKey(const Key('admin_health_title')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('11A.5 promotes the debug route from placeholder to live', (
     tester,
@@ -744,9 +772,7 @@ void main() {
         findsNothing,
       );
       expect(
-        find.byKey(
-          const Key('admin_nav_per_business_cluster_inactive_hint'),
-        ),
+        find.byKey(const Key('admin_nav_per_business_cluster_inactive_hint')),
         findsOneWidget,
       );
       expect(find.text('Pick a business first'), findsOneWidget);
@@ -817,42 +843,41 @@ void main() {
     },
   );
 
-  testWidgets(
-    'tapping the inactive cluster hint routes to Business accounts',
-    (tester) async {
-      tester.view.physicalSize = const Size(1280, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+  testWidgets('tapping the inactive cluster hint routes to Business accounts', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
 
-      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
-      addTearDown(source.dispose);
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
 
-      await tester.pumpWidget(
-        wrap(
-          AdminShell(
-            session: superAdmin,
-            authSource: source,
-            initialRouteId: kAdminHealthRouteId,
-          ),
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: superAdmin,
+          authSource: source,
+          initialRouteId: kAdminHealthRouteId,
         ),
-      );
-      await pumpEventually(tester);
+      ),
+    );
+    await pumpEventually(tester);
 
-      final hint = find.byKey(
-        const Key('admin_nav_per_business_cluster_inactive_hint'),
-      );
-      await tester.ensureVisible(hint);
-      await pumpEventually(tester);
-      await tester.tap(hint);
-      await pumpEventually(tester);
+    final hint = find.byKey(
+      const Key('admin_nav_per_business_cluster_inactive_hint'),
+    );
+    await tester.ensureVisible(hint);
+    await pumpEventually(tester);
+    await tester.tap(hint);
+    await pumpEventually(tester);
 
-      expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('Business accounts is pinned as the first wide-nav entry', (
     tester,
@@ -875,9 +900,7 @@ void main() {
     // The pinned Business accounts container is the topmost nav block:
     // above the per-business cluster and above every section panel.
     final pinnedTop = tester
-        .getTopLeft(
-          find.byKey(const Key('admin_nav_business_accounts_pinned')),
-        )
+        .getTopLeft(find.byKey(const Key('admin_nav_business_accounts_pinned')))
         .dy;
     expect(
       pinnedTop,

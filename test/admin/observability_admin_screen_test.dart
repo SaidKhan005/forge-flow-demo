@@ -127,17 +127,15 @@ void main() {
 
     expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
     // AI Metrics is scope-specific, so the scope indication stays (HP#11) but
-    // is slimmed to one honest muted line: it names the selected scope and
-    // keeps the platform-wide caveat. The verbose "Where this applies" block
-    // (pill + Section-details expander + source/effective rows) is gone.
+    // now uses compact chips: the selected scope plus the platform-wide caveat.
+    // The verbose "Where this applies" block (pill + Section-details expander
+    // + source/effective rows) is gone.
     expect(
       find.byKey(const Key('admin_observability_scope_note')),
       findsOneWidget,
     );
     expect(
-      find.textContaining(
-        'hosting and the knowledge graph stay platform-wide',
-      ),
+      find.textContaining('Hosting + graph platform-wide'),
       findsOneWidget,
     );
     expect(
@@ -366,9 +364,7 @@ void main() {
     // Default 7d window: Demo Diner Co. is the top spender.
     expect(
       find.byKey(
-        const Key(
-          'admin_observability_spender_7d_operator_Demo Diner Co.',
-        ),
+        const Key('admin_observability_spender_7d_operator_Demo Diner Co.'),
       ),
       findsOneWidget,
     );
@@ -730,7 +726,8 @@ void main() {
     expect(
       gateway.fetchCount,
       equals(1),
-      reason: 'manual observability calls must not stack while one is in flight',
+      reason:
+          'manual observability calls must not stack while one is in flight',
     );
     await tester.pump(const Duration(milliseconds: 55));
     expect(gateway.fetchCount, equals(1));

@@ -282,7 +282,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Plans and limits',
     path: '/pricing',
     icon: Icons.tune_outlined,
-    section: AdminRouteSection.ai,    subtitle:
+    section: AdminRouteSection.ai,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Review AI plans and usage limits.',
     builder: _buildPricing,
   ),
@@ -291,7 +292,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Knowledge base',
     path: '/corpus',
     icon: Icons.menu_book_outlined,
-    section: AdminRouteSection.ai,    subtitle:
+    section: AdminRouteSection.ai,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Publish advisor knowledge content.',
     builder: _buildCorpus,
   ),
@@ -300,7 +302,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Connected services',
     path: '/integrations',
     icon: Icons.extension_outlined,
-    section: AdminRouteSection.serviceSetup,    subtitle:
+    section: AdminRouteSection.serviceSetup,
+    subtitle:
         'Review global provider health and platform service keys; operator edits live on Operator Web.',
     builder: _buildIntegrations,
   ),
@@ -309,7 +312,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System health',
     path: '/health',
     icon: Icons.monitor_heart_outlined,
-    section: AdminRouteSection.systemMonitoring,    subtitle:
+    section: AdminRouteSection.systemMonitoring,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Run read-only system checks.',
     builder: _buildHealth,
   ),
@@ -318,7 +322,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Launch controls',
     path: '/feature-flags',
     icon: Icons.flag_outlined,
-    section: AdminRouteSection.serviceSetup,    subtitle:
+    section: AdminRouteSection.serviceSetup,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Control staged features.',
     builder: _buildFeatureFlags,
   ),
@@ -327,7 +332,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Default roles',
     path: '/default-roles',
     icon: Icons.shield_outlined,
-    section: AdminRouteSection.serviceSetup,    subtitle:
+    section: AdminRouteSection.serviceSetup,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. '
         'Edit the starter role catalog every business begins with.',
     builder: _buildDefaultRoleCatalog,
@@ -337,7 +343,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Support logs',
     path: '/debug',
     icon: Icons.bug_report_outlined,
-    section: AdminRouteSection.systemMonitoring,    subtitle:
+    section: AdminRouteSection.systemMonitoring,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Inspect support-safe request details.',
     builder: _buildDebugConsole,
   ),
@@ -346,7 +353,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'AI Metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
-    section: AdminRouteSection.ai,    subtitle:
+    section: AdminRouteSection.ai,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Review advisor usage, cost, and model activity.',
     builder: _buildObservability,
   ),
@@ -356,7 +364,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
         'Data accuracy', // UX-parity Slice C: operator-web nav label (screen header unchanged).
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,    subtitle:
+    section: AdminRouteSection.operations,
+    subtitle:
         'Review effective covers, wages, and walk-ins by location; super admins can apply audited location repairs.',
     builder: _buildDataAccuracy,
     visibleInNav: false,
@@ -367,7 +376,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Vendor Applicability',
     path: '/vendor-applicability',
     icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,    subtitle:
+    section: AdminRouteSection.operations,
+    subtitle:
         'This surface is for F&F admins only - choose which vendors can power wage, covers, and polling settings.',
     builder: _buildVendorApplicability,
   ),
@@ -376,7 +386,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Polling Setup',
     path: '/polling-pricing',
     icon: Icons.payments_outlined,
-    section: AdminRouteSection.operations,    subtitle:
+    section: AdminRouteSection.operations,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Operator Web reads the published tier status.',
     builder: _buildPollingPricing,
     visibleInNav: false,
@@ -387,7 +398,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Vendor integrations',
     path: '/admin/vendor-integrations',
     icon: Icons.link_outlined,
-    section: AdminRouteSection.operations,    subtitle:
+    section: AdminRouteSection.operations,
+    subtitle:
         'Review location-scoped vendor connections; super admins can connect, test, disconnect, and inspect logs.',
     builder: _buildVendorIntegrations,
     visibleInNav: false,
@@ -932,8 +944,10 @@ class _SupportOperatorViewRouteShellState
                   FilledButton.icon(
                     key: const Key('admin_support_operator_view_open_picker'),
                     onPressed: _openPicker,
-                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
-                        size: 16),
+                    icon: Icon(
+                      scopeIcon(kind: ScopeEntityKind.business),
+                      size: 16,
+                    ),
                     label: const Text('Choose business'),
                   ),
                 ],
@@ -969,8 +983,9 @@ Widget _buildPricing(BuildContext context) {
   // figures from the existing observability gateway (read-only). In
   // demo this returns the seeded envelope keyed by the same demo
   // operators; no new backend route is added.
-  final observabilityGateway =
-      AdminConsoleServicesScope.observabilityGatewayOf(context);
+  final observabilityGateway = AdminConsoleServicesScope.observabilityGatewayOf(
+    context,
+  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   return _buildScopedAdminWorkspace(
     context: context,
@@ -1114,19 +1129,7 @@ Widget _buildHealth(BuildContext context) {
   // gateway is the only injection point; there is no editingEnabled
   // flag because the surface has no mutate affordances.
   final gateway = AdminConsoleServicesScope.healthGatewayOf(context);
-  return _buildScopedAdminWorkspace(
-    context: context,
-    routeId: kAdminHealthRouteId,
-    functionTitle: 'System health',
-    description:
-        'Run health checks for Advisor data, app services, and ecosystem dependencies in the selected scope.',
-    functionBuilder: (context, selectedScope, selection) => HealthAdminScreen(
-      key: ValueKey<String>('health-${selectedScope.cacheKey}'),
-      gateway: gateway,
-      hierarchyScope: selectedScope,
-      scopeLocationIds: selection.locationIds,
-    ),
-  );
+  return HealthAdminScreen(gateway: gateway);
 }
 
 Widget _buildObservability(BuildContext context) {
@@ -1809,8 +1812,10 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
                   FilledButton.icon(
                     key: const Key('admin_members_open_picker'),
                     onPressed: _openPicker,
-                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
-                        size: 16),
+                    icon: Icon(
+                      scopeIcon(kind: ScopeEntityKind.business),
+                      size: 16,
+                    ),
                     label: const Text('Choose operator'),
                   ),
                 ],
@@ -2125,8 +2130,10 @@ class _RolesHierarchySessionsRouteShellState
                   FilledButton.icon(
                     key: const Key('admin_rhs_open_picker'),
                     onPressed: _openPicker,
-                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
-                        size: 16),
+                    icon: Icon(
+                      scopeIcon(kind: ScopeEntityKind.business),
+                      size: 16,
+                    ),
                     label: const Text('Choose operator'),
                   ),
                 ],
@@ -2510,8 +2517,10 @@ class _AuditedSupportActionsRouteShellState
                   FilledButton.icon(
                     key: const Key('admin_asa_open_picker'),
                     onPressed: _openPicker,
-                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
-                        size: 16),
+                    icon: Icon(
+                      scopeIcon(kind: ScopeEntityKind.business),
+                      size: 16,
+                    ),
                     label: const Text('Choose operator'),
                   ),
                 ],
@@ -2656,9 +2665,7 @@ Widget _buildMyAccount(BuildContext context) {
           onOpenAuditLog: handoff == null
               ? null
               : () => handoff.onSelectRoute(
-                  AdminRouteIntent(
-                    routeId: kAdminAuditedSupportActionsRouteId,
-                  ),
+                  AdminRouteIntent(routeId: kAdminAuditedSupportActionsRouteId),
                 ),
         );
       }
