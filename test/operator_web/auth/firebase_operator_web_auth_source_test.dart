@@ -271,6 +271,114 @@ void main() {
     );
   });
 
+  group('FirebaseOperatorWebAuthSource plan + trial projection '
+      '(Plans & Limits 5b follow-up)', () {
+    // Drives a full sign-in with a scripted account-info body and
+    // returns the completed session so we can assert the live source
+    // maps the operator's own plan + trial onto OperatorWebSession.
+    Future<OperatorWebSession> signInWithAccountInfo(
+      Map<String, Object?> accountInfoBody,
+    ) async {
+      final authClient = _StubFirebaseAuthClient();
+      authClient.scriptedSignIn = FirebaseAuthSignInSucceeded(
+        buildCredential(),
+      );
+      final proxyClient = OperatorWebProxyClient(
+        baseUri: kProxyBase,
+        httpClient: MockClient((request) async {
+          final path = request.url.path;
+          if (path == OperatorWebProxyClient.authSessionLoginPath) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'session_id': 'session-uuid-plan',
+                'user_id': 'user-1',
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+              }),
+              200,
+              headers: <String, String>{'content-type': 'application/json'},
+            );
+          }
+          if (path == OperatorWebProxyClient.authAccountInfoPath) {
+            return http.Response(
+              jsonEncode(accountInfoBody),
+              200,
+              headers: <String, String>{'content-type': 'application/json'},
+            );
+          }
+          if (path == OperatorWebProxyClient.authPermissionsSnapshotPath) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'user_id': 'user-1',
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'roles_version': 1,
+                'evaluated_at': '2026-05-06T12:00:00Z',
+                'permissions': <String, String>{'team.users.view': 'allow'},
+              }),
+              200,
+              headers: <String, String>{'content-type': 'application/json'},
+            );
+          }
+          return http.Response('{}', 500);
+        }),
+      );
+      final source = FirebaseOperatorWebAuthSource(
+        authClient: authClient,
+        proxyClient: proxyClient,
+      );
+      addTearDown(source.dispose);
+      await _waitFor(source, _isNeedsSignIn);
+      await source.signInWithEmailPassword(
+        email: 'owner@demo.forgeflow.test',
+        password: 'demo-password-1234',
+      );
+      await _waitFor(source, _isCompletedOrForbidden);
+      return source.current.session!;
+    }
+
+    test('maps subscription_tier + trial fields onto the session', () async {
+      final session = await signInWithAccountInfo(<String, Object?>{
+        'display_name': 'Demo Operator Owner',
+        'email': 'owner@demo.forgeflow.test',
+        'status_label': 'Active',
+        'location_label': 'Demo Main Street',
+        'role_labels': <String>['operator_owner'],
+        'mfa_enabled': true,
+        'subscription_tier': 'premium',
+        'trial_mode': true,
+        'trial_expires_at': '2026-06-04T12:00:00Z',
+      });
+
+      expect(session.subscriptionTier, equals('premium'));
+      expect(session.trialMode, isTrue);
+      expect(session.trialExpiresAt, equals(DateTime.utc(2026, 6, 4, 12)));
+    });
+
+    test(
+      'leaves plan + trial null/false when the response omits them '
+      '(no crash, honest empty state)',
+      () async {
+        // A pre-follow-up proxy (or any partial payload) omits the new
+        // keys entirely. The live source must still complete sign-in
+        // and leave the tier null + trial false so the "Your plan"
+        // screen renders its honest "could not load" state.
+        final session = await signInWithAccountInfo(<String, Object?>{
+          'display_name': 'Demo Operator Owner',
+          'email': 'owner@demo.forgeflow.test',
+          'status_label': 'Active',
+          'location_label': 'Demo Main Street',
+          'role_labels': <String>['operator_owner'],
+          'mfa_enabled': true,
+        });
+
+        expect(session.subscriptionTier, isNull);
+        expect(session.trialMode, isFalse);
+        expect(session.trialExpiresAt, isNull);
+      },
+    );
+  });
+
   group('FirebaseOperatorWebAuthSource session id lifecycle '
       '(audit MEDIUM #3)', () {
     test('signOut clears _currentSessionId', () async {

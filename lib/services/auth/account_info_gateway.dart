@@ -22,6 +22,9 @@ class AccountInfo {
     this.lastLoginAt,
     this.passwordUpdatedAt,
     this.logoUrl,
+    this.subscriptionTier,
+    this.trialMode = false,
+    this.trialExpiresAt,
   });
 
   final String displayName;
@@ -39,6 +42,26 @@ class AccountInfo {
   /// operator has not uploaded one; consumers render the F&F splash
   /// fallback.
   final String? logoUrl;
+
+  /// Plans & Limits Phase 5b follow-up — the operator's subscription
+  /// tier, projected from `public.operators.subscription_tier` (one of
+  /// the six operator-approved keys). Null when the proxy does not
+  /// carry a tier (older payloads). The operator-web live source maps
+  /// this onto `OperatorWebSession.subscriptionTier` so the "Your plan"
+  /// screen lights up on live; absence leaves the screen's honest
+  /// "could not load your plan yet" state intact.
+  final String? subscriptionTier;
+
+  /// Plans & Limits Phase 5b follow-up — whether the operator is on a
+  /// Pilot free preview (`public.operators.trial_mode`). Defaults false
+  /// so an old/partial payload that omits the key reads as "not on a
+  /// trial" rather than crashing.
+  final bool trialMode;
+
+  /// Plans & Limits Phase 5b follow-up — UTC instant the Pilot free
+  /// preview ends (`public.operators.trial_expires_at`). Null when the
+  /// operator is not on a trial or the payload does not carry it.
+  final DateTime? trialExpiresAt;
 
   bool get hasAnyDisplayValue {
     return displayName.trim().isNotEmpty ||
@@ -62,6 +85,12 @@ class AccountInfo {
     'last_login_at': lastLoginAt?.toUtc().toIso8601String(),
     'password_updated_at': passwordUpdatedAt?.toUtc().toIso8601String(),
     'logo_url': logoUrl,
+    // Plans & Limits Phase 5b follow-up — operator's own plan + trial.
+    // Always serialized (null when unset) so the wire contract stays
+    // explicit, matching the `logo_url` round-trip pattern.
+    'subscription_tier': subscriptionTier,
+    'trial_mode': trialMode,
+    'trial_expires_at': trialExpiresAt?.toUtc().toIso8601String(),
   };
 
   static AccountInfo fromJson(Map<String, Object?> json) {
@@ -98,6 +127,13 @@ class AccountInfo {
       lastLoginAt: _readDateTime(json['last_login_at']),
       passwordUpdatedAt: _readDateTime(json['password_updated_at']),
       logoUrl: _readString(json['logo_url']),
+      // Plans & Limits Phase 5b follow-up — optional, null-safe. These
+      // are intentionally NOT part of the required-field guard above so
+      // a pre-follow-up proxy (which omits them) still parses. Absence
+      // leaves the "Your plan" screen's honest empty state intact.
+      subscriptionTier: _readString(json['subscription_tier']),
+      trialMode: _readBool(json['trial_mode']),
+      trialExpiresAt: _readDateTime(json['trial_expires_at']),
     );
   }
 
@@ -105,6 +141,14 @@ class AccountInfo {
     if (value is! String) return null;
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static bool _readBool(Object? value) {
+    if (value is bool) return value;
+    // Tolerate a stringy / missing value so an old or partial payload
+    // never crashes; default to "not on a trial".
+    if (value is String) return value.trim().toLowerCase() == 'true';
+    return false;
   }
 
   static DateTime? _readDateTime(Object? value) {

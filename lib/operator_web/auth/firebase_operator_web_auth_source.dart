@@ -440,6 +440,16 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         mfaEnrolled:
             account.mfaEnabled ||
             credential.customClaims['mfa_enrolled'] == true,
+        // Plans & Limits Phase 5b follow-up — project the operator's own
+        // plan + trial off the account read so the live "Your plan"
+        // screen renders a real plan. These are null-safe/defaulted on
+        // the AccountInfo side (an old/partial proxy response leaves the
+        // tier null + trial false), so the screen's honest "could not
+        // load your plan yet" empty state still works if absent. No
+        // gating here (Phase 5d, deferred): display-only.
+        subscriptionTier: account.subscriptionTier,
+        trialMode: account.trialMode,
+        trialExpiresAt: account.trialExpiresAt,
       );
       if (_hasConsoleAccess(session)) {
         _emit(OperatorWebCompleted(session: session));

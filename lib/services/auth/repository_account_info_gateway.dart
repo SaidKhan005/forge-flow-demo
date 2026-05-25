@@ -35,6 +35,13 @@ class RepositoryAccountInfoGateway implements AccountInfoGateway {
       lastLoginAt: row.lastLoginAt,
       passwordUpdatedAt: row.passwordUpdatedAt,
       logoUrl: row.logoUrl,
+      // Plans & Limits Phase 5b follow-up — carry the operator's own
+      // plan + trial (read from the operator-scoped `operators` join in
+      // findSelfProfile) onto the account read so the operator-web
+      // "Your plan" screen lights up on live.
+      subscriptionTier: row.subscriptionTier,
+      trialMode: row.trialMode,
+      trialExpiresAt: row.trialExpiresAt,
     );
   }
 
