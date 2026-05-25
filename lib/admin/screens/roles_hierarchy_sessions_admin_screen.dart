@@ -754,8 +754,13 @@ class RolePolicyAdminPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seeded = roles.where((r) => r.isSeeded).toList(growable: true)
+    final platform = roles.where((r) => r.isPlatformRole).toList(growable: true)
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
+    final seeded =
+        roles
+            .where((r) => r.isSeeded && !r.isPlatformRole)
+            .toList(growable: true)
+          ..sort((a, b) => a.displayName.compareTo(b.displayName));
     final custom = roles.where((r) => !r.isSeeded).toList(growable: true)
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
     return SingleChildScrollView(
@@ -783,6 +788,19 @@ class RolePolicyAdminPanel extends StatelessWidget {
               onDelete: onDeleteCustom,
             ),
           const SizedBox(height: 18),
+          if (platform.isNotEmpty) ...<Widget>[
+            _RoleGroup(
+              key: const Key('admin_rhs_roles_platform_group'),
+              title: 'Forge & Flow access (${platform.length})',
+              roles: platform,
+              canWrite: false,
+              canEditSeededRoles: canEditSeededRoles,
+              onEditSeeded: onEditSeeded,
+              onEditCustom: onEditCustom,
+              onDelete: onDeleteCustom,
+            ),
+            const SizedBox(height: 18),
+          ],
           _RoleGroup(
             key: const Key('admin_rhs_roles_seeded_group'),
             title: 'Default roles (${seeded.length})',
@@ -841,16 +859,31 @@ class _RoleGroup extends StatelessWidget {
                 ),
         ),
         const SizedBox(height: 10),
-        for (final role in roles)
-          _RoleRowTile(
-            key: Key('admin_rhs_role_row_${role.roleId}'),
-            row: role,
-            canWrite: canWrite,
-            canEditSeededRoles: canEditSeededRoles,
-            onEditSeeded: onEditSeeded,
-            onEditCustom: onEditCustom,
-            onDelete: onDelete,
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(8),
           ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Column(
+              children: <Widget>[
+                for (var i = 0; i < roles.length; i++)
+                  _RoleRowTile(
+                    key: Key('admin_rhs_role_row_${roles[i].roleId}'),
+                    row: roles[i],
+                    isLast: i == roles.length - 1,
+                    canWrite: canWrite,
+                    canEditSeededRoles: canEditSeededRoles,
+                    onEditSeeded: onEditSeeded,
+                    onEditCustom: onEditCustom,
+                    onDelete: onDelete,
+                  ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -860,6 +893,7 @@ class _RoleRowTile extends StatelessWidget {
   const _RoleRowTile({
     super.key,
     required this.row,
+    required this.isLast,
     required this.canWrite,
     required this.canEditSeededRoles,
     required this.onEditSeeded,
@@ -868,6 +902,7 @@ class _RoleRowTile extends StatelessWidget {
   });
 
   final RoleAdminRow row;
+  final bool isLast;
   final bool canWrite;
   final bool canEditSeededRoles;
   final ValueChanged<RoleAdminRow> onEditSeeded;
@@ -878,59 +913,68 @@ class _RoleRowTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final mutable = canWrite && !row.isSeeded;
     final seededRepair = row.isSeeded && canEditSeededRoles;
-    final shortDescription = _shortRoleDescription(row.description);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+    final canOpen = seededRepair || mutable;
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          bottom: isLast
+              ? BorderSide.none
+              : const BorderSide(color: AppColors.borderSubtle, width: 1),
+        ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: <Widget>[
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
+      child: InkWell(
+        onTap: canOpen
+            ? () => seededRepair ? onEditSeeded(row) : onEditCustom(row)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Expanded(
+                child: Text(
                   roleAdminDisplayLabel(row),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.body14(
                     color: AppColors.textPrimary,
                   ).copyWith(fontWeight: FontWeight.w700),
                 ),
-                if (shortDescription.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 4),
-                  Text(
-                    shortDescription,
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                ],
-              ],
-            ),
+              ),
+              if (seededRepair)
+                IconButton(
+                  key: Key('admin_rhs_role_edit_${row.roleId}'),
+                  tooltip: 'Edit permissions',
+                  onPressed: () => onEditSeeded(row),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  color: AppColors.textMuted,
+                )
+              else if (mutable)
+                IconButton(
+                  key: Key('admin_rhs_role_edit_${row.roleId}'),
+                  tooltip: 'Edit role',
+                  onPressed: () => onEditCustom(row),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  color: AppColors.textMuted,
+                )
+              else
+                const Icon(
+                  Icons.visibility_outlined,
+                  color: AppColors.textMuted,
+                  size: 18,
+                ),
+              if (mutable)
+                IconButton(
+                  key: Key('admin_rhs_role_delete_${row.roleId}'),
+                  tooltip: 'Delete role',
+                  onPressed: () => onDelete(row),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  color: AppColors.negative,
+                ),
+            ],
           ),
-          if (seededRepair)
-            TextButton(
-              key: Key('admin_rhs_role_edit_${row.roleId}'),
-              onPressed: () => onEditSeeded(row),
-              child: const Text('Edit permissions'),
-            ),
-          if (mutable) ...<Widget>[
-            TextButton(
-              key: Key('admin_rhs_role_edit_${row.roleId}'),
-              onPressed: () => onEditCustom(row),
-              child: const Text('Edit'),
-            ),
-            const SizedBox(width: 4),
-            TextButton(
-              key: Key('admin_rhs_role_delete_${row.roleId}'),
-              onPressed: () => onDelete(row),
-              style: TextButton.styleFrom(foregroundColor: AppColors.negative),
-              child: const Text('Delete'),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

@@ -72,6 +72,7 @@ class _AdminShellState extends State<AdminShell> {
   AdminSupportLogFilterIntent? _supportLogFilter;
   AdminOperatorLocationScopeIntent? _operatorLocationScope;
   AdminHierarchyScopeIntent? _hierarchyScope;
+  String? _pendingBusinessRouteId;
 
   /// UX-parity Slice C — whether the operator has DELIBERATELY chosen a
   /// business to manage (top-bar scope picker, a Business-accounts
@@ -106,8 +107,16 @@ class _AdminShellState extends State<AdminShell> {
       _currentRoute.navAnchorRouteId ?? _selectedRouteId;
 
   void _selectIntent(AdminRouteIntent intent) {
-    final nextRouteId = _routeIdOrFallback(intent.routeId);
+    final requestedRouteId = _routeIdOrFallback(intent.routeId);
     final explicitHierarchyScope = intent.effectiveHierarchyScope;
+    final pendingBusinessRouteId = _pendingBusinessRouteId;
+    final usePendingBusinessRoute =
+        pendingBusinessRouteId != null &&
+        requestedRouteId == kAdminOperatorsRouteId &&
+        intent.hierarchyScope != null;
+    final nextRouteId = usePendingBusinessRoute
+        ? _routeIdOrFallback(pendingBusinessRouteId)
+        : requestedRouteId;
     final nextSupportLogFilter = nextRouteId == kAdminDebugConsoleRouteId
         ? intent.supportLogFilter ??
               (explicitHierarchyScope == null
@@ -129,12 +138,17 @@ class _AdminShellState extends State<AdminShell> {
     final nextBusinessScopeChosen =
         _businessScopeChosen ||
         _intentChoosesBusinessScope(intent, nextRouteId);
+    final nextPendingBusinessRouteId =
+        usePendingBusinessRoute || requestedRouteId != kAdminOperatorsRouteId
+        ? null
+        : pendingBusinessRouteId;
     if (_selectionUnchanged(
       nextRouteId: nextRouteId,
       nextSupportLogFilter: nextSupportLogFilter,
       nextOperatorLocationScope: nextOperatorLocationScope,
       nextHierarchyScope: nextHierarchyScope,
       nextBusinessScopeChosen: nextBusinessScopeChosen,
+      nextPendingBusinessRouteId: nextPendingBusinessRouteId,
     )) {
       return;
     }
@@ -144,6 +158,7 @@ class _AdminShellState extends State<AdminShell> {
       _operatorLocationScope = nextOperatorLocationScope;
       _hierarchyScope = nextHierarchyScope;
       _businessScopeChosen = nextBusinessScopeChosen;
+      _pendingBusinessRouteId = nextPendingBusinessRouteId;
     });
   }
 
@@ -156,16 +171,25 @@ class _AdminShellState extends State<AdminShell> {
     required AdminOperatorLocationScopeIntent? nextOperatorLocationScope,
     required AdminHierarchyScopeIntent? nextHierarchyScope,
     required bool nextBusinessScopeChosen,
+    required String? nextPendingBusinessRouteId,
   }) {
     return nextRouteId == _selectedRouteId &&
         nextSupportLogFilter == _supportLogFilter &&
         nextOperatorLocationScope == _operatorLocationScope &&
         nextHierarchyScope == _hierarchyScope &&
-        nextBusinessScopeChosen == _businessScopeChosen;
+        nextBusinessScopeChosen == _businessScopeChosen &&
+        nextPendingBusinessRouteId == _pendingBusinessRouteId;
   }
 
   void _select(String id) {
     _selectIntent(AdminRouteIntent(routeId: id));
+  }
+
+  void _selectBusinessForRoute(String routeId) {
+    setState(() {
+      _pendingBusinessRouteId = _routeIdOrFallback(routeId);
+    });
+    _select(kAdminOperatorsRouteId);
   }
 
   Widget _buildRouteBody() {
@@ -246,6 +270,7 @@ class _AdminShellState extends State<AdminShell> {
                                   ? _hierarchyScope
                                   : null,
                               onSelect: _select,
+                              onSelectBusinessForRoute: _selectBusinessForRoute,
                             ),
                             Expanded(child: _buildRouteBody()),
                           ],
@@ -612,6 +637,7 @@ class _AdminSideNav extends StatelessWidget {
     required this.activeRouteId,
     required this.scope,
     required this.onSelect,
+    required this.onSelectBusinessForRoute,
   });
 
   final List<AdminRoute> routes;
@@ -630,6 +656,7 @@ class _AdminSideNav extends StatelessWidget {
   final AdminHierarchyScopeIntent? scope;
 
   final ValueChanged<String> onSelect;
+  final ValueChanged<String> onSelectBusinessForRoute;
 
   static const List<_NavSectionMeta> _sections = <_NavSectionMeta>[
     _NavSectionMeta(
@@ -809,6 +836,7 @@ class _AdminSideNav extends StatelessWidget {
               enabled: false,
               onTap: () => _showPickBusinessFirstDialog(
                 context,
+                routeId: route.id,
                 routeTitle: route.title,
               ),
             ),
@@ -819,6 +847,7 @@ class _AdminSideNav extends StatelessWidget {
 
   Future<void> _showPickBusinessFirstDialog(
     BuildContext context, {
+    required String routeId,
     required String routeTitle,
   }) {
     return showDialog<void>(
@@ -837,7 +866,7 @@ class _AdminSideNav extends StatelessWidget {
             key: const Key('admin_pick_business_first_dialog_link'),
             onPressed: () {
               Navigator.of(dialogContext).pop();
-              onSelect(kAdminOperatorsRouteId);
+              onSelectBusinessForRoute(routeId);
             },
             icon: const Icon(Icons.apartment_outlined, size: 18),
             label: const Text('Open Business accounts'),
