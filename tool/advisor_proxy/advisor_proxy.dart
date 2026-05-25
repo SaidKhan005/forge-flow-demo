@@ -2916,22 +2916,72 @@ class ProxyLlmModelRouting {
 class SubscriptionLlmTierRouter {
   const SubscriptionLlmTierRouter();
 
+  /// Resolves the served [ProxyLlmTier] from the operator's plan and the
+  /// per-call query class.
+  ///
+  /// Precedence (Plans & Limits V1, slice 5c):
+  ///   1. The operator's plan sets the CEILING / baseline model via
+  ///      [_modelTierForPlan] (pilot/starter cap at Haiku; premium / elite /
+  ///      pro / enterprise are allowed up to Sonnet).
+  ///   2. The query class is a cost lever that may DOWNGRADE a Sonnet-capable
+  ///      plan to Haiku for cheap, non-nuanced calls. It can NEVER upgrade a
+  ///      Haiku-capped plan to Sonnet.
+  ///
+  /// Net: plan = the most expensive model this operator can ever reach;
+  /// cost levers only ever spend less, never more.
   ProxyLlmTier tierFor({
     required String subscriptionTier,
     required String queryClass,
   }) {
-    final subscription = subscriptionTier.trim().toLowerCase();
-    if (subscription == 'basic' ||
-        subscription == 'starter' ||
-        subscription == 'pilot' ||
-        subscription == 'launch') {
+    final planCeiling = _modelTierForPlan(subscriptionTier);
+
+    // Plan caps at Haiku (pilot / starter / unknown): the query class cannot
+    // upgrade past the plan, so we always serve Haiku.
+    if (planCeiling == ProxyLlmTier.haiku) {
       return ProxyLlmTier.haiku;
     }
 
+    // Plan allows Sonnet: existing cost-lever behavior is preserved — cheap,
+    // non-nuanced query classes are downgraded to Haiku; nuanced synthesis
+    // gets the plan's full Sonnet ceiling.
     if (_requiresNuancedSynthesis(queryClass)) {
       return ProxyLlmTier.sonnet;
     }
     return ProxyLlmTier.haiku;
+  }
+
+  /// Maps an operator's `operators.subscription_tier` to the richest model
+  /// the plan is entitled to (its CEILING). Drives Haiku vs Sonnet straight
+  /// from the plan, per the `kPricingTierTemplates` summaries
+  /// (`lib/admin/models/pricing_tier_admin_models.dart`):
+  ///   - Pilot   = free preview, cheapest metering             -> Haiku
+  ///   - Starter = "$250/mo. ...; Haiku for advisor."          -> Haiku
+  ///   - Premium = "...; Sonnet for advisor."                  -> Sonnet
+  ///   - Elite   = "...; Adds staff coach + SOPs." (richer)    -> Sonnet
+  ///   - Pro     = "...; Adds workflow catalog..." (richer)    -> Sonnet
+  ///   - Enterprise = "Custom contract." (top tier)            -> Sonnet
+  ///
+  /// Legacy keys (`basic`, `launch`) and any unknown / missing tier fall back
+  /// to the existing safe default (Haiku, the cheapest model) so a token
+  /// issued before Phase 0 or a typo never crashes and never over-spends.
+  static ProxyLlmTier _modelTierForPlan(String subscriptionTier) {
+    final subscription = subscriptionTier.trim().toLowerCase();
+    switch (subscription) {
+      case 'premium':
+      case 'elite':
+      case 'pro':
+      case 'enterprise':
+        return ProxyLlmTier.sonnet;
+      case 'pilot':
+      case 'starter':
+      // Legacy pre-Phase-0 keys retained for back-compat.
+      case 'basic':
+      case 'launch':
+        return ProxyLlmTier.haiku;
+      default:
+        // Unknown / missing tier -> safe default (cheapest model).
+        return ProxyLlmTier.haiku;
+    }
   }
 
   static bool _requiresNuancedSynthesis(String queryClass) {
@@ -7314,6 +7364,10 @@ Future<void> routeRequest(
           const tierRouter = SubscriptionLlmTierRouter();
           const modelRouting = ProxyLlmModelRouting();
           const promptBuilder = AdvisorPromptCacheBuilder();
+          // Plans & Limits V1 (5c): the operator's plan sets the model
+          // ceiling (Haiku vs Sonnet); the query class may downgrade a
+          // Sonnet-capable plan to Haiku but never upgrade past the plan.
+          // See SubscriptionLlmTierRouter.tierFor / _modelTierForPlan.
           final llmTier = tierRouter.tierFor(
             subscriptionTier: subscriptionTier,
             queryClass: queryClass,
