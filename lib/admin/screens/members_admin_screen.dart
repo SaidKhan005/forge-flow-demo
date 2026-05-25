@@ -906,9 +906,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           OperatorWebScreenHeader(
             icon: Icons.group_outlined,
             title: 'Team members',
-            subtitle:
-                '${widget.pickedOperator.operatorBusinessName}: members, '
-                'invites, role grants, and access scopes. Changes require a reason.',
             actions: _buildHeaderActions(),
             collapseBelowWidth: 980,
           ),
@@ -1109,10 +1106,11 @@ class _PeopleAccessScopeCard extends StatelessWidget {
             icon: Icons.lock_open_outlined,
             label: '${accessScopes.length} grant scopes',
           ),
-          Text(
-            'Invites and role grants can target business, org-unit, or location scopes.',
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
-          ),
+          // Operator-web parity declutter: the explanatory "Invites and role
+          // grants can target business, org-unit, or location scopes." helper
+          // line was removed (web has no equivalent; the scope pills above
+          // already show the live selected scope). The functional scope-state
+          // pills stay.
         ],
       ),
     );
@@ -1236,18 +1234,18 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
       if (widget.mfaEnrolledFilter != null) 'MFA',
       if (widget.searchQuery.trim().isNotEmpty) 'Search',
     ];
-    return OperatorWebPanel(
+    // Web parity (members_screen.dart `_MembersFilterRail`): filters
+    // render in a plain bordered surface with NO panel title, and the
+    // admin-only "Clear filters" affordance sits inline as the last
+    // child of the same Wrap.
+    return Container(
       key: const Key('admin_members_filter_card'),
-      title: 'People filters',
-      trailing: activeFilters.isEmpty
-          ? null
-          : OutlinedButton.icon(
-              key: const Key('admin_members_clear_filters'),
-              onPressed: widget.onClearFilters,
-              style: AdminButtonStyles.secondary(minWidth: 120, minHeight: 40),
-              icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
-              label: const Text('Clear filters'),
-            ),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1270,7 +1268,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   items: <DropdownMenuItem<MemberStatus?>>[
                     const DropdownMenuItem<MemberStatus?>(
                       value: null,
-                      child: Text('All statuses'),
+                      child: Text('Any status'),
                     ),
                     for (final s in MemberStatus.values)
                       DropdownMenuItem<MemberStatus?>(
@@ -1295,7 +1293,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   items: <DropdownMenuItem<String?>>[
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('All roles'),
+                      child: Text('Any role'),
                     ),
                     for (final role in kSeededRoleKeysForAdmin)
                       DropdownMenuItem<String?>(
@@ -1320,7 +1318,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   items: <DropdownMenuItem<String?>>[
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('All locations'),
+                      child: Text('Any location'),
                     ),
                     for (final loc in widget.locations)
                       DropdownMenuItem<String?>(
@@ -1345,15 +1343,15 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   items: const <DropdownMenuItem<bool?>>[
                     DropdownMenuItem<bool?>(
                       value: null,
-                      child: Text('All two-factor sign-in states'),
+                      child: Text('Any'),
                     ),
                     DropdownMenuItem<bool?>(
                       value: true,
-                      child: Text('Enrolled'),
+                      child: Text('On'),
                     ),
                     DropdownMenuItem<bool?>(
                       value: false,
-                      child: Text('Not enrolled'),
+                      child: Text('Off'),
                     ),
                   ],
                   onChanged: widget.onMfaEnrolledChanged,
@@ -1364,7 +1362,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                 child: TextField(
                   key: const Key('admin_members_filter_search'),
                   decoration: const InputDecoration(
-                    labelText: 'Search email or name',
+                    labelText: 'Search by name or email',
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
@@ -1372,6 +1370,17 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   controller: _searchController,
                 ),
               ),
+              if (activeFilters.isNotEmpty)
+                OutlinedButton.icon(
+                  key: const Key('admin_members_clear_filters'),
+                  onPressed: widget.onClearFilters,
+                  style: AdminButtonStyles.secondary(
+                    minWidth: 120,
+                    minHeight: 40,
+                  ),
+                  icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
+                  label: const Text('Clear filters'),
+                ),
             ],
           ),
         ],
@@ -1432,7 +1441,7 @@ class _MembersTable extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'No members match the current filters',
+                    'No members match these filters',
                     style: AppTextStyles.mono14(
                       color: AppColors.textPrimary,
                       weight: FontWeight.w600,

@@ -181,7 +181,11 @@ class _AuditedSupportActionsAdminScreenState
   List<AuditLogRow> _rows = const <AuditLogRow>[];
   String? _nextCursor;
   List<SupportActionsMember> _members = const <SupportActionsMember>[];
-  AuditLogFilters _filters = AuditLogFilters.empty;
+  // Web parity (audit_log_screen.dart defaults to last30d): open on a
+  // fixed window rather than the removed admin-only "Any time" state.
+  AuditLogFilters _filters = const AuditLogFilters(
+    timeWindow: AuditLogTimeWindow.last30d,
+  );
   int _refreshGeneration = 0;
 
   /// GAP B3 — the scope the admin selected in the in-screen
@@ -656,9 +660,6 @@ class _AuditedSupportActionsAdminScreenState
           OperatorWebScreenHeader(
             icon: Icons.security_outlined,
             title: 'Audit log',
-            subtitle:
-                '${widget.pickedOperator.operatorBusinessName}: audit '
-                'history, active sessions, and gated support actions.',
             actions: _buildHeaderActions(),
           ),
           const SizedBox(height: 14),
@@ -1256,7 +1257,7 @@ class _AuditLogCard extends StatelessWidget {
               key: const Key('admin_asa_audit_log_empty'),
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
-                'No audit rows match the current filters.',
+                'No audit log entries match the current filters.',
                 style: AppTextStyles.body13(color: AppColors.textMuted),
               ),
             )
@@ -1283,7 +1284,7 @@ class _AuditLogCard extends StatelessWidget {
                         )
                       : const Icon(Icons.expand_more, size: 16),
                   label: Text(
-                    loadingMore ? 'Loading more rows...' : 'Load more rows',
+                    loadingMore ? 'Loading next page' : 'Load next page',
                   ),
                 ),
               ),
@@ -1375,10 +1376,10 @@ class _FiltersBarState extends State<_FiltersBar> {
                 style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
               ),
             ),
-            Text(
-              'Audit rows are newest first',
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
-            ),
+            // Operator-web parity declutter: the "Audit rows are newest first"
+            // helper note was removed (web's audit filters have no equivalent
+            // note; "newest first" is already stated in the audit-log card
+            // subtitle).
           ],
         ),
         const SizedBox(height: 10),
@@ -1465,27 +1466,29 @@ class _FiltersBarState extends State<_FiltersBar> {
             ),
             SizedBox(
               width: 220,
-              child: DropdownButtonFormField<AuditLogTimeWindow?>(
+              child: DropdownButtonFormField<AuditLogTimeWindow>(
                 key: const Key('admin_asa_filter_time_window'),
-                initialValue: _draft.timeWindow,
+                // Web parity (audit_log_screen.dart): fixed time windows
+                // only, defaulting to the last 30 days. The admin-only
+                // "Any time" option is removed so the set matches web.
+                initialValue:
+                    _draft.timeWindow ?? AuditLogTimeWindow.last30d,
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Time window',
                   border: OutlineInputBorder(),
                 ),
-                items: <DropdownMenuItem<AuditLogTimeWindow?>>[
-                  const DropdownMenuItem<AuditLogTimeWindow?>(
-                    value: null,
-                    child: Text('Any time'),
-                  ),
+                items: <DropdownMenuItem<AuditLogTimeWindow>>[
                   for (final w in AuditLogTimeWindow.values)
-                    DropdownMenuItem<AuditLogTimeWindow?>(
+                    DropdownMenuItem<AuditLogTimeWindow>(
                       value: w,
                       child: Text(w.displayLabel),
                     ),
                 ],
-                onChanged: (v) =>
-                    setState(() => _draft = _draft.copyWith(timeWindow: v)),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _draft = _draft.copyWith(timeWindow: v));
+                },
               ),
             ),
           ],

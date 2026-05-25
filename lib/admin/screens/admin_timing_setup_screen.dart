@@ -491,10 +491,7 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
           children: <Widget>[
             OperatorWebScreenHeader(
               icon: Icons.schedule_outlined,
-              title: 'Timing',
-              subtitle:
-                  'Edit the timezone, business day, week start, and service '
-                  'periods.',
+              title: 'Edit service periods',
               actions: _buildHeaderActions(),
             ),
             const SizedBox(height: 14),
@@ -617,7 +614,7 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
                             color: AppColors.backgroundSurface,
                           ),
                         )
-                      : const Text('Save timing'),
+                      : const Text('Save service periods'),
                 ),
               ),
               SizedBox(
@@ -667,10 +664,7 @@ class _AdminTimingReadOnlyBanner extends StatelessWidget {
     return const OperatorWebBanner(
       key: Key('admin_timing_readonly_banner'),
       icon: Icons.lock_outline,
-      message:
-          'Support access can review timing without changing it. Super '
-          'admins can edit timezone, business day, week start, and service '
-          'periods.',
+      message: 'View only. Ask a super admin if timing needs to be changed.',
     );
   }
 }
@@ -1079,10 +1073,8 @@ class _AdminEffectiveTimingSummary extends StatelessWidget {
           key: const Key('admin_timing_summary_card'),
           title: 'Effective timing',
           subtitle:
-              'Read-only. The resolved timezone, business day, and service '
-              'periods used after inheritance. The '
-              'editor above is the source of truth; this confirms what the '
-              'setup resolves to.',
+              'Read-only. The resolved timing for this scope after '
+              'inheritance.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -1100,8 +1092,8 @@ class _AdminEffectiveTimingSummary extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      '${location.name} is the preview location. Other '
-                      'locations may have local overrides.',
+                      'Other locations under this scope may have their own '
+                      'overrides.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),

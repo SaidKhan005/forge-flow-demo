@@ -201,8 +201,13 @@ void main() {
     });
 
     testWidgets(
-      'non-root org units show gated copy instead of a live Move button',
+      'non-root org units expose no Move button and no gated-move notice',
       (tester) async {
+        // Admin-web verbiage parity: operator-web's hierarchy screen has
+        // no org-unit Move affordance and no implementation-detail
+        // "gated until..." notice, so the admin screen shows neither.
+        // Rename / Add child / Delete affordances stay (asserted
+        // elsewhere); org-unit moves simply do not exist here.
         wideViewport(tester);
         final gateway = buildDemoGateway();
         await tester.pumpWidget(
@@ -235,20 +240,17 @@ void main() {
           find.byKey(
             const Key('admin_rhs_org_unit_move_gated_$kDemoDinerOrgUnitEast'),
           ),
-          findsOneWidget,
+          findsNothing,
         );
         expect(
           find.byKey(
             const Key('admin_rhs_org_unit_move_gated_$kDemoDinerOrgUnitWest'),
           ),
-          findsOneWidget,
+          findsNothing,
         );
         expect(
-          find.text(
-            'Org-unit moves are gated until schema, proxy, and audit '
-            'support ships.',
-          ),
-          findsWidgets,
+          find.textContaining('gated until'),
+          findsNothing,
         );
         expect(
           find.byKey(const Key('admin_rhs_move_org_unit_dialog')),
