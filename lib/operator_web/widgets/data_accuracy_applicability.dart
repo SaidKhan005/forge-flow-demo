@@ -45,6 +45,51 @@ Map<String, int> defaultConnectedPollingCadences(
   VendorConnectionsBundle? bundle,
 ) => connectedPollingCadences(bundle, kStandardTierPresets);
 
+/// Like [connectedPollingCadences], but also honors the admin polling
+/// applicability DENY model. When [vendorApplicabilityBound] is true,
+/// any vendor whose slug is in [turnedOffVendorSlugs] is dropped from
+/// the cadence map (the admin turned its scheduled checks OFF for this
+/// (operator, location) via a `setting_kind = 'polling'` row with
+/// `enabled = false`). When [vendorApplicabilityBound] is false (no
+/// applicability gateway wired) this behaves EXACTLY like
+/// [connectedPollingCadences] — the turn-off list is ignored, so this
+/// can only further restrict the existing behavior, never loosen it.
+/// Consistent with the background worker's deny semantics: a row with
+/// `enabled = true` (or no row) leaves the vendor polled by default.
+Map<String, int> connectedPollingCadencesHonoringApplicability({
+  required VendorConnectionsBundle? bundle,
+  required Map<String, int> source,
+  required bool vendorApplicabilityBound,
+  required Iterable<String> turnedOffVendorSlugs,
+}) {
+  final base = connectedPollingCadences(bundle, source);
+  if (!vendorApplicabilityBound) return base;
+  final turnedOff = turnedOffVendorSlugs.toSet();
+  return <String, int>{
+    for (final entry in base.entries)
+      if (!turnedOff.contains(entry.key)) entry.key: entry.value,
+  };
+}
+
+/// Whether the data-freshness card still applies once the admin polling
+/// turn-offs are taken into account. Mirrors [dataFreshnessAppliesToBundle]
+/// (at least one connected poll-only vendor) but, when
+/// [vendorApplicabilityBound] is true, subtracts the vendors in
+/// [turnedOffVendorSlugs] first. When not bound, the turn-off list is
+/// ignored and this matches [dataFreshnessAppliesToBundle] exactly.
+bool dataFreshnessAppliesHonoringApplicability({
+  required VendorConnectionsBundle? bundle,
+  required bool vendorApplicabilityBound,
+  required Iterable<String> turnedOffVendorSlugs,
+}) {
+  final connectedPollOnly = dataAccuracyConnectedPollOnlyVendors(
+    bundle,
+  ).map((row) => row.vendorId).toSet();
+  if (!vendorApplicabilityBound) return connectedPollOnly.isNotEmpty;
+  connectedPollOnly.removeAll(turnedOffVendorSlugs);
+  return connectedPollOnly.isNotEmpty;
+}
+
 String dataFreshnessNotApplicableCopy(VendorConnectionsBundle? bundle) {
   if (!dataAccuracyHasAnyConnectedVendor(bundle)) {
     return 'Does not apply until a vendor that needs scheduled checks is connected.';
