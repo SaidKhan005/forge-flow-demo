@@ -898,6 +898,7 @@ class _CoversSourceField extends StatelessWidget {
           ),
           Expanded(
             child: DropdownButtonFormField<CoversSource>(
+              isExpanded: true,
               key: fieldKey,
               initialValue: value,
               items: CoversSource.values
@@ -965,6 +966,7 @@ class _WageSourceField extends StatelessWidget {
           ),
           Expanded(
             child: DropdownButtonFormField<WageSource>(
+              isExpanded: true,
               key: const Key('admin_data_accuracy_wage_source'),
               initialValue: value,
               items: WageSource.values
@@ -1007,6 +1009,7 @@ class _WalkInHandlingField extends StatelessWidget {
           ),
           Expanded(
             child: DropdownButtonFormField<DataAccuracyWalkInHandlingMode>(
+              isExpanded: true,
               key: const Key('admin_data_accuracy_walk_in_mode'),
               initialValue: value,
               items: DataAccuracyWalkInHandlingMode.values
@@ -1154,6 +1157,7 @@ class _ServicePeriodOverrideDialogState
           children: <Widget>[
             if (_configuredServicePeriodKeys.isNotEmpty) ...[
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 key: const Key('admin_data_accuracy_service_period_picker'),
                 initialValue:
                     _configuredServicePeriodKeys.contains(_keyCtl.text)
@@ -1205,6 +1209,7 @@ class _ServicePeriodOverrideDialogState
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<ServicePeriodCoversSource>(
+              isExpanded: true,
               key: const Key(
                 'admin_data_accuracy_service_period_covers_source',
               ),
@@ -1227,6 +1232,7 @@ class _ServicePeriodOverrideDialogState
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<ServicePeriodWageSource>(
+              isExpanded: true,
               key: const Key('admin_data_accuracy_service_period_wage_source'),
               initialValue: _wage,
               decoration: const InputDecoration(
