@@ -711,7 +711,7 @@ void main() {
 
     await selectBusinessScope(tester, 'op-seed-1');
 
-    final rootMoveButton = tester.widget<IconButton>(
+    final rootMoveButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_hierarchy_org_unit_move_org-root')),
     );
     expect(rootMoveButton.onPressed, isNull);
@@ -804,7 +804,7 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      final rootSuspend = tester.widget<IconButton>(
+      final rootSuspend = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_org-root')),
       );
       expect(rootSuspend.onPressed, isNull);
@@ -995,7 +995,7 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      final primaryDelete = tester.widget<IconButton>(
+      final primaryDelete = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_location_remove_loc-primary')),
       );
       expect(primaryDelete.onPressed, isNull);
@@ -1317,10 +1317,10 @@ void main() {
   );
 
   // ---------------------------------------------------------------------------
-  // 2026-05-24: hierarchy tree actions stay compact, keyed, and accessible.
+  // 2026-05-24: hierarchy tree actions stay labeled, keyed, and aligned.
   // ---------------------------------------------------------------------------
   testWidgets(
-    'hierarchy tree actions render as icon buttons with the destructive '
+    'hierarchy tree actions render as labeled buttons with the destructive '
     'ones in the danger style, keeping their existing keys',
     (tester) async {
       useWideSurface(tester);
@@ -1368,49 +1368,49 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      // The hierarchy uses compact icon buttons with tooltips so row names
-      // remain the primary readable content.
+      // The hierarchy keeps visible labels, with tooltips for exact action
+      // meaning where the same label appears on multiple entity types.
       for (final label in <String>[
-        'Add child org unit',
-        'Move org unit',
-        'Suspend org unit',
-        'Edit location',
-        'Make primary location',
-        'Delete org unit',
-        'Delete location',
+        'Add child',
+        'Move',
+        'Suspend',
+        'Edit',
+        'Make primary',
+        'Delete',
+        'Remove',
       ]) {
         expect(
-          find.byTooltip(label),
+          find.text(label),
           findsWidgets,
-          reason: 'tree action "$label" must keep a tooltip',
+          reason: 'tree action "$label" must render as visible text',
         );
       }
 
-      // Each action keeps a stable keyed IconButton.
-      void expectIconButton(Key key, IconData icon) {
+      void expectLabeledButton(Key key, String label) {
         expect(
-          find.descendant(of: find.byKey(key), matching: find.byIcon(icon)),
+          tester.widget<OutlinedButton>(find.byKey(key)),
+          isA<OutlinedButton>(),
+        );
+        expect(
+          find.descendant(of: find.byKey(key), matching: find.text(label)),
           findsOneWidget,
-          reason: '$key must show the expected icon',
+          reason: '$key must show the "$label" label',
         );
       }
 
-      expectIconButton(
+      expectLabeledButton(
         const Key('admin_hierarchy_org_unit_add_child_org-east'),
-        Icons.add,
+        'Add child',
       );
-      expectIconButton(
-        const Key('admin_location_edit_loc-seed-1'),
-        Icons.edit_outlined,
-      );
-      expectIconButton(
+      expectLabeledButton(const Key('admin_location_edit_loc-seed-1'), 'Edit');
+      expectLabeledButton(
         const Key('admin_location_make_primary_loc-seed-1'),
-        Icons.star_outline,
+        'Make primary',
       );
 
       // Destructive actions use the danger (negative) secondary style.
       Color? foregroundOf(Key key) {
-        final button = tester.widget<IconButton>(find.byKey(key));
+        final button = tester.widget<OutlinedButton>(find.byKey(key));
         return button.style?.foregroundColor?.resolve(<WidgetState>{});
       }
 

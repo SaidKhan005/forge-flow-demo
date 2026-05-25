@@ -20,6 +20,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../utils/iana_timezones.dart';
 import '../../widgets/console/console_action_bar.dart';
+import '../../widgets/console/console_section_heading.dart';
 import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
@@ -855,8 +856,8 @@ class _OperatorDetail extends StatelessWidget {
                         if (editingEnabled)
                           _OperatorActionButton(
                             buttonKey: const Key('admin_operator_edit_button'),
-                            label: 'Edit',
-                            icon: Icons.edit_outlined,
+                            label: 'Account profile',
+                            icon: Icons.badge_outlined,
                             tooltip: 'Edit account profile',
                             onPressed: () => onEditOperator(bundle),
                           ),
@@ -1648,41 +1649,33 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
-                  runSpacing: 10,
-                  children: [
-                    Text(
-                      'Location hierarchy',
-                      style: AppTextStyles.sectionTitle(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    if (widget.editingEnabled)
-                      Tooltip(
-                        message: widget.addLocationEnabled
-                            ? 'Add location'
-                            : 'Select an org unit before adding a location',
-                        child: OutlinedButton.icon(
-                          key: const Key('admin_operator_add_location_button'),
-                          onPressed: widget.addLocationEnabled
-                              ? widget.onAddLocation
-                              : null,
-                          style: AdminButtonStyles.secondary(
-                            minWidth: 130,
-                            minHeight: 38,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 9,
+                OperatorWebSectionHeading(
+                  title: 'Location hierarchy',
+                  trailing: widget.editingEnabled
+                      ? Tooltip(
+                          message: widget.addLocationEnabled
+                              ? 'Add location'
+                              : 'Select an org unit before adding a location',
+                          child: OutlinedButton.icon(
+                            key: const Key(
+                              'admin_operator_add_location_button',
                             ),
+                            onPressed: widget.addLocationEnabled
+                                ? widget.onAddLocation
+                                : null,
+                            style: AdminButtonStyles.secondary(
+                              minWidth: 136,
+                              minHeight: 38,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 9,
+                              ),
+                            ),
+                            icon: const Icon(Icons.add, size: 14),
+                            label: const Text('Add location'),
                           ),
-                          icon: const Icon(Icons.add, size: 14),
-                          label: const Text('Add location'),
-                        ),
-                      ),
-                  ],
+                        )
+                      : null,
                 ),
                 if (snapshot.hasError) ...[
                   const SizedBox(height: 10),
@@ -1700,7 +1693,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                     color: AppColors.sunsetDark,
                   ),
                 ],
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 _HierarchyScopeRow(
                   key: const Key('admin_hierarchy_business_scope_row'),
                   icon: scopeIcon(kind: ScopeEntityKind.business),
@@ -2563,8 +2556,8 @@ class _HierarchyScopeRow extends StatelessWidget {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final compactActions =
-                    trailing != null && constraints.maxWidth < 420;
-                final labelRow = Row(
+                    trailing != null && constraints.maxWidth < 760;
+                final labelBlock = Row(
                   children: [
                     Icon(icon, size: 17, color: AppColors.textSecondary),
                     const SizedBox(width: 10),
@@ -2599,19 +2592,31 @@ class _HierarchyScopeRow extends StatelessWidget {
                           color: AppColors.peacockDark,
                         ),
                       ),
-                    if (trailing != null && !compactActions) ...[
-                      const SizedBox(width: 12),
-                      Flexible(child: trailing!),
-                    ],
                   ],
                 );
-                if (!compactActions) return labelRow;
+                if (trailing == null) return labelBlock;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    labelRow,
-                    const SizedBox(height: 8),
-                    SizedBox(width: double.infinity, child: trailing!),
+                    if (compactActions) ...[
+                      labelBlock,
+                      const SizedBox(height: 10),
+                      Align(alignment: Alignment.centerRight, child: trailing!),
+                    ] else
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(child: labelBlock),
+                          const SizedBox(width: 18),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 760),
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: trailing!,
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 );
               },
@@ -2678,17 +2683,26 @@ class _HierarchyActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: IconButton(
+      child: OutlinedButton.icon(
         key: buttonKey,
         onPressed: onPressed,
         style: destructive
-            ? AdminButtonStyles.icon.copyWith(
-                foregroundColor: const WidgetStatePropertyAll(
-                  AppColors.negative,
+            ? AdminButtonStyles.dangerSecondary(minWidth: 92).copyWith(
+                minimumSize: const WidgetStatePropertyAll(Size(92, 36)),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
               )
-            : AdminButtonStyles.icon,
-        icon: Icon(icon, size: 18, semanticLabel: label),
+            : AdminButtonStyles.secondary(
+                minWidth: 92,
+                minHeight: 36,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+        icon: Icon(icon, size: 14),
+        label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
       ),
     );
   }
