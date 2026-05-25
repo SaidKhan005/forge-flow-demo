@@ -17,15 +17,15 @@
 // `ServicePeriodEditor`'s `validateServicePeriods`) runs before submit so
 // the admin gets an instant explanation; the proxy re-validates.
 //
-// The READ-ONLY "Effective timing" summary (the prior whole screen) is
-// kept below the editor as an admin-useful secondary section, driven by
-// the READ-ONLY `AdminBusinessTimingResolutionGateway`. The editor is the
-// PRIMARY surface.
+// The editor content mirrors operator-web. Admin keeps only the selected
+// scope plumbing and the required save-reason dialog.
 //
 // Timing is NOT location-only: operator / org_unit / location are all
 // valid profile scopes, so the editor honors whatever scope the admin
 // selected (no "pick a location first" gate, unlike Vendor / Data
 // accuracy).
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -35,7 +35,6 @@ import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
-import '../../domain/services/business_timing_profile_resolver.dart';
 import '../../services/business_timing/business_timing_profile_validator.dart';
 import '../../services/business_timing/business_timing_starter_profile.dart';
 import '../../theme/app_theme.dart';
@@ -44,13 +43,8 @@ import '../admin_route_handoff.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/admin_business_timing_profiles_gateway.dart';
 import '../services/admin_business_timing_resolution_gateway.dart';
-import '../services/admin_business_timing_resolution_projection.dart';
 import '../services/operator_location_admin_gateway.dart';
-// AdminDetailRow is a detail-row primitive (not a card / panel / section /
-// scaffold widget), so it stays; the card / panel / scaffold containers in
-// this file now come from the shared console kit above (Slice D5).
 import '../widgets/admin_business_accounts_back_button.dart';
-import '../widgets/admin_responsive_layout.dart';
 // Reuse operator-web's PURE PRESENTATIONAL service-period editor (it
 // imports only Flutter + theme — no operator-web session / gateway
 // dependency), so the admin editor renders byte-identical period rows
@@ -81,12 +75,9 @@ class AdminTimingSetupScreen extends StatefulWidget {
   /// session's roles.
   final bool editingEnabled;
 
-  /// Fix #4 / S4 (G41): READ-ONLY S2 admin cross-tenant business-
-  /// timing resolution gateway feeding the secondary "Effective timing"
-  /// summary. Null falls back to the seeded in-memory demo gateway
-  /// (mirrors the established optional-gateway admin DI pattern), so
-  /// demo / share-preview / widget tests render without the Cloud Run
-  /// admin proxy.
+  /// Legacy route API for the previous read-only effective summary. The
+  /// editor no longer renders that summary, but keeping the parameter avoids
+  /// forcing unrelated route rewiring in this parity pass.
   final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
 
   /// Timing-editable parity: admin cross-tenant business-timing PROFILE
@@ -112,8 +103,6 @@ class AdminTimingSetupScreen extends StatefulWidget {
 class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
   late final AdminBusinessTimingProfilesGateway _profilesGateway =
       widget.timingProfilesGateway ?? _fallbackTimingProfilesGateway;
-  late final AdminBusinessTimingResolutionGateway _resolutionGateway =
-      widget.timingResolutionGateway ?? _fallbackTimingResolutionGateway;
 
   late final ServicePeriodEditorController _periods;
   late final TextEditingController _businessDayStartLocal;
@@ -130,6 +119,7 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
   bool _submitting = false;
   String? _error;
   String? _success;
+  Timer? _successTimer;
   int _keySeq = 0;
 
   bool get _canEdit => widget.editingEnabled;
@@ -184,6 +174,7 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
     _businessDayStartLocal.removeListener(_handleDayStartChanged);
     _businessDayStartLocal.dispose();
     _ianaTimezone.dispose();
+    _successTimer?.cancel();
     super.dispose();
   }
 
@@ -363,7 +354,7 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
     final selected = await showDatePicker(
       context: context,
       initialDate: _effectiveAt.isBefore(now) ? now : _effectiveAt,
-      firstDate: now.subtract(const Duration(days: 1)),
+      firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
     );
     if (selected != null) {
@@ -467,11 +458,16 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
       return;
     }
     if (!mounted) return;
+    _successTimer?.cancel();
     setState(() {
       _submitting = false;
       _existingProfile = saved;
       _success =
           'Saved. New timing takes effect ${_formatBusinessDate(_effectiveAt)}.';
+    });
+    _successTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      setState(() => _success = null);
     });
   }
 
@@ -479,66 +475,33 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
   Widget build(BuildContext context) {
     final canSave =
         _canEdit && !_submitting && _periods.validation.isValid;
-    return ColoredBox(
+    return OperatorWebScreenBody(
       key: const Key('admin_timing_setup_screen'),
-      color: AppColors.backgroundDeep,
-      child: OperatorWebScreenBody(
-        scrollKey: const Key('admin_timing_setup_screen_body'),
-        padding: const EdgeInsets.all(20),
-        maxContentWidth: 880,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            OperatorWebScreenHeader(
-              icon: Icons.schedule_outlined,
-              title: 'Edit service periods',
-              actions: _buildHeaderActions(),
-            ),
-            const SizedBox(height: 14),
-            if (!_canEdit)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 14),
-                child: _AdminTimingReadOnlyBanner(),
-              ),
-            _buildEditorPanel(canSave: canSave),
-            const SizedBox(height: 18),
-            _AdminEffectiveTimingSummary(
-              selectedScope: widget.selectedScope,
-              operatorGateway: widget.operatorGateway,
-              scopeLocationIds: widget.scopeLocationIds,
-              editingEnabled: _canEdit,
-              timingResolutionGateway: _resolutionGateway,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildHeaderActions() {
-    final children = <Widget>[];
-    if (widget.onBackToBusinessAccounts != null) {
-      children.add(
-        AdminBusinessAccountsBackButton(
-          onPressed: widget.onBackToBusinessAccounts,
-        ),
-      );
-    }
-    return children;
-  }
-
-  Widget _buildEditorPanel({required bool canSave}) {
-    return OperatorWebPanel(
-      key: const Key('admin_timing_editor_panel'),
-      title: 'Business timing',
-      subtitle:
-          'Service periods break the business day into the chunks your team '
-          'works in: lunch, dinner, late night, and so on. You can have one '
-          'to four. Already closed days keep the timing they were closed '
-          'with.',
+      scrollKey: const Key('admin_timing_setup_screen_body'),
+      padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          OperatorWebScreenHeader(
+            icon: Icons.schedule_outlined,
+            title: 'Edit service periods',
+            actions: _buildHeaderActions(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Service periods break the business day into the chunks your '
+            'team works in: lunch, dinner, late night, and so on. You '
+            'can have one to four.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Already closed days keep the timing they were closed with.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 18),
+          if (!_canEdit) const _AdminTimingReadOnlyBanner(),
+          if (!_canEdit) const SizedBox(height: 14),
           if (_loadingProfiles)
             const Padding(
               key: Key('admin_timing_editor_loading'),
@@ -571,28 +534,22 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          AbsorbPointer(
-            absorbing: !_canEdit || _submitting,
-            child: Opacity(
-              opacity: _canEdit ? 1 : 0.65,
-              child: ServicePeriodEditor(
-                controller: _periods,
-                key: const Key('admin_timing_editor_periods'),
-              ),
-            ),
+          ServicePeriodEditor(
+            controller: _periods,
+            key: const Key('admin_timing_editor_periods'),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 18),
           if (_error != null)
             _AdminTimingMessageBanner(
               key: const Key('admin_timing_editor_error'),
               message: _error!,
-              tone: OperatorWebBannerTone.error,
+              isError: true,
             ),
           if (_success != null)
             _AdminTimingMessageBanner(
               key: const Key('admin_timing_editor_success'),
               message: _success!,
-              tone: OperatorWebBannerTone.success,
+              isError: false,
             ),
           const SizedBox(height: 12),
           Wrap(
@@ -603,7 +560,14 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
                 height: 46,
                 child: FilledButton(
                   key: const Key('admin_timing_editor_save'),
-                  style: AdminButtonStyles.primary,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.sunset,
+                    foregroundColor: AppColors.backgroundSurface,
+                    padding: const EdgeInsets.symmetric(horizontal: 22),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
                   onPressed: canSave ? _save : null,
                   child: _submitting
                       ? const SizedBox(
@@ -617,27 +581,33 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
                       : const Text('Save service periods'),
                 ),
               ),
-              SizedBox(
-                height: 46,
-                child: OutlinedButton.icon(
-                  key: const Key('admin_timing_editor_reset'),
-                  style: AdminButtonStyles.secondary(),
-                  onPressed: _canEdit && !_submitting
-                      ? _resetToLoadedProfile
-                      : null,
-                  icon: const Icon(Icons.undo_outlined, size: 16),
-                  label: Text(
-                    _existingProfile == null
-                        ? 'Reset to starter'
-                        : 'Reset to saved',
+              if (_existingProfile != null)
+                SizedBox(
+                  height: 46,
+                  child: OutlinedButton.icon(
+                    key: const Key('admin_timing_editor_reset'),
+                    onPressed: _submitting ? null : _resetToLoadedProfile,
+                    icon: const Icon(Icons.undo_outlined, size: 16),
+                    label: const Text('Reset to inherited'),
                   ),
                 ),
-              ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildHeaderActions() {
+    final children = <Widget>[];
+    if (widget.onBackToBusinessAccounts != null) {
+      children.add(
+        AdminBusinessAccountsBackButton(
+          onPressed: widget.onBackToBusinessAccounts,
+        ),
+      );
+    }
+    return children;
   }
 
 }
@@ -649,22 +619,33 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
 final AdminBusinessTimingProfilesGateway _fallbackTimingProfilesGateway =
     InMemoryAdminBusinessTimingProfilesGateway();
 
-/// Fix #4 / S4 (G41): shared seeded in-memory READ fallback for the
-/// secondary "Effective timing" summary. Empty by default → the summary
-/// shows its honest "no timing profile yet" state.
-final AdminBusinessTimingResolutionGateway _fallbackTimingResolutionGateway =
-    InMemoryAdminBusinessTimingResolutionGateway();
-
 /// Read-only posture banner for ff_support (editing disabled).
 class _AdminTimingReadOnlyBanner extends StatelessWidget {
   const _AdminTimingReadOnlyBanner();
 
   @override
   Widget build(BuildContext context) {
-    return const OperatorWebBanner(
-      key: Key('admin_timing_readonly_banner'),
-      icon: Icons.lock_outline,
-      message: 'View only. Ask a super admin if timing needs to be changed.',
+    return Container(
+      key: const Key('admin_timing_readonly_banner'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.lock_outline, size: 18, color: AppColors.textMuted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Super admins can change business timing. You can review what '
+              'is set and ask a super admin to make changes.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -673,17 +654,38 @@ class _AdminTimingMessageBanner extends StatelessWidget {
   const _AdminTimingMessageBanner({
     super.key,
     required this.message,
-    required this.tone,
+    required this.isError,
   });
 
   final String message;
-  final OperatorWebBannerTone tone;
+  final bool isError;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 6),
-      child: OperatorWebBanner(message: message, tone: tone),
+    final color = isError ? AppColors.negative : AppColors.positive;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            isError ? Icons.error_outline : Icons.check_circle_outline,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: color),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -727,72 +729,68 @@ class _AdminScopeAndEffectiveSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          InkWell(
-            key: const Key('admin_timing_editor_effective_pick'),
-            onTap: enabled ? onPickEffectiveDate : null,
-            child: InputDecorator(
-              decoration: InputDecoration(
-                labelText: 'Take effect on',
-                border: const OutlineInputBorder(),
-                enabled: enabled,
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: InkWell(
+                  key: const Key('admin_timing_editor_effective_pick'),
+                  onTap: enabled ? onPickEffectiveDate : null,
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Take effect on',
+                      border: const OutlineInputBorder(),
+                      enabled: enabled,
+                    ),
+                    child: Text(
+                      formatter(effectiveAt),
+                      style: AppTextStyles.body13(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              child: Text(
-                formatter(effectiveAt),
-                style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-            ),
+            ],
           ),
           const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final compact = constraints.maxWidth < 520;
-              final timezone = _AdminTimezoneDropdown(
-                controller: timezoneController,
-                enabled: enabled,
-                onChanged: onAnyTextChanged,
-              );
-              final dayStart = TextField(
-                key: const Key('admin_timing_editor_business_day_start'),
-                controller: businessDayStartController,
-                enabled: enabled,
-                inputFormatters: <TextInputFormatter>[
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
-                  LengthLimitingTextInputFormatter(5),
-                ],
-                decoration: const InputDecoration(
-                  labelText: 'Business day starts (HH:MM)',
-                  border: OutlineInputBorder(),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _AdminTimezoneDropdown(
+                  controller: timezoneController,
+                  enabled: enabled,
+                  onChanged: onAnyTextChanged,
                 ),
-                onChanged: (value) {
-                  _normalizeTimeController(businessDayStartController, value);
-                  onAnyTextChanged();
-                },
-                onEditingComplete: () {
-                  _normalizeTimeController(
-                    businessDayStartController,
-                    businessDayStartController.text,
-                  );
-                  onAnyTextChanged();
-                },
-              );
-              if (compact) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    timezone,
-                    const SizedBox(height: 12),
-                    dayStart,
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 200,
+                child: TextField(
+                  key: const Key('admin_timing_editor_business_day_start'),
+                  controller: businessDayStartController,
+                  enabled: enabled,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                    LengthLimitingTextInputFormatter(5),
                   ],
-                );
-              }
-              return Row(
-                children: <Widget>[
-                  Expanded(child: timezone),
-                  const SizedBox(width: 12),
-                  SizedBox(width: 200, child: dayStart),
-                ],
-              );
-            },
+                  decoration: const InputDecoration(
+                    labelText: 'Business day starts (HH:MM)',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    _normalizeTimeController(businessDayStartController, value);
+                    onAnyTextChanged();
+                  },
+                  onEditingComplete: () {
+                    _normalizeTimeController(
+                      businessDayStartController,
+                      businessDayStartController.text,
+                    );
+                    onAnyTextChanged();
+                  },
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -855,9 +853,6 @@ class _AdminTimezoneDropdown extends StatelessWidget {
     return DropdownButtonFormField<String>(
       key: const Key('admin_timing_editor_timezone_dropdown'),
       initialValue: selected,
-      // Ellipsize the long GMT-suffixed label inside the field rather
-      // than overflowing the row at narrow widths.
-      isExpanded: true,
       decoration: const InputDecoration(
         labelText: 'Timezone',
         border: OutlineInputBorder(),
@@ -867,10 +862,7 @@ class _AdminTimezoneDropdown extends StatelessWidget {
           .map(
             (timezone) => DropdownMenuItem<String>(
               value: timezone,
-              child: Text(
-                _timezoneLabel(timezone),
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text(_timezoneLabel(timezone)),
             ),
           )
           .toList(growable: false),
