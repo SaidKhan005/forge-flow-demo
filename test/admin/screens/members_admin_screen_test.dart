@@ -94,11 +94,15 @@ void main() {
         find.byKey(const Key('admin_members_filter_search')),
         findsOneWidget,
       );
-      expect(find.text('People filters'), findsOneWidget);
-      expect(find.text('All statuses'), findsOneWidget);
-      expect(find.text('All roles'), findsOneWidget);
-      expect(find.text('All locations'), findsOneWidget);
-      expect(find.text('All two-factor sign-in states'), findsOneWidget);
+      // Web parity (members_screen.dart `_MembersFilterRail`): plain
+      // filter rail with no panel title and "Any *" default labels.
+      expect(find.text('People filters'), findsNothing);
+      expect(find.text('Any status'), findsOneWidget);
+      expect(find.text('Any role'), findsOneWidget);
+      expect(find.text('Any location'), findsOneWidget);
+      // Two-factor default reads "Any" (web verbatim). It is the lone
+      // "Any" selected in the closed two-factor dropdown.
+      expect(find.text('Any'), findsOneWidget);
       expect(find.text('Visible members'), findsNothing);
 
       // Demo Diner has 4 seeded members.
@@ -135,7 +139,8 @@ void main() {
 
       await tester.tap(find.byKey(const Key('admin_members_filter_mfa')));
       await pumpEventually(tester);
-      await tester.tap(find.text('Not enrolled').last);
+      // Web-verbatim two-factor option label is "Off" (members_screen.dart).
+      await tester.tap(find.text('Off').last);
       await pumpEventually(tester);
 
       // Owner has MFA on; everyone else (manager / supervisor / archived)
