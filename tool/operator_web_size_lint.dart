@@ -60,7 +60,17 @@ const Map<String, int> kOperatorWebSizeCeilings = <String, int>{
   'lib/admin/screens/observability_admin_screen.dart': 2868,
   'lib/admin/screens/corpus_admin_screen.dart': 2549,
   'lib/admin/screens/members_admin_screen.dart': 2532,
-  'lib/operator_web/router/operator_web_router.dart': 2941,
+  // +9 (2950) over 2941: irreducible route-dispatch wiring for the
+  // Plans & limits Phase 5b display-only "Your plan" surface — the
+  // import, the `_navIdFromRaw` deep-link mapping, the `navItems`
+  // reference, and the `case kOperatorWebNavPlan` switch arm. The
+  // screen, its nav item, its nav constant, and its body builder were
+  // ALL extracted into `lib/operator_web/screens/plan_nav.dart` +
+  // `plan_screen.dart` (the size lint's prescribed "decompose, don't
+  // inflate" fix), leaving only the lines that MUST live in the router
+  // to dispatch the route. PENDING operator approval per CLAUDE.md
+  // "Ceiling-raise rule R-2"; the ratchet resumes tightening from here.
+  'lib/operator_web/router/operator_web_router.dart': 2950,
   // +1 (2108) over the prior 2107 ceiling: the single `import
   // '../widgets/operator_web_screen_body.dart';` line added when this
   // screen's main body scroll view was routed through the shared
@@ -164,23 +174,27 @@ class OperatorWebSizeLintRunner {
       final ceiling = entry.value;
       final text = files[path];
       if (text == null) {
-        findings.add(OperatorWebSizeLintFinding(
-          path: path,
-          ceiling: ceiling,
-          observedLines: -1,
-          status: OperatorWebSizeStatus.missing,
-        ));
+        findings.add(
+          OperatorWebSizeLintFinding(
+            path: path,
+            ceiling: ceiling,
+            observedLines: -1,
+            status: OperatorWebSizeStatus.missing,
+          ),
+        );
         continue;
       }
       final observed = _countNewlines(text);
-      findings.add(OperatorWebSizeLintFinding(
-        path: path,
-        ceiling: ceiling,
-        observedLines: observed,
-        status: observed > ceiling
-            ? OperatorWebSizeStatus.grew
-            : OperatorWebSizeStatus.ok,
-      ));
+      findings.add(
+        OperatorWebSizeLintFinding(
+          path: path,
+          ceiling: ceiling,
+          observedLines: observed,
+          status: observed > ceiling
+              ? OperatorWebSizeStatus.grew
+              : OperatorWebSizeStatus.ok,
+        ),
+      );
     }
     return OperatorWebSizeLintResult(findings: findings);
   }

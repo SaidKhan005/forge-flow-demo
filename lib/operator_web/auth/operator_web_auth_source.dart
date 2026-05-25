@@ -63,6 +63,9 @@ class OperatorWebSession {
     this.weekStartDay,
     this.rolloverHour,
     this.primaryLocationTimezone,
+    this.subscriptionTier,
+    this.trialMode = false,
+    this.trialExpiresAt,
   });
 
   /// Firebase user UID (or a synthetic id under demo mode).
@@ -155,6 +158,35 @@ class OperatorWebSession {
   /// updated). The Account screen renders "Not on file" in that case
   /// and the operator can still set a value through the editor.
   final String? primaryLocationTimezone;
+
+  /// Plans & limits Phase 5b — the operator's subscription tier key
+  /// (`pilot` / `starter` / `premium` / `elite` / `pro` / `enterprise`),
+  /// mirroring `public.operators.subscription_tier`. Drives the
+  /// "Your plan" surface (current plan name + what is included).
+  ///
+  /// Null when the session payload does not carry a tier yet. The
+  /// demo source sets a real value so the walkthrough shows a plan;
+  /// the live source leaves it null until the small gated follow-up
+  /// projects `subscription_tier` (+ the trial fields below) onto the
+  /// operator-facing account read. The "Your plan" screen renders an
+  /// honest "We could not load your plan yet" state when it is null,
+  /// never a phantom plan.
+  final String? subscriptionTier;
+
+  /// Plans & limits Phase 5b — whether the operator is on a Pilot free
+  /// preview (mirrors `public.operators.trial_mode`, Phase 4a). When
+  /// true, the "Your plan" surface shows the free-preview countdown
+  /// from [trialExpiresAt]. Defaults to false so existing call sites
+  /// (and the live source until the follow-up) read "not on a trial".
+  final bool trialMode;
+
+  /// Plans & limits Phase 5b — UTC instant the Pilot free preview ends
+  /// (mirrors `public.operators.trial_expires_at`, Phase 4a). Null when
+  /// the operator is not on a trial, or when the session payload does
+  /// not carry the value yet. The surface renders the days-left line
+  /// only when [trialMode] is true AND this is non-null and in the
+  /// future; otherwise it falls back to an honest empty state.
+  final DateTime? trialExpiresAt;
 }
 
 /// Auth stage the screen-router keys off. The invitee onboarding
@@ -620,6 +652,12 @@ const OperatorWebSession kDemoOperatorWebSession = OperatorWebSession(
   weekStartDay: 'monday',
   rolloverHour: 4,
   primaryLocationTimezone: 'America/Toronto',
+  // Plans & limits Phase 5b — the demo owner is a connected, paying
+  // operator, so the "Your plan" walkthrough lands on a real paid plan
+  // (Premium) with its included features and an upgrade CTA. A Pilot
+  // free-preview owner (trial countdown) is exercised by the widget
+  // test rather than the connected-owner demo, which is not on a trial.
+  subscriptionTier: 'premium',
 );
 
 /// Demo session for the OW-4 inverse: an owner with no pinned
