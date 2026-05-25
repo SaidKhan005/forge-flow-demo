@@ -41,6 +41,7 @@ class PerLocationDataAccuracyScreen extends StatefulWidget {
     this.initialHierarchyScope,
     this.scopeLocationIds,
     this.onBackToBusinessAccounts,
+    this.onOpenPollingSetup,
     this.showPageHeader = true,
     this.showScopeControls = true,
     this.nowUtc,
@@ -57,6 +58,7 @@ class PerLocationDataAccuracyScreen extends StatefulWidget {
   final AdminHierarchyScopeIntent? initialHierarchyScope;
   final Set<String>? scopeLocationIds;
   final VoidCallback? onBackToBusinessAccounts;
+  final VoidCallback? onOpenPollingSetup;
   final bool showPageHeader;
   final bool showScopeControls;
   final DateTime Function()? nowUtc;
@@ -161,9 +163,7 @@ class _PerLocationDataAccuracyScreenState
   Widget build(BuildContext context) {
     final scope = _selectedScope;
     if (scope == null || !scope.isLocationScope) {
-      return const SizedBox(
-        key: Key('admin_data_accuracy_waiting_for_location_scope'),
-      );
+      return const _DataAccuracyLocationRequiredGuide();
     }
     return Container(
       key: const Key('admin_data_accuracy_screen'),
@@ -204,10 +204,23 @@ class _PerLocationDataAccuracyScreenState
             wageAuthorityGateway:
                 widget.wageAuthorityGateway ?? _fallbackWageGateway,
             businessName: data.businessName,
+            onRequestTierChange: _openPollingSetup,
+            pollingTierActionLabel: 'Open Polling Setup',
+            pollingTierActionDescription:
+                'Change this location\'s polling tier and vendor cadence in '
+                'Admin Polling Setup.',
+            pollingTierActionIcon: Icons.open_in_new_outlined,
+            pollingTierActionEnabled: widget.onOpenPollingSetup != null,
+            pollingTierActionAvailableWhenNotApplicable: true,
           );
         },
       ),
     );
+  }
+
+  Future<String?> _openPollingSetup(BuildContext context) async {
+    widget.onOpenPollingSetup?.call();
+    return null;
   }
 
   OperatorWebSession _sessionFor(_AdminDataAccuracyMountData data) {
@@ -221,6 +234,64 @@ class _PerLocationDataAccuracyScreenState
       primaryLocationName: data.locationName,
       roles: const <String>[PermissionKeys.roleOperatorOwner],
       primaryLocationTimezone: data.primaryTimezone,
+    );
+  }
+}
+
+class _DataAccuracyLocationRequiredGuide extends StatelessWidget {
+  const _DataAccuracyLocationRequiredGuide();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_data_accuracy_waiting_for_location_scope'),
+      color: AppColors.backgroundDeep,
+      alignment: Alignment.topCenter,
+      padding: const EdgeInsets.fromLTRB(28, 96, 28, 28),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          key: const Key('admin_data_accuracy_location_required_banner'),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.place_outlined,
+                size: 22,
+                color: AppColors.sunsetDark,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Select a location to edit data accuracy',
+                      style: AppTextStyles.body15Bold(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Data accuracy is set per location because covers, '
+                      'wages, service periods, and data freshness are '
+                      'resolved for one location at a time.',
+                      style: AppTextStyles.body13(color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

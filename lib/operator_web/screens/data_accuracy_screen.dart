@@ -143,6 +143,13 @@ class DataAccuracyScreen extends StatefulWidget {
     this.walkInModeOverride,
     this.onSaveSettings,
     this.onRequestTierChange,
+    this.pollingTierActionLabel = 'Request faster data freshness',
+    this.pollingTierActionDescription =
+        'Request a change when poll-only vendors need fresher data than '
+        'this tier provides.',
+    this.pollingTierActionIcon = Icons.bolt_outlined,
+    this.pollingTierActionEnabled = true,
+    this.pollingTierActionAvailableWhenNotApplicable = false,
     this.tierEmailGateway,
     this.tierEmailIdempotencyKeyFactory,
     this.wageAuthorityGateway,
@@ -192,6 +199,11 @@ class DataAccuracyScreen extends StatefulWidget {
   /// Optional ticket-flow opener. Default opens
   /// [showPollingTierChangeRequestDialog].
   final Future<String?> Function(BuildContext)? onRequestTierChange;
+  final String pollingTierActionLabel;
+  final String pollingTierActionDescription;
+  final IconData pollingTierActionIcon;
+  final bool pollingTierActionEnabled;
+  final bool pollingTierActionAvailableWhenNotApplicable;
 
   /// Wave 2 U-FU-tier-email — gateway for the "Request faster data
   /// freshness" dialog. When the dialog submits, the screen calls
@@ -613,8 +625,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           rows
               .where(
                 (row) =>
-                    row.settingKind == 'polling' &&
-                    row.effectiveUntil == null,
+                    row.settingKind == 'polling' && row.effectiveUntil == null,
               )
               .toList(growable: false)
             ..sort((a, b) => a.vendorSlug.compareTo(b.vendorSlug));
@@ -1397,6 +1408,12 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             bundle: _bundle,
             appliesToConnectedVendors: _dataFreshnessApplies,
             onRequestTierChange: _handleRequestTierChange,
+            actionLabel: widget.pollingTierActionLabel,
+            actionDescription: widget.pollingTierActionDescription,
+            actionIcon: widget.pollingTierActionIcon,
+            actionEnabled: widget.pollingTierActionEnabled,
+            actionAvailableWhenNotApplicable:
+                widget.pollingTierActionAvailableWhenNotApplicable,
           ),
         ],
       ),

@@ -581,6 +581,14 @@ void main() {
         ),
         findsNothing,
       );
+      expect(find.text('Open Polling Setup'), findsOneWidget);
+      expect(find.text('Request faster data freshness'), findsNothing);
+
+      await tapKey(tester, const Key('polling_tier_request_change_button'));
+      expect(
+        find.byKey(const Key('admin_polling_pricing_screen')),
+        findsOneWidget,
+      );
       expect(find.text('Data accuracy needs Business Timing'), findsNothing);
       expect(tester.takeException(), isNull);
     },
