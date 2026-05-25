@@ -52,7 +52,7 @@ ButtonStyle _adminSegmentedButtonStyle() {
   );
 }
 
-const double _kVendorApplicabilityMaxWidth = 960;
+const double _kVendorApplicabilityMaxWidth = 1180;
 const double _kVendorApplicabilityCenterBreakpoint = 1280;
 const double _kAdminShellSideNavWidth = 304;
 const double _kAdminWorkspaceScopePaneWidth = 361;
@@ -279,6 +279,7 @@ class _VendorApplicabilityAdminScreenState
         operatorId: _selectedScopeOperatorId,
         locationId: _selectedScopeLocationId,
         scopeLabel: _selectedScopeLabel,
+        scopeSummaryLabel: 'New rule scope',
       ),
     );
     if (draft == null) return;
@@ -286,13 +287,16 @@ class _VendorApplicabilityAdminScreenState
   }
 
   Future<void> _openEditDialog(VendorApplicabilityAdminRow row) async {
+    final inherited = _rowIsInheritedIntoSelectedScope(row);
     final draft = await showDialog<_VendorApplicabilityDraft>(
       context: context,
       builder: (_) => _VendorApplicabilityEditDialog(
         settingKind: row.settingKind,
-        operatorId: row.operatorId,
-        locationId: row.locationId,
-        scopeLabel: _appliesToLabel(row),
+        operatorId: inherited ? _selectedScopeOperatorId : row.operatorId,
+        locationId: inherited ? _selectedScopeLocationId : row.locationId,
+        scopeLabel: inherited ? _selectedScopeLabel : _appliesToLabel(row),
+        scopeSummaryLabel: inherited ? 'New override scope' : 'Rule scope',
+        inheritedOverride: inherited,
         initial: row,
       ),
     );
@@ -380,6 +384,32 @@ class _VendorApplicabilityAdminScreenState
   }
 
   String _vendorLabel(String vendorSlug) => vendorDisplayName(vendorSlug);
+
+  String _scopeSubtitleForRow(VendorApplicabilityAdminRow row) {
+    final scope = widget.hierarchyScope;
+    if (scope == null) return 'Scope';
+    if (row.operatorId == null) return 'Inherited';
+    if (row.locationId == null) {
+      return scope.isBusinessScope ? 'Selected business' : 'Inherited';
+    }
+    if (scope.isLocationScope && row.locationId == scope.locationId) {
+      return 'Selected location';
+    }
+    if (scope.isOrgUnitScope &&
+        widget.scopeLocationIds.contains(row.locationId)) {
+      return 'Location in selected scope';
+    }
+    return 'Scope';
+  }
+
+  bool _rowIsInheritedIntoSelectedScope(VendorApplicabilityAdminRow row) {
+    final scope = widget.hierarchyScope;
+    if (scope == null || scope.isOrgUnitScope) return false;
+    if (row.operatorId == null) return true;
+    if (row.operatorId != scope.operatorId) return false;
+    if (scope.isLocationScope) return row.locationId != scope.locationId;
+    return row.locationId == null ? false : false;
+  }
 
   bool get _canWriteSelectedScope {
     final scope = widget.hierarchyScope;
@@ -517,6 +547,7 @@ class _VendorApplicabilityAdminScreenState
                         const SizedBox(height: 12),
                         _Toolbar(
                           guide: spec.guide,
+                          scopeLabel: _selectedScopeLabel,
                           allowedCount: allowedCount,
                           blockedCount: blockedCount,
                           saving: _saving,
@@ -596,6 +627,7 @@ class _VendorApplicabilityAdminScreenState
               _RuleCard(
                 row: row,
                 appliesTo: _appliesToLabel(row),
+                appliesToSubtitle: _scopeSubtitleForRow(row),
                 vendorLabel: _vendorLabel(row.vendorSlug),
                 editingEnabled: widget.editingEnabled,
                 saving: _saving,
@@ -633,6 +665,7 @@ class _SettingKindSpec {
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.guide,
+    required this.scopeLabel,
     required this.allowedCount,
     required this.blockedCount,
     required this.saving,
@@ -643,6 +676,7 @@ class _Toolbar extends StatelessWidget {
   });
 
   final String guide;
+  final String scopeLabel;
   final int allowedCount;
   final int blockedCount;
   final bool saving;
@@ -685,7 +719,7 @@ class _Toolbar extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '$allowedCount allowed, $blockedCount blocked',
+              '$allowedCount allowed, $blockedCount blocked  ·  Viewing: $scopeLabel',
               style: AppTextStyles.mono11(color: AppColors.textMuted),
             ),
           ],
@@ -754,6 +788,7 @@ class _RuleCard extends StatelessWidget {
   const _RuleCard({
     required this.row,
     required this.appliesTo,
+    required this.appliesToSubtitle,
     required this.vendorLabel,
     required this.editingEnabled,
     required this.saving,
@@ -763,6 +798,7 @@ class _RuleCard extends StatelessWidget {
 
   final VendorApplicabilityAdminRow row;
   final String appliesTo;
+  final String appliesToSubtitle;
   final String vendorLabel;
   final bool editingEnabled;
   final bool saving;
@@ -787,6 +823,7 @@ class _RuleCard extends StatelessWidget {
             child: _RuleTextBlock(
               title: vendorLabel,
               subtitle: vendorCategoryLabel(row.vendorSlug),
+              titleMaxLines: 2,
             ),
           ),
           const SizedBox(width: 16),
@@ -794,7 +831,11 @@ class _RuleCard extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
             flex: 4,
-            child: _RuleTextBlock(title: appliesTo, subtitle: 'Scope'),
+            child: _RuleTextBlock(
+              title: appliesTo,
+              subtitle: appliesToSubtitle,
+              titleMaxLines: 2,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -828,10 +869,15 @@ class _RuleCard extends StatelessWidget {
 }
 
 class _RuleTextBlock extends StatelessWidget {
-  const _RuleTextBlock({required this.title, required this.subtitle});
+  const _RuleTextBlock({
+    required this.title,
+    required this.subtitle,
+    this.titleMaxLines = 1,
+  });
 
   final String title;
   final String subtitle;
+  final int titleMaxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -841,7 +887,7 @@ class _RuleTextBlock extends StatelessWidget {
       children: [
         Text(
           title,
-          maxLines: 1,
+          maxLines: titleMaxLines,
           overflow: TextOverflow.ellipsis,
           style: AppTextStyles.body13(color: AppColors.textPrimary),
         ),
@@ -1080,6 +1126,7 @@ class _VendorApplicabilityEditDialog extends StatefulWidget {
     required this.operatorId,
     required this.locationId,
     required this.scopeLabel,
+    required this.scopeSummaryLabel,
     this.initial,
   });
 
@@ -1087,6 +1134,7 @@ class _VendorApplicabilityEditDialog extends StatefulWidget {
   final String? operatorId;
   final String? locationId;
   final String scopeLabel;
+  final String scopeSummaryLabel;
   final VendorApplicabilityAdminRow? initial;
 
   @override
@@ -1118,6 +1166,7 @@ class _VendorApplicabilityEditDialogState
   // Progressive disclosure.
   bool _detailsExpanded = false;
   bool _advancedExpanded = false;
+  bool _specialHelpExpanded = false;
   late final TextEditingController _settingKey;
   late final TextEditingController _metadataJson;
   bool _userEditedJson = false;
@@ -1269,7 +1318,7 @@ class _VendorApplicabilityEditDialogState
       return;
     }
     if (reason.isEmpty) {
-      setState(() => _error = 'Tell us why you are making this change.');
+      setState(() => _error = 'Add a reason before saving.');
       return;
     }
 
@@ -1304,14 +1353,11 @@ class _VendorApplicabilityEditDialogState
 
   @override
   Widget build(BuildContext context) {
-    final dialogBodyHeight = (MediaQuery.sizeOf(context).height - 220)
-        .clamp(520.0, 780.0)
-        .toDouble();
     return OperatorWebDialog(
       key: const Key('admin_vendor_applicability_edit_dialog'),
       title: _isEditing ? 'Edit rule' : 'Add rule',
       icon: Icons.rule_folder_outlined,
-      maxWidth: 920,
+      maxWidth: 1020,
       actions: [
         AdminActionButton(
           key: const Key('admin_vendor_applicability_cancel'),
@@ -1327,47 +1373,42 @@ class _VendorApplicabilityEditDialogState
         ),
       ],
       child: SizedBox(
-        width: 860,
-        height: dialogBodyHeight,
+        width: 960,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_error != null) ...[
-                      OperatorWebBanner(
-                        key: const Key(
-                          'admin_vendor_applicability_dialog_error',
-                        ),
-                        icon: Icons.warning_amber_rounded,
-                        message: _error!,
-                        tone: OperatorWebBannerTone.error,
-                      ),
-                      const SizedBox(height: 14),
-                    ],
-                    _DialogGroup(title: 'Rule', child: _buildRuleBasics()),
-                    const SizedBox(height: 8),
-                    _buildRuleFolds(),
-                  ],
-                ),
+            if (_error != null) ...[
+              OperatorWebBanner(
+                key: const Key('admin_vendor_applicability_dialog_error'),
+                icon: Icons.warning_amber_rounded,
+                message: _error!,
+                tone: OperatorWebBannerTone.error,
               ),
-            ),
+              const SizedBox(height: 14),
+            ],
+            _DialogGroup(title: 'Rule', child: _buildRuleBasics()),
+            const SizedBox(height: 12),
+            _CenteredDialogSection(child: _buildRuleFolds()),
             const SizedBox(height: 16),
-            _FieldLabel(
-              label: 'Why are you making this change?',
-              example: 'Saved with the audit log. Example: Ticket VA-200.',
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              key: const Key('admin_vendor_applicability_reason'),
-              controller: _reason,
-              minLines: 1,
-              maxLines: 3,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
+            _CenteredDialogSection(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _FieldLabel(label: 'Reason'),
+                  const SizedBox(height: 6),
+                  TextField(
+                    key: const Key('admin_vendor_applicability_reason'),
+                    controller: _reason,
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: 'Ticket VA-200',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1384,7 +1425,10 @@ class _VendorApplicabilityEditDialogState
             children: [
               child,
               const SizedBox(height: 14),
-              _ScopeSummaryField(label: widget.scopeLabel),
+              _ScopeSummaryField(
+                label: widget.scopeLabel,
+                subtitle: widget.scopeSummaryLabel,
+              ),
             ],
           );
         }
@@ -1519,17 +1563,21 @@ class _VendorApplicabilityEditDialogState
       foldKey: const Key('admin_vendor_applicability_details_toggle'),
       title: 'Special handling',
       subtitle: _specialHandlingSummary(),
+      trailing: _InfoToggleButton(
+        selected: _specialHelpExpanded,
+        onPressed: () =>
+            setState(() => _specialHelpExpanded = !_specialHelpExpanded),
+      ),
       expanded: _detailsExpanded,
       onToggle: () => setState(() => _detailsExpanded = !_detailsExpanded),
       child: Column(
         key: const Key('admin_vendor_applicability_optional_block'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Leave these blank unless this vendor needs special handling.',
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 12),
+          if (_specialHelpExpanded) ...[
+            _SpecialHandlingHelp(settingKind: widget.settingKind),
+            const SizedBox(height: 12),
+          ],
           body,
         ],
       ),
@@ -1542,17 +1590,15 @@ class _VendorApplicabilityEditDialogState
       metadata: _buildMetadata(),
     );
     if (chips.isEmpty) return 'None';
-    return chips.join(', ');
+    final count = chips.length;
+    return '$count ${count == 1 ? 'setting' : 'settings'} applied';
   }
 
   Widget _buildWageFields() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FieldLabel(
-          label: 'How should we work out each person\'s pay rate?',
-          example: 'Leave blank to use the operator\'s usual wage setup.',
-        ),
+        const _FieldLabel(label: 'Pay rate'),
         const SizedBox(height: 6),
         DropdownButtonFormField<String?>(
           key: const Key('admin_vendor_applicability_wage_authority'),
@@ -1598,10 +1644,7 @@ class _VendorApplicabilityEditDialogState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FieldLabel(
-          label: 'Which guests count?',
-          example: 'Leave blank to count covers the way the vendor reports.',
-        ),
+        const _FieldLabel(label: 'Guest count'),
         const SizedBox(height: 6),
         DropdownButtonFormField<String?>(
           key: const Key('admin_vendor_applicability_cover_filter'),
@@ -1630,12 +1673,7 @@ class _VendorApplicabilityEditDialogState
           }),
         ),
         const SizedBox(height: 12),
-        _FieldLabel(
-          label: 'Which parts of the day?',
-          example:
-              'Leave empty to apply to every service period. Add the period '
-              'keys this rule should cover.',
-        ),
+        const _FieldLabel(label: 'Service periods'),
         const SizedBox(height: 6),
         if (_servicePeriods.isNotEmpty) ...[
           Wrap(
@@ -1722,12 +1760,7 @@ class _VendorApplicabilityEditDialogState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FieldLabel(
-          label: 'Check frequency',
-          example:
-              'Standard and Premium use the built-in cadences. Choose Custom '
-              'to set your own.',
-        ),
+        const _FieldLabel(label: 'Check frequency'),
         const SizedBox(height: 6),
         SegmentedButton<String>(
           key: const Key('admin_vendor_applicability_tier_key'),
@@ -1745,10 +1778,7 @@ class _VendorApplicabilityEditDialogState
         ),
         if (_tierKey == 'custom') ...[
           const SizedBox(height: 12),
-          _FieldLabel(
-            label: 'Check every __ minutes',
-            example: 'Between 1 minute and 1440 minutes (24 hours).',
-          ),
+          const _FieldLabel(label: 'Minutes between checks'),
           const SizedBox(height: 6),
           TextField(
             key: const Key('admin_vendor_applicability_polling_minutes'),
@@ -1850,6 +1880,23 @@ class _DialogGroup extends StatelessWidget {
   }
 }
 
+class _CenteredDialogSection extends StatelessWidget {
+  const _CenteredDialogSection({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.center,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: child,
+      ),
+    );
+  }
+}
+
 class _FieldLabel extends StatelessWidget {
   const _FieldLabel({required this.label, this.example});
 
@@ -1875,9 +1922,10 @@ class _FieldLabel extends StatelessWidget {
 }
 
 class _ScopeSummaryField extends StatelessWidget {
-  const _ScopeSummaryField({required this.label});
+  const _ScopeSummaryField({required this.label, required this.subtitle});
 
   final String label;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1898,7 +1946,7 @@ class _ScopeSummaryField extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: _RuleTextBlock(title: label, subtitle: 'Scope'),
+            child: _RuleTextBlock(title: label, subtitle: subtitle),
           ),
         ],
       ),
@@ -1949,6 +1997,7 @@ class _AdvancedFold extends StatelessWidget {
     required this.onToggle,
     required this.child,
     this.subtitle,
+    this.trailing,
   });
 
   final Key foldKey;
@@ -1957,6 +2006,7 @@ class _AdvancedFold extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
   final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -2003,6 +2053,10 @@ class _AdvancedFold extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  trailing!,
+                ],
               ],
             ),
           ),
@@ -2012,6 +2066,124 @@ class _AdvancedFold extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(28, 0, 0, 16),
             child: child,
           ),
+      ],
+    );
+  }
+}
+
+class _InfoToggleButton extends StatelessWidget {
+  const _InfoToggleButton({required this.selected, required this.onPressed});
+
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      key: const Key('admin_vendor_applicability_special_info'),
+      tooltip: selected ? 'Hide special handling notes' : 'Explain options',
+      visualDensity: VisualDensity.compact,
+      icon: Icon(
+        selected ? Icons.info : Icons.info_outline,
+        size: 18,
+        color: AppColors.sunsetDark,
+      ),
+      onPressed: onPressed,
+    );
+  }
+}
+
+class _SpecialHandlingHelp extends StatelessWidget {
+  const _SpecialHandlingHelp({required this.settingKind});
+
+  final String settingKind;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = _helpLines();
+    return Container(
+      key: const Key('admin_vendor_applicability_special_help'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Use these only when allow/block is not enough.',
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < lines.length; i++) ...[
+            _HelpLine(label: lines[i].$1, text: lines[i].$2),
+            if (i != lines.length - 1) const SizedBox(height: 6),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<(String, String)> _helpLines() {
+    switch (settingKind) {
+      case VendorApplicabilitySettingKind.wage:
+        return const <(String, String)>[
+          ('Not set', 'Use the operator\'s normal wage setup.'),
+          ('By role', 'Match vendor job codes to F&F roles.'),
+          ('From vendor', 'Use the pay rate sent by the vendor.'),
+          ('Manual mapping', 'Use a custom mapping managed in advanced JSON.'),
+          ('Role required', 'Ignore shifts that do not have a role.'),
+        ];
+      case VendorApplicabilitySettingKind.covers:
+        return const <(String, String)>[
+          ('Not set', 'Use covers the way the vendor reports them.'),
+          ('Dine-in only', 'Only count in-restaurant guests.'),
+          ('All guests', 'Count every guest the vendor sends.'),
+          ('Cancelled', 'Leave cancelled guests out.'),
+          ('Periods', 'Leave empty for every service period.'),
+        ];
+      case VendorApplicabilitySettingKind.polling:
+        return const <(String, String)>[
+          ('Standard', 'Use the default data freshness cadence.'),
+          ('Premium', 'Use the faster built-in cadence.'),
+          ('Custom', 'Set the minutes between checks manually.'),
+        ];
+      default:
+        return const <(String, String)>[];
+    }
+  }
+}
+
+class _HelpLine extends StatelessWidget {
+  const _HelpLine({required this.label, required this.text});
+
+  final String label;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 112,
+          child: Text(
+            label,
+            style: AppTextStyles.mono11(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          ),
+        ),
       ],
     );
   }
@@ -2040,7 +2212,7 @@ class _ReasonDialogState extends State<_ReasonDialog> {
   void _submit() {
     final reason = _controller.text.trim();
     if (reason.isEmpty) {
-      setState(() => _error = 'Tell us why you are making this change.');
+      setState(() => _error = 'Add a reason before continuing.');
       return;
     }
     Navigator.of(context).pop(reason);
@@ -2076,7 +2248,7 @@ class _ReasonDialogState extends State<_ReasonDialog> {
             minLines: 1,
             maxLines: 3,
             decoration: const InputDecoration(
-              labelText: 'Why are you making this change?',
+              labelText: 'Reason',
               border: OutlineInputBorder(),
             ),
           ),
