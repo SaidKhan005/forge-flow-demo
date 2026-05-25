@@ -148,6 +148,11 @@ approval per CLAUDE.md (auth/RLS/schema/proxy-touching).
   control panel (table + admin Features matrix) is the durable foundation and is READY:
   when any of these features ships, gating plugs straight in. Do NOT build speculative
   gating that hides nothing; revisit 5d when a gateable feature is actually built.
+  - **UX note (operator directive 2026-05-25):** when 5d is built, its feature-gating /
+    Features UX MUST use the unified premium switch — the shared `ConsoleSwitchRow` /
+    `ConsoleChannelToggle` (`lib/widgets/console/console_switch_row.dart`) + the shared
+    `SwitchThemeData` in `lib/theme/app_theme.dart` — so every toggle stays consistent
+    and premium across both consoles. No bespoke switches.
 
 **Decision feeding 5a:** confirm the exact "what's included per plan" matrix (a draft
 exists in the `kPricingTierTemplates` plan summaries).
