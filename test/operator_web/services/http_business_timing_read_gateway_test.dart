@@ -146,8 +146,8 @@ void main() {
     });
 
     test(
-        'selectProfileForLocation returns the location candidate when '
-        'present, else the operator default', () async {
+        'selectProfileForLocation returns location when present, else deepest '
+        'inherited ancestor', () async {
       live.result = _resolution(candidates: <Map<String, Object?>>[
         _candidate(
           profileId: 'op-default',
@@ -172,6 +172,28 @@ void main() {
       expect(
         gateway.selectProfileForLocation('loc-other')?.profileId,
         equals('op-default'),
+      );
+
+      live.result = _resolution(candidates: <Map<String, Object?>>[
+        _candidate(
+          profileId: 'op-default',
+          scopeType: 'operator',
+          scopeId: 'op-1',
+          scopeLabel: 'Acme Eats',
+          rank: 0,
+        ),
+        _candidate(
+          profileId: 'ou-east',
+          scopeType: 'org_unit',
+          scopeId: 'ou-1',
+          scopeLabel: 'East Region',
+          rank: 1,
+        ),
+      ]);
+      await gateway.loadTiming(operatorId: 'op-1', locationId: 'loc-1');
+      expect(
+        gateway.selectProfileForLocation('loc-1')?.profileId,
+        equals('ou-east'),
       );
     });
 

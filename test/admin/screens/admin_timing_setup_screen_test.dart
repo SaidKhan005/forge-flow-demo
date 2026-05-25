@@ -33,6 +33,7 @@ import '../../_test_helpers/widget_pump_helpers.dart';
 void main() {
   const operatorId = '00000000-0000-4000-8000-000000000001';
   const orgUnitId = '00000000-0000-4000-8000-0000000000aa';
+  const locationId = '00000000-0000-4000-8000-0000000000bb';
 
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -259,6 +260,47 @@ void main() {
         final create = gateway.capturedCreates.single;
         expect(create.scopeKind, 'org_unit');
         expect(create.scopeId, orgUnitId);
+      },
+    );
+
+    testWidgets(
+      'location scope CREATEs with scopeKind location + scopeId = locationId',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = InMemoryAdminBusinessTimingProfilesGateway();
+        await tester.pumpWidget(
+          wrap(
+            buildScreen(
+              profilesGateway: gateway,
+              scope: const AdminHierarchyScopeIntent.location(
+                operatorId: operatorId,
+                orgUnitId: orgUnitId,
+                locationId: locationId,
+                operatorName: 'Demo Diner Co.',
+                orgUnitName: 'North Region',
+                locationName: 'Harbourfront',
+              ),
+            ),
+          ),
+        );
+        await pumpEventually(tester);
+
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_timing_editor_save')),
+        );
+        await tester.tap(find.byKey(const Key('admin_timing_editor_save')));
+        await pumpEventually(tester);
+        await tester.enterText(
+          find.byKey(const Key('admin_timing_reason_field')),
+          'location timing',
+        );
+        await tester.tap(find.byKey(const Key('admin_timing_reason_submit')));
+        await pumpEventually(tester);
+
+        expect(gateway.capturedCreates, hasLength(1));
+        final create = gateway.capturedCreates.single;
+        expect(create.scopeKind, 'location');
+        expect(create.scopeId, locationId);
       },
     );
   });

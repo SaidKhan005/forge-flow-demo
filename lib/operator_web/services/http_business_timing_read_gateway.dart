@@ -68,9 +68,9 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
       ];
 
   /// Picks the location-scoped candidate (when present) for
-  /// [locationId]; otherwise falls back to the operator default; else
-  /// the deepest candidate. Returns `null` when no candidate was
-  /// loaded so the editor can still mount in create mode.
+  /// [locationId]; otherwise falls back to the deepest inherited
+  /// ancestor candidate. Returns `null` when no candidate was loaded
+  /// so the editor can still mount in create mode.
   ///
   /// G45 / Gap 28: the returned [BusinessTimingProfileWriteResult]
   /// carries the FULL service-period fields (`applicableDays` /
@@ -83,11 +83,6 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
     if (_lastCandidates.isEmpty) return null;
     for (final c in _lastCandidates) {
       if (c.scopeType == 'location' && c.scopeId == locationId) {
-        return _candidateToWriteResult(c);
-      }
-    }
-    for (final c in _lastCandidates) {
-      if (c.scopeType == 'operator') {
         return _candidateToWriteResult(c);
       }
     }
@@ -279,6 +274,7 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
           startsAt: period.startLocalTime,
           endsAt: period.endLocalTime,
           sourceLabel: provenance.sourceLabel,
+          inherited: provenance.inheritedFromAncestor,
           rollsPastMidnight: period.rollsPastMidnight,
           // G45 / Gap 28: surface day-restricted periods instead of
           // implying every period runs all week.

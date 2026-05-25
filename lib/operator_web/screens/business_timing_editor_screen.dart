@@ -184,11 +184,13 @@ class _BusinessTimingEditorScreenState
       _periods.setBusinessDayStartLocal(initialDayStart);
     });
     _effectiveAt = widget.initialEffectiveAt ?? DateTime.now();
-    if (existing != null) {
-      _scopeKind = existing.scopeKind;
-      _weekStartDay = existing.weekStartDay;
-    } else if (_isSupportedScopeKind(widget.initialScopeKind)) {
+    if (_isSupportedScopeKind(widget.initialScopeKind)) {
       _scopeKind = widget.initialScopeKind!;
+    } else if (existing != null) {
+      _scopeKind = existing.scopeKind;
+    }
+    if (existing != null) {
+      _weekStartDay = existing.weekStartDay;
     } else if (widget.session.weekStartDay != null) {
       _weekStartDay = widget.session.weekStartDay!;
     }
@@ -289,7 +291,11 @@ class _BusinessTimingEditorScreenState
     final existing = widget.existingProfile;
     if (existing == null || _submitting) return;
     setState(() {
-      _scopeKind = _normalizedScopeKind(existing.scopeKind);
+      _scopeKind = _normalizedScopeKind(
+        _isSupportedScopeKind(widget.initialScopeKind)
+            ? widget.initialScopeKind!
+            : existing.scopeKind,
+      );
       _effectiveAt =
           DateTime.tryParse(existing.effectiveAtBusinessDate) ?? _effectiveAt;
       _ianaTimezone.text = existing.ianaTimezone;
@@ -437,6 +443,9 @@ class _BusinessTimingEditorScreenState
         ? 'Save service periods'
         : 'Save service periods';
   }
+
+  String get _resetButtonText =>
+      _existingProfileForSelectedScope == null ? 'Reset to inherited' : 'Discard changes';
 
   Future<void> _pickEffectiveDate() async {
     final selected = await showDatePicker(
@@ -612,7 +621,7 @@ class _BusinessTimingEditorScreenState
                     key: const Key('operator_web_business_timing_editor_reset'),
                     onPressed: _submitting ? null : _resetToExistingProfile,
                     icon: const Icon(Icons.undo_outlined, size: 16),
-                    label: const Text('Reset to inherited'),
+                    label: Text(_resetButtonText),
                   ),
                 ),
             ],
