@@ -412,7 +412,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.schedule_outlined,
     section: AdminRouteSection.operations,
     subtitle:
-        'Review effective timezone, business day, and service periods. Normal timing edits stay in Operator Web; super admin repair routes are server-side.',
+        'Edit timezone, business day, week start, and service periods for the selected scope.',
     builder: _buildTimingSetup,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
