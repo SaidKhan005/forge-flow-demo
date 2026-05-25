@@ -496,10 +496,10 @@ void main() {
   });
 
   testWidgets(
-      'freshness error surfaces a "sign in again" message, fails closed',
-      (tester) async {
+      'freshness error surfaces an actionable "Sign in again" control that '
+      'triggers re-authentication, and still fails closed', (tester) async {
     wideViewport(tester);
-    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    final source = _SpyAdminAuthSource();
     addTearDown(source.dispose);
     final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
     final gateway = _ThrowingRemovalGateway(
@@ -537,9 +537,103 @@ void main() {
       find.textContaining('Please sign in again before changing two-factor'),
       findsOneWidget,
     );
+    // The remedy is now an actionable control, not just text: a plain red
+    // error toast is NOT used for the freshness case.
+    final signInAgain = find.byKey(
+      const Key('admin_my_account_two_factor_sign_in_again'),
+    );
+    expect(signInAgain, findsOneWidget);
+    expect(find.text('Sign in again'), findsOneWidget);
+
+    // Fails closed: no pending removal, factor stays enrolled, and the
+    // re-auth path has NOT fired until the operator taps the control.
+    expect((await gateway.listFactors()).pendingRemoval, isNull);
+    expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
+    expect(source.signOutCount, 0);
+
+    // Tapping it triggers the admin console's re-authentication path
+    // (a fresh sign-in via AdminAuthSource.signOut()).
+    await tester.ensureVisible(signInAgain);
+    await tester.tap(signInAgain);
+    await tester.pumpAndSettle();
+    expect(source.signOutCount, 1);
+  });
+
+  testWidgets(
+      'a non-freshness gateway error keeps the plain red toast (no '
+      '"Sign in again" control)', (tester) async {
+    wideViewport(tester);
+    final source = _SpyAdminAuthSource();
+    addTearDown(source.dispose);
+    final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
+    // Default _ThrowingRemovalGateway error is a generic 503 (not
+    // freshness).
+    final gateway = _ThrowingRemovalGateway(now: () => now);
+
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          session: session(),
+          authSource: source,
+          securityGateway: gateway,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final turnOff =
+        find.byKey(const Key('admin_my_account_mfa_turn_off_button'));
+    await tester.ensureVisible(turnOff);
+    await tester.tap(turnOff);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_mfa_turn_off_confirm')));
+    await tester.pumpAndSettle();
+
+    // The generic error renders in the toast; the actionable freshness
+    // control is absent and the re-auth path never fires.
+    expect(
+      find.byKey(const Key('admin_my_account_two_factor_toast')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('two-factor service is unavailable'),
+        findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_my_account_two_factor_sign_in_again')),
+      findsNothing,
+    );
+    expect(source.signOutCount, 0);
+    // Still fails closed.
     expect((await gateway.listFactors()).pendingRemoval, isNull);
     expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
   });
+}
+
+/// Spy auth source that counts [signOut] calls so the freshness "Sign in
+/// again" control can be asserted to route through the admin console's
+/// re-authentication path. Extends [DemoAdminAuthSource] so the real
+/// state stream (emitting [AdminAuthUnauthenticated] on sign-out) is
+/// preserved; only the call is recorded.
+class _SpyAdminAuthSource extends DemoAdminAuthSource {
+  _SpyAdminAuthSource()
+      : super(
+          initial: const AdminAuthAuthenticated(
+            AdminAuthSession(
+              uid: 'demo-super-admin',
+              email: 'super.admin@forgeflow.test',
+              displayName: 'Demo Super Admin',
+              roles: <String>['super_admin'],
+            ),
+          ),
+        );
+
+  int signOutCount = 0;
+
+  @override
+  Future<void> signOut() {
+    signOutCount += 1;
+    return super.signOut();
+  }
 }
 
 /// Enrolled gateway whose [requestFactorRemoval] always throws, so the
