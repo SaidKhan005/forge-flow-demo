@@ -44,6 +44,7 @@ const List<String> kUxCopyRoots = <String>[
   'lib/operator_web/auth',
   'lib/admin/screens',
   'lib/admin/widgets',
+  'lib/admin/admin_human_labels.dart',
   'lib/admin/admin_routes.dart',
   'lib/domain/constants/app_defaults.dart',
   'lib/services/email',
