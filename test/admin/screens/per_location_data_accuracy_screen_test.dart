@@ -1,34 +1,18 @@
-// Admin-web UX parity — PerLocationDataAccuracyScreen widget tests.
+// Admin Data Accuracy parity mount tests.
 //
-// Coverage focuses on the contract that makes admin's Data accuracy
-// screen a faithful, scope-driven replica of the operator-web
-// data-SOURCE controls:
-//   (a) a LOCATION scope renders the web-style covers/wage source
-//       controls (reused operator-web cards) as the PRIMARY surface and
-//       still renders the SECONDARY admin multi-location table + audit
-//       history panel below.
-//   (b) changing a source control for super_admin opens the
-//       admin_reason dialog; confirming a reason drives an
-//       overrideDataAccuracy write (captured as an audit event carrying
-//       the reason + the per-period source diff).
-//   (c) a BUSINESS / ORG-UNIT scope shows the friendly "pick a location"
-//       surface for the primary section (data accuracy is per-location),
-//       while the secondary table still renders.
-//   (d) ff_support (editingEnabled == false) is read-only: no write
-//       affordance fires, the gateway override is never called, the
-//       read-only banner shows, and the table/audit still render.
-//   (e) no operator-facing literal contains an em dash.
-//
-// Mirrors the style of admin_timing_setup_screen_test.dart (in-memory
-// gateway, wide viewport, pumpAndSettle settling). Uses the production
-// InMemoryDataAccuracyAdminGateway as the fake (it buffers audit events
-// so the override assertion needs no bespoke mock).
+// The admin screen now mounts the real Operator Web DataAccuracyScreen for a
+// selected location. These tests keep the old admin drift from coming back:
+// no secondary table, no audit-history panel, no admin reason dialog, and no
+// in-page pick-location surface.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/per_location_data_accuracy_screen.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_gateway.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_projection.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/vendor_applicability_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -77,32 +61,87 @@ void main() {
   InMemoryDataAccuracyAdminGateway buildGateway() =>
       InMemoryDataAccuracyAdminGateway(operatorLocations: refs);
 
+  InMemoryAdminBusinessTimingResolutionGateway timingGateway({
+    bool includeLocation = true,
+  }) {
+    final seed = <String, AdminBusinessTimingResolution>{};
+    if (includeLocation) {
+      seed[InMemoryAdminBusinessTimingResolutionGateway.keyFor(
+        'op-1',
+        'loc-1a',
+      )] = const AdminBusinessTimingResolution(
+        operatorId: 'op-1',
+        locationId: 'loc-1a',
+        businessDate: '2026-05-24',
+        ianaTimezone: 'America/Toronto',
+        candidates: <AdminResolutionCandidate>[
+          AdminResolutionCandidate(
+            profileId: 'timing-op-1',
+            scopeType: 'operator_default',
+            scopeId: 'op-1',
+            scopeLabel: 'Demo Diner Co.',
+            scopeDepthRank: 0,
+            ianaTimezone: 'America/Toronto',
+            effectiveAtBusinessDate: '2026-01-01',
+            weekStartDay: 'monday',
+            businessDayStartLocal: '04:00',
+            servicePeriods: <AdminResolutionServicePeriod>[
+              AdminResolutionServicePeriod(
+                key: 'lunch',
+                label: 'Lunch',
+                shortLabel: 'Lunch',
+                startLocal: '11:00',
+                endLocal: '15:00',
+                rollsPastMidnight: false,
+                sortOrder: 0,
+                applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+              ),
+              AdminResolutionServicePeriod(
+                key: 'dinner',
+                label: 'Dinner',
+                shortLabel: 'Dinner',
+                startLocal: '17:00',
+                endLocal: '22:00',
+                rollsPastMidnight: false,
+                sortOrder: 1,
+                applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+    return InMemoryAdminBusinessTimingResolutionGateway(seed: seed);
+  }
+
   PerLocationDataAccuracyScreen buildScreen({
     required InMemoryDataAccuracyAdminGateway gateway,
     required AdminHierarchyScopeIntent scope,
+    AdminBusinessTimingResolutionGateway? timing,
     bool editingEnabled = true,
   }) {
     return PerLocationDataAccuracyScreen(
       gateway: gateway,
       actorUserId: 'demo-super-admin',
+      timingResolutionGateway: timing ?? timingGateway(),
+      vendorApplicabilityGateway: const _EmptyVendorApplicabilityAdminGateway(),
       editingEnabled: editingEnabled,
       initialHierarchyScope: scope,
-      // Mount-config parity with the admin route builder.
+      nowUtc: () => DateTime.utc(2026, 5, 24, 15),
       showPageHeader: false,
       showScopeControls: false,
     );
   }
 
-  List<DataAccuracyAdminAuditEvent> overrideEvents(
+  List<DataAccuracyAdminAuditEvent> settingsSaveEvents(
     InMemoryDataAccuracyAdminGateway gateway,
   ) => gateway.capturedAuditEvents
-      .where((e) => e.eventType == 'admin.data_accuracy.override')
+      .where((e) => e.eventType == 'admin.data_accuracy.settings.save')
       .toList(growable: false);
 
-  group('location scope — web-style primary surface + secondary extras', () {
+  group('operator screen mount', () {
     testWidgets(
-      'renders the reused web covers + wage source cards and the secondary '
-      'table + audit panel',
+      'location scope renders the real operator Data Accuracy surface only',
       (tester) async {
         wideViewport(tester);
         final gateway = buildGateway();
@@ -111,18 +150,15 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Own header (replaces the workspace header, like the timing screen).
         expect(
           find.byKey(const Key('admin_data_accuracy_screen')),
           findsOneWidget,
         );
-        expect(find.text('Data accuracy'), findsOneWidget);
-
-        // PRIMARY web-style source controls (reused operator-web cards).
         expect(
-          find.byKey(const Key('admin_data_accuracy_primary_section')),
+          find.byKey(const Key('operator_web_data_accuracy_screen')),
           findsOneWidget,
         );
+        expect(find.text('Data accuracy'), findsOneWidget);
         expect(
           find.byKey(const Key('data_accuracy_covers_source_card')),
           findsOneWidget,
@@ -132,235 +168,29 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.byKey(const Key('data_accuracy_walk_in_handling_card')),
-          findsOneWidget,
-        );
-        // One covers picker row per configured (demo) service period.
-        expect(
-          find.byKey(const Key('covers_source_daypart_lunch')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('covers_source_daypart_dinner')),
-          findsOneWidget,
-        );
-
-        // Pick-a-location is NOT shown at a location scope.
-        expect(
-          find.byKey(const Key('admin_data_accuracy_pick_location')),
-          findsNothing,
-        );
-
-        // SECONDARY admin extras still render below.
-        expect(
-          find.byKey(const Key('admin_data_accuracy_extras_heading')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_data_accuracy_table')),
-          findsOneWidget,
-        );
-        // The audit-history panel renders (default title).
-        expect(find.text('Audit history'), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'changing the covers source opens the reason dialog; confirming a '
-      'reason drives an overrideDataAccuracy write with the per-period diff',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildGateway();
-        await tester.pumpWidget(
-          wrap(buildScreen(gateway: gateway, scope: locationScope)),
-        );
-        await tester.pumpAndSettle();
-
-        expect(overrideEvents(gateway), isEmpty);
-
-        // Flip lunch covers source from the vendor default to forecast.
-        final forecastChip = find.byKey(
-          const Key('covers_source_chip_lunch_forecast'),
-        );
-        await tester.ensureVisible(forecastChip);
-        await tester.tap(forecastChip);
-        await tester.pumpAndSettle();
-
-        // Reason dialog mounts; nothing written until a reason is confirmed.
-        expect(
-          find.byKey(const Key('admin_data_accuracy_reason_dialog')),
-          findsOneWidget,
-        );
-        expect(overrideEvents(gateway), isEmpty);
-
-        await tester.enterText(
-          find.byKey(const Key('admin_data_accuracy_reason_field')),
-          'lunch covers come from forecast for launch week',
-        );
-        await tester.tap(
-          find.byKey(const Key('admin_data_accuracy_reason_submit')),
-        );
-        await tester.pumpAndSettle();
-
-        // The override landed with the reason + the lunch->forecast diff.
-        final events = overrideEvents(gateway);
-        expect(events, hasLength(1));
-        final event = events.single;
-        expect(event.locationId, 'loc-1a');
-        expect(
-          event.reasonNote,
-          'lunch covers come from forecast for launch week',
-        );
-        final keyedDiff =
-            event.diff['covers_source_per_service_period']
-                as Map<String, Object?>?;
-        expect(keyedDiff, isNotNull);
-        expect(keyedDiff!.keys, contains('lunch'));
-      },
-    );
-
-    testWidgets(
-      'changing the wage source drives an overrideDataAccuracy write '
-      'carrying the wage diff',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildGateway();
-        await tester.pumpWidget(
-          wrap(buildScreen(gateway: gateway, scope: locationScope)),
-        );
-        await tester.pumpAndSettle();
-
-        final manualRadio = find.byKey(
-          const Key('wage_source_radio_manual_mix'),
-        );
-        await tester.ensureVisible(manualRadio);
-        await tester.tap(manualRadio);
-        await tester.pumpAndSettle();
-
-        await tester.enterText(
-          find.byKey(const Key('admin_data_accuracy_reason_field')),
-          'switch to manual wage mix',
-        );
-        await tester.tap(
-          find.byKey(const Key('admin_data_accuracy_reason_submit')),
-        );
-        await tester.pumpAndSettle();
-
-        final events = overrideEvents(gateway);
-        expect(events, hasLength(1));
-        expect(events.single.diff['wage_source'], isNotNull);
-      },
-    );
-
-    testWidgets('cancelling the reason dialog writes nothing', (tester) async {
-      wideViewport(tester);
-      final gateway = buildGateway();
-      await tester.pumpWidget(
-        wrap(buildScreen(gateway: gateway, scope: locationScope)),
-      );
-      await tester.pumpAndSettle();
-
-      final forecastChip = find.byKey(
-        const Key('covers_source_chip_lunch_forecast'),
-      );
-      await tester.ensureVisible(forecastChip);
-      await tester.tap(forecastChip);
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.byKey(const Key('admin_data_accuracy_reason_cancel')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(overrideEvents(gateway), isEmpty);
-    });
-  });
-
-  group('non-location scope — pick a location for the primary section', () {
-    testWidgets(
-      'business scope shows pick-a-location, hides the source controls, but '
-      'still renders the secondary table',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildGateway();
-        await tester.pumpWidget(
-          wrap(buildScreen(gateway: gateway, scope: businessScope)),
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const Key('admin_data_accuracy_pick_location')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('admin_data_accuracy_primary_section')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('data_accuracy_covers_source_card')),
-          findsNothing,
-        );
-
-        // Secondary table still renders at a business scope.
-        expect(
-          find.byKey(const Key('admin_data_accuracy_table')),
-          findsOneWidget,
-        );
-      },
-    );
-  });
-
-  group('ff_support read-only posture', () {
-    testWidgets(
-      'editing disabled shows the read-only banner, fires no write, and '
-      'still renders the table',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildGateway();
-        await tester.pumpWidget(
-          wrap(
-            buildScreen(
-              gateway: gateway,
-              scope: locationScope,
-              editingEnabled: false,
-            ),
+          find.byKey(
+            const Key('operator_web_data_accuracy_wage_authority_section'),
           ),
+          findsOneWidget,
         );
-        await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('admin_data_accuracy_readonly_banner')),
-          findsOneWidget,
-        );
-        // The web cards still render (read-only), and the table is present.
-        expect(
-          find.byKey(const Key('data_accuracy_covers_source_card')),
-          findsOneWidget,
-        );
         expect(
           find.byKey(const Key('admin_data_accuracy_table')),
-          findsOneWidget,
+          findsNothing,
         );
-
-        // Tapping a source chip must not open the reason dialog or write
-        // anything (the primary surface is wrapped in an AbsorbPointer for
-        // ff_support).
-        await tester.tap(
-          find.byKey(const Key('covers_source_chip_lunch_forecast')),
-          warnIfMissed: false,
+        expect(find.text('Audit history'), findsNothing);
+        expect(
+          find.byKey(const Key('admin_data_accuracy_pick_location')),
+          findsNothing,
         );
-        await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('admin_data_accuracy_reason_dialog')),
           findsNothing,
         );
-        expect(overrideEvents(gateway), isEmpty);
       },
     );
-  });
 
-  group('zero em dashes in operator-facing literals', () {
-    testWidgets('rendered text never contains an em dash (location scope)', (
+    testWidgets('covers source edits save through the admin adapter', (
       tester,
     ) async {
       wideViewport(tester);
@@ -370,15 +200,45 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final texts = tester.widgetList<Text>(find.byType(Text));
-      for (final t in texts) {
-        final data = t.data;
-        if (data == null) continue;
-        expect(data.contains('—'), isFalse, reason: data);
-      }
+      expect(settingsSaveEvents(gateway), isEmpty);
+
+      final forecastChip = find.byKey(
+        const Key('covers_source_chip_lunch_forecast'),
+      );
+      await tester.ensureVisible(forecastChip);
+      await tester.tap(forecastChip);
+      await tester.pumpAndSettle();
+
+      final events = settingsSaveEvents(gateway);
+      expect(events, hasLength(1));
+      expect(events.single.locationId, 'loc-1a');
+      expect(events.single.reasonNote, 'Admin Data Accuracy parity edit.');
+      expect(events.single.diff['covers_source_per_service_period'], isNotNull);
     });
 
-    testWidgets('rendered text never contains an em dash (business scope)', (
+    testWidgets('wage source edits save through the admin adapter', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildGateway();
+      await tester.pumpWidget(
+        wrap(buildScreen(gateway: gateway, scope: locationScope)),
+      );
+      await tester.pumpAndSettle();
+
+      final manualRadio = find.byKey(const Key('wage_source_radio_manual_mix'));
+      await tester.ensureVisible(manualRadio);
+      await tester.tap(manualRadio);
+      await tester.pumpAndSettle();
+
+      final events = settingsSaveEvents(gateway);
+      expect(events, hasLength(1));
+      expect(events.single.diff['wage_source'], isNotNull);
+    });
+  });
+
+  group('scope and timing posture', () {
+    testWidgets('non-location scope leaves selection to the left picker', (
       tester,
     ) async {
       wideViewport(tester);
@@ -388,12 +248,91 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final texts = tester.widgetList<Text>(find.byType(Text));
-      for (final t in texts) {
-        final data = t.data;
-        if (data == null) continue;
-        expect(data.contains('—'), isFalse, reason: data);
-      }
+      expect(
+        find.byKey(const Key('admin_data_accuracy_waiting_for_location_scope')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_data_accuracy_pick_location')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('admin_data_accuracy_table')), findsNothing);
+    });
+
+    testWidgets('missing timing resolution shows the ops-style error posture', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildGateway();
+      await tester.pumpWidget(
+        wrap(
+          buildScreen(
+            gateway: gateway,
+            scope: locationScope,
+            timing: timingGateway(includeLocation: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('operator_web_data_accuracy_business_timing_error'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Data accuracy needs Business Timing'), findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
+        findsNothing,
+      );
     });
   });
+
+  testWidgets('rendered text never contains an em dash', (tester) async {
+    wideViewport(tester);
+    final gateway = buildGateway();
+    await tester.pumpWidget(
+      wrap(buildScreen(gateway: gateway, scope: locationScope)),
+    );
+    await tester.pumpAndSettle();
+
+    final texts = tester.widgetList<Text>(find.byType(Text));
+    for (final text in texts) {
+      final data = text.data;
+      if (data == null) continue;
+      expect(data.contains('\u2014'), isFalse, reason: data);
+    }
+  });
+}
+
+class _EmptyVendorApplicabilityAdminGateway
+    implements VendorApplicabilityAdminGateway {
+  const _EmptyVendorApplicabilityAdminGateway();
+
+  @override
+  Future<List<VendorApplicabilityAdminRow>> list({
+    VendorApplicabilityAdminFilter filter =
+        const VendorApplicabilityAdminFilter(),
+  }) async {
+    return const <VendorApplicabilityAdminRow>[];
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow> upsert(
+    VendorApplicabilityUpsertCommand command,
+  ) {
+    throw UnsupportedError('not used by Data Accuracy mount tests');
+  }
+
+  @override
+  Future<VendorApplicabilityAdminRow?> end(
+    VendorApplicabilityEndCommand command,
+  ) {
+    throw UnsupportedError('not used by Data Accuracy mount tests');
+  }
 }
