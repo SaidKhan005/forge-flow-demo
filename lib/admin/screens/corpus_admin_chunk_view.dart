@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../models/corpus_admin_models.dart';
+import '../widgets/admin_action_controls.dart';
 
 /// Groups [chunks] by their [ChunkPreview.sourcePath] and renders each
 /// group as a collapsible document section. A search box above filters
@@ -159,9 +160,8 @@ class _ChunkGroupedViewState extends State<ChunkGroupedView> {
                 color: AppColors.textMuted,
               ),
               suffixIcon: _query.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, size: 16),
-                      color: AppColors.textMuted,
+                  ? AdminIconAction(
+                      icon: Icons.clear,
                       tooltip: 'Clear search',
                       onPressed: () => _searchController.clear(),
                     )

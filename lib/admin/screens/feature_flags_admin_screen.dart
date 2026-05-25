@@ -39,6 +39,7 @@ import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
 import '../models/feature_flags_admin_models.dart';
 import '../services/feature_flags_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 
 class FeatureFlagsAdminScreen extends StatefulWidget {
   const FeatureFlagsAdminScreen({
@@ -376,7 +377,12 @@ class _FeatureFlagTile extends StatelessWidget {
         ? FilledButton.tonal(
             key: Key('admin_feature_flag_toggle_${row.flagId}'),
             onPressed: toggling ? null : onToggle,
-            style: AdminButtonStyles.tonal(destructive: row.isDestructive),
+            style: AdminButtonStyles.tonal(destructive: row.isDestructive)
+                .copyWith(
+                  minimumSize: const WidgetStatePropertyAll(
+                    Size(72, AdminButtonStyles.denseControlHeight),
+                  ),
+                ),
             child: toggling
                 ? const SizedBox(
                     width: 14,
@@ -388,6 +394,12 @@ class _FeatureFlagTile extends StatelessWidget {
         : FilledButton.tonal(
             key: Key('admin_feature_flag_toggle_disabled_${row.flagId}'),
             onPressed: null,
+            style: AdminButtonStyles.tonal(destructive: row.isDestructive)
+                .copyWith(
+                  minimumSize: const WidgetStatePropertyAll(
+                    Size(72, AdminButtonStyles.denseControlHeight),
+                  ),
+                ),
             child: Text(row.enabled ? 'Disable' : 'Enable'),
           );
     final content = Column(
@@ -545,7 +557,7 @@ class _Chip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
       ),
       child: Text(
         label,
@@ -598,16 +610,17 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
       maxWidth: 460,
       showCloseButton: false,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_feature_flag_danger_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_feature_flag_danger_confirm'),
-          style: AdminButtonStyles.danger,
+          label: 'Update',
           onPressed: _matches ? () => Navigator.of(context).pop(true) : null,
-          child: const Text('Update'),
+          role: AdminActionRole.danger,
         ),
       ],
       child: Column(

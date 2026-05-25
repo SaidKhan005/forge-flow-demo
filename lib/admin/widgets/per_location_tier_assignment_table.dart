@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import 'admin_action_controls.dart';
 import 'admin_responsive_layout.dart';
 
 enum _SortColumn {
@@ -267,15 +267,16 @@ class _PerLocationTierAssignmentTableState
       _AssignmentFact('Net margin', marginLabel, valueColor: marginColor),
     ];
     final action = widget.editingEnabled
-        ? OutlinedButton.icon(
+        ? AdminActionButton(
             key: Key(
               'admin_tier_assignment_assign_'
               '${row.operatorRef.operatorId}_${row.operatorRef.locationId}',
             ),
-            style: AdminButtonStyles.secondary(minWidth: 96, minHeight: 36),
+            label: actionLabel,
             onPressed: () => widget.onAssign(row),
-            icon: const Icon(Icons.edit_outlined, size: 14),
-            label: Text(actionLabel),
+            icon: Icons.edit_outlined,
+            compact: true,
+            minWidth: 96,
           )
         : Text(
             'Read-only',
@@ -408,26 +409,13 @@ class _AssignmentToolbar extends StatelessWidget {
             },
           ),
         ),
-        Tooltip(
-          message: ascending ? 'Sort descending' : 'Sort ascending',
-          child: SizedBox.square(
-            dimension: 42,
-            child: OutlinedButton(
-              key: const Key('admin_tier_assignment_sort_direction'),
-              onPressed: onDirectionPressed,
-              style: AdminButtonStyles.secondary(
-                minWidth: 42,
-                minHeight: 42,
-                padding: EdgeInsets.zero,
-              ),
-              child: Icon(
-                ascending
-                    ? Icons.arrow_upward_outlined
-                    : Icons.arrow_downward_outlined,
-                size: 18,
-              ),
-            ),
-          ),
+        AdminIconAction(
+          key: const Key('admin_tier_assignment_sort_direction'),
+          tooltip: ascending ? 'Sort descending' : 'Sort ascending',
+          onPressed: onDirectionPressed,
+          icon: ascending
+              ? Icons.arrow_upward_outlined
+              : Icons.arrow_downward_outlined,
         ),
       ],
     );
@@ -733,9 +721,9 @@ class _FilterBar extends StatelessWidget {
           ),
         ),
         if (hasActiveFilters)
-          OutlinedButton.icon(
+          AdminActionButton(
             key: const Key('admin_tier_assignment_clear_filters'),
-            style: AdminButtonStyles.secondary(minWidth: 120, minHeight: 40),
+            label: 'Clear filters',
             onPressed: () {
               operatorNameController.clear();
               onTierChanged?.call(null);
@@ -744,8 +732,8 @@ class _FilterBar extends StatelessWidget {
               onVendorChanged?.call(null);
               onOperatorNameChanged?.call('');
             },
-            icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
-            label: const Text('Clear filters'),
+            icon: Icons.filter_alt_off_outlined,
+            minWidth: 120,
           ),
       ],
     );

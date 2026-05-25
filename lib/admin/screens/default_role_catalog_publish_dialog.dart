@@ -35,8 +35,8 @@ import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../services/default_role_catalog_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 
 /// Result returned to the caller via [Navigator.pop]. `null` means the
 /// dialog was dismissed without publishing; non-null carries the new
@@ -129,8 +129,9 @@ class _DefaultRoleCatalogPublishDialogState
     final prior = widget.priorCurrent;
     if (prior == null) return;
     try {
-      final counts =
-          await widget.gateway.getBlastRadius(versionId: prior.versionId);
+      final counts = await widget.gateway.getBlastRadius(
+        versionId: prior.versionId,
+      );
       if (!mounted) return;
       setState(() {
         _blastRadius = _BlastRadiusFetch(counts: counts);
@@ -155,8 +156,8 @@ class _DefaultRoleCatalogPublishDialogState
   }
 
   void _recomputeMatch() {
-    final next = _confirmController.text.trim() ==
-        widget.nextVersionNumber.toString();
+    final next =
+        _confirmController.text.trim() == widget.nextVersionNumber.toString();
     if (next != _typedMatches) {
       setState(() => _typedMatches = next);
     }
@@ -310,58 +311,61 @@ class _DefaultRoleCatalogPublishDialogState
     switch (_stage) {
       case _Stage.awareness:
         return <Widget>[
-          TextButton(
+          AdminActionButton(
             key: const Key('admin_default_role_catalog_publish_cancel'),
+            label: 'Cancel',
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            role: AdminActionRole.quiet,
           ),
-          FilledButton(
+          AdminActionButton(
             key: const Key('admin_default_role_catalog_publish_continue'),
-            style: AdminButtonStyles.primary,
+            label: 'Continue',
             onPressed: () => setState(() => _stage = _Stage.typeConfirm),
-            child: const Text('Continue'),
+            role: AdminActionRole.primary,
           ),
         ];
       case _Stage.typeConfirm:
         return <Widget>[
-          TextButton(
+          AdminActionButton(
             key: const Key('admin_default_role_catalog_publish_back'),
+            label: 'Back',
             onPressed: () => setState(() => _stage = _Stage.awareness),
-            child: const Text('Back'),
+            role: AdminActionRole.quiet,
           ),
-          FilledButton(
+          AdminActionButton(
             key: const Key('admin_default_role_catalog_publish_confirm'),
-            style: AdminButtonStyles.danger,
+            label: 'Publish',
             onPressed: _typedMatches ? _publish : null,
-            child: const Text('Publish'),
+            role: AdminActionRole.danger,
           ),
         ];
       case _Stage.publishing:
         return const <Widget>[];
       case _Stage.success:
         return <Widget>[
-          FilledButton(
+          AdminActionButton(
             key: const Key('admin_default_role_catalog_publish_done'),
-            style: AdminButtonStyles.primary,
+            label: 'Done',
             onPressed: () => Navigator.of(context).pop(_published),
-            child: const Text('Done'),
+            role: AdminActionRole.primary,
           ),
         ];
       case _Stage.error:
         return <Widget>[
-          TextButton(
+          AdminActionButton(
             key: const Key('admin_default_role_catalog_publish_error_close'),
+            label: 'Close',
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            role: AdminActionRole.quiet,
           ),
-          FilledButton(
+          AdminActionButton(
             key: const Key('admin_default_role_catalog_publish_error_retry'),
-            style: AdminButtonStyles.primary,
+            label: 'Retry',
             onPressed: () => setState(() {
               _stage = _Stage.typeConfirm;
               _errorMessage = null;
             }),
-            child: const Text('Retry'),
+            role: AdminActionRole.primary,
           ),
         ];
     }
@@ -421,8 +425,9 @@ class _AwarenessBody extends StatelessWidget {
         const SizedBox(height: 14),
         Text(
           'Notes (optional)',
-          style: AppTextStyles.mono11(color: AppColors.textSecondary)
-              .copyWith(fontWeight: FontWeight.w700),
+          style: AppTextStyles.mono11(
+            color: AppColors.textSecondary,
+          ).copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
         TextField(
@@ -468,7 +473,8 @@ class _AwarenessBody extends StatelessWidget {
           'own copies unless they opt in to follow the latest version.';
     }
     final fetched = blastRadius;
-    final hasNumericData = fetched != null &&
+    final hasNumericData =
+        fetched != null &&
         fetched.counts != null &&
         !fetched.counts!.isZeroState;
     if (hasNumericData) {
@@ -539,9 +545,7 @@ class _TypeConfirmBody extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           '$nextVersionNumber',
-          key: const Key(
-            'admin_default_role_catalog_publish_target_version',
-          ),
+          key: const Key('admin_default_role_catalog_publish_target_version'),
           style: AppTextStyles.mono14(
             color: AppColors.textPrimary,
             weight: FontWeight.w700,

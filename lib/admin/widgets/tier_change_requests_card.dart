@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/console/console_action_bar.dart';
 import '../../widgets/console/console_surface.dart';
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import 'admin_action_controls.dart';
 
 class TierChangeRequestsCard extends StatelessWidget {
   const TierChangeRequestsCard({
@@ -110,37 +109,37 @@ class _RequestRow extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (isPending && editingEnabled)
-            OperatorWebActionBar(
+            AdminActionBar(
               children: <Widget>[
-                FilledButton(
+                AdminActionButton(
                   key: Key(
                     'admin_tier_change_request_approve_${request.requestId}',
                   ),
-                  style: AdminButtonStyles.approval(selected: false),
+                  label: 'Approve',
                   onPressed: () =>
                       onResolve(request, TierChangeRequestStatus.approved),
-                  child: const Text('Approve'),
+                  role: AdminActionRole.primary,
+                  compact: true,
                 ),
-                OutlinedButton(
+                AdminActionButton(
                   key: Key(
                     'admin_tier_change_request_deny_${request.requestId}',
                   ),
-                  style: AdminButtonStyles.reject(selected: false),
+                  label: 'Deny',
                   onPressed: () =>
                       onResolve(request, TierChangeRequestStatus.denied),
-                  child: const Text('Deny'),
+                  role: AdminActionRole.dangerSecondary,
+                  compact: true,
                 ),
-                OutlinedButton(
+                AdminActionButton(
                   key: Key(
                     'admin_tier_change_request_negotiate_${request.requestId}',
                   ),
-                  style: AdminButtonStyles.secondary(
-                    minWidth: 140,
-                    minHeight: 36,
-                  ),
+                  label: 'Open negotiation',
                   onPressed: () =>
                       onResolve(request, TierChangeRequestStatus.negotiating),
-                  child: const Text('Open negotiation'),
+                  compact: true,
+                  minWidth: 140,
                 ),
               ],
             )

@@ -17,10 +17,10 @@ import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_scope_notice_adapter.dart';
 import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
@@ -891,12 +891,12 @@ class _ScopedPollingActionCard extends StatelessWidget {
     return OperatorWebPanel(
       key: const Key('admin_polling_setup_scope_action_card'),
       title: 'Assign polling setup',
-      trailing: FilledButton.icon(
+      trailing: AdminActionButton(
         key: const Key('admin_polling_setup_scope_assign'),
-        style: AdminButtonStyles.primary,
+        label: 'Assign',
         onPressed: onPressed,
-        icon: const Icon(Icons.payments_outlined),
-        label: const Text('Assign'),
+        icon: Icons.payments_outlined,
+        role: AdminActionRole.primary,
       ),
       child: Text(
         'This saves one polling setup override and lets the covered $locationCount location${locationCount == 1 ? '' : 's'} inherit it until a lower setting overrides it.',
@@ -1025,14 +1025,15 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
           'Assign tier - ${widget.row.operatorRef.businessName} '
               '/ ${widget.row.operatorRef.locationName}',
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_tier_assignment_dialog_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_tier_assignment_dialog_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Assign / update',
           onPressed: () {
             final reason = _reason.text.trim();
             if (reason.isEmpty) return;
@@ -1053,7 +1054,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
               ),
             );
           },
-          child: const Text('Assign / update'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Flexible(
@@ -1191,17 +1192,18 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
                               ),
                             ),
                             const SizedBox(width: 10),
-                            OutlinedButton.icon(
+                            AdminActionButton(
                               key: const Key(
                                 'admin_polling_calculator_use_estimate',
                               ),
+                              label: 'Use estimate',
                               onPressed: perLocation == null
                                   ? null
                                   : () => setState(() {
                                       _cost.text = _formatCents(perLocation);
                                     }),
-                              icon: const Icon(Icons.calculate_outlined),
-                              label: const Text('Use estimate'),
+                              icon: Icons.calculate_outlined,
+                              compact: true,
                             ),
                           ],
                         );

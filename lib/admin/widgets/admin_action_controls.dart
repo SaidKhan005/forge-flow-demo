@@ -45,15 +45,18 @@ class AdminDialogActionBar extends StatelessWidget {
 
 class AdminActionButton extends StatelessWidget {
   const AdminActionButton({
-    super.key,
+    Key? key,
     required this.label,
     required this.onPressed,
     this.icon,
     this.role = AdminActionRole.secondary,
     this.compact = false,
     this.minWidth,
-  });
+  }) : _controlKey = key,
+       super(key: null);
 
+  // Put caller keys on the tappable Material button, not this wrapper.
+  final Key? _controlKey;
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
@@ -83,34 +86,52 @@ class AdminActionButton extends StatelessWidget {
       case AdminActionRole.danger:
         if (icon != null) {
           return FilledButton.icon(
+            key: _controlKey,
             onPressed: onPressed,
             style: style,
             icon: icon,
             label: child,
           );
         }
-        return FilledButton(onPressed: onPressed, style: style, child: child);
+        return FilledButton(
+          key: _controlKey,
+          onPressed: onPressed,
+          style: style,
+          child: child,
+        );
       case AdminActionRole.secondary:
       case AdminActionRole.dangerSecondary:
         if (icon != null) {
           return OutlinedButton.icon(
+            key: _controlKey,
             onPressed: onPressed,
             style: style,
             icon: icon,
             label: child,
           );
         }
-        return OutlinedButton(onPressed: onPressed, style: style, child: child);
+        return OutlinedButton(
+          key: _controlKey,
+          onPressed: onPressed,
+          style: style,
+          child: child,
+        );
       case AdminActionRole.quiet:
         if (icon != null) {
           return TextButton.icon(
+            key: _controlKey,
             onPressed: onPressed,
             style: style,
             icon: icon,
             label: child,
           );
         }
-        return TextButton(onPressed: onPressed, style: style, child: child);
+        return TextButton(
+          key: _controlKey,
+          onPressed: onPressed,
+          style: style,
+          child: child,
+        );
     }
   }
 
@@ -141,13 +162,16 @@ class AdminActionButton extends StatelessWidget {
 
 class AdminIconAction extends StatelessWidget {
   const AdminIconAction({
-    super.key,
+    Key? key,
     required this.icon,
     required this.tooltip,
     required this.onPressed,
     this.destructive = false,
-  });
+  }) : _controlKey = key,
+       super(key: null);
 
+  // Put caller keys on the tappable IconButton, not this wrapper.
+  final Key? _controlKey;
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
@@ -161,6 +185,7 @@ class AdminIconAction extends StatelessWidget {
           )
         : AdminButtonStyles.icon;
     return IconButton(
+      key: _controlKey,
       tooltip: tooltip,
       onPressed: onPressed,
       style: style,

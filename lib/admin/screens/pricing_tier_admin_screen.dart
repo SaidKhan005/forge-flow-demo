@@ -65,7 +65,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
-import '../../widgets/console/console_action_bar.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
@@ -76,6 +75,7 @@ import '../models/observability_admin_models.dart';
 import '../models/pricing_tier_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/pricing_tier_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_responsive_layout.dart';
 
 /// The views the screen exposes. The mockup also carries a "Reconcile"
@@ -328,18 +328,21 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     final tierName =
         findPricingTierTemplate(entry.tierKey)?.displayName ?? entry.tierKey;
     final featureName = featureSlugDisplayName(entry.featureSlug);
-    await _runAndRefresh(() async {
-      await widget.gateway.updateEntitlement(
-        FeatureEntitlementUpdateCommand(
-          tierKey: entry.tierKey,
-          featureSlug: entry.featureSlug,
-          enabled: enabled,
-          idempotencyKey: _nextIdempotencyKey(),
-        ),
-      );
-    }, successHint: enabled
-        ? '$tierName now includes $featureName.'
-        : '$tierName no longer includes $featureName.');
+    await _runAndRefresh(
+      () async {
+        await widget.gateway.updateEntitlement(
+          FeatureEntitlementUpdateCommand(
+            tierKey: entry.tierKey,
+            featureSlug: entry.featureSlug,
+            enabled: enabled,
+            idempotencyKey: _nextIdempotencyKey(),
+          ),
+        );
+      },
+      successHint: enabled
+          ? '$tierName now includes $featureName.'
+          : '$tierName no longer includes $featureName.',
+    );
   }
 
   /// Phase 2 — pull live month-to-date spend for one operator so the
@@ -1148,10 +1151,7 @@ class _PlanCard extends StatelessWidget {
         ),
         if (monthly != null) ...<Widget>[
           const SizedBox(width: 3),
-          Text(
-            '/mo',
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
-          ),
+          Text('/mo', style: AppTextStyles.mono11(color: AppColors.textMuted)),
         ],
       ],
     );
@@ -1167,12 +1167,12 @@ class _PlanCard extends StatelessWidget {
       const SizedBox(height: 12),
       Align(
         alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
+        child: AdminActionButton(
           key: Key('admin_pricing_plan_edit_${template.tierKey}'),
-          style: AdminButtonStyles.secondary(),
+          label: 'Edit pricing',
           onPressed: () => onEdit(entry!),
-          icon: const Icon(Icons.edit_outlined, size: 15),
-          label: const Text('Edit pricing'),
+          icon: Icons.edit_outlined,
+          compact: true,
         ),
       ),
     ];
@@ -1870,11 +1870,11 @@ class _UsageLimitsCard extends StatelessWidget {
     return OperatorWebPanel(
       title: 'Usage limits',
       trailing: editingEnabled
-          ? OutlinedButton.icon(
+          ? AdminActionButton(
               key: const Key('admin_pricing_add_cap_button'),
+              label: 'Add usage limit',
               onPressed: () => onAdd(bundle),
-              icon: const Icon(Icons.add, size: 14),
-              label: const Text('Add usage limit'),
+              icon: Icons.add,
             )
           : null,
       child: Column(
@@ -2082,23 +2082,22 @@ class _UsageCapRowTile extends StatelessWidget {
                 style: AppTextStyles.mono11(color: AppColors.textMuted),
               ),
               if (editingEnabled)
-                OperatorWebActionBar(
+                AdminActionBar(
                   spacing: 4,
                   runSpacing: 4,
                   children: <Widget>[
-                    IconButton(
+                    AdminIconAction(
                       key: Key('admin_pricing_cap_edit_$keySuffix'),
-                      icon: const Icon(Icons.edit_outlined, size: 16),
-                      visualDensity: VisualDensity.compact,
+                      icon: Icons.edit_outlined,
                       tooltip: 'Edit usage limit',
                       onPressed: () => onEdit(bundle, row),
                     ),
-                    IconButton(
+                    AdminIconAction(
                       key: Key('admin_pricing_cap_delete_$keySuffix'),
-                      icon: const Icon(Icons.delete_outline, size: 16),
-                      visualDensity: VisualDensity.compact,
+                      icon: Icons.delete_outline,
                       tooltip: 'Remove usage limit',
                       onPressed: () => onDelete(bundle, row),
+                      destructive: true,
                     ),
                   ],
                 ),
@@ -2272,16 +2271,17 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
       title: 'Edit $displayName pricing',
       icon: Icons.payments_outlined,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_pricing_plan_cancel_button'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_pricing_plan_submit_button'),
-          style: AdminButtonStyles.primary,
+          label: 'Save',
           onPressed: _onSubmit,
-          child: const Text('Save'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Flexible(
@@ -2519,16 +2519,17 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
       title: editing ? 'Edit usage limit' : 'Add usage limit',
       icon: Icons.speed_outlined,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_pricing_cap_cancel_button'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_pricing_cap_submit_button'),
-          style: AdminButtonStyles.primary,
+          label: editing ? 'Save' : 'Add',
           onPressed: _onSubmit,
-          child: Text(editing ? 'Save' : 'Add'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Flexible(
@@ -2795,16 +2796,17 @@ class _ConfirmDialog extends StatelessWidget {
       title: title,
       icon: Icons.help_outline,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_pricing_confirm_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_pricing_confirm_ok'),
-          style: AdminButtonStyles.primary,
+          label: confirmLabel,
           onPressed: () => Navigator.of(context).pop(true),
-          child: Text(confirmLabel),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Text(
@@ -2913,16 +2915,17 @@ class _PresetPreviewDialog extends StatelessWidget {
       title: 'Switch to ${template.displayName}?',
       icon: Icons.tune,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_pricing_preset_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_pricing_preset_apply'),
-          style: AdminButtonStyles.primary,
+          label: 'Apply ${template.displayName}',
           onPressed: () => Navigator.of(context).pop(true),
-          child: Text('Apply ${template.displayName}'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Flexible(
@@ -2993,10 +2996,7 @@ class _PresetDiffRow extends StatelessWidget {
               ).copyWith(decoration: TextDecoration.lineThrough),
             ),
             const SizedBox(width: 6),
-            Text(
-              'to',
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
-            ),
+            Text('to', style: AppTextStyles.mono11(color: AppColors.textMuted)),
             const SizedBox(width: 6),
           ],
           Text(
