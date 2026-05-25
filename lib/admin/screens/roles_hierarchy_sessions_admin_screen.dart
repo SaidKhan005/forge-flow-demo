@@ -1407,7 +1407,7 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
       ],
       child: SizedBox(
         width: 720,
-        height: 760,
+        height: 780,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
