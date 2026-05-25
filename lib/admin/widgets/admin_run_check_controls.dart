@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
-import '../../widgets/console/console_action_bar.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
+import 'admin_action_controls.dart';
 import 'admin_responsive_layout.dart';
 
 @immutable
@@ -94,10 +94,10 @@ class AdminRefreshHeaderActions extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           if (badges.isNotEmpty) ...<Widget>[
-            OperatorWebActionBar(spacing: 8, runSpacing: 6, children: badges),
+            AdminActionBar(spacing: 8, runSpacing: 6, children: badges),
             const SizedBox(height: 6),
           ],
-          OperatorWebActionBar(
+          AdminActionBar(
             spacing: 8,
             runSpacing: 8,
             children: <Widget>[
@@ -504,18 +504,17 @@ class AdminRunCheckConfirmDialog extends StatelessWidget {
       icon: icon,
       maxWidth: 520,
       actions: [
-        OutlinedButton(
+        AdminActionButton(
           key: cancelButtonKey,
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(false),
-          style: AdminButtonStyles.secondary(minWidth: 92, minHeight: 40),
-          child: const Text('Cancel'),
         ),
-        FilledButton.icon(
+        AdminActionButton(
           key: confirmButtonKey,
+          label: confirmLabel,
           onPressed: () => Navigator.of(context).pop(true),
-          style: AdminButtonStyles.primary,
-          icon: const Icon(Icons.play_arrow, size: 16),
-          label: Text(confirmLabel),
+          icon: Icons.play_arrow,
+          role: AdminActionRole.primary,
         ),
       ],
       child: SingleChildScrollView(

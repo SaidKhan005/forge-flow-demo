@@ -55,13 +55,13 @@ import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
 import '../models/debug_console_admin_models.dart';
 import '../services/debug_console_admin_gateway.dart';
 import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_run_check_controls.dart';
 
@@ -1819,7 +1819,8 @@ class _CopyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton.icon(
+    return AdminActionButton(
+      label: 'Copy',
       onPressed: () async {
         await Clipboard.setData(ClipboardData(text: value));
         if (!context.mounted) return;
@@ -1830,17 +1831,10 @@ class _CopyButton extends StatelessWidget {
           ),
         );
       },
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: AppColors.sunsetDark,
-      ),
-      icon: const Icon(Icons.copy_outlined, size: 13),
-      label: Text(
-        'Copy',
-        style: AppTextStyles.body12(color: AppColors.sunsetDark),
-      ),
+      icon: Icons.copy_outlined,
+      role: AdminActionRole.quiet,
+      compact: true,
+      minWidth: 64,
     );
   }
 }
@@ -2008,12 +2002,12 @@ class _EmptyState extends StatelessWidget {
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),
-              FilledButton.icon(
+              AdminActionButton(
                 key: const Key('admin_debug_console_empty_refresh_button'),
+                label: 'Refresh',
                 onPressed: refreshing ? null : () => onRunRefresh(),
-                style: AdminButtonStyles.primary,
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Refresh'),
+                icon: Icons.refresh,
+                role: AdminActionRole.primary,
               ),
             ],
           ),
