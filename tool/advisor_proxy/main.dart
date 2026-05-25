@@ -2301,6 +2301,14 @@ Future<void> _runProxy(List<String> args) async {
                 productionBindings.corpusQueryEmbeddingGateway,
             voyageApiKeyForRetrieval:
                 config.secretFor(ProxySecretNames.voyageApiKey),
+            // Slice A3 — server-side Voyage rerank gateway + key. Reuses the
+            // SAME VOYAGE_API_KEY secret as the embedding gateway (one Voyage
+            // account, two endpoints). HP #7: the key is resolved here at the
+            // call site and never stored on [productionBindings]; its lifetime
+            // is bounded to the duration of each request.
+            corpusRerankGateway: productionBindings.corpusRerankGateway,
+            voyageRerankApiKeyForRetrieval:
+                config.secretFor(ProxySecretNames.voyageApiKey),
           );
         } catch (error, stack) {
           log(
