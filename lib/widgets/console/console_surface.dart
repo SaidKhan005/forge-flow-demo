@@ -413,11 +413,13 @@ class _DateRangeField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themedStyle = Theme.of(context).outlinedButtonTheme.style;
     return OutlinedButton(
       onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      style: (themedStyle ?? const ButtonStyle()).copyWith(
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.fromLTRB(14, 12, 14, 12),
+        ),
       ),
       child: Row(
         children: <Widget>[
