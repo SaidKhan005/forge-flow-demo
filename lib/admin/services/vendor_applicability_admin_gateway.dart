@@ -27,6 +27,7 @@ class VendorApplicabilityAdminGatewayError implements Exception {
 class VendorApplicabilityAdminFilter {
   const VendorApplicabilityAdminFilter({
     this.operatorId,
+    this.locationId,
     this.settingKind,
     this.settingKey,
     this.vendorSlug,
@@ -34,6 +35,11 @@ class VendorApplicabilityAdminFilter {
   });
 
   final String? operatorId;
+
+  /// Optional location narrowing. A location filter only makes sense
+  /// alongside an operator filter (a location-scoped row always has an
+  /// operator); the server still treats it as additive.
+  final String? locationId;
   final String? settingKind;
   final String? settingKey;
   final String? vendorSlug;
@@ -42,6 +48,8 @@ class VendorApplicabilityAdminFilter {
   Map<String, String> toQueryParameters() => <String, String>{
     if (operatorId != null && operatorId!.isNotEmpty)
       'operator_id': operatorId!,
+    if (locationId != null && locationId!.isNotEmpty)
+      'location_id': locationId!,
     if (settingKind != null && settingKind!.isNotEmpty)
       'setting_kind': settingKind!,
     if (settingKey != null && settingKey!.isNotEmpty)
@@ -55,6 +63,7 @@ class VendorApplicabilityAdminFilter {
 class VendorApplicabilityUpsertCommand {
   const VendorApplicabilityUpsertCommand({
     this.operatorId,
+    this.locationId,
     required this.settingKind,
     required this.settingKey,
     required this.vendorSlug,
@@ -67,6 +76,12 @@ class VendorApplicabilityUpsertCommand {
   });
 
   final String? operatorId;
+
+  /// Optional location narrowing. NULL = operator-level (when
+  /// [operatorId] is set) or global (when [operatorId] is null). A
+  /// non-null value scopes the rule to one location and requires
+  /// [operatorId] (mirrors the DB CHECK + proxy validation).
+  final String? locationId;
   final String settingKind;
   final String settingKey;
   final String vendorSlug;
@@ -79,6 +94,7 @@ class VendorApplicabilityUpsertCommand {
 
   Map<String, Object?> toJson() => <String, Object?>{
     if (operatorId != null && operatorId!.isNotEmpty) 'operator_id': operatorId,
+    if (locationId != null && locationId!.isNotEmpty) 'location_id': locationId,
     'setting_kind': settingKind,
     'setting_key': settingKey,
     'vendor_slug': vendorSlug,
@@ -94,6 +110,7 @@ class VendorApplicabilityUpsertCommand {
 class VendorApplicabilityEndCommand {
   const VendorApplicabilityEndCommand({
     this.operatorId,
+    this.locationId,
     required this.settingKind,
     required this.settingKey,
     required this.vendorSlug,
@@ -104,6 +121,11 @@ class VendorApplicabilityEndCommand {
   });
 
   final String? operatorId;
+
+  /// Optional location narrowing, matching the row being ended. NULL
+  /// closes the operator-level (or global) row; a non-null value closes
+  /// exactly the location-scoped row and requires [operatorId].
+  final String? locationId;
   final String settingKind;
   final String settingKey;
   final String vendorSlug;
@@ -115,6 +137,7 @@ class VendorApplicabilityEndCommand {
   Map<String, Object?> toJson() => <String, Object?>{
     'action': 'end',
     if (operatorId != null && operatorId!.isNotEmpty) 'operator_id': operatorId,
+    if (locationId != null && locationId!.isNotEmpty) 'location_id': locationId,
     'setting_kind': settingKind,
     'setting_key': settingKey,
     'vendor_slug': vendorSlug,
@@ -129,6 +152,7 @@ class VendorApplicabilityAdminRow {
   const VendorApplicabilityAdminRow({
     required this.id,
     required this.operatorId,
+    this.locationId,
     required this.settingKind,
     required this.settingKey,
     required this.vendorSlug,
@@ -142,6 +166,11 @@ class VendorApplicabilityAdminRow {
 
   final String id;
   final String? operatorId;
+
+  /// Optional location narrowing. NULL = operator-level (when
+  /// [operatorId] is set) or global (when [operatorId] is null); a
+  /// non-null value scopes the row to one location.
+  final String? locationId;
   final String settingKind;
   final String settingKey;
   final String vendorSlug;
@@ -156,6 +185,7 @@ class VendorApplicabilityAdminRow {
     return VendorApplicabilityAdminRow(
       id: _string(json, 'id'),
       operatorId: _optionalString(json, 'operator_id'),
+      locationId: _optionalString(json, 'location_id'),
       settingKind: _string(json, 'setting_kind'),
       settingKey: _string(json, 'setting_key'),
       vendorSlug: _string(json, 'vendor_slug'),
