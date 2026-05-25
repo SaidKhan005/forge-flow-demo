@@ -73,10 +73,8 @@ void main() {
       expect(find.text('Gemini API'), findsOneWidget);
 
       // No active credential → the empty-state copy is shown.
-      expect(
-        find.text('No saved key yet. Use Replace key to add one.'),
-        findsAtLeastNWidgets(1),
-      );
+      expect(find.text('Use Replace key to add one.'), findsAtLeastNWidgets(1));
+      expect(find.text('Missing'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('rotate button is visible when editing is enabled', (

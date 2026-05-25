@@ -251,14 +251,12 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('Global provider health stays here'),
+        find.textContaining('View only: global provider health'),
         findsOneWidget,
       );
       expect(
-        find.textContaining(
-          'Operator edits live on Operator Web; this view is for F&F support.',
-        ),
-        findsNWidgets(2),
+        find.textContaining('Operator edits live on Operator Web.'),
+        findsOneWidget,
       );
       expect(
         find.byKey(const Key('admin_integrations_scope_note')),
