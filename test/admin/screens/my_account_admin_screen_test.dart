@@ -2,7 +2,7 @@
 //
 // Verifies the parity surface renders all four sections (header,
 // identity, security, active sessions), the identity card surfaces
-// the admin role badge + global-scope label (HP #11 degradation),
+// the admin role badge without scope clutter,
 // the security section renders read-only when no admin mutation
 // gateway is wired, and the demo-mode mount renders identically to
 // production (HP #2). Also covers the side-nav wiring at the admin
@@ -81,9 +81,11 @@ void main() {
       // Role badge (ecosystem admin).
       expect(find.byKey(const Key('admin_my_account_role_badge')), findsOneWidget);
       expect(find.text('Ecosystem admin'), findsOneWidget);
-      // HP #11 scope degraded to global label (no business / region /
-      // location triple).
-      expect(find.text('Global: cross-operator'), findsOneWidget);
+      expect(find.text('Global: cross-operator'), findsNothing);
+      expect(
+        find.textContaining('Admin console access is global'),
+        findsNothing,
+      );
     });
 
     testWidgets(

@@ -8,14 +8,11 @@
 //
 // Authority: `docs/_indices/WAVE_2_LEDGER.md` Lane W row W-4.
 //
-// Scope (current FULL self-service surface):
-//   * Identity card — admin display name, email, admin role badge, and
-//     a "Global: cross-operator" scope label (HP #11 — the admin
-//     console is global / cross-operator so the scope notice degrades
-//     to a single label rather than the business/region/location
-//     triple). With an `AdminAccountGateway` wired, "Edit identity"
-//     lets the admin change their display name or sign-in email
-//     (an email change forces a re-sign-in).
+// Surface (current FULL self-service surface):
+//   * Identity card — admin display name, email, and admin role badge.
+//     With an `AdminAccountGateway` wired, "Edit identity" lets the
+//     admin change their display name or sign-in email (an email
+//     change forces a re-sign-in).
 //   * Security card — change password (current + new x2, routed through
 //     the gateway) plus a "Recent sign-in activity" list with 7/30/90
 //     day filters, read from the self-scoped audit-log route. Degrades
@@ -44,8 +41,6 @@
 // Constraints honored:
 //   * HP #2 demo-mode parity: no `kDemoMode` branch. The screen reads
 //     `AdminAuthSession` regardless of writer mode.
-//   * HP #11: cross-operator/admin-global label rendered in the
-//     identity card so the operator always knows the effective scope.
 //   * UX writing standard: every label, status, button reads as
 //     training the user. Plain English, no engineering jargon, no
 //     route-id leakage, no em-dash punctuation in operator-facing copy.
@@ -427,13 +422,6 @@ class _AdminIdentityCard extends StatelessWidget {
           key: const Key('admin_my_account_role_badge'),
           children: [_AdminRoleChip(label: _readableAdminRole(session.roles))],
         ),
-      ),
-      _AdminAccountField(
-        label: 'Scope',
-        value: 'Global: cross-operator',
-        helper:
-            'Admin console access is global. You can see and support '
-            'every business on Forge & Flow.',
       ),
     ];
     return _AdminAccountCard(
