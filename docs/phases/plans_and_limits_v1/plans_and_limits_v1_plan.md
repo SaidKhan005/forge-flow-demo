@@ -1,7 +1,19 @@
 # Plans & Limits V1 — Pricing Model + Admin Redesign Plan
 
-Status: Planned (not started)
+Status: SHIPPED through Phase 4a + preset-diff (2026-05-25); Phase 5 scoped below, now unblocked.
 Created: 2026-05-24
+Updated: 2026-05-25
+
+Progress (2026-05-25):
+- SHIPPED to master: Phase 0 (six real plans incl. `elite`), Phase 1 (rebuilt admin
+  "Plans & limits" screen) + the preset preview-diff, Phase 2 (live spend numbers +
+  delete-a-limit), Phase 3 (editable `pricing_plan_catalog`), Phase 4a (operator
+  `trial_mode` flag + `startPilotTrial` + `convertTrialToStarter`).
+- DROPPED by operator decision: the rest of Phase 4 (Pilot sample-data preview, no
+  web or mobile preview seeding); the mockup's "Reconcile" tab (one-time decision
+  aid, intentionally out of the live operational screen).
+- NEXT: Phase 5 (below) is scoped + unblocked (7.58 confirmed shipped). Not started;
+  awaiting operator go-ahead per slice.
 Owner: Orchestrator (operator: Said / Vanessa)
 Method: `runbooks/feature_implementation_lens_audit_runbook.md` (deep pass)
 
@@ -88,13 +100,46 @@ approval per CLAUDE.md (auth/RLS/schema/proxy-touching).
 - Conversion: when a real POS/labor connector succeeds, flip trial off + tier → Starter.
 - Files: migration, proxy signup/convert logic, operator-web preview entry.
 
-### Phase 5 — Operator plan screen + feature gating (L, LATER)
-- Operator-web: "Your plan" surface (current plan, included features, trial time,
-  upgrade intent).
-- `feature_entitlements(tier_key, feature_slug, enabled)` + gate LMS / scoreboard /
-  chatbots / workflows by tier; wire model routing (Haiku/Sonnet) to tier.
-- **Gate / sequencing:** collides with Hard Promise #3 ("no app logic changes before
-  7.58"). Schedule after 7.58; do not start gating logic before then.
+### Phase 5 — Plan entitlements + "Your plan" screen + model routing (L) — UNBLOCKED 2026-05-25
+
+**Gate status:** 7.58 (Primary Driver) is SHIPPED and live (confirmed 2026-05-25:
+`primaryDriver` / `LeverCard` logic across `lib/screens/variance/**`,
+`lib/domain/services/**`, `lib/models/**`; contract
+`docs/contracts/phase_7_58_primary_driver_contract.md`). HP#3's "no app logic before
+7.58" precondition is therefore SATISFIED — feature gating is buildable now.
+
+**Recon (2026-05-25), so we extend rather than duplicate:**
+- Tier is real + stored per operator (Phase 0).
+- An existing `feature_flags` admin system exists but is GLOBAL OPS toggles (KMS
+  rollout, audit cutover, `advisor_enabled`), NOT per-tier product gating. Mirror its
+  admin UI pattern; do NOT overload its table. (`db/migrations/202605020400_*`,
+  `lib/admin/models/feature_flags_admin_models.dart`.)
+- Model routing `ProxyLlmTier {haiku, sonnet}` exists
+  (`tool/advisor_proxy/advisor_proxy.dart:2833`) but is NOT tier-driven today.
+- Operator-web has ZERO tier awareness (`lib/operator_web/**`) — "Your plan" is greenfield.
+
+**Slices (build order):**
+- **5a — Entitlements foundation (M, gate: schema + proxy).** New GLOBAL
+  `feature_entitlements(tier_key, feature_slug, enabled)` table (follow the Phase 3
+  `pricing_plan_catalog` global-catalog precedent). Seed the per-tier matrix from the
+  plan summaries in `kPricingTierTemplates` (Premium adds LMS + scoreboard; Pro adds
+  workflows; etc.). Admin editor mirroring the Plans & limits look + the feature-flags
+  admin pattern. GET/PATCH proxy routes (gated, idempotent, audited).
+- **5b — "Your plan" on operator-web (M, gate: light / web-only).** Current plan,
+  included features (reads entitlements), trial time left (reuses Phase 4a
+  `trial_mode` / `trial_expires_at`), upgrade intent. Greenfield in `lib/operator_web/**`.
+- **5c — Model routing by plan (S–M, gate: proxy).** Wire operator tier →
+  `ProxyLlmTier` so plan drives Haiku vs Sonnet. Extend existing routing; no parallel stack.
+- **5d — Actual feature gates (size: depends; gate: app logic, now allowed).**
+  Hide / disable LMS / scoreboard / chatbots / workflows by tier. CAVEAT: only
+  gateable where a real surface exists; recon found no finished operator-web surfaces
+  for LMS / scoreboard / chatbots (several may be unbuilt or MOBILE = paused). Gate
+  what exists; defer the rest. Needs a per-feature surface reality-check first.
+
+**Decision feeding 5a:** confirm the exact "what's included per plan" matrix (a draft
+exists in the `kPricingTierTemplates` plan summaries).
+**Recommended start:** 5a + 5b + 5c (foundation + display + routing; web/server, low
+risk). 5d after the surface reality-check.
 
 ### Phase 6 — Billing (XL, FUTURE)
 - Seat counting (`operators.active_seat_count` or a seats table + nightly rollup),
@@ -103,8 +148,10 @@ approval per CLAUDE.md (auth/RLS/schema/proxy-touching).
 
 ## 4. Cross-cutting flags / decision stops
 
-- **Feature gating vs 7.58:** Phase 5 must wait for the first logic-deciding slice
-  (HP#3). Until then the app shows all features regardless of plan.
+- **Feature gating vs 7.58:** RESOLVED 2026-05-25. 7.58 (Primary Driver) is shipped
+  and live, so HP#3's precondition is satisfied and Phase 5 is unblocked. (Prior note:
+  "must wait for the first logic-deciding slice." That gate has passed.) The app still
+  shows all features regardless of plan until Phase 5d actually gates them.
 - **Billing is future:** Phase 6 is a separate sprint; large blast radius.
 - **Pilot ≠ demo mode:** Phase 4 must add a trial flag, not a parallel demo system,
   or it violates HP#2 (demo is a writer-side switch).
