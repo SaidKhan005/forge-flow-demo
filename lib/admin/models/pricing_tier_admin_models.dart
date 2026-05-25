@@ -1104,40 +1104,26 @@ class ScopedPricingContractValue {
   final DateTime? updatedAt;
   final String? updatedBy;
 
-  ScopedPricingContractValue copyWith({
-    String? tierKey,
-    double? monthlyUsd,
-    int? firstNSeats,
-    double? firstSeatUsd,
-    double? additionalSeatUsd,
-    double? onboardingMinUsd,
-    double? onboardingMaxUsd,
-    double? advisorCapMonthlyUsd,
-    String? billingOwnerOrgUnitId,
-    DateTime? effectiveFrom,
-    DateTime? effectiveUntil,
-    String? contractLabel,
-    String? internalNote,
-    DateTime? updatedAt,
-    String? updatedBy,
+  ScopedPricingContractValue withAuditStamp({
+    required DateTime updatedAt,
+    required String? updatedBy,
   }) {
     return ScopedPricingContractValue(
-      tierKey: tierKey ?? this.tierKey,
-      monthlyUsd: monthlyUsd ?? this.monthlyUsd,
-      firstNSeats: firstNSeats ?? this.firstNSeats,
-      firstSeatUsd: firstSeatUsd ?? this.firstSeatUsd,
-      additionalSeatUsd: additionalSeatUsd ?? this.additionalSeatUsd,
-      onboardingMinUsd: onboardingMinUsd ?? this.onboardingMinUsd,
-      onboardingMaxUsd: onboardingMaxUsd ?? this.onboardingMaxUsd,
-      advisorCapMonthlyUsd: advisorCapMonthlyUsd ?? this.advisorCapMonthlyUsd,
-      billingOwnerOrgUnitId:
-          billingOwnerOrgUnitId ?? this.billingOwnerOrgUnitId,
-      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
-      effectiveUntil: effectiveUntil ?? this.effectiveUntil,
-      contractLabel: contractLabel ?? this.contractLabel,
-      internalNote: internalNote ?? this.internalNote,
-      updatedAt: updatedAt ?? this.updatedAt,
-      updatedBy: updatedBy ?? this.updatedBy,
+      tierKey: tierKey,
+      monthlyUsd: monthlyUsd,
+      firstNSeats: firstNSeats,
+      firstSeatUsd: firstSeatUsd,
+      additionalSeatUsd: additionalSeatUsd,
+      onboardingMinUsd: onboardingMinUsd,
+      onboardingMaxUsd: onboardingMaxUsd,
+      advisorCapMonthlyUsd: advisorCapMonthlyUsd,
+      billingOwnerOrgUnitId: billingOwnerOrgUnitId,
+      effectiveFrom: effectiveFrom,
+      effectiveUntil: effectiveUntil,
+      contractLabel: contractLabel,
+      internalNote: internalNote,
+      updatedAt: updatedAt,
+      updatedBy: updatedBy,
     );
   }
 

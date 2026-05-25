@@ -18,24 +18,25 @@ import 'package:forge_and_flow/admin/widgets/plain_english_explainer_card.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
-String _normalise(String raw) =>
-    raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+String _normalise(String raw) => raw.replaceAll(RegExp(r'\s+'), ' ').trim();
 
 ({String paragraph1, String paragraph2}) _extractContractParagraphs(
   String contractMd,
 ) {
   final lines = contractMd.split('\n');
-  // Find the heading line "Plain-English explainer card".
+  // Find the Polling Setup explainer heading.
   var startIdx = -1;
   for (var i = 0; i < lines.length; i++) {
-    if (lines[i].contains('Plain-English explainer card')) {
+    if (lines[i].contains('Plain-English explainer')) {
       startIdx = i;
       break;
     }
   }
   if (startIdx < 0) {
-    fail('Could not locate "Plain-English explainer card" heading in '
-        'data_accuracy_settings_contract.md');
+    fail(
+      'Could not locate "Plain-English explainer" heading in '
+      'data_accuracy_settings_contract.md',
+    );
   }
   // Walk forward; collect blockquote lines into paragraph buckets.
   // Empty `>` line separates paragraphs. Stop at the first non-blockquote,
@@ -72,7 +73,8 @@ String _normalise(String raw) =>
   expect(
     paragraphs.length,
     greaterThanOrEqualTo(2),
-    reason: 'expected at least two paragraphs in the explainer blockquote, '
+    reason:
+        'expected at least two paragraphs in the explainer blockquote, '
         'got ${paragraphs.length}',
   );
   return (
@@ -83,10 +85,10 @@ String _normalise(String raw) =>
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: SingleChildScrollView(child: child)),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: SingleChildScrollView(child: child)),
+  );
 
   group('8.spine-bridge.C — Tab 2 explainer card text matches contract '
       'verbatim', () {
@@ -96,7 +98,8 @@ void main() {
       expect(
         file.existsSync(),
         isTrue,
-        reason: 'tests must run from repository root; expected '
+        reason:
+            'tests must run from repository root; expected '
             'docs/contracts/data_accuracy_settings_contract.md to exist',
       );
       final raw = file.readAsStringSync();
@@ -105,19 +108,21 @@ void main() {
       expect(
         _normalise(PlainEnglishExplainerCard.kExplainerParagraph1),
         equals(_normalise(extracted.paragraph1)),
-        reason: 'paragraph 1 of the explainer card text must match the '
+        reason:
+            'paragraph 1 of the explainer card text must match the '
             'contract blockquote (whitespace-normalised)',
       );
       expect(
         _normalise(PlainEnglishExplainerCard.kExplainerParagraph2),
         equals(_normalise(extracted.paragraph2)),
-        reason: 'paragraph 2 of the explainer card text must match the '
+        reason:
+            'paragraph 2 of the explainer card text must match the '
             'contract blockquote (whitespace-normalised)',
       );
     });
 
-    testWidgets('card renders both paragraphs', (tester) async {
-      await tester.pumpWidget(wrap(const PlainEnglishExplainerCard()));
+    testWidgets('info body renders both paragraphs', (tester) async {
+      await tester.pumpWidget(wrap(const PlainEnglishExplainerBody()));
       await tester.pumpAndSettle();
       expect(
         find.text(PlainEnglishExplainerCard.kExplainerParagraph1),
@@ -130,53 +135,77 @@ void main() {
     });
 
     testWidgets(
-        'PlainEnglishExplainerCard renders ABOVE TierDefinitionsCard on Tab 2 '
-        '(contract: "always visible at top")', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1200));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final gateway = InMemoryDataAccuracyAdminGateway(
-        operatorLocations: const <OperatorLocationRef>[
-          OperatorLocationRef(
-            operatorId: 'op-1',
-            businessName: 'Demo Diner Co.',
-            locationId: 'loc-1a',
-            locationName: 'Toronto Yorkville',
-          ),
-        ],
-        initialTierDefinitions: <PollingTierKey, TierDefinition>{
-          PollingTierKey.standard: kDemoStandardTierDefinition(),
-          PollingTierKey.premium: kDemoPremiumTierDefinition(),
-          PollingTierKey.custom: kDemoCustomTierDefinition(),
-        },
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.themeData,
-          home: Scaffold(
-            body: PollingAndPricingAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
+      'Polling Setup keeps explainer in header info above TierDefinitionsCard',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1200));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final gateway = InMemoryDataAccuracyAdminGateway(
+          operatorLocations: const <OperatorLocationRef>[
+            OperatorLocationRef(
+              operatorId: 'op-1',
+              businessName: 'Demo Diner Co.',
+              locationId: 'loc-1a',
+              locationName: 'Toronto Yorkville',
+            ),
+          ],
+          initialTierDefinitions: <PollingTierKey, TierDefinition>{
+            PollingTierKey.standard: kDemoStandardTierDefinition(),
+            PollingTierKey.premium: kDemoPremiumTierDefinition(),
+            PollingTierKey.custom: kDemoCustomTierDefinition(),
+          },
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.themeData,
+            home: Scaffold(
+              body: PollingAndPricingAdminScreen(
+                gateway: gateway,
+                actorUserId: 'demo-super-admin',
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final explainerY = tester
-          .getTopLeft(
-            find.byKey(const Key('admin_data_accuracy_explainer_card')),
-          )
-          .dy;
-      final definitionsY = tester
-          .getTopLeft(find.byKey(const Key('admin_tier_definitions_card')))
-          .dy;
-      expect(
-        explainerY,
-        lessThan(definitionsY),
-        reason: 'PlainEnglishExplainerCard must render ABOVE '
-            'TierDefinitionsCard so the contract requirement '
-            '"always visible at top" is structurally enforced.',
-      );
-    });
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('admin_data_accuracy_explainer_card')),
+          findsNothing,
+        );
+        expect(
+          find.text(PlainEnglishExplainerCard.kExplainerParagraph1),
+          findsNothing,
+        );
+        final infoY = tester
+            .getTopLeft(
+              find.byKey(const Key('admin_polling_setup_info_button')),
+            )
+            .dy;
+        final definitionsY = tester
+            .getTopLeft(find.byKey(const Key('admin_tier_definitions_card')))
+            .dy;
+        expect(
+          infoY,
+          lessThan(definitionsY),
+          reason:
+              'The Polling Setup explainer must stay available above '
+              'TierDefinitionsCard through the header info button.',
+        );
+
+        await tester.tap(
+          find.byKey(const Key('admin_polling_setup_info_button')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('About this surface'), findsOneWidget);
+        expect(
+          find.text(PlainEnglishExplainerCard.kExplainerParagraph1),
+          findsOneWidget,
+        );
+        expect(
+          find.text(PlainEnglishExplainerCard.kExplainerParagraph2),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }

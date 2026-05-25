@@ -246,7 +246,10 @@ assignment + cost / margin rollup).
 The pricing surface is the F&F-internal control plane for the polling
 tier model. Operators NEVER see this tab - `forge_admin` role only.
 
-**Plain-English explainer card (always visible at top):**
+**Plain-English explainer info button (available from the header):**
+
+The header keeps only the `Polling Setup` title and a short intro. The
+longer explanation stays available from the header info button:
 
 > Polling cadence is how often F&F checks each vendor for new data.
 > Webhook vendors (Toast, Square, Clover, Lightspeed, Revel, Aloha,
