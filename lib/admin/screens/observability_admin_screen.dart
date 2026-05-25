@@ -47,7 +47,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
-import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../services/realtime/outbox_tripwire_evaluator.dart';
@@ -274,7 +273,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
             final showManualPrompt =
                 !_loading && _envelope == null && _loadError == null;
             final children = <Widget>[
-              _Header(
+              _ObservabilityActionsRow(
                 lastRefreshed: _lastRefreshed,
                 onRunCheck: _confirmAndRefresh,
                 loading: _loading || _refreshing,
@@ -316,8 +315,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                     ),
                   ),
                 ),
-              if (showManualPrompt)
-                _ManualRunPrompt(onRunCheck: _confirmAndRefresh),
+              if (showManualPrompt) const _ManualRunPrompt(),
             ];
             final column = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -395,10 +393,10 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
   }
 }
 
-// ── Header ───────────────────────────────────────────────────────────
+// Actions row.
 
-class _Header extends StatelessWidget {
-  const _Header({
+class _ObservabilityActionsRow extends StatelessWidget {
+  const _ObservabilityActionsRow({
     required this.lastRefreshed,
     required this.onRunCheck,
     required this.loading,
@@ -414,55 +412,35 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OperatorWebScreenHeader(
-      icon: Icons.insights_outlined,
-      title: 'AI Metrics',
-      subtitle:
-          'What the AI advisor costs, who uses it, and whether it is healthy.',
-      collapseBelowWidth: 720,
-      actions: <Widget>[
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _MonthSelector(
-                month: month,
-                onSelectMonth: onSelectMonth,
-                enabled: !loading,
-              ),
-              const SizedBox(height: 8),
-              AdminRunCheckButton(
-                key: const Key('admin_observability_refresh_button'),
-                onPressed: () {
-                  onRunCheck();
-                },
-                icon: Icons.insights_outlined,
-                label: 'Run metrics check',
-                loadingLabel: 'Running...',
-                loading: loading,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                lastRefreshed == null
-                    ? 'Last refreshed: -'
-                    : 'Last refreshed: ${adminHumanDateTime(lastRefreshed!)}',
-                key: const Key('admin_observability_last_refreshed'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Open System health for dependency checks.',
-                key: const Key('admin_observability_health_link_hint'),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-            ],
-          ),
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 8,
+      children: <Widget>[
+        _MonthSelector(
+          month: month,
+          onSelectMonth: onSelectMonth,
+          enabled: !loading,
+        ),
+        Text(
+          lastRefreshed == null
+              ? 'Last refreshed: -'
+              : 'Last refreshed: ${adminHumanDateTime(lastRefreshed!)}',
+          key: const Key('admin_observability_last_refreshed'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+        AdminRunCheckButton(
+          key: const Key('admin_observability_refresh_button'),
+          onPressed: () {
+            onRunCheck();
+          },
+          icon: Icons.insights_outlined,
+          label: 'Run metrics check',
+          loadingLabel: 'Running...',
+          loading: loading,
         ),
       ],
     );
@@ -592,39 +570,36 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
 }
 
 class _ManualRunPrompt extends StatelessWidget {
-  const _ManualRunPrompt({required this.onRunCheck});
-
-  final Future<void> Function() onRunCheck;
+  const _ManualRunPrompt();
 
   @override
   Widget build(BuildContext context) {
-    return AdminRunCheckPrompt(
+    return Container(
       key: const Key('admin_observability_manual_prompt'),
-      icon: Icons.insights_outlined,
-      title: 'Check AI Metrics',
-      description:
-          'Load the current staging view before comparing cost, usage, limits, and hosting signals.',
-      buttonLabel: 'Run metrics check',
-      onPressed: () {
-        onRunCheck();
-      },
-      facts: const [
-        AdminRunCheckFact(
-          icon: Icons.visibility_outlined,
-          label: 'Read-only',
-          text: 'No plans, limits, or records are changed.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.query_stats_outlined,
-          label: 'Scope',
-          text: 'Usage, cost, customer activity, graph, and hosting metrics.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.schedule_outlined,
-          label: 'Timing',
-          text: 'Recent usage reads can take 10-30 seconds.',
-        ),
-      ],
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Check AI Metrics',
+            style: AppTextStyles.body14(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Run a metrics check to see the latest cost, usage, and customer signals.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }
