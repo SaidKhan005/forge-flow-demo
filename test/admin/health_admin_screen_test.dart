@@ -84,7 +84,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/health_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/health_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/health_admin_gateway.dart';
@@ -198,14 +197,8 @@ void main() {
     // platform-wide: the /health envelope carries no scope identifiers per
     // docs/contracts/proxy_health_contract.md). One short muted platform
     // note renders in its place; the old notice is gone from the tree.
-    expect(
-      find.byKey(const Key('admin_health_scope_notice')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_health_platform_note')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('admin_health_scope_notice')), findsNothing);
+    expect(find.byKey(const Key('admin_health_platform_note')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
     await tester.pumpAndSettle();
@@ -319,15 +312,8 @@ void main() {
     // summary (the old banners / overall chip are gone).
     expect(find.byKey(const Key('admin_health_summary')), findsOneWidget);
     expect(summaryHeadline(tester), equals('Everything looks good'));
-    expect(
-      find.textContaining('All 3 checks passed.'),
-      findsOneWidget,
-    );
-    // The all-good sub-line now also carries the last-checked phrase.
-    expect(
-      find.text('All 3 checks passed. Last checked just now.'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('All 3 checks passed.'), findsOneWidget);
+    expect(find.text('All 3 checks passed.'), findsOneWidget);
   });
 
   testWidgets('decluttered default hides the legend and dependency strip', (
@@ -382,9 +368,9 @@ void main() {
     // The tabbed body is centered and capped at the shared operator-web
     // content width (1120) even though the viewport is 1600 wide, so the
     // tabs do not span edge-to-edge.
-    final tabsWidth = tester.getSize(
-      find.byKey(const Key('admin_health_tabs')),
-    ).width;
+    final tabsWidth = tester
+        .getSize(find.byKey(const Key('admin_health_tabs')))
+        .width;
     expect(tester.takeException(), isNull);
     expect(tabsWidth, lessThanOrEqualTo(1121));
   });
@@ -413,9 +399,7 @@ void main() {
     // Curated meaning line on the card face (not the next-step text).
     expect(
       textByKey(tester, 'admin_health_tile_rollup_freshness_per_grain_line'),
-      equals(
-        "Whether the advisor's data is current across all time periods.",
-      ),
+      equals("Whether the advisor's data is current across all time periods."),
     );
   });
 
@@ -667,7 +651,7 @@ void main() {
     // (proxy) tab — index 1 — not the default Retrieval tab.
     final json = _greenEnvelope();
     (json['metrics']!
-        as Map<String, Object?>)['circuit_breaker_anthropic_state'] =
+            as Map<String, Object?>)['circuit_breaker_anthropic_state'] =
         <String, Object?>{
           'status': 'red',
           'value': 'open',
@@ -743,8 +727,7 @@ void main() {
     );
     // Reading order: above, or to the left on the same row.
     final failingPrecedes =
-        failing.dy < good.dy ||
-        (failing.dy == good.dy && failing.dx < good.dx);
+        failing.dy < good.dy || (failing.dy == good.dy && failing.dx < good.dx);
     expect(
       failingPrecedes,
       isTrue,
