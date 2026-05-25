@@ -261,6 +261,10 @@ String? _locationName(OperatorAdminBundle? bundle, String locationId) {
 
 /// Friendly summary chips for a rule's per-kind metadata. Empty when the
 /// rule has no extra detail. Never renders raw JSON.
+///
+/// Each setting kind's chips are built by a dedicated helper so this
+/// dispatcher stays a flat switch (the per-kind branches carry the
+/// metadata-shape conditionals).
 List<String> friendlyMetadataChips({
   required String settingKind,
   required Map<String, Object?> metadata,
@@ -268,40 +272,13 @@ List<String> friendlyMetadataChips({
   final chips = <String>[];
   switch (settingKind) {
     case VendorApplicabilitySettingKind.wage:
-      final basis = metadata['authority_basis'];
-      if (basis is String) {
-        chips.add('Pay rate: ${_wageAuthorityLabel(basis)}');
-      }
-      if (metadata['requires_job_code'] == true) {
-        chips.add('Only shifts with a role');
-      }
-      final vendorField = metadata['vendor_field'];
-      if (vendorField is String && vendorField.isNotEmpty) {
-        chips.add('Vendor field: $vendorField');
-      }
+      _addWageChips(chips, metadata);
       break;
     case VendorApplicabilitySettingKind.covers:
-      final filter = metadata['cover_filter'];
-      if (filter is String) {
-        chips.add('Guests: ${_coverFilterLabel(filter)}');
-      }
-      final periods = metadata['service_periods'];
-      if (periods is List && periods.isNotEmpty) {
-        chips.add('Periods: ${periods.whereType<String>().join(', ')}');
-      }
-      if (metadata['exclude_voids'] == true) {
-        chips.add('Voided checks left out');
-      }
+      _addCoversChips(chips, metadata);
       break;
     case VendorApplicabilitySettingKind.polling:
-      final tier = metadata['tier_key'];
-      if (tier is String) {
-        chips.add('Check frequency: ${_tierLabel(tier)}');
-      }
-      final seconds = metadata['polling_seconds_override'];
-      if (seconds is int) {
-        chips.add('Every ${seconds ~/ 60} minutes');
-      }
+      _addPollingChips(chips, metadata);
       break;
   }
   final notes = metadata['notes'];
@@ -309,6 +286,45 @@ List<String> friendlyMetadataChips({
     chips.add('Note: ${notes.trim()}');
   }
   return chips;
+}
+
+void _addWageChips(List<String> chips, Map<String, Object?> metadata) {
+  final basis = metadata['authority_basis'];
+  if (basis is String) {
+    chips.add('Pay rate: ${_wageAuthorityLabel(basis)}');
+  }
+  if (metadata['requires_job_code'] == true) {
+    chips.add('Only shifts with a role');
+  }
+  final vendorField = metadata['vendor_field'];
+  if (vendorField is String && vendorField.isNotEmpty) {
+    chips.add('Vendor field: $vendorField');
+  }
+}
+
+void _addCoversChips(List<String> chips, Map<String, Object?> metadata) {
+  final filter = metadata['cover_filter'];
+  if (filter is String) {
+    chips.add('Guests: ${_coverFilterLabel(filter)}');
+  }
+  final periods = metadata['service_periods'];
+  if (periods is List && periods.isNotEmpty) {
+    chips.add('Periods: ${periods.whereType<String>().join(', ')}');
+  }
+  if (metadata['exclude_voids'] == true) {
+    chips.add('Voided checks left out');
+  }
+}
+
+void _addPollingChips(List<String> chips, Map<String, Object?> metadata) {
+  final tier = metadata['tier_key'];
+  if (tier is String) {
+    chips.add('Check frequency: ${_tierLabel(tier)}');
+  }
+  final seconds = metadata['polling_seconds_override'];
+  if (seconds is int) {
+    chips.add('Every ${seconds ~/ 60} minutes');
+  }
 }
 
 String _wageAuthorityLabel(String basis) {
