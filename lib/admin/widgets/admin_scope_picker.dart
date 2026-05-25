@@ -27,6 +27,7 @@ import '../../widgets/console/console_surface.dart';
 import '../admin_route_handoff.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
+import 'admin_action_controls.dart';
 
 /// How many businesses to show in the resting "All businesses" list and
 /// in a filtered result set before collapsing the tail into a
@@ -96,10 +97,11 @@ class _AdminScopePickerState extends State<AdminScopePicker> {
       // Actions live inside the body (search + list); the dialog action
       // row only needs a single dismiss control.
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_scope_picker_overlay_close'),
+          label: 'Close',
+          role: AdminActionRole.quiet,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
       child: _AdminScopePickerOverlayBody(
@@ -831,10 +833,12 @@ class _AdminScopeErrorState extends StatelessWidget {
       child: OperatorWebBanner(
         message: message,
         tone: OperatorWebBannerTone.error,
-        action: TextButton(
+        action: AdminActionButton(
           key: const Key('admin_scope_picker_retry'),
+          label: 'Retry',
+          role: AdminActionRole.secondary,
+          compact: true,
           onPressed: onRetry,
-          child: const Text('Retry'),
         ),
       ),
     );

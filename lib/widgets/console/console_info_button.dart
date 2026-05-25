@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../admin/admin_button_styles.dart';
 import '../../theme/app_theme.dart';
 
 /// Small anchored help button for operator-web section headers and rows.
@@ -94,17 +95,17 @@ class _OperatorWebInfoButtonState extends State<OperatorWebInfoButton> {
     return CompositedTransformTarget(
       link: _layerLink,
       child: SizedBox.square(
-        dimension: 26,
+        dimension: AdminButtonStyles.iconHitTarget,
         child: IconButton(
           tooltip: widget.tooltip,
-          padding: EdgeInsets.zero,
-          visualDensity: VisualDensity.compact,
-          iconSize: 16,
-          onPressed: _toggle,
-          icon: Icon(
-            Icons.info_outline,
-            color: _isOpen ? AppColors.sunsetDark : AppColors.textMuted,
+          style: AdminButtonStyles.icon.copyWith(
+            foregroundColor: WidgetStatePropertyAll(
+              _isOpen ? AppColors.sunsetDark : AppColors.textMuted,
+            ),
           ),
+          iconSize: 18,
+          onPressed: _toggle,
+          icon: const Icon(Icons.info_outline),
         ),
       ),
     );

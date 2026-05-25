@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../admin/widgets/admin_action_controls.dart';
 import '../../theme/app_theme.dart';
 import 'console_section_heading.dart';
 
@@ -184,32 +185,18 @@ class OperatorWebDialog extends StatelessWidget {
                       ),
                     ),
                     if (showCloseButton)
-                      SizedBox(
-                        width: 42,
-                        height: 42,
-                        child: IconButton(
-                          key: const Key('operator_web_dialog_close'),
-                          tooltip: 'Close',
-                          onPressed:
-                              onClose ?? () => Navigator.of(context).pop(),
-                          icon: const Icon(
-                            Icons.close,
-                            size: 22,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
+                      AdminIconAction(
+                        key: const Key('operator_web_dialog_close'),
+                        tooltip: 'Close',
+                        onPressed: onClose ?? () => Navigator.of(context).pop(),
+                        icon: Icons.close,
                       ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 child,
                 const SizedBox(height: 18),
-                Wrap(
-                  alignment: WrapAlignment.end,
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: actions,
-                ),
+                AdminDialogActionBar(children: actions),
               ],
             ),
           ),
@@ -246,19 +233,11 @@ class OperatorWebDialogHeader extends StatelessWidget {
             style: AppTextStyles.display20(color: AppColors.textPrimary),
           ),
         ),
-        SizedBox(
-          width: 42,
-          height: 42,
-          child: IconButton(
-            key: closeKey,
-            tooltip: 'Close',
-            onPressed: onClose,
-            icon: const Icon(
-              Icons.close,
-              size: 22,
-              color: AppColors.textSecondary,
-            ),
-          ),
+        AdminIconAction(
+          key: closeKey,
+          tooltip: 'Close',
+          onPressed: onClose,
+          icon: Icons.close,
         ),
       ],
     );
@@ -360,17 +339,19 @@ class _OperatorWebDateRangeDialogState
       icon: Icons.date_range_outlined,
       maxWidth: 430,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
+          label: 'Cancel',
+          role: AdminActionRole.quiet,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
+        AdminActionButton(
+          label: 'Apply',
+          role: AdminActionRole.primary,
           onPressed: _isValid
               ? () => Navigator.of(
                   context,
                 ).pop(DateTimeRange(start: _start, end: _end))
               : null,
-          child: const Text('Apply'),
         ),
       ],
       child: Column(

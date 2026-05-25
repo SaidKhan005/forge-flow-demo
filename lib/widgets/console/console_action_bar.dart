@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_theme.dart';
+
 /// Shared action cluster for console headers, section headings, and rows.
 ///
 /// The console has many small action groups. Keeping the spacing and right-edge
@@ -9,8 +11,8 @@ class OperatorWebActionBar extends StatelessWidget {
   const OperatorWebActionBar({
     super.key,
     required this.children,
-    this.spacing = 10,
-    this.runSpacing = 8,
+    this.spacing = AppSpacing.sm,
+    this.runSpacing = AppSpacing.sm,
     this.alignment = WrapAlignment.end,
     this.crossAxisAlignment = WrapCrossAlignment.center,
   });

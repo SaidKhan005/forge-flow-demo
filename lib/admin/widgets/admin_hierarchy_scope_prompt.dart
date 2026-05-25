@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../operator_web/widgets/hierarchy_map_picker.dart';
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
+import 'admin_action_controls.dart';
 
 /// Admin scope-prompt — Wave 2 H-3 hierarchy-map variant.
 ///
@@ -89,11 +89,11 @@ class AdminHierarchyScopePrompt extends StatelessWidget {
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
-              child: OutlinedButton(
+              child: AdminActionButton(
                 key: const Key('admin_hierarchy_scope_prompt_cancel'),
-                style: AdminButtonStyles.secondary(minWidth: 96),
+                label: 'Cancel',
+                role: AdminActionRole.secondary,
                 onPressed: onCancel,
-                child: const Text('Cancel'),
               ),
             ),
           ],
@@ -154,7 +154,8 @@ class _AdminScopeHierarchyMapState extends State<_AdminScopeHierarchyMap> {
         case AdminHierarchyScopeType.location:
           // Locations point at their orgUnit parent when known; fall
           // back to the business root so the tree is always connected.
-          parentId = _findOrgUnitParentKey(
+          parentId =
+              _findOrgUnitParentKey(
                 widget.scopes,
                 scope.operatorId,
                 scope.orgUnitId,
@@ -175,8 +176,7 @@ class _AdminScopeHierarchyMapState extends State<_AdminScopeHierarchyMap> {
             scope.inheritanceLabel,
             if (scope.effectiveValueLabel != null)
               'Effective: ${scope.effectiveValueLabel}',
-            if (scope.allowedActionsLabel != null)
-              scope.allowedActionsLabel!,
+            if (scope.allowedActionsLabel != null) scope.allowedActionsLabel!,
           ],
         ),
       );
@@ -244,7 +244,6 @@ class _AdminScopeHierarchyMapState extends State<_AdminScopeHierarchyMap> {
   }
 }
 
-
 class AdminHierarchyScopeBanner extends StatelessWidget {
   const AdminHierarchyScopeBanner({
     super.key,
@@ -302,34 +301,26 @@ class AdminHierarchyScopeBanner extends StatelessWidget {
               ),
             ],
           );
-          final actions = Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          final actions = AdminActionBar(
             children: [
-              OutlinedButton.icon(
+              AdminActionButton(
                 key: const Key('admin_hierarchy_scope_change'),
-                style: AdminButtonStyles.secondary(
-                  foregroundColor: AppColors.peacockDark,
-                  borderColor: AppColors.peacock.withValues(alpha: 0.55),
-                  minWidth: 126,
-                  minHeight: 36,
-                ),
+                label: 'Change scope',
+                role: AdminActionRole.secondary,
+                compact: true,
+                minWidth: 126,
                 onPressed: onChangeScope,
-                icon: const Icon(Icons.account_tree_outlined, size: 14),
-                label: const Text('Change scope'),
+                icon: Icons.account_tree_outlined,
               ),
               if (onClear != null)
-                OutlinedButton.icon(
+                AdminActionButton(
                   key: const Key('admin_hierarchy_scope_clear'),
-                  style: AdminButtonStyles.secondary(
-                    foregroundColor: AppColors.peacockDark,
-                    borderColor: AppColors.peacock.withValues(alpha: 0.55),
-                    minWidth: 100,
-                    minHeight: 36,
-                  ),
+                  label: 'Show all',
+                  role: AdminActionRole.secondary,
+                  compact: true,
+                  minWidth: 100,
                   onPressed: onClear,
-                  icon: const Icon(Icons.filter_alt_off_outlined, size: 14),
-                  label: const Text('Show all'),
+                  icon: Icons.filter_alt_off_outlined,
                 ),
             ],
           );
