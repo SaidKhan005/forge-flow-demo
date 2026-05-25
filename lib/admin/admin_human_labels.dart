@@ -162,6 +162,21 @@ String adminHumanDateTime(DateTime when) {
       '$zoneSuffix';
 }
 
+String adminRelativeUpdated(DateTime updatedAt, DateTime now) {
+  final elapsed = now.toUtc().difference(updatedAt.toUtc());
+  if (elapsed.isNegative || elapsed.inSeconds < 45) return 'just now';
+  if (elapsed.inMinutes < 60) {
+    final minutes = elapsed.inMinutes;
+    return '$minutes minute${minutes == 1 ? '' : 's'} ago';
+  }
+  if (elapsed.inHours < 24) {
+    final hours = elapsed.inHours;
+    return '$hours hour${hours == 1 ? '' : 's'} ago';
+  }
+  final days = elapsed.inDays;
+  return '$days day${days == 1 ? '' : 's'} ago';
+}
+
 AdminRequestUseCaseCopy? _findRequestUseCase(String id) {
   final normalized = id.trim().toLowerCase();
   for (final useCase in adminRequestUseCases) {

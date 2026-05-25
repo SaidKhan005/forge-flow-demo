@@ -47,6 +47,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
+import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../services/realtime/outbox_tripwire_evaluator.dart';
@@ -290,18 +291,18 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
             final showManualPrompt =
                 !_loading && _envelope == null && _loadError == null;
             final children = <Widget>[
-              if (!showManualPrompt) ...<Widget>[
-                _ObservabilityActionsRow(
-                  lastRefreshed: _lastRefreshed,
-                  onRunCheck: _confirmAndRefresh,
-                  loading: _loading || _refreshing,
-                  month: _month,
-                  onSelectMonth: _selectMonth,
-                  useCase: _useCase,
-                  onSelectUseCase: _selectUseCase,
-                ),
-                const SizedBox(height: 12),
-              ],
+              _ObservabilityHeader(
+                showActions: !showManualPrompt,
+                lastRefreshed: _lastRefreshed,
+                onRunCheck: _confirmAndRefresh,
+                loading: _loading || _refreshing,
+                month: _month,
+                onSelectMonth: _selectMonth,
+                useCase: _useCase,
+                onSelectUseCase: _selectUseCase,
+                now: _clockNow,
+              ),
+              const SizedBox(height: 16),
               if (_loadError != null)
                 _ErrorBanner(
                   key: const Key('admin_observability_load_error'),
@@ -453,9 +454,7 @@ class _ObservabilityPillTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color fg = selected
-        ? AppColors.textPrimary
-        : AppColors.textSecondary;
+    final Color fg = selected ? AppColors.textPrimary : AppColors.textSecondary;
     return Material(
       color: selected ? AppColors.backgroundSurface : Colors.transparent,
       borderRadius: BorderRadius.circular(9),
@@ -479,10 +478,11 @@ class _ObservabilityPillTab extends StatelessWidget {
   }
 }
 
-// Actions row.
+// Header.
 
-class _ObservabilityActionsRow extends StatelessWidget {
-  const _ObservabilityActionsRow({
+class _ObservabilityHeader extends StatelessWidget {
+  const _ObservabilityHeader({
+    required this.showActions,
     required this.lastRefreshed,
     required this.onRunCheck,
     required this.loading,
@@ -490,8 +490,10 @@ class _ObservabilityActionsRow extends StatelessWidget {
     required this.onSelectMonth,
     required this.useCase,
     required this.onSelectUseCase,
+    required this.now,
   });
 
+  final bool showActions;
   final DateTime? lastRefreshed;
   final Future<void> Function() onRunCheck;
   final bool loading;
@@ -499,45 +501,46 @@ class _ObservabilityActionsRow extends StatelessWidget {
   final ValueChanged<ObservabilityMonth> onSelectMonth;
   final String? useCase;
   final ValueChanged<String?> onSelectUseCase;
+  final DateTime Function() now;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 12,
-      runSpacing: 8,
-      children: <Widget>[
-        AdminObservabilityUseCaseSelector(
-          selected: useCase,
-          onSelect: onSelectUseCase,
-          enabled: !loading,
-        ),
-        AdminObservabilityMonthSelector(
-          month: month,
-          onSelectMonth: onSelectMonth,
-          enabled: !loading,
-        ),
-        Text(
-          lastRefreshed == null
-              ? 'Last refreshed: -'
-              : 'Last refreshed: ${adminHumanDateTime(lastRefreshed!)}',
-          key: const Key('admin_observability_last_refreshed'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTextStyles.mono10(color: AppColors.textMuted),
-        ),
-        AdminRunCheckButton(
-          key: const Key('admin_observability_refresh_button'),
-          onPressed: () {
-            onRunCheck();
-          },
-          icon: Icons.insights_outlined,
-          label: 'Run metrics check',
-          loadingLabel: 'Running...',
-          loading: loading,
-        ),
-      ],
+    return OperatorWebScreenHeader(
+      icon: Icons.insights_outlined,
+      title: 'AI Metrics',
+      subtitle: 'Review advisor usage, cost, reliability, and activity.',
+      collapseBelowWidth: 760,
+      actions: showActions
+          ? <Widget>[
+              AdminRefreshHeaderActions(
+                maxWidth: 640,
+                statusKey: const Key('admin_observability_last_refreshed'),
+                statusText: lastRefreshed == null
+                    ? 'Not checked yet'
+                    : 'Updated ${adminRelativeUpdated(lastRefreshed!, now())}',
+                buttonKey: const Key('admin_observability_refresh_button'),
+                buttonLabel: 'Refresh',
+                loadingLabel: 'Loading...',
+                icon: Icons.refresh,
+                loading: loading,
+                onPressed: () {
+                  onRunCheck();
+                },
+                leading: <Widget>[
+                  AdminObservabilityUseCaseSelector(
+                    selected: useCase,
+                    onSelect: onSelectUseCase,
+                    enabled: !loading,
+                  ),
+                  AdminObservabilityMonthSelector(
+                    month: month,
+                    onSelectMonth: onSelectMonth,
+                    enabled: !loading,
+                  ),
+                ],
+              ),
+            ]
+          : const <Widget>[],
     );
   }
 }
@@ -552,9 +555,9 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
       cancelButtonKey: Key('admin_observability_confirm_cancel'),
       confirmButtonKey: Key('admin_observability_confirm_run'),
       icon: Icons.insights_outlined,
-      title: 'Run metrics check',
+      title: 'Refresh AI Metrics',
       description: 'Refresh the current AI Metrics snapshot from staging.',
-      confirmLabel: 'Run metrics check',
+      confirmLabel: 'Refresh',
       facts: [
         AdminRunCheckFact(
           icon: Icons.schedule_outlined,
@@ -1083,13 +1086,14 @@ class _CostDonut extends StatelessWidget {
                           slice.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.body13(
-                            color: AppColors.textPrimary,
-                          ).copyWith(
-                            fontWeight: highlight == slice.queryClass
-                                ? FontWeight.w800
-                                : FontWeight.w600,
-                          ),
+                          style:
+                              AppTextStyles.body13(
+                                color: AppColors.textPrimary,
+                              ).copyWith(
+                                fontWeight: highlight == slice.queryClass
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                              ),
                         ),
                       ),
                       const SizedBox(width: 8),

@@ -39,6 +39,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_info_button.dart';
 import '../../widgets/console/console_screen_body.dart';
+import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
 import '../admin_human_labels.dart';
@@ -324,8 +325,9 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
                 lastRefreshed: _lastRefreshed,
                 onRunHealthCheck: _confirmAndRefresh,
                 loading: _loading || _refreshing,
+                now: _clockNow,
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 16),
               if (_loadError != null)
                 _ErrorBanner(
                   key: const Key('admin_health_load_error'),
@@ -552,8 +554,7 @@ class _HealthSummary extends StatelessWidget {
     // Every metric in the envelope that needs attention, in tab order so
     // the triage list reads top-to-bottom like the tabs.
     final attention = _attentionMetrics(envelope);
-    final amber =
-        !isRed && (attention.isNotEmpty || attentionDeps.isNotEmpty);
+    final amber = !isRed && (attention.isNotEmpty || attentionDeps.isNotEmpty);
 
     final Color color;
     final IconData icon;
@@ -578,8 +579,7 @@ class _HealthSummary extends StatelessWidget {
       // need a look" clause.
       final rest = attention.length - redTier1.length;
       subLine = _redSubLine(redDeps, rest: rest < 0 ? 0 : rest);
-      final count =
-          attention.isEmpty ? attentionDeps.length : attention.length;
+      final count = attention.isEmpty ? attentionDeps.length : attention.length;
       countLabel = '$count';
       countCaption = count == 1 ? 'item to review' : 'items to review';
     } else if (amber) {
@@ -943,128 +943,51 @@ class _HealthLegendInfo extends StatelessWidget {
   }
 }
 
-/// Compact, right-aligned actions row that replaces the screen's old
-/// `_Header`. The admin scope-workspace pane already shows the "System
-/// health" title + subtitle + selected-scope line above the screen, so
-/// this row carries no title, subtitle, or icon — only the single Run
-/// button and the "Last checked" stamp. It renders in every state. A
-/// `Wrap` (right-aligned) lets the stamp drop below the button instead of
-/// overflowing on a narrow viewport.
+/// Shared page header for the System health screen. It mirrors AI
+/// Metrics and Support logs: identity on the left, refresh controls on
+/// the right, and freshness copy under the controls.
 class _HealthHeader extends StatelessWidget {
   const _HealthHeader({
     required this.showActions,
     required this.lastRefreshed,
     required this.onRunHealthCheck,
     required this.loading,
+    required this.now,
   });
 
   final bool showActions;
   final DateTime? lastRefreshed;
   final Future<void> Function() onRunHealthCheck;
   final bool loading;
+  final DateTime Function() now;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final title = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.sunset.withValues(alpha: 0.10),
-                border: Border.all(
-                  color: AppColors.sunset.withValues(alpha: 0.32),
-                ),
-                borderRadius: BorderRadius.circular(8),
+    return OperatorWebScreenHeader(
+      icon: Icons.monitor_heart_outlined,
+      title: 'System health',
+      titleKey: const Key('admin_health_title'),
+      subtitle: 'Run read-only checks for core services and dependencies.',
+      collapseBelowWidth: 640,
+      actions: showActions
+          ? <Widget>[
+              AdminRefreshHeaderActions(
+                maxWidth: 300,
+                statusKey: const Key('admin_health_last_refreshed'),
+                statusText: lastRefreshed == null
+                    ? 'Not checked yet'
+                    : 'Updated ${adminRelativeUpdated(lastRefreshed!, now())}',
+                buttonKey: const Key('admin_health_refresh_button'),
+                buttonLabel: 'Refresh',
+                loadingLabel: 'Loading...',
+                icon: Icons.refresh,
+                loading: loading,
+                onPressed: () {
+                  onRunHealthCheck();
+                },
               ),
-              child: const Icon(
-                Icons.monitor_heart_outlined,
-                color: AppColors.sunsetDark,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(
-                'System health',
-                key: const Key('admin_health_title'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.display28(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
-        );
-
-        if (!showActions) return title;
-
-        final actions = _HealthActionsRow(
-          lastRefreshed: lastRefreshed,
-          onRunHealthCheck: onRunHealthCheck,
-          loading: loading,
-        );
-        if (constraints.maxWidth < 720) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[title, const SizedBox(height: 14), actions],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: <Widget>[
-            Flexible(flex: 2, child: title),
-            const SizedBox(width: 16),
-            Flexible(
-              child: Align(alignment: Alignment.centerRight, child: actions),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _HealthActionsRow extends StatelessWidget {
-  const _HealthActionsRow({
-    required this.lastRefreshed,
-    required this.onRunHealthCheck,
-    required this.loading,
-  });
-
-  final DateTime? lastRefreshed;
-  final Future<void> Function() onRunHealthCheck;
-  final bool loading;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 12,
-      runSpacing: 6,
-      children: <Widget>[
-        if (lastRefreshed != null)
-          Text(
-            'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
-            key: const Key('admin_health_last_refreshed'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
-          ),
-        AdminRunCheckButton(
-          key: const Key('admin_health_refresh_button'),
-          onPressed: () {
-            onRunHealthCheck();
-          },
-          icon: Icons.health_and_safety_outlined,
-          label: 'Run system check',
-          loadingLabel: 'Running...',
-          loading: loading,
-        ),
-      ],
+            ]
+          : const <Widget>[],
     );
   }
 }
@@ -1079,9 +1002,9 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
       cancelButtonKey: Key('admin_health_confirm_cancel'),
       confirmButtonKey: Key('admin_health_confirm_run'),
       icon: Icons.health_and_safety_outlined,
-      title: 'Run system check',
+      title: 'Refresh system health',
       description: 'Refresh the current system health snapshot from staging.',
-      confirmLabel: 'Run system check',
+      confirmLabel: 'Refresh',
       facts: [
         AdminRunCheckFact(
           icon: Icons.schedule_outlined,

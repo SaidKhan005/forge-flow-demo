@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_action_bar.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
 import 'admin_responsive_layout.dart';
@@ -52,6 +53,76 @@ class AdminRunCheckButton extends StatelessWidget {
             )
           : Icon(icon, size: 16),
       label: Text(loading ? loadingLabel : label),
+    );
+  }
+}
+
+class AdminRefreshHeaderActions extends StatelessWidget {
+  const AdminRefreshHeaderActions({
+    super.key,
+    required this.statusText,
+    required this.buttonKey,
+    required this.buttonLabel,
+    required this.loadingLabel,
+    required this.icon,
+    required this.loading,
+    required this.onPressed,
+    this.statusKey,
+    this.leading = const <Widget>[],
+    this.badges = const <Widget>[],
+    this.maxWidth = 520,
+  });
+
+  final String statusText;
+  final Key? statusKey;
+  final Key buttonKey;
+  final String buttonLabel;
+  final String loadingLabel;
+  final IconData icon;
+  final bool loading;
+  final VoidCallback? onPressed;
+  final List<Widget> leading;
+  final List<Widget> badges;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (badges.isNotEmpty) ...<Widget>[
+            OperatorWebActionBar(spacing: 8, runSpacing: 6, children: badges),
+            const SizedBox(height: 6),
+          ],
+          OperatorWebActionBar(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              ...leading,
+              AdminRunCheckButton(
+                key: buttonKey,
+                label: buttonLabel,
+                loadingLabel: loadingLabel,
+                icon: icon,
+                loading: loading,
+                onPressed: onPressed,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            statusText,
+            key: statusKey,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }
