@@ -1746,39 +1746,78 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       final servicePeriodKey = entry.key.trim();
       if (servicePeriodKey.isEmpty) continue;
       _validateServicePeriodKey(servicePeriodKey);
-      final priorIdx = list.indexWhere(
-        (row) =>
-            row.servicePeriodKey == servicePeriodKey &&
-            row.effectiveAtBusinessDate == '1970-01-01',
-      );
-      final prev = priorIdx >= 0 ? list[priorIdx] : null;
-      if (prev == null) {
-        _servicePeriodIdCounter += 1;
-      }
-      final next = DataAccuracyServicePeriodSetting(
-        id: prev?.id ?? 'period-setting-$_servicePeriodIdCounter',
-        operatorId: settings.operatorId,
-        locationId: settings.locationId,
+      _upsertBaselineServicePeriodRow(
+        list,
+        settings: settings,
         servicePeriodKey: servicePeriodKey,
-        coversSource: ServicePeriodCoversSourceWire.fromWire(entry.value.wire),
-        wageSource:
-            prev?.wageSource ?? ServicePeriodWageSource.vendorPerEmployee,
-        effectiveAtBusinessDate: '1970-01-01',
-        createdAt: prev?.createdAt ?? _clock(),
-        updatedAt: _clock(),
-        updatedBy: actorUserId,
+        coversSource: entry.value,
+        actorUserId: actorUserId,
       );
-      if (priorIdx >= 0) {
-        list[priorIdx] = next;
-      } else {
-        list.add(next);
-      }
     }
     list.sort((a, b) {
       final byKey = a.servicePeriodKey.compareTo(b.servicePeriodKey);
       if (byKey != 0) return byKey;
       return b.effectiveAtBusinessDate.compareTo(a.effectiveAtBusinessDate);
     });
+  }
+
+  void _upsertBaselineServicePeriodRow(
+    List<DataAccuracyServicePeriodSetting> list, {
+    required DataAccuracySettings settings,
+    required String servicePeriodKey,
+    required CoversSource coversSource,
+    required String actorUserId,
+  }) {
+    final priorIdx = _baselineServicePeriodIndex(list, servicePeriodKey);
+    final prev = priorIdx >= 0 ? list[priorIdx] : null;
+    final next = _buildBaselineServicePeriodRow(
+      settings,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: coversSource,
+      previous: prev,
+      actorUserId: actorUserId,
+    );
+    if (priorIdx >= 0) {
+      list[priorIdx] = next;
+    } else {
+      list.add(next);
+    }
+  }
+
+  int _baselineServicePeriodIndex(
+    List<DataAccuracyServicePeriodSetting> list,
+    String servicePeriodKey,
+  ) {
+    return list.indexWhere(
+      (row) =>
+          row.servicePeriodKey == servicePeriodKey &&
+          row.effectiveAtBusinessDate == '1970-01-01',
+    );
+  }
+
+  DataAccuracyServicePeriodSetting _buildBaselineServicePeriodRow(
+    DataAccuracySettings settings, {
+    required String servicePeriodKey,
+    required CoversSource coversSource,
+    required DataAccuracyServicePeriodSetting? previous,
+    required String actorUserId,
+  }) {
+    if (previous == null) {
+      _servicePeriodIdCounter += 1;
+    }
+    return DataAccuracyServicePeriodSetting(
+      id: previous?.id ?? 'period-setting-$_servicePeriodIdCounter',
+      operatorId: settings.operatorId,
+      locationId: settings.locationId,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: ServicePeriodCoversSourceWire.fromWire(coversSource.wire),
+      wageSource:
+          previous?.wageSource ?? ServicePeriodWageSource.vendorPerEmployee,
+      effectiveAtBusinessDate: '1970-01-01',
+      createdAt: previous?.createdAt ?? _clock(),
+      updatedAt: _clock(),
+      updatedBy: actorUserId,
+    );
   }
 
   DataAccuracyAdminRow _rowFor(OperatorLocationRef ref) {
