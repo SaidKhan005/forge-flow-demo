@@ -87,14 +87,18 @@ void main() {
         );
 
         final afterManualSave = await gateway.saveManualCovers(
-          operatorId: 'op-1',
-          locationId: 'loc-1',
-          businessDateIso: '2026-06-02',
-          servicePeriodKey: 'dinner',
-          covers: 44,
-          actorUserId: 'admin-1',
-          actorIsForgeAdmin: true,
-          reasonNote: 'Set dinner covers',
+          const DataAccuracyManualCoversSaveCommand(
+            target: DataAccuracyManualCoversTarget(
+              operatorId: 'op-1',
+              locationId: 'loc-1',
+              businessDateIso: '2026-06-02',
+              servicePeriodKey: 'dinner',
+            ),
+            covers: 44,
+            actorUserId: 'admin-1',
+            actorIsForgeAdmin: true,
+            reasonNote: 'Set dinner covers',
+          ),
         );
         expect(afterManualSave.manualCoversFor('2026-06-02', 'lunch'), 12);
         expect(afterManualSave.manualCoversFor('2026-06-02', 'dinner'), 44);

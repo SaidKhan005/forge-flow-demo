@@ -435,6 +435,36 @@ class DataAccuracyAdminGatewayError implements Exception {
       'DataAccuracyAdminGatewayError($statusCode/$errorCode): $message';
 }
 
+class DataAccuracyManualCoversTarget {
+  const DataAccuracyManualCoversTarget({
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDateIso,
+    required this.servicePeriodKey,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String businessDateIso;
+  final String servicePeriodKey;
+}
+
+class DataAccuracyManualCoversSaveCommand {
+  const DataAccuracyManualCoversSaveCommand({
+    required this.target,
+    required this.covers,
+    required this.actorUserId,
+    required this.actorIsForgeAdmin,
+    this.reasonNote,
+  });
+
+  final DataAccuracyManualCoversTarget target;
+  final int covers;
+  final String actorUserId;
+  final bool actorIsForgeAdmin;
+  final String? reasonNote;
+}
+
 abstract class DataAccuracyAdminGateway {
   // ── Tab 1 reads ──────────────────────────────────────────────────────
   Future<List<DataAccuracyAdminRow>> listDataAccuracyRows();
@@ -459,16 +489,9 @@ abstract class DataAccuracyAdminGateway {
     String? reasonNote,
   });
 
-  Future<DataAccuracySettings> saveManualCovers({
-    required String operatorId,
-    required String locationId,
-    required String businessDateIso,
-    required String servicePeriodKey,
-    required int covers,
-    required String actorUserId,
-    required bool actorIsForgeAdmin,
-    String? reasonNote,
-  });
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  );
 
   Future<DataAccuracySettings> clearManualCovers({
     required String operatorId,
@@ -736,29 +759,24 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
-  Future<DataAccuracySettings> saveManualCovers({
-    required String operatorId,
-    required String locationId,
-    required String businessDateIso,
-    required String servicePeriodKey,
-    required int covers,
-    required String actorUserId,
-    required bool actorIsForgeAdmin,
-    String? reasonNote,
-  }) async {
-    _requireEditable(actorIsForgeAdmin, 'saveManualCovers');
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  ) async {
+    final target = command.target;
+    _requireEditable(command.actorIsForgeAdmin, 'saveManualCovers');
     final body = await _send(
       method: 'PATCH',
       path:
-          '$dataSettingsPrefix${Uri.encodeComponent(operatorId)}/'
-          '${Uri.encodeComponent(locationId)}/$dataManualCoversSegment',
+          '$dataSettingsPrefix${Uri.encodeComponent(target.operatorId)}/'
+          '${Uri.encodeComponent(target.locationId)}/'
+          '$dataManualCoversSegment',
       idempotencyKey: _newIdempotencyKey('data-accuracy-manual-covers-save'),
       jsonBody: <String, Object?>{
-        'business_date': businessDateIso,
-        'service_period_key': servicePeriodKey,
-        'covers': covers,
-        if (reasonNote != null && reasonNote.trim().isNotEmpty)
-          'reason_note': reasonNote.trim(),
+        'business_date': target.businessDateIso,
+        'service_period_key': target.servicePeriodKey,
+        'covers': command.covers,
+        if (command.reasonNote != null && command.reasonNote!.trim().isNotEmpty)
+          'reason_note': command.reasonNote!.trim(),
       },
     );
     return _settingsFromWriteResponse(body);
@@ -2054,17 +2072,16 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
-  Future<DataAccuracySettings> saveManualCovers({
-    required String operatorId,
-    required String locationId,
-    required String businessDateIso,
-    required String servicePeriodKey,
-    required int covers,
-    required String actorUserId,
-    required bool actorIsForgeAdmin,
-    String? reasonNote,
-  }) async {
-    _ensureForgeAdmin(actorIsForgeAdmin, 'saveManualCovers');
+  Future<DataAccuracySettings> saveManualCovers(
+    DataAccuracyManualCoversSaveCommand command,
+  ) async {
+    final target = command.target;
+    _ensureForgeAdmin(command.actorIsForgeAdmin, 'saveManualCovers');
+    final operatorId = target.operatorId;
+    final locationId = target.locationId;
+    final businessDateIso = target.businessDateIso;
+    final servicePeriodKey = target.servicePeriodKey;
+    final covers = command.covers;
     _validateBusinessDate(businessDateIso, 'business_date');
     _validateServicePeriodKey(servicePeriodKey);
     _validateCovers(covers);
@@ -2087,13 +2104,13 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     final next = _settingsWith(
       prev,
       coversManualEntries: entries,
-      updatedBy: actorUserId,
+      updatedBy: command.actorUserId,
     );
     _settings[_key(operatorId, locationId)] = next;
     if (before != covers) {
       _record(
         eventType: 'admin.data_accuracy.manual_covers.save',
-        actorUserId: actorUserId,
+        actorUserId: command.actorUserId,
         operatorId: operatorId,
         locationId: locationId,
         diff: <String, Object?>{
@@ -2101,7 +2118,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           'service_period_key': servicePeriodKey,
           'covers': <String, int?>{'from': before, 'to': covers},
         },
-        reasonNote: reasonNote,
+        reasonNote: command.reasonNote,
       );
     }
     return _effectiveSettings(operatorId, locationId);
