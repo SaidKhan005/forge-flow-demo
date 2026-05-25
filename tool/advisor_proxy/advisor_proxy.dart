@@ -128,6 +128,11 @@ import 'auth_operations_route_paths.dart'
     show canonicalAuthOperationPath, AuthOperationPathTranslationEntry;
 import 'vendor_lifecycle_recently_available_routes.dart';
 import 'weekly_plan_routes.dart';
+// Slice A4.1 — tool-use Anthropic gateway types for the agentic answer
+// engine (advisor_agentic_answer_part.dart). Standalone, import-
+// independent file; this single import is the only monolith growth A4.1
+// adds besides the `part` declaration below.
+import 'anthropic_tool_use_complete_fn.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
 // Slice A2b — server-side query embedding gateway types exported so
@@ -405,6 +410,13 @@ part 'jwt_verifier_part.dart';
 // this library's imports + private scope verbatim, so the move is
 // behavior byte-identical. See `tool/advisor_proxy_size_lint.dart`.
 part 'health_registry_part.dart';
+
+// Advisor Knowledge Activation — Slice A4.1: AdvisorAgenticAnswerEngine.
+// All engine logic lives in this sibling part file; the monolith adds
+// only this declaration + the `anthropic_tool_use_complete_fn.dart`
+// import above. NO route, NO routeRequest dispatch, NO bootstrap wiring
+// (all A4.2). No `kAdvisorProxyMaxLines` raise.
+part 'advisor_agentic_answer_part.dart';
 
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
