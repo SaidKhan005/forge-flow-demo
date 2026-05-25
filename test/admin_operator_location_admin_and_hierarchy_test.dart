@@ -212,9 +212,16 @@ void main() {
       await pumpEventually(tester);
 
       await selectBusinessScope(tester, 'op-seed-1');
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-seed-1'),
+      );
 
       final detailRect = tester.getRect(
         find.byKey(const Key('admin_operators_detail_pane')),
+      );
+      final surfaceRect = tester.getRect(
+        find.byKey(const Key('admin_business_account_detail_surface')),
       );
       final profileRect = tester.getRect(
         find.byKey(const Key('admin_operator_profile_card')),
@@ -222,21 +229,38 @@ void main() {
       final hierarchyRect = tester.getRect(
         find.byKey(const Key('admin_business_hierarchy_panel')),
       );
+      final firstActionRect = tester.getRect(
+        find.byKey(const Key('admin_location_move_loc-seed-1')),
+      );
+      final lastActionRect = tester.getRect(
+        find.byKey(const Key('admin_location_remove_loc-seed-1')),
+      );
 
       expect(
         profileRect.width,
         closeTo(hierarchyRect.width, 1),
-        reason: 'profile and hierarchy should share one visual column',
+        reason: 'profile and hierarchy should share one premium surface',
+      );
+      expect(
+        surfaceRect.width,
+        lessThan(1160),
+        reason: 'the account surface should stay compact on wide screens',
       );
       expect(
         hierarchyRect.width,
         lessThan(detailRect.width - 100),
-        reason: 'wide screens should not stretch the detail shell edge to edge',
+        reason:
+            'wide screens should not stretch the account surface edge to edge',
       );
       expect(
-        hierarchyRect.center.dx,
+        surfaceRect.center.dx,
         closeTo(detailRect.center.dx, 2),
-        reason: 'the detail shell should be centered inside the right pane',
+        reason: 'the account surface should be centered inside the right pane',
+      );
+      expect(
+        lastActionRect.right - firstActionRect.left,
+        lessThan(560),
+        reason: 'selected hierarchy actions should stay compact inside the row',
       );
     },
   );

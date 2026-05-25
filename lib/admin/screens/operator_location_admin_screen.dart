@@ -20,7 +20,6 @@ import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../utils/iana_timezones.dart';
 import '../../widgets/console/console_action_bar.dart';
-import '../../widgets/console/console_section_heading.dart';
 import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
@@ -34,7 +33,7 @@ import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_scope_tree_pane.dart';
 
 const int _kLegacyRolloverHourDefault = 4;
-const double _kBusinessAccountDetailMaxWidth = 1320;
+const double _kBusinessAccountDetailMaxWidth = 1120;
 
 class OperatorLocationAdminScreen extends StatefulWidget {
   const OperatorLocationAdminScreen({
@@ -812,149 +811,188 @@ class _OperatorDetail extends StatelessWidget {
     final primaryLocation = bundle.primaryLocation?.name ?? 'No primary';
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(
             maxWidth: _kBusinessAccountDetailMaxWidth,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                key: const Key('admin_operator_profile_card'),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundSurface.withValues(alpha: 0.72),
-                  border: Border(
-                    bottom: BorderSide(
-                      color: AppColors.borderSubtle.withValues(alpha: 0.72),
-                    ),
-                  ),
+          child: Container(
+            key: const Key('admin_business_account_detail_surface'),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSurface.withValues(alpha: 0.96),
+              border: Border.all(
+                color: AppColors.borderSubtle.withValues(alpha: 0.76),
+              ),
+              borderRadius: AppRadius.cardR,
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: AppColors.textPrimary.withValues(alpha: 0.06),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 16,
-                      runSpacing: 12,
-                      children: [
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(minWidth: 260),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  operator.businessName,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.display20(
-                                    color: AppColors.textPrimary,
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  key: const Key('admin_operator_profile_card'),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 16,
+                        runSpacing: 12,
+                        children: [
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(minWidth: 260),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    operator.businessName,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.display20(
+                                      color: AppColors.textPrimary,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              if (operator.isSuspended) ...[
-                                const SizedBox(width: 10),
-                                _StatusPill(
-                                  label: 'suspended',
-                                  color: AppColors.negative,
-                                ),
+                                if (operator.isSuspended) ...[
+                                  const SizedBox(width: 10),
+                                  _StatusPill(
+                                    label: 'suspended',
+                                    color: AppColors.negative,
+                                  ),
+                                ],
                               ],
+                            ),
+                          ),
+                          _ActionRowWrap(
+                            children: [
+                              if (editingEnabled)
+                                _OperatorActionButton(
+                                  buttonKey: const Key(
+                                    'admin_operator_edit_button',
+                                  ),
+                                  label: 'Edit',
+                                  icon: Icons.badge_outlined,
+                                  tooltip: 'Edit account profile',
+                                  onPressed: () => onEditOperator(bundle),
+                                ),
+                              if (editingEnabled && operator.isSuspended)
+                                _OperatorActionButton(
+                                  buttonKey: const Key(
+                                    'admin_operator_reactivate_button',
+                                  ),
+                                  label: 'Reactivate',
+                                  icon: Icons.play_arrow_outlined,
+                                  tooltip: 'Reactivate this business account',
+                                  onPressed: () => onReactivate(bundle),
+                                ),
+                              if (editingEnabled && !operator.isSuspended)
+                                _OperatorActionButton(
+                                  buttonKey: const Key(
+                                    'admin_operator_suspend_button',
+                                  ),
+                                  label: 'Suspend',
+                                  icon: Icons.pause_outlined,
+                                  tooltip: 'Suspend this business account',
+                                  destructive: true,
+                                  onPressed: () => onSuspend(bundle),
+                                ),
                             ],
                           ),
-                        ),
-                        _ActionRowWrap(
-                          children: [
-                            if (editingEnabled)
-                              _OperatorActionButton(
-                                buttonKey: const Key(
-                                  'admin_operator_edit_button',
-                                ),
-                                label: 'Edit',
-                                icon: Icons.badge_outlined,
-                                tooltip: 'Edit account profile',
-                                onPressed: () => onEditOperator(bundle),
-                              ),
-                            if (editingEnabled && operator.isSuspended)
-                              _OperatorActionButton(
-                                buttonKey: const Key(
-                                  'admin_operator_reactivate_button',
-                                ),
-                                label: 'Reactivate',
-                                icon: Icons.play_arrow_outlined,
-                                tooltip: 'Reactivate this business account',
-                                onPressed: () => onReactivate(bundle),
-                              ),
-                            if (editingEnabled && !operator.isSuspended)
-                              _OperatorActionButton(
-                                buttonKey: const Key(
-                                  'admin_operator_suspend_button',
-                                ),
-                                label: 'Suspend',
-                                icon: Icons.pause_outlined,
-                                tooltip: 'Suspend this business account',
-                                destructive: true,
-                                onPressed: () => onSuspend(bundle),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 22,
-                      runSpacing: 8,
-                      children: [
-                        _OperatorSummaryTile(
-                          label: 'Email',
-                          value: operator.ownerEmail,
-                          icon: Icons.mail_outline,
-                        ),
-                        _OperatorSummaryTile(
-                          label: 'Currency',
-                          value: operator.preferredCurrency,
-                          icon: Icons.payments_outlined,
-                        ),
-                        _OperatorSummaryTile(
-                          label: 'Primary',
-                          value: primaryLocation,
-                          icon: Icons.location_on_outlined,
-                        ),
-                        _OperatorSummaryTile(
-                          key: const Key('admin_operator_ai_plan_detail_row'),
-                          label: 'Plan',
-                          value: operator.subscriptionTier,
-                          icon: Icons.auto_awesome_outlined,
-                          muted: true,
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _OperatorSummaryStrip(
+                        children: [
+                          _OperatorSummaryTile(
+                            label: 'Email',
+                            value: operator.ownerEmail,
+                            icon: Icons.mail_outline,
+                          ),
+                          _OperatorSummaryTile(
+                            label: 'Currency',
+                            value: operator.preferredCurrency,
+                            icon: Icons.payments_outlined,
+                          ),
+                          _OperatorSummaryTile(
+                            label: 'Primary',
+                            value: primaryLocation,
+                            icon: Icons.location_on_outlined,
+                          ),
+                          _OperatorSummaryTile(
+                            key: const Key('admin_operator_ai_plan_detail_row'),
+                            label: 'Plan',
+                            value: operator.subscriptionTier,
+                            icon: Icons.auto_awesome_outlined,
+                            muted: true,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              _BusinessHierarchyPanel(
-                bundle: bundle,
-                gateway: hierarchyGateway,
-                actorUserId: actorUserId,
-                idempotencyKeyFactory: idempotencyKeyFactory,
-                selectedScope: selectedHierarchyScope,
-                onSelectScope: onSelectHierarchyScope,
-                onAddLocation: canAddLocation
-                    ? () => onAddLocation(bundle)
-                    : null,
-                addLocationEnabled: canAddLocation,
-                onEditLocation: onEditLocation,
-                onRemoveLocation: onRemoveLocation,
-                onSetPrimary: (location) => onSetPrimary(bundle, location),
-                editingEnabled: editingEnabled,
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Container(
+                    height: 1,
+                    color: AppColors.borderSubtle.withValues(alpha: 0.58),
+                  ),
+                ),
+                _BusinessHierarchyPanel(
+                  bundle: bundle,
+                  gateway: hierarchyGateway,
+                  actorUserId: actorUserId,
+                  idempotencyKeyFactory: idempotencyKeyFactory,
+                  selectedScope: selectedHierarchyScope,
+                  onSelectScope: onSelectHierarchyScope,
+                  onAddLocation: canAddLocation
+                      ? () => onAddLocation(bundle)
+                      : null,
+                  addLocationEnabled: canAddLocation,
+                  onEditLocation: onEditLocation,
+                  onRemoveLocation: onRemoveLocation,
+                  onSetPrimary: (location) => onSetPrimary(bundle, location),
+                  editingEnabled: editingEnabled,
+                ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _OperatorSummaryStrip extends StatelessWidget {
+  const _OperatorSummaryStrip({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 760) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var index = 0; index < children.length; index++) ...[
+                if (index > 0) const SizedBox(width: 24),
+                Expanded(child: children[index]),
+              ],
+            ],
+          );
+        }
+        return Wrap(spacing: 24, runSpacing: 12, children: children);
+      },
     );
   }
 }
@@ -1004,6 +1042,70 @@ class _OperatorSummaryTile extends StatelessWidget {
     );
     if (!muted) return content;
     return Opacity(opacity: 0.56, child: content);
+  }
+}
+
+class _BusinessHierarchyHeading extends StatelessWidget {
+  const _BusinessHierarchyHeading({required this.title, this.trailing});
+
+  final String title;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final heading = Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 3,
+              height: 22,
+              decoration: BoxDecoration(
+                color: AppColors.sunsetDark,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.mono16(
+                  color: AppColors.textPrimary,
+                ).copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+        final action = trailing == null
+            ? null
+            : OperatorWebActionBar(children: [trailing!]);
+        final stacked = action != null && constraints.maxWidth < 620;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (stacked) ...[
+              heading,
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: action),
+            ] else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: heading),
+                  if (action != null) ...[const SizedBox(width: 16), action],
+                ],
+              ),
+            const SizedBox(height: 12),
+            Container(
+              height: 1,
+              color: AppColors.borderSubtle.withValues(alpha: 0.64),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -1648,12 +1750,9 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Padding(
       key: const Key('admin_business_hierarchy_panel'),
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface.withValues(alpha: 0.72),
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
       child: FutureBuilder<_HierarchyPanelData>(
         future: _future,
         builder: (context, snapshot) {
@@ -1664,7 +1763,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              OperatorWebSectionHeading(
+              _BusinessHierarchyHeading(
                 title: 'Location hierarchy',
                 trailing: widget.editingEnabled
                     ? Tooltip(
@@ -1691,7 +1790,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                     : null,
               ),
               if (snapshot.hasError) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Text(
                   'Hierarchy details are unavailable; showing known locations.',
                   key: const Key('admin_business_hierarchy_load_error'),
@@ -1706,7 +1805,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                   color: AppColors.sunsetDark,
                 ),
               ],
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
               _HierarchyScopeRow(
                 key: const Key('admin_hierarchy_business_scope_row'),
                 icon: scopeIcon(kind: ScopeEntityKind.business),
@@ -1717,7 +1816,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                     AdminHierarchyScopeType.business,
                 onTap: () => widget.onSelectScope(_businessScope()),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               ..._buildTreeRows(data),
             ],
           );
@@ -2566,16 +2665,18 @@ class _HierarchyScopeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final depthIndent = depth * 20.0;
+    final depthIndent = depth * 22.0;
     final isNested = depth > 0;
     final radius = BorderRadius.circular(6);
-    final rowMaxWidth = trailing == null ? 860.0 : 1100.0;
+    final rowMaxWidth = trailing == null ? 760.0 : 960.0;
     final fillColor = selected
-        ? AppColors.sunset.withValues(alpha: 0.07)
+        ? AppColors.sunset.withValues(alpha: 0.055)
         : Colors.transparent;
-    const borderColor = Colors.transparent;
+    final borderColor = selected
+        ? AppColors.sunsetDark.withValues(alpha: 0.14)
+        : Colors.transparent;
     return Padding(
-      padding: EdgeInsets.only(left: depthIndent, top: 3, bottom: 3),
+      padding: EdgeInsets.only(left: depthIndent, top: 4, bottom: 4),
       child: Align(
         alignment: Alignment.centerLeft,
         child: ConstrainedBox(
@@ -2586,10 +2687,10 @@ class _HierarchyScopeRow extends StatelessWidget {
               if (isNested) ...[
                 Container(
                   width: 1,
-                  height: 40,
-                  margin: const EdgeInsets.only(right: 10),
+                  height: 42,
+                  margin: const EdgeInsets.only(right: 12),
                   decoration: BoxDecoration(
-                    color: AppColors.borderSubtle.withValues(alpha: 0.55),
+                    color: AppColors.borderSubtle.withValues(alpha: 0.48),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -2602,7 +2703,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                     onTap: onTap,
                     borderRadius: radius,
                     child: Container(
-                      padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+                      padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
                       decoration: BoxDecoration(
                         border: Border.all(color: borderColor, width: 1),
                         borderRadius: radius,
@@ -2610,7 +2711,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final compactActions =
-                              trailing != null && constraints.maxWidth < 940;
+                              trailing != null && constraints.maxWidth < 820;
                           final showLeadingIcon = constraints.maxWidth >= 72;
                           final showAccent =
                               selected && constraints.maxWidth >= 104;
@@ -2619,7 +2720,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                               if (showAccent) ...[
                                 Container(
                                   width: 3,
-                                  height: 34,
+                                  height: 32,
                                   decoration: BoxDecoration(
                                     color: AppColors.sunsetDark,
                                     borderRadius: BorderRadius.circular(2),
@@ -2679,10 +2780,10 @@ class _HierarchyScopeRow extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
                                     Expanded(child: labelBlock),
-                                    const SizedBox(width: 18),
+                                    const SizedBox(width: 16),
                                     ConstrainedBox(
                                       constraints: const BoxConstraints(
-                                        maxWidth: 760,
+                                        maxWidth: 580,
                                       ),
                                       child: Align(
                                         alignment: Alignment.centerRight,
@@ -2766,18 +2867,18 @@ class _HierarchyActionButton extends StatelessWidget {
         key: buttonKey,
         onPressed: onPressed,
         style: destructive
-            ? AdminButtonStyles.dangerSecondary(minWidth: 92).copyWith(
-                minimumSize: const WidgetStatePropertyAll(Size(92, 36)),
+            ? AdminButtonStyles.dangerSecondary(minWidth: 84).copyWith(
+                minimumSize: const WidgetStatePropertyAll(Size(84, 32)),
                 padding: const WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 ),
               )
             : AdminButtonStyles.secondary(
-                minWidth: 92,
-                minHeight: 36,
+                minWidth: 84,
+                minHeight: 32,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                  horizontal: 10,
+                  vertical: 6,
                 ),
               ),
         icon: Icon(icon, size: 14),
