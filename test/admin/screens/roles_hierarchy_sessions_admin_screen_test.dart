@@ -22,6 +22,7 @@ import 'package:forge_and_flow/admin/screens/roles_hierarchy_sessions_admin_scre
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/domain/hierarchy/org_unit_depth_rule.dart';
 import 'package:forge_and_flow/services/auth/custom_role_validator.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -555,6 +556,37 @@ void main() {
   });
 
   group('Roles tab gating', () {
+    testWidgets('platform roles render in their own same-tab section', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            canEditSeededRoles: true,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      expect(find.byKey(const Key('admin_rhs_roles_platform')), findsOneWidget);
+      expect(find.text('Forge & Flow access'), findsWidgets);
+      expect(find.text('Ecosystem admin'), findsOneWidget);
+      expect(find.text('Support access'), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_rhs_role_edit_role-seed-super-admin')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_rhs_role_row_role-seed-operator-owner')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('seeded-role edit hidden when canEditSeededRoles is false', (
       tester,
     ) async {
@@ -601,6 +633,53 @@ void main() {
 
       expect(
         find.byKey(const Key('admin_rhs_role_edit_role-seed-operator-owner')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('platform role editor keeps safety permissions locked', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            canEditSeededRoles: true,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_role_edit_role-seed-super-admin')),
+      );
+      await pumpEventually(tester);
+
+      final checkbox = find.byKey(
+        const Key(
+          'admin_rhs_role_editor_checkbox_${PermissionKeys.adminRolesEditSeeded}',
+        ),
+      );
+      final pickerScrollable = find.descendant(
+        of: find.byKey(const Key('admin_rhs_role_editor_permission_picker')),
+        matching: find.byType(Scrollable),
+      );
+      await tester.scrollUntilVisible(
+        checkbox,
+        240,
+        scrollable: pickerScrollable,
+      );
+      await pumpEventually(tester);
+
+      final tile = tester.widget<CheckboxListTile>(checkbox);
+      expect(tile.value, isTrue);
+      expect(tile.onChanged, isNull);
+      expect(
+        find.text('Required platform safety permissions stay enabled.'),
         findsOneWidget,
       );
     });

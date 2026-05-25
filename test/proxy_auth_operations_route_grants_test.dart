@@ -11,6 +11,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
@@ -323,6 +324,46 @@ void main() {
           );
           expect(response.statusCode, equals(400));
           expect(response.json['error'], equals('missing_admin_reason'));
+          expect(gateway.seededRoleEdits, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST /v1/admin/auth/roles/{id}/permissions protects '
+        'super_admin recovery permissions', () async {
+      await _withRealHttp(() async {
+        final gateway = _IdempotencyRecordingAuthOperationsGateway(
+          listedRole: const TeamRoleCatalogEntry(
+            roleId: _roleId,
+            roleKey: PermissionKeys.roleSuperAdmin,
+            displayName: 'Super admin',
+            description: 'Platform admin',
+            isSeeded: true,
+            isEditable: false,
+            permissions: <TeamRolePermissionRule>[],
+          ),
+        );
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthRolePrefix$_roleId/permissions',
+            const <String, Object?>{
+              'permission_keys': <String>[PermissionKeys.adminRolesView],
+              'admin_reason': 'Accidental removal test',
+            },
+            idempotencyKey: 'idem-edit-super-admin-lock',
+          );
+
+          expect(response.statusCode, equals(400));
+          expect(
+            response.json['error'],
+            equals('platform_role_locked_permission'),
+          );
           expect(gateway.seededRoleEdits, isEmpty);
         } finally {
           await harness.close();
@@ -1228,6 +1269,11 @@ class _GrantsRecordingAuthOperationsGateway implements AuthOperationsGateway {
 /// replay can be compared byte-for-byte against the first response.
 class _IdempotencyRecordingAuthOperationsGateway
     implements AuthOperationsGateway {
+  _IdempotencyRecordingAuthOperationsGateway({TeamRoleCatalogEntry? listedRole})
+    : listedRole = listedRole ?? _role;
+
+  final TeamRoleCatalogEntry listedRole;
+
   final roleCreates = <TeamRoleCreateCommand>[];
   final rolePatches = <TeamRolePatchCommand>[];
   final seededRoleEdits = <TeamSeededRolePermissionsEditCommand>[];
@@ -1255,6 +1301,13 @@ class _IdempotencyRecordingAuthOperationsGateway
     operatorId: _operatorId,
     permissions: <TeamRolePermissionRule>[],
   );
+
+  @override
+  Future<TeamRoleCatalogListed> listRoles(
+    TeamRoleCatalogListCommand command,
+  ) async {
+    return TeamRoleCatalogListed(roles: <TeamRoleCatalogEntry>[listedRole]);
+  }
 
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {

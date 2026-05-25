@@ -25,6 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 
@@ -45,6 +46,8 @@ void main() {
         expect(dinerRoles.where((r) => r.isSeeded), isNotEmpty);
         expect(dinerRoles.where((r) => !r.isSeeded), isNotEmpty);
         const expectedSeededKeys = <String>{
+          PermissionKeys.roleSuperAdmin,
+          PermissionKeys.roleFfSupport,
           'operator_owner',
           'operator_general_manager',
           'location_manager',
@@ -796,6 +799,36 @@ void main() {
         ),
       );
     });
+
+    test(
+      'editPlatformRole protects Ecosystem admin recovery permissions',
+      () async {
+        final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+          rolesByOperator: kDemoRolesByOperator(),
+        );
+        await expectLater(
+          gateway.editPlatformRole(
+            operatorId: kDemoDinerOperatorId,
+            roleId: 'role-seed-super-admin',
+            permissionKeys: const <String>[
+              PermissionKeys.adminRolesView,
+              PermissionKeys.teamRolesView,
+            ],
+            idempotencyKey: 'k-platform-lock',
+            actorUserId: 'demo-super-admin',
+            actorIsForgeAdmin: true,
+            adminReason: 'r',
+          ),
+          throwsA(
+            isA<RolesHierarchySessionsGatewayError>().having(
+              (e) => e.errorCode,
+              'errorCode',
+              equals('platform_role_locked_permission'),
+            ),
+          ),
+        );
+      },
+    );
 
     test('deleteCustomRole rejects a seeded role', () async {
       final gateway = InMemoryRolesHierarchySessionsAdminGateway(
