@@ -380,7 +380,7 @@ class _MembersTableRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
           _MemberNameCell(row: row),
-          _TextCell(label: memberRoleLabel(row.roleKey)),
+          _TextCell(label: _roleLabel(row)),
           _TextCell(label: _locationLabel(row)),
           Expanded(flex: 2, child: _StatusChip(status: row.status)),
           Expanded(
@@ -518,7 +518,7 @@ class _MembersCompactCard extends StatelessWidget {
                   children: <Widget>[
                     _MemberMetaChip(
                       icon: Icons.badge_outlined,
-                      label: memberRoleLabel(row.roleKey),
+                      label: _roleLabel(row),
                     ),
                     _MemberMetaChip(
                       icon: Icons.storefront_outlined,
@@ -823,6 +823,13 @@ String _locationLabel(MemberAdminRow row) {
   return row.primaryLocationName.isEmpty
       ? 'All locations'
       : row.primaryLocationName;
+}
+
+String _roleLabel(MemberAdminRow row) {
+  for (final grant in row.grants) {
+    if (grant.roleKey == row.roleKey) return grant.roleDisplayLabel;
+  }
+  return memberRoleLabel(row.roleKey);
 }
 
 String _inviteScopeLabel(MemberInviteRow invite) {

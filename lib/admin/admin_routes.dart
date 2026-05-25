@@ -1691,8 +1691,7 @@ Widget _buildMembers(BuildContext context) {
   return AdminSetupWorkspace(
     functionTitle: 'Team members',
     showWorkspaceHeader: false,
-    description:
-        'Manage members, invites, role assignments, and access policy.',
+    description: 'Manage team members and pending invites.',
     operatorGateway: operatorGateway,
     hierarchyGateway: rolesGateway,
     initialScope: initialScope,
