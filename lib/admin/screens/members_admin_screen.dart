@@ -31,6 +31,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
@@ -42,7 +44,8 @@ import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import 'invite_member_admin_dialog.dart';
 import 'operator_picker_screen.dart';
-import 'roles_hierarchy_sessions_admin_screen.dart';
+
+const int _kMembersPageSize = 50;
 
 class MembersAdminScreen extends StatefulWidget {
   const MembersAdminScreen({
@@ -112,6 +115,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   // Wave 2 W-2 — Cancel pending invite. Per-invite busy set so a
   // retried Cancel during an in-flight DELETE does not double-dispatch.
   final Set<String> _busyInviteIds = <String>{};
+  final Set<String> _busyUserIds = <String>{};
   Timer? _searchDebounce;
   int _refreshGeneration = 0;
 
@@ -121,6 +125,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   String? _locationFilter;
   bool? _mfaEnrolledFilter;
   String _searchQuery = '';
+  int _pageIndex = 0;
 
   int _idempotencyCounter = 0;
 
@@ -200,6 +205,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       );
       if (!mounted) return;
       setState(() {
+        _clampPageIndex(visibleMembers.length);
         _members = visibleMembers;
         _invites = visibleInvites;
         _roles = roles;
@@ -243,8 +249,40 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       _locationFilter = null;
       _mfaEnrolledFilter = null;
       _searchQuery = '';
+      _pageIndex = 0;
     });
     _refresh();
+  }
+
+  void _resetPageAndRefresh() {
+    setState(() => _pageIndex = 0);
+    _refresh();
+  }
+
+  List<MemberAdminRow> get _pagedMembers {
+    final pageStart = _pageIndex * _kMembersPageSize;
+    if (pageStart >= _members.length) return const <MemberAdminRow>[];
+    final pageEnd = (pageStart + _kMembersPageSize).clamp(
+      0,
+      _members.length,
+    );
+    return _members.sublist(pageStart, pageEnd);
+  }
+
+  void _previousPage() {
+    if (_pageIndex == 0) return;
+    setState(() => _pageIndex -= 1);
+  }
+
+  void _nextPage() {
+    final nextStart = (_pageIndex + 1) * _kMembersPageSize;
+    if (nextStart >= _members.length) return;
+    setState(() => _pageIndex += 1);
+  }
+
+  void _clampPageIndex(int totalRows) {
+    final maxPage = totalRows == 0 ? 0 : (totalRows - 1) ~/ _kMembersPageSize;
+    if (_pageIndex > maxPage) _pageIndex = maxPage;
   }
 
   List<MemberAdminRow> _applyLocalFilters(
@@ -255,7 +293,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     final roleFilter = _roleFilter;
     final locationFilter = _locationFilter;
     final scopeLocationIds = _locationIdsForHierarchyScope(hierarchyLocations);
-    return rows
+    final filtered = rows
         .where((row) {
           if (!_memberMatchesHierarchyScope(row, scopeLocationIds)) {
             return false;
@@ -283,6 +321,13 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           return true;
         })
         .toList(growable: false);
+    final sorted = filtered.toList();
+    sorted.sort((a, b) {
+      final cmp = b.lastActiveAt.compareTo(a.lastActiveAt);
+      if (cmp != 0) return cmp;
+      return a.email.toLowerCase().compareTo(b.email.toLowerCase());
+    });
+    return List<MemberAdminRow>.unmodifiable(sorted);
   }
 
   List<MemberInviteRow> _applyInviteScope(
@@ -354,10 +399,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     final haystack = <String>[
       row.email,
       row.displayName,
-      row.roleKey,
-      memberRoleLabel(row.roleKey),
-      row.primaryLocationName,
-      row.status.wire,
     ].join(' ').toLowerCase();
     return haystack.contains(query);
   }
@@ -868,6 +909,25 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     return byId.values.toList(growable: false);
   }
 
+  List<_RoleFilterOption> get _roleFilterOptions {
+    if (_roles.isNotEmpty) {
+      return <_RoleFilterOption>[
+        for (final role in _roles)
+          _RoleFilterOption(
+            roleKey: role.roleKey,
+            label: roleAdminDisplayLabel(role),
+          ),
+      ];
+    }
+    return <_RoleFilterOption>[
+      for (final roleKey in kSeededRoleKeysForAdmin)
+        _RoleFilterOption(
+          roleKey: roleKey,
+          label: memberRoleLabel(roleKey),
+        ),
+    ];
+  }
+
   List<MemberAccessScopeRef> get _availableAccessScopes {
     final scopes = <MemberAccessScopeRef>[
       MemberAccessScopeRef(
@@ -927,24 +987,28 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
             mfaEnrolledFilter: _mfaEnrolledFilter,
             searchQuery: _searchQuery,
             locations: _availableLocations,
+            roles: _roleFilterOptions,
             onStatusChanged: (v) {
               setState(() => _statusFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onRoleChanged: (v) {
               setState(() => _roleFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onLocationChanged: (v) {
               setState(() => _locationFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onMfaEnrolledChanged: (v) {
               setState(() => _mfaEnrolledFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onSearchChanged: (v) {
-              setState(() => _searchQuery = v);
+              setState(() {
+                _searchQuery = v;
+                _pageIndex = 0;
+              });
               _refreshAfterSearchPause();
             },
             onClearFilters: _clearFilters,
@@ -1066,6 +1130,13 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   }
 }
 
+class _RoleFilterOption {
+  const _RoleFilterOption({required this.roleKey, required this.label});
+
+  final String roleKey;
+  final String label;
+}
+
 /// Filter bar is Stateful so the search field's [TextEditingController]
 /// has a stable identity across parent rebuilds. The previous
 /// stateless implementation re-created the controller on every parent
@@ -1081,6 +1152,7 @@ class _MembersFilterBar extends StatefulWidget {
     required this.mfaEnrolledFilter,
     required this.searchQuery,
     required this.locations,
+    required this.roles,
     required this.onStatusChanged,
     required this.onRoleChanged,
     required this.onLocationChanged,
@@ -1095,6 +1167,7 @@ class _MembersFilterBar extends StatefulWidget {
   final bool? mfaEnrolledFilter;
   final String searchQuery;
   final List<MemberLocationRef> locations;
+  final List<_RoleFilterOption> roles;
   final ValueChanged<MemberStatus?> onStatusChanged;
   final ValueChanged<String?> onRoleChanged;
   final ValueChanged<String?> onLocationChanged;
