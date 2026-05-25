@@ -277,6 +277,86 @@ void main() {
     );
   });
 
+  test('malformed successful profile body surfaces parser error', () async {
+    final client = MockClient(
+      (req) async => http.Response(
+        jsonEncode(<String, Object?>{...recordJson(), 'profileId': ''}),
+        201,
+      ),
+    );
+
+    await expectLater(
+      () => gateway(client).createProfile(
+        operatorId: 'op-1',
+        profile: const AdminBusinessTimingProfileCreate(
+          scopeKind: 'operator',
+          scopeId: 'op-1',
+          effectiveAtBusinessDate: '2026-05-24',
+          ianaTimezone: 'UTC',
+          weekStartDay: 'monday',
+          businessDayStartLocal: '04:00',
+          servicePeriods: <AdminServicePeriodWrite>[],
+        ),
+        adminReason: 'x',
+        idempotencyKey: 'k',
+      ),
+      throwsA(
+        isA<AdminBusinessTimingProfileGatewayError>().having(
+          (e) => e.errorCode,
+          'errorCode',
+          'malformed_business_timing_profile',
+        ),
+      ),
+    );
+  });
+
+  test(
+    'malformed successful service-period body surfaces parser error',
+    () async {
+      final client = MockClient(
+        (req) async => http.Response(
+          jsonEncode(
+            recordJson(
+              periods: const <Map<String, Object?>>[
+                <String, Object?>{
+                  'key': 'lunch',
+                  'label': 'Lunch',
+                  'startLocal': '11:00',
+                  // Missing endLocal.
+                },
+              ],
+            ),
+          ),
+          201,
+        ),
+      );
+
+      await expectLater(
+        () => gateway(client).createProfile(
+          operatorId: 'op-1',
+          profile: const AdminBusinessTimingProfileCreate(
+            scopeKind: 'operator',
+            scopeId: 'op-1',
+            effectiveAtBusinessDate: '2026-05-24',
+            ianaTimezone: 'UTC',
+            weekStartDay: 'monday',
+            businessDayStartLocal: '04:00',
+            servicePeriods: <AdminServicePeriodWrite>[],
+          ),
+          adminReason: 'x',
+          idempotencyKey: 'k',
+        ),
+        throwsA(
+          isA<AdminBusinessTimingProfileGatewayError>().having(
+            (e) => e.errorCode,
+            'errorCode',
+            'malformed_business_timing_profile',
+          ),
+        ),
+      );
+    },
+  );
+
   test('listProfiles GETs the route and parses the profile list', () async {
     late http.Request captured;
     final client = MockClient((req) async {

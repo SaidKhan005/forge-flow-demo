@@ -234,7 +234,7 @@ class AdminBusinessTimingProfileRecord {
       servicePeriods: <AdminResolutionServicePeriod>[
         for (final p in periodsRaw)
           if (p is Map<Object?, Object?>)
-            AdminResolutionServicePeriod.fromJson(Map<String, Object?>.from(p))
+            _servicePeriodFromJson(Map<String, Object?>.from(p))
           else
             throw const AdminBusinessTimingProfileGatewayError(
               statusCode: 502,
@@ -249,6 +249,23 @@ class AdminBusinessTimingProfileRecord {
     if (value is! String) return null;
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static AdminResolutionServicePeriod _servicePeriodFromJson(
+    Map<String, Object?> json,
+  ) {
+    final period = AdminResolutionServicePeriod.fromJson(json);
+    if (period.key.trim().isEmpty ||
+        period.label.trim().isEmpty ||
+        period.startLocal.trim().isEmpty ||
+        period.endLocal.trim().isEmpty) {
+      throw const AdminBusinessTimingProfileGatewayError(
+        statusCode: 502,
+        errorCode: 'malformed_business_timing_profile',
+        message: 'The proxy returned a malformed timing profile.',
+      );
+    }
+    return period;
   }
 }
 
