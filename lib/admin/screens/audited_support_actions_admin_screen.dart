@@ -69,6 +69,7 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.canResetMfaFactors = false,
     this.canIssuePairedErasure = false,
+    this.canViewAuditLog = true,
     this.canExportAuditLog = false,
     this.sessionsGateway,
     this.anchorsGateway,
@@ -112,6 +113,10 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   /// Per the parity contract § Security line 163: paired-approval
   /// erasure is gated on `admin.users.erase_pii` (MFA-required).
   final bool canIssuePairedErasure;
+
+  /// Per the parity contract § Audit Log line 147: CSV export is
+  /// gated on `admin.audit_log.view`.
+  final bool canViewAuditLog;
 
   /// Per the parity contract § Audit Log line 147: CSV export is
   /// gated on `admin.audit_log.export`.
@@ -251,8 +256,12 @@ class _AuditedSupportActionsAdminScreenState
   @override
   void initState() {
     super.initState();
-    _refresh();
-    _loadAnchorBadge();
+    if (widget.canViewAuditLog) {
+      _refresh();
+      _loadAnchorBadge();
+    } else {
+      _loading = false;
+    }
   }
 
   @override
@@ -263,6 +272,29 @@ class _AuditedSupportActionsAdminScreenState
     // Admin audit-integrity badge — re-read when the selected operator
     // or the wired gateway changes so the badge follows the operator
     // the admin switched to.
+    if (!widget.canViewAuditLog) {
+      _refreshGeneration += 1;
+      _anchorGeneration += 1;
+      if (oldWidget.canViewAuditLog) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+          _loadError = null;
+          _rows = const <AuditLogRow>[];
+          _nextCursor = null;
+          _expandedRowIds.clear();
+          _anchorSnapshot = null;
+          _anchorLoading = false;
+          _anchorTransientError = false;
+        });
+      }
+      return;
+    }
+    if (!oldWidget.canViewAuditLog) {
+      unawaited(_refresh());
+      _loadAnchorBadge();
+      return;
+    }
     if (oldWidget.pickedOperator.operatorId !=
             widget.pickedOperator.operatorId ||
         oldWidget.anchorsGateway != widget.anchorsGateway) {
@@ -270,6 +302,7 @@ class _AuditedSupportActionsAdminScreenState
     }
     if (oldWidget.pickedOperator.operatorId !=
             widget.pickedOperator.operatorId ||
+        oldWidget.gateway != widget.gateway ||
         oldWidget.hierarchyScope?.cacheKey != widget.hierarchyScope?.cacheKey) {
       unawaited(_refresh());
     }
@@ -281,6 +314,7 @@ class _AuditedSupportActionsAdminScreenState
   /// gateway error maps to the neutral "unavailable" state rather than
   /// "failed", so a transient proxy outage does not alarm the admin.
   Future<void> _loadAnchorBadge() async {
+    if (!widget.canViewAuditLog) return;
     final gateway = widget.anchorsGateway;
     final generation = ++_anchorGeneration;
     if (gateway == null) {
