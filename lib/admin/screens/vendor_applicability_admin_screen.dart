@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_switch_row.dart';
 
 import '../../services/settings/applicability_metadata_schemas.dart';
 import '../../theme/app_theme.dart';
@@ -1281,21 +1282,12 @@ class _VendorApplicabilityEditDialogState
           onChanged: (value) => setState(() => _vendorSlug = value),
         ),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            Switch(
-              key: const Key('admin_vendor_applicability_show_all_vendors'),
-              value: _showAllVendors,
-              onChanged: (value) => setState(() => _showAllVendors = value),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Show all vendors (not just the ones that fit this setting)',
-                style: AppTextStyles.body12(color: AppColors.textSecondary),
-              ),
-            ),
-          ],
+        ConsoleSwitchRow(
+          switchKey: const Key('admin_vendor_applicability_show_all_vendors'),
+          label: 'Show all vendors (not just the ones that fit this setting)',
+          labelStyle: AppTextStyles.body12(color: AppColors.textSecondary),
+          value: _showAllVendors,
+          onChanged: (value) => setState(() => _showAllVendors = value),
         ),
       ],
     );

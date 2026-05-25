@@ -1433,6 +1433,9 @@ class _EntitlementCell extends StatelessWidget {
       width: 180,
       child: Row(
         children: <Widget>[
+          // Bare switch inside a dense fixed-width matrix cell: the shared
+          // SwitchTheme (AppTheme) gives it the same accent ON / calm OFF
+          // treatment as every other console switch, so no per-call colour.
           Switch(
             key: Key(
               'admin_pricing_entitlement_toggle_'
@@ -1442,7 +1445,6 @@ class _EntitlementCell extends StatelessWidget {
             onChanged: editingEnabled
                 ? (value) => onToggle(entry, value)
                 : null,
-            activeThumbColor: AppColors.sunsetDark,
           ),
           const SizedBox(width: 6),
           Expanded(
