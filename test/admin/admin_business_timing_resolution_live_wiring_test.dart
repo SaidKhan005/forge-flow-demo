@@ -112,7 +112,7 @@ void main() {
 
   testWidgets(
     'demo / share-preview path (null timing gateway) stays byte-equivalent: '
-    'in-memory fallback so the S4 screen renders the honest empty state',
+    'seeded in-memory fallback for demo locations',
     (tester) async {
       late AdminBusinessTimingResolutionGateway viaNullScope;
       late AdminBusinessTimingResolutionGateway viaNoScope;
@@ -147,8 +147,7 @@ void main() {
       expect(
         viaNullScope,
         isA<InMemoryAdminBusinessTimingResolutionGateway>(),
-        reason: 'demo / share-preview must keep the seeded in-memory '
-            'fallback (honest "no profile yet" empty state)',
+        reason: 'demo / share-preview must keep the in-memory fallback',
       );
       expect(
         viaNoScope,
@@ -157,6 +156,27 @@ void main() {
       // Byte-equivalent: both demo-shaped paths resolve to the SAME
       // shared seeded fallback instance (unchanged behavior).
       expect(viaNullScope, same(viaNoScope));
+
+      final yorkvilleTiming = await viaNullScope.resolve(
+        operatorId: '00000000-0000-4000-8000-000000000001',
+        locationId: '00000000-0000-4000-8000-0000000000a1',
+        businessDate: '2026-05-24',
+      );
+      expect(yorkvilleTiming.candidates, isNotEmpty);
+      expect(
+        () => AdminBusinessTimingResolutionProjection.project(yorkvilleTiming),
+        returnsNormally,
+      );
+
+      final unknownTiming = await viaNullScope.resolve(
+        operatorId: 'unknown-operator',
+        locationId: 'unknown-location',
+      );
+      expect(
+        unknownTiming.candidates,
+        isEmpty,
+        reason: 'unknown locations still render the honest no-profile state',
+      );
     },
   );
 
