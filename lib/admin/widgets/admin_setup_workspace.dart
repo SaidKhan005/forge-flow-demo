@@ -5,7 +5,6 @@ import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
-import 'admin_business_accounts_back_button.dart';
 import 'admin_responsive_layout.dart';
 import 'admin_scope_tree_pane.dart';
 
@@ -204,9 +203,6 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
             }
             final functionPane = _FunctionPane(
               title: widget.functionTitle,
-              description: widget.description,
-              selectedScope: _selectedScope,
-              onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
               showWorkspaceHeader: widget.showWorkspaceHeader,
               child: functionChild,
             );
@@ -255,17 +251,11 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
 class _FunctionPane extends StatelessWidget {
   const _FunctionPane({
     required this.title,
-    required this.description,
-    required this.selectedScope,
-    required this.onBackToBusinessAccounts,
     required this.showWorkspaceHeader,
     required this.child,
   });
 
   final String title;
-  final String? description;
-  final AdminHierarchyScopeIntent? selectedScope;
-  final VoidCallback? onBackToBusinessAccounts;
   final bool showWorkspaceHeader;
   final Widget? child;
 
@@ -301,96 +291,7 @@ class _FunctionPane extends StatelessWidget {
                 ),
               ),
             )
-          : showWorkspaceHeader
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _WorkspaceHeader(
-                  title: title,
-                  description: description,
-                  selectedScope: selectedScope,
-                  onBackToBusinessAccounts: onBackToBusinessAccounts,
-                ),
-                Expanded(child: child!),
-              ],
-            )
           : child!,
-    );
-  }
-}
-
-class _WorkspaceHeader extends StatelessWidget {
-  const _WorkspaceHeader({
-    required this.title,
-    required this.description,
-    required this.selectedScope,
-    required this.onBackToBusinessAccounts,
-  });
-
-  final String title;
-  final String? description;
-
-  /// Null means the platform-wide "All businesses" selection (no single
-  /// hierarchy scope). The header then names the platform-wide view
-  /// instead of a specific business / org unit / location.
-  final AdminHierarchyScopeIntent? selectedScope;
-  final VoidCallback? onBackToBusinessAccounts;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_setup_workspace_header'),
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (onBackToBusinessAccounts != null) ...[
-            AdminBusinessAccountsBackButton(
-              onPressed: onBackToBusinessAccounts!,
-            ),
-            const SizedBox(width: 10),
-          ],
-          const Icon(
-            Icons.account_tree_outlined,
-            size: 22,
-            color: AppColors.sunsetDark,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                if (description != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    description!,
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                ],
-                const SizedBox(height: 6),
-                Text(
-                  selectedScope == null
-                      ? 'Scope: All businesses (every business on the platform)'
-                      : 'Selected ${selectedScope!.scopeType.label.toLowerCase()} scope: ${selectedScope!.displayLabel}',
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

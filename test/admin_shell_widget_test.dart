@@ -402,14 +402,11 @@ void main() {
 
       expect(find.byKey(scenario.screenKey), findsOneWidget);
       expect(
-        find.descendant(
-          of: find.byKey(const Key('admin_setup_workspace_function_pane')),
-          matching: find.text(scenario.title),
-        ),
-        findsOneWidget,
+        find.byKey(const Key('admin_setup_workspace_header')),
+        findsNothing,
         reason:
-            'the workspace header supplies the tab title; embedded screen '
-            'headers should not repeat it',
+            'scoped tabs should not render the redundant workspace header '
+            'strip above the function content',
       );
       expect(tester.takeException(), isNull);
     });
