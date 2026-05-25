@@ -200,77 +200,104 @@ class AdminMembersInvitesPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          OperatorWebSectionHeading(
-            title: 'Pending invites',
-            trailing: OperatorWebInfoButton(
-              title: 'Pending invites',
-              tooltip: 'Pending invites',
-              body: Text(
-                'Invites your team has sent that the new teammate has not '
-                'accepted yet.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ),
-          ),
+          const _PendingInvitesHeading(),
           const SizedBox(height: 10),
-          for (final invite in invites)
-            Padding(
-              key: Key('admin_members_invite_row_${invite.inviteId}'),
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    flex: 4,
-                    child: Text(
-                      invite.email,
-                      style: AppTextStyles.body13(color: AppColors.textPrimary),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      memberRoleLabel(invite.roleKey),
-                      style: AppTextStyles.body13(color: AppColors.textPrimary),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      _inviteScopeLabel(invite),
-                      style: AppTextStyles.body13(color: AppColors.textPrimary),
-                    ),
-                  ),
-                  if (editingEnabled)
-                    SizedBox(
-                      width: 88,
-                      child: busyInviteIds.contains(invite.inviteId)
-                          ? const Align(
-                              alignment: Alignment.centerRight,
-                              child: SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.sunsetDark,
-                                ),
-                              ),
-                            )
-                          : Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                key: Key(
-                                  'admin_members_invite_cancel_'
-                                  '${invite.inviteId}',
-                                ),
-                                onPressed: () => onCancel(invite),
-                                child: const Text('Cancel'),
-                              ),
-                            ),
-                    ),
-                ],
-              ),
+          for (final invite in invites) _buildInviteRow(invite),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInviteRow(MemberInviteRow invite) {
+    return Padding(
+      key: Key('admin_members_invite_row_${invite.inviteId}'),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: <Widget>[
+          _InviteTextCell(flex: 4, text: invite.email),
+          _InviteTextCell(flex: 2, text: memberRoleLabel(invite.roleKey)),
+          _InviteTextCell(flex: 2, text: _inviteScopeLabel(invite)),
+          if (editingEnabled)
+            _InviteCancelCell(
+              invite: invite,
+              busy: busyInviteIds.contains(invite.inviteId),
+              onCancel: onCancel,
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _PendingInvitesHeading extends StatelessWidget {
+  const _PendingInvitesHeading();
+
+  @override
+  Widget build(BuildContext context) {
+    return OperatorWebSectionHeading(
+      title: 'Pending invites',
+      trailing: OperatorWebInfoButton(
+        title: 'Pending invites',
+        tooltip: 'Pending invites',
+        body: Text(
+          'Invites your team has sent that the new teammate has not '
+          'accepted yet.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+      ),
+    );
+  }
+}
+
+class _InviteTextCell extends StatelessWidget {
+  const _InviteTextCell({required this.flex, required this.text});
+
+  final int flex;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
+      ),
+    );
+  }
+}
+
+class _InviteCancelCell extends StatelessWidget {
+  const _InviteCancelCell({
+    required this.invite,
+    required this.busy,
+    required this.onCancel,
+  });
+
+  final MemberInviteRow invite;
+  final bool busy;
+  final AdminInviteAction onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 88,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.sunsetDark,
+                ),
+              )
+            : TextButton(
+                key: Key('admin_members_invite_cancel_${invite.inviteId}'),
+                onPressed: () => onCancel(invite),
+                child: const Text('Cancel'),
+              ),
       ),
     );
   }
@@ -585,19 +612,7 @@ class _MembersRowActionsButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (busy) {
-      return const SizedBox(
-        width: 112,
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.sunsetDark,
-            ),
-          ),
-        ),
-      );
+      return const _RowActionsBusyIndicator();
     }
     if (!editingEnabled || row.status == MemberStatus.softDeleted) {
       return const SizedBox(width: 112);
@@ -605,80 +620,146 @@ class _MembersRowActionsButton extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        TextButton.icon(
-          key: Key('admin_members_row_edit_${row.userId}'),
-          icon: const Icon(Icons.edit_outlined, size: 16),
-          label: const Text('Edit'),
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.sunsetDark,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            minimumSize: const Size(0, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact,
-          ),
-          onPressed: () => onEdit(row),
-        ),
+        _RowEditButton(row: row, onEdit: onEdit),
         const SizedBox(width: 4),
-        SizedBox(
-          width: 32,
-          height: 32,
-          child: PopupMenuButton<_MembersRowAction>(
-            key: Key('admin_members_row_actions_${row.userId}'),
-            tooltip: 'More actions',
-            padding: EdgeInsets.zero,
-            iconSize: 18,
-            icon: const Icon(Icons.more_vert, size: 18),
-            onSelected: (action) {
-              switch (action) {
-                case _MembersRowAction.suspend:
-                  onSuspend(row);
-                case _MembersRowAction.reactivate:
-                  onReactivate(row);
-                case _MembersRowAction.softDelete:
-                  onSoftDelete(row);
-                case _MembersRowAction.resetPassword:
-                  onResetPassword(row);
-                case _MembersRowAction.resetMfa:
-                  onResetMfa(row);
-              }
-            },
-            itemBuilder: (context) {
-              final isSuspended = row.status == MemberStatus.suspended;
-              return <PopupMenuEntry<_MembersRowAction>>[
-                if (!isSuspended)
-                  const PopupMenuItem<_MembersRowAction>(
-                    key: Key('members_row_action_suspend'),
-                    value: _MembersRowAction.suspend,
-                    child: Text('Suspend'),
-                  ),
-                if (isSuspended)
-                  const PopupMenuItem<_MembersRowAction>(
-                    key: Key('members_row_action_reactivate'),
-                    value: _MembersRowAction.reactivate,
-                    child: Text('Reactivate'),
-                  ),
-                const PopupMenuItem<_MembersRowAction>(
-                  key: Key('members_row_action_reset_password'),
-                  value: _MembersRowAction.resetPassword,
-                  child: Text('Reset password'),
-                ),
-                const PopupMenuItem<_MembersRowAction>(
-                  key: Key('members_row_action_reset_mfa'),
-                  value: _MembersRowAction.resetMfa,
-                  child: Text('Reset two-factor sign-in'),
-                ),
-                const PopupMenuItem<_MembersRowAction>(
-                  key: Key('members_row_action_soft_delete'),
-                  value: _MembersRowAction.softDelete,
-                  child: Text('Remove from team'),
-                ),
-              ];
-            },
-          ),
+        _RowOverflowMenu(
+          row: row,
+          onSuspend: onSuspend,
+          onReactivate: onReactivate,
+          onSoftDelete: onSoftDelete,
+          onResetPassword: onResetPassword,
+          onResetMfa: onResetMfa,
         ),
       ],
     );
   }
+}
+
+class _RowActionsBusyIndicator extends StatelessWidget {
+  const _RowActionsBusyIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 112,
+      child: Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.sunsetDark,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RowEditButton extends StatelessWidget {
+  const _RowEditButton({required this.row, required this.onEdit});
+
+  final MemberAdminRow row;
+  final AdminMemberAction onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      key: Key('admin_members_row_edit_${row.userId}'),
+      icon: const Icon(Icons.edit_outlined, size: 16),
+      label: const Text('Edit'),
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.sunsetDark,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+      onPressed: () => onEdit(row),
+    );
+  }
+}
+
+class _RowOverflowMenu extends StatelessWidget {
+  const _RowOverflowMenu({
+    required this.row,
+    required this.onSuspend,
+    required this.onReactivate,
+    required this.onSoftDelete,
+    required this.onResetPassword,
+    required this.onResetMfa,
+  });
+
+  final MemberAdminRow row;
+  final AdminMemberAction onSuspend;
+  final AdminMemberAction onReactivate;
+  final AdminMemberAction onSoftDelete;
+  final AdminMemberAction onResetPassword;
+  final AdminMemberAction onResetMfa;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: PopupMenuButton<_MembersRowAction>(
+        key: Key('admin_members_row_actions_${row.userId}'),
+        tooltip: 'More actions',
+        padding: EdgeInsets.zero,
+        iconSize: 18,
+        icon: const Icon(Icons.more_vert, size: 18),
+        onSelected: _handleSelected,
+        itemBuilder: (_) => _menuItems(row.status == MemberStatus.suspended),
+      ),
+    );
+  }
+
+  void _handleSelected(_MembersRowAction action) {
+    switch (action) {
+      case _MembersRowAction.suspend:
+        onSuspend(row);
+      case _MembersRowAction.reactivate:
+        onReactivate(row);
+      case _MembersRowAction.softDelete:
+        onSoftDelete(row);
+      case _MembersRowAction.resetPassword:
+        onResetPassword(row);
+      case _MembersRowAction.resetMfa:
+        onResetMfa(row);
+    }
+  }
+}
+
+List<PopupMenuEntry<_MembersRowAction>> _menuItems(bool isSuspended) {
+  return <PopupMenuEntry<_MembersRowAction>>[
+    if (!isSuspended)
+      const PopupMenuItem<_MembersRowAction>(
+        key: Key('members_row_action_suspend'),
+        value: _MembersRowAction.suspend,
+        child: Text('Suspend'),
+      ),
+    if (isSuspended)
+      const PopupMenuItem<_MembersRowAction>(
+        key: Key('members_row_action_reactivate'),
+        value: _MembersRowAction.reactivate,
+        child: Text('Reactivate'),
+      ),
+    const PopupMenuItem<_MembersRowAction>(
+      key: Key('members_row_action_reset_password'),
+      value: _MembersRowAction.resetPassword,
+      child: Text('Reset password'),
+    ),
+    const PopupMenuItem<_MembersRowAction>(
+      key: Key('members_row_action_reset_mfa'),
+      value: _MembersRowAction.resetMfa,
+      child: Text('Reset two-factor sign-in'),
+    ),
+    const PopupMenuItem<_MembersRowAction>(
+      key: Key('members_row_action_soft_delete'),
+      value: _MembersRowAction.softDelete,
+      child: Text('Remove from team'),
+    ),
+  ];
 }
 
 enum _MembersRowAction {

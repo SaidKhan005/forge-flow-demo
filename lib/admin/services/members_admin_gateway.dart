@@ -187,6 +187,14 @@ class MemberInviteRow {
   final String? welcomeNote;
 }
 
+@immutable
+class MemberProfilePatch {
+  const MemberProfilePatch({this.email, this.displayName});
+
+  final String? email;
+  final String? displayName;
+}
+
 /// One audit-log row written by the admin gateway. Mirrors every
 /// column pinned by the parity contract § "Audit-row shape"
 /// (lines 60-73): `operator_id`, `actor_user_id`, `actor_kind`,
@@ -373,8 +381,7 @@ abstract class MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
-    String? email,
-    String? displayName,
+    required MemberProfilePatch patch,
   });
 
   /// Admin-only. Restores a soft-deleted member back to `active`.
@@ -734,13 +741,12 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
     required String actorUserId,
     required bool actorIsForgeAdmin,
     required String adminReason,
-    String? email,
-    String? displayName,
+    required MemberProfilePatch patch,
   }) async {
     _requireEditable(actorIsForgeAdmin, 'updateMember');
     _requireAdminReason(adminReason, 'updateMember');
-    final trimmedEmail = email?.trim();
-    final trimmedDisplay = displayName?.trim();
+    final trimmedEmail = patch.email?.trim();
+    final trimmedDisplay = patch.displayName?.trim();
     if ((trimmedEmail == null || trimmedEmail.isEmpty) &&
         (trimmedDisplay == null || trimmedDisplay.isEmpty)) {
       throw MembersAdminGatewayError(

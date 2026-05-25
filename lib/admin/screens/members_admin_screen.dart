@@ -572,8 +572,10 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           actorUserId: widget.actorUserId,
           actorIsForgeAdmin: widget.editingEnabled,
           adminReason: result.adminReason,
-          email: emailChanged ? result.email : null,
-          displayName: displayNameChanged ? result.displayName : null,
+          patch: MemberProfilePatch(
+            email: emailChanged ? result.email : null,
+            displayName: displayNameChanged ? result.displayName : null,
+          ),
         );
       }
       if (roleChanged || scopeChanged) {
@@ -984,44 +986,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       );
     }
     if (_loadError != null) {
-      return ConstrainedBox(
-        key: const Key('admin_members_load_error'),
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Members could not load',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _loadError!,
-                style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 14),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton(
-                  key: const Key('admin_members_load_retry'),
-                  onPressed: _refresh,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.sunsetDark,
-                    side: const BorderSide(
-                      color: AppColors.sunsetDark,
-                      width: 1,
-                    ),
-                  ),
-                  child: const Text('Retry'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildLoadError();
     }
     // Outer frame is OperatorWebScreenBody (a SingleChildScrollView), so
     // this body returns a plain Column to avoid nesting a second scroll
@@ -1058,6 +1023,41 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildLoadError() {
+    return ConstrainedBox(
+      key: const Key('admin_members_load_error'),
+      constraints: const BoxConstraints(maxWidth: 480),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Members could not load',
+              style: AppTextStyles.display20(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _loadError!,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton(
+              key: const Key('admin_members_load_retry'),
+              onPressed: _refresh,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.sunsetDark,
+                side: const BorderSide(color: AppColors.sunsetDark, width: 1),
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
