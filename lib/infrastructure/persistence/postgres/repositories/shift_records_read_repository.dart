@@ -48,6 +48,49 @@ class ShiftRecordsReadRepository extends OperatorScopedRepository {
   // model PK shape), not a uuid. Numeric columns come back as `num` /
   // `String`; `_toDoubleOrNull` keeps a genuinely-NULL measurement NULL
   // rather than coercing to 0.0 (metric honesty).
+  /// Returns the DISTINCT `restaurant_id` values that exist under the
+  /// caller's `(operator_id, location_id)` scope, drawn from the
+  /// server's current target projection (`active_target_profiles`,
+  /// unique per `(operator_id, location_id, restaurant_id)`). Used by
+  /// the advisor tool layer to resolve `restaurant_id` from the verified
+  /// [OperatorContext] WITHOUT trusting tool input (HP #4): the optional
+  /// tool-supplied `restaurant_id` is only ever accepted when it appears
+  /// in THIS list (the caller's own restaurants). A hallucinated /
+  /// foreign id can never match.
+  ///
+  /// Read-only, operator-leading, RLS-folded (runs inside
+  /// [withTenant] so `SET LOCAL app.operator_id / location_id` gates the
+  /// read even if a caller passed a foreign scope). Ordered for a
+  /// deterministic "needs selection" listing.
+  Future<List<String>> loadScopedRestaurantIds({
+    required String operatorId,
+    required String locationId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<List<String>>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select distinct atp.restaurant_id as restaurant_id '
+        'from public.active_target_profiles atp '
+        'where atp.operator_id = @operator_id::uuid '
+        '  and atp.location_id = @location_id::uuid '
+        'order by atp.restaurant_id asc',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      return <String>[
+        for (final row in rows)
+          if (row['restaurant_id'] is String) row['restaurant_id']! as String,
+      ];
+    });
+  }
+
   static const String _columns =
       'sr.operator_id::text as operator_id, '
       'sr.location_id::text as location_id, '
