@@ -31,6 +31,9 @@ import '../services/operator_location_admin_gateway.dart';
 import '../services/vendor_applicability_admin_gateway.dart';
 import 'vendor_applicability_vendor_catalog.dart';
 
+const double _kAdminShellWideBreakpoint = 720;
+const double _kAdminShellWideNavWidth = 304;
+
 class VendorApplicabilityAdminScreen extends StatefulWidget {
   const VendorApplicabilityAdminScreen({
     super.key,
@@ -324,83 +327,109 @@ class _VendorApplicabilityAdminScreenState
     return ColoredBox(
       key: const Key('admin_vendor_applicability_screen'),
       color: AppColors.backgroundDeep,
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 960),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const OperatorWebScreenHeader(
-                  icon: Icons.rule_outlined,
-                  title: 'Vendor Applicability',
-                  collapseBelowWidth: 0,
-                  subtitle:
-                      'Choose which vendors are allowed to power wage, covers, '
-                      'and data freshness settings.',
-                ),
-                const SizedBox(height: 14),
-                if (!widget.editingEnabled)
-                  const _InlineBanner(
-                    key: Key('admin_vendor_applicability_readonly'),
-                    icon: Icons.lock_outline,
-                    message:
-                        'Only super admins can change vendor applicability. '
-                        'This view is read-only for support.',
-                  ),
-                if (_actionError != null)
-                  _InlineBanner(
-                    key: const Key('admin_vendor_applicability_action_error'),
-                    icon: Icons.warning_amber_rounded,
-                    message: _actionError!,
-                    isError: true,
-                  ),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundSurface,
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: TabBar(
-                    controller: _tabController,
-                    labelColor: AppColors.textPrimary,
-                    unselectedLabelColor: AppColors.textMuted,
-                    indicatorColor: AppColors.sunsetDark,
-                    tabs: [for (final tab in _tabs) Tab(text: tab.label)],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _Toolbar(
-                  guide: spec.guide,
-                  allowedCount: allowedCount,
-                  blockedCount: blockedCount,
-                  saving: _saving,
-                  editingEnabled: widget.editingEnabled,
-                  onAdd: _openAddDialog,
-                  onRefresh: _refresh,
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: Container(
-                    key: const Key('admin_vendor_applicability_body_surface'),
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundSurface,
-                      border: Border.all(
-                        color: AppColors.borderSubtle,
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewportWidth = MediaQuery.sizeOf(context).width;
+          final visiblePaneWidth = viewportWidth >= _kAdminShellWideBreakpoint
+              ? (viewportWidth - _kAdminShellWideNavWidth)
+                    .clamp(0.0, constraints.maxWidth)
+                    .toDouble()
+              : constraints.maxWidth;
+          return Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: visiblePaneWidth,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 960),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const OperatorWebScreenHeader(
+                          icon: Icons.rule_outlined,
+                          title: 'Vendor Applicability',
+                          collapseBelowWidth: 0,
+                          subtitle:
+                              'Choose which vendors are allowed to power wage, '
+                              'covers, and data freshness settings.',
+                        ),
+                        const SizedBox(height: 14),
+                        if (!widget.editingEnabled)
+                          const _InlineBanner(
+                            key: Key('admin_vendor_applicability_readonly'),
+                            icon: Icons.lock_outline,
+                            message:
+                                'Only super admins can change vendor '
+                                'applicability. This view is read-only for '
+                                'support.',
+                          ),
+                        if (_actionError != null)
+                          _InlineBanner(
+                            key: const Key(
+                              'admin_vendor_applicability_action_error',
+                            ),
+                            icon: Icons.warning_amber_rounded,
+                            message: _actionError!,
+                            isError: true,
+                          ),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSurface,
+                            border: Border.all(
+                              color: AppColors.borderSubtle,
+                              width: 1,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: TabBar(
+                            controller: _tabController,
+                            labelColor: AppColors.textPrimary,
+                            unselectedLabelColor: AppColors.textMuted,
+                            indicatorColor: AppColors.sunsetDark,
+                            tabs: [
+                              for (final tab in _tabs) Tab(text: tab.label),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _Toolbar(
+                          guide: spec.guide,
+                          allowedCount: allowedCount,
+                          blockedCount: blockedCount,
+                          saving: _saving,
+                          editingEnabled: widget.editingEnabled,
+                          onAdd: _openAddDialog,
+                          onRefresh: _refresh,
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: Container(
+                            key: const Key(
+                              'admin_vendor_applicability_body_surface',
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              color: AppColors.backgroundSurface,
+                              border: Border.all(
+                                color: AppColors.borderSubtle,
+                                width: 1,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: _buildBody(),
+                          ),
+                        ),
+                      ],
                     ),
-                    child: _buildBody(),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1213,13 +1242,13 @@ class _VendorApplicabilityEditDialogState
 
   @override
   Widget build(BuildContext context) {
-    final formMaxHeight = (MediaQuery.sizeOf(context).height - 480)
-        .clamp(260.0, 340.0)
+    final formMaxHeight = (MediaQuery.sizeOf(context).height - 360)
+        .clamp(300.0, 520.0)
         .toDouble();
     return OperatorWebDialog(
       key: const Key('admin_vendor_applicability_edit_dialog'),
       title: _isEditing ? 'Edit rule' : 'Add rule',
-      maxWidth: 760,
+      maxWidth: 920,
       actions: [
         TextButton(
           key: const Key('admin_vendor_applicability_cancel'),
@@ -1253,17 +1282,7 @@ class _VendorApplicabilityEditDialogState
                     ),
                     const SizedBox(height: 14),
                   ],
-                  _DialogGroup(
-                    title: 'Rule',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildVendorPicker(),
-                        const SizedBox(height: 18),
-                        _buildAllowedToggle(),
-                      ],
-                    ),
-                  ),
+                  _DialogGroup(title: 'Rule', child: _buildRuleBasics()),
                   const SizedBox(height: 10),
                   _buildAppliesTo(),
                   const SizedBox(height: 10),
@@ -1289,6 +1308,31 @@ class _VendorApplicabilityEditDialogState
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRuleBasics() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 680) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildVendorPicker(),
+              const SizedBox(height: 18),
+              _buildAllowedToggle(),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _buildVendorPicker()),
+            const SizedBox(width: 22),
+            Expanded(child: _buildAllowedToggle()),
+          ],
+        );
+      },
     );
   }
 
