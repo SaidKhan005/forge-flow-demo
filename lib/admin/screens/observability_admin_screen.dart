@@ -330,28 +330,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       _AsOfStrip(envelope: envelope, month: _month),
       _HeroCards(envelope: envelope),
       const SizedBox(height: 18),
-      TabBar(
-        key: const Key('admin_observability_tabs'),
-        controller: _tabs,
-        isScrollable: true,
-        labelColor: AppColors.textPrimary,
-        unselectedLabelColor: AppColors.textSecondary,
-        indicatorColor: AppColors.sunset,
-        tabs: <Widget>[
-          for (final tab in _kTabs)
-            Tab(
-              key: Key('admin_observability_tab_${tab.keySuffix}'),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(tab.icon, size: 16),
-                  const SizedBox(width: 8),
-                  Text(tab.label),
-                ],
-              ),
-            ),
-        ],
-      ),
+      _ObservabilityTabBar(controller: _tabs),
       const SizedBox(height: 16),
       // Only the active tab body is built, so the page height matches the
       // visible tab (mirrors the mockup's hidden panels) and the single page
@@ -388,6 +367,95 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
         },
       ),
     ];
+  }
+}
+
+// Tab bar: a pill group (rounded bg-mid container; the active tab is a
+// white pill with dark text) matching the mockup, in place of the underline
+// TabBar. Driven by the shared TabController, so the tab keys, the active-tab
+// content switch, and the widget tests are all unchanged.
+
+class _ObservabilityTabBar extends StatelessWidget {
+  const _ObservabilityTabBar({required this.controller});
+
+  final TabController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          return Container(
+            key: const Key('admin_observability_tabs'),
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundMid,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                for (var i = 0; i < _kTabs.length; i++) ...<Widget>[
+                  if (i > 0) const SizedBox(width: 4),
+                  _ObservabilityPillTab(
+                    keySuffix: _kTabs[i].keySuffix,
+                    icon: _kTabs[i].icon,
+                    label: _kTabs[i].label,
+                    selected: controller.index == i,
+                    onTap: () => controller.animateTo(i),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ObservabilityPillTab extends StatelessWidget {
+  const _ObservabilityPillTab({
+    required this.keySuffix,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String keySuffix;
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = selected
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
+    return Material(
+      color: selected ? AppColors.backgroundSurface : Colors.transparent,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        key: Key('admin_observability_tab_$keySuffix'),
+        borderRadius: BorderRadius.circular(9),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 16, color: fg),
+              const SizedBox(width: 8),
+              Text(label, style: AppTextStyles.uiLabel(color: fg)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
