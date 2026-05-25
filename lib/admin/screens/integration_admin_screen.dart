@@ -293,8 +293,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
           const SizedBox(height: 16),
           OperatorWebPanel(
             title: 'Vendor connector catalog',
-            subtitle:
-                'Global vendor API health. Operator edits stay on Operator Web.',
+            subtitle: 'Global vendor API health by provider family.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -347,7 +346,7 @@ class _Header extends StatelessWidget {
       icon: Icons.extension_outlined,
       title: 'Connected services',
       subtitle:
-          'Review global provider health and platform keys. Operator edits live on Operator Web; this view is for F&F support.',
+          'Review global provider health and platform keys. Operator edits live on Operator Web.',
     );
   }
 }
@@ -361,8 +360,7 @@ class _ReadOnlyBanner extends StatelessWidget {
       padding: EdgeInsets.only(bottom: 12),
       child: OperatorWebBanner(
         icon: Icons.lock_outline,
-        message:
-            'Operator edits live on Operator Web; this view is for F&F support. Global provider health stays here.',
+        message: 'View only: global provider health and platform keys.',
       ),
     );
   }
@@ -385,6 +383,7 @@ class _ProviderKeyTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final row = this.row;
     final hasRow = row != null;
     return Container(
       key: Key('admin_integrations_provider_${kind.wireName}'),
@@ -406,15 +405,21 @@ class _ProviderKeyTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  kind.displayName,
-                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      kind.displayName,
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
+                    ),
+                    _ServiceStateChip(saved: hasRow),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  hasRow
-                      ? 'Saved key: ${row!.maskedValue}'
-                      : 'No saved key yet. Use Replace key to add one.',
+                  hasRow ? row.maskedValue : 'Use Replace key to add one.',
                   key: Key('admin_integrations_masked_${kind.wireName}'),
                   style: hasRow
                       ? AppTextStyles.mono11(color: AppColors.textSecondary)
@@ -423,14 +428,9 @@ class _ProviderKeyTile extends StatelessWidget {
                 if (hasRow) ...[
                   const SizedBox(height: 2),
                   Text(
-                    'Last changed by ${row!.updatedBy ?? row!.createdBy ?? 'Unknown'} '
-                    'at ${adminHumanDateTime(row!.rotatedAt)}',
+                    'Changed by ${row.updatedBy ?? row.createdBy ?? 'Unknown'} '
+                    'at ${adminHumanDateTime(row.rotatedAt)}',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Stored securely. The full key is hidden after rotation.',
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
                   ),
                 ],
               ],
@@ -459,6 +459,31 @@ class _ProviderKeyTile extends StatelessWidget {
   }
 }
 
+class _ServiceStateChip extends StatelessWidget {
+  const _ServiceStateChip({required this.saved});
+
+  final bool saved;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: saved
+            ? AppColors.positive.withValues(alpha: 0.12)
+            : AppColors.warningBadgeBg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        saved ? 'Saved' : 'Missing',
+        style: AppTextStyles.mono10(
+          color: saved ? AppColors.positive : AppColors.warning,
+        ).copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
 class _VendorCatalogGroups extends StatelessWidget {
   const _VendorCatalogGroups({required this.statuses});
 
@@ -468,9 +493,11 @@ class _VendorCatalogGroups extends StatelessWidget {
   Widget build(BuildContext context) {
     final children = <Widget>[];
     for (final group in _VendorCatalogGroup.values) {
-      final rows = statuses
-          .where((status) => _groupForVendor(status) == group)
-          .toList(growable: false);
+      final rows =
+          statuses
+              .where((status) => _groupForVendor(status) == group)
+              .toList(growable: false)
+            ..sort(_compareVendorStatusRows);
       if (rows.isEmpty) continue;
       if (children.isNotEmpty) children.add(const SizedBox(height: 12));
       children.add(_VendorCatalogGroupBlock(group: group, statuses: rows));
@@ -482,6 +509,18 @@ class _VendorCatalogGroups extends StatelessWidget {
   }
 }
 
+int _compareVendorStatusRows(VendorConnectorStatus a, VendorConnectorStatus b) {
+  final health = _statusSortWeight(a).compareTo(_statusSortWeight(b));
+  if (health != 0) return health;
+  return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+}
+
+int _statusSortWeight(VendorConnectorStatus status) {
+  if (_statusReachable(status)) return 0;
+  if (status.statusLabel.toLowerCase().contains('pending')) return 1;
+  return 2;
+}
+
 class _VendorCatalogGroupBlock extends StatelessWidget {
   const _VendorCatalogGroupBlock({required this.group, required this.statuses});
 
@@ -491,8 +530,7 @@ class _VendorCatalogGroupBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final readyCount = statuses.where((status) {
-      return status.apiReachable == true ||
-          status.statusLabel.toLowerCase().contains('reachable');
+      return _statusReachable(status);
     }).length;
     return Container(
       key: Key('admin_integrations_vendor_group_${group.keyName}'),
@@ -520,9 +558,7 @@ class _VendorCatalogGroupBlock extends StatelessWidget {
                   ).copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
-              _CatalogCountChip(
-                label: '$readyCount/${statuses.length} reachable',
-              ),
+              _CatalogCountChip(label: '$readyCount ready'),
             ],
           ),
           const SizedBox(height: 10),
@@ -550,6 +586,11 @@ class _VendorCatalogGroupBlock extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _statusReachable(VendorConnectorStatus status) {
+  return status.apiReachable == true ||
+      status.statusLabel.toLowerCase().contains('reachable');
 }
 
 enum _VendorCatalogGroup {
@@ -615,6 +656,8 @@ class _StatusRowTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reachable = _statusReachable(status);
+    final pending = status.statusLabel.toLowerCase().contains('pending');
     return Container(
       key: Key('admin_integrations_status_${status.id}'),
       margin: compact ? EdgeInsets.zero : const EdgeInsets.only(bottom: 8),
@@ -668,13 +711,30 @@ class _StatusRowTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.backgroundDeep,
-              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              color: reachable
+                  ? AppColors.positive.withValues(alpha: 0.12)
+                  : pending
+                  ? AppColors.warningBadgeBg
+                  : AppColors.backgroundDeep,
+              border: Border.all(
+                color: reachable
+                    ? AppColors.positive.withValues(alpha: 0.35)
+                    : pending
+                    ? AppColors.warning.withValues(alpha: 0.32)
+                    : AppColors.borderSubtle,
+                width: 1,
+              ),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
               status.statusLabel,
-              style: AppTextStyles.chipLabel(color: AppColors.textMuted),
+              style: AppTextStyles.chipLabel(
+                color: reachable
+                    ? AppColors.positive
+                    : pending
+                    ? AppColors.warning
+                    : AppColors.textMuted,
+              ),
             ),
           ),
         ],

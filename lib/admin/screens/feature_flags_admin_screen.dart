@@ -424,6 +424,10 @@ class _FeatureFlagTile extends StatelessWidget {
               background: AppColors.backgroundDeep,
               foreground: AppColors.textMuted,
             ),
+            _StateChip(
+              key: Key('admin_feature_flag_value_${row.flagId}'),
+              enabled: row.enabled,
+            ),
           ],
         ),
         const SizedBox(height: 6),
@@ -434,15 +438,6 @@ class _FeatureFlagTile extends StatelessWidget {
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
         ),
-        Text(
-          'Status: ${row.enabled ? 'On' : 'Off'}',
-          key: Key('admin_feature_flag_value_${row.flagId}'),
-          style: AppTextStyles.mono12(
-            color: row.enabled ? AppColors.positive : AppColors.textSecondary,
-            weight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 4),
         Text(
           'Last changed by ${row.updatedBy ?? 'unknown'} on '
           '${adminHumanDateTime(row.updatedAt)}',
@@ -557,6 +552,23 @@ class _Chip extends StatelessWidget {
   }
 }
 
+class _StateChip extends StatelessWidget {
+  const _StateChip({super.key, required this.enabled});
+
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Chip(
+      label: enabled ? 'On' : 'Off',
+      background: enabled
+          ? AppColors.positive.withValues(alpha: 0.12)
+          : AppColors.backgroundDeep,
+      foreground: enabled ? AppColors.positive : AppColors.textMuted,
+    );
+  }
+}
+
 class _DangerConfirmDialog extends StatefulWidget {
   const _DangerConfirmDialog({required this.flagName});
 
@@ -654,6 +666,8 @@ String _friendlyFlagName(String flagName) {
     'audit_logs_cutover_enabled' => 'Audit log routing',
     'kms_real_provider_anthropic_enabled' => 'Anthropic key storage',
     'kms_real_provider_voyage_enabled' => 'Voyage key storage',
+    'kms_real_provider_gemini_enabled' => 'Gemini key storage',
+    'kms_real_provider_azure_db_enabled' => 'Azure DB key storage',
     'advisor_enabled' => 'Advisor access',
     _ =>
       flagName
@@ -675,6 +689,10 @@ String _friendlyFlagDescription(String flagName, String? fallback) {
       'Uses secure cloud storage for Anthropic service keys instead of demo storage.',
     'kms_real_provider_voyage_enabled' =>
       'Uses secure cloud storage for Voyage service keys instead of demo storage.',
+    'kms_real_provider_gemini_enabled' =>
+      'Uses secure cloud storage for Gemini service keys instead of demo storage.',
+    'kms_real_provider_azure_db_enabled' =>
+      'Uses secure cloud storage for the Azure DB superuser key instead of demo storage.',
     'advisor_enabled' =>
       'Controls whether the advisor experience is available in the app.',
     _ =>
@@ -695,7 +713,7 @@ String _friendlyFlagKind(String kind) {
 String _friendlyScope(String scope) {
   return switch (scope.toLowerCase()) {
     'global' => 'All operators',
-    'operator' => 'Operator',
+    'operator' => 'Business',
     'location' => 'Location',
     _ => scope.replaceAll('_', ' '),
   };
