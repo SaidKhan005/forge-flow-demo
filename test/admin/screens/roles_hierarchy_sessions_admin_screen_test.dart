@@ -16,7 +16,6 @@ import 'package:forge_and_flow/admin/screens/roles_hierarchy_sessions_admin_scre
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
-import 'package:forge_and_flow/admin/widgets/admin_action_controls.dart';
 import 'package:forge_and_flow/services/auth/custom_role_validator.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -180,7 +179,7 @@ void main() {
         find.byKey(const Key('admin_rhs_readonly_banner')),
         findsOneWidget,
       );
-      final newRole = tester.widget<AdminActionButton>(
+      final newRole = tester.widget<FilledButton>(
         find.byKey(const Key('admin_rhs_roles_new_role')),
       );
       expect(newRole.onPressed, isNull);
@@ -225,7 +224,7 @@ void main() {
         await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
         await pumpEventually(tester);
 
-        final disabledSubmit = tester.widget<AdminActionButton>(
+        final disabledSubmit = tester.widget<FilledButton>(
           find.byKey(const Key('admin_rhs_create_custom_role_submit')),
         );
         expect(disabledSubmit.onPressed, isNull);
@@ -428,7 +427,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      final ownButton = tester.widget<AdminActionButton>(
+      final ownButton = tester.widget<OutlinedButton>(
         find.byKey(
           const Key(
             'admin_rhs_session_force_logout_session-diner-owner-mobile',

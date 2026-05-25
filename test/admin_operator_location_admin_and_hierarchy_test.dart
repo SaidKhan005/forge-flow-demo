@@ -38,7 +38,6 @@ import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
-import 'package:forge_and_flow/admin/widgets/admin_action_controls.dart';
 import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -564,7 +563,7 @@ void main() {
 
     await selectBusinessScope(tester, 'op-seed-1');
 
-    final addButton = tester.widget<AdminActionButton>(
+    final addButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_operator_add_location_button')),
     );
     expect(addButton.onPressed, isNull);
@@ -1863,7 +1862,7 @@ void main() {
     await tester.ensureVisible(addButton);
     await pumpEventually(tester);
     expect(
-      tester.widget<AdminActionButton>(addButton).onPressed,
+      tester.widget<OutlinedButton>(addButton).onPressed,
       isNotNull,
       reason: 'selecting an org unit must enable Add location',
     );
