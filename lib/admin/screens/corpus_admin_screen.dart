@@ -109,6 +109,15 @@ class CorpusAdminScreen extends StatefulWidget {
 }
 
 class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
+  // B-r1: screen-level "Show technical details" toggle. OFF by default
+  // so the everyday view stays free of machine noise (raw IDs, content
+  // hashes, confidence scores, version IDs). When ON, those details
+  // appear across the rendered cards. Mirrors the approved preview's
+  // `techToggle`. The flag is broadcast to descendants through
+  // [_CorpusTechDetailsScope] so individual cards do not each need a
+  // constructor parameter threaded down.
+  bool _showTechDetails = false;
+
   bool _loading = true;
   String? _loadError;
   List<CorpusVersionRef> _versions = const <CorpusVersionRef>[];
@@ -332,81 +341,95 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
-      child: ColoredBox(
-        key: const Key('admin_corpus_screen'),
-        color: AppColors.backgroundDeep,
-        child: OperatorWebScreenFrame(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const _Header(),
-              const SizedBox(height: 14),
-              if (!widget.editingEnabled)
-                const _ReadOnlyBanner(key: Key('admin_corpus_readonly_banner')),
-              if (_actionError != null)
-                _ErrorBanner(
-                  key: const Key('admin_corpus_action_error'),
-                  message: _actionError!,
+      child: _CorpusTechDetailsScope(
+        showTechDetails: _showTechDetails,
+        child: ColoredBox(
+          key: const Key('admin_corpus_screen'),
+          color: AppColors.backgroundDeep,
+          child: OperatorWebScreenFrame(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _Header(),
+                const SizedBox(height: 12),
+                _TechDetailsToggle(
+                  value: _showTechDetails,
+                  onChanged: (value) =>
+                      setState(() => _showTechDetails = value),
                 ),
-              const TabBar(
-                key: Key('admin_corpus_tab_bar'),
-                isScrollable: true,
-                indicatorColor: AppColors.sunset,
-                labelColor: AppColors.textPrimary,
-                unselectedLabelColor: AppColors.textSecondary,
-                tabs: <Widget>[
-                  Tab(key: Key('admin_corpus_versions_tab'), text: 'Knowledge'),
-                  Tab(
-                    key: Key('admin_corpus_graph_candidates_tab'),
-                    text: 'Connections',
+                const SizedBox(height: 12),
+                if (!widget.editingEnabled)
+                  const _ReadOnlyBanner(
+                    key: Key('admin_corpus_readonly_banner'),
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: TabBarView(
-                  children: <Widget>[
-                    _VersionsTab(
-                      loading: _loading,
-                      loadError: _loadError,
-                      versions: _versions,
-                      selectedVersionId: _selectedVersionId,
-                      selectedBundle: _selectedBundle,
-                      stagedDiff: _stagedDiff,
-                      stagedFileName: _stagedFileName,
-                      editingEnabled: widget.editingEnabled,
-                      busy: _busy,
-                      selected: _selected,
-                      onSelect: (id) {
-                        setState(() => _selectedVersionId = id);
-                        _loadSelectedBundle();
-                      },
-                      onUploadPressed: _onUploadPressed,
-                      onRollbackPressed: _onRollbackPressed,
-                      onCommitPressed: _onCommitPressed,
-                      onDiscardStaged: () => setState(() {
-                        _stagedDiff = null;
-                        _stagedFileName = null;
-                      }),
+                if (_actionError != null)
+                  _ErrorBanner(
+                    key: const Key('admin_corpus_action_error'),
+                    message: _actionError!,
+                  ),
+                const TabBar(
+                  key: Key('admin_corpus_tab_bar'),
+                  isScrollable: true,
+                  indicatorColor: AppColors.sunset,
+                  labelColor: AppColors.textPrimary,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  tabs: <Widget>[
+                    Tab(
+                      key: Key('admin_corpus_versions_tab'),
+                      text: 'Knowledge',
                     ),
-                    _LazyGraphCandidatesTab(
-                      builder: (_) => _GraphCandidatesTab(
-                        gateway: widget.gateway,
-                        editingEnabled: widget.editingEnabled,
-                        newIdempotencyKey: _newIdempotencyKey,
-                        targetOperatorId: _effectiveTargetOperatorId,
-                        targetLocationId: _effectiveTargetLocationId,
-                        onPickOperator: widget.operatorPickerOpener == null
-                            ? null
-                            : _onPickOperatorPressed,
-                        pickedTargetLabel: _pickedTargetLabel,
-                      ),
+                    Tab(
+                      key: Key('admin_corpus_graph_candidates_tab'),
+                      text: 'Connections',
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Expanded(
+                  child: TabBarView(
+                    children: <Widget>[
+                      _VersionsTab(
+                        loading: _loading,
+                        loadError: _loadError,
+                        versions: _versions,
+                        selectedVersionId: _selectedVersionId,
+                        selectedBundle: _selectedBundle,
+                        stagedDiff: _stagedDiff,
+                        stagedFileName: _stagedFileName,
+                        editingEnabled: widget.editingEnabled,
+                        busy: _busy,
+                        selected: _selected,
+                        onSelect: (id) {
+                          setState(() => _selectedVersionId = id);
+                          _loadSelectedBundle();
+                        },
+                        onUploadPressed: _onUploadPressed,
+                        onRollbackPressed: _onRollbackPressed,
+                        onCommitPressed: _onCommitPressed,
+                        onDiscardStaged: () => setState(() {
+                          _stagedDiff = null;
+                          _stagedFileName = null;
+                        }),
+                      ),
+                      _LazyGraphCandidatesTab(
+                        builder: (_) => _GraphCandidatesTab(
+                          gateway: widget.gateway,
+                          editingEnabled: widget.editingEnabled,
+                          newIdempotencyKey: _newIdempotencyKey,
+                          targetOperatorId: _effectiveTargetOperatorId,
+                          targetLocationId: _effectiveTargetLocationId,
+                          onPickOperator: widget.operatorPickerOpener == null
+                              ? null
+                              : _onPickOperatorPressed,
+                          pickedTargetLabel: _pickedTargetLabel,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1416,6 +1439,10 @@ class _ConfidenceChip extends StatelessWidget {
     if (score == null) {
       return const SizedBox.shrink();
     }
+    // B-r1: the raw confidence score is a machine-flavored detail, so it
+    // only shows when the "Show technical details" toggle is ON. OFF
+    // (default) keeps the everyday Connections view free of numbers.
+    if (!_CorpusTechDetailsScope.of(context)) return const SizedBox.shrink();
     final low = candidate.hasLowConfidence;
     final scoreText = score.toStringAsFixed(2);
     return Container(
@@ -1596,11 +1623,82 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // B-r1: frames the screen around what the advisor knows, with a
+    // "Staff only" badge in the trailing action slot. Copy lives in
+    // [AdminKnowledgeBaseCopy] (plain English, no em dash). The nav
+    // label stays "Knowledge base" in admin_routes.dart.
     return const OperatorWebScreenHeader(
       icon: Icons.menu_book_outlined,
-      title: 'What the advisor knows',
-      subtitle:
-          'Add knowledge documents, review what changes, publish updates, and restore an earlier version if needed.',
+      title: AdminKnowledgeBaseCopy.title,
+      subtitle: AdminKnowledgeBaseCopy.subtitle,
+      actions: <Widget>[_StaffOnlyBadge()],
+    );
+  }
+}
+
+/// B-r1: trailing header badge that marks the whole screen as internal
+/// F and F staff only. Reuses the peacock accent + the shared chip
+/// decoration token so it tracks the theme rather than inlining hex.
+class _StaffOnlyBadge extends StatelessWidget {
+  const _StaffOnlyBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_corpus_staff_only_badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      decoration: AppDecoration.accentChip(AppColors.peacock),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(
+            Icons.shield_outlined,
+            size: 14,
+            color: AppColors.peacockDark,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            AdminKnowledgeBaseCopy.staffOnlyBadge,
+            style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// B-r1: screen-level "Show technical details" toggle. OFF by default.
+/// Mirrors the approved preview's `techToggle`. Flipping it broadcasts
+/// the new value through [_CorpusTechDetailsScope] to every card.
+class _TechDetailsToggle extends StatelessWidget {
+  const _TechDetailsToggle({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: AdminKnowledgeBaseCopy.showTechnicalDetailsHint,
+      child: InkWell(
+        key: const Key('admin_corpus_tech_details_toggle'),
+        borderRadius: BorderRadius.circular(AppRadius.small),
+        onTap: () => onChanged(!value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Switch(value: value, onChanged: onChanged),
+              const SizedBox(width: 8),
+              Text(
+                AdminKnowledgeBaseCopy.showTechnicalDetails,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1614,11 +1712,33 @@ class _ReadOnlyBanner extends StatelessWidget {
       padding: EdgeInsets.only(bottom: 12),
       child: OperatorWebBanner(
         icon: Icons.lock_outline,
-        message:
-            'View only: uploads, approvals, and restores require ecosystem admin access.',
+        message: AdminKnowledgeBaseCopy.readOnlyBanner,
       ),
     );
   }
+}
+
+/// B-r1: broadcasts the screen-level "Show technical details" state to
+/// descendant cards without threading a constructor parameter through
+/// every widget. [_AdvancedDetails] and [_ConfidenceChip] read this; a
+/// false default (no scope) keeps machine details hidden.
+class _CorpusTechDetailsScope extends InheritedWidget {
+  const _CorpusTechDetailsScope({
+    required this.showTechDetails,
+    required super.child,
+  });
+
+  final bool showTechDetails;
+
+  static bool of(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_CorpusTechDetailsScope>();
+    return scope?.showTechDetails ?? false;
+  }
+
+  @override
+  bool updateShouldNotify(_CorpusTechDetailsScope oldWidget) =>
+      showTechDetails != oldWidget.showTechDetails;
 }
 
 class _VersionList extends StatelessWidget {
@@ -2138,6 +2258,12 @@ class _AdvancedDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (children.isEmpty) return const SizedBox.shrink();
+    // B-r1: the per-card technical-details disclosure only renders when
+    // the screen-level "Show technical details" toggle is ON. OFF (the
+    // default) hides raw IDs, content hashes, and version IDs from the
+    // card entirely, matching the approved preview. The data stays
+    // available; this only controls visibility.
+    if (!_CorpusTechDetailsScope.of(context)) return const SizedBox.shrink();
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: Material(
