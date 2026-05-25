@@ -31,6 +31,7 @@ import '../../auth/permission_key_metadata.dart';
 import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../services/auth/custom_role_validator.dart';
+import '../../services/auth/role_key_generator.dart';
 import '../../services/auth/role_warning_dismissal_store.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/role_permission_picker.dart';
@@ -71,6 +72,7 @@ class CustomRoleEditorScreen extends StatefulWidget {
     this.readOnly = false,
     this.roleScope = RoleScope.business,
     this.scopeLabel = 'All locations',
+    this.existingRoleKeys = const <String>{},
     this.validator = const CustomRoleValidator(),
     RoleWarningDismissalStore? dismissalStore,
   }) : dismissalStore = dismissalStore ?? _kDefaultDismissalStore;
@@ -88,6 +90,10 @@ class CustomRoleEditorScreen extends StatefulWidget {
 
   /// Plain-English label for the shell's selected management scope.
   final String scopeLabel;
+
+  /// Existing backend keys in the catalog. Creation uses this only to
+  /// generate a collision-free key behind the scenes.
+  final Set<String> existingRoleKeys;
 
   /// Advisory validator that produces the inline warning list. Pure
   /// Dart; the editor calls it on every selection change. Override in
@@ -199,55 +205,6 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
     return _selectedPermissions.isNotEmpty;
   }
 
-  /// Derive a stable, proxy-compatible role_key from the display name.
-  /// The role_key field is no longer surfaced in the UI per Wave 2 U-5
-  /// UX cleanup; we still mint it locally so the proxy contract (which
-  /// requires a unique snake_case key per role) keeps working.
-  String _deriveRoleKey(String displayName) {
-    final lowered = displayName.toLowerCase();
-    final sanitized = StringBuffer();
-    var lastWasUnderscore = false;
-    for (final code in lowered.codeUnits) {
-      final char = String.fromCharCode(code);
-      final isAlpha = code >= 0x61 && code <= 0x7a;
-      final isDigit = code >= 0x30 && code <= 0x39;
-      if (isAlpha || isDigit) {
-        sanitized.write(char);
-        lastWasUnderscore = false;
-      } else if (!lastWasUnderscore && sanitized.isNotEmpty) {
-        sanitized.write('_');
-        lastWasUnderscore = true;
-      }
-    }
-    var key = sanitized.toString();
-    while (key.endsWith('_')) {
-      key = key.substring(0, key.length - 1);
-    }
-    // role_key regex requires a leading letter; prepend "role_" if the
-    // first usable character was a digit so we always satisfy the
-    // /^[a-z][a-z0-9_]{1,63}$/ rule the proxy enforces.
-    if (key.isEmpty || !RegExp(r'^[a-z]').hasMatch(key)) {
-      key = 'role_${key.isEmpty ? 'custom' : key}';
-    }
-    if (key.length > 64) {
-      key = key.substring(0, 64);
-      while (key.endsWith('_') && key.isNotEmpty) {
-        key = key.substring(0, key.length - 1);
-      }
-    }
-    // Suffix with a short timestamp so two roles created with the same
-    // display name don't collide on role_key. Falls within the 64-char
-    // ceiling because we trim above first.
-    final suffix = DateTime.now()
-        .toUtc()
-        .millisecondsSinceEpoch
-        .remainder(1000000)
-        .toString();
-    final maxBase = 64 - suffix.length - 1;
-    final base = key.length > maxBase ? key.substring(0, maxBase) : key;
-    return '${base}_$suffix';
-  }
-
   String _nextIdempotencyKey() {
     final factory = widget.idempotencyKeyFactory;
     if (factory != null) return factory();
@@ -290,7 +247,10 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
             actorUserId: widget.session.uid,
             operatorId: widget.session.operatorId,
             locationId: widget.session.primaryLocationId ?? '',
-            roleKey: _deriveRoleKey(_displayNameController.text.trim()),
+            roleKey: generateRoleKeyFromDisplayName(
+              _displayNameController.text.trim(),
+              existingKeys: widget.existingRoleKeys,
+            ),
             displayName: _displayNameController.text.trim(),
             description: _descriptionController.text.trim(),
             permissions: permissions,

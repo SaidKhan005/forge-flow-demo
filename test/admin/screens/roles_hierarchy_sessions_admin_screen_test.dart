@@ -248,10 +248,7 @@ void main() {
           ),
           findsNothing,
         );
-        expect(
-          find.textContaining('gated until'),
-          findsNothing,
-        );
+        expect(find.textContaining('gated until'), findsNothing);
         expect(
           find.byKey(const Key('admin_rhs_move_org_unit_dialog')),
           findsNothing,
@@ -750,10 +747,6 @@ void main() {
           'Line Lead',
         );
         await tester.enterText(
-          find.byKey(const Key('admin_rhs_create_custom_role_key')),
-          'custom.line_lead',
-        );
-        await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_reason')),
           'support-onboarding',
         );
@@ -803,10 +796,6 @@ void main() {
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_name')),
           'Line Lead',
-        );
-        await tester.enterText(
-          find.byKey(const Key('admin_rhs_create_custom_role_key')),
-          'custom.line_lead',
         );
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_reason')),
@@ -863,10 +852,6 @@ void main() {
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_name')),
           'Line Lead',
-        );
-        await tester.enterText(
-          find.byKey(const Key('admin_rhs_create_custom_role_key')),
-          'custom.line_lead',
         );
         await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
         // Reason intentionally left blank.
@@ -1341,8 +1326,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('Heads up: this role has 1 thing worth a second look'),
-          findsOneWidget);
+      expect(
+        find.text('Heads up: this role has 1 thing worth a second look'),
+        findsOneWidget,
+      );
       expect(find.text(_AlwaysWarnValidator.kMessage), findsOneWidget);
     });
 
@@ -1379,10 +1366,6 @@ void main() {
       await tester.enterText(
         find.byKey(const Key('admin_rhs_create_custom_role_name')),
         'Line Lead',
-      );
-      await tester.enterText(
-        find.byKey(const Key('admin_rhs_create_custom_role_key')),
-        'custom.line_lead',
       );
       await tester.enterText(
         find.byKey(const Key('admin_rhs_create_custom_role_reason')),
