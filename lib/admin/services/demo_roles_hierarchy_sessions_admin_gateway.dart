@@ -391,7 +391,9 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyCreate);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyCreate,
+    );
     _ensureForgeAdmin(actorIsForgeAdmin, 'createOrgUnit');
     _ensureAdminReason(adminReason, 'createOrgUnit');
     final cached = _idempotentResults[idempotencyKey];
@@ -462,7 +464,9 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyMove);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyMove,
+    );
     _ensureForgeAdmin(actorIsForgeAdmin, 'moveOrgUnit');
     _ensureAdminReason(adminReason, 'moveOrgUnit');
     final cached = _idempotentResults[idempotencyKey];
@@ -530,7 +534,9 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyRename);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyRename,
+    );
     _ensureForgeAdmin(actorIsForgeAdmin, 'renameOrgUnit');
     _ensureAdminReason(adminReason, 'renameOrgUnit');
     final cached = _idempotentResults[idempotencyKey];
@@ -700,7 +706,9 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyDelete);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyDelete,
+    );
     _ensureForgeAdmin(actorIsForgeAdmin, 'deleteOrgUnit');
     _ensureAdminReason(adminReason, 'deleteOrgUnit');
     if (_idempotentResults.containsKey(idempotencyKey)) return;
@@ -785,7 +793,9 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyMove);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyMove,
+    );
     _ensureForgeAdmin(actorIsForgeAdmin, 'moveLocation');
     _ensureAdminReason(adminReason, 'moveLocation');
     final cached = _idempotentResults[idempotencyKey];
@@ -924,7 +934,9 @@ class InMemoryRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyDelete);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyDelete,
+    );
     _ensureForgeAdmin(actorIsForgeAdmin, 'deleteLocation');
     _ensureAdminReason(adminReason, 'deleteLocation');
     if (_idempotentResults.containsKey(idempotencyKey)) return;
@@ -1122,6 +1134,80 @@ Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
       permissionKeys: <String>['team.users.view'],
     ),
     RoleAdminRow(
+      roleId: 'role-seed-finance-analyst',
+      roleKey: 'finance_analyst',
+      displayName: 'Finance Analyst',
+      description:
+          'Reviews invoices and usage, adjusts usage caps, and cannot '
+          'change subscription or payment settings.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        'billing.invoice.view',
+        'billing.usage.view',
+        'billing.usage_caps.edit',
+        'admin.audit_log.view',
+        'team.users.self_update',
+      ],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-auditor-compliance',
+      roleKey: 'auditor_compliance',
+      displayName: 'Auditor / Compliance',
+      description: 'Read-only audit and PII oversight for compliance reviews.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        'admin.audit_log.view',
+        'admin.audit_log.export',
+        'admin.users.view',
+        'admin.audit_privacy.read',
+        'team.audit_log.view',
+        'team.audit_log.export',
+        'team.users.self_update',
+      ],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-training-lead',
+      roleKey: 'training_lead',
+      displayName: 'Training Lead',
+      description:
+          'Manages onboarding and supervisor training content without '
+          'editing the handbook source.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        'product.barrio.access',
+        'barrio.handbook.view',
+        'barrio.interview_playbook.view',
+        'barrio.interview_playbook.edit',
+        'barrio.supervisor_content.view',
+        'barrio.supervisor_content.edit',
+        'team.users.self_update',
+      ],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-team-admin',
+      roleKey: 'team_admin',
+      displayName: 'Team Admin',
+      description:
+          'Manages roster, role assignments, MFA, and password resets '
+          'without operational dashboards.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        'team.users.view',
+        'team.users.invite',
+        'team.users.deactivate',
+        'team.users.reactivate',
+        'team.users.reset_password',
+        'team.users.reset_mfa',
+        'team.users.self_update',
+        'team.roles.view',
+        'team.roles.assign',
+        'team.roles.revoke',
+        'team.audit_log.view',
+        'team.session.force_logout',
+        'admin.users.view',
+      ],
+    ),
+    RoleAdminRow(
       roleId: 'role-custom-floor-captain',
       roleKey: 'custom.floor_captain',
       displayName: 'Floor Captain',
@@ -1172,6 +1258,80 @@ Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
       description: 'Shift supervisor with read-only team visibility.',
       isSeeded: true,
       permissionKeys: <String>['team.users.view'],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-finance-analyst',
+      roleKey: 'finance_analyst',
+      displayName: 'Finance Analyst',
+      description:
+          'Reviews invoices and usage, adjusts usage caps, and cannot '
+          'change subscription or payment settings.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        'billing.invoice.view',
+        'billing.usage.view',
+        'billing.usage_caps.edit',
+        'admin.audit_log.view',
+        'team.users.self_update',
+      ],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-auditor-compliance',
+      roleKey: 'auditor_compliance',
+      displayName: 'Auditor / Compliance',
+      description: 'Read-only audit and PII oversight for compliance reviews.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        'admin.audit_log.view',
+        'admin.audit_log.export',
+        'admin.users.view',
+        'admin.audit_privacy.read',
+        'team.audit_log.view',
+        'team.audit_log.export',
+        'team.users.self_update',
+      ],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-training-lead',
+      roleKey: 'training_lead',
+      displayName: 'Training Lead',
+      description:
+          'Manages onboarding and supervisor training content without '
+          'editing the handbook source.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        'product.barrio.access',
+        'barrio.handbook.view',
+        'barrio.interview_playbook.view',
+        'barrio.interview_playbook.edit',
+        'barrio.supervisor_content.view',
+        'barrio.supervisor_content.edit',
+        'team.users.self_update',
+      ],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-team-admin',
+      roleKey: 'team_admin',
+      displayName: 'Team Admin',
+      description:
+          'Manages roster, role assignments, MFA, and password resets '
+          'without operational dashboards.',
+      isSeeded: true,
+      permissionKeys: <String>[
+        'team.users.view',
+        'team.users.invite',
+        'team.users.deactivate',
+        'team.users.reactivate',
+        'team.users.reset_password',
+        'team.users.reset_mfa',
+        'team.users.self_update',
+        'team.roles.view',
+        'team.roles.assign',
+        'team.roles.revoke',
+        'team.audit_log.view',
+        'team.session.force_logout',
+        'admin.users.view',
+      ],
     ),
   ];
   return <String, List<RoleAdminRow>>{

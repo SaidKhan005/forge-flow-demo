@@ -51,6 +51,14 @@ import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/domain/services/graceful_refusal_response.dart';
 import 'package:forge_and_flow/domain/services/llm_provider.dart';
+// Slice A3 ? `RerankCandidate` (build the candidate pool from chunks) and
+// `RetrievedChunk` (reorder the pool by rerank rank) are used in the
+// monolith's library scope by the retrieve route part. The rerank gateway
+// itself owns the provider/result plumbing.
+import 'package:forge_and_flow/domain/models/retrieved_chunk.dart'
+    show RetrievedChunk;
+import 'package:forge_and_flow/domain/services/rerank_provider.dart'
+    show RerankCandidate;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart'
     show PostgresPoolGaugeSnapshot;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
@@ -131,6 +139,15 @@ export 'advisor_query_embedding_gateway_part.dart'
         AdvisorQueryEmbeddingException,
         AdvisorQueryEmbeddingResult,
         VoyageHttpQueryEmbeddingGateway;
+// Slice A3 ? server-side Voyage rerank gateway types exported so
+// proxy_bootstrap.dart and main.dart can construct the production gateway
+// by importing advisor_proxy.dart only (no extra import of the sibling file).
+export 'advisor_rerank_gateway_part.dart'
+    show
+        AdvisorRerankGateway,
+        AdvisorRerankException,
+        AdvisorRerankResult,
+        VoyageHttpRerankGateway;
 export 'log.dart'
     show
         LogSeverity,
@@ -352,6 +369,17 @@ import 'advisor_query_embedding_gateway_part.dart'
         AdvisorQueryEmbeddingGateway,
         AdvisorQueryEmbeddingException,
         AdvisorQueryEmbeddingResult;
+
+// Advisor Knowledge Activation ? Slice A3: server-side Voyage rerank
+// gateway. Standalone file (not a `part`) so its own imports (dart:io,
+// dart:convert, package:http, the rerank domain types) do not land in the
+// monolith's import space. `VoyageHttpRerankGateway` is re-exported above
+// (for proxy_bootstrap / main.dart) but NOT imported here ? it is not used
+// inside the monolith or its `part` files; the abstract interface,
+// exception, and result type are the only types the retrieve route needs,
+// plus `RerankCandidate` to build the candidate pool from chunks.
+import 'advisor_rerank_gateway_part.dart'
+    show AdvisorRerankGateway, AdvisorRerankException, AdvisorRerankResult;
 
 // chore(advisor-proxy) size refactor: cohesive admin route group
 // (corpus / debug-console / observability / feature-flags /
@@ -4520,6 +4548,19 @@ const Set<String> kProxyPricingTierTemplateKeys = <String>{
   'enterprise',
 };
 
+/// Plans & Limits V1 Phase 4a — default Pilot free-trial window in days.
+/// The start-pilot route sets `operators.trial_expires_at = now() + this
+/// many days` when the request omits an explicit `trial_days`. 30 days is
+/// the standard free-preview window from the reconciled pricing model
+/// (`docs/phases/phase_11a/phase_11a_decision_register.md`).
+const int kPilotTrialDefaultDays = 30;
+
+/// Plans & Limits V1 Phase 4a — upper bound on an explicitly-requested
+/// Pilot trial window so a caller cannot provision an unbounded trial.
+/// One year is generous for a free preview; anything longer should be a
+/// deliberate plan/pricing decision, not a trial flag.
+const int kPilotTrialMaxDays = 365;
+
 /// Validation error raised by [PricingTierAdminProxyGateway]
 /// implementations when a request is rejected for business reasons
 /// (e.g. operator missing a primary_location_id). The proxy
@@ -4645,6 +4686,64 @@ abstract class PricingTierAdminProxyGateway {
     required double? onboardingMaxUsd,
     required String adminReason,
   });
+
+  /// Plans & Limits V1 Phase 4a — start a Pilot free trial on a real
+  /// operator. Sets `subscription_tier = 'pilot'`, `trial_mode = true`,
+  /// and `trial_expires_at = now() + [trialDays] days`. Returns the
+  /// post-update operator bundle (same shape as [updateOperatorTier]),
+  /// or null when the operator was not found so the route answers 404.
+  ///
+  /// HP #2: this only flips the trial FLAG + tier on a REAL operator. It
+  /// does NOT seed sample data and does NOT create any `demo_*` table —
+  /// Pilot is a trial flag on a real operator, not a second demo mode.
+  /// Sample-data seeding for the preview is a writer-side (client
+  /// SQLite) concern handled separately (see the route handler note).
+  Future<Map<String, Object?>?> startPilotTrial({
+    required String actorUserId,
+    required String operatorId,
+    required int trialDays,
+    required String adminReason,
+  });
+
+  /// Plans & Limits V1 Phase 4a — convert a Pilot trial to Starter (the
+  /// "real POS / labor connector succeeded" conversion). Clears the
+  /// trial flag (`trial_mode = false`, `trial_expires_at = null`) and
+  /// moves `subscription_tier` from `'pilot'` to `'starter'`. Idempotent:
+  /// only an operator currently on the Pilot trial is promoted; a
+  /// non-trial / already-converted operator is a no-op.
+  ///
+  /// Returns a [TrialConversionOutcome] discriminating three cases so
+  /// the route answers honestly: operator missing (404), converted
+  /// (200), or already-converted / not-on-trial (200, no-op).
+  Future<TrialConversionOutcome> convertTrialToStarter({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  });
+}
+
+/// Wire-level outcome of [PricingTierAdminProxyGateway.convertTrialToStarter].
+/// Decouples the proxy abstraction from the repository's
+/// `TrialConversionResult` so test fakes do not need to import the
+/// persistence layer. [bundle] is the post-update operator bundle when
+/// [converted] is true OR when the operator already off-trial (no-op);
+/// null only when the operator was not found.
+class TrialConversionOutcome {
+  const TrialConversionOutcome({
+    required this.operatorFound,
+    required this.converted,
+    required this.bundle,
+  });
+
+  /// Convenience constructor: operator not found (route → 404).
+  const TrialConversionOutcome.notFound()
+    : operatorFound = false,
+      converted = false,
+      bundle = null;
+
+  final bool operatorFound;
+  final bool converted;
+  final Map<String, Object?>? bundle;
 }
 
 /// Mobile operational sync gateway.
@@ -4949,6 +5048,7 @@ abstract class VendorApplicabilityProxyGateway {
   Future<List<Map<String, Object?>>> listAdmin({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     String? settingKind,
     String? settingKey,
     String? vendorSlug,
@@ -4959,6 +5059,7 @@ abstract class VendorApplicabilityProxyGateway {
   Future<Map<String, Object?>> upsert({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     required String settingKind,
     required String settingKey,
     required String vendorSlug,
@@ -4972,6 +5073,7 @@ abstract class VendorApplicabilityProxyGateway {
   Future<Map<String, Object?>?> end({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     required String settingKind,
     required String settingKey,
     required String vendorSlug,
@@ -6195,6 +6297,16 @@ Future<void> routeRequest(
   // logged, NEVER returned to the client.
   AdvisorQueryEmbeddingGateway? corpusQueryEmbeddingGateway,
   String? voyageApiKeyForRetrieval,
+  // Slice A3 ? server-side Voyage rerank gateway. Optional: when null the
+  // text-query path returns the A2b vector-only order unchanged (full
+  // back-compat). When wired (production), the route fetches a larger
+  // candidate pool, reranks it against the query text, and returns the
+  // top max_results reordered by rerank score. HP #7:
+  // [voyageRerankApiKeyForRetrieval] is a server-side secret ? NEVER
+  // logged, NEVER returned to the client. Reuses the SAME VOYAGE_API_KEY
+  // secret as the embedding gateway (one Voyage account, two endpoints).
+  AdvisorRerankGateway? corpusRerankGateway,
+  String? voyageRerankApiKeyForRetrieval,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -7351,9 +7463,7 @@ Future<void> routeRequest(
           // because the proxy's model id already carries the version.
           final completed = pipelineResult.completion;
           final statsModelId = completed?.modelId ?? finalTelemetry.modelUsed;
-          final latencyMs = clock()
-              .difference(requestStartedAt)
-              .inMilliseconds;
+          final latencyMs = clock().difference(requestStartedAt).inMilliseconds;
           final requestStats = ProxyRequestStats(
             usageClass: usageClass,
             resultStatus: 'success',
@@ -8965,7 +9075,10 @@ Future<void> routeRequest(
 
             if (request.method == 'POST' &&
                 authOperationPath == adminAuthRolesPath) {
-              if (!await requirePermission('team.roles.create_custom')) return;
+              final permissionKey = path == adminAuthRolesPath
+                  ? 'admin.roles.create_custom'
+                  : 'team.roles.create_custom';
+              if (!await requirePermission(permissionKey)) return;
               final roleKey = _nonBlankString(body['role_key']);
               final displayName = _nonBlankString(body['display_name']);
               if (roleKey == null || displayName == null) {
@@ -9005,9 +9118,67 @@ Future<void> routeRequest(
               return;
             }
 
+            if (request.method == 'POST' &&
+                path.startsWith(adminAuthRolePrefix) &&
+                path.endsWith('/permissions')) {
+              if (!await requirePermission('admin.roles.edit_seeded')) return;
+              final roleId = _seededRolePermissionsRoleId(path);
+              if (roleId == null) {
+                _writeJson(response, 404, <String, Object?>{
+                  'error': 'not found',
+                  'method': request.method,
+                  'path': path,
+                });
+                return;
+              }
+              final reason =
+                  _nonBlankString(body['admin_reason']) ??
+                  _nonBlankString(body['reason']);
+              if (reason == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_admin_reason',
+                  'message': 'admin_reason is required',
+                });
+                return;
+              }
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: '$adminAuthRolePrefix$roleId/permissions',
+                key: idempotencyKey,
+                compute: () async {
+                  final patched = await authOperationsGateway
+                      .editSeededRolePermissions(
+                        TeamSeededRolePermissionsEditCommand(
+                          actorUserId: scope.userId,
+                          operatorId: scope.operatorId,
+                          locationId: scope.locationId,
+                          roleId: roleId,
+                          permissionKeys: _permissionKeyList(
+                            body['permission_keys'],
+                          ),
+                          reason: reason,
+                        ),
+                      );
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'role': _teamRoleToJson(patched.role),
+                      'bumped_users': patched.bumpedUsers,
+                    },
+                  );
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
             if (request.method == 'PATCH' &&
                 authOperationPath.startsWith(adminAuthRolePrefix)) {
-              if (!await requirePermission('team.roles.create_custom')) return;
+              final permissionKey = path.startsWith(adminAuthRolePrefix)
+                  ? 'admin.roles.create_custom'
+                  : 'team.roles.create_custom';
+              if (!await requirePermission(permissionKey)) return;
               final roleId = _pathSuffix(
                 authOperationPath,
                 adminAuthRolePrefix,
@@ -9053,7 +9224,10 @@ Future<void> routeRequest(
 
             if (request.method == 'DELETE' &&
                 authOperationPath.startsWith(adminAuthRolePrefix)) {
-              if (!await requirePermission('team.roles.create_custom')) return;
+              final permissionKey = path.startsWith(adminAuthRolePrefix)
+                  ? 'admin.roles.delete_custom'
+                  : 'team.roles.create_custom';
+              if (!await requirePermission(permissionKey)) return;
               final roleId = _pathSuffix(
                 authOperationPath,
                 adminAuthRolePrefix,
@@ -13334,6 +13508,11 @@ Future<void> routeRequest(
               embeddingGateway: corpusQueryEmbeddingGateway,
               // HP #7: key stays in the call stack; never logged or returned.
               voyageApiKey: voyageApiKeyForRetrieval,
+              // Slice A3 ? optional server-side rerank gateway + its key.
+              // Null in tests/scaffolds ? vector-only order unchanged. HP #7:
+              // the rerank key stays in the call stack, never logged/returned.
+              rerankGateway: corpusRerankGateway,
+              voyageRerankApiKey: voyageRerankApiKeyForRetrieval,
               // HP #9: meter the Voyage embedding spend by class. `scope` is
               // the resolved operator JWT (operator_id/location_id). The
               // guard + accounting store are the SAME handles the metered
@@ -14472,9 +14651,16 @@ Future<void> _routeVendorApplicabilityAdmin({
   final params = request.uri.queryParameters;
 
   if (method == 'GET') {
+    final operatorId = _nonBlankString(params['operator_id']);
+    final locationId = _nonBlankString(params['location_id']);
+    _assertVendorApplicabilityLocationHasOperator(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     final rows = await gateway.listAdmin(
       actorUserId: actorUserId,
-      operatorId: _nonBlankString(params['operator_id']),
+      operatorId: operatorId,
+      locationId: locationId,
       settingKind: _nonBlankString(params['setting_kind']),
       settingKey: _nonBlankString(params['setting_key']),
       vendorSlug: _nonBlankString(params['vendor_slug']),
@@ -14495,6 +14681,11 @@ Future<void> _routeVendorApplicabilityAdmin({
     final enabled = _requireBodyBool(body, 'enabled');
     final metadata = _optionalBodyObject(body, 'metadata');
     final operatorId = _optionalBodyString(body, 'operator_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    _assertVendorApplicabilityLocationHasOperator(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     final effectiveFrom = _optionalBodyDateTime(body, 'effective_from');
     final adminReason = _requireBodyString(body, 'admin_reason');
     final reasonNote = _optionalBodyString(body, 'reason_note');
@@ -14509,6 +14700,7 @@ Future<void> _routeVendorApplicabilityAdmin({
         final row = await gateway.upsert(
           actorUserId: actorUserId,
           operatorId: operatorId,
+          locationId: locationId,
           settingKind: settingKind,
           settingKey: settingKey,
           vendorSlug: vendorSlug,
@@ -14537,6 +14729,11 @@ Future<void> _routeVendorApplicabilityAdmin({
     final settingKey = _requireBodyString(body, 'setting_key');
     final vendorSlug = _requireBodyString(body, 'vendor_slug');
     final operatorId = _optionalBodyString(body, 'operator_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    _assertVendorApplicabilityLocationHasOperator(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     final effectiveUntil = _optionalBodyDateTime(body, 'effective_until');
     final adminReason = _requireBodyString(body, 'admin_reason');
     final reasonNote = _optionalBodyString(body, 'reason_note');
@@ -14551,6 +14748,7 @@ Future<void> _routeVendorApplicabilityAdmin({
         final row = await gateway.end(
           actorUserId: actorUserId,
           operatorId: operatorId,
+          locationId: locationId,
           settingKind: settingKind,
           settingKey: settingKey,
           vendorSlug: vendorSlug,
@@ -14574,6 +14772,25 @@ Future<void> _routeVendorApplicabilityAdmin({
   }
 
   _writeNotFound(response, request);
+}
+
+/// Enforces the `vendor_applicability` rule (and DB CHECK) that any
+/// location-scoped row must also carry an operator: a location belongs
+/// to exactly one operator, so a location filter / write without an
+/// operator is meaningless. Rejected with 400 before the gateway runs.
+/// UUID shape itself is validated downstream by the repository.
+void _assertVendorApplicabilityLocationHasOperator({
+  required String? operatorId,
+  required String? locationId,
+}) {
+  if (locationId != null && operatorId == null) {
+    throw const _AdminInputError(
+      statusCode: 400,
+      code: 'location_requires_operator',
+      message: 'location_id requires operator_id (a location belongs to one '
+          'operator)',
+    );
+  }
 }
 
 Future<void> _routePricingAdmin({
@@ -14690,6 +14907,108 @@ Future<void> _routePricingAdmin({
     }
     final operatorId = Uri.decodeComponent(parts[0]);
     final action = Uri.decodeComponent(parts[1]);
+
+    // Plans & Limits V1 Phase 4a — start a Pilot free trial on a real
+    // operator. Sets subscription_tier='pilot', trial_mode=true,
+    // trial_expires_at=now()+trial_days. Idempotent (Idempotency-Key) +
+    // audited (operator.trial.pilot_started). Write-gated (super_admin)
+    // by the same method-scoped gate as apply-template above.
+    //
+    // HP #2: this route only flips the trial FLAG + tier on a REAL
+    // operator. It deliberately does NOT seed sample preview data. The
+    // existing demo seeders (`_seedDemoDataFromReplay`) are client-side
+    // SQLite, hardcoded to `DemoScope.restaurantId`, and unreachable
+    // from this Postgres proxy; seeding sample data under a real
+    // operator from the proxy would require either a forbidden parallel
+    // server-side seeder or a large client-seeder refactor + a
+    // proxy->client trigger. Per the HP #2 doctrine (demo is a
+    // writer-side switch, same tables/reads/UI) the preview sample-data
+    // seeding belongs on the client/writer side and is wired in a
+    // follow-up slice; this route provisions the trial flag only.
+    if (action == 'start-pilot') {
+      final trialDays =
+          _optionalBodyInt(body, 'trial_days') ?? kPilotTrialDefaultDays;
+      if (trialDays < 1 || trialDays > kPilotTrialMaxDays) {
+        throw _AdminInputError(
+          statusCode: 400,
+          code: 'invalid_trial_days',
+          message:
+              'trial_days must be an integer between 1 and '
+              '$kPilotTrialMaxDays',
+        );
+      }
+      await _runAdminIdempotent(
+        response: response,
+        store: idempotencyStore,
+        idempotencyKey: idempotencyKey,
+        requestType: 'admin.pricing.start_pilot',
+        actorUserId: actorUserId,
+        requestBody: body,
+        compute: () async {
+          final result = await gateway.startPilotTrial(
+            actorUserId: actorUserId,
+            operatorId: operatorId,
+            trialDays: trialDays,
+            adminReason: '$reasonPrefix:start_pilot:$operatorId',
+          );
+          if (result == null) {
+            return (
+              statusCode: 404,
+              payload: <String, Object?>{
+                'error': 'unknown_operator',
+                'message': 'operator not found',
+              },
+            );
+          }
+          return (statusCode: 200, payload: result);
+        },
+      );
+      return;
+    }
+
+    // Plans & Limits V1 Phase 4a — convert a Pilot trial to Starter (the
+    // "real POS / labor connector succeeded" conversion). Clears the
+    // trial flag + moves pilot->starter. Idempotent + audited
+    // (operator.trial.converted). An operator not on the trial is a 200
+    // no-op (already converted / never a trial); a missing operator is
+    // a 404. If a connector-success hook is added later it can call the
+    // same gateway method directly; this explicit endpoint is the V1
+    // conversion seam.
+    if (action == 'convert-trial') {
+      await _runAdminIdempotent(
+        response: response,
+        store: idempotencyStore,
+        idempotencyKey: idempotencyKey,
+        requestType: 'admin.pricing.convert_trial',
+        actorUserId: actorUserId,
+        requestBody: body,
+        compute: () async {
+          final outcome = await gateway.convertTrialToStarter(
+            actorUserId: actorUserId,
+            operatorId: operatorId,
+            adminReason: '$reasonPrefix:convert_trial:$operatorId',
+          );
+          if (!outcome.operatorFound) {
+            return (
+              statusCode: 404,
+              payload: <String, Object?>{
+                'error': 'unknown_operator',
+                'message': 'operator not found',
+              },
+            );
+          }
+          return (
+            statusCode: 200,
+            payload: <String, Object?>{
+              'converted': outcome.converted,
+              if (outcome.bundle != null) ...outcome.bundle!,
+            },
+          );
+        },
+      );
+      return;
+    }
+
     if (action != 'apply-template') {
       _writeNotFound(response, request);
       return;
@@ -16259,6 +16578,11 @@ bool _isAdminAuthOperation(String path, String method) {
   if (method == 'POST' && p == adminAuthRolesPath) {
     return true;
   }
+  if (method == 'POST' &&
+      path.startsWith(adminAuthRolePrefix) &&
+      path.endsWith('/permissions')) {
+    return true;
+  }
   if (method == 'PATCH' && p.startsWith(adminAuthRolePrefix)) {
     return true;
   }
@@ -16528,6 +16852,18 @@ String? _pathSuffix(String path, String prefix) {
   final suffix = path.substring(prefix.length);
   if (suffix.isEmpty || suffix.contains('/')) return null;
   return Uri.decodeComponent(suffix);
+}
+
+String? _seededRolePermissionsRoleId(String path) {
+  if (!path.startsWith(adminAuthRolePrefix) || !path.endsWith('/permissions')) {
+    return null;
+  }
+  final suffix = path.substring(adminAuthRolePrefix.length);
+  final parts = suffix.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != 'permissions') {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
 }
 
 ({String operatorId, String locationId})? _pathPairSuffix(
@@ -16912,6 +17248,29 @@ List<TeamRolePermissionUpdate> _rolePermissionUpdates(Object? raw) {
     );
   }
   return List<TeamRolePermissionUpdate>.unmodifiable(updates);
+}
+
+List<String> _permissionKeyList(Object? raw) {
+  if (raw is! List) {
+    throw const AuthOperationRejected(
+      code: 'invalid_role_permissions',
+      message: 'permission_keys must be a list',
+      statusCode: 400,
+    );
+  }
+  final keys = <String>[];
+  for (final item in raw) {
+    final key = _nonBlankString(item);
+    if (key == null) {
+      throw const AuthOperationRejected(
+        code: 'invalid_role_permissions',
+        message: 'each permission key must be a non-empty string',
+        statusCode: 400,
+      );
+    }
+    keys.add(key);
+  }
+  return List<String>.unmodifiable(keys);
 }
 
 String? _stringValue(Object? value) {

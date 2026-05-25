@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_action_bar.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
@@ -109,10 +110,8 @@ class _RequestRow extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (isPending && editingEnabled)
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
+            OperatorWebActionBar(
+              children: <Widget>[
                 FilledButton(
                   key: Key(
                     'admin_tier_change_request_approve_${request.requestId}',

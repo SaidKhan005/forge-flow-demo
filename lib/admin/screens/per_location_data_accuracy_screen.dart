@@ -778,66 +778,13 @@ class _DataAccuracyOverrideDialogState
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_data_accuracy_override_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Override data accuracy: ${widget.initial.operatorRef.businessName} '
-        '/ ${widget.initial.operatorRef.locationName}',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              if (_servicePeriodKeys.isEmpty)
-                Text(
-                  'No configured service periods are available for covers source edits.',
-                  style: AppTextStyles.body13(color: AppColors.textMuted),
-                )
-              else
-                for (final key in _servicePeriodKeys)
-                  _CoversSourceField(
-                    label: 'Covers source - ${_servicePeriodKeyLabel(key)}',
-                    fieldKey: Key('admin_data_accuracy_covers_source_$key'),
-                    value: _coversSourcePerServicePeriod[key]!,
-                    onChanged: (v) => setState(
-                      () => _coversSourcePerServicePeriod =
-                          <String, CoversSource>{
-                            ..._coversSourcePerServicePeriod,
-                            key: v,
-                          },
-                    ),
-                  ),
-              const SizedBox(height: 8),
-              _WageSourceField(
-                value: _wage,
-                onChanged: (v) => setState(() => _wage = v),
-              ),
-              const SizedBox(height: 8),
-              _WalkInHandlingField(
-                value: _walkInMode,
-                onChanged: (v) => setState(() => _walkInMode = v),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('admin_data_accuracy_reason_note'),
-                controller: _reason,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Reason for override',
-                  hintText: 'Brief explanation for the audit log',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      title:
+          'Override data accuracy: ${widget.initial.operatorRef.businessName} '
+          '/ ${widget.initial.operatorRef.locationName}',
+      icon: Icons.tune_outlined,
+      maxWidth: 600,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_data_accuracy_override_cancel'),
@@ -870,6 +817,55 @@ class _DataAccuracyOverrideDialogState
           child: const Text('Apply override'),
         ),
       ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            if (_servicePeriodKeys.isEmpty)
+              Text(
+                'No configured service periods are available for covers source edits.',
+                style: AppTextStyles.body13(color: AppColors.textMuted),
+              )
+            else
+              for (final key in _servicePeriodKeys)
+                _CoversSourceField(
+                  label: 'Covers source - ${_servicePeriodKeyLabel(key)}',
+                  fieldKey: Key('admin_data_accuracy_covers_source_$key'),
+                  value: _coversSourcePerServicePeriod[key]!,
+                  onChanged: (v) => setState(
+                    () =>
+                        _coversSourcePerServicePeriod = <String, CoversSource>{
+                          ..._coversSourcePerServicePeriod,
+                          key: v,
+                        },
+                  ),
+                ),
+            const SizedBox(height: 8),
+            _WageSourceField(
+              value: _wage,
+              onChanged: (v) => setState(() => _wage = v),
+            ),
+            const SizedBox(height: 8),
+            _WalkInHandlingField(
+              value: _walkInMode,
+              onChanged: (v) => setState(() => _walkInMode = v),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_data_accuracy_reason_note'),
+              controller: _reason,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Reason for override',
+                hintText: 'Brief explanation for the audit log',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1131,144 +1127,13 @@ class _ServicePeriodOverrideDialogState
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_data_accuracy_service_period_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Service-period override: ${widget.initial.operatorRef.businessName} '
-        '/ ${widget.initial.operatorRef.locationName}',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              if (_configuredServicePeriodKeys.isNotEmpty) ...[
-                DropdownButtonFormField<String>(
-                  key: const Key('admin_data_accuracy_service_period_picker'),
-                  initialValue:
-                      _configuredServicePeriodKeys.contains(_keyCtl.text)
-                      ? _keyCtl.text
-                      : _configuredServicePeriodKeys.first,
-                  decoration: const InputDecoration(
-                    labelText: 'Configured service period',
-                    helperText:
-                        'Pick from this location\'s business timing setup.',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _configuredServicePeriodKeys
-                      .map(
-                        (key) => DropdownMenuItem<String>(
-                          value: key,
-                          child: Text(_servicePeriodKeyLabel(key)),
-                        ),
-                      )
-                      .toList(growable: false),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _keyCtl.text = value);
-                  },
-                ),
-                const SizedBox(height: 8),
-              ],
-              TextField(
-                key: const Key('admin_data_accuracy_service_period_key'),
-                controller: _keyCtl,
-                decoration: const InputDecoration(
-                  labelText: 'Service period key',
-                  helperText:
-                      'Use the configured picker above when available. '
-                      'Custom keys are for migration/support repair.',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const Key(
-                  'admin_data_accuracy_service_period_effective_date',
-                ),
-                controller: _dateCtl,
-                decoration: const InputDecoration(
-                  labelText: 'Effective from (business date)',
-                  helperText: 'YYYY-MM-DD.',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<ServicePeriodCoversSource>(
-                key: const Key(
-                  'admin_data_accuracy_service_period_covers_source',
-                ),
-                initialValue: _covers,
-                decoration: const InputDecoration(
-                  labelText: 'Covers source',
-                  border: OutlineInputBorder(),
-                ),
-                items: ServicePeriodCoversSource.values
-                    .map(
-                      (s) => DropdownMenuItem<ServicePeriodCoversSource>(
-                        value: s,
-                        child: Text(_servicePeriodCoversLabel(s)),
-                      ),
-                    )
-                    .toList(growable: false),
-                onChanged: (value) {
-                  if (value != null) setState(() => _covers = value);
-                },
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<ServicePeriodWageSource>(
-                key: const Key(
-                  'admin_data_accuracy_service_period_wage_source',
-                ),
-                initialValue: _wage,
-                decoration: const InputDecoration(
-                  labelText: 'Wage source',
-                  border: OutlineInputBorder(),
-                ),
-                items: ServicePeriodWageSource.values
-                    .map(
-                      (s) => DropdownMenuItem<ServicePeriodWageSource>(
-                        value: s,
-                        child: Text(_servicePeriodWageLabel(s)),
-                      ),
-                    )
-                    .toList(growable: false),
-                onChanged: (value) {
-                  if (value != null) setState(() => _wage = value);
-                },
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const Key(
-                  'admin_data_accuracy_service_period_reason_note',
-                ),
-                controller: _reasonCtl,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Reason for override',
-                  hintText: 'Brief explanation for the audit log',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              if (_errorText != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _errorText!,
-                  key: const Key(
-                    'admin_data_accuracy_service_period_dialog_error',
-                  ),
-                  style: AppTextStyles.body12(color: AppColors.warning),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+      title:
+          'Service-period override: ${widget.initial.operatorRef.businessName} '
+          '/ ${widget.initial.operatorRef.locationName}',
+      icon: Icons.schedule_outlined,
+      maxWidth: 600,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_data_accuracy_service_period_cancel'),
@@ -1282,6 +1147,129 @@ class _ServicePeriodOverrideDialogState
           child: const Text('Apply override'),
         ),
       ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            if (_configuredServicePeriodKeys.isNotEmpty) ...[
+              DropdownButtonFormField<String>(
+                key: const Key('admin_data_accuracy_service_period_picker'),
+                initialValue:
+                    _configuredServicePeriodKeys.contains(_keyCtl.text)
+                    ? _keyCtl.text
+                    : _configuredServicePeriodKeys.first,
+                decoration: const InputDecoration(
+                  labelText: 'Configured service period',
+                  helperText:
+                      'Pick from this location\'s business timing setup.',
+                  border: OutlineInputBorder(),
+                ),
+                items: _configuredServicePeriodKeys
+                    .map(
+                      (key) => DropdownMenuItem<String>(
+                        value: key,
+                        child: Text(_servicePeriodKeyLabel(key)),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _keyCtl.text = value);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+            TextField(
+              key: const Key('admin_data_accuracy_service_period_key'),
+              controller: _keyCtl,
+              decoration: const InputDecoration(
+                labelText: 'Service period key',
+                helperText:
+                    'Use the configured picker above when available. '
+                    'Custom keys are for migration/support repair.',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              key: const Key(
+                'admin_data_accuracy_service_period_effective_date',
+              ),
+              controller: _dateCtl,
+              decoration: const InputDecoration(
+                labelText: 'Effective from (business date)',
+                helperText: 'YYYY-MM-DD.',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<ServicePeriodCoversSource>(
+              key: const Key(
+                'admin_data_accuracy_service_period_covers_source',
+              ),
+              initialValue: _covers,
+              decoration: const InputDecoration(
+                labelText: 'Covers source',
+                border: OutlineInputBorder(),
+              ),
+              items: ServicePeriodCoversSource.values
+                  .map(
+                    (s) => DropdownMenuItem<ServicePeriodCoversSource>(
+                      value: s,
+                      child: Text(_servicePeriodCoversLabel(s)),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) {
+                if (value != null) setState(() => _covers = value);
+              },
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<ServicePeriodWageSource>(
+              key: const Key('admin_data_accuracy_service_period_wage_source'),
+              initialValue: _wage,
+              decoration: const InputDecoration(
+                labelText: 'Wage source',
+                border: OutlineInputBorder(),
+              ),
+              items: ServicePeriodWageSource.values
+                  .map(
+                    (s) => DropdownMenuItem<ServicePeriodWageSource>(
+                      value: s,
+                      child: Text(_servicePeriodWageLabel(s)),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) {
+                if (value != null) setState(() => _wage = value);
+              },
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              key: const Key('admin_data_accuracy_service_period_reason_note'),
+              controller: _reasonCtl,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Reason for override',
+                hintText: 'Brief explanation for the audit log',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _errorText!,
+                key: const Key(
+                  'admin_data_accuracy_service_period_dialog_error',
+                ),
+                style: AppTextStyles.body12(color: AppColors.warning),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1468,9 +1456,9 @@ class _AdminExtrasHeading extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Admin extras: review every location under the selected scope, '
-          'repair several at once, and see the audit trail. The controls '
-          'above edit the single selected location the web way.',
+          'Admin extras: review every included location, repair several at '
+          'once, and see the audit trail. The controls above edit the '
+          'single selected location the web way.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],

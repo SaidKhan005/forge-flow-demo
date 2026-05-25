@@ -6,10 +6,10 @@ class AdminButtonStyles {
   const AdminButtonStyles._();
 
   static const double radius = 6;
-  static const Size defaultMinimumSize = Size(96, 40);
+  static const Size defaultMinimumSize = Size(96, 42);
   static const EdgeInsets defaultPadding = EdgeInsets.symmetric(
-    horizontal: 16,
-    vertical: 12,
+    horizontal: 18,
+    vertical: 11,
   );
 
   // Operator-web is the typography gold standard: its dialog titles render
@@ -37,20 +37,19 @@ class AdminButtonStyles {
       filledButtonTheme: FilledButtonThemeData(style: primary),
       outlinedButtonTheme: OutlinedButtonThemeData(style: secondary()),
       textButtonTheme: TextButtonThemeData(style: text),
+      iconButtonTheme: IconButtonThemeData(style: icon),
     );
   }
 
   static ButtonStyle get primary => FilledButton.styleFrom(
     backgroundColor: AppColors.sunset,
     foregroundColor: AppColors.backgroundSurface,
-    disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.45),
-    disabledForegroundColor: AppColors.backgroundSurface.withValues(
-      alpha: 0.78,
-    ),
+    disabledBackgroundColor: AppColors.borderSubtle,
+    disabledForegroundColor: AppColors.textMuted,
     minimumSize: defaultMinimumSize,
     padding: defaultPadding,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
-    textStyle: AppTextStyles.chipLabel(color: AppColors.backgroundSurface),
+    textStyle: AppTextStyles.display16(color: AppColors.backgroundSurface),
   );
 
   static ButtonStyle get danger => FilledButton.styleFrom(
@@ -68,23 +67,23 @@ class AdminButtonStyles {
 
   static ButtonStyle secondary({
     Color foregroundColor = AppColors.sunsetDark,
-    Color borderColor = AppColors.sunset,
+    Color borderColor = AppColors.sunsetDark,
     double minWidth = 96,
-    double minHeight = 40,
+    double minHeight = 42,
     bool emphasized = false,
     EdgeInsetsGeometry? padding,
   }) {
     return OutlinedButton.styleFrom(
       minimumSize: Size(minWidth, minHeight),
       padding:
-          padding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding ?? const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       foregroundColor: foregroundColor,
       disabledForegroundColor: AppColors.textMuted.withValues(alpha: 0.55),
       side: BorderSide(color: borderColor, width: emphasized ? 1.2 : 1),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius),
       ),
-      textStyle: AppTextStyles.chipLabel(color: foregroundColor),
+      textStyle: AppTextStyles.display16(color: foregroundColor),
     );
   }
 
@@ -109,7 +108,7 @@ class AdminButtonStyles {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius),
       ),
-      textStyle: AppTextStyles.chipLabel(color: foreground),
+      textStyle: AppTextStyles.display16(color: foreground),
     );
   }
 
@@ -133,7 +132,7 @@ class AdminButtonStyles {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius),
       ),
-      textStyle: AppTextStyles.body12(color: foreground),
+      textStyle: AppTextStyles.body13(color: foreground),
     );
   }
 
@@ -149,7 +148,7 @@ class AdminButtonStyles {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius),
       ),
-      textStyle: AppTextStyles.chipLabel(color: AppColors.backgroundSurface),
+      textStyle: AppTextStyles.display16(color: AppColors.backgroundSurface),
     );
   }
 
@@ -169,6 +168,17 @@ class AdminButtonStyles {
     disabledForegroundColor: AppColors.textMuted.withValues(alpha: 0.55),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
-    textStyle: AppTextStyles.chipLabel(color: AppColors.sunsetDark),
+    textStyle: AppTextStyles.display16(color: AppColors.sunsetDark),
+  );
+
+  static ButtonStyle get icon => IconButton.styleFrom(
+    foregroundColor: AppColors.sunsetDark,
+    disabledForegroundColor: AppColors.textMuted.withValues(alpha: 0.55),
+    highlightColor: AppColors.sunset.withValues(alpha: 0.10),
+    hoverColor: AppColors.sunset.withValues(alpha: 0.08),
+    focusColor: AppColors.sunset.withValues(alpha: 0.10),
+    minimumSize: const Size(42, 42),
+    padding: const EdgeInsets.all(8),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
   );
 }

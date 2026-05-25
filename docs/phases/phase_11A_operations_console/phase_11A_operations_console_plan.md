@@ -152,6 +152,11 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
+`202605241600_plans_and_limits_phase4_operator_trial_mode.sql`
+(Plans & Limits V1 Phase 4a Pilot free-trial flag: adds `trial_mode` +
+`trial_expires_at` to the tenant-root `public.operators` table — a per-operator
+trial FLAG, NOT a demo_* table and NOT a second demo mode per HP #2; inherits
+the existing operators RLS, no new policy), preceded by
 `202605241500_create_proxy_request_stats.sql`
 (P1a' Support logs telemetry storage: creates the stats-only
 `public.proxy_request_stats` table with wrapper-based per-tenant RLS,

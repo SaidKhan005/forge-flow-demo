@@ -260,6 +260,154 @@ void main() {
       expect(requested.requestId, 'rec-1');
     });
 
+    test(
+        'listFactors parses the removal_requests array into a pending '
+        'removal summary', () async {
+      final client = http_testing.MockClient.streaming((request, _) async {
+        return http.StreamedResponse(
+          Stream.value(utf8.encode(jsonEncode(<String, Object?>{
+            'factors': <Object?>[
+              <String, Object?>{
+                'factor_id': 'f1',
+                'factor_type': 'totp',
+                'enrolled_at': '2026-04-16T10:00:00Z',
+                'issuer_label': 'Forge & Flow',
+              },
+            ],
+            'removal_requests': <Object?>[
+              <String, Object?>{
+                'request_id': 'rm-1',
+                'factor_id': 'f1',
+                'status': 'pending',
+                'execute_after': '2026-05-15T12:30:00Z',
+              },
+            ],
+          }))),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpAdminSecurityGateway(
+        baseUri: Uri.parse('https://admin-proxy.test'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: client,
+      );
+
+      final listed = await gateway.listFactors();
+      expect(listed.removalRequests, hasLength(1));
+      final pending = listed.pendingRemoval;
+      expect(pending, isNotNull);
+      expect(pending!.requestId, 'rm-1');
+      expect(pending.factorId, 'f1');
+      expect(pending.executeAfter, DateTime.utc(2026, 5, 15, 12, 30));
+    });
+
+    test(
+        'requestFactorRemoval posts factor_id to /factors/revoke with a key '
+        'and parses revoked:false + request_id + execute_after', () async {
+      late http.Request captured;
+      final client = http_testing.MockClient.streaming((request, _) async {
+        captured = request as http.Request;
+        return http.StreamedResponse(
+          Stream.value(utf8.encode(jsonEncode(<String, Object?>{
+            'ok': true,
+            'revoked': false,
+            'request_id': 'rm-9',
+            'execute_after': '2026-05-15T12:30:00Z',
+          }))),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpAdminSecurityGateway(
+        baseUri: Uri.parse('https://admin-proxy.test'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: client,
+      );
+
+      final result = await gateway.requestFactorRemoval(
+        factorId: 'f1',
+        idempotencyKey: 'idem-revoke-1',
+      );
+
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/v1/auth/mfa/factors/revoke');
+      expect(captured.headers['authorization'], 'Bearer tok');
+      expect(captured.headers['Idempotency-Key'], 'idem-revoke-1');
+      expect(jsonDecode(captured.body), <String, Object?>{'factor_id': 'f1'});
+      // Self-service removal is always the delayed request.
+      expect(result.revoked, isFalse);
+      expect(result.requestId, 'rm-9');
+      expect(result.executeAfter, DateTime.utc(2026, 5, 15, 12, 30));
+    });
+
+    test(
+        'cancelFactorRemoval posts request_id to /removal/cancel with a key '
+        'and parses cancelled', () async {
+      late http.Request captured;
+      final client = http_testing.MockClient.streaming((request, _) async {
+        captured = request as http.Request;
+        return http.StreamedResponse(
+          Stream.value(utf8.encode(jsonEncode(<String, Object?>{
+            'ok': true,
+            'cancelled': true,
+          }))),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpAdminSecurityGateway(
+        baseUri: Uri.parse('https://admin-proxy.test'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: client,
+      );
+
+      final result = await gateway.cancelFactorRemoval(
+        requestId: 'rm-9',
+        idempotencyKey: 'idem-cancel-1',
+      );
+
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/v1/auth/mfa/factors/removal/cancel');
+      expect(captured.headers['Idempotency-Key'], 'idem-cancel-1');
+      expect(jsonDecode(captured.body), <String, Object?>{'request_id': 'rm-9'});
+      expect(result.cancelled, isTrue);
+    });
+
+    test(
+        'requestFactorRemoval surfaces a 403 mfa_freshness_required as a '
+        'requiresFreshSignIn error (fail-closed)', () async {
+      final client = http_testing.MockClient.streaming((request, _) async {
+        return http.StreamedResponse(
+          Stream.value(utf8.encode(jsonEncode(<String, Object?>{
+            'error': 'mfa_freshness_required',
+            'message': 'fresh step-up required',
+          }))),
+          403,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpAdminSecurityGateway(
+        baseUri: Uri.parse('https://admin-proxy.test'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: client,
+      );
+
+      Object? caught;
+      try {
+        await gateway.requestFactorRemoval(
+          factorId: 'f1',
+          idempotencyKey: 'k',
+        );
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught, isA<AdminSecurityGatewayError>());
+      final err = caught! as AdminSecurityGatewayError;
+      expect(err.statusCode, 403);
+      expect(err.requiresFreshSignIn, isTrue);
+    });
+
     test('surfaces a proxy 503 as AdminSecurityGatewayError (fail-closed)',
         () async {
       final client = http_testing.MockClient.streaming((request, _) async {
@@ -328,6 +476,62 @@ void main() {
       expect(caught, isA<AdminSecurityGatewayError>());
       expect((caught! as AdminSecurityGatewayError).rejections,
           contains('too_short'));
+    });
+
+    test(
+        'requestFactorRemoval schedules a 24h delayed removal and listFactors '
+        'reflects the pending state', () async {
+      final now = DateTime.utc(2026, 5, 14, 12, 30);
+      final gateway = InMemoryAdminSecurityGateway(
+        seedEnrolledFactor: true,
+        now: () => now,
+      );
+      final factor = (await gateway.listFactors()).factors.single;
+
+      final result = await gateway.requestFactorRemoval(
+        factorId: factor.factorId,
+        idempotencyKey: 'rm-key-1',
+      );
+
+      // Always the delayed request, never an immediate revoke.
+      expect(result.revoked, isFalse);
+      expect(result.requestId, isNotNull);
+      expect(result.executeAfter, now.add(const Duration(hours: 24)));
+      expect(gateway.idempotencyKeys, contains('rm-key-1'));
+
+      final listed = await gateway.listFactors();
+      expect(listed.hasEnrolledFactor, isTrue,
+          reason: 'The factor is still enrolled until the grace window runs.');
+      expect(listed.pendingRemoval, isNotNull);
+      expect(listed.pendingRemoval!.requestId, result.requestId);
+      expect(
+        listed.pendingRemoval!.executeAfter,
+        now.add(const Duration(hours: 24)),
+      );
+    });
+
+    test('cancelFactorRemoval clears the pending removal', () async {
+      final now = DateTime.utc(2026, 5, 14, 12, 30);
+      final gateway = InMemoryAdminSecurityGateway(
+        seedEnrolledFactor: true,
+        now: () => now,
+      );
+      final factor = (await gateway.listFactors()).factors.single;
+      final requested = await gateway.requestFactorRemoval(
+        factorId: factor.factorId,
+        idempotencyKey: 'rm-key-1',
+      );
+      expect((await gateway.listFactors()).pendingRemoval, isNotNull);
+
+      final cancelled = await gateway.cancelFactorRemoval(
+        requestId: requested.requestId!,
+        idempotencyKey: 'cancel-key-1',
+      );
+
+      expect(cancelled.cancelled, isTrue);
+      expect(gateway.idempotencyKeys, contains('cancel-key-1'));
+      expect((await gateway.listFactors()).pendingRemoval, isNull);
+      expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
     });
   });
 }

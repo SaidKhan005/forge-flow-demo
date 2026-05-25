@@ -468,11 +468,13 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
   @override
   Future<MfaEnrollmentArtifact> beginAccountMfaEnrollment({
     required String email,
+    String? idempotencyKey,
   }) async {
     final token = await _requireCurrentToken();
     final setup = await _proxyClient.beginTotpEnrollment(
       idToken: token,
       email: email,
+      idempotencyKey: idempotencyKey,
     );
     return MfaEnrollmentArtifact(
       enrollmentId: setup.factorId,
@@ -486,12 +488,14 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
   Future<void> confirmAccountMfaEnrollment({
     required String enrollmentId,
     required String oneTimeCode,
+    String? idempotencyKey,
   }) async {
     final token = await _requireCurrentToken();
     await _proxyClient.confirmTotpEnrollment(
       idToken: token,
       factorId: enrollmentId,
       oneTimeCode: oneTimeCode,
+      idempotencyKey: idempotencyKey,
     );
     final current = _state;
     if (current is OperatorWebCompleted) {

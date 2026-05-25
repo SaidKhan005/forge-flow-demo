@@ -44,6 +44,24 @@ void main() {
         );
         expect(dinerRoles.where((r) => r.isSeeded), isNotEmpty);
         expect(dinerRoles.where((r) => !r.isSeeded), isNotEmpty);
+        const expectedSeededKeys = <String>{
+          'operator_owner',
+          'operator_general_manager',
+          'location_manager',
+          'supervisor',
+          'finance_analyst',
+          'auditor_compliance',
+          'training_lead',
+          'team_admin',
+        };
+        expect(
+          dinerRoles.where((r) => r.isSeeded).map((r) => r.roleKey).toSet(),
+          equals(expectedSeededKeys),
+        );
+        expect(
+          sunsetRoles.map((r) => r.roleKey).toSet(),
+          equals(expectedSeededKeys),
+        );
         expect(
           sunsetRoles.every((r) => r.isSeeded),
           isTrue,

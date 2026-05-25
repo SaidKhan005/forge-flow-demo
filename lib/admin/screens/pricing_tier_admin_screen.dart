@@ -62,6 +62,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_action_bar.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
@@ -142,9 +143,10 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   /// [buildFallbackPlanCatalog] so the Plans map always paints. The map
   /// is always populated (fallback at construction), then overwritten
   /// with live rows on a successful load.
-  Map<String, PricingPlanCatalogEntry> _planCatalog = <String, PricingPlanCatalogEntry>{
-    for (final entry in buildFallbackPlanCatalog()) entry.tierKey: entry,
-  };
+  Map<String, PricingPlanCatalogEntry> _planCatalog =
+      <String, PricingPlanCatalogEntry>{
+        for (final entry in buildFallbackPlanCatalog()) entry.tierKey: entry,
+      };
 
   /// Mints a fresh idempotency key per user action so a retried PATCH,
   /// PUT, or POST at the proxy collapses to one ledger row + one audit
@@ -1155,9 +1157,9 @@ class _MarginTag extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono11(color: color).copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+        style: AppTextStyles.mono11(
+          color: color,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -1393,18 +1395,12 @@ class _PlanMarginCard extends StatelessWidget {
                 value: _money(spend.spendUsd),
                 label: 'Spent this month',
               ),
-              _MetricCell(
-                value: _money(spend.revenueUsd),
-                label: 'Revenue',
-              ),
+              _MetricCell(value: _money(spend.revenueUsd), label: 'Revenue'),
               _MarginPill(spend: spend),
             ],
           ),
           const SizedBox(height: 6),
-          AdminDetailRow(
-            label: 'Currency',
-            value: bundle.preferredCurrency,
-          ),
+          AdminDetailRow(label: 'Currency', value: bundle.preferredCurrency),
           AdminDetailRow(
             label: 'Primary location',
             value: _primaryLocationLabel(bundle),
@@ -1473,10 +1469,7 @@ class _MarginPill extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: AppTextStyles.mono14(
-          color: color,
-          weight: FontWeight.w700,
-        ),
+        style: AppTextStyles.mono14(color: color, weight: FontWeight.w700),
       ),
     );
   }
@@ -1587,20 +1580,23 @@ class _PresetTile extends StatelessWidget {
       child: OutlinedButton(
         key: Key('admin_pricing_template_${template.tierKey}_button'),
         onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          side: BorderSide(
-            color: isCurrent ? AppColors.peacock : AppColors.borderSubtle,
-            width: 1,
-          ),
-          backgroundColor: isCurrent
-              ? AppColors.peacock.withValues(alpha: 0.06)
-              : null,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(7),
-          ),
-        ),
+        style:
+            AdminButtonStyles.secondary(
+              minWidth: 160,
+              minHeight: 42,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              borderColor: isCurrent
+                  ? AppColors.sunsetDark
+                  : AppColors.borderSubtle,
+              emphasized: isCurrent,
+            ).copyWith(
+              alignment: Alignment.centerLeft,
+              backgroundColor: WidgetStatePropertyAll(
+                isCurrent
+                    ? AppColors.sunset.withValues(alpha: 0.08)
+                    : AppColors.backgroundSurface,
+              ),
+            ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -1619,8 +1615,9 @@ class _PresetTile extends StatelessWidget {
                 if (isCurrent)
                   Text(
                     'CURRENT',
-                    style: AppTextStyles.mono8(color: AppColors.peacockDark)
-                        .copyWith(fontWeight: FontWeight.w700),
+                    style: AppTextStyles.mono8(
+                      color: AppColors.peacockDark,
+                    ).copyWith(fontWeight: FontWeight.w700),
                   ),
               ],
             ),
@@ -1873,23 +1870,27 @@ class _UsageCapRowTile extends StatelessWidget {
                 _inheritanceLabel(bundle, row),
                 style: AppTextStyles.mono11(color: AppColors.textMuted),
               ),
-              if (editingEnabled) ...<Widget>[
-                const SizedBox(width: 2),
-                IconButton(
-                  key: Key('admin_pricing_cap_edit_$keySuffix'),
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Edit usage limit',
-                  onPressed: () => onEdit(bundle, row),
+              if (editingEnabled)
+                OperatorWebActionBar(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: <Widget>[
+                    IconButton(
+                      key: Key('admin_pricing_cap_edit_$keySuffix'),
+                      icon: const Icon(Icons.edit_outlined, size: 16),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Edit usage limit',
+                      onPressed: () => onEdit(bundle, row),
+                    ),
+                    IconButton(
+                      key: Key('admin_pricing_cap_delete_$keySuffix'),
+                      icon: const Icon(Icons.delete_outline, size: 16),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Remove usage limit',
+                      onPressed: () => onDelete(bundle, row),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  key: Key('admin_pricing_cap_delete_$keySuffix'),
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Remove usage limit',
-                  onPressed: () => onDelete(bundle, row),
-                ),
-              ],
             ],
           ),
           if (row.staffId != null || row.workflowId != null) ...<Widget>[
@@ -2022,7 +2023,9 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
       text: e.firstNSeats == null ? '' : '${e.firstNSeats}',
     );
     _firstSeat = TextEditingController(text: _numText(e.firstSeatUsd));
-    _additionalSeat = TextEditingController(text: _numText(e.additionalSeatUsd));
+    _additionalSeat = TextEditingController(
+      text: _numText(e.additionalSeatUsd),
+    );
     _onboardingMin = TextEditingController(text: _numText(e.onboardingMinUsd));
     _onboardingMax = TextEditingController(text: _numText(e.onboardingMaxUsd));
   }
@@ -2159,7 +2162,9 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
                       child: _LabelledField(
                         label: 'Onboarding min (USD)',
                         controller: _onboardingMin,
-                        fieldKey: const Key('admin_pricing_plan_onboarding_min'),
+                        fieldKey: const Key(
+                          'admin_pricing_plan_onboarding_min',
+                        ),
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -2176,7 +2181,9 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
                       child: _LabelledField(
                         label: 'Onboarding max (USD)',
                         controller: _onboardingMax,
-                        fieldKey: const Key('admin_pricing_plan_onboarding_max'),
+                        fieldKey: const Key(
+                          'admin_pricing_plan_onboarding_max',
+                        ),
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -2369,9 +2376,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                       child: _LabelledField(
                         label: 'Per request limit (USD)',
                         controller: _perInvocation,
-                        fieldKey: const Key(
-                          'admin_pricing_cap_per_invocation',
-                        ),
+                        fieldKey: const Key('admin_pricing_cap_per_invocation'),
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),

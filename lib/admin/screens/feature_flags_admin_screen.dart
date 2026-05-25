@@ -39,8 +39,6 @@ import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
 import '../models/feature_flags_admin_models.dart';
 import '../services/feature_flags_admin_gateway.dart';
-import '../widgets/admin_scope_notice_adapter.dart';
-import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 
 class FeatureFlagsAdminScreen extends StatefulWidget {
   const FeatureFlagsAdminScreen({
@@ -179,24 +177,10 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
     // scrollable region; when there are not, a `SingleChildScrollView`
     // takes over so the placeholder body shares the same scroll
     // budget as the notice.
-    final hasListBody =
-        !_loading && _loadError == null && _flags.isNotEmpty;
+    final hasListBody = !_loading && _loadError == null && _flags.isNotEmpty;
     final secondaryChildren = <Widget>[
-      if (widget.hierarchyScope != null)
-        HierarchyScopeNotice(
-          keyName: 'admin_feature_flags_scope_notice',
-          selectedScope: adminScopeLevel(widget.hierarchyScope!.scopeType),
-          scopeName: widget.hierarchyScope!.displayLabel,
-          effectiveValueSummary:
-              'Launch controls that apply to the selected hierarchy.',
-          backendOnlyHelpTitle: 'How control reach works',
-          backendOnlyExplainer:
-              'Global controls still affect every business; business and location controls are limited to the selected hierarchy.',
-        ),
       if (!widget.editingEnabled)
-        const _ReadOnlyBanner(
-          key: Key('admin_feature_flags_readonly_banner'),
-        ),
+        const _ReadOnlyBanner(key: Key('admin_feature_flags_readonly_banner')),
       if (_actionError != null)
         _ErrorBanner(
           key: const Key('admin_feature_flags_action_error'),

@@ -125,7 +125,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
+    expect(find.textContaining('Demo Diner / Downtown'), findsNothing);
+    // The workspace scope picker already names the selected scope. The old
+    // per-screen scope note and verbose "Where this applies" block are gone.
+    expect(
+      find.byKey(const Key('admin_observability_scope_note')),
+      findsNothing,
+    );
+    expect(
+      find.textContaining(
+        'hosting and the knowledge graph stay platform-wide',
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_observability_scope_notice')),
+      findsNothing,
+    );
+    expect(find.text('Where this applies'), findsNothing);
 
     await tester.tap(
       find.byKey(const Key('admin_observability_refresh_button')),
@@ -347,9 +364,7 @@ void main() {
     // Default 7d window: Demo Diner Co. is the top spender.
     expect(
       find.byKey(
-        const Key(
-          'admin_observability_spender_7d_operator_Demo Diner Co.',
-        ),
+        const Key('admin_observability_spender_7d_operator_Demo Diner Co.'),
       ),
       findsOneWidget,
     );
@@ -711,7 +726,8 @@ void main() {
     expect(
       gateway.fetchCount,
       equals(1),
-      reason: 'manual observability calls must not stack while one is in flight',
+      reason:
+          'manual observability calls must not stack while one is in flight',
     );
     await tester.pump(const Duration(milliseconds: 55));
     expect(gateway.fetchCount, equals(1));

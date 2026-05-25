@@ -39,10 +39,8 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_info_button.dart';
 import '../../widgets/console/console_screen_body.dart';
-import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
-import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
@@ -207,14 +205,10 @@ class HealthAdminScreen extends StatefulWidget {
   const HealthAdminScreen({
     super.key,
     required this.gateway,
-    this.hierarchyScope,
-    this.scopeLocationIds = const <String>{},
     @visibleForTesting this.now,
   });
 
   final HealthAdminGateway gateway;
-  final AdminHierarchyScopeIntent? hierarchyScope;
-  final Set<String> scopeLocationIds;
 
   /// Test-only clock injection so the "Last checked" timestamp is
   /// deterministic. Production uses [DateTime.now].
@@ -274,13 +268,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
       _loadError = null;
     });
     try {
-      final envelope = await widget.gateway.fetch(
-        HealthAdminFetchRequest(
-          operatorId: widget.hierarchyScope?.operatorId,
-          locationId: widget.hierarchyScope?.locationId,
-          locationIds: widget.scopeLocationIds,
-        ),
-      );
+      final envelope = await widget.gateway.fetch();
       if (!mounted) return;
       setState(() {
         _envelope = envelope;
@@ -331,29 +319,13 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             final showManualPrompt =
                 !_loading && _envelope == null && _loadError == null;
             final children = <Widget>[
-              _Header(
+              _HealthHeader(
+                showActions: !showManualPrompt,
                 lastRefreshed: _lastRefreshed,
                 onRunHealthCheck: _confirmAndRefresh,
                 loading: _loading || _refreshing,
               ),
-              const SizedBox(height: 12),
-              // System health is platform-wide: the proxy `/health` envelope
-              // carries no operator/tenant/scope identifiers (see
-              // docs/contracts/proxy_health_contract.md), so a per-scope
-              // "selected scope / source / effective value" block does not
-              // belong here. When a hierarchy scope is selected we keep
-              // HP#11 honest with one short muted line stating the checks do
-              // not change per scope (the scope is still sent to the gateway
-              // fetch above for request shaping, not for display).
-              if (widget.hierarchyScope != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'These checks are platform-wide. The selected scope does not change them.',
-                    key: const Key('admin_health_platform_note'),
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
-                  ),
-                ),
+              const SizedBox(height: 22),
               if (_loadError != null)
                 _ErrorBanner(
                   key: const Key('admin_health_load_error'),
@@ -375,14 +347,19 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
                   ),
                 ),
               if (showManualPrompt)
-                _ManualHealthPrompt(onRunHealthCheck: _confirmAndRefresh),
+                Expanded(
+                  child: Center(
+                    child: _ManualHealthHint(
+                      onRunHealthCheck: _confirmAndRefresh,
+                    ),
+                  ),
+                ),
             ];
             final column = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: children,
             );
-            if (!showManualPrompt) return column;
-            return SingleChildScrollView(child: column);
+            return column;
           },
         ),
       ),
@@ -571,6 +548,8 @@ class _HealthSummary extends StatelessWidget {
     final IconData icon;
     final String headline;
     final String subLine;
+    final String countLabel;
+    final String countCaption;
     if (isRed) {
       color = AppColors.negative;
       icon = Icons.error_outline;
@@ -588,6 +567,9 @@ class _HealthSummary extends StatelessWidget {
       // need a look" clause.
       final rest = attention.length - failingTier1.length;
       subLine = _redSubLine(failingDeps, rest: rest < 0 ? 0 : rest);
+      final count = attention.isEmpty ? failingDeps.length : attention.length;
+      countLabel = '$count';
+      countCaption = count == 1 ? 'item to review' : 'items to review';
     } else if (amber) {
       color = AppColors.warning;
       icon = Icons.warning_amber_outlined;
@@ -596,33 +578,41 @@ class _HealthSummary extends StatelessWidget {
           ? '1 thing needs attention'
           : '$n things need attention';
       subLine = 'Everything else is running normally.';
+      countLabel = '$n';
+      countCaption = n == 1 ? 'item to review' : 'items to review';
     } else {
       color = AppColors.positive;
       icon = Icons.check_circle_outline;
       headline = 'Everything looks good';
       final n = envelope.metrics.length;
-      subLine = n == 1
-          ? 'All 1 check passed. Last checked just now.'
-          : 'All $n checks passed. Last checked just now.';
+      subLine = n == 1 ? 'All 1 check passed.' : 'All $n checks passed.';
+      countLabel = '$n';
+      countCaption = n == 1 ? 'check clear' : 'checks clear';
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
-        border: Border.all(color: color, width: 2),
+        border: Border.all(color: color.withValues(alpha: 0.50), width: 1.5),
         borderRadius: BorderRadius.circular(8),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: AppColors.textPrimary.withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Icon(icon, size: 20, color: color),
-              const SizedBox(width: 10),
-              Expanded(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 680;
+              final visual = _HealthSummaryIcon(icon: icon, color: color);
+              final copy = Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -630,24 +620,52 @@ class _HealthSummary extends StatelessWidget {
                     Text(
                       headline,
                       key: const Key('admin_health_summary_headline'),
-                      style: AppTextStyles.body14(
-                        color: color,
-                      ).copyWith(fontWeight: FontWeight.w700),
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ).copyWith(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 6),
                     Text(
                       subLine,
-                      style: AppTextStyles.body13(
+                      style: AppTextStyles.body14(
                         color: AppColors.textSecondary,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+              );
+              final count = _HealthSummaryCountTile(
+                label: countLabel,
+                caption: countCaption,
+                color: color,
+              );
+              if (wide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    visual,
+                    const SizedBox(width: 16),
+                    copy,
+                    const SizedBox(width: 16),
+                    count,
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[visual, const SizedBox(width: 14), copy],
+                  ),
+                  const SizedBox(height: 14),
+                  count,
+                ],
+              );
+            },
           ),
           if ((isRed || amber) && attention.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             for (final metric in attention)
               _HealthAttentionRow(
                 metricKey: metric.key,
@@ -693,7 +711,8 @@ class _HealthSummary extends StatelessWidget {
                 'Results below may be out of date.'
           : 'Results below may be out of date.';
     } else if (services.isNotEmpty) {
-      base = 'Services affected: ${services.join(", ")}. '
+      base =
+          'Services affected: ${services.join(", ")}. '
           'Fix the cause before relying on this environment.';
     } else {
       base = 'Fix the cause before relying on this environment.';
@@ -705,6 +724,69 @@ class _HealthSummary extends StatelessWidget {
         ? ' $rest other item also needs a look.'
         : ' $rest other items also need a look.';
     return '$base$tail';
+  }
+}
+
+class _HealthSummaryIcon extends StatelessWidget {
+  const _HealthSummaryIcon({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.36), width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, size: 28, color: color),
+    );
+  }
+}
+
+class _HealthSummaryCountTile extends StatelessWidget {
+  const _HealthSummaryCountTile({
+    required this.label,
+    required this.caption,
+    required this.color,
+  });
+
+  final String label;
+  final String caption;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 126),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            label,
+            style: AppTextStyles.mono28(color: color, weight: FontWeight.w800),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            caption,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.chipLabel(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -753,9 +835,7 @@ class _HealthAttentionRow extends StatelessWidget {
                     if (tabLabel.isNotEmpty)
                       TextSpan(
                         text: '  ·  $tabLabel',
-                        style: AppTextStyles.body13(
-                          color: AppColors.textMuted,
-                        ),
+                        style: AppTextStyles.body13(color: AppColors.textMuted),
                       ),
                   ],
                 ),
@@ -851,8 +931,92 @@ class _HealthLegendInfo extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
+/// Compact, right-aligned actions row that replaces the screen's old
+/// `_Header`. The admin scope-workspace pane already shows the "System
+/// health" title + subtitle + selected-scope line above the screen, so
+/// this row carries no title, subtitle, or icon — only the single Run
+/// button and the "Last checked" stamp. It renders in every state. A
+/// `Wrap` (right-aligned) lets the stamp drop below the button instead of
+/// overflowing on a narrow viewport.
+class _HealthHeader extends StatelessWidget {
+  const _HealthHeader({
+    required this.showActions,
+    required this.lastRefreshed,
+    required this.onRunHealthCheck,
+    required this.loading,
+  });
+
+  final bool showActions;
+  final DateTime? lastRefreshed;
+  final Future<void> Function() onRunHealthCheck;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final title = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.sunset.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.sunset.withValues(alpha: 0.32),
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.monitor_heart_outlined,
+                color: AppColors.sunsetDark,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                'System health',
+                key: const Key('admin_health_title'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.display28(color: AppColors.textPrimary),
+              ),
+            ),
+          ],
+        );
+
+        if (!showActions) return title;
+
+        final actions = _HealthActionsRow(
+          lastRefreshed: lastRefreshed,
+          onRunHealthCheck: onRunHealthCheck,
+          loading: loading,
+        );
+        if (constraints.maxWidth < 720) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[title, const SizedBox(height: 14), actions],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            Flexible(flex: 2, child: title),
+            const SizedBox(width: 16),
+            Flexible(
+              child: Align(alignment: Alignment.centerRight, child: actions),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _HealthActionsRow extends StatelessWidget {
+  const _HealthActionsRow({
     required this.lastRefreshed,
     required this.onRunHealthCheck,
     required this.loading,
@@ -864,41 +1028,29 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OperatorWebScreenHeader(
-      icon: Icons.health_and_safety_outlined,
-      title: 'System health',
-      subtitle:
-          'A read-only check of the advisor data, the app service, and the platform behind it.',
-      collapseBelowWidth: 640,
-      actions: <Widget>[
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 320),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AdminRunCheckButton(
-                key: const Key('admin_health_refresh_button'),
-                onPressed: () {
-                  onRunHealthCheck();
-                },
-                icon: Icons.health_and_safety_outlined,
-                label: 'Run system check',
-                loadingLabel: 'Running...',
-                loading: loading,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                lastRefreshed == null
-                    ? 'Last checked: -'
-                    : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
-                key: const Key('admin_health_last_refreshed'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-            ],
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 6,
+      children: <Widget>[
+        if (lastRefreshed != null)
+          Text(
+            'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
+            key: const Key('admin_health_last_refreshed'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
           ),
+        AdminRunCheckButton(
+          key: const Key('admin_health_refresh_button'),
+          onPressed: () {
+            onRunHealthCheck();
+          },
+          icon: Icons.health_and_safety_outlined,
+          label: 'Run system check',
+          loadingLabel: 'Running...',
+          loading: loading,
         ),
       ],
     );
@@ -916,64 +1068,45 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
       confirmButtonKey: Key('admin_health_confirm_run'),
       icon: Icons.health_and_safety_outlined,
       title: 'Run system check',
-      description:
-          'This reads live staging health and dependency status. It is read-only and usually finishes in a few seconds.',
+      description: 'Refresh the current system health snapshot from staging.',
       confirmLabel: 'Run system check',
       facts: [
         AdminRunCheckFact(
-          icon: Icons.visibility_outlined,
-          label: 'Read-only',
-          text: 'No settings or operator data are changed.',
-        ),
-        AdminRunCheckFact(
           icon: Icons.schedule_outlined,
           label: 'Timing',
-          text: 'Some dependency checks take a few moments to answer.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.warning_amber_outlined,
-          label: 'Results',
-          text: 'Warnings usually mean backend state needs review.',
+          text: 'Some dependency checks can take a few minutes to answer.',
         ),
       ],
     );
   }
 }
 
-class _ManualHealthPrompt extends StatelessWidget {
-  const _ManualHealthPrompt({required this.onRunHealthCheck});
+/// Slim empty-state hint shown before the first check. The big prompt
+/// card (icon + facts panel + a second Run button) was removed as
+/// clutter: the compact actions row above already carries the single Run
+/// button, and this is just a short bordered nudge so the empty state is
+/// not blank. Card styling matches the screen's other cards
+/// (`backgroundSurface`, `borderSubtle`, radius 6).
+class _ManualHealthHint extends StatelessWidget {
+  const _ManualHealthHint({required this.onRunHealthCheck});
 
   final Future<void> Function() onRunHealthCheck;
 
   @override
   Widget build(BuildContext context) {
-    return AdminRunCheckPrompt(
+    return AdminRunCheckLaunchPanel(
       key: const Key('admin_health_manual_prompt'),
       icon: Icons.health_and_safety_outlined,
       title: 'Check system health',
-      description:
-          'Start with the current staging picture before investigating service or data issues.',
+      description: 'Run a quick check of core services.',
+      buttonKey: const Key('admin_health_refresh_button'),
       buttonLabel: 'Run system check',
+      loadingLabel: 'Running...',
+      loading: false,
       onPressed: () {
         onRunHealthCheck();
       },
-      facts: const [
-        AdminRunCheckFact(
-          icon: Icons.visibility_outlined,
-          label: 'Read-only',
-          text: 'No settings or operator data are changed.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.account_tree_outlined,
-          label: 'Scope',
-          text: 'Dependency status, health signals, and producer freshness.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.schedule_outlined,
-          label: 'Timing',
-          text: 'Live staging checks can take 15-30 seconds.',
-        ),
-      ],
+      cues: const <AdminRunCheckCue>[],
     );
   }
 }
@@ -1288,15 +1421,16 @@ class _Section extends StatelessWidget {
     // sees what is wrong before what is fine. The original index is the
     // tiebreaker so tiles sharing a rank keep their authored order
     // (Dart's List.sort is not guaranteed stable).
-    final indexed = <MapEntry<int, _TileSpec>>[
-      for (var i = 0; i < section.tiles.length; i++)
-        MapEntry(i, section.tiles[i]),
-    ]..sort((a, b) {
-      final byRank = _tileStatusRank(
-        envelope.metrics[a.value.metricKey],
-      ).compareTo(_tileStatusRank(envelope.metrics[b.value.metricKey]));
-      return byRank != 0 ? byRank : a.key.compareTo(b.key);
-    });
+    final indexed =
+        <MapEntry<int, _TileSpec>>[
+          for (var i = 0; i < section.tiles.length; i++)
+            MapEntry(i, section.tiles[i]),
+        ]..sort((a, b) {
+          final byRank = _tileStatusRank(
+            envelope.metrics[a.value.metricKey],
+          ).compareTo(_tileStatusRank(envelope.metrics[b.value.metricKey]));
+          return byRank != 0 ? byRank : a.key.compareTo(b.key);
+        });
     final orderedTiles = <_TileSpec>[for (final entry in indexed) entry.value];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -1431,9 +1565,7 @@ class _MetricCardState extends State<_MetricCard> {
             ),
             if (isBlocking) ...<Widget>[
               const SizedBox(height: 6),
-              _BlockingTag(
-                key: Key('admin_health_tile_${metricKey}_blocking'),
-              ),
+              _BlockingTag(key: Key('admin_health_tile_${metricKey}_blocking')),
             ],
             const SizedBox(height: 4),
             _MetricDetails(
@@ -1562,9 +1694,7 @@ class _MetricDetails extends StatelessWidget {
       _DetailRow(
         keyName: 'admin_health_tile_${metricKey}_checked',
         label: 'Checked',
-        value: observed == null
-            ? 'No data'
-            : adminHumanDateTime(observed),
+        value: observed == null ? 'No data' : adminHumanDateTime(observed),
       ),
       _DetailRow(
         keyName: 'admin_health_tile_${metricKey}_source',

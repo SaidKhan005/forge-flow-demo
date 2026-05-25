@@ -262,12 +262,12 @@ void main() {
 
       expect(
         find.text('Showing polling setup for org unit scope'),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.text('Effective: Org unit scope'), findsOneWidget);
-      expect(find.text('Assign selected scope'), findsWidgets);
+      expect(find.text('Assign'), findsWidgets);
       expect(
-        find.textContaining('saves one scoped polling setup override'),
+        find.textContaining('saves one polling setup override'),
         findsOneWidget,
       );
       expect(find.text('Toronto Yorkville'), findsOneWidget);
@@ -630,7 +630,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('This scope only covers Calgary Kensington'),
+        find.textContaining('Only Calgary Kensington is included here'),
         findsOneWidget,
       );
     },
@@ -664,7 +664,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('This scope only covers Toronto Yorkville'),
+        find.textContaining('Only Toronto Yorkville is included here'),
         findsOneWidget,
       );
     },

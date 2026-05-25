@@ -102,7 +102,7 @@ void main() {
   });
 
   testWidgets(
-    'business scope shows selected context and location-required copy',
+    'business scope shows the location-required copy',
     (tester) async {
       await tester.pumpWidget(
         wrap(
@@ -121,14 +121,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_vendor_connections_scope_context')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_vendor_connections_selected_scope')),
-        findsOneWidget,
-      );
-      expect(
         find.byKey(const Key('admin_hierarchy_scope_prompt')),
         findsNothing,
       );
@@ -138,7 +130,9 @@ void main() {
       );
       expect(find.text('Location required'), findsWidgets);
       expect(
-        find.textContaining('vendor setup remains location-only'),
+        find.textContaining(
+          'Choose a location to show connect, test, disconnect',
+        ),
         findsOneWidget,
       );
       expect(
@@ -173,10 +167,6 @@ void main() {
       );
       expect(
         find.byKey(const Key('admin_vendor_connections_location_required')),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('Org unit: Harbour Group / Downtown'),
         findsOneWidget,
       );
       expect(
@@ -221,11 +211,6 @@ void main() {
       find.byKey(const Key('vendor_connections_section_pos')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('admin_vendor_connections_selected_scope')),
-      findsOneWidget,
-    );
-    expect(find.text('Selected location scope'), findsOneWidget);
 
     final posTop = tester
         .getTopLeft(find.byKey(const Key('vendor_connections_section_pos')))

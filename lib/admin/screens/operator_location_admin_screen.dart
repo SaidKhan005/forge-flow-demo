@@ -19,6 +19,9 @@ import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../utils/iana_timezones.dart';
+import '../../widgets/console/console_action_bar.dart';
+import '../../widgets/console/console_section_heading.dart';
+import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
@@ -508,21 +511,11 @@ class _OperatorLocationAdminScreenState
       child: FilledButton.icon(
         key: const Key('admin_operators_new_button'),
         onPressed: _openOnboardingDialog,
-        style: FilledButton.styleFrom(
-          backgroundColor: AppColors.sunset,
-          foregroundColor: AppColors.backgroundSurface,
-          disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.45),
-          disabledForegroundColor: AppColors.backgroundSurface.withValues(
-            alpha: 0.78,
+        style: AdminButtonStyles.primary.copyWith(
+          minimumSize: const WidgetStatePropertyAll(Size(168, 52)),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 22, vertical: 15),
           ),
-          minimumSize: const Size(168, 52),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
-          ),
-          textStyle: AppTextStyles.body14(
-            color: AppColors.backgroundSurface,
-          ).copyWith(fontWeight: FontWeight.w700),
         ),
         icon: const Icon(Icons.add, size: 18),
         label: const Text('New business'),
@@ -703,11 +696,11 @@ class _OperatorLocationAdminScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => _ConfirmDialog(
-        title: 'Remove ${location.name}?',
+        title: 'Delete ${location.name}?',
         message:
             'This cannot be undone. The location must not be the '
             "operator's primary location.",
-        confirmLabel: 'Remove',
+        confirmLabel: 'Delete',
       ),
     );
     if (confirmed != true) return;
@@ -718,7 +711,7 @@ class _OperatorLocationAdminScreenState
         locationId: location.locationId,
         idempotencyKey: key,
       );
-    }, successHint: 'Location removed.');
+    }, successHint: 'Location deleted.');
   }
 
   Future<void> _setPrimaryLocation(
@@ -815,90 +808,117 @@ class _OperatorDetail extends StatelessWidget {
   Widget build(BuildContext context) {
     final operator = bundle.operator;
     final canAddLocation = _canAddLocation;
+    final primaryLocation = bundle.primaryLocation?.name ?? 'No primary';
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AdminCard(
             key: const Key('admin_operator_profile_card'),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 16,
+                  runSpacing: 12,
                   children: [
-                    Expanded(
-                      child: Text(
-                        operator.businessName,
-                        style: AppTextStyles.display20(
-                          color: AppColors.textPrimary,
-                        ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 260),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              operator.businessName,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.display20(
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (operator.isSuspended) ...[
+                            const SizedBox(width: 10),
+                            _StatusPill(
+                              label: 'suspended',
+                              color: AppColors.negative,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (operator.isSuspended)
-                      _StatusPill(
-                        label: 'suspended',
-                        color: AppColors.negative,
-                      ),
+                    _ActionRowWrap(
+                      children: [
+                        if (editingEnabled)
+                          _OperatorActionButton(
+                            buttonKey: const Key('admin_operator_edit_button'),
+                            label: 'Account profile',
+                            icon: Icons.badge_outlined,
+                            tooltip: 'Edit account profile',
+                            onPressed: () => onEditOperator(bundle),
+                          ),
+                        if (editingEnabled && operator.isSuspended)
+                          _OperatorActionButton(
+                            buttonKey: const Key(
+                              'admin_operator_reactivate_button',
+                            ),
+                            label: 'Reactivate',
+                            icon: Icons.play_arrow_outlined,
+                            tooltip: 'Reactivate this business account',
+                            onPressed: () => onReactivate(bundle),
+                          ),
+                        if (editingEnabled && !operator.isSuspended)
+                          _OperatorActionButton(
+                            buttonKey: const Key(
+                              'admin_operator_suspend_button',
+                            ),
+                            label: 'Suspend',
+                            icon: Icons.pause_outlined,
+                            tooltip: 'Suspend this business account',
+                            destructive: true,
+                            onPressed: () => onSuspend(bundle),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                AdminDetailRow(
-                  label: 'Contact email',
-                  value: operator.ownerEmail,
-                ),
-                AdminDetailRow(
-                  key: const Key('admin_operator_ai_plan_detail_row'),
-                  label: 'Forge & Flow AI plan',
-                  value: operator.subscriptionTier,
-                  muted: true,
-                ),
-                AdminDetailRow(
-                  label: 'Currency',
-                  value: operator.preferredCurrency,
-                ),
-                AdminDetailRow(
-                  label: 'Primary location',
-                  value: bundle.primaryLocation?.name ?? 'No primary location',
-                ),
                 const SizedBox(height: 14),
-                _ActionRowWrap(
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
                   children: [
-                    if (editingEnabled)
-                      _OperatorActionButton(
-                        buttonKey: const Key('admin_operator_edit_button'),
-                        label: 'Account profile',
-                        icon: Icons.badge_outlined,
-                        tooltip: 'Edit account profile',
-                        onPressed: () => onEditOperator(bundle),
-                      ),
-                    if (editingEnabled && operator.isSuspended)
-                      _OperatorActionButton(
-                        buttonKey: const Key(
-                          'admin_operator_reactivate_button',
-                        ),
-                        label: 'Reactivate',
-                        icon: Icons.play_arrow_outlined,
-                        tooltip: 'Reactivate this business account',
-                        onPressed: () => onReactivate(bundle),
-                      ),
-                    if (editingEnabled && !operator.isSuspended)
-                      _OperatorActionButton(
-                        buttonKey: const Key('admin_operator_suspend_button'),
-                        label: 'Suspend',
-                        icon: Icons.pause_outlined,
-                        tooltip: 'Suspend this business account',
-                        destructive: true,
-                        onPressed: () => onSuspend(bundle),
-                      ),
+                    _OperatorSummaryTile(
+                      label: 'Email',
+                      value: operator.ownerEmail,
+                      icon: Icons.mail_outline,
+                    ),
+                    _OperatorSummaryTile(
+                      label: 'Currency',
+                      value: operator.preferredCurrency,
+                      icon: Icons.payments_outlined,
+                    ),
+                    _OperatorSummaryTile(
+                      label: 'Primary',
+                      value: primaryLocation,
+                      icon: Icons.location_on_outlined,
+                    ),
+                    _OperatorSummaryTile(
+                      key: const Key('admin_operator_ai_plan_detail_row'),
+                      label: 'Plan',
+                      value: operator.subscriptionTier,
+                      icon: Icons.auto_awesome_outlined,
+                      muted: true,
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           _BusinessHierarchyPanel(
             bundle: bundle,
             gateway: hierarchyGateway,
@@ -916,6 +936,60 @@ class _OperatorDetail extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _OperatorSummaryTile extends StatelessWidget {
+  const _OperatorSummaryTile({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.muted = false,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      width: 220,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep.withValues(alpha: 0.48),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!muted) return content;
+    return Opacity(opacity: 0.56, child: content);
   }
 }
 
@@ -1004,11 +1078,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
   /// soft-deleted) location ids. Changes whenever a location is added or
   /// removed, which is exactly when the hierarchy panel must reload.
   static String _locationSignature(OperatorAdminBundle bundle) {
-    final ids =
-        <String>[
-          for (final location in bundle.locations)
-            if (!location.isDeleted) location.locationId,
-        ]..sort();
+    final ids = <String>[
+      for (final location in bundle.locations)
+        if (!location.isDeleted) location.locationId,
+    ]..sort();
     return ids.join('|');
   }
 
@@ -1576,49 +1649,34 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Text(
-                      'Location hierarchy',
-                      style: AppTextStyles.sectionTitle(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    if (widget.editingEnabled)
-                      Tooltip(
-                        message: widget.addLocationEnabled
-                            ? 'Add location'
-                            : 'Select an org unit before adding a location',
-                        child: OutlinedButton.icon(
-                          key: const Key('admin_operator_add_location_button'),
-                          onPressed: widget.addLocationEnabled
-                              ? widget.onAddLocation
-                              : null,
-                          icon: const Icon(Icons.add, size: 14),
-                          label: const Text('Add location'),
-                        ),
-                      ),
-                  ],
+                OperatorWebSectionHeading(
+                  title: 'Location hierarchy',
+                  trailing: widget.editingEnabled
+                      ? Tooltip(
+                          message: widget.addLocationEnabled
+                              ? 'Add location'
+                              : 'Select an org unit before adding a location',
+                          child: OutlinedButton.icon(
+                            key: const Key(
+                              'admin_operator_add_location_button',
+                            ),
+                            onPressed: widget.addLocationEnabled
+                                ? widget.onAddLocation
+                                : null,
+                            style: AdminButtonStyles.secondary(
+                              minWidth: 136,
+                              minHeight: 38,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 9,
+                              ),
+                            ),
+                            icon: const Icon(Icons.add, size: 14),
+                            label: const Text('Add location'),
+                          ),
+                        )
+                      : null,
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  'Select business, org-unit, or location scope before opening setup.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                if (widget.editingEnabled && !widget.addLocationEnabled) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    'Select an org unit before adding a location.',
-                    key: const Key(
-                      'admin_location_parent_org_unit_required_copy',
-                    ),
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                ],
                 if (snapshot.hasError) ...[
                   const SizedBox(height: 10),
                   Text(
@@ -1791,8 +1849,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           icon: scopeIconForUnitType(unit.unitType),
           label: unit.name,
           subtitle: unit.isSuspended
-              ? (depth == 0 ? 'Suspended org unit' : 'Suspended branch')
-              : (depth == 0 ? 'Org unit' : 'Org unit branch'),
+              ? (depth == 0
+                    ? 'Suspended root org unit'
+                    : 'Suspended child org unit')
+              : (depth == 0 ? 'Root org unit' : 'Child org unit'),
           depth: depth,
           selected:
               widget.selectedScope.scopeType ==
@@ -1861,10 +1921,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     if (!widget.editingEnabled || widget.gateway == null) {
       return null;
     }
-    return Wrap(
+    return OperatorWebActionBar(
       spacing: 6,
       runSpacing: 6,
-      children: [
+      children: <Widget>[
         _HierarchyActionButton(
           buttonKey: Key(
             'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
@@ -1875,9 +1935,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           icon: Icons.add,
         ),
         _HierarchyActionButton(
-          buttonKey: Key(
-            'admin_hierarchy_org_unit_move_${unit.orgUnitId}',
-          ),
+          buttonKey: Key('admin_hierarchy_org_unit_move_${unit.orgUnitId}'),
           label: 'Move',
           tooltip: unit.parentOrgUnitId == null
               ? 'Business root stays at business level'
@@ -1889,9 +1947,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         ),
         _buildOrgUnitSuspendButton(unit),
         _HierarchyActionButton(
-          buttonKey: Key(
-            'admin_hierarchy_org_unit_delete_${unit.orgUnitId}',
-          ),
+          buttonKey: Key('admin_hierarchy_org_unit_delete_${unit.orgUnitId}'),
           label: 'Delete',
           tooltip: unit.parentOrgUnitId == null
               ? 'Business root cannot be deleted'
@@ -1963,6 +2019,17 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         widget.bundle.operator.isSuspended ||
         location.isSuspended ||
         hierarchyLeaf?.isSuspended == true;
+    final locationSubtitle = isSuspended
+        ? (isPrimary
+              ? 'Suspended primary location'
+              : depth == 0
+              ? 'Suspended location'
+              : 'Suspended child location')
+        : (isPrimary
+              ? 'Primary location'
+              : depth == 0
+              ? 'Location'
+              : 'Child location');
     return Opacity(
       key: Key('admin_location_suspended_fade_${location.locationId}'),
       opacity: isSuspended ? 0.55 : 1,
@@ -1970,9 +2037,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         key: Key('admin_hierarchy_location_${location.locationId}'),
         icon: scopeIcon(kind: ScopeEntityKind.location),
         label: location.name,
-        subtitle: isSuspended
-            ? (isPrimary ? 'Suspended primary location' : 'Suspended location')
-            : (isPrimary ? 'Primary location' : 'Location'),
+        subtitle: locationSubtitle,
         depth: depth,
         selected:
             widget.selectedScope.scopeType ==
@@ -1995,10 +2060,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           ),
         ),
         trailing: widget.editingEnabled
-            ? Wrap(
+            ? OperatorWebActionBar(
                 spacing: 6,
                 runSpacing: 6,
-                children: [
+                children: <Widget>[
                   _HierarchyActionButton(
                     buttonKey: Key(
                       'admin_location_move_${location.locationId}',
@@ -2061,10 +2126,8 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                     buttonKey: Key(
                       'admin_location_remove_${location.locationId}',
                     ),
-                    label: 'Remove',
-                    tooltip: widget.gateway == null
-                        ? 'Remove location'
-                        : 'Delete location',
+                    label: 'Delete',
+                    tooltip: 'Delete location',
                     onPressed: isPrimary
                         ? null
                         : () => _onDeleteHierarchyLocation(location),
@@ -2152,76 +2215,11 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_hierarchy_add_child_org_unit_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Add child org unit',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 500,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              'Under ${widget.parent.name}',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: const Key('admin_hierarchy_add_org_unit_type'),
-              initialValue: _unitType,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Unit type',
-                border: OutlineInputBorder(),
-              ),
-              items: const <DropdownMenuItem<String>>[
-                DropdownMenuItem<String>(value: 'brand', child: Text('Brand')),
-                DropdownMenuItem<String>(
-                  value: 'region',
-                  child: Text('Region'),
-                ),
-                DropdownMenuItem<String>(
-                  value: 'district',
-                  child: Text('District'),
-                ),
-                DropdownMenuItem<String>(
-                  value: 'location_group',
-                  child: Text('Location group'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) setState(() => _unitType = value);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_hierarchy_add_org_unit_name'),
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Display name',
-                border: const OutlineInputBorder(),
-                errorText: _nameError,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_hierarchy_add_org_unit_reason'),
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _reasonError,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: 'Add child org unit',
+      icon: Icons.account_tree_outlined,
+      maxWidth: 560,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_hierarchy_add_org_unit_cancel'),
@@ -2235,6 +2233,63 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           child: const Text('Add'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'Under ${widget.parent.name}',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            key: const Key('admin_hierarchy_add_org_unit_type'),
+            initialValue: _unitType,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Unit type',
+              border: OutlineInputBorder(),
+            ),
+            items: const <DropdownMenuItem<String>>[
+              DropdownMenuItem<String>(value: 'brand', child: Text('Brand')),
+              DropdownMenuItem<String>(value: 'region', child: Text('Region')),
+              DropdownMenuItem<String>(
+                value: 'district',
+                child: Text('District'),
+              ),
+              DropdownMenuItem<String>(
+                value: 'location_group',
+                child: Text('Location group'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _unitType = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_hierarchy_add_org_unit_name'),
+            controller: _nameController,
+            decoration: InputDecoration(
+              labelText: 'Display name',
+              border: const OutlineInputBorder(),
+              errorText: _nameError,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_hierarchy_add_org_unit_reason'),
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _reasonError,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2303,53 +2358,11 @@ class _MoveHierarchyDialogState extends State<_MoveHierarchyDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: widget.dialogKey,
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
-        width: 500,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            DropdownButtonFormField<String>(
-              key: widget.targetKey,
-              initialValue: _selectedTargetId,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: widget.targetLabel,
-                border: const OutlineInputBorder(),
-              ),
-              items: <DropdownMenuItem<String>>[
-                for (final candidate in widget.candidates)
-                  DropdownMenuItem<String>(
-                    value: candidate.id,
-                    child: Text(candidate.label),
-                  ),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _selectedTargetId = value);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: widget.reasonKey,
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _missingReason
-                    ? 'Add a reason before continuing.'
-                    : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: widget.title,
+      icon: Icons.drive_file_move_outlined,
+      maxWidth: 560,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -2362,6 +2375,46 @@ class _MoveHierarchyDialogState extends State<_MoveHierarchyDialog> {
           child: const Text('Move'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          DropdownButtonFormField<String>(
+            key: widget.targetKey,
+            initialValue: _selectedTargetId,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: widget.targetLabel,
+              border: const OutlineInputBorder(),
+            ),
+            items: <DropdownMenuItem<String>>[
+              for (final candidate in widget.candidates)
+                DropdownMenuItem<String>(
+                  value: candidate.id,
+                  child: Text(candidate.label),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => _selectedTargetId = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: widget.reasonKey,
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _missingReason
+                  ? 'Add a reason before continuing.'
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2410,37 +2463,11 @@ class _HierarchyReasonDialogState extends State<_HierarchyReasonDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: widget.dialogKey,
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
-        width: 500,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              widget.message,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: widget.reasonKey,
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _missingReason
-                    ? 'Add a reason before continuing.'
-                    : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: widget.title,
+      icon: widget.danger ? Icons.warning_amber_outlined : Icons.edit_note,
+      maxWidth: 560,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -2455,6 +2482,30 @@ class _HierarchyReasonDialogState extends State<_HierarchyReasonDialog> {
           child: Text(widget.submitLabel),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            widget.message,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: widget.reasonKey,
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _missingReason
+                  ? 'Add a reason before continuing.'
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2492,91 +2543,144 @@ class _HierarchyScopeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final depthIndent = depth * 28.0;
+    final isNested = depth > 0;
+    final radius = BorderRadius.circular(6);
+    final fillColor = selected
+        ? AppColors.peacock.withValues(alpha: 0.10)
+        : isNested
+        ? AppColors.backgroundMid.withValues(alpha: 0.32)
+        : Colors.transparent;
+    final borderColor = selected
+        ? AppColors.peacock
+        : isNested
+        ? AppColors.borderSubtle.withValues(alpha: 0.78)
+        : AppColors.borderSubtle;
     return Padding(
-      padding: EdgeInsets.only(left: depth * 18.0, top: 6, bottom: 6),
-      child: Material(
-        color: selected
-            ? AppColors.peacock.withValues(alpha: 0.10)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: selected ? AppColors.peacock : AppColors.borderSubtle,
-                width: selected ? 1.4 : 1,
+      padding: EdgeInsets.only(left: depthIndent, top: 5, bottom: 5),
+      child: Row(
+        children: [
+          if (isNested) ...[
+            Container(
+              width: 2,
+              height: 46,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.peacock.withValues(alpha: 0.85)
+                    : AppColors.sunset.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(2),
               ),
-              borderRadius: BorderRadius.circular(6),
             ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // Labeled action buttons are wider than the former icons, so
-                // they stack onto their own full-width row below the label
-                // until the row is wide enough to hold them inline. When
-                // inline, the trailing area is `Flexible` so its `Wrap`
-                // receives a bounded width and flows onto extra lines rather
-                // than overflowing the row.
-                final compactActions =
-                    trailing != null && constraints.maxWidth < 520;
-                final labelRow = Row(
-                  children: [
-                    Icon(icon, size: 17, color: AppColors.textSecondary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            label,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.body14(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.mono11(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
+          ],
+          Expanded(
+            child: Material(
+              color: fillColor,
+              borderRadius: radius,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: radius,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: borderColor,
+                      width: selected ? 1.4 : 1,
                     ),
-                    if (selected)
-                      const Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: Icon(
-                          Icons.check_circle,
-                          size: 16,
-                          color: AppColors.peacockDark,
-                        ),
-                      ),
-                    if (trailing != null && !compactActions) ...[
-                      const SizedBox(width: 8),
-                      Flexible(child: trailing!),
-                    ],
-                  ],
-                );
-                if (!compactActions) return labelRow;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    labelRow,
-                    const SizedBox(height: 8),
-                    // Full-width so the trailing `Wrap` wraps the buttons
-                    // across the row instead of overflowing to the right.
-                    SizedBox(width: double.infinity, child: trailing!),
-                  ],
-                );
-              },
+                    borderRadius: radius,
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compactActions =
+                          trailing != null && constraints.maxWidth < 940;
+                      final showLeadingIcon = constraints.maxWidth >= 72;
+                      final showSelectedIcon =
+                          selected && constraints.maxWidth >= 96;
+                      final labelBlock = Row(
+                        children: [
+                          if (showLeadingIcon) ...[
+                            Icon(
+                              icon,
+                              size: 17,
+                              color: selected
+                                  ? AppColors.peacockDark
+                                  : AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: 10),
+                          ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  label,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.body14(
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.mono11(
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (showSelectedIcon)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 8),
+                              child: Icon(
+                                Icons.check_circle,
+                                size: 16,
+                                color: AppColors.peacockDark,
+                              ),
+                            ),
+                        ],
+                      );
+                      if (trailing == null) return labelBlock;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (compactActions) ...[
+                            labelBlock,
+                            const SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: trailing!,
+                            ),
+                          ] else
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(child: labelBlock),
+                                const SizedBox(width: 18),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 760,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: trailing!,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -2616,15 +2720,6 @@ class _OperatorActionButton extends StatelessWidget {
   }
 }
 
-/// Labeled action button for the location-hierarchy tree rows (add child
-/// org unit, move, suspend/reactivate, delete, edit location, make
-/// primary, remove). Replaces the former icon-only `_hierarchyIconButton`
-/// so the tree controls read as words, mirroring `_OperatorActionButton`.
-/// Destructive actions (delete / remove) use the danger style. The same
-/// widget `key` and `tooltip` the icon button carried are preserved so
-/// existing selectors and hover hints keep working. `softWrap: false`
-/// keeps each label on one line; the surrounding `Wrap` flows the buttons
-/// onto additional rows when the trailing area is narrow.
 class _HierarchyActionButton extends StatelessWidget {
   const _HierarchyActionButton({
     required this.buttonKey,
@@ -2650,8 +2745,20 @@ class _HierarchyActionButton extends StatelessWidget {
         key: buttonKey,
         onPressed: onPressed,
         style: destructive
-            ? AdminButtonStyles.dangerSecondary()
-            : AdminButtonStyles.secondary(),
+            ? AdminButtonStyles.dangerSecondary(minWidth: 92).copyWith(
+                minimumSize: const WidgetStatePropertyAll(Size(92, 36)),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              )
+            : AdminButtonStyles.secondary(
+                minWidth: 92,
+                minHeight: 36,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
         icon: Icon(icon, size: 14),
         label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
       ),
@@ -2914,83 +3021,11 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_onboard_operator_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'New operator',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 420,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _DialogField(
-                  fieldKey: const Key('admin_onboard_business_name'),
-                  controller: _businessName,
-                  label: 'Business name',
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _DialogField(
-                  fieldKey: const Key('admin_onboard_owner_email'),
-                  controller: _ownerEmail,
-                  label: 'Contact email',
-                  helperText:
-                      'Business contact for records. This does not create console access.',
-                  keyboardType: TextInputType.emailAddress,
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _DialogField(
-                  fieldKey: const Key('admin_onboard_admin_email'),
-                  controller: _adminEmail,
-                  label: 'Owner login email',
-                  helperText:
-                      'Invite is sent here. This is the person who signs in.',
-                  keyboardType: TextInputType.emailAddress,
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _SubscriptionTierDropdown(value: _subscriptionTier),
-                const SizedBox(height: 12),
-                _CurrencyDropdown(
-                  value: _preferredCurrency,
-                  onChanged: (v) => setState(() => _preferredCurrency = v),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Primary location',
-                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 6),
-                _DialogField(
-                  fieldKey: const Key('admin_onboard_location_name'),
-                  controller: _locationName,
-                  label: 'Location name',
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _TimezoneDropdown(
-                  fieldKey: const Key('admin_onboard_location_timezone'),
-                  value: _locationTimezone,
-                  onChanged: (v) => setState(() => _locationTimezone = v),
-                ),
-                const SizedBox(height: 12),
-                const _LegacyRolloverReadOnly(
-                  key: Key('admin_onboard_legacy_rollover_readonly'),
-                  rolloverHour: _kLegacyRolloverHourDefault,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      title: 'New operator',
+      icon: Icons.business_outlined,
+      maxWidth: 520,
       actions: [
         TextButton(
           key: const Key('admin_onboard_cancel_button'),
@@ -3004,6 +3039,73 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
           child: const Text('Onboard operator'),
         ),
       ],
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _DialogField(
+                fieldKey: const Key('admin_onboard_business_name'),
+                controller: _businessName,
+                label: 'Business name',
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _DialogField(
+                fieldKey: const Key('admin_onboard_owner_email'),
+                controller: _ownerEmail,
+                label: 'Contact email',
+                helperText:
+                    'Business contact for records. This does not create console access.',
+                keyboardType: TextInputType.emailAddress,
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _DialogField(
+                fieldKey: const Key('admin_onboard_admin_email'),
+                controller: _adminEmail,
+                label: 'Owner login email',
+                helperText:
+                    'Invite is sent here. This is the person who signs in.',
+                keyboardType: TextInputType.emailAddress,
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _SubscriptionTierDropdown(value: _subscriptionTier),
+              const SizedBox(height: 12),
+              _CurrencyDropdown(
+                value: _preferredCurrency,
+                onChanged: (v) => setState(() => _preferredCurrency = v),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Primary location',
+                style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 6),
+              _DialogField(
+                fieldKey: const Key('admin_onboard_location_name'),
+                controller: _locationName,
+                label: 'Location name',
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _TimezoneDropdown(
+                fieldKey: const Key('admin_onboard_location_timezone'),
+                value: _locationTimezone,
+                onChanged: (v) => setState(() => _locationTimezone = v),
+              ),
+              const SizedBox(height: 12),
+              const _LegacyRolloverReadOnly(
+                key: Key('admin_onboard_legacy_rollover_readonly'),
+                rolloverHour: _kLegacyRolloverHourDefault,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -3069,56 +3171,11 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_edit_operator_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Account profile',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 420,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _DialogField(
-                  fieldKey: const Key('admin_edit_business_name'),
-                  controller: _businessName,
-                  label: 'Business name',
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _DialogField(
-                  fieldKey: const Key('admin_edit_owner_email'),
-                  controller: _ownerEmail,
-                  label: 'Contact email',
-                  helperText:
-                      'Updates business contact only. Team access is managed from Members.',
-                  keyboardType: TextInputType.emailAddress,
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _SubscriptionTierDropdown(value: _subscriptionTier),
-                const SizedBox(height: 12),
-                _CurrencyDropdown(
-                  value: _preferredCurrency,
-                  onChanged: (v) => setState(() => _preferredCurrency = v),
-                ),
-                const SizedBox(height: 12),
-                _PrimaryLocationDropdown(
-                  locations: widget.bundle.locations,
-                  value: _primaryLocationId,
-                  onChanged: (v) => setState(() => _primaryLocationId = v),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      title: 'Account profile',
+      icon: Icons.business_center_outlined,
+      maxWidth: 520,
       actions: [
         TextButton(
           key: const Key('admin_edit_cancel_button'),
@@ -3132,6 +3189,46 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
           child: const Text('Save profile'),
         ),
       ],
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _DialogField(
+                fieldKey: const Key('admin_edit_business_name'),
+                controller: _businessName,
+                label: 'Business name',
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _DialogField(
+                fieldKey: const Key('admin_edit_owner_email'),
+                controller: _ownerEmail,
+                label: 'Contact email',
+                helperText:
+                    'Updates business contact only. Team access is managed from Members.',
+                keyboardType: TextInputType.emailAddress,
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _SubscriptionTierDropdown(value: _subscriptionTier),
+              const SizedBox(height: 12),
+              _CurrencyDropdown(
+                value: _preferredCurrency,
+                onChanged: (v) => setState(() => _preferredCurrency = v),
+              ),
+              const SizedBox(height: 12),
+              _PrimaryLocationDropdown(
+                locations: widget.bundle.locations,
+                value: _primaryLocationId,
+                onChanged: (v) => setState(() => _primaryLocationId = v),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -3206,54 +3303,13 @@ class _LocationDialogState extends State<_LocationDialog> {
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
-    return AlertDialog(
+    return OperatorWebDialog(
       key: Key(
         isEdit ? 'admin_location_edit_dialog' : 'admin_location_add_dialog',
       ),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        isEdit ? 'Edit location' : 'Add location',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 380,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (!isEdit) ...[
-                _LocationParentOrgUnitField(
-                  label: widget.parentOrgUnitLabel?.trim().isNotEmpty == true
-                      ? widget.parentOrgUnitLabel!.trim()
-                      : widget.parentOrgUnitId ?? 'Selected org unit',
-                ),
-                const SizedBox(height: 12),
-              ],
-              _DialogField(
-                fieldKey: const Key('admin_location_name_field'),
-                controller: _name,
-                label: 'Location name',
-                validator: _requiredValidator,
-              ),
-              const SizedBox(height: 12),
-              _TimezoneDropdown(
-                fieldKey: const Key('admin_location_timezone_field'),
-                value: _timezone,
-                onChanged: (v) => setState(() => _timezone = v),
-              ),
-              const SizedBox(height: 12),
-              _LegacyRolloverReadOnly(
-                key: const Key('admin_location_legacy_rollover_readonly'),
-                rolloverHour:
-                    widget.existing?.businessDayRolloverHour ??
-                    _kLegacyRolloverHourDefault,
-              ),
-            ],
-          ),
-        ),
-      ),
+      title: isEdit ? 'Edit location' : 'Add location',
+      icon: Icons.place_outlined,
+      maxWidth: 480,
       actions: [
         TextButton(
           key: const Key('admin_location_cancel_button'),
@@ -3267,6 +3323,42 @@ class _LocationDialogState extends State<_LocationDialog> {
           child: Text(isEdit ? 'Save' : 'Add'),
         ),
       ],
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!isEdit) ...[
+              _LocationParentOrgUnitField(
+                label: widget.parentOrgUnitLabel?.trim().isNotEmpty == true
+                    ? widget.parentOrgUnitLabel!.trim()
+                    : widget.parentOrgUnitId ?? 'Selected org unit',
+              ),
+              const SizedBox(height: 12),
+            ],
+            _DialogField(
+              fieldKey: const Key('admin_location_name_field'),
+              controller: _name,
+              label: 'Location name',
+              validator: _requiredValidator,
+            ),
+            const SizedBox(height: 12),
+            _TimezoneDropdown(
+              fieldKey: const Key('admin_location_timezone_field'),
+              value: _timezone,
+              onChanged: (v) => setState(() => _timezone = v),
+            ),
+            const SizedBox(height: 12),
+            _LegacyRolloverReadOnly(
+              key: const Key('admin_location_legacy_rollover_readonly'),
+              rolloverHour:
+                  widget.existing?.businessDayRolloverHour ??
+                  _kLegacyRolloverHourDefault,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -3284,20 +3376,11 @@ class _ConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_confirm_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        title,
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 320,
-        child: Text(
-          message,
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ),
+      title: title,
+      icon: Icons.warning_amber_outlined,
+      maxWidth: 420,
       actions: [
         TextButton(
           key: const Key('admin_confirm_cancel_button'),
@@ -3311,6 +3394,10 @@ class _ConfirmDialog extends StatelessWidget {
           child: Text(confirmLabel),
         ),
       ],
+      child: Text(
+        message,
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
+      ),
     );
   }
 }
@@ -3632,15 +3719,19 @@ class _TimezonePickerDialogState extends State<_TimezonePickerDialog> {
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredOptions();
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_timezone_picker_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Select IANA timezone',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 420,
+      title: 'Select IANA timezone',
+      icon: Icons.public_outlined,
+      maxWidth: 520,
+      actions: [
+        TextButton(
+          key: const Key('admin_timezone_cancel_button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+      child: SizedBox(
         height: 430,
         child: Column(
           children: [
@@ -3746,13 +3837,6 @@ class _TimezonePickerDialogState extends State<_TimezonePickerDialog> {
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          key: const Key('admin_timezone_cancel_button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-      ],
     );
   }
 }

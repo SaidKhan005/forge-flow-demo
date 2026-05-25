@@ -158,7 +158,16 @@ void main() {
     expect(find.text('Location Control A'), findsOneWidget);
     expect(find.text('Location Control B'), findsNothing);
     expect(find.text('Other Business Control'), findsNothing);
-    expect(find.textContaining('Demo Diner / Harbor'), findsOneWidget);
+    expect(find.textContaining('Demo Diner / Harbor'), findsNothing);
+    expect(
+      find.byKey(const Key('admin_feature_flags_scope_note')),
+      findsNothing,
+    );
+    expect(find.text('Where this applies'), findsNothing);
+    expect(
+      find.byKey(const Key('admin_feature_flags_scope_notice')),
+      findsNothing,
+    );
   });
 
   testWidgets('standard flag toggle flips the value and shows the SnackBar', (

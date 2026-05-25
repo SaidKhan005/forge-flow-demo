@@ -47,7 +47,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
-import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../services/realtime/outbox_tripwire_evaluator.dart';
@@ -59,9 +58,8 @@ import '../admin_routes.dart' show kAdminOperatorsRouteId;
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
+import '../widgets/admin_observability_run_controls.dart';
 import '../widgets/admin_run_check_controls.dart';
-import '../widgets/admin_scope_notice_adapter.dart';
-import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 
 /// One tab in the redesigned AI Metrics screen.
 class _TabSpec {
@@ -260,11 +258,11 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
 
   @override
   Widget build(BuildContext context) {
-    // The TabBar requires a Material ancestor; keeping the root as
-    // Material satisfies that without depending on the outer shell.
-    // OperatorWebScreenFrame is a no-scroll wrapper so the fixed-height
-    // tabbed body (Expanded TabBarView) keeps its fill (mirrors the
-    // health screen frame).
+    // The TabBar requires a Material ancestor; keeping the root as Material
+    // satisfies that without depending on the outer shell. The whole surface
+    // is ONE page scroll (actions + hero + tabs + the active tab body),
+    // matching the mockup, rather than each tab body scrolling inside its own
+    // fixed-height pane.
     return Material(
       key: const Key('admin_observability_screen'),
       color: AppColors.backgroundDeep,
@@ -276,35 +274,25 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
             final showManualPrompt =
                 !_loading && _envelope == null && _loadError == null;
             final children = <Widget>[
-              _Header(
-                lastRefreshed: _lastRefreshed,
-                onRunCheck: _confirmAndRefresh,
-                loading: _loading || _refreshing,
-                month: _month,
-                onSelectMonth: _selectMonth,
-              ),
-              const SizedBox(height: 12),
-              if (widget.hierarchyScope != null)
-                HierarchyScopeNotice(
-                  keyName: 'admin_observability_scope_notice',
-                  selectedScope: adminScopeLevel(
-                    widget.hierarchyScope!.scopeType,
-                  ),
-                  scopeName: widget.hierarchyScope!.displayLabel,
-                  effectiveValueSummary:
-                      'AI cost, usage, and reliability for the selected scope.',
-                  backendOnlyHelpTitle: 'What stays platform-wide',
-                  backendOnlyExplainer:
-                      'Hosting and the knowledge graph stay platform-wide. They are shared across every business, not stored per business.',
+              if (!showManualPrompt) ...<Widget>[
+                _ObservabilityActionsRow(
+                  lastRefreshed: _lastRefreshed,
+                  onRunCheck: _confirmAndRefresh,
+                  loading: _loading || _refreshing,
+                  month: _month,
+                  onSelectMonth: _selectMonth,
                 ),
+                const SizedBox(height: 12),
+              ],
               if (_loadError != null)
                 _ErrorBanner(
                   key: const Key('admin_observability_load_error'),
                   message: _loadError!,
                 ),
-              if (_envelope != null) _envelopeBody(_envelope!),
+              if (_envelope != null) ..._envelopeBody(_envelope!),
               if (_loading && _envelope == null)
-                const Expanded(
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 80),
                   child: Center(
                     key: Key('admin_observability_loading'),
                     child: SizedBox(
@@ -318,88 +306,159 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                   ),
                 ),
               if (showManualPrompt)
-                _ManualRunPrompt(onRunCheck: _confirmAndRefresh),
+                AdminObservabilityManualRunPrompt(
+                  onRunCheck: _confirmAndRefresh,
+                  loading: _loading || _refreshing,
+                  month: _month,
+                  onSelectMonth: _selectMonth,
+                ),
             ];
-            final column = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: children,
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
             );
-            if (!showManualPrompt) return column;
-            return SingleChildScrollView(child: column);
           },
         ),
       ),
     );
   }
 
-  Widget _envelopeBody(ObservabilityEnvelope envelope) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _AsOfStrip(envelope: envelope, month: _month),
-          const SizedBox(height: 14),
-          _HeroCards(envelope: envelope),
-          const SizedBox(height: 18),
-          TabBar(
+  List<Widget> _envelopeBody(ObservabilityEnvelope envelope) {
+    return <Widget>[
+      _AsOfStrip(envelope: envelope, month: _month),
+      _HeroCards(envelope: envelope),
+      const SizedBox(height: 18),
+      _ObservabilityTabBar(controller: _tabs),
+      const SizedBox(height: 16),
+      // Only the active tab body is built, so the page height matches the
+      // visible tab (mirrors the mockup's hidden panels) and the single page
+      // scroll owns all vertical overflow.
+      AnimatedBuilder(
+        animation: _tabs,
+        builder: (context, _) {
+          final tabBodies = <Widget>[
+            _MoneyTab(
+              key: const Key('admin_observability_tab_body_money'),
+              envelope: envelope,
+            ),
+            _CustomersTab(
+              key: const Key('admin_observability_tab_body_customers'),
+              envelope: envelope,
+            ),
+            _ReliabilityTab(
+              key: const Key('admin_observability_tab_body_reliability'),
+              envelope: envelope,
+              tripwireGateway: widget.tripwireGateway,
+              tripwires: _tripwires,
+              tripwireError: _tripwireError,
+            ),
+            _KnowledgeTab(
+              key: const Key('admin_observability_tab_body_knowledge'),
+              envelope: envelope,
+            ),
+          ];
+          return tabBodies[_tabs.index];
+        },
+      ),
+    ];
+  }
+}
+
+// Tab bar: a pill group (rounded bg-mid container; the active tab is a
+// white pill with dark text) matching the mockup, in place of the underline
+// TabBar. Driven by the shared TabController, so the tab keys, the active-tab
+// content switch, and the widget tests are all unchanged.
+
+class _ObservabilityTabBar extends StatelessWidget {
+  const _ObservabilityTabBar({required this.controller});
+
+  final TabController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          return Container(
             key: const Key('admin_observability_tabs'),
-            controller: _tabs,
-            isScrollable: true,
-            labelColor: AppColors.textPrimary,
-            unselectedLabelColor: AppColors.textSecondary,
-            indicatorColor: AppColors.sunset,
-            tabs: <Widget>[
-              for (final tab in _kTabs)
-                Tab(
-                  key: Key('admin_observability_tab_${tab.keySuffix}'),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(tab.icon, size: 16),
-                      const SizedBox(width: 8),
-                      Text(tab.label),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundMid,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                _MoneyTab(
-                  key: const Key('admin_observability_tab_body_money'),
-                  envelope: envelope,
-                ),
-                _CustomersTab(
-                  key: const Key('admin_observability_tab_body_customers'),
-                  envelope: envelope,
-                ),
-                _ReliabilityTab(
-                  key: const Key('admin_observability_tab_body_reliability'),
-                  envelope: envelope,
-                  tripwireGateway: widget.tripwireGateway,
-                  tripwires: _tripwires,
-                  tripwireError: _tripwireError,
-                ),
-                _KnowledgeTab(
-                  key: const Key('admin_observability_tab_body_knowledge'),
-                  envelope: envelope,
-                ),
+                for (var i = 0; i < _kTabs.length; i++) ...<Widget>[
+                  if (i > 0) const SizedBox(width: 4),
+                  _ObservabilityPillTab(
+                    keySuffix: _kTabs[i].keySuffix,
+                    icon: _kTabs[i].icon,
+                    label: _kTabs[i].label,
+                    selected: controller.index == i,
+                    onTap: () => controller.animateTo(i),
+                  ),
+                ],
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
-// ── Header ───────────────────────────────────────────────────────────
+class _ObservabilityPillTab extends StatelessWidget {
+  const _ObservabilityPillTab({
+    required this.keySuffix,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
-class _Header extends StatelessWidget {
-  const _Header({
+  final String keySuffix;
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = selected
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
+    return Material(
+      color: selected ? AppColors.backgroundSurface : Colors.transparent,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        key: Key('admin_observability_tab_$keySuffix'),
+        borderRadius: BorderRadius.circular(9),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 16, color: fg),
+              const SizedBox(width: 8),
+              Text(label, style: AppTextStyles.uiLabel(color: fg)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Actions row.
+
+class _ObservabilityActionsRow extends StatelessWidget {
+  const _ObservabilityActionsRow({
     required this.lastRefreshed,
     required this.onRunCheck,
     required this.loading,
@@ -415,144 +474,37 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OperatorWebScreenHeader(
-      icon: Icons.insights_outlined,
-      title: 'AI Metrics',
-      subtitle:
-          'What the AI advisor costs, who uses it, and whether it is healthy.',
-      collapseBelowWidth: 720,
-      actions: <Widget>[
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _MonthSelector(
-                month: month,
-                onSelectMonth: onSelectMonth,
-                enabled: !loading,
-              ),
-              const SizedBox(height: 8),
-              AdminRunCheckButton(
-                key: const Key('admin_observability_refresh_button'),
-                onPressed: () {
-                  onRunCheck();
-                },
-                icon: Icons.insights_outlined,
-                label: 'Run metrics check',
-                loadingLabel: 'Running...',
-                loading: loading,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                lastRefreshed == null
-                    ? 'Last refreshed: -'
-                    : 'Last refreshed: ${adminHumanDateTime(lastRefreshed!)}',
-                key: const Key('admin_observability_last_refreshed'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Open System health for dependency checks.',
-                key: const Key('admin_observability_health_link_hint'),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-            ],
-          ),
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 8,
+      children: <Widget>[
+        AdminObservabilityMonthSelector(
+          month: month,
+          onSelectMonth: onSelectMonth,
+          enabled: !loading,
+        ),
+        Text(
+          lastRefreshed == null
+              ? 'Last refreshed: -'
+              : 'Last refreshed: ${adminHumanDateTime(lastRefreshed!)}',
+          key: const Key('admin_observability_last_refreshed'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+        AdminRunCheckButton(
+          key: const Key('admin_observability_refresh_button'),
+          onPressed: () {
+            onRunCheck();
+          },
+          icon: Icons.insights_outlined,
+          label: 'Run metrics check',
+          loadingLabel: 'Running...',
+          loading: loading,
         ),
       ],
-    );
-  }
-}
-
-/// "This month / Last month" segmented control. Threads the
-/// [ObservabilityMonth] bucket into the fetch. Only current / previous
-/// are offered because `usage_logs` is a monthly rollup (Metric Honesty
-/// Doctrine; finer windows would be dishonest).
-class _MonthSelector extends StatelessWidget {
-  const _MonthSelector({
-    required this.month,
-    required this.onSelectMonth,
-    required this.enabled,
-  });
-
-  final ObservabilityMonth month;
-  final ValueChanged<ObservabilityMonth> onSelectMonth;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_observability_month_selector'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _MonthSegment(
-            keyName: 'admin_observability_month_current',
-            label: 'This month',
-            selected: month == ObservabilityMonth.current,
-            enabled: enabled,
-            onTap: () => onSelectMonth(ObservabilityMonth.current),
-          ),
-          _MonthSegment(
-            keyName: 'admin_observability_month_previous',
-            label: 'Last month',
-            selected: month == ObservabilityMonth.previous,
-            enabled: enabled,
-            onTap: () => onSelectMonth(ObservabilityMonth.previous),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MonthSegment extends StatelessWidget {
-  const _MonthSegment({
-    required this.keyName,
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final String keyName;
-  final String label;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      key: Key(keyName),
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.sunset : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: AppTextStyles.body12(
-            color: selected
-                ? AppColors.backgroundSurface
-                : AppColors.textSecondary,
-          ).copyWith(fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
-        ),
-      ),
     );
   }
 }
@@ -568,62 +520,13 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
       confirmButtonKey: Key('admin_observability_confirm_run'),
       icon: Icons.insights_outlined,
       title: 'Run metrics check',
-      description:
-          'This reads recent usage, cost, limits, activity, and hosting data. It is read-only and can take 10-30 seconds.',
+      description: 'Refresh the current AI Metrics snapshot from staging.',
       confirmLabel: 'Run metrics check',
       facts: [
         AdminRunCheckFact(
-          icon: Icons.visibility_outlined,
-          label: 'Read-only',
-          text: 'No plans, limits, or records are changed.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.query_stats_outlined,
-          label: 'Scope',
-          text: 'Cost, usage, customer activity, graph, and hosting rows.',
-        ),
-        AdminRunCheckFact(
           icon: Icons.schedule_outlined,
           label: 'Timing',
-          text: 'Live staging metrics can take a few moments to load.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ManualRunPrompt extends StatelessWidget {
-  const _ManualRunPrompt({required this.onRunCheck});
-
-  final Future<void> Function() onRunCheck;
-
-  @override
-  Widget build(BuildContext context) {
-    return AdminRunCheckPrompt(
-      key: const Key('admin_observability_manual_prompt'),
-      icon: Icons.insights_outlined,
-      title: 'Check AI Metrics',
-      description:
-          'Load the current staging view before comparing cost, usage, limits, and hosting signals.',
-      buttonLabel: 'Run metrics check',
-      onPressed: () {
-        onRunCheck();
-      },
-      facts: const [
-        AdminRunCheckFact(
-          icon: Icons.visibility_outlined,
-          label: 'Read-only',
-          text: 'No plans, limits, or records are changed.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.query_stats_outlined,
-          label: 'Scope',
-          text: 'Usage, cost, customer activity, graph, and hosting metrics.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.schedule_outlined,
-          label: 'Timing',
-          text: 'Recent usage reads can take 10-30 seconds.',
+          text: 'The page can take a few minutes to update.',
         ),
       ],
     );
@@ -644,17 +547,11 @@ class _AsOfStrip extends StatelessWidget {
     final monthLabel = month == ObservabilityMonth.current
         ? 'This month'
         : 'Last month';
-    return Container(
+    return Padding(
       key: const Key('admin_observability_as_of_strip'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Text(
-        'Showing $monthLabel. Hosting and the knowledge graph stay '
-        'platform-wide. Updated ${adminHumanDateTime(envelope.asOf)}.',
+        '$monthLabel · updated ${adminHumanDateTime(envelope.asOf)}',
         style: AppTextStyles.body12(color: AppColors.textMuted),
       ),
     );
@@ -672,8 +569,7 @@ class _HeroCards extends StatelessWidget {
 
   final ObservabilityEnvelope envelope;
 
-  @override
-  Widget build(BuildContext context) {
+  List<Widget> _heroCards() {
     final totalSpend = _totalSpend(envelope);
     final usingAi = _businessesUsingAi(envelope);
     final inactive = envelope.dormantOperators.length;
@@ -681,73 +577,95 @@ class _HeroCards extends StatelessWidget {
     final speed = _speedSummary(envelope);
     final graph = envelope.graph;
 
+    return <Widget>[
+      _HeroCard(
+        keyName: 'admin_observability_hero_spend',
+        accent: AppColors.sunset,
+        icon: Icons.payments_outlined,
+        label: 'AI spend',
+        value: '\$${_formatUsd(totalSpend)}',
+        caption: 'Across every use case this month.',
+      ),
+      _HeroCard(
+        keyName: 'admin_observability_hero_customers',
+        accent: AppColors.peacock,
+        icon: Icons.storefront_outlined,
+        label: 'Businesses using AI',
+        value: usingAi == null ? '—' : '$usingAi',
+        caption: usingAi == null
+            ? 'No activity reported yet.'
+            : inactive == 0
+            ? 'All active.'
+            : '$inactive inactive.',
+        pill: underwater > 0
+            ? _HeroPill(
+                label: underwater == 1
+                    ? '1 losing money'
+                    : '$underwater losing money',
+                tone: _HeroTone.bad,
+              )
+            : null,
+      ),
+      _HeroCard(
+        keyName: 'admin_observability_hero_speed',
+        accent: AppColors.positive,
+        icon: Icons.speed_outlined,
+        label: 'Speed & uptime',
+        value: speed.headline,
+        caption: speed.caption,
+        pill: speed.pill,
+      ),
+      _HeroCard(
+        keyName: 'admin_observability_hero_knowledge',
+        accent: AppColors.warning,
+        icon: Icons.menu_book_outlined,
+        label: 'Advisor knowledge',
+        value: graph.isolatedNodeCount > 0 ? 'Review' : 'Healthy',
+        caption: graph.isolatedNodeCount == 0
+            ? 'Everything is linked.'
+            : graph.isolatedNodeCount == 1
+            ? '1 item not linked yet.'
+            : '${graph.isolatedNodeCount} items not linked yet.',
+        pill: graph.isolatedNodeCount > 0
+            ? const _HeroPill(label: 'Review suggested', tone: _HeroTone.watch)
+            : const _HeroPill(label: 'Up to date', tone: _HeroTone.ok),
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = _heroCards();
     return LayoutBuilder(
       builder: (context, constraints) {
         const gap = 14.0;
-        final columns = constraints.maxWidth >= 900 ? 4 : 2;
-        final cardWidth =
-            (constraints.maxWidth - (gap * (columns - 1))) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: <Widget>[
-            _HeroCard(
-              keyName: 'admin_observability_hero_spend',
-              width: cardWidth,
-              accent: AppColors.sunset,
-              icon: Icons.payments_outlined,
-              label: 'AI spend',
-              value: '\$${_formatUsd(totalSpend)}',
-              caption: 'Across every use case this month.',
+        // Equal-width AND equal-height tiles (IntrinsicHeight + stretch),
+        // mirroring the mockup's `repeat(4, 1fr)` grid: 4-up at the admin
+        // content width (nav rail + scope pane leave ~880px), 2x2 only when
+        // genuinely narrow. No more content-sized Wrap with ragged heights.
+        final perRow = constraints.maxWidth >= 640 ? 4 : 2;
+        final rows = <Widget>[];
+        for (var i = 0; i < cards.length; i += perRow) {
+          final end = (i + perRow) > cards.length ? cards.length : i + perRow;
+          final rowCards = cards.sublist(i, end);
+          rows.add(
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  for (var j = 0; j < rowCards.length; j++) ...<Widget>[
+                    if (j > 0) const SizedBox(width: gap),
+                    Expanded(child: rowCards[j]),
+                  ],
+                ],
+              ),
             ),
-            _HeroCard(
-              keyName: 'admin_observability_hero_customers',
-              width: cardWidth,
-              accent: AppColors.peacock,
-              icon: Icons.storefront_outlined,
-              label: 'Businesses using AI',
-              value: usingAi == null ? '—' : '$usingAi',
-              caption: usingAi == null
-                  ? 'No customer activity reported yet.'
-                  : inactive == 0
-                  ? 'All reported businesses are active.'
-                  : '$inactive inactive.',
-              pill: underwater > 0
-                  ? _HeroPill(
-                      label: underwater == 1
-                          ? '1 losing money'
-                          : '$underwater losing money',
-                      tone: _HeroTone.bad,
-                    )
-                  : null,
-            ),
-            _HeroCard(
-              keyName: 'admin_observability_hero_speed',
-              width: cardWidth,
-              accent: AppColors.positive,
-              icon: Icons.speed_outlined,
-              label: 'Speed & uptime',
-              value: speed.headline,
-              caption: speed.caption,
-              pill: speed.pill,
-            ),
-            _HeroCard(
-              keyName: 'admin_observability_hero_knowledge',
-              width: cardWidth,
-              accent: AppColors.warning,
-              icon: Icons.menu_book_outlined,
-              label: 'Advisor knowledge',
-              value: graph.isolatedNodeCount > 0 ? 'Review' : 'Healthy',
-              caption: graph.isolatedNodeCount == 0
-                  ? 'Everything is linked.'
-                  : graph.isolatedNodeCount == 1
-                  ? '1 item not linked yet.'
-                  : '${graph.isolatedNodeCount} items not linked yet.',
-              pill: graph.isolatedNodeCount > 0
-                  ? const _HeroPill(label: 'Review suggested', tone: _HeroTone.watch)
-                  : const _HeroPill(label: 'Up to date', tone: _HeroTone.ok),
-            ),
-          ],
+          );
+          if (end < cards.length) rows.add(const SizedBox(height: gap));
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rows,
         );
       },
     );
@@ -809,7 +727,6 @@ class _HeroPill extends StatelessWidget {
 class _HeroCard extends StatelessWidget {
   const _HeroCard({
     required this.keyName,
-    required this.width,
     required this.accent,
     required this.icon,
     required this.label,
@@ -819,7 +736,6 @@ class _HeroCard extends StatelessWidget {
   });
 
   final String keyName;
-  final double width;
   final Color accent;
   final IconData icon;
   final String label;
@@ -835,21 +751,27 @@ class _HeroCard extends StatelessWidget {
     // above the body.
     return Container(
       key: Key(keyName),
-      width: width,
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: AppColors.textPrimary.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Container(height: 3, color: accent),
+            Container(height: 4, color: accent),
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -857,15 +779,18 @@ class _HeroCard extends StatelessWidget {
                   Row(
                     children: <Widget>[
                       Container(
-                        width: 32,
-                        height: 32,
+                        width: 40,
+                        height: 40,
                         decoration: BoxDecoration(
                           color: accent.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.24),
+                          ),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Icon(icon, size: 18, color: accent),
+                        child: Icon(icon, size: 21, color: accent),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           label,
@@ -878,25 +803,25 @@ class _HeroCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 14),
                   Text(
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.mono20(
+                    style: AppTextStyles.mono28(
                       color: AppColors.textPrimary,
                       weight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
                     caption,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                   if (pill != null) ...<Widget>[
-                    const SizedBox(height: 9),
+                    const SizedBox(height: 12),
                     pill!,
                   ],
                 ],
@@ -919,7 +844,7 @@ class _MoneyTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final slices = _costByUseCase(envelope);
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -938,7 +863,8 @@ class _MoneyTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_cache_hit_rates',
             title: 'Saved answer reuse',
-            subtitle: 'Higher is cheaper. Reusing a saved answer avoids paying for a new one.',
+            subtitle:
+                'Higher is cheaper. Reusing a saved answer avoids paying for a new one.',
             child: envelope.cacheHitRates.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cache_hit_rates_empty',
@@ -989,7 +915,8 @@ class _MoneyTab extends StatelessWidget {
                 const SizedBox(height: 18),
                 _SubHead(
                   text: 'Lower-cost batch work',
-                  hint: 'Higher is cheaper. Batch work is billed at a lower rate.',
+                  hint:
+                      'Higher is cheaper. Batch work is billed at a lower rate.',
                 ),
                 const SizedBox(height: 8),
                 if (envelope.batchModeShare.isEmpty)
@@ -1233,7 +1160,10 @@ class _LegendSwatch extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 6),
-        Text(label, style: AppTextStyles.body12(color: AppColors.textSecondary)),
+        Text(
+          label,
+          style: AppTextStyles.body12(color: AppColors.textSecondary),
+        ),
       ],
     );
   }
@@ -1438,7 +1368,7 @@ class _CustomersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1446,7 +1376,8 @@ class _CustomersTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_top_spenders',
             title: 'Top spenders',
-            subtitle: 'The businesses, staff, and workflows using the most AI budget.',
+            subtitle:
+                'The businesses, staff, and workflows using the most AI budget.',
             child: _TopSpenders(envelope: envelope),
           ),
           _Panel(
@@ -1557,15 +1488,16 @@ class _WindowSelector extends StatelessWidget {
                 ),
                 child: Text(
                   entry.$2,
-                  style: AppTextStyles.body12(
-                    color: window == entry.$1
-                        ? AppColors.backgroundSurface
-                        : AppColors.textSecondary,
-                  ).copyWith(
-                    fontWeight: window == entry.$1
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                  ),
+                  style:
+                      AppTextStyles.body12(
+                        color: window == entry.$1
+                            ? AppColors.backgroundSurface
+                            : AppColors.textSecondary,
+                      ).copyWith(
+                        fontWeight: window == entry.$1
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
                 ),
               ),
             ),
@@ -1928,7 +1860,7 @@ class _ReliabilityTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final counts = envelope.projectionRetries.statusCounts;
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1942,7 +1874,8 @@ class _ReliabilityTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_background_jobs',
             title: 'Background jobs',
-            subtitle: 'Shift and open-period projection work waiting, running, or stuck.',
+            subtitle:
+                'Shift and open-period projection work waiting, running, or stuck.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
@@ -1964,7 +1897,9 @@ class _ReliabilityTab extends StatelessWidget {
                       keyName: 'admin_observability_jobs_dead_lettered',
                       value: '${counts.deadLettered}',
                       label: 'Stuck',
-                      caption: counts.deadLettered > 0 ? 'Needs a person' : null,
+                      caption: counts.deadLettered > 0
+                          ? 'Needs a person'
+                          : null,
                       alert: counts.deadLettered > 0,
                     ),
                     _Stat(
@@ -1991,7 +1926,8 @@ class _ReliabilityTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_cloud_run_instances',
             title: 'Hosting capacity',
-            subtitle: 'Servers running each AI service. Platform-wide, not per business.',
+            subtitle:
+                'Servers running each AI service. Platform-wide, not per business.',
             child: envelope.cloudRun.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cloud_run_empty',
@@ -2014,7 +1950,8 @@ class _ReliabilityTab extends StatelessWidget {
             _Panel(
               keyName: 'admin_observability_section_live_sync',
               title: 'Live sync',
-              subtitle: 'Whether updates are flowing from the database to the apps.',
+              subtitle:
+                  'Whether updates are flowing from the database to the apps.',
               child: _LiveSync(snapshot: tripwires, error: tripwireError),
             ),
         ],
@@ -2061,7 +1998,10 @@ class _StatGrid extends StatelessWidget {
           runSpacing: gap,
           children: <Widget>[
             for (final stat in stats)
-              SizedBox(width: itemWidth, child: _StatBlock(stat: stat)),
+              SizedBox(
+                width: itemWidth,
+                child: _StatBlock(stat: stat),
+              ),
           ],
         );
       },
@@ -2145,11 +2085,7 @@ class _HostingRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: <Widget>[
-          const Icon(
-            Icons.dns_outlined,
-            size: 20,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.dns_outlined, size: 20, color: AppColors.textMuted),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
@@ -2164,8 +2100,9 @@ class _HostingRow extends StatelessWidget {
             Text.rich(
               TextSpan(
                 text: '${service.instanceCount}',
-                style: AppTextStyles.mono16(color: AppColors.textPrimary)
-                    .copyWith(fontWeight: FontWeight.w700),
+                style: AppTextStyles.mono16(
+                  color: AppColors.textPrimary,
+                ).copyWith(fontWeight: FontWeight.w700),
                 children: <InlineSpan>[
                   TextSpan(
                     text: ' running',
@@ -2188,8 +2125,9 @@ class _HostingRow extends StatelessWidget {
               children: <Widget>[
                 Text(
                   '—',
-                  style: AppTextStyles.mono16(color: AppColors.textMuted)
-                      .copyWith(fontWeight: FontWeight.w700),
+                  style: AppTextStyles.mono16(
+                    color: AppColors.textMuted,
+                  ).copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -2290,7 +2228,9 @@ class _LiveSyncRow extends StatelessWidget {
         SizedBox(
           width: 96,
           child: Text(
-            row.value == null ? '—' : _formatTripwireValue(row.metric, row.value!),
+            row.value == null
+                ? '—'
+                : _formatTripwireValue(row.metric, row.value!),
             style: AppTextStyles.mono11(color: AppColors.textPrimary),
           ),
         ),
@@ -2319,7 +2259,7 @@ class _KnowledgeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final graph = envelope.graph;
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2327,7 +2267,8 @@ class _KnowledgeTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_graph_counts',
             title: 'What the advisor knows',
-            subtitle: 'Approved facts and links, system suggestions, and anything not linked yet.',
+            subtitle:
+                'Approved facts and links, system suggestions, and anything not linked yet.',
             child: _StatGrid(
               stats: <_Stat>[
                 _Stat(
@@ -2361,7 +2302,8 @@ class _KnowledgeTab extends StatelessWidget {
           _Panel(
             keyName: 'admin_observability_section_graph_freshness',
             title: 'Knowledge freshness',
-            subtitle: 'How recently the advisor knowledge was rebuilt and how fast it answers.',
+            subtitle:
+                'How recently the advisor knowledge was rebuilt and how fast it answers.',
             child: _StatGrid(
               stats: <_Stat>[
                 _Stat(
@@ -2577,7 +2519,10 @@ class _TripwirePill extends StatelessWidget {
         border: Border.all(color: palette.border, width: 1),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(palette.label, style: AppTextStyles.chipLabel(color: palette.text)),
+      child: Text(
+        palette.label,
+        style: AppTextStyles.chipLabel(color: palette.text),
+      ),
     );
   }
 }
@@ -2597,7 +2542,10 @@ class _RowTripwirePill extends StatelessWidget {
         border: Border.all(color: palette.border, width: 1),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(palette.label, style: AppTextStyles.chipLabel(color: palette.text)),
+      child: Text(
+        palette.label,
+        style: AppTextStyles.chipLabel(color: palette.text),
+      ),
     );
   }
 }
@@ -2827,9 +2775,7 @@ String _formatUsd(double value) {
   final abs = value.abs();
   final fixed = abs >= 100 ? value.roundToDouble() : value;
   final hasCents = abs < 100;
-  final str = hasCents
-      ? fixed.toStringAsFixed(2)
-      : fixed.toStringAsFixed(0);
+  final str = hasCents ? fixed.toStringAsFixed(2) : fixed.toStringAsFixed(0);
   final parts = str.split('.');
   final intPart = parts[0];
   final buffer = StringBuffer();

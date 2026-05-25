@@ -546,8 +546,6 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
               child: LinearProgressIndicator(minHeight: 2),
             ),
           _AdminScopeAndEffectiveSection(
-            scopeLabel: widget.selectedScope.displayLabel,
-            scopeKindLabel: _scopeKindLabel,
             effectiveAt: _effectiveAt,
             timezoneController: _ianaTimezone,
             businessDayStartController: _businessDayStartLocal,
@@ -642,16 +640,6 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
     );
   }
 
-  String get _scopeKindLabel {
-    switch (widget.selectedScope.scopeType) {
-      case AdminHierarchyScopeType.business:
-        return 'Business (operator default)';
-      case AdminHierarchyScopeType.orgUnit:
-        return 'Org unit';
-      case AdminHierarchyScopeType.location:
-        return 'Location';
-    }
-  }
 }
 
 /// Timing-editable parity: shared seeded in-memory write fallback so
@@ -700,15 +688,11 @@ class _AdminTimingMessageBanner extends StatelessWidget {
   }
 }
 
-/// Scope + effective-date + timezone + business-day-start + week-start
-/// controls. Replicates the operator-web editor's
-/// `_ScopeAndEffectiveSection` (a private widget there, so re-built here)
-/// plus an admin-only scope readout so the admin always sees which scope
-/// the editor writes to.
+/// Effective-date + timezone + business-day-start + week-start controls.
+/// Replicates the operator-web editor's `_ScopeAndEffectiveSection`
+/// (a private widget there, so re-built here).
 class _AdminScopeAndEffectiveSection extends StatelessWidget {
   const _AdminScopeAndEffectiveSection({
-    required this.scopeLabel,
-    required this.scopeKindLabel,
     required this.effectiveAt,
     required this.timezoneController,
     required this.businessDayStartController,
@@ -720,8 +704,6 @@ class _AdminScopeAndEffectiveSection extends StatelessWidget {
     required this.formatter,
   });
 
-  final String scopeLabel;
-  final String scopeKindLabel;
   final DateTime effectiveAt;
   final TextEditingController timezoneController;
   final TextEditingController businessDayStartController;
@@ -745,9 +727,6 @@ class _AdminScopeAndEffectiveSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          AdminDetailRow(label: 'Editing scope', value: scopeLabel),
-          AdminDetailRow(label: 'Scope level', value: scopeKindLabel),
-          const SizedBox(height: 12),
           InkWell(
             key: const Key('admin_timing_editor_effective_pick'),
             onTap: enabled ? onPickEffectiveDate : null,
@@ -1121,10 +1100,6 @@ class _AdminEffectiveTimingSummary extends StatelessWidget {
                     ),
                   ),
                 ),
-              AdminDetailRow(
-                label: 'Selected scope',
-                value: selectedScope.displayLabel,
-              ),
               AdminDetailRow(label: 'Timing source', value: location.name),
               AdminDetailRow(label: 'Covered locations', value: covered),
               const SizedBox(height: 12),

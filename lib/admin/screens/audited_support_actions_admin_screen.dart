@@ -827,11 +827,9 @@ class _AuditScopePickerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebPanel(
       key: const Key('admin_asa_audit_scope_picker'),
-      title: 'Audit log scope',
+      title: 'Audit log filter',
       subtitle:
-          'Pick a business, region, district, or location in the tree '
-          'to set the audit log scope. The scope you pick is shown '
-          'below.',
+          'Pick a business, region, district, or location in the tree.',
       child: InheritanceTree(
         rootNode: rootNode,
         onNodeTap: onNodeTap,
@@ -895,14 +893,6 @@ class _SecurityHierarchyScopeBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final body = switch (scope.scopeType) {
-      AdminHierarchyScopeType.business =>
-        'Business scope covers audit history, active sessions, and support actions for this operator.',
-      AdminHierarchyScopeType.orgUnit =>
-        'Org-unit scope is the working context for effective access. Audit rows and sessions remain operator-wide until the backend exposes a scoped aggregate route.',
-      AdminHierarchyScopeType.location =>
-        'Location scope is the working context for effective access. Audit rows and sessions remain operator-wide until the backend exposes a location-scoped security route.',
-    };
     return Container(
       key: const Key('admin_asa_scope_banner'),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -951,12 +941,6 @@ class _SecurityHierarchyScopeBanner extends StatelessWidget {
                     if (scope.allowedActionsLabel != null)
                       _SecurityScopePill(label: scope.allowedActionsLabel!),
                   ],
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  body,
-                  key: const Key('admin_asa_scope_body'),
-                  style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
               ],
             ),

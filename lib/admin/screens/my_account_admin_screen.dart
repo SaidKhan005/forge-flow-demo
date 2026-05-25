@@ -55,6 +55,7 @@ import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
+import '../admin_button_styles.dart';
 import '../admin_auth_gate.dart';
 import '../services/admin_account_gateway.dart';
 import '../services/admin_security_gateway.dart';
@@ -461,17 +462,9 @@ class _AdminIdentityCard extends StatelessWidget {
                   onPressed: onEditIdentity,
                   icon: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('Edit identity'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.sunsetDark,
-                    side: const BorderSide(color: AppColors.sunsetDark),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+                  style: AdminButtonStyles.secondary(
+                    minHeight: 38,
                     padding: const EdgeInsets.symmetric(horizontal: 14),
-                    textStyle: AppTextStyles.mono14(
-                      color: AppColors.sunsetDark,
-                      weight: FontWeight.w600,
-                    ),
                   ),
                 ),
               ),
@@ -547,8 +540,11 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
   String? _loadError;
   AdminSecurityFactorsListed? _factors;
 
-  // Auto-clearing confirmation toast.
+  // Auto-clearing confirmation toast. [_toastIsError] flips the toast
+  // to the negative (red) tone so a fail-closed gateway error can never
+  // be mistaken for a success confirmation.
   String? _toast;
+  bool _toastIsError = false;
   Timer? _toastTimer;
   static const Duration _kToastVisibleDuration = Duration(seconds: 4);
 
@@ -578,17 +574,35 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
     return 'admin-my-account-2fa-$action-$ts-$r-$_idempotencyCounter';
   }
 
-  void _showToast(String message) {
+  void _showToast(String message) => _showToastInternal(message, isError: false);
+
+  /// Negative (red) toast for a fail-closed gateway error.
+  void _showErrorToast(String message) =>
+      _showToastInternal(message, isError: true);
+
+  void _showToastInternal(String message, {required bool isError}) {
     _toastTimer?.cancel();
-    setState(() => _toast = message);
+    setState(() {
+      _toast = message;
+      _toastIsError = isError;
+    });
     _toastTimer = Timer(_kToastVisibleDuration, () {
       if (!mounted) return;
       setState(() => _toast = null);
     });
   }
 
+  DateTime _now() => (widget.now?.call() ?? DateTime.now()).toUtc();
+
   String _friendly(Object error) {
     if (error is AdminSecurityGatewayError) {
+      // Mirror operator-web's freshness gate: a "sign in again" remedy
+      // rather than a generic error when the proxy demands a fresh
+      // step-up before a security-sensitive change.
+      if (error.requiresFreshSignIn) {
+        return 'Please sign in again before changing two-factor sign-in. '
+            'This protects your account settings.';
+      }
       if (error.statusCode == 408) {
         return 'The admin console timed out reaching the security service. '
             'Try again in a moment.';
@@ -682,6 +696,63 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
     }
   }
 
+  /// Schedules a 24-hour delayed removal of the enrolled authenticator,
+  /// mirroring operator-web's manage -> confirm -> request flow. Fails
+  /// closed: on any gateway error we show the red error/toast and leave
+  /// the factor enrolled.
+  Future<void> _handleRequestRemoval(AdminSecurityMfaFactor factor) async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _AdminTurnOffMfaDialog(),
+    );
+    if (!mounted || confirmed != true) return;
+    // One stable key per logical request action, reused on retry so the
+    // proxy idempotency replay returns the original outcome.
+    final key = _mintIdempotencyKey('revoke');
+    try {
+      await gateway.requestFactorRemoval(
+        factorId: factor.factorId,
+        idempotencyKey: key,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showErrorToast(_friendly(error));
+      return;
+    }
+    if (!mounted) return;
+    await _loadFactors();
+    if (!mounted) return;
+    _showToast(
+      'Two-factor sign-in will turn off after a 24-hour wait. You can '
+      'cancel any time before then.',
+    );
+  }
+
+  /// Cancels the pending removal so two-factor sign-in stays on. Fails
+  /// closed: on any gateway error we show the red error/toast and leave
+  /// the pending request in place.
+  Future<void> _handleCancelRemoval(AdminSecurityMfaRemoval removal) async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final key = _mintIdempotencyKey('cancel-removal');
+    try {
+      await gateway.cancelFactorRemoval(
+        requestId: removal.requestId,
+        idempotencyKey: key,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showErrorToast(_friendly(error));
+      return;
+    }
+    if (!mounted) return;
+    await _loadFactors();
+    if (!mounted) return;
+    _showToast('Removal cancelled. Two-factor sign-in stays on.');
+  }
+
   @override
   Widget build(BuildContext context) {
     final lastFresh = widget.session.lastFreshAuthAt;
@@ -747,26 +818,62 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
             buttonLabel: 'Set up authenticator app',
             onPressed: _handleEnroll,
           ),
-        if (factors != null && enrolled)
-          _AdminActionRow(
-            actionKey: const Key('admin_my_account_mfa_recovery_button'),
-            header: 'Two-factor sign-in is on',
-            body:
-                'An authenticator app is protecting your account. If you lose '
-                'access to it, start recovery and we will email the account '
-                'on file with the next step.',
-            buttonLabel: 'Lost your authenticator?',
-            onPressed: _handleRecovery,
-          ),
+        if (factors != null && enrolled) ..._buildEnrolled(factors),
         if (_toast != null) ...[
           const SizedBox(height: 10),
-          _AdminConfirmToast(
-            toastKey: const Key('admin_my_account_two_factor_toast'),
-            message: _toast!,
-          ),
+          if (_toastIsError)
+            _AdminDialogError(
+              key: const Key('admin_my_account_two_factor_toast'),
+              message: _toast!,
+            )
+          else
+            _AdminConfirmToast(
+              toastKey: const Key('admin_my_account_two_factor_toast'),
+              message: _toast!,
+            ),
         ],
       ],
     );
+  }
+
+  /// Enrolled-state body. Always offers recovery; adds either the
+  /// "Turn off two-factor sign-in" action (no pending removal) or the
+  /// pending/scheduled state + "Cancel removal" (a removal is in
+  /// flight). Mirrors operator-web's enrolled -> removalRequested
+  /// stages on the simpler admin card.
+  List<Widget> _buildEnrolled(AdminSecurityFactorsListed factors) {
+    final pending = factors.pendingRemoval;
+    final primaryFactor = factors.factors.first;
+    return <Widget>[
+      _AdminActionRow(
+        actionKey: const Key('admin_my_account_mfa_recovery_button'),
+        header: 'Two-factor sign-in is on',
+        body:
+            'An authenticator app is protecting your account. If you lose '
+            'access to it, start recovery and we will email the account '
+            'on file with the next step.',
+        buttonLabel: 'Lost your authenticator?',
+        onPressed: _handleRecovery,
+      ),
+      const SizedBox(height: 16),
+      if (pending == null)
+        _AdminActionRow(
+          actionKey: const Key('admin_my_account_mfa_turn_off_button'),
+          header: 'Turn off two-factor sign-in',
+          body:
+              'We wait 24 hours before turning off two-factor sign-in so '
+              'that if someone got into your account, you have time to '
+              'stop them. You may be asked to sign in again first.',
+          buttonLabel: 'Turn off two-factor sign-in',
+          onPressed: () => _handleRequestRemoval(primaryFactor),
+        )
+      else
+        _AdminMfaRemovalPending(
+          executeAfter: pending.executeAfter,
+          now: _now(),
+          onCancel: () => _handleCancelRemoval(pending),
+        ),
+    ];
   }
 
   Widget _buildReadOnly() {
@@ -965,21 +1072,12 @@ class _AdminActionRow extends StatelessWidget {
       child: OutlinedButton(
         key: actionKey,
         onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.sunsetDark,
-          disabledForegroundColor: AppColors.textMuted,
-          side: BorderSide(
-            color: onPressed == null
-                ? AppColors.borderSubtle
-                : AppColors.sunsetDark,
-            width: 1,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        style: AdminButtonStyles.secondary(
+          minHeight: 38,
+          borderColor: onPressed == null
+              ? AppColors.borderSubtle
+              : AppColors.sunsetDark,
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          textStyle: AppTextStyles.mono14(
-            color: AppColors.sunsetDark,
-            weight: FontWeight.w600,
-          ),
         ),
         child: Text(buttonLabel),
       ),
@@ -999,6 +1097,95 @@ class _AdminActionRow extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Pending two-factor removal state. Mirrors operator-web's
+/// `removalRequested` stage: a "turns off in" countdown headline, the
+/// 24-hour-wait explainer, the scheduled UTC date, and a "Cancel
+/// removal" action that keeps two-factor sign-in on.
+class _AdminMfaRemovalPending extends StatelessWidget {
+  const _AdminMfaRemovalPending({
+    required this.executeAfter,
+    required this.now,
+    required this.onCancel,
+  });
+
+  final DateTime executeAfter;
+  final DateTime now;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = _formatRemaining(executeAfter, now);
+    return Container(
+      key: const Key('admin_my_account_mfa_removal_pending'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.sunset.withValues(alpha: 0.06),
+        border: Border.all(
+          color: AppColors.sunset.withValues(alpha: 0.35),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Turning off two-factor sign-in',
+            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Two-factor sign-in turns off in $remaining unless you cancel. '
+            'We wait 24 hours so that if someone got into your account, you '
+            'have time to stop them.',
+            style: AppTextStyles.body13(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Scheduled for ${_formatAdminAuditStamp(executeAfter)}',
+            key: const Key('admin_my_account_mfa_removal_scheduled'),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              height: 38,
+              child: OutlinedButton(
+                key: const Key('admin_my_account_mfa_cancel_removal_button'),
+                onPressed: onCancel,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.sunsetDark,
+                  side: const BorderSide(color: AppColors.sunsetDark, width: 1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  textStyle: AppTextStyles.mono14(
+                    color: AppColors.sunsetDark,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+                child: const Text('Cancel removal'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatRemaining(DateTime executeAfter, DateTime now) {
+    final remaining = executeAfter.toUtc().difference(now.toUtc());
+    if (remaining.inMicroseconds <= 0) return 'less than a minute';
+    final hours = remaining.inHours;
+    final minutes = remaining.inMinutes.remainder(60);
+    if (hours > 0) return '${hours}h ${minutes}m';
+    final roundedMinutes = remaining.inMinutes < 1 ? 1 : remaining.inMinutes;
+    return '${roundedMinutes}m';
   }
 }
 
@@ -1458,9 +1645,10 @@ class _AdminActiveSessionsCard extends StatelessWidget {
           onPressed: () => _openManageDialog(context),
           icon: const Icon(Icons.devices_other_outlined, size: 16),
           label: const Text('Manage active sessions here'),
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.sunsetDark,
-            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+          style: AdminButtonStyles.text.copyWith(
+            padding: const WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+            ),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             alignment: Alignment.centerLeft,
           ),
@@ -1639,13 +1827,7 @@ class _AdminActiveSessionsDialogState
           onPressed: _handleLocalSignOut,
           icon: const Icon(Icons.logout_outlined, size: 16),
           label: const Text('Sign out of this session'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.sunsetDark,
-            side: const BorderSide(color: AppColors.sunsetDark),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(6),
-            ),
-          ),
+          style: AdminButtonStyles.secondary(),
         ),
         if (hasGateway)
           OutlinedButton.icon(
@@ -1663,12 +1845,9 @@ class _AdminActiveSessionsDialogState
                   ? 'Signing out everywhere...'
                   : 'Sign out everywhere',
             ),
-            style: OutlinedButton.styleFrom(
+            style: AdminButtonStyles.secondary(
               foregroundColor: AppColors.negative,
-              side: const BorderSide(color: AppColors.negative),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
+              borderColor: AppColors.negative,
             ),
           ),
       ],
@@ -1891,17 +2070,11 @@ class _AdminAuditLogCard extends StatelessWidget {
             onPressed: onOpenAuditLog,
             icon: const Icon(Icons.history, size: 16),
             label: const Text('View audit log'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.sunsetDark,
-              disabledForegroundColor: AppColors.textMuted,
-              side: BorderSide(
-                color: onOpenAuditLog == null
-                    ? AppColors.borderSubtle
-                    : AppColors.sunsetDark,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
+            style: AdminButtonStyles.secondary(
+              minHeight: 38,
+              borderColor: onOpenAuditLog == null
+                  ? AppColors.borderSubtle
+                  : AppColors.sunsetDark,
               padding: const EdgeInsets.symmetric(horizontal: 14),
             ),
           ),
@@ -1973,14 +2146,12 @@ class _AdminSessionRow extends StatelessWidget {
             child: OutlinedButton(
               key: Key('admin_my_account_session_revoke_${entry.sessionId}'),
               onPressed: revoking ? null : onRevoke,
-              style: OutlinedButton.styleFrom(
+              style: AdminButtonStyles.secondary(
                 foregroundColor: AppColors.negative,
-                side: const BorderSide(color: AppColors.negative),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
+                borderColor: AppColors.negative,
+                minWidth: 0,
+                minHeight: 32,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                textStyle: AppTextStyles.mono11(color: AppColors.negative),
               ),
               child: revoking
                   ? const SizedBox(
@@ -2359,121 +2530,104 @@ class _AdminEnrollMfaDialogState extends State<_AdminEnrollMfaDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('admin_enroll_mfa_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Set up your authenticator app',
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Open your authenticator app, add a new account, and either '
-                  'scan the QR code below or paste the secret. Then enter the '
-                  '6-digit code your app shows.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 14),
-                Center(
-                  child: Container(
-                    key: const Key('admin_enroll_mfa_qr'),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(
-                        color: AppColors.borderSubtle,
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: QrImageView(
-                      data: widget.enrollment.otpAuthUrl,
-                      version: QrVersions.auto,
-                      size: 148,
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Setup link',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  widget.enrollment.otpAuthUrl,
-                  key: const Key('admin_enroll_mfa_otpauth'),
-                  style: AppTextStyles.body13(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Secret',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  widget.enrollment.secretBase32,
-                  key: const Key('admin_enroll_mfa_secret'),
-                  style: AppTextStyles.body14(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '6-digit code',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                ),
-                const SizedBox(height: 4),
-                TextField(
-                  key: const Key('admin_enroll_mfa_code_field'),
-                  controller: _codeController,
-                  enabled: !_submitting,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(6),
-                  ],
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 10),
-                  _AdminDialogError(
-                    key: const Key('admin_enroll_mfa_error'),
-                    message: _error!,
-                  ),
-                ],
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      key: const Key('admin_enroll_mfa_cancel'),
-                      onPressed: _submitting
-                          ? null
-                          : () => Navigator.of(context).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      key: const Key('admin_enroll_mfa_confirm'),
-                      onPressed: _canSubmit ? _confirm : null,
-                      child: Text(_submitting ? 'Confirming...' : 'Confirm'),
-                    ),
-                  ],
-                ),
-              ],
+      title: 'Set up your authenticator app',
+      icon: Icons.security_outlined,
+      maxWidth: 540,
+      actions: [
+        TextButton(
+          key: const Key('admin_enroll_mfa_cancel'),
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_enroll_mfa_confirm'),
+          onPressed: _canSubmit ? _confirm : null,
+          child: Text(_submitting ? 'Confirming...' : 'Confirm'),
+        ),
+      ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Open your authenticator app, add a new account, and either '
+              'scan the QR code below or paste the secret. Then enter the '
+              '6-digit code your app shows.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-          ),
+            const SizedBox(height: 14),
+            Center(
+              child: Container(
+                key: const Key('admin_enroll_mfa_qr'),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: QrImageView(
+                  data: widget.enrollment.otpAuthUrl,
+                  version: QrVersions.auto,
+                  size: 148,
+                  backgroundColor: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Setup link',
+              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            ),
+            const SizedBox(height: 4),
+            SelectableText(
+              widget.enrollment.otpAuthUrl,
+              key: const Key('admin_enroll_mfa_otpauth'),
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Secret',
+              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            ),
+            const SizedBox(height: 4),
+            SelectableText(
+              widget.enrollment.secretBase32,
+              key: const Key('admin_enroll_mfa_secret'),
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '6-digit code',
+              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            ),
+            const SizedBox(height: 4),
+            TextField(
+              key: const Key('admin_enroll_mfa_code_field'),
+              controller: _codeController,
+              enabled: !_submitting,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              _AdminDialogError(
+                key: const Key('admin_enroll_mfa_error'),
+                message: _error!,
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -2582,77 +2736,63 @@ class _AdminChangePasswordDialogState
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('admin_change_password_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Change your password',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Enter your current password, then choose a new one. Use at '
-                'least 12 characters with a number and a symbol.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              _PasswordField(
-                fieldKey: const Key('admin_change_password_current'),
-                label: 'Current password',
-                controller: _currentController,
-                enabled: !_submitting,
-              ),
-              const SizedBox(height: 12),
-              _PasswordField(
-                fieldKey: const Key('admin_change_password_new'),
-                label: 'New password',
-                controller: _newController,
-                enabled: !_submitting,
-              ),
-              const SizedBox(height: 12),
-              _PasswordField(
-                fieldKey: const Key('admin_change_password_confirm'),
-                label: 'Confirm new password',
-                controller: _confirmController,
-                enabled: !_submitting,
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                _AdminDialogError(
-                  key: const Key('admin_change_password_error'),
-                  message: _error!,
-                ),
-              ],
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    key: const Key('admin_change_password_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const Key('admin_change_password_save'),
-                    onPressed: _canSubmit ? _submit : null,
-                    child: Text(_submitting ? 'Saving...' : 'Change password'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+      title: 'Change your password',
+      icon: Icons.lock_reset_outlined,
+      maxWidth: 540,
+      actions: [
+        TextButton(
+          key: const Key('admin_change_password_cancel'),
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
         ),
+        FilledButton(
+          key: const Key('admin_change_password_save'),
+          onPressed: _canSubmit ? _submit : null,
+          child: Text(_submitting ? 'Saving...' : 'Change password'),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Enter your current password, then choose a new one. Use at '
+            'least 12 characters with a number and a symbol.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          _PasswordField(
+            fieldKey: const Key('admin_change_password_current'),
+            label: 'Current password',
+            controller: _currentController,
+            enabled: !_submitting,
+          ),
+          const SizedBox(height: 12),
+          _PasswordField(
+            fieldKey: const Key('admin_change_password_new'),
+            label: 'New password',
+            controller: _newController,
+            enabled: !_submitting,
+          ),
+          const SizedBox(height: 12),
+          _PasswordField(
+            fieldKey: const Key('admin_change_password_confirm'),
+            label: 'Confirm new password',
+            controller: _confirmController,
+            enabled: !_submitting,
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            _AdminDialogError(
+              key: const Key('admin_change_password_error'),
+              message: _error!,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -2733,8 +2873,78 @@ class _AdminMfaRecoveryDialogState extends State<_AdminMfaRecoveryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return OperatorWebDialog(
       key: const Key('admin_mfa_recovery_dialog'),
+      title: 'Lost your authenticator?',
+      icon: Icons.help_outline,
+      maxWidth: 540,
+      actions: [
+        TextButton(
+          key: const Key('admin_mfa_recovery_cancel'),
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_mfa_recovery_submit'),
+          onPressed: _canSubmit ? _submit : null,
+          child: Text(_submitting ? 'Requesting...' : 'Request recovery'),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'If you can no longer get codes from your authenticator app, '
+            'we will email the account on file with the next step. A '
+            'Forge & Flow ecosystem admin reviews every recovery '
+            'request.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Account email',
+            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+          ),
+          const SizedBox(height: 4),
+          TextField(
+            key: const Key('admin_mfa_recovery_email_field'),
+            controller: _emailController,
+            enabled: !_submitting,
+            keyboardType: TextInputType.emailAddress,
+            inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            _AdminDialogError(
+              key: const Key('admin_mfa_recovery_error'),
+              message: _error!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Confirm dialog for turning off two-factor sign-in. Mirrors the
+/// operator-web `_handleRequestMfaRemoval` confirm copy + flow: we wait
+/// 24 hours, and the admin may be asked to sign in again. Pops `true`
+/// to proceed with scheduling the delayed removal, `false`/null to keep
+/// two-factor sign-in on.
+class _AdminTurnOffMfaDialog extends StatelessWidget {
+  const _AdminTurnOffMfaDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      key: const Key('admin_mfa_turn_off_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
@@ -2745,61 +2955,39 @@ class _AdminMfaRecoveryDialogState extends State<_AdminMfaRecoveryDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Lost your authenticator?',
+                'Turn off two-factor sign-in?',
                 style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Text(
-                'If you can no longer get codes from your authenticator app, '
-                'we will email the account on file with the next step. A '
-                'Forge & Flow ecosystem admin reviews every recovery '
-                'request.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
+                'We wait 24 hours before turning off two-factor sign-in so '
+                'that if someone got into your account, you have time to '
+                'stop them. You may be asked to sign in again before the '
+                'request is accepted.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Account email',
-                style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-              ),
-              const SizedBox(height: 4),
-              TextField(
-                key: const Key('admin_mfa_recovery_email_field'),
-                controller: _emailController,
-                enabled: !_submitting,
-                keyboardType: TextInputType.emailAddress,
-                inputFormatters: [
-                  FilteringTextInputFormatter.deny(RegExp(r'\s')),
-                ],
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                _AdminDialogError(
-                  key: const Key('admin_mfa_recovery_error'),
-                  message: _error!,
-                ),
-              ],
               const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              // Wrap (not Row) so the longer "Keep two-factor sign-in
+              // on" + "Request removal" labels flow to a second line on
+              // a narrow dialog instead of overflowing.
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   TextButton(
-                    key: const Key('admin_mfa_recovery_cancel'),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
+                    key: const Key('admin_mfa_turn_off_cancel'),
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Keep two-factor sign-in on'),
                   ),
-                  const SizedBox(width: 8),
                   FilledButton(
-                    key: const Key('admin_mfa_recovery_submit'),
-                    onPressed: _canSubmit ? _submit : null,
-                    child: Text(
-                      _submitting ? 'Requesting...' : 'Request recovery',
+                    key: const Key('admin_mfa_turn_off_confirm'),
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.negative,
+                      foregroundColor: AppColors.backgroundSurface,
                     ),
+                    child: const Text('Request removal'),
                   ),
                 ],
               ),

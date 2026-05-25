@@ -208,6 +208,98 @@ void main() {
     expect(find.textContaining('Not used yet'), findsOneWidget);
   });
 
+  testWidgets(
+    'one enroll flow reuses a single idempotency key on begin and confirm',
+    (tester) async {
+      final gateway = _CapturingEnrollGateway();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: _testTheme,
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SettingsMfaSection(
+                gateway: gateway,
+                actor: kDemoMfaActorContext,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('mfa_enroll_totp_button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('mfa_one_time_code_field')),
+        '123456',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('mfa_confirm_enrollment_button')),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('mfa_confirm_enrollment_button')));
+      await tester.pumpAndSettle();
+
+      // Exactly one begin and one confirm for the single attempt.
+      expect(gateway.beginCommands, hasLength(1));
+      expect(gateway.confirmCommands, hasLength(1));
+      final beginKey = gateway.beginCommands.single.idempotencyKey;
+      final confirmKey = gateway.confirmCommands.single.idempotencyKey;
+      // The key is real (not the server-side empty default)...
+      expect(beginKey, isNotEmpty);
+      // ...and confirm replays the SAME key begin used (1 distinct key).
+      expect(confirmKey, equals(beginKey));
+      expect(<String>{beginKey, confirmKey}, hasLength(1));
+    },
+  );
+
+  testWidgets('two separate enroll attempts mint different idempotency keys', (
+    tester,
+  ) async {
+    final gateway = _CapturingEnrollGateway();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _testTheme,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SettingsMfaSection(
+              gateway: gateway,
+              actor: kDemoMfaActorContext,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // First attempt: begin then cancel (no confirm).
+    await tester.tap(find.byKey(const Key('mfa_enroll_totp_button')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('mfa_cancel_enrollment_button')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('mfa_cancel_enrollment_button')));
+    await tester.pumpAndSettle();
+
+    // Second attempt: begin again.
+    await tester.ensureVisible(
+      find.byKey(const Key('mfa_enroll_totp_button')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('mfa_enroll_totp_button')));
+    await tester.pumpAndSettle();
+
+    expect(gateway.beginCommands, hasLength(2));
+    final firstKey = gateway.beginCommands[0].idempotencyKey;
+    final secondKey = gateway.beginCommands[1].idempotencyKey;
+    expect(firstKey, isNotEmpty);
+    expect(secondKey, isNotEmpty);
+    expect(secondKey, isNot(equals(firstKey)));
+  });
+
   testWidgets('remove MFA explains the 24-hour security window', (
     tester,
   ) async {
@@ -528,6 +620,83 @@ class _RecordingMfaGateway implements MfaOperationsGateway {
   ) async {
     listCalls.add(command);
     return const MfaListFactorsCompleted(factors: <MfaFactorSummary>[]);
+  }
+
+  @override
+  Future<MfaRevokeFactorCompleted> revokeFactor(
+    MfaRevokeFactorCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaMarkRecoveryCodesViewedCompleted> markRecoveryCodesViewed(
+    MfaMarkRecoveryCodesViewedCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+}
+
+/// Captures the begin + confirm commands a single enroll flow drives so
+/// tests can assert the one-stable-idempotency-key parity. `listFactors`
+/// returns empty until a confirm lands, then reports the enrolled
+/// factor (mirroring the real refresh-after-confirm behavior).
+class _CapturingEnrollGateway implements MfaOperationsGateway {
+  final List<MfaTotpBeginCommand> beginCommands = <MfaTotpBeginCommand>[];
+  final List<MfaTotpConfirmCommand> confirmCommands = <MfaTotpConfirmCommand>[];
+  bool _enrolled = false;
+
+  @override
+  Future<TotpEnrollmentSetup> beginTotpEnrollment(
+    MfaTotpBeginCommand command,
+  ) async {
+    beginCommands.add(command);
+    return const TotpEnrollmentSetup(
+      factorId: 'factor-session-1',
+      secretBase32: 'JBSWY3DPEHPK3PXP',
+      otpAuthUrl: 'otpauth://totp/Forge:user@example.test?secret=JBSWY3DPEHPK3PXP',
+    );
+  }
+
+  @override
+  Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
+    MfaTotpConfirmCommand command,
+  ) async {
+    confirmCommands.add(command);
+    _enrolled = true;
+    return const MfaTotpConfirmCompleted(factorId: 'totp-db-factor');
+  }
+
+  @override
+  Future<MfaListFactorsCompleted> listFactors(
+    MfaListFactorsCommand command,
+  ) async {
+    return MfaListFactorsCompleted(
+      factors: _enrolled
+          ? <MfaFactorSummary>[
+              MfaFactorSummary(
+                factorId: 'totp-db-factor',
+                factorType: 'totp',
+                enrolledAt: DateTime.utc(2026, 4, 30),
+                issuerLabel: 'Forge & Flow',
+              ),
+            ]
+          : const <MfaFactorSummary>[],
+    );
   }
 
   @override

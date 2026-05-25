@@ -262,6 +262,15 @@ const List<StepUpRouteSpec> kStepUpSensitiveRoutes = <StepUpRouteSpec>[
     label: 'Editing a role requires a fresh sign-in.',
   ),
   StepUpRouteSpec(
+    method: 'POST',
+    path: '/v1/admin/auth/roles/',
+    isPrefix: true,
+    acr: kStepUpDefaultAcr,
+    maxAge: kStepUpDefaultFreshness,
+    challengeTtl: kStepUpDefaultChallengeTtl,
+    label: 'Editing seeded role permissions requires a fresh sign-in.',
+  ),
+  StepUpRouteSpec(
     method: 'DELETE',
     path: '/v1/admin/auth/roles/',
     isPrefix: true,
@@ -367,8 +376,7 @@ const List<StepUpRouteSpec> kStepUpSensitiveRoutes = <StepUpRouteSpec>[
     acr: kStepUpDefaultAcr,
     maxAge: kStepUpDefaultFreshness,
     challengeTtl: kStepUpDefaultChallengeTtl,
-    label:
-        'Editing vendor applicability requires a fresh sign-in.',
+    label: 'Editing vendor applicability requires a fresh sign-in.',
   ),
   StepUpRouteSpec(
     method: 'PATCH',
@@ -377,8 +385,7 @@ const List<StepUpRouteSpec> kStepUpSensitiveRoutes = <StepUpRouteSpec>[
     acr: kStepUpDefaultAcr,
     maxAge: kStepUpDefaultFreshness,
     challengeTtl: kStepUpDefaultChallengeTtl,
-    label:
-        'Editing vendor applicability requires a fresh sign-in.',
+    label: 'Editing vendor applicability requires a fresh sign-in.',
   ),
   StepUpRouteSpec(
     method: 'DELETE',
@@ -387,8 +394,7 @@ const List<StepUpRouteSpec> kStepUpSensitiveRoutes = <StepUpRouteSpec>[
     acr: kStepUpDefaultAcr,
     maxAge: kStepUpDefaultFreshness,
     challengeTtl: kStepUpDefaultChallengeTtl,
-    label:
-        'Editing vendor applicability requires a fresh sign-in.',
+    label: 'Editing vendor applicability requires a fresh sign-in.',
   ),
 ];
 
@@ -712,10 +718,7 @@ class StepUpDispatchChallenge extends StepUpDispatchResult {
 /// Emit a typed 4xx for a bad consume attempt (replay, unknown id,
 /// wrong route, etc.). [statusCode] + [body] go on the wire verbatim.
 class StepUpDispatchReject extends StepUpDispatchResult {
-  const StepUpDispatchReject({
-    required this.statusCode,
-    required this.body,
-  });
+  const StepUpDispatchReject({required this.statusCode, required this.body});
 
   final int statusCode;
   final Map<String, Object?> body;
@@ -731,9 +734,9 @@ class StepUpChallengeRouter {
     StepUpAuditSink? auditSink,
     StepUpPolicy? policy,
     List<StepUpRouteSpec> registry = kStepUpSensitiveRoutes,
-  })  : _auditSink = auditSink ?? const NoopStepUpAuditSink(),
-        _policy = policy ?? const StepUpPolicy(),
-        _registry = registry;
+  }) : _auditSink = auditSink ?? const NoopStepUpAuditSink(),
+       _policy = policy ?? const StepUpPolicy(),
+       _registry = registry;
 
   final StepUpChallengesGateway gateway;
   final StepUpAuditSink _auditSink;
@@ -744,11 +747,7 @@ class StepUpChallengeRouter {
   /// Cheap path lookup so the route layer can skip the heavier
   /// `dispatch` call when the route is not flagged.
   bool isSensitive({required String method, required String path}) {
-    return lookupStepUpRoute(
-          method: method,
-          path: path,
-          registry: _registry,
-        ) !=
+    return lookupStepUpRoute(method: method, path: path, registry: _registry) !=
         null;
   }
 
@@ -890,9 +889,7 @@ class StepUpChallengeRouter {
 
     return StepUpDispatchChallenge(
       statusCode: 401,
-      headers: <String, String>{
-        kStepUpWwwAuthenticateHeader: headerValue,
-      },
+      headers: <String, String>{kStepUpWwwAuthenticateHeader: headerValue},
       body: <String, Object?>{
         'error': kStepUpErrorCode,
         'message': spec.label,
@@ -1029,18 +1026,17 @@ class RepositoryStepUpChallengesGateway implements StepUpChallengesGateway {
     required Duration challengeTtl,
     required String sourceActorKind,
     required String? sourceDeviceFingerprint,
-  }) =>
-      repository.emit(
-        operatorId: operatorId,
-        locationId: locationId,
-        userId: userId,
-        routePath: routePath,
-        requiredAcr: requiredAcr,
-        requiredFreshnessSeconds: requiredFreshnessSeconds,
-        challengeTtl: challengeTtl,
-        sourceActorKind: sourceActorKind,
-        sourceDeviceFingerprint: sourceDeviceFingerprint,
-      );
+  }) => repository.emit(
+    operatorId: operatorId,
+    locationId: locationId,
+    userId: userId,
+    routePath: routePath,
+    requiredAcr: requiredAcr,
+    requiredFreshnessSeconds: requiredFreshnessSeconds,
+    challengeTtl: challengeTtl,
+    sourceActorKind: sourceActorKind,
+    sourceDeviceFingerprint: sourceDeviceFingerprint,
+  );
 
   @override
   Future<StepUpChallengeConsumed?> consume({
@@ -1101,9 +1097,9 @@ class ProductionStepUpAuditSink implements StepUpAuditSink {
     required TenantTransactionWrapper tenantWrapper,
     AuditLogsRepository auditLogsRepository = const AuditLogsRepository(),
     void Function(Object error, StackTrace stackTrace)? onError,
-  })  : _tenantWrapper = tenantWrapper,
-        _auditLogsRepository = auditLogsRepository,
-        _onError = onError;
+  }) : _tenantWrapper = tenantWrapper,
+       _auditLogsRepository = auditLogsRepository,
+       _onError = onError;
 
   final TenantTransactionWrapper _tenantWrapper;
   final AuditLogsRepository _auditLogsRepository;

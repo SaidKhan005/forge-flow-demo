@@ -131,7 +131,7 @@ void main() {
     );
     expect(
       find.text('Showing data accuracy for org unit scope'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Demo Diner Co. / North Region'), findsOneWidget);
     expect(find.text('Inherited from business'), findsOneWidget);

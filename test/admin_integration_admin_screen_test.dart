@@ -20,7 +20,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
-import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/integration_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/integration_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
@@ -97,17 +96,10 @@ void main() {
       find.textContaining('Review global provider health and platform keys'),
       findsOneWidget,
     );
+    expect(find.textContaining('Platform provider keys'), findsOneWidget);
+    expect(find.textContaining('Global vendor API health'), findsOneWidget);
     expect(
-      find.textContaining('model, embedding, database, and email providers'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('global vendor API health'), findsOneWidget);
-    expect(
-      find.textContaining('per-location vendor integrations'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('operator edits live on Operator Web'),
+      find.textContaining('Operator edits stay on Operator Web'),
       findsWidgets,
     );
     expect(
@@ -125,14 +117,15 @@ void main() {
     expect(find.text('POS'), findsOneWidget);
     expect(find.text('Labor'), findsOneWidget);
     expect(find.text('Reservation'), findsOneWidget);
+    expect(find.textContaining('/7 reachable'), findsWidgets);
     expect(find.text('API pending'), findsWidgets);
     expect(find.text('Documented'), findsNothing);
     expect(
       find.textContaining('Source: Gateway API reachability check'),
-      findsWidgets,
+      findsNothing,
     );
     expect(
-      find.textContaining('Setup: Vendor setup waits for reachable API access'),
+      find.textContaining('Vendor setup waits for reachable API access'),
       findsWidgets,
     );
     expect(
@@ -143,40 +136,18 @@ void main() {
     expect(find.textContaining('kms://'), findsNothing);
   });
 
-  testWidgets('renders selected hierarchy context for vendor reachability', (
-    tester,
-  ) async {
+  testWidgets('does not render selected hierarchy context', (tester) async {
     final gateway = InMemoryIntegrationAdminGateway();
     await tester.pumpWidget(
-      wrap(
-        Scaffold(
-          body: IntegrationAdminScreen(
-            gateway: gateway,
-            hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
-              operatorId: 'op-a',
-              orgUnitId: 'ou-1',
-              operatorName: 'Demo Diner',
-              orgUnitName: 'Downtown',
-            ),
-            scopeLocationIds: const <String>{'loc-a', 'loc-b'},
-          ),
-        ),
-      ),
+      wrap(Scaffold(body: IntegrationAdminScreen(gateway: gateway))),
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
-    // The shared scope notice keeps the platform-key caveat inside its
-    // "Section details" expander (collapsed by default). Expand it, then
-    // assert the same caveat is present verbatim.
-    await tester.tap(
-      find.byKey(const Key('admin_integration_scope_notice_details_toggle')),
-    );
-    await tester.pumpAndSettle();
     expect(
-      find.textContaining('Platform service keys remain shared ecosystem keys'),
-      findsOneWidget,
+      find.byKey(const Key('admin_integrations_scope_note')),
+      findsNothing,
     );
+    expect(find.text('Where this applies'), findsNothing);
   });
 
   testWidgets('groups vendor catalog rows using gateway category semantics', (
@@ -235,7 +206,7 @@ void main() {
     expect(find.text('API reachable'), findsOneWidget);
     expect(
       find.textContaining('Mocked gateway reachability seam'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.textContaining('Vendor setup unlocked'), findsOneWidget);
   });

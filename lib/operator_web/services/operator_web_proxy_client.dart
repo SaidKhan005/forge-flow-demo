@@ -128,11 +128,18 @@ class OperatorWebProxyClient {
     required String idToken,
     required String email,
     String issuerName = 'Forge & Flow',
+    String? idempotencyKey,
   }) async {
+    // G60 — when the caller supplies a stable [idempotencyKey] it flows
+    // through `extraHeaders` so begin + confirm of ONE enroll attempt
+    // share the SAME `Idempotency-Key`. When it is null the byte-for-byte
+    // legacy path runs: `_applyHeaders` auto-mints a fresh random key per
+    // call (`_idempotencyKeyFactory()`), exactly as before this change.
     final response = await postJson(
       authMfaTotpBeginPath,
       idToken: idToken,
       body: <String, Object?>{'user_email': email, 'issuer_name': issuerName},
+      extraHeaders: _idempotencyHeader(idempotencyKey),
     );
     final factorId = _readString(response.body['factor_id']);
     final secret = _readString(response.body['secret_base32']);
@@ -155,7 +162,12 @@ class OperatorWebProxyClient {
     required String factorId,
     required String oneTimeCode,
     String issuerName = 'Forge & Flow',
+    String? idempotencyKey,
   }) async {
+    // G60 — see [beginTotpEnrollment]. A retried confirm of the SAME
+    // enroll attempt replays the SAME caller-stable key so the proxy
+    // `proxy_requests` UNIQUE guard returns the original outcome instead
+    // of treating it as a new write. Null key → unchanged auto-mint path.
     await postJson(
       authMfaTotpConfirmPath,
       idToken: idToken,
@@ -164,7 +176,20 @@ class OperatorWebProxyClient {
         'one_time_code': oneTimeCode,
         'issuer_name': issuerName,
       },
+      extraHeaders: _idempotencyHeader(idempotencyKey),
     );
+  }
+
+  /// G60 — builds the `extraHeaders` map for an optional caller-stable
+  /// idempotency key. Returns an empty map when [idempotencyKey] is null
+  /// or blank so `_applyHeaders` falls back to its auto-mint (the
+  /// behavior is byte-identical to never passing `extraHeaders` at all).
+  static Map<String, String> _idempotencyHeader(String? idempotencyKey) {
+    final trimmed = idempotencyKey?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return const <String, String>{};
+    }
+    return <String, String>{'Idempotency-Key': trimmed};
   }
 
   /// POST to [path] with a JSON [body] but WITHOUT an Authorization
@@ -426,7 +451,7 @@ class OperatorWebProxyClient {
   }
 
   static String _canonicalisePart(Object? part) {
-    if (part == null) return ' ';
+    if (part == null) return ' ';
     if (part is Map) {
       final sortedKeys = part.keys
           .map((key) => key.toString())
@@ -447,6 +472,23 @@ class OperatorWebProxyClient {
       bytes[i] = random.nextInt(256);
     }
     return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
+  /// G60 — mints ONE caller-stable idempotency key for a single logical
+  /// [action] CHAIN (e.g. a TOTP enroll's begin + confirm). Unlike
+  /// [stableIdempotencyKey], this is NOT deterministic on a payload: each
+  /// call yields a DISTINCT key (wall-clock microseconds + a fresh secure
+  /// random) so two separate enroll attempts never collide, while the
+  /// SAME returned value is meant to be reused across the begin and the
+  /// confirm of ONE attempt so a retried confirm replays against the
+  /// proxy `proxy_requests` UNIQUE guard. Mirrors the admin
+  /// `_mintIdempotencyKey` shape. WEB-SAFE: uses `nextInt(0x7fffffff)`,
+  /// never a 32-bit-overflowing left shift (which JS evaluates to 0 and
+  /// makes `Random.nextInt` throw a RangeError on the web).
+  static String mintActionChainIdempotencyKey(String action) {
+    final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
+    final r = math.Random.secure().nextInt(0x7fffffff).toRadixString(36);
+    return 'op-web-$action-$ts-$r';
   }
 }
 

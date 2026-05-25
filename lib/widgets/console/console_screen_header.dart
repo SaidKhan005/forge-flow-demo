@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import 'console_action_bar.dart';
+import 'console_header_visibility.dart';
 
 /// Shared screen-level identity header for the operator-web console.
 ///
@@ -59,6 +61,17 @@ class OperatorWebScreenHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final suppressTitle = ConsoleHeaderVisibility.suppressTitleOf(context);
+    if (suppressTitle && actions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final actionBar = OperatorWebActionBar(children: actions);
+
+    if (suppressTitle) {
+      return actionBar;
+    }
+
     final titleBlock = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -90,13 +103,6 @@ class OperatorWebScreenHeader extends StatelessWidget {
     );
 
     if (actions.isEmpty) return titleBlock;
-
-    final actionBar = Wrap(
-      spacing: 10,
-      runSpacing: 8,
-      alignment: WrapAlignment.end,
-      children: actions,
-    );
 
     return LayoutBuilder(
       builder: (context, constraints) {

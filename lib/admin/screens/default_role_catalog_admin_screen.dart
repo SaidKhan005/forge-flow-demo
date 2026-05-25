@@ -203,13 +203,16 @@ class _DefaultRoleCatalogAdminScreenState
       if (!mounted) return;
       setState(() {
         _listing = listing;
-        _draft = _draftFromPayload(listing.current?.payload);
+        _draft = _draftFromPayload(
+          listing.current?.payload ?? defaultRoleCatalogStarterPayload(),
+        );
         _loading = false;
       });
     } on DefaultRoleCatalogAdminGatewayError catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = 'Could not load the default role catalog '
+        _loadError =
+            'Could not load the default role catalog '
             '(${error.errorCode}). Try again in a moment.';
         _loading = false;
       });
@@ -291,7 +294,9 @@ class _DefaultRoleCatalogAdminScreenState
 
   void _discardDraft() {
     setState(() {
-      _draft = _draftFromPayload(_listing?.current?.payload);
+      _draft = _draftFromPayload(
+        _listing?.current?.payload ?? defaultRoleCatalogStarterPayload(),
+      );
     });
   }
 
@@ -434,7 +439,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return const OperatorWebScreenHeader(
       icon: Icons.shield_outlined,
-      title: 'Default roles',
+      title: 'Default role catalog',
       collapseBelowWidth: 0,
       subtitle:
           'Edit the starter role set every Forge & Flow business begins '
@@ -492,7 +497,8 @@ class _CurrentVersionPanel extends StatelessWidget {
         title: 'No default catalog published yet',
         child: Text(
           'Forge & Flow is using the built-in starter roles. Publish '
-          'a first version to put the catalog under change control.',
+          'a first version from the editable draft below to put the '
+          'catalog under change control.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       );
@@ -591,9 +597,7 @@ class _DraftEditorPanel extends StatelessWidget {
         children: <Widget>[
           if (draft.isEmpty)
             Padding(
-              key: const Key(
-                'admin_default_role_catalog_draft_empty',
-              ),
+              key: const Key('admin_default_role_catalog_draft_empty'),
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Text(
                 'Draft is empty. Add at least one role to publish.',
@@ -626,9 +630,7 @@ class _DraftEditorPanel extends StatelessWidget {
                 ),
               if (canEdit && !draftEqualsCurrent)
                 OutlinedButton(
-                  key: const Key(
-                    'admin_default_role_catalog_discard_draft',
-                  ),
+                  key: const Key('admin_default_role_catalog_discard_draft'),
                   onPressed: onDiscardDraft,
                   style: AdminButtonStyles.secondary(
                     foregroundColor: AppColors.textPrimary,
@@ -696,9 +698,9 @@ class _RoleEditorRow extends StatelessWidget {
     } else {
       explicit.remove(key);
     }
-    final expanded =
-        PermissionKeyMetadataCatalog.expandImplies(explicit).toList()
-          ..sort();
+    final expanded = PermissionKeyMetadataCatalog.expandImplies(
+      explicit,
+    ).toList()..sort();
     // Preserve any non-allow rules (deny, future shapes) from the
     // existing list so the editor stays additive.
     final preserved = <Object?>[];
@@ -725,8 +727,9 @@ class _RoleEditorRow extends StatelessWidget {
     final description = (role['description'] as String?) ?? '';
     final permissions = (role['permissions'] as List?) ?? const <Object?>[];
     final explicitAllow = _allowKeysFromPermissions(permissions);
-    final displayedAllow =
-        PermissionKeyMetadataCatalog.expandImplies(explicitAllow);
+    final displayedAllow = PermissionKeyMetadataCatalog.expandImplies(
+      explicitAllow,
+    );
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
@@ -749,7 +752,8 @@ class _RoleEditorRow extends StatelessWidget {
                   label: 'Role key',
                   initial: roleKey,
                   enabled: canEdit,
-                  onChanged: (value) => onUpdate?.call(index, 'role_key', value),
+                  onChanged: (value) =>
+                      onUpdate?.call(index, 'role_key', value),
                   hint: 'lowercase_snake_case',
                 ),
               ),
@@ -769,9 +773,7 @@ class _RoleEditorRow extends StatelessWidget {
               ),
               if (canEdit && onRemove != null)
                 IconButton(
-                  key: Key(
-                    'admin_default_role_catalog_draft_remove_$index',
-                  ),
+                  key: Key('admin_default_role_catalog_draft_remove_$index'),
                   tooltip: 'Remove role',
                   onPressed: () => onRemove!(index),
                   icon: const Icon(
@@ -796,9 +798,7 @@ class _RoleEditorRow extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           RolePermissionPickerCard(
-            key: Key(
-              'admin_default_role_catalog_draft_permissions_$index',
-            ),
+            key: Key('admin_default_role_catalog_draft_permissions_$index'),
             selected: displayedAllow,
             explicit: explicitAllow,
             // Default-catalog roles are business-scoped (org-wide
@@ -841,8 +841,9 @@ class _Field extends StatelessWidget {
       children: <Widget>[
         Text(
           label,
-          style: AppTextStyles.mono10(color: AppColors.textSecondary)
-              .copyWith(fontWeight: FontWeight.w700),
+          style: AppTextStyles.mono10(
+            color: AppColors.textSecondary,
+          ).copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 2),
         TextFormField(
@@ -941,9 +942,7 @@ class _HistoryRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.backgroundDeep,
         border: Border.all(
-          color: version.isCurrent
-              ? AppColors.sunset
-              : AppColors.borderSubtle,
+          color: version.isCurrent ? AppColors.sunset : AppColors.borderSubtle,
           width: version.isCurrent ? 1.2 : 1,
         ),
         borderRadius: BorderRadius.circular(6),
@@ -978,8 +977,9 @@ class _HistoryRow extends StatelessWidget {
                             if (version.isCurrent)
                               _Pill(
                                 label: 'Current',
-                                background: AppColors.positive
-                                    .withValues(alpha: 0.15),
+                                background: AppColors.positive.withValues(
+                                  alpha: 0.15,
+                                ),
                                 foreground: AppColors.positive,
                               ),
                           ],
@@ -1089,8 +1089,9 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono10(color: foreground)
-            .copyWith(fontWeight: FontWeight.w700),
+        style: AppTextStyles.mono10(
+          color: foreground,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }

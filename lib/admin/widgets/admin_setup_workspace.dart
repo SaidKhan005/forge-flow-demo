@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_header_visibility.dart';
 
 import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
-import 'admin_business_accounts_back_button.dart';
 import 'admin_responsive_layout.dart';
 import 'admin_scope_tree_pane.dart';
 
@@ -179,7 +179,10 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
                 key: const ValueKey<String>(
                   'admin_setup_function_all_businesses',
                 ),
-                child: widget.allBusinessesBuilder!(context),
+                child: ConsoleHeaderVisibility(
+                  suppressTitle: widget.showWorkspaceHeader,
+                  child: widget.allBusinessesBuilder!(context),
+                ),
               );
             } else if (_selectedScope == null) {
               functionChild = null;
@@ -188,17 +191,18 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
                 key: ValueKey<String>(
                   'admin_setup_function_${_selectedScope!.cacheKey}',
                 ),
-                child: widget.functionBuilder(
-                  context,
-                  _selectedScope!,
-                  selection!,
+                child: ConsoleHeaderVisibility(
+                  suppressTitle: widget.showWorkspaceHeader,
+                  child: widget.functionBuilder(
+                    context,
+                    _selectedScope!,
+                    selection!,
+                  ),
                 ),
               );
             }
             final functionPane = _FunctionPane(
               title: widget.functionTitle,
-              description: widget.description,
-              selectedScope: _selectedScope,
               onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
               showWorkspaceHeader: widget.showWorkspaceHeader,
               child: functionChild,
@@ -248,16 +252,12 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
 class _FunctionPane extends StatelessWidget {
   const _FunctionPane({
     required this.title,
-    required this.description,
-    required this.selectedScope,
     required this.onBackToBusinessAccounts,
     required this.showWorkspaceHeader,
     required this.child,
   });
 
   final String title;
-  final String? description;
-  final AdminHierarchyScopeIntent? selectedScope;
   final VoidCallback? onBackToBusinessAccounts;
   final bool showWorkspaceHeader;
   final Widget? child;
@@ -271,122 +271,95 @@ class _FunctionPane extends StatelessWidget {
           ? Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
-                child: AdminCard(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: AppTextStyles.sectionTitle(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Select a business, org unit, or location to open this setup function.',
-                        style: AppTextStyles.body13(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          : showWorkspaceHeader
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _WorkspaceHeader(
+                child: _PickBusinessFirstState(
                   title: title,
-                  description: description,
-                  selectedScope: selectedScope,
                   onBackToBusinessAccounts: onBackToBusinessAccounts,
                 ),
-                Expanded(child: child!),
-              ],
+              ),
             )
           : child!,
     );
   }
 }
 
-class _WorkspaceHeader extends StatelessWidget {
-  const _WorkspaceHeader({
+class _PickBusinessFirstState extends StatelessWidget {
+  const _PickBusinessFirstState({
     required this.title,
-    required this.description,
-    required this.selectedScope,
     required this.onBackToBusinessAccounts,
   });
 
   final String title;
-  final String? description;
-
-  /// Null means the platform-wide "All businesses" selection (no single
-  /// hierarchy scope). The header then names the platform-wide view
-  /// instead of a specific business / org unit / location.
-  final AdminHierarchyScopeIntent? selectedScope;
   final VoidCallback? onBackToBusinessAccounts;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_setup_workspace_header'),
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
-      ),
-      child: Row(
+    return AdminCard(
+      key: const Key('admin_setup_workspace_pick_business_first_state'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.sunset.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.apartment_outlined,
+                  size: 20,
+                  color: AppColors.sunsetDark,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pick a business first',
+                      style: AppTextStyles.sectionTitle(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$title needs a selected business account before it can open.',
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Open Business accounts, choose the business, then this tab will load with that business selected.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
           if (onBackToBusinessAccounts != null) ...[
-            AdminBusinessAccountsBackButton(
-              onPressed: onBackToBusinessAccounts!,
+            const SizedBox(height: 18),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                key: const Key(
+                  'admin_setup_workspace_pick_business_first_link',
+                ),
+                onPressed: onBackToBusinessAccounts,
+                icon: const Icon(Icons.apartment_outlined, size: 18),
+                label: const Text('Open Business accounts'),
+              ),
             ),
-            const SizedBox(width: 10),
           ],
-          const Icon(
-            Icons.account_tree_outlined,
-            size: 22,
-            color: AppColors.sunsetDark,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                if (description != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    description!,
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                ],
-                const SizedBox(height: 6),
-                Text(
-                  selectedScope == null
-                      ? 'Scope: All businesses (every business on the platform)'
-                      : 'Selected ${selectedScope!.scopeType.label.toLowerCase()} scope: ${selectedScope!.displayLabel}',
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
   }
 }
-
