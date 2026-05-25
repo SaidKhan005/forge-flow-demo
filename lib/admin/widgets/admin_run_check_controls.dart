@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
 import 'admin_responsive_layout.dart';
 
@@ -199,40 +200,11 @@ class AdminRunCheckConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: dialogKey,
-      scrollable: true,
-      titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
-      contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 8),
-      actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      title: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _RunCheckIconBadge(icon: icon, compact: true),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: AppTextStyles.display20(color: AppColors.textPrimary),
-            ),
-          ),
-        ],
-      ),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              description,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 14),
-            _RunCheckFactPanel(facts: facts),
-          ],
-        ),
-      ),
+      title: title,
+      icon: icon,
+      maxWidth: 520,
       actions: [
         OutlinedButton(
           key: cancelButtonKey,
@@ -248,19 +220,32 @@ class AdminRunCheckConfirmDialog extends StatelessWidget {
           label: Text(confirmLabel),
         ),
       ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              description,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            _RunCheckFactPanel(facts: facts),
+          ],
+        ),
+      ),
     );
   }
 }
 
 class _RunCheckIconBadge extends StatelessWidget {
-  const _RunCheckIconBadge({required this.icon, this.compact = false});
+  const _RunCheckIconBadge({required this.icon});
 
   final IconData icon;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final size = compact ? 36.0 : 44.0;
+    const size = 44.0;
     return Container(
       width: size,
       height: size,
@@ -269,7 +254,7 @@ class _RunCheckIconBadge extends StatelessWidget {
         border: Border.all(color: AppColors.sunset.withValues(alpha: 0.45)),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(icon, size: compact ? 18 : 20, color: AppColors.sunsetDark),
+      child: Icon(icon, size: 20, color: AppColors.sunsetDark),
     );
   }
 }

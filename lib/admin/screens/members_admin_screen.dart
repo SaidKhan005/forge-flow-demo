@@ -516,7 +516,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       builder: (_) => _DisplayNameEditDialog(row: row),
     );
     if (result == null) return;
-    final emailChanged = result.email != null &&
+    final emailChanged =
+        result.email != null &&
         result.email!.trim().toLowerCase() != row.email.toLowerCase();
     final displayNameChanged =
         result.displayName.trim() != row.displayName.trim();
@@ -769,10 +770,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       builder: (context) => AlertDialog(
         key: const Key('admin_members_cancel_invite_confirm'),
         backgroundColor: AppColors.backgroundSurface,
-        title: Text(
-          'Cancel invite',
-          style: AdminButtonStyles.dialogTitleStyle,
-        ),
+        title: Text('Cancel invite', style: AdminButtonStyles.dialogTitleStyle),
         content: Text(
           'Cancel the pending invite for ${invite.email}? Their link will '
           'stop working. You can send a new invite later if they still '
@@ -795,7 +793,9 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final reason = await _promptAdminReason('Cancel invite for ${invite.email}');
+    final reason = await _promptAdminReason(
+      'Cancel invite for ${invite.email}',
+    );
     if (reason == null) return;
     setState(() => _busyInviteIds.add(invite.inviteId));
     try {
@@ -1242,10 +1242,7 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
           : OutlinedButton.icon(
               key: const Key('admin_members_clear_filters'),
               onPressed: widget.onClearFilters,
-              style: AdminButtonStyles.secondary(
-                minWidth: 120,
-                minHeight: 40,
-              ),
+              style: AdminButtonStyles.secondary(minWidth: 120, minHeight: 40),
               icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
               label: const Text('Clear filters'),
             ),
@@ -2077,90 +2074,11 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_members_display_name_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Edit member',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              widget.row.email,
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_members_email_field'),
-              controller: _emailController,
-              textInputAction: TextInputAction.next,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(
-                labelText: 'Email',
-                border: const OutlineInputBorder(),
-                errorText: _emailViolated
-                    ? MembersValidationCopy.emailMalformed
-                    : null,
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            if (_emailChanged()) ...<Widget>[
-              const SizedBox(height: 8),
-              CheckboxListTile(
-                key: const Key('admin_members_email_confirm'),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                title: Text(
-                  'Confirm: change this teammate’s sign-in email.',
-                  style: AppTextStyles.body13(color: AppColors.textPrimary),
-                ),
-                subtitle: _confirmEmailViolated
-                    ? Text(
-                        'You must confirm before saving an email change.',
-                        style:
-                            AppTextStyles.body12(color: AppColors.negative),
-                      )
-                    : null,
-                value: _confirmEmail,
-                onChanged: (v) => setState(() => _confirmEmail = v ?? false),
-              ),
-            ],
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_members_display_name_field'),
-              controller: _nameController,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                labelText: 'Display name',
-                border: const OutlineInputBorder(),
-                errorText: _nameViolated
-                    ? MembersValidationCopy.displayNameEmpty
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_members_display_name_reason'),
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _reasonViolated
-                    ? 'Add a reason before continuing.'
-                    : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: 'Edit member',
+      icon: Icons.person_outline,
+      maxWidth: 540,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_members_display_name_cancel'),
@@ -2174,6 +2092,79 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
           child: const Text('Save'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            widget.row.email,
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_members_email_field'),
+            controller: _emailController,
+            textInputAction: TextInputAction.next,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              labelText: 'Email',
+              border: const OutlineInputBorder(),
+              errorText: _emailViolated
+                  ? MembersValidationCopy.emailMalformed
+                  : null,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          if (_emailChanged()) ...<Widget>[
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              key: const Key('admin_members_email_confirm'),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              dense: true,
+              title: Text(
+                'Confirm: change this teammate’s sign-in email.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+              subtitle: _confirmEmailViolated
+                  ? Text(
+                      'You must confirm before saving an email change.',
+                      style: AppTextStyles.body12(color: AppColors.negative),
+                    )
+                  : null,
+              value: _confirmEmail,
+              onChanged: (v) => setState(() => _confirmEmail = v ?? false),
+            ),
+          ],
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_members_display_name_field'),
+            controller: _nameController,
+            textInputAction: TextInputAction.next,
+            decoration: InputDecoration(
+              labelText: 'Display name',
+              border: const OutlineInputBorder(),
+              errorText: _nameViolated
+                  ? MembersValidationCopy.displayNameEmpty
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_members_display_name_reason'),
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _reasonViolated
+                  ? 'Add a reason before continuing.'
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2220,37 +2211,11 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_members_reason_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              'The operator will see this reason in their audit log. '
-              'Write a short, plain-English note about why you are '
-              'making this change.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_members_reason_field'),
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _violated ? 'Add a reason before continuing.' : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: widget.title,
+      icon: Icons.edit_note,
+      maxWidth: 520,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_members_reason_cancel'),
@@ -2264,6 +2229,30 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
           child: const Text('Confirm'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'The operator will see this reason in their audit log. '
+            'Write a short, plain-English note about why you are '
+            'making this change.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_members_reason_field'),
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _violated ? 'Add a reason before continuing.' : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2413,82 +2402,11 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_members_override_role_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Override role grant for ${widget.targetDisplayName}',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              "Reassigns this member's role directly. The operator's "
-              'normal role-assignment workflow is skipped. The new '
-              'role takes effect immediately.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: const Key('admin_members_override_role_select'),
-              initialValue: _selectedRoleId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'New role',
-                border: OutlineInputBorder(),
-              ),
-              items: <DropdownMenuItem<String>>[
-                for (final role in _roleChoices)
-                  DropdownMenuItem<String>(
-                    value: role.roleId,
-                    child: Text(role.label),
-                  ),
-              ],
-              onChanged: (v) {
-                if (v == null) return;
-                setState(() => _selectedRoleId = v);
-              },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: const Key('admin_members_override_role_scope'),
-              initialValue: _selectedScopeId,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: 'Grant scope',
-                border: const OutlineInputBorder(),
-                errorText: _violated && _selectedScope == null
-                    ? 'Choose a scope for this role grant.'
-                    : null,
-              ),
-              items: <DropdownMenuItem<String>>[
-                for (final scope in widget.accessScopes)
-                  DropdownMenuItem<String>(
-                    value: scope.id,
-                    child: Text(scope.label),
-                  ),
-              ],
-              onChanged: (v) => setState(() => _selectedScopeId = v),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_members_override_role_reason'),
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _violated ? 'Add a reason before continuing.' : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: 'Override role grant for ${widget.targetDisplayName}',
+      icon: Icons.admin_panel_settings_outlined,
+      maxWidth: 540,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_members_override_role_cancel'),
@@ -2502,6 +2420,72 @@ class _OverrideRoleDialogState extends State<_OverrideRoleDialog> {
           child: const Text('Apply override'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            "Reassigns this member's role directly. The operator's "
+            'normal role-assignment workflow is skipped. The new '
+            'role takes effect immediately.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            key: const Key('admin_members_override_role_select'),
+            initialValue: _selectedRoleId,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'New role',
+              border: OutlineInputBorder(),
+            ),
+            items: <DropdownMenuItem<String>>[
+              for (final role in _roleChoices)
+                DropdownMenuItem<String>(
+                  value: role.roleId,
+                  child: Text(role.label),
+                ),
+            ],
+            onChanged: (v) {
+              if (v == null) return;
+              setState(() => _selectedRoleId = v);
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            key: const Key('admin_members_override_role_scope'),
+            initialValue: _selectedScopeId,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'Grant scope',
+              border: const OutlineInputBorder(),
+              errorText: _violated && _selectedScope == null
+                  ? 'Choose a scope for this role grant.'
+                  : null,
+            ),
+            items: <DropdownMenuItem<String>>[
+              for (final scope in widget.accessScopes)
+                DropdownMenuItem<String>(
+                  value: scope.id,
+                  child: Text(scope.label),
+                ),
+            ],
+            onChanged: (v) => setState(() => _selectedScopeId = v),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_members_override_role_reason'),
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _violated ? 'Add a reason before continuing.' : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

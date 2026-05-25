@@ -92,7 +92,7 @@ class _AdminScopePickerState extends State<AdminScopePicker> {
       context: context,
       title: 'Choose business',
       icon: Icons.place_outlined,
-      maxWidth: 420,
+      maxWidth: 620,
       // Actions live inside the body (search + list); the dialog action
       // row only needs a single dismiss control.
       actions: <Widget>[
@@ -150,8 +150,7 @@ class _AdminScopeTrigger extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final showLabel =
-            !compact && constraints.maxWidth >= _kLabelWidthFloor;
+        final showLabel = !compact && constraints.maxWidth >= _kLabelWidthFloor;
         return Material(
           key: const Key('admin_scope_picker_trigger'),
           color: AppColors.backgroundSurface.withValues(alpha: 0.88),
@@ -676,9 +675,7 @@ class _AdminScopeRecentRow extends StatelessWidget {
     return _AdminScopeRow(
       key: Key('admin_scope_picker_recent_${scope.cacheKey}'),
       icon: scopeIcon(
-        kind: isLocation
-            ? ScopeEntityKind.location
-            : ScopeEntityKind.business,
+        kind: isLocation ? ScopeEntityKind.location : ScopeEntityKind.business,
       ),
       title: adminScopeTriggerValueLabel(scope),
       subtitle: isLocation ? 'Location' : 'Business: all locations',
@@ -758,11 +755,7 @@ class _AdminScopeRow extends StatelessWidget {
                 ),
               ),
               if (selected)
-                const Icon(
-                  Icons.check,
-                  size: 16,
-                  color: AppColors.sunsetDark,
-                ),
+                const Icon(Icons.check, size: 16, color: AppColors.sunsetDark),
             ],
           ),
         ),
@@ -773,7 +766,11 @@ class _AdminScopeRow extends StatelessWidget {
 
 /// Disclosure chevron for a business row's locations.
 class _AdminScopeExpander extends StatelessWidget {
-  const _AdminScopeExpander({super.key, required this.expanded, required this.onTap});
+  const _AdminScopeExpander({
+    super.key,
+    required this.expanded,
+    required this.onTap,
+  });
 
   final bool expanded;
   final VoidCallback onTap;
