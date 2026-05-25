@@ -1,9 +1,8 @@
-// Phase 11A.13 - F&F Operations Console "Roles + Hierarchy"
+// Phase 11A.13 - F&F Operations Console "Roles + permissions"
 // inspect surface.
 //
-// Cross-operator inspect with two tabs (Roles / Hierarchy) for the
-// F&F admin to inspect and audit-edit role catalog and org-unit
-// hierarchy for the picked operator. Active sessions now live under
+// Cross-operator inspect for the F&F admin to inspect and audit-edit
+// the picked operator's role catalog. Active sessions now live under
 // Security/audit/sessions; the reusable panel remains in this file
 // because it shares the roles/hierarchy/sessions gateway contract.
 //
@@ -14,7 +13,6 @@
 //
 // Authority: docs/contracts/team_roles_hierarchy_console_parity_contract.md
 // "§ Roles + Permission Explainer (11W.2 + 11A.13 Roles tab)" +
-// "§ Hierarchy (11W.3 + 11A.13 Hierarchy tab)" +
 // "§ Sessions (11W.4 + 11A.13 Sessions tab)" +
 // "§ Operator self-service vs F&F admin path" +
 // "§ Idempotency keys" + "§ Audit-row shape".
@@ -28,12 +26,9 @@ import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../auth/permission_key_metadata.dart';
 import '../../auth/permission_keys.dart';
-import '../../domain/hierarchy/org_unit_depth_rule.dart';
-import '../../domain/models/inheritance_tree_node.dart';
 import '../../services/auth/custom_role_validator.dart';
 import '../../services/auth/role_key_generator.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/inheritance_tree.dart';
 import '../../widgets/role_permission_picker.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
@@ -89,26 +84,14 @@ class RolesHierarchySessionsAdminScreen extends StatefulWidget {
 }
 
 class _RolesHierarchySessionsAdminScreenState
-    extends State<RolesHierarchySessionsAdminScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController = TabController(
-    length: 2,
-    vsync: this,
-  );
-
+    extends State<RolesHierarchySessionsAdminScreen> {
   bool _rolesLoading = true;
-  bool _hierarchyLoading = false;
   bool _rolesLoaded = false;
-  bool _hierarchyLoaded = false;
   String? _rolesLoadError;
-  String? _hierarchyLoadError;
   String? _actionError;
 
   List<RoleAdminRow> _roles = const <RoleAdminRow>[];
-  List<OrgUnitAdminNode> _orgUnits = const <OrgUnitAdminNode>[];
-  List<HierarchyLocationLeaf> _locations = const <HierarchyLocationLeaf>[];
   int _rolesGeneration = 0;
-  int _hierarchyGeneration = 0;
 
   int _idempotencyCounter = 0;
 
@@ -123,28 +106,7 @@ class _RolesHierarchySessionsAdminScreenState
   @override
   void initState() {
     super.initState();
-    _tabController.addListener(_ensureCurrentTabLoaded);
     _refreshRoles();
-  }
-
-  @override
-  void dispose() {
-    _tabController.removeListener(_ensureCurrentTabLoaded);
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  void _ensureCurrentTabLoaded() {
-    switch (_tabController.index) {
-      case 0:
-        if (!_rolesLoaded && !_rolesLoading) {
-          _refreshRoles();
-        }
-      case 1:
-        if (!_hierarchyLoaded && !_hierarchyLoading) {
-          _refreshHierarchy();
-        }
-    }
   }
 
   Future<void> _refreshRoles() async {
@@ -184,49 +146,6 @@ class _RolesHierarchySessionsAdminScreenState
     }
   }
 
-  Future<void> _refreshHierarchy() async {
-    final generation = ++_hierarchyGeneration;
-    setState(() {
-      _hierarchyLoading = true;
-      _hierarchyLoadError = null;
-    });
-    try {
-      final operatorId = widget.pickedOperator.operatorId;
-      final results = await Future.wait<Object>([
-        widget.gateway.listOrgUnits(operatorId: operatorId),
-        widget.gateway.listHierarchyLocations(operatorId: operatorId),
-      ]);
-      if (generation != _hierarchyGeneration) return;
-      final orgUnits = results[0] as List<OrgUnitAdminNode>;
-      final locations = results[1] as List<HierarchyLocationLeaf>;
-      if (!mounted) return;
-      setState(() {
-        _orgUnits = orgUnits;
-        _locations = locations;
-        _hierarchyLoaded = true;
-        _hierarchyLoading = false;
-      });
-    } on RolesHierarchySessionsGatewayError catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _hierarchyLoadError = error.message;
-        _hierarchyLoading = false;
-      });
-    } on RolesHierarchySessionsForbiddenException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _hierarchyLoadError = error.message;
-        _hierarchyLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _hierarchyLoadError = 'Could not load hierarchy: $error';
-        _hierarchyLoading = false;
-      });
-    }
-  }
-
   Future<void> _runAndRefresh(
     Future<void> Function() action, {
     required Future<void> Function() refresh,
@@ -261,41 +180,6 @@ class _RolesHierarchySessionsAdminScreenState
   }
 
   // --- Roles tab actions -------------------------------------------------
-
-  Future<void> _onEditSeededRole(RoleAdminRow row) async {
-    if (!widget.canEditSeededRoles) return;
-    final result = await showDialog<EditSeededRoleResult>(
-      context: context,
-      builder: (_) => EditSeededRoleDialog(
-        initial: row,
-        lockedPermissionKeys: platformRoleLockedPermissionKeys(row.roleKey),
-      ),
-    );
-    if (result == null) return;
-    await _runAndRefresh(
-      () => row.isPlatformRole
-          ? widget.gateway.editPlatformRole(
-              operatorId: widget.pickedOperator.operatorId,
-              roleId: row.roleId,
-              permissionKeys: result.permissionKeys,
-              idempotencyKey: _nextIdempotencyKey('roles-edit-platform'),
-              actorUserId: widget.actorUserId,
-              actorIsForgeAdmin: widget.editingEnabled,
-              adminReason: result.adminReason,
-            )
-          : widget.gateway.editSeededRole(
-              operatorId: widget.pickedOperator.operatorId,
-              roleId: row.roleId,
-              permissionKeys: result.permissionKeys,
-              idempotencyKey: _nextIdempotencyKey('roles-edit-seeded'),
-              actorUserId: widget.actorUserId,
-              actorIsForgeAdmin: widget.editingEnabled,
-              adminReason: result.adminReason,
-            ),
-      refresh: _refreshRoles,
-      successHint: 'Updated ${roleAdminDisplayLabel(row)}',
-    );
-  }
 
   Future<void> _onCreateCustomRole() async {
     final scope =
@@ -359,6 +243,34 @@ class _RolesHierarchySessionsAdminScreenState
   }
 
   Future<void> _onDeleteCustomRole(RoleAdminRow row) async {
+    final confirmed = await showOperatorWebDialog<bool>(
+      context: context,
+      title: 'Delete role',
+      icon: Icons.delete_outline,
+      child: Text(
+        'Delete "${roleAdminDisplayLabel(row)}"? Members holding this role '
+        'will lose its permissions on their next sign-in. Revoke the role '
+        'from every member first if you have not already.',
+        style: AppTextStyles.body13(color: AppColors.textPrimary),
+      ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_rhs_delete_role_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_delete_role_confirm'),
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.negative,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          child: const Text('Delete'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
     final reason = await _promptAdminReason(
       'Delete ${roleAdminDisplayLabel(row)}',
     );
@@ -377,172 +289,15 @@ class _RolesHierarchySessionsAdminScreenState
     );
   }
 
-  // --- Hierarchy tab actions --------------------------------------------
-
-  Future<void> _onMoveLocation(HierarchyLocationLeaf leaf) async {
-    final candidates = _orgUnits.toList(growable: false);
-    if (candidates.isEmpty) return;
-    final result = await showDialog<_MoveLocationResult>(
-      context: context,
-      builder: (_) => _MoveLocationDialog(leaf: leaf, candidates: candidates),
-    );
-    if (result == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.moveLocation(
-        operatorId: widget.pickedOperator.operatorId,
-        locationId: leaf.locationId,
-        newOrgUnitId: result.newOrgUnitId,
-        idempotencyKey: _nextIdempotencyKey('hierarchy-move-location'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-      ),
-      refresh: _refreshHierarchy,
-      successHint: 'Moved ${leaf.name}',
-    );
-  }
-
-  /// GAP A4 — depth of [orgUnitId] in the org-unit chain. The admin
-  /// node model carries no ltree `path`, only parent pointers, so we
-  /// walk the in-memory `_orgUnits` parent links. Cycle-guarded inside
-  /// [OrgUnitDepthRule.depthFromChain].
-  int _orgUnitDepth(String orgUnitId) {
-    final parentById = <String, String?>{
-      for (final unit in _orgUnits) unit.orgUnitId: unit.parentOrgUnitId,
-    };
-    return OrgUnitDepthRule.depthFromChain(orgUnitId, (id) => parentById[id]);
-  }
-
-  Future<void> _onAddChildOrgUnit(OrgUnitAdminNode parent) async {
-    // GAP A4 — first guard layer: never open the dialog if the parent
-    // is already at the deepest allowed level. Mirrors the proxy guard
-    // at org_units_repository.dart:241.
-    final parentDepth = _orgUnitDepth(parent.orgUnitId);
-    if (!OrgUnitDepthRule.canAddChild(parentDepth)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(HierarchyValidationCopy.depthCapReached)),
-      );
-      return;
-    }
-    final existingNames = <String>{
-      for (final unit in _orgUnits)
-        if (unit.parentOrgUnitId == parent.orgUnitId) unit.name.toLowerCase(),
-    };
-    final result = await showDialog<_AddOrgUnitResult>(
-      context: context,
-      builder: (_) => _AddChildOrgUnitDialog(
-        parent: parent,
-        existingNames: existingNames,
-        parentDepth: parentDepth,
-      ),
-    );
-    if (result == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.createOrgUnit(
-        operatorId: widget.pickedOperator.operatorId,
-        parentOrgUnitId: parent.orgUnitId,
-        unitType: result.unitType,
-        label: result.label,
-        name: result.name,
-        idempotencyKey: _nextIdempotencyKey('hierarchy-create-org-unit'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-      ),
-      refresh: _refreshHierarchy,
-      successHint: 'Added ${result.name}',
-    );
-  }
-
-  Future<void> _onDeleteOrgUnit(OrgUnitAdminNode node) async {
-    // GAP A2 (admin path only) — wire the existing gateway
-    // deleteOrgUnit method to a confirmation affordance. Delete is
-    // intentionally NON-cascading: the backend refuses with a 409
-    // org_unit_not_empty when children/locations remain, and we show
-    // that as plain-English guidance rather than a raw code.
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => _DeleteOrgUnitConfirmDialog(node: node),
-    );
-    if (confirmed != true) return;
-    final reason = await _promptAdminReason('Delete ${node.name}');
-    if (reason == null) return;
-    setState(() => _actionError = null);
-    try {
-      await widget.gateway.deleteOrgUnit(
-        operatorId: widget.pickedOperator.operatorId,
-        orgUnitId: node.orgUnitId,
-        idempotencyKey: _nextIdempotencyKey('hierarchy-delete-org-unit'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-      );
-      await _refreshHierarchy();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Deleted ${node.name}')));
-    } on RolesHierarchySessionsGatewayError catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _actionError = error.errorCode == 'org_unit_not_empty'
-            ? HierarchyValidationCopy.deleteNotEmpty
-            : error.message;
-      });
-    } on RolesHierarchySessionsForbiddenException catch (error) {
-      if (!mounted) return;
-      setState(() => _actionError = error.message);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _actionError = error.toString());
-    }
-  }
-
-  Future<void> _onRenameOrgUnit(OrgUnitAdminNode node) async {
-    // GAP A1 — rename an org unit's display name (F&F admin path).
-    // admin_reason is REQUIRED on this path. The corp root IS
-    // renameable (it is the operator-facing Business label), so there
-    // is no root carve-out here or in the annotation. Duplicate-name-
-    // within-parent is re-validated client-side with the locked copy.
-    final existingNames = <String>{
-      for (final unit in _orgUnits)
-        if (unit.orgUnitId != node.orgUnitId &&
-            unit.parentOrgUnitId == node.parentOrgUnitId)
-          unit.name.toLowerCase(),
-    };
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (_) =>
-          _RenameOrgUnitDialog(node: node, existingNames: existingNames),
-    );
-    if (newName == null) return;
-    final reason = await _promptAdminReason('Rename ${node.name}');
-    if (reason == null) return;
-    await _runAndRefresh(
-      () => widget.gateway.renameOrgUnit(
-        operatorId: widget.pickedOperator.operatorId,
-        orgUnitId: node.orgUnitId,
-        name: newName,
-        idempotencyKey: _nextIdempotencyKey('hierarchy-rename-org-unit'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: reason,
-      ),
-      refresh: _refreshHierarchy,
-      successHint: 'Renamed to $newName',
-    );
-  }
-
   // --- Build ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    // Fixed-height tabbed view: OperatorWebScreenFrame, not OperatorWebScreenBody.
     return ColoredBox(
       key: const Key('admin_roles_hierarchy_sessions_screen'),
       color: AppColors.backgroundDeep,
-      child: OperatorWebScreenFrame(
+      child: OperatorWebScreenBody(
+        scrollKey: const Key('admin_rhs_roles_screen'),
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,7 +307,7 @@ class _RolesHierarchySessionsAdminScreenState
               title: 'Roles & permissions',
               actions: _buildHeaderActions(),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             if (!widget.editingEnabled)
               const _ReadOnlyBanner(key: Key('admin_rhs_readonly_banner')),
             if (_actionError != null)
@@ -560,22 +315,7 @@ class _RolesHierarchySessionsAdminScreenState
                 key: const Key('admin_rhs_action_error'),
                 message: _actionError!,
               ),
-            TabBar(
-              key: const Key('admin_rhs_tab_bar'),
-              controller: _tabController,
-              labelColor: AppColors.textPrimary,
-              unselectedLabelColor: AppColors.textMuted,
-              indicatorColor: AppColors.sunset,
-              tabs: const <Widget>[
-                Tab(key: Key('admin_rhs_tab_roles'), text: 'Role policy'),
-                Tab(
-                  key: Key('admin_rhs_tab_hierarchy'),
-                  text: 'Location hierarchy',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Expanded(child: _buildBody()),
+            _buildBody(),
           ],
         ),
       ),
@@ -619,40 +359,18 @@ class _RolesHierarchySessionsAdminScreenState
   }
 
   Widget _buildBody() {
-    return TabBarView(
-      controller: _tabController,
-      children: <Widget>[
-        _TabLoadBody(
-          loading: _rolesLoading,
-          error: _rolesLoadError,
-          loadingKey: const Key('admin_rhs_loading'),
-          errorKey: const Key('admin_rhs_load_error'),
-          child: RolePolicyAdminPanel(
-            roles: _roles,
-            editingEnabled: widget.editingEnabled,
-            canEditSeededRoles: widget.canEditSeededRoles,
-            onEditSeeded: _onEditSeededRole,
-            onEditCustom: _onEditCustomRole,
-            onCreateCustom: _onCreateCustomRole,
-            onDeleteCustom: _onDeleteCustomRole,
-          ),
-        ),
-        _TabLoadBody(
-          loading: _hierarchyLoading,
-          error: _hierarchyLoadError,
-          loadingKey: const Key('admin_rhs_hierarchy_loading'),
-          errorKey: const Key('admin_rhs_hierarchy_load_error'),
-          child: _HierarchyTab(
-            orgUnits: _orgUnits,
-            locations: _locations,
-            editingEnabled: widget.editingEnabled,
-            onAddChildOrgUnit: _onAddChildOrgUnit,
-            onDeleteOrgUnit: _onDeleteOrgUnit,
-            onRenameOrgUnit: _onRenameOrgUnit,
-            onMoveLocation: _onMoveLocation,
-          ),
-        ),
-      ],
+    return _TabLoadBody(
+      loading: _rolesLoading,
+      error: _rolesLoadError,
+      loadingKey: const Key('admin_rhs_loading'),
+      errorKey: const Key('admin_rhs_load_error'),
+      child: RolePolicyAdminPanel(
+        roles: _roles,
+        editingEnabled: widget.editingEnabled,
+        onEditCustom: _onEditCustomRole,
+        onCreateCustom: _onCreateCustomRole,
+        onDeleteCustom: _onDeleteCustomRole,
+      ),
     );
   }
 }
