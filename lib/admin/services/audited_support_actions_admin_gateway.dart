@@ -151,10 +151,11 @@ extension AuditActorKindWire on AuditActorKind {
 }
 
 AuditActorKind auditActorKindFromWire(String wire) {
+  final normalized = wire.trim().toLowerCase();
   for (final kind in AuditActorKind.values) {
-    if (kind.wire == wire) return kind;
+    if (kind.wire == normalized) return kind;
   }
-  throw ArgumentError.value(wire, 'actor_kind', 'unknown actor_kind');
+  return AuditActorKind.teamMember;
 }
 
 /// Audit-log filter clause. Forwarded to the proxy on every list
@@ -181,10 +182,16 @@ class AuditLogFilters {
   /// filter applied.
   final String? actorUserId;
 
-  /// Picked actors (chip multi-select). Empty means no actor filter
-  /// applied. Kept alongside [actorUserId] for backwards-compatible
-  /// tests and callers that still drive the old single-select shape.
+  /// Operator-web parity: the visible actor picker is multi-select.
+  /// [actorUserId] stays for existing admin call sites and older tests.
   final List<String> actorUserIds;
+
+  List<String> get effectiveActorUserIds {
+    if (actorUserIds.isNotEmpty) return actorUserIds;
+    final single = actorUserId?.trim();
+    if (single == null || single.isEmpty) return const <String>[];
+    return <String>[single];
+  }
 
   /// Locked enum multi-select. Empty means no action filter.
   final List<String> actions;
@@ -219,11 +226,17 @@ class AuditLogFilters {
     Object? customRangeTo = _undef,
     List<AuditActorKind>? actorKinds,
   }) {
+    final nextActorUserIds =
+        actorUserIds ??
+        (identical(actorUserId, _undef) ? this.actorUserIds : const <String>[]);
+    final nextActorUserId = actorUserIds != null
+        ? (actorUserIds.length == 1 ? actorUserIds.single : null)
+        : identical(actorUserId, _undef)
+        ? this.actorUserId
+        : actorUserId as String?;
     return AuditLogFilters(
-      actorUserId: identical(actorUserId, _undef)
-          ? this.actorUserId
-          : actorUserId as String?,
-      actorUserIds: actorUserIds ?? this.actorUserIds,
+      actorUserId: nextActorUserId,
+      actorUserIds: nextActorUserIds,
       actions: actions ?? this.actions,
       targetKind: identical(targetKind, _undef)
           ? this.targetKind
@@ -245,8 +258,7 @@ class AuditLogFilters {
   }
 
   bool get isEmpty =>
-      actorUserId == null &&
-      actorUserIds.isEmpty &&
+      effectiveActorUserIds.isEmpty &&
       actions.isEmpty &&
       targetKind == null &&
       (targetId == null || targetId!.trim().isEmpty) &&
@@ -273,8 +285,8 @@ class AuditLogRow {
     required this.actorEmail,
     required this.actorKind,
     required this.operatorId,
-    required this.targetKind,
-    required this.targetId,
+    this.targetKind,
+    this.targetId,
     required this.payload,
     required this.businessDate,
     this.actorRole,
@@ -291,8 +303,8 @@ class AuditLogRow {
   final AuditActorKind actorKind;
   final String? actorRole;
   final String operatorId;
-  final String targetKind;
-  final String targetId;
+  final String? targetKind;
+  final String? targetId;
   final Map<String, Object?> payload;
   final DateTime businessDate;
 
@@ -619,6 +631,7 @@ class HttpAuditedSupportActionsAdminGateway
     String? cursor,
     AuditLogScope? scope,
   }) async {
+    final actorUserIds = filters.effectiveActorUserIds;
     if (scope != null) {
       return _listAuditLogByHierarchy(
         operatorId: operatorId,
@@ -629,10 +642,7 @@ class HttpAuditedSupportActionsAdminGateway
     }
     final query = <String, String>{
       'operator_id': operatorId,
-      if (filters.actorUserIds.isNotEmpty)
-        'actor_user_id': filters.actorUserIds.join(',')
-      else if (filters.actorUserId != null)
-        'actor_user_id': filters.actorUserId!,
+      if (actorUserIds.isNotEmpty) 'actor_user_id': actorUserIds.join(','),
       if (filters.actions.isNotEmpty) 'actions': filters.actions.join(','),
       if (filters.targetKind != null) 'target_kind': filters.targetKind!,
       if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)
@@ -669,6 +679,7 @@ class HttpAuditedSupportActionsAdminGateway
     String? cursor,
   }) async {
     final range = _rangeFor(filters);
+    final actorUserIds = filters.effectiveActorUserIds;
     final query = <String, String>{
       'operator_id': operatorId,
       'scope_type': scope.scopeType.wire,
@@ -679,10 +690,7 @@ class HttpAuditedSupportActionsAdminGateway
         'location_id': scope.locationId!.trim(),
       if (range.$1 != null) 'from': range.$1!.toUtc().toIso8601String(),
       if (range.$2 != null) 'to': range.$2!.toUtc().toIso8601String(),
-      if (filters.actorUserIds.length == 1)
-        'actor_user_id': filters.actorUserIds.single
-      else if (filters.actorUserIds.isEmpty && filters.actorUserId != null)
-        'actor_user_id': filters.actorUserId!,
+      if (actorUserIds.length == 1) 'actor_user_id': actorUserIds.single,
       if (filters.actions.length == 1) 'action': filters.actions.single,
       'limit': '200',
       if (cursor != null && cursor.isNotEmpty) 'before_id': cursor,
@@ -717,16 +725,14 @@ class HttpAuditedSupportActionsAdminGateway
   }) async {
     _requireEditable(actorIsForgeAdmin, 'exportAuditLogCsv');
     _requireAdminReason(adminReason, 'exportAuditLogCsv');
+    final actorUserIds = filters.effectiveActorUserIds;
     final body = await _send(
       method: 'POST',
       path: auditLogExportPath,
       idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
-        if (filters.actorUserIds.isNotEmpty)
-          'actor_user_id': filters.actorUserIds.join(',')
-        else if (filters.actorUserId != null)
-          'actor_user_id': filters.actorUserId,
+        if (actorUserIds.isNotEmpty) 'actor_user_id': actorUserIds.join(','),
         if (filters.actions.isNotEmpty) 'actions': filters.actions,
         if (filters.targetKind != null) 'target_kind': filters.targetKind,
         if (filters.targetId != null && filters.targetId!.trim().isNotEmpty)
@@ -1062,8 +1068,8 @@ AuditLogRow _auditRowFromJson(Map<String, Object?> json) {
         _optionalString(json['actor_role_label']) ??
         _optionalString(json['actor_display_role']),
     operatorId: _stringField(json, 'operator_id'),
-    targetKind: _stringField(json, 'target_kind'),
-    targetId: _stringField(json, 'target_id'),
+    targetKind: _optionalString(json['target_kind']),
+    targetId: _optionalString(json['target_id']),
     payload: payloadRaw is Map
         ? payloadRaw.cast<String, Object?>()
         : const <String, Object?>{},
@@ -1142,34 +1148,44 @@ List<AuditLogRow> _filterRowsClientSide(
   List<AuditLogRow> rows,
   AuditLogFilters filters,
 ) {
-  Iterable<AuditLogRow> filtered = rows;
-  if (filters.actorUserIds.isNotEmpty) {
-    final wanted = filters.actorUserIds.toSet();
-    filtered = filtered.where((row) => wanted.contains(row.actorUserId));
-  } else if (filters.actorUserId != null) {
-    filtered = filtered.where((row) => row.actorUserId == filters.actorUserId);
-  }
-  if (filters.actions.isNotEmpty) {
-    final wanted = filters.actions.toSet();
-    filtered = filtered.where((row) => wanted.contains(row.action));
-  }
+  return rows
+      .where(
+        (row) =>
+            _matchesActorFilter(row, filters) &&
+            _matchesActionFilter(row, filters) &&
+            _matchesTargetKindFilter(row, filters) &&
+            _matchesTargetIdFilter(row, filters) &&
+            _matchesActorKindFilter(row, filters),
+      )
+      .toList(growable: false);
+}
+
+bool _matchesActorFilter(AuditLogRow row, AuditLogFilters filters) {
+  final wanted = filters.effectiveActorUserIds;
+  if (wanted.isNotEmpty) return wanted.contains(row.actorUserId);
+  return true;
+}
+
+bool _matchesActionFilter(AuditLogRow row, AuditLogFilters filters) {
+  if (filters.actions.isEmpty) return true;
+  return filters.actions.contains(row.action);
+}
+
+bool _matchesTargetKindFilter(AuditLogRow row, AuditLogFilters filters) {
   final targetKind = filters.targetKind?.trim().toLowerCase();
-  if (targetKind != null && targetKind.isNotEmpty) {
-    filtered = filtered.where(
-      (row) => row.targetKind.toLowerCase().contains(targetKind),
-    );
-  }
+  if (targetKind == null || targetKind.isEmpty) return true;
+  return (row.targetKind ?? '').toLowerCase().contains(targetKind);
+}
+
+bool _matchesTargetIdFilter(AuditLogRow row, AuditLogFilters filters) {
   final targetId = filters.targetId?.trim().toLowerCase();
-  if (targetId != null && targetId.isNotEmpty) {
-    filtered = filtered.where(
-      (row) => row.targetId.toLowerCase().contains(targetId),
-    );
-  }
-  if (filters.actorKinds.isNotEmpty) {
-    final wanted = filters.actorKinds.toSet();
-    filtered = filtered.where((row) => wanted.contains(row.actorKind));
-  }
-  return filtered.toList(growable: false);
+  if (targetId == null || targetId.isEmpty) return true;
+  return (row.targetId ?? '').toLowerCase().contains(targetId);
+}
+
+bool _matchesActorKindFilter(AuditLogRow row, AuditLogFilters filters) {
+  if (filters.actorKinds.isEmpty) return true;
+  return filters.actorKinds.contains(row.actorKind);
 }
 
 SupportActionsMember _memberFromJson(Map<String, Object?> json) {

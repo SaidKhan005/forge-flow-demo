@@ -271,6 +271,71 @@ void main() {
     expect(create.scopeId, 'loc-1');
   });
 
+  testWidgets(
+    'location create keeps inherited org-unit values but writes location scope',
+    (tester) async {
+      await _sizeViewport(tester);
+      final gateway = _FakeBusinessTimingGateway();
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          BusinessTimingEditorScreen(
+            session: session,
+            gateway: gateway,
+            orgUnitId: 'org-east',
+            orgUnitName: 'East Region',
+            orgUnitHelper: 'Region',
+            locationId: 'loc-1',
+            locationName: 'Downtown',
+            initialScopeKind: 'location',
+            existingProfile: BusinessTimingProfileWriteResult(
+              profileId: 'profile-east',
+              versionId: 'profile-east',
+              scopeKind: 'org_unit',
+              scopeId: 'org-east',
+              effectiveAtBusinessDate: '2026-05-10',
+              ianaTimezone: 'America/Toronto',
+              weekStartDay: 'tuesday',
+              businessDayStartLocal: '05:00',
+              servicePeriods: const <ServicePeriod>[
+                ServicePeriod(
+                  key: 'brunch',
+                  label: 'Brunch',
+                  startLocal: '10:00',
+                  endLocal: '14:00',
+                  rollsPastMidnight: false,
+                  applicableDays: <int>[6, 7],
+                  shortLabel: 'B',
+                  sortOrder: 1,
+                ),
+              ],
+              createdAt: DateTime.utc(2026, 5, 6, 18),
+              updatedAt: DateTime.utc(2026, 5, 6, 18),
+            ),
+          ),
+        ),
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.creates, hasLength(1));
+      expect(gateway.updates, isEmpty);
+      final create = gateway.creates.single;
+      expect(create.scopeKind, 'location');
+      expect(create.scopeId, 'loc-1');
+      expect(create.businessDayStartLocal, '05:00');
+      expect(create.weekStartDay, 'tuesday');
+      expect(create.servicePeriods.single.key, 'brunch');
+      expect(create.servicePeriods.single.applicableDays, <int>[6, 7]);
+    },
+  );
+
   testWidgets('updating an existing org-unit profile keeps org_unit scope', (
     tester,
   ) async {

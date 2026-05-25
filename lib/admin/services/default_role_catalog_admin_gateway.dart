@@ -22,13 +22,26 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../auth/permission_keys.dart';
 import 'admin_http_timeout.dart';
 
 /// Built-in v2 starter role catalog shown by the admin editor before
-/// any Default Role Catalog version has been published. This mirrors
-/// the operator-facing seeded roles from
+/// any Default Role Catalog version has been published. This includes
+/// the F&F-internal roles plus the operator-facing seeded roles from
 /// `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`.
 List<Object?> defaultRoleCatalogStarterPayload() => <Object?>[
+  _starterRole(
+    roleKey: PermissionKeys.roleSuperAdmin,
+    displayName: 'Ecosystem admin',
+    description: 'Full Forge & Flow platform administration access.',
+    permissionKeys: _starterEcosystemAdminPermissions,
+  ),
+  _starterRole(
+    roleKey: PermissionKeys.roleFfSupport,
+    displayName: 'Support access',
+    description: 'Read-only Forge & Flow support access.',
+    permissionKeys: _starterSupportAccessPermissions,
+  ),
   _starterRole(
     roleKey: 'operator_owner',
     displayName: 'Owner',
@@ -113,6 +126,24 @@ Map<String, Object?> _starterRole({
     ],
   };
 }
+
+const List<String> _starterEcosystemAdminPermissions = <String>[
+  PermissionKeys.adminRolesView,
+  PermissionKeys.adminRolesEditSeeded,
+  PermissionKeys.teamRolesView,
+  PermissionKeys.teamRolesDefaultCatalogView,
+  PermissionKeys.teamRolesDefaultCatalogEdit,
+  PermissionKeys.adminUsersView,
+  PermissionKeys.adminAuditLogView,
+];
+
+const List<String> _starterSupportAccessPermissions = <String>[
+  PermissionKeys.adminRolesView,
+  PermissionKeys.teamRolesView,
+  PermissionKeys.teamRolesDefaultCatalogView,
+  PermissionKeys.adminUsersView,
+  PermissionKeys.adminAuditLogView,
+];
 
 const List<String> _starterAllPermissions = <String>[
   ..._starterOperationsPermissions,
