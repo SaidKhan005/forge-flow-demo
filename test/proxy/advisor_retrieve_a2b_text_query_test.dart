@@ -200,6 +200,7 @@ class _RecordingAccountingStore implements ProxyAccountingStore {
     required String idempotencyKey,
     required Map<String, Object?> responsePayload,
     required DateTime now,
+    ProxyRequestStats? stats,
   }) async {}
 }
 
