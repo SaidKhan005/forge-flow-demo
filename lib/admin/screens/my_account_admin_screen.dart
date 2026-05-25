@@ -1,34 +1,45 @@
-// Wave 2 W-4 — Admin "My Account" parity surface.
+// Admin "My Account" parity surface (originated as Wave 2 W-4).
 //
 // The customer operator-web console has a full "My Account" surface
 // (`lib/operator_web/screens/my_account_screen.dart`). The F&F-internal
-// admin console was missing the equivalent parity surface — this slice
-// closes that gap.
+// admin console mirrors it card-for-card here.
 //
-// Authority: `docs/_indices/WAVE_2_LEDGER.md` Lane W row W-4.
+// Authority: `docs/_indices/WAVE_2_LEDGER.md` Lane W row W-4 (original
+// parity surface) + the audit fix-first slices that lit up self-service.
 //
 // Scope:
 //   * Identity card — admin display name, email, admin role badge,
 //     "Forge & Flow internal admin" scope label (HP #11 — admin console
 //     is global / cross-operator so the notice degrades to a single
 //     "Global / cross-operator" label rather than the
-//     business/region/location triple).
-//   * Security section — MFA status read off the JWT freshness stamp
-//     (`AdminAuthSession.lastFreshAuthAt`). The admin gateway does not
-//     expose MFA-enrollment mutations today, so this section renders
-//     read-only with a note pointing the admin at the operator-web
-//     sign-in flow for changes. This is intentional, per the W-4 brief:
-//     no new admin auth/permission gate, no widened gateway surface.
-//   * Active sessions — admin sessions today are not exposed through
-//     a dedicated admin gateway, so this section renders a single
-//     "current session" row + a "Sign out" CTA that routes through the
-//     existing `AdminAuthSource.signOut()` path. Future slices can
-//     light up a richer list once an admin sessions gateway exists.
+//     business/region/location triple). With an [AdminAccountGateway]
+//     wired, the card offers in-place "Edit identity" (display name +
+//     sign-in email; an email change forces a re-sign-in).
+//   * Security card — change password + recent sign-in activity, backed
+//     by [AdminSecurityGateway]. Password changes reverify the current
+//     password and may demand a fresh sign-in.
+//   * Two-factor sign-in card — full self-service against the shared
+//     `/v1/auth/mfa/*` proxy routes via [AdminSecurityGateway]: factor
+//     status pill, authenticator enroll + confirm, "lost your
+//     authenticator?" recovery, "turn off two-factor sign-in" (a 24-hour
+//     delayed removal request), and cancel-removal while one is pending.
+//     A security-sensitive change can return the proxy's "sign in again"
+//     freshness signal; the card then surfaces an actionable "Sign in
+//     again" affordance that routes through [AdminAuthSource.signOut] (a
+//     fresh sign-in is the admin console's re-authentication path).
+//     Without a gateway (older fixtures) the card degrades to the
+//     legacy read-only "changes at next sign-in" note.
+//   * Active sessions — lists signed-in admin sessions with per-session
+//     revoke + sign-out-everywhere via [AdminSessionsGateway], plus a
+//     local "Sign out" through [AdminAuthSource.signOut]. Without a
+//     gateway it degrades to the single current-session + local
+//     sign-out posture.
 //
 // Permission posture:
-//   * Both `super_admin` and `ff_support` see the same surface today.
-//     Every section is read-only or read-only-plus-sign-out — no
-//     mutation gate has been widened or introduced.
+//   * Both `super_admin` and `ff_support` see the same surface. The
+//     self-service security actions act on the acting admin's OWN user
+//     (the proxy resolves the actor from the verified bearer token); no
+//     admin-on-someone-else gate is widened or introduced.
 //
 // Constraints honored:
 //   * HP #2 demo-mode parity: no `kDemoMode` branch. The screen reads
@@ -39,8 +50,8 @@
 //     training the user. Plain English, no engineering jargon, no
 //     route-id leakage.
 //   * No schema migration, no proxy ceiling raise, no new permission
-//     key (CLAUDE.md R-2 ceiling-raise rule honored — no proxy work
-//     in this slice).
+//     key, no new backend route — every read/write hits a proxy route
+//     already shipped by Phase 9 + 11A.x.
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -225,6 +236,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
                 session: widget.session,
                 gateway: widget.securityGateway,
                 now: widget.now,
+                onSignInAgain: () => widget.authSource.signOut(),
               ),
               const SizedBox(height: 14),
               _AdminActiveSessionsCard(
@@ -525,11 +537,23 @@ class _AdminRoleChip extends StatelessWidget {
 /// surface (enroll / recover); without one it degrades to the
 /// read-only "changes at next sign-in" posture.
 class _AdminTwoFactorCard extends StatefulWidget {
-  const _AdminTwoFactorCard({required this.session, this.gateway, this.now});
+  const _AdminTwoFactorCard({
+    required this.session,
+    this.gateway,
+    this.now,
+    required this.onSignInAgain,
+  });
 
   final AdminAuthSession session;
   final AdminSecurityGateway? gateway;
   final DateTime Function()? now;
+
+  /// Invoked by the actionable "Sign in again" affordance the card shows
+  /// when a security change returns the proxy's freshness signal. Wired
+  /// to [AdminAuthSource.signOut] — a fresh sign-in is the admin
+  /// console's re-authentication path (mirrors operator-web surfacing
+  /// the freshness remedy as a control, not just text).
+  final VoidCallback onSignInAgain;
 
   @override
   State<_AdminTwoFactorCard> createState() => _AdminTwoFactorCardState();
@@ -542,9 +566,13 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
 
   // Auto-clearing confirmation toast. [_toastIsError] flips the toast
   // to the negative (red) tone so a fail-closed gateway error can never
-  // be mistaken for a success confirmation.
+  // be mistaken for a success confirmation. [_toastIsFreshnessRemedy]
+  // is the freshness special case: the red box also carries an
+  // actionable "Sign in again" button (the re-authentication remedy)
+  // instead of being plain text.
   String? _toast;
   bool _toastIsError = false;
+  bool _toastIsFreshnessRemedy = false;
   Timer? _toastTimer;
   static const Duration _kToastVisibleDuration = Duration(seconds: 4);
 
@@ -580,15 +608,42 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
   void _showErrorToast(String message) =>
       _showToastInternal(message, isError: true);
 
-  void _showToastInternal(String message, {required bool isError}) {
+  /// Routes a caught gateway error to the right surface. A freshness
+  /// signal (`requiresFreshSignIn`) gets the actionable "Sign in again"
+  /// remedy; every other error keeps the plain red error toast. The
+  /// underlying action ALWAYS fails closed regardless of which surface
+  /// is shown (the caller never mutates state on the error path).
+  void _handleGatewayError(Object error) {
+    if (error is AdminSecurityGatewayError && error.requiresFreshSignIn) {
+      _showFreshnessRemedy(_friendly(error));
+      return;
+    }
+    _showErrorToast(_friendly(error));
+  }
+
+  /// Red box carrying the freshness message AND an actionable "Sign in
+  /// again" button (operator-web parity: the remedy is a control, not
+  /// just text).
+  void _showFreshnessRemedy(String message) =>
+      _showToastInternal(message, isError: true, isFreshnessRemedy: true);
+
+  void _showToastInternal(
+    String message, {
+    required bool isError,
+    bool isFreshnessRemedy = false,
+  }) {
     _toastTimer?.cancel();
     setState(() {
       _toast = message;
       _toastIsError = isError;
+      _toastIsFreshnessRemedy = isFreshnessRemedy;
     });
     _toastTimer = Timer(_kToastVisibleDuration, () {
       if (!mounted) return;
-      setState(() => _toast = null);
+      setState(() {
+        _toast = null;
+        _toastIsFreshnessRemedy = false;
+      });
     });
   }
 
@@ -657,7 +712,7 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
       );
     } catch (error) {
       if (!mounted) return;
-      _showToast(_friendly(error));
+      _handleGatewayError(error);
       return;
     }
     if (!mounted) return;
@@ -718,7 +773,7 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
       );
     } catch (error) {
       if (!mounted) return;
-      _showErrorToast(_friendly(error));
+      _handleGatewayError(error);
       return;
     }
     if (!mounted) return;
@@ -744,7 +799,7 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
       );
     } catch (error) {
       if (!mounted) return;
-      _showErrorToast(_friendly(error));
+      _handleGatewayError(error);
       return;
     }
     if (!mounted) return;
@@ -821,7 +876,13 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
         if (factors != null && enrolled) ..._buildEnrolled(factors),
         if (_toast != null) ...[
           const SizedBox(height: 10),
-          if (_toastIsError)
+          if (_toastIsFreshnessRemedy)
+            _AdminFreshnessRemedy(
+              toastKey: const Key('admin_my_account_two_factor_toast'),
+              message: _toast!,
+              onSignInAgain: widget.onSignInAgain,
+            )
+          else if (_toastIsError)
             _AdminDialogError(
               key: const Key('admin_my_account_two_factor_toast'),
               message: _toast!,
@@ -3051,6 +3112,65 @@ class _AdminDialogError extends StatelessWidget {
       child: Text(
         message,
         style: AppTextStyles.body13(color: AppColors.negative),
+      ),
+    );
+  }
+}
+
+/// Red fail-closed box for the proxy's "sign in again" freshness signal,
+/// with an actionable "Sign in again" control beneath the message.
+/// Mirrors operator-web surfacing the freshness remedy as a button (a
+/// fresh sign-in is the admin console's re-authentication path) rather
+/// than plain text. Shown ONLY for the freshness error; every other
+/// gateway error keeps the plain [_AdminDialogError] toast.
+class _AdminFreshnessRemedy extends StatelessWidget {
+  const _AdminFreshnessRemedy({
+    required this.toastKey,
+    required this.message,
+    required this.onSignInAgain,
+  });
+
+  final Key toastKey;
+  final String message;
+  final VoidCallback onSignInAgain;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: toastKey,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.negative.withValues(alpha: 0.08),
+        border: Border.all(color: AppColors.negative.withValues(alpha: 0.30)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            message,
+            style: AppTextStyles.body13(color: AppColors.negative),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              height: 38,
+              child: OutlinedButton.icon(
+                key: const Key('admin_my_account_two_factor_sign_in_again'),
+                onPressed: onSignInAgain,
+                icon: const Icon(Icons.login_outlined, size: 16),
+                label: const Text('Sign in again'),
+                style: AdminButtonStyles.secondary(
+                  foregroundColor: AppColors.negative,
+                  borderColor: AppColors.negative,
+                  minHeight: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
