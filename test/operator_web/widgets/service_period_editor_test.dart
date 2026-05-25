@@ -585,7 +585,9 @@ void main() {
           ),
         ],
       );
-      await tester.pumpWidget(wrap(ServicePeriodEditor(controller: controller)));
+      await tester.pumpWidget(
+        wrap(ServicePeriodEditor(controller: controller)),
+      );
 
       await tester.enterText(
         find.byKey(const ValueKey('service_period_editor_start_0')),
@@ -652,6 +654,54 @@ void main() {
         find.byKey(const Key('service_period_editor_add')),
       );
       expect(addButton.onPressed, isNull);
+    });
+
+    testWidgets('remove button removes only the selected period', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+            sortOrder: 1,
+          ),
+          ServicePeriodDraft(
+            key: 'dinner',
+            label: 'Dinner',
+            startLocal: '17:00',
+            endLocal: '22:00',
+            sortOrder: 2,
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(
+          SingleChildScrollView(
+            child: ServicePeriodEditor(controller: controller),
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('service_period_editor_remove_0')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.periods, hasLength(1));
+      expect(controller.periods.single.key, 'dinner');
+      expect(
+        find.byKey(const ValueKey('service_period_editor_row_1')),
+        findsNothing,
+      );
     });
 
     testWidgets('past-midnight period shows the badge', (tester) async {

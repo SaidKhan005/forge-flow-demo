@@ -688,6 +688,22 @@ String _roleTitle(Map<String, Object?> role) {
   return 'Untitled role';
 }
 
+String _roleKey(Map<String, Object?> role) =>
+    ((role['role_key'] as String?) ?? '').trim();
+
+bool _isPlatformRoleDefinition(Map<String, Object?> role) {
+  final roleKey = _roleKey(role);
+  return roleKey == PermissionKeys.roleSuperAdmin ||
+      roleKey == PermissionKeys.roleFfSupport;
+}
+
+class _IndexedCatalogRole {
+  const _IndexedCatalogRole({required this.index, required this.role});
+
+  final int index;
+  final Map<String, Object?> role;
+}
+
 class _CompactRoleList extends StatelessWidget {
   const _CompactRoleList({
     required this.draft,
@@ -696,6 +712,79 @@ class _CompactRoleList extends StatelessWidget {
   });
 
   final List<Map<String, Object?>> draft;
+  final bool canEdit;
+  final Future<void> Function(int index) onOpenRole;
+
+  @override
+  Widget build(BuildContext context) {
+    final platform = <_IndexedCatalogRole>[];
+    final business = <_IndexedCatalogRole>[];
+    for (var i = 0; i < draft.length; i++) {
+      final indexed = _IndexedCatalogRole(index: i, role: draft[i]);
+      if (_isPlatformRoleDefinition(draft[i])) {
+        platform.add(indexed);
+      } else {
+        business.add(indexed);
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (platform.isNotEmpty) ...<Widget>[
+          _CatalogRoleSubgroupLabel(
+            key: const Key('admin_default_role_catalog_platform_group'),
+            label: 'Forge & Flow internal (${platform.length})',
+          ),
+          const SizedBox(height: 6),
+          _CatalogRoleListBox(
+            roles: platform,
+            canEdit: canEdit,
+            onOpenRole: onOpenRole,
+          ),
+          const SizedBox(height: 12),
+        ],
+        _CatalogRoleSubgroupLabel(
+          key: const Key('admin_default_role_catalog_business_group'),
+          label: 'Business defaults (${business.length})',
+        ),
+        const SizedBox(height: 6),
+        _CatalogRoleListBox(
+          roles: business,
+          canEdit: canEdit,
+          onOpenRole: onOpenRole,
+        ),
+      ],
+    );
+  }
+}
+
+class _CatalogRoleSubgroupLabel extends StatelessWidget {
+  const _CatalogRoleSubgroupLabel({super.key, required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2),
+      child: Text(
+        label,
+        style: AppTextStyles.mono11(
+          color: AppColors.textSecondary,
+        ).copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _CatalogRoleListBox extends StatelessWidget {
+  const _CatalogRoleListBox({
+    required this.roles,
+    required this.canEdit,
+    required this.onOpenRole,
+  });
+
+  final List<_IndexedCatalogRole> roles;
   final bool canEdit;
   final Future<void> Function(int index) onOpenRole;
 
@@ -710,13 +799,15 @@ class _CompactRoleList extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         child: Column(
           children: <Widget>[
-            for (var i = 0; i < draft.length; i++)
+            for (var i = 0; i < roles.length; i++)
               _RoleListRow(
-                key: Key('admin_default_role_catalog_draft_row_$i'),
-                index: i,
-                role: draft[i],
+                key: Key(
+                  'admin_default_role_catalog_draft_row_${roles[i].index}',
+                ),
+                index: roles[i].index,
+                role: roles[i].role,
                 canEdit: canEdit,
-                isLast: i == draft.length - 1,
+                isLast: i == roles.length - 1,
                 onOpen: onOpenRole,
               ),
           ],

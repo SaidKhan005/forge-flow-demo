@@ -124,7 +124,11 @@ void main() {
       find.byKey(const Key('admin_default_role_catalog_draft_empty')),
       findsNothing,
     );
+    expect(find.text('Forge & Flow internal (2)'), findsOneWidget);
+    expect(find.text('Business defaults (8)'), findsOneWidget);
     const expectedRoleNames = <String>[
+      'Ecosystem admin',
+      'Support access',
       'Owner',
       'General Manager',
       'Location Manager',
