@@ -2513,6 +2513,22 @@ abstract class ProxyAccountingStore {
     required DateTime now,
     ProxyRequestStats? stats,
   });
+
+  /// P1b.2 — Support logs failure/timeout telemetry (plan §12). Writes a
+  /// standalone `public.proxy_request_stats` row for a request that bailed
+  /// BEFORE [completeRequest] on a provider failure or timeout (the 503
+  /// `llm_provider_unavailable` early-return). Unlike the success path —
+  /// which folds the stats INSERT into [completeRequest]'s completion
+  /// transaction so no extra round-trip is added — a failed request never
+  /// reaches that completion update, so this writes the stats row in its
+  /// OWN tenant transaction. Called at most once per REAL failed attempt
+  /// (an idempotency replay early-returns at the route before a reservation
+  /// exists, so it never reaches this path) — no duplicate row on replay.
+  /// STATS ONLY — no message content.
+  Future<void> recordRequestStats({
+    required OperatorContext operator,
+    required ProxyRequestStats stats,
+  });
 }
 
 class PostgresProxyAccountingStore implements ProxyAccountingStore {
@@ -2680,6 +2696,29 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
     }
   }
 
+  @override
+  Future<void> recordRequestStats({
+    required OperatorContext operator,
+    required ProxyRequestStats stats,
+  }) {
+    // P1b.2 — failure/timeout telemetry. A failed request never reaches the
+    // completion update, so the stats row cannot ride that transaction;
+    // write it in its own tenant transaction under the same `SET LOCAL`
+    // context the sibling writes use. One INSERT only on the FAILURE path
+    // (the success path stays a single folded write — no extra round-trip
+    // there). STATS ONLY — no message content.
+    final ctx = _tenantContextFor(operator);
+    return _wrapper.runInTenantContext(ctx, (exec) async {
+      await exec.execute(
+        ProxyRequestStatsSql.insert,
+        parameters: stats.toParameters(
+          operatorId: operator.operatorId,
+          locationId: operator.locationId,
+        ),
+      );
+    });
+  }
+
   static TenantContext _tenantContextFor(OperatorContext operator) {
     return TenantContext(
       operatorId: operator.operatorId,
@@ -2823,6 +2862,16 @@ class ScaffoldFailingProxyAccountingStore implements ProxyAccountingStore {
     required Map<String, Object?> responsePayload,
     required DateTime now,
     ProxyRequestStats? stats,
+  }) async {
+    throw StateError(
+      '11a.11d scaffold: real Postgres accounting store is not wired.',
+    );
+  }
+
+  @override
+  Future<void> recordRequestStats({
+    required OperatorContext operator,
+    required ProxyRequestStats stats,
   }) async {
     throw StateError(
       '11a.11d scaffold: real Postgres accounting store is not wired.',
@@ -7317,10 +7366,67 @@ Future<void> routeRequest(
                 fallbackUsed: 'none',
                 decision: AcquireDecision.allow,
               );
-            } on Exception catch (_) {
+            } on Exception catch (error) {
               // A3.4: `llmProvider.complete` surfaces TimeoutException,
               // IOException, HttpException, FormatException, provider-
               // specific Exception subtypes. Narrow so `Error`s propagate.
+              //
+              // P1b.2 — Support logs failure/timeout telemetry (plan §12).
+              // This is the one post-reservation, pre-completeRequest bail
+              // path that represents a FAILED LLM request: the provider call
+              // threw, so the request early-returns 503 here and never
+              // reaches completeRequest's `result_status='success'` write.
+              // Record a real failure row so Support logs shows it as an
+              // honest error/timeout instead of a derived `unknown`.
+              //
+              // Idempotent: this point is reached only on a REAL attempt — an
+              // idempotency replay early-returns at `ProxyAccountingReplayed`
+              // above, before `reserved` exists — so exactly one row is
+              // written per failed attempt and a replay never duplicates it.
+              // Correlation: we have `reserved.requestId` (the reservation
+              // minted upstream) so the row joins back to the proxy_requests
+              // row. If the reservation could not surface a request_id we
+              // still record the failure (the table allows a null request_id;
+              // the row is honest, just uncorrelated) — but a failure BEFORE
+              // any reservation (e.g. startRequest itself failing) returns a
+              // different 503 upstream and writes nothing, as intended.
+              //
+              // Honest nulls: the provider returned nothing, so token counts
+              // and cost are genuinely UNKNOWN -> null (NOT zero, which would
+              // imply a measured no-op). `model_id` is the model the proxy
+              // ROUTED to and attempted (deterministic from tier routing, not
+              // fabricated); `provider` derives from it. Latency is the
+              // measured wall-clock to the point of failure, clamped >= 0.
+              final isTimeout =
+                  error is TimeoutException ||
+                  error is DependencyTimeoutException;
+              final failureLatencyMs = clock()
+                  .difference(requestStartedAt)
+                  .inMilliseconds;
+              final failureStats = ProxyRequestStats(
+                usageClass: usageClass,
+                resultStatus: isTimeout ? 'timeout' : 'error',
+                requestId: reserved.requestId,
+                actorUserId: scope.isServicePrincipal ? null : scope.userId,
+                provider: providerFromModelId(modelId),
+                modelId: modelId,
+                modelVersion: null,
+                promptTokenCount: null,
+                completionTokenCount: null,
+                costUsd: null,
+                latencyMs: failureLatencyMs < 0 ? 0 : failureLatencyMs,
+              );
+              try {
+                await accountingStore.recordRequestStats(
+                  operator: scope,
+                  stats: failureStats,
+                );
+              } on Exception catch (_) {
+                // Best-effort telemetry: a stats-write failure must NOT
+                // change the client outcome or leak store internals. The
+                // 503 below is written regardless. `Error`s still propagate
+                // per C4.
+              }
               _writeJson(response, 503, <String, Object?>{
                 'error': 'llm_provider_unavailable',
                 'message': 'LLM provider unavailable',
