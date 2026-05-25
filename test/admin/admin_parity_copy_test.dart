@@ -192,7 +192,7 @@ void main() {
       );
       expect(
         find.byKey(const Key('admin_integrations_scope_note')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.text('Where this applies'), findsNothing);
       expect(

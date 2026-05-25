@@ -18,7 +18,6 @@ class OperatorLocationScopeBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scopeKind = scope.locationId == null ? 'operator' : 'location';
     return Container(
       key: const Key('admin_operator_location_scope_banner'),
       margin: const EdgeInsets.only(bottom: 12),
@@ -37,11 +36,6 @@ class OperatorLocationScopeBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'Showing $surfaceName for this $scopeKind',
-                style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
-              ),
-              const SizedBox(height: 2),
               Text(
                 scope.displayLabel,
                 style: AppTextStyles.body14(color: AppColors.textPrimary),

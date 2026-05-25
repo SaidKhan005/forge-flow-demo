@@ -343,23 +343,6 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
                 loading: _loading || _refreshing,
               ),
               const SizedBox(height: 12),
-              // System health is platform-wide: the proxy `/health` envelope
-              // carries no operator/tenant/scope identifiers (see
-              // docs/contracts/proxy_health_contract.md), so a per-scope
-              // "selected scope / source / effective value" block does not
-              // belong here. When a hierarchy scope is selected we keep
-              // HP#11 honest with one short muted line stating the checks do
-              // not change per scope (the scope is still sent to the gateway
-              // fetch above for request shaping, not for display).
-              if (widget.hierarchyScope != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'These checks are platform-wide. The selected scope does not change them.',
-                    key: const Key('admin_health_platform_note'),
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
-                  ),
-                ),
               if (_loadError != null)
                 _ErrorBanner(
                   key: const Key('admin_health_load_error'),

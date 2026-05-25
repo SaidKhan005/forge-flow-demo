@@ -281,20 +281,6 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                 onSelectMonth: _selectMonth,
               ),
               const SizedBox(height: 12),
-              // AI Metrics is scope-specific, so HP#11 stays as one honest
-              // muted line; scope still flows to the gateway fetch unchanged.
-              if (widget.hierarchyScope != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'Showing ${widget.hierarchyScope!.scopeType.label.toLowerCase()} '
-                    'scope: ${widget.hierarchyScope!.displayLabel}. Cost, usage, and '
-                    'customers are for this scope; hosting and the knowledge graph '
-                    'stay platform-wide.',
-                    key: const Key('admin_observability_scope_note'),
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
-                  ),
-                ),
               if (_loadError != null)
                 _ErrorBanner(
                   key: const Key('admin_observability_load_error'),

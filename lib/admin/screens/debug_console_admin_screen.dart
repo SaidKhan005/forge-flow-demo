@@ -649,7 +649,7 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                     emptyBody:
                         'No relationship review requests match the current filters.',
                     body:
-                        'Typed view of relationship review, knowledge-link, and corpus relationship support requests for the selected scope.',
+                        'Typed view of relationship review, knowledge-link, and corpus relationship support requests.',
                   ),
                   _SupportHelpTab(
                     key: const Key('admin_debug_console_account_help_tab'),
@@ -677,7 +677,7 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                     emptyBody:
                         'No account support requests match the current filters.',
                     body:
-                        'Typed view of account, sign-in, MFA, session, notification, and removal support requests for the selected scope.',
+                        'Typed view of account, sign-in, MFA, session, notification, and removal support requests.',
                   ),
                 ],
               ),
@@ -923,13 +923,6 @@ class _ScopeBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final body = switch (scope.scopeType) {
-      AdminHierarchyScopeType.business =>
-        'Business scope includes all recent support-log rows for this operator unless you add a location filter.',
-      AdminHierarchyScopeType.location =>
-        'Location only. Support logs are filtered to this location using the existing operator/location route contract.',
-      AdminHierarchyScopeType.orgUnit => _orgUnitBody(),
-    };
     final isWarning = error != null;
     final accent = isWarning ? AppColors.warning : AppColors.peacock;
     return Container(
@@ -972,12 +965,14 @@ class _ScopeBanner extends StatelessWidget {
                     _ScopePill(label: scope.inheritanceLabel),
                   ],
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  body,
-                  key: const Key('admin_debug_console_scope_body'),
-                  style: AppTextStyles.body12(color: AppColors.textSecondary),
-                ),
+                if (error != null) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    error!,
+                    key: const Key('admin_debug_console_scope_body'),
+                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  ),
+                ],
               ],
             ),
           ),
@@ -986,21 +981,6 @@ class _ScopeBanner extends StatelessWidget {
     );
   }
 
-  String _orgUnitBody() {
-    final scopedError = error;
-    if (scopedError != null) return scopedError;
-    if (resolving) {
-      return 'Resolving covered locations before filtering support logs.';
-    }
-    final count = locationIds?.length;
-    if (count == null) {
-      return 'Org-unit support logs need the hierarchy location list. This route does not expose that data here, so choose a business or location scope.';
-    }
-    if (count == 0) {
-      return 'This org unit has no covered locations, so no support-log rows can match it.';
-    }
-    return 'Org unit expands to $count covered location${count == 1 ? '' : 's'}. The admin proxy receives the covered-location filter and the screen narrows visible rows to the same scope.';
-  }
 }
 
 class _ScopePill extends StatelessWidget {

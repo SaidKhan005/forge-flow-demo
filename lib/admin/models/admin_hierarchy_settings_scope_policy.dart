@@ -84,14 +84,14 @@ class AdminHierarchySettingsScopePolicy {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
         if (scope.isBusinessScope) {
-          return 'Business scope filters the location rows for review. Pick a location row to apply a data accuracy repair.';
+          return 'Pick a location row to apply a data accuracy repair.';
         }
-        return 'Org-unit scope filters the location rows for review. Pick a location row to apply a data accuracy repair.';
+        return 'Pick a location row to apply a data accuracy repair.';
       case AdminHierarchySettingsSurface.pollingPricing:
         if (scope.isBusinessScope) {
-          return 'Business scope assignments create one polling setup that covered locations inherit until a lower scope overrides it.';
+          return 'Covered locations inherit this polling setup until a lower scope overrides it.';
         }
-        return 'Org-unit polling assignments create one polling setup that covered locations inherit until a lower scope overrides it.';
+        return 'Covered locations inherit this polling setup until a lower scope overrides it.';
     }
   }
 
@@ -125,18 +125,18 @@ class AdminHierarchySettingsScopePolicy {
   String get _businessAllowedActionsLabel {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
-        return 'Review selected scope';
+        return 'Review';
       case AdminHierarchySettingsSurface.pollingPricing:
-        return 'Assign selected scope';
+        return 'Assign';
     }
   }
 
   String get _orgUnitAllowedActionsLabel {
     switch (surface) {
       case AdminHierarchySettingsSurface.dataAccuracy:
-        return 'Review selected scope';
+        return 'Review';
       case AdminHierarchySettingsSurface.pollingPricing:
-        return 'Assign selected scope';
+        return 'Assign';
     }
   }
 }

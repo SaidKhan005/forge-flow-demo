@@ -36,10 +36,8 @@
 // block). System health is platform-wide: the proxy `/health` envelope
 // carries no operator/tenant/scope identifiers per
 // docs/contracts/proxy_health_contract.md, so a per-scope block does not
-// belong. When a hierarchy scope is selected, one short muted line
-// (key `admin_health_platform_note`) states the checks do not change per
-// scope. The scope is still sent to the gateway fetch for request
-// shaping; only the on-screen per-scope block is gone.
+// belong. Scope still flows to the gateway fetch for request shaping;
+// only the on-screen per-scope block is gone.
 //
 // Slice 6b declutters the duplicate header. The screen is only ever
 // mounted inside the admin scope-workspace pane, which already renders
@@ -196,15 +194,15 @@ void main() {
 
     // The verbose hierarchy scope notice was removed (System health is
     // platform-wide: the /health envelope carries no scope identifiers per
-    // docs/contracts/proxy_health_contract.md). One short muted platform
-    // note renders in its place; the old notice is gone from the tree.
+    // docs/contracts/proxy_health_contract.md). No replacement scope note
+    // renders because the workspace scope picker already carries that job.
     expect(
       find.byKey(const Key('admin_health_scope_notice')),
       findsNothing,
     );
     expect(
       find.byKey(const Key('admin_health_platform_note')),
-      findsOneWidget,
+      findsNothing,
     );
 
     await tester.tap(find.byKey(const Key('admin_health_refresh_button')));

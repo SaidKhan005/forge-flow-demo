@@ -125,20 +125,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Demo Diner / Downtown'), findsOneWidget);
-    // AI Metrics is scope-specific, so the scope indication stays (HP#11) but
-    // is slimmed to one honest muted line: it names the selected scope and
-    // keeps the platform-wide caveat. The verbose "Where this applies" block
-    // (pill + Section-details expander + source/effective rows) is gone.
+    expect(find.textContaining('Demo Diner / Downtown'), findsNothing);
+    // The workspace scope picker already names the selected scope. The old
+    // per-screen scope note and verbose "Where this applies" block are gone.
     expect(
       find.byKey(const Key('admin_observability_scope_note')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.textContaining(
         'hosting and the knowledge graph stay platform-wide',
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const Key('admin_observability_scope_notice')),
