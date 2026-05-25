@@ -266,4 +266,303 @@ void main() {
     );
     expect(gateway.idempotencyKeys, isNotEmpty);
   });
+
+  // ─── Turn off two-factor sign-in (operator-web parity) ─────────────
+
+  testWidgets(
+      'turn-off action is offered only when a factor is enrolled',
+      (tester) async {
+    wideViewport(tester);
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+    final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
+
+    // Not enrolled — no turn-off action. (Distinct screen keys force a
+    // fresh State so each pump re-reads its own gateway in initState.)
+    final notEnrolled = InMemoryAdminSecurityGateway(now: () => now);
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          key: const Key('screen-not-enrolled'),
+          session: session(),
+          authSource: source,
+          securityGateway: notEnrolled,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_turn_off_button')),
+      findsNothing,
+    );
+
+    // Enrolled — turn-off action present.
+    final enrolled = InMemoryAdminSecurityGateway(
+      seedEnrolledFactor: true,
+      now: () => now,
+    );
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          key: const Key('screen-enrolled'),
+          session: session(),
+          authSource: source,
+          securityGateway: enrolled,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_turn_off_button')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'requesting removal sends an idempotency key and shows the pending '
+      'scheduled state', (tester) async {
+    wideViewport(tester);
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+    final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
+    final gateway = InMemoryAdminSecurityGateway(
+      seedEnrolledFactor: true,
+      now: () => now,
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          session: session(),
+          authSource: source,
+          securityGateway: gateway,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final turnOff =
+        find.byKey(const Key('admin_my_account_mfa_turn_off_button'));
+    await tester.ensureVisible(turnOff);
+    await tester.tap(turnOff);
+    await tester.pumpAndSettle();
+
+    // Confirm dialog appears (operator-web parity copy).
+    expect(find.byKey(const Key('admin_mfa_turn_off_dialog')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('admin_mfa_turn_off_confirm')));
+    await tester.pumpAndSettle();
+
+    // Gateway was driven with a stable idempotency key, removal pending.
+    expect(gateway.idempotencyKeys, isNotEmpty);
+    expect((await gateway.listFactors()).pendingRemoval, isNotNull);
+
+    // Card now shows the pending/scheduled state + cancel action.
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_removal_pending')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_cancel_removal_button')),
+      findsOneWidget,
+    );
+    // The scheduled date is the 24h grace window past the injected now.
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_removal_scheduled')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('2026-05-15 12:30 UTC'), findsOneWidget);
+    // The turn-off action is replaced by the pending state.
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_turn_off_button')),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+      'cancel removal calls the gateway and returns to the enrolled state',
+      (tester) async {
+    wideViewport(tester);
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+    final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
+    final gateway = InMemoryAdminSecurityGateway(
+      seedEnrolledFactor: true,
+      now: () => now,
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          session: session(),
+          authSource: source,
+          securityGateway: gateway,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Drive into the pending state first.
+    final turnOff =
+        find.byKey(const Key('admin_my_account_mfa_turn_off_button'));
+    await tester.ensureVisible(turnOff);
+    await tester.tap(turnOff);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_mfa_turn_off_confirm')));
+    await tester.pumpAndSettle();
+    expect((await gateway.listFactors()).pendingRemoval, isNotNull);
+
+    final keysAfterRequest = gateway.idempotencyKeys.length;
+
+    // Now cancel.
+    final cancel =
+        find.byKey(const Key('admin_my_account_mfa_cancel_removal_button'));
+    await tester.ensureVisible(cancel);
+    await tester.tap(cancel);
+    await tester.pumpAndSettle();
+
+    // Cancel hit the gateway (a new key) and cleared the pending request.
+    expect(gateway.idempotencyKeys.length, greaterThan(keysAfterRequest));
+    expect((await gateway.listFactors()).pendingRemoval, isNull);
+
+    // Card is back to the enrolled (not-pending) state: turn-off action
+    // returns, pending state gone, factor still enrolled.
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_removal_pending')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_turn_off_button')),
+      findsOneWidget,
+    );
+    expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
+  });
+
+  testWidgets(
+      'removal request fails closed on a gateway error (no false success, '
+      'factor stays enrolled)', (tester) async {
+    wideViewport(tester);
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+    final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
+    final gateway = _ThrowingRemovalGateway(now: () => now);
+
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          session: session(),
+          authSource: source,
+          securityGateway: gateway,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final turnOff =
+        find.byKey(const Key('admin_my_account_mfa_turn_off_button'));
+    await tester.ensureVisible(turnOff);
+    await tester.tap(turnOff);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_mfa_turn_off_confirm')));
+    await tester.pumpAndSettle();
+
+    // No pending state, factor still enrolled, turn-off action remains.
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_removal_pending')),
+      findsNothing,
+    );
+    expect((await gateway.listFactors()).pendingRemoval, isNull);
+    expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_turn_off_button')),
+      findsOneWidget,
+    );
+
+    // The error surfaces in the toast, and crucially the success copy
+    // ("will turn off after a 24-hour wait") is absent — no false
+    // success.
+    expect(
+      find.byKey(const Key('admin_my_account_two_factor_toast')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('will turn off after a 24-hour wait'),
+        findsNothing);
+    expect(find.textContaining('two-factor service is unavailable'),
+        findsOneWidget);
+  });
+
+  testWidgets(
+      'freshness error surfaces a "sign in again" message, fails closed',
+      (tester) async {
+    wideViewport(tester);
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+    final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
+    final gateway = _ThrowingRemovalGateway(
+      now: () => now,
+      error: const AdminSecurityGatewayError(
+        statusCode: 403,
+        errorCode: 'mfa_freshness_required',
+        message: 'fresh step-up required',
+      ),
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          session: session(),
+          authSource: source,
+          securityGateway: gateway,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final turnOff =
+        find.byKey(const Key('admin_my_account_mfa_turn_off_button'));
+    await tester.ensureVisible(turnOff);
+    await tester.tap(turnOff);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_mfa_turn_off_confirm')));
+    await tester.pumpAndSettle();
+
+    // The distinctive freshness remedy copy (not the generic
+    // "sign in again first" hint already on the turn-off action body).
+    expect(
+      find.textContaining('Please sign in again before changing two-factor'),
+      findsOneWidget,
+    );
+    expect((await gateway.listFactors()).pendingRemoval, isNull);
+    expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
+  });
+}
+
+/// Enrolled gateway whose [requestFactorRemoval] always throws, so the
+/// screen's fail-closed path can be exercised. Defaults to a generic
+/// error; tests pass [error] to drive the freshness branch.
+class _ThrowingRemovalGateway extends InMemoryAdminSecurityGateway {
+  _ThrowingRemovalGateway({super.now, this.error})
+      : super(seedEnrolledFactor: true);
+
+  final AdminSecurityGatewayError? error;
+
+  @override
+  Future<AdminSecurityFactorRemovalRequested> requestFactorRemoval({
+    required String factorId,
+    required String idempotencyKey,
+    String? freshAuthProof,
+  }) async {
+    idempotencyKeys.add(idempotencyKey);
+    throw error ??
+        const AdminSecurityGatewayError(
+          statusCode: 503,
+          errorCode: 'mfa_unavailable',
+          message: 'two-factor service is unavailable',
+        );
+  }
 }
