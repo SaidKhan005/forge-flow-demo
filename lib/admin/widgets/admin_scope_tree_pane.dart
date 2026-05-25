@@ -55,6 +55,7 @@ class AdminScopeTreePane extends StatelessWidget {
     this.showAllBusinesses = false,
     this.allBusinessesSelected = false,
     this.onSelectAllBusinesses,
+    this.attentionPulseToken = 0,
   });
 
   final List<AdminScopeTree> trees;
@@ -83,11 +84,39 @@ class AdminScopeTreePane extends StatelessWidget {
   /// Invoked when the operator taps the "All businesses" row.
   final VoidCallback? onSelectAllBusinesses;
 
+  /// Incremented by the shell when it needs to draw attention back to this
+  /// pane after a "pick a business first" redirect.
+  final int attentionPulseToken;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_setup_workspace_scope_pane'),
-      color: AppColors.backgroundMid.withValues(alpha: 0.5),
+    return TweenAnimationBuilder<double>(
+      key: ValueKey<int>(attentionPulseToken),
+      tween: Tween<double>(begin: attentionPulseToken > 0 ? 1 : 0, end: 0),
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.easeOutCubic,
+      builder: (context, pulse, child) {
+        return Container(
+          key: const Key('admin_setup_workspace_scope_pane'),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundMid.withValues(alpha: 0.5),
+            border: Border.all(
+              color: AppColors.sunsetDark.withValues(alpha: 0.44 * pulse),
+              width: 2,
+            ),
+            boxShadow: pulse <= 0
+                ? const <BoxShadow>[]
+                : <BoxShadow>[
+                    BoxShadow(
+                      color: AppColors.sunset.withValues(alpha: 0.22 * pulse),
+                      blurRadius: 20,
+                      spreadRadius: 1,
+                    ),
+                  ],
+          ),
+          child: child,
+        );
+      },
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(

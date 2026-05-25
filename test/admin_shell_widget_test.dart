@@ -934,6 +934,56 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Business accounts link pulses the scope pane when already there',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(AdminShell(session: superAdmin, authSource: source)),
+      );
+      await pumpEventually(tester);
+
+      expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+
+      final teamRow = find.byKey(
+        Key('admin_nav_cluster_item_$kAdminMembersRouteId'),
+      );
+      await tester.ensureVisible(teamRow);
+      await pumpEventually(tester);
+      await tester.tap(teamRow);
+      await pumpEventually(tester);
+
+      await tester.tap(
+        find.byKey(const Key('admin_pick_business_first_dialog_link')),
+      );
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final scopePane = tester.widget<Container>(
+        find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      );
+      final decoration = scopePane.decoration! as BoxDecoration;
+      final border = decoration.border! as Border;
+      expect(
+        border.top.color.a,
+        greaterThan(0),
+        reason:
+            'The redundant same-route link should still visibly call '
+            'attention to the business selector.',
+      );
+      expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('tapping the inactive cluster hint routes to Business accounts', (
     tester,
   ) async {

@@ -412,6 +412,7 @@ class AdminRouteHandoff extends InheritedWidget {
     this.supportLogFilter,
     this.operatorLocationScope,
     this.hierarchyScope,
+    this.businessSelectionAttentionToken = 0,
   });
 
   final String selectedRouteId;
@@ -419,6 +420,7 @@ class AdminRouteHandoff extends InheritedWidget {
   final AdminOperatorLocationScopeIntent? operatorLocationScope;
   final AdminHierarchyScopeIntent? hierarchyScope;
   final ValueChanged<AdminRouteIntent> onSelectRoute;
+  final int businessSelectionAttentionToken;
 
   AdminHierarchyScopeIntent? get effectiveHierarchyScope {
     return hierarchyScope ?? operatorLocationScope?.toHierarchyScope();
@@ -433,7 +435,9 @@ class AdminRouteHandoff extends InheritedWidget {
     return selectedRouteId != oldWidget.selectedRouteId ||
         supportLogFilter != oldWidget.supportLogFilter ||
         operatorLocationScope != oldWidget.operatorLocationScope ||
-        hierarchyScope != oldWidget.hierarchyScope;
+        hierarchyScope != oldWidget.hierarchyScope ||
+        businessSelectionAttentionToken !=
+            oldWidget.businessSelectionAttentionToken;
   }
 }
 
