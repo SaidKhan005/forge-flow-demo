@@ -115,13 +115,9 @@ class AdminScopeTreePane extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (showAllBusinesses) ...[
-              AdminScopeRow(
+              AdminAllBusinessesScopeButton(
                 key: const Key('admin_setup_scope_all_businesses'),
-                icon: Icons.public_outlined,
-                label: 'All businesses',
-                detail: 'Every business on the platform',
                 selected: allBusinessesSelected,
-                depth: 0,
                 onTap: onSelectAllBusinesses ?? () {},
               ),
               const SizedBox(height: 8),
@@ -155,6 +151,82 @@ class AdminScopeTreePane extends StatelessWidget {
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Platform-wide scope affordance for aggregate-capable admin screens.
+///
+/// This intentionally reads like the AI Metrics month selector's active
+/// segment: filled sunset, white text, and the same row footprint the
+/// regular scope row used before.
+class AdminAllBusinessesScopeButton extends StatelessWidget {
+  const AdminAllBusinessesScopeButton({
+    super.key,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.sunset,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.sunset, width: 1),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.public_outlined,
+                size: 18,
+                color: AppColors.backgroundSurface,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'All businesses',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.buttonLabel(
+                        color: AppColors.backgroundSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Every business on the platform',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body11(
+                        color: AppColors.backgroundSurface,
+                      ).copyWith(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+              if (selected)
+                const Icon(
+                  Icons.check_circle,
+                  size: 17,
+                  color: AppColors.backgroundSurface,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -397,7 +469,10 @@ class AdminScopeTree {
     }
     for (final location in locations) {
       _locationsByOrgUnit
-          .putIfAbsent(location.orgUnitId, () => <AdminScopeWorkspaceLocation>[])
+          .putIfAbsent(
+            location.orgUnitId,
+            () => <AdminScopeWorkspaceLocation>[],
+          )
           .add(location);
     }
   }

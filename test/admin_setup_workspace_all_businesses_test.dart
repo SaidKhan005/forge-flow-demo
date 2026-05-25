@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/widgets/admin_setup_workspace.dart';
+import 'package:forge_and_flow/theme/app_theme.dart';
 
 import '_test_helpers/widget_pump_helpers.dart';
 import 'admin_operator_location_test_helpers.dart';
@@ -59,12 +60,7 @@ void main() {
         seed: <OperatorAdminBundle>[seedBundle()],
       );
       await tester.pumpWidget(
-        wrap(
-          buildWorkspace(
-            gateway: gateway,
-            allowAllBusinessesScope: true,
-          ),
-        ),
+        wrap(buildWorkspace(gateway: gateway, allowAllBusinessesScope: true)),
       );
       await pumpEventually(tester);
 
@@ -73,6 +69,14 @@ void main() {
       );
       expect(allBusinessesRow, findsOneWidget);
       expect(find.text('All businesses'), findsOneWidget);
+      final buttonMaterial = find.descendant(
+        of: allBusinessesRow,
+        matching: find.byType(Material),
+      );
+      expect(
+        tester.widget<Material>(buttonMaterial.first).color,
+        AppColors.sunset,
+      );
       // Not selected yet: the platform-wide builder is not mounted.
       expect(find.byKey(const Key('all_biz_view')), findsNothing);
       expect(
@@ -93,31 +97,23 @@ void main() {
     },
   );
 
-  testWidgets(
-    'All businesses row is absent by default (other setup surfaces '
-    'unaffected)',
-    (tester) async {
-      useWideSurface(tester);
-      final gateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[seedBundle()],
-      );
-      await tester.pumpWidget(
-        wrap(
-          buildWorkspace(
-            gateway: gateway,
-            allowAllBusinessesScope: false,
-          ),
-        ),
-      );
-      await pumpEventually(tester);
+  testWidgets('All businesses row is absent by default (other setup surfaces '
+      'unaffected)', (tester) async {
+    useWideSurface(tester);
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(
+      wrap(buildWorkspace(gateway: gateway, allowAllBusinessesScope: false)),
+    );
+    await pumpEventually(tester);
 
-      expect(
-        find.byKey(const Key('admin_setup_scope_all_businesses')),
-        findsNothing,
-      );
-      expect(find.text('All businesses'), findsNothing);
-    },
-  );
+    expect(
+      find.byKey(const Key('admin_setup_scope_all_businesses')),
+      findsNothing,
+    );
+    expect(find.text('All businesses'), findsNothing);
+  });
 
   testWidgets(
     'the option stays hidden when no all-businesses builder is provided',
@@ -152,12 +148,7 @@ void main() {
         seed: <OperatorAdminBundle>[seedBundle()],
       );
       await tester.pumpWidget(
-        wrap(
-          buildWorkspace(
-            gateway: gateway,
-            allowAllBusinessesScope: true,
-          ),
-        ),
+        wrap(buildWorkspace(gateway: gateway, allowAllBusinessesScope: true)),
       );
       await pumpEventually(tester);
 
