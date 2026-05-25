@@ -141,6 +141,18 @@ exists in the `kPricingTierTemplates` plan summaries).
 **Recommended start:** 5a + 5b + 5c (foundation + display + routing; web/server, low
 risk). 5d after the surface reality-check.
 
+**UX standard (BINDING, operator directive 2026-05-25):** every new Phase 5
+operator-web surface (especially 5b "Your plan", and any plan-related screen) MUST be
+SIMPLE and follow the EXISTING operator-web console: same structure, navigation,
+layout, shared theme, and components. It has to look and behave like the rest of the
+ops web, not a one-off or a parallel style. Low clutter; plain English that reads as
+training; no jargon; no em-dash punctuation (UX no-em-dash law). Reuse operator-web's
+existing patterns and widgets; do not invent new ones. References: the operator-web
+console structure in `lib/operator_web/**`, `runbooks/operator_web_qa_runbook.md`, and
+the standing "Web/Mobile Visual Consistency" + "Admin-Web UX Parity" standards. The
+admin-side Phase 5 entitlements editor (5a) likewise matches the existing Plans &
+limits screen, not a new look.
+
 ### Phase 6 — Billing (XL, FUTURE)
 - Seat counting (`operators.active_seat_count` or a seats table + nightly rollup),
   payments (Stripe adapter), invoices, payment methods.
