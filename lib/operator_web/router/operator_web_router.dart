@@ -66,6 +66,7 @@ import '../screens/data_accuracy_screen.dart';
 import '../screens/hierarchy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/permission_explainer_screen.dart';
+import '../screens/plan_nav.dart';
 import '../screens/roles_screen.dart';
 import '../screens/sessions_screen.dart';
 import '../screens/settings_notifications_screen.dart';
@@ -282,6 +283,7 @@ String? _navIdFromRaw(String? raw) {
     // landing on the wage section without 404ing.
     'wage_authority' => kOperatorWebNavDataAccuracy,
     'schedule' => kOperatorWebNavSchedule,
+    'plan' || 'your_plan' || 'plans' => kOperatorWebNavPlan,
     'security' || 'sign_in_security' => kOperatorWebNavMyAccount,
     _ => null,
   };
@@ -1582,6 +1584,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.notifications_outlined,
         group: 'People & access',
       ),
+      kOperatorWebPlanNavItem, // Plans & limits Phase 5b — "Your plan".
     ];
     final Widget body;
     switch (_selectedNavId) {
@@ -1993,6 +1996,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             onOpenWageAuthority: _openDataAccuracyWageAuthority,
           );
         }
+        break;
+      case kOperatorWebNavPlan: // Plans & limits 5b — wiring in plan_nav.dart.
+        body = operatorWebPlanScreenBody(
+          session: session,
+          nowUtc: widget.nowUtc,
+        );
         break;
       default:
         body = AccountScreen(
