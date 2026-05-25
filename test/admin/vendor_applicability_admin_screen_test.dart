@@ -210,6 +210,67 @@ void main() {
     );
 
     testWidgets(
+      'editing an inherited rule saves an override at the selected location',
+      (tester) async {
+        await _size(tester);
+        final gateway = _FakeVendorApplicabilityAdminGateway()
+          ..seed(<VendorApplicabilityAdminRow>[
+            _row(settingKind: 'wage', vendorSlug: 'toast'),
+          ]);
+        final operatorGateway = InMemoryOperatorLocationAdminGateway(
+          seed: <OperatorAdminBundle>[_operatorBundle()],
+        );
+
+        await tester.pumpWidget(
+          wrap(
+            VendorApplicabilityAdminScreen(
+              gateway: gateway,
+              operatorLocationGateway: operatorGateway,
+              hierarchyScope: const AdminHierarchyScopeIntent.location(
+                operatorId: _kOperatorId,
+                operatorName: 'Barrio Legado',
+                locationId: _kLocationId,
+                locationName: 'North Loop',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Inherited'), findsOneWidget);
+        await tester.tap(
+          find.byKey(
+            const Key('admin_vendor_applicability_edit_row-wage-toast'),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Add override'), findsOneWidget);
+        expect(find.text('Barrio Legado / North Loop'), findsOneWidget);
+
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_vendor_applicability_reason')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('admin_vendor_applicability_reason')),
+          'Ticket VA-211 local Toast override',
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_vendor_applicability_submit')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(gateway.upserts, hasLength(1));
+        final command = gateway.upserts.single;
+        expect(command.vendorSlug, 'toast');
+        expect(command.operatorId, _kOperatorId);
+        expect(command.locationId, _kLocationId);
+        expect(command.reasonNote, 'Ticket VA-211 local Toast override');
+      },
+    );
+
+    testWidgets(
       'org-unit scope disables adding because backend stores business/location rules',
       (tester) async {
         await _size(tester);
