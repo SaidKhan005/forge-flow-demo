@@ -7341,6 +7341,10 @@ const String adminPricingOperatorsPath = '/v1/admin/pricing/operators';
 const String adminPricingOperatorsPrefix = '$adminPricingOperatorsPath/';
 const String adminPricingUsageCapsPath = '/v1/admin/pricing/usage-caps';
 
+/// Suffix on `/v1/admin/pricing/operators/{id}/spend-summary`. The
+/// month-to-date spend-vs-cap read for the admin Plans & limits bars.
+const String adminPricingSpendSummaryAction = 'spend-summary';
+
 // Phase 8 spine-bridge .C -- Data Accuracy + Polling & Pricing admin
 // routes. This surface is separate from 11A.2 pricing caps: it exposes
 // per-location data accuracy settings, polling tier assignments, and
@@ -7489,6 +7493,39 @@ abstract class PricingTierAdminProxyGateway {
     required String actorUserId,
     required String operatorId,
     required String tierKey,
+    required String adminReason,
+  });
+
+  /// DELETE one cap row. The caller passes EITHER a [capId] (the
+  /// 9.0Σ.g surrogate) OR the full logical key
+  /// `(operator_id, location_id, usage_class, staff_id, workflow_id)`
+  /// — the production gateway resolves the operator's root org-unit
+  /// row for both org-unit axes exactly as [upsertUsageCap] does.
+  /// Returns true when a row was deleted, false when no matching cap
+  /// existed (so a retried delete is a no-op 200, not a 404). Writes
+  /// one `admin.pricing.cap_deleted` audit row on a real delete.
+  Future<bool> deleteUsageCap({
+    required String actorUserId,
+    required String operatorId,
+    String? capId,
+    String? locationId,
+    String? usageClass,
+    String? staffId,
+    String? workflowId,
+    required String adminReason,
+  });
+
+  /// Month-to-date spend per `(location_id, usage_class, staff_id,
+  /// workflow_id)` cap identity for one operator, alongside the
+  /// matching cap's `monthly_cap_usd`. Reuses the same
+  /// `SUM(cost_usd)` for `period_start = date_trunc('month', now())`
+  /// roll-up the cap-enforcement path uses. Returns
+  /// `{'operator_id': ..., 'as_of': ..., 'lines': [{...}]}`; an
+  /// operator with no usage rolls up to an empty `lines` list. Null
+  /// when the operator was not found.
+  Future<Map<String, Object?>?> spendSummary({
+    required String actorUserId,
+    required String operatorId,
     required String adminReason,
   });
 }
@@ -14267,8 +14304,18 @@ Future<void> routeRequest(
           // Header is OPTIONAL for back-compat (existing tests don't send
           // it). When present + store is wired, `_runAdminIdempotent`
           // handles reserve→complete against `admin_request_idempotency`.
+          // DELETE is the lone exception: the destructive cap-delete
+          // path REQUIRES a key (HARD-H) so a double-tap collapses to a
+          // single delete + single audit row rather than two.
           final pricingIdempotencyKey =
               (request.headers.value('Idempotency-Key') ?? '').trim();
+          if (request.method == 'DELETE' && pricingIdempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_missing',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
           if (pricingIdempotencyKey.length > 200) {
             _writeJson(response, 400, <String, Object?>{
               'error': 'idempotency_key_too_long',
@@ -16510,6 +16557,10 @@ String? _integrationKeyKindForRoute(String path) {
 
 bool _isAdminPricingOperation(String path, String method) {
   if (method == 'GET' && path == adminPricingOperatorsPath) return true;
+  if (method == 'GET' && path.startsWith(adminPricingOperatorsPrefix)) {
+    // /{id}/spend-summary suffix (read).
+    return true;
+  }
   if (method == 'PATCH' && path.startsWith(adminPricingOperatorsPrefix)) {
     return true;
   }
@@ -16518,6 +16569,7 @@ bool _isAdminPricingOperation(String path, String method) {
     return true;
   }
   if (method == 'PUT' && path == adminPricingUsageCapsPath) return true;
+  if (method == 'DELETE' && path == adminPricingUsageCapsPath) return true;
   return false;
 }
 
@@ -17196,6 +17248,21 @@ Future<void> _routePricingAdmin({
     return;
   }
 
+  // GET /v1/admin/pricing/operators/{id}/spend-summary — month-to-date
+  // spend vs cap. Handler body lives in the admin route-group part file
+  // so the monolith stays under the bleed-stop ceiling.
+  if (method == 'GET' && path.startsWith(adminPricingOperatorsPrefix)) {
+    await _handlePricingSpendSummary(
+      request: request,
+      response: response,
+      path: path,
+      gateway: gateway,
+      actorUserId: actorUserId,
+      reasonPrefix: reasonPrefix,
+    );
+    return;
+  }
+
   if (method == 'PATCH' && path.startsWith(adminPricingOperatorsPrefix)) {
     final tail = _pathSuffix(path, adminPricingOperatorsPrefix);
     if (tail == null || tail.contains('/')) {
@@ -17326,6 +17393,23 @@ Future<void> _routePricingAdmin({
         );
         return (statusCode: 200, payload: <String, Object?>{'cap': cap});
       },
+    );
+    return;
+  }
+
+  // DELETE /v1/admin/pricing/usage-caps — remove one cap by cap_id or
+  // by its full logical key. Idempotent + audited; handler body lives
+  // in the admin route-group part file so the monolith stays under the
+  // bleed-stop ceiling.
+  if (method == 'DELETE' && path == adminPricingUsageCapsPath) {
+    await _handlePricingDeleteCap(
+      response: response,
+      gateway: gateway,
+      actorUserId: actorUserId,
+      reasonPrefix: reasonPrefix,
+      body: body,
+      idempotencyKey: idempotencyKey,
+      idempotencyStore: idempotencyStore,
     );
     return;
   }
