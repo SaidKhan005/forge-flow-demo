@@ -9,12 +9,15 @@
 // closed (no false success toast). Also pins that a NULL gateway still
 // degrades to the legacy read-only note (so older fixtures stay green).
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
 import 'package:forge_and_flow/admin/screens/my_account_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/admin_security_gateway.dart';
+import 'package:forge_and_flow/auth/mfa_freshness_redirect_listener.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -496,8 +499,8 @@ void main() {
   });
 
   testWidgets(
-      'freshness error surfaces a "sign in again" message, fails closed',
-      (tester) async {
+      'freshness error surfaces the actionable "Sign in again" remedy, '
+      'fails closed', (tester) async {
     wideViewport(tester);
     final source = DemoAdminAuthSource.signedInAsSuperAdmin();
     addTearDown(source.dispose);
@@ -531,15 +534,175 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_mfa_turn_off_confirm')));
     await tester.pumpAndSettle();
 
-    // The distinctive freshness remedy copy (not the generic
-    // "sign in again first" hint already on the turn-off action body).
+    // Actionable remedy, not a dead message: the "Sign in again" control
+    // renders, carrying the distinctive freshness copy.
+    expect(
+      find.byKey(const Key('admin_my_account_two_factor_sign_in_again')),
+      findsOneWidget,
+    );
     expect(
       find.textContaining('Please sign in again before changing two-factor'),
       findsOneWidget,
     );
+    // Fail-closed: no false success, factor stays enrolled, no pending
+    // removal scheduled.
+    expect(
+      find.byKey(const Key('admin_my_account_mfa_removal_pending')),
+      findsNothing,
+    );
     expect((await gateway.listFactors()).pendingRemoval, isNull);
     expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
   });
+
+  testWidgets(
+      'tapping "Sign in again" on the freshness remedy signs the admin out',
+      (tester) async {
+    wideViewport(tester);
+    final source = _SpyAdminAuthSource();
+    addTearDown(source.dispose);
+    final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
+    final gateway = _ThrowingRemovalGateway(
+      now: () => now,
+      error: const AdminSecurityGatewayError(
+        statusCode: 403,
+        errorCode: 'mfa_freshness_required',
+        message: 'fresh step-up required',
+      ),
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          session: session(),
+          authSource: source,
+          securityGateway: gateway,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Drive into the freshness remedy.
+    final turnOff =
+        find.byKey(const Key('admin_my_account_mfa_turn_off_button'));
+    await tester.ensureVisible(turnOff);
+    await tester.tap(turnOff);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_mfa_turn_off_confirm')));
+    await tester.pumpAndSettle();
+
+    final signInAgain =
+        find.byKey(const Key('admin_my_account_two_factor_sign_in_again'));
+    expect(signInAgain, findsOneWidget);
+    expect(source.signOutCalls, 0);
+
+    await tester.ensureVisible(signInAgain);
+    await tester.tap(signInAgain);
+    await tester.pumpAndSettle();
+
+    // The button routes through the admin re-auth path (sign-out).
+    expect(source.signOutCalls, 1);
+  });
+
+  testWidgets(
+      'a non-freshness gateway error keeps the red toast and shows NO '
+      'actionable remedy', (tester) async {
+    wideViewport(tester);
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+    final now = DateTime.utc(2026, 5, 14, 12, 30, 0);
+    // Default _ThrowingRemovalGateway error is a generic 503 (not
+    // freshness): requiresFreshSignIn is false.
+    final gateway = _ThrowingRemovalGateway(now: () => now);
+
+    await tester.pumpWidget(
+      wrap(
+        MyAccountAdminScreen(
+          session: session(),
+          authSource: source,
+          securityGateway: gateway,
+          now: () => now,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final turnOff =
+        find.byKey(const Key('admin_my_account_mfa_turn_off_button'));
+    await tester.ensureVisible(turnOff);
+    await tester.tap(turnOff);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_mfa_turn_off_confirm')));
+    await tester.pumpAndSettle();
+
+    // Red toast carries the generic error; the actionable remedy is
+    // absent (freshness-only).
+    expect(
+      find.byKey(const Key('admin_my_account_two_factor_toast')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_my_account_two_factor_sign_in_again')),
+      findsNothing,
+    );
+    expect(find.textContaining('two-factor service is unavailable'),
+        findsOneWidget);
+    // Fail-closed: factor stays enrolled.
+    expect((await gateway.listFactors()).hasEnrolledFactor, isTrue);
+  });
+}
+
+/// Spy [AdminAuthSource] that counts `signOut()` calls so a widget test
+/// can assert the freshness remedy's "Sign in again" button routes
+/// through the admin re-auth path. Starts already signed in as a
+/// super-admin so the My account screen renders.
+class _SpyAdminAuthSource implements AdminAuthSource {
+  final StreamController<AdminAuthState> _controller =
+      StreamController<AdminAuthState>.broadcast();
+
+  int signOutCalls = 0;
+
+  AdminAuthState _state = const AdminAuthAuthenticated(
+    AdminAuthSession(
+      uid: 'demo-super-admin',
+      email: 'super.admin@forgeflow.test',
+      displayName: 'Demo Super Admin',
+      roles: <String>['super_admin'],
+    ),
+  );
+
+  @override
+  Stream<AdminAuthState> get stream => _controller.stream;
+
+  @override
+  AdminAuthState get current => _state;
+
+  @override
+  Future<void> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {}
+
+  @override
+  Future<void> completeTotpChallenge({
+    required String factorId,
+    required String oneTimeCode,
+  }) async {}
+
+  @override
+  Future<void> signOut() async {
+    signOutCalls += 1;
+    _state = const AdminAuthUnauthenticated();
+    _controller.add(_state);
+  }
+
+  @override
+  void onMfaFreshnessRedirect(MfaFreshnessRedirectPayload payload) {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
 }
 
 /// Enrolled gateway whose [requestFactorRemoval] always throws, so the
