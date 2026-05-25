@@ -1,23 +1,29 @@
-// Phase 11A.5 — Debug console admin screen widget tests.
+// Phase 11A.5 / Support logs redesign P3 — Support logs admin screen
+// widget tests.
 //
 // Drives `DebugConsoleAdminScreen` against an
 // `InMemoryDebugConsoleAdminGateway` so the click path runs end-to-
 // end without a backend. Coverage:
 //
-//   * Initial render shows the Refresh button and three tabs; the
-//     gateway is hit only after Refresh.
-//   * Filters AND together: status / time-window / operator narrow
-//     the visible rows; clearing returns the full list.
+//   * Initial render shows the Refresh button + the compact filter row
+//     (Search / Type / When / Result) and the Live chip OFF by default;
+//     the gateway is hit only after Refresh.
+//   * Filters AND together: result / time-window narrow the visible
+//     rows; clearing returns the full list.
 //   * Search by request_id and by idempotency_key both work.
-//   * Live-tail toggle is OFF by default and starts polling when on.
-//   * Live-tail respects the runtime acceptance contract: it never
-//     stacks in-flight requests and merges back to the bounded list
-//     limit so the table cannot grow unbounded across a long session.
-//   * Full-content reveal: super_admin + opt-in ON → expand-row
-//     surfaces the payload; super_admin + opt-in OFF → meta only;
-//     ff_support → expand-row hides the payload even when opt-in
-//     is on.
-//   * Stub tabs render the 11A.3.x / 9.UX.1a copy.
+//   * The folded Type filter: picking an AI type narrows to that
+//     usage_class; picking a support-help group switches to the typed
+//     relationship / account list (replacing the old three tabs + the
+//     request-type key box). Clearing back to "All activity" restores.
+//   * Live chip is OFF by default and starts polling when tapped; it
+//     never stacks in-flight requests and merges back to the bounded
+//     list limit so the table cannot grow unbounded.
+//   * Full-message-text reveal: super_admin + opt-in ON → expand-row
+//     surfaces the payload; super_admin + opt-in OFF → hidden;
+//     ff_support → hidden even when opt-in is on.
+//   * Expanded row shows the plain "What happened" facts and the
+//     collapsible "Technical reference" zone with the real telemetry
+//     (and honest "—" sentinels where not recorded).
 //   * Narrow-viewport rendering: the screen embeds inside the admin
 //     shell's detail pane (~540x158 on the default 800x600 test
 //     viewport) without a `RenderFlex` overflow.
@@ -65,6 +71,12 @@ void main() {
     bool fullContentOptInOn = false,
     Map<String, Object?>? fullContent,
     Map<String, Object?>? requestMeta,
+    String? provider,
+    String? modelId,
+    int? promptTokenCount,
+    int? completionTokenCount,
+    double? costUsd,
+    String? actorUserId,
   }) {
     return RequestLogEntry(
       requestId: id,
@@ -80,6 +92,12 @@ void main() {
           const <String, Object?>{'route': '/v1/test', 'method': 'POST'},
       fullContentOptInOn: fullContentOptInOn,
       fullContentPayload: fullContent,
+      provider: provider,
+      modelId: modelId,
+      promptTokenCount: promptTokenCount,
+      completionTokenCount: completionTokenCount,
+      costUsd: costUsd,
+      actorUserId: actorUserId,
     );
   }
 
@@ -90,8 +108,16 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Open the folded Type dropdown and pick the option labelled [label].
+  Future<void> pickType(WidgetTester tester, String label) async {
+    await tester.tap(find.byKey(const Key('admin_debug_console_filter_type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets(
-    'initial render exposes Refresh, tabs, and live-tail off by default',
+    'initial render exposes Refresh, the compact filter row, and Live off',
     (tester) async {
       setLargeViewport(tester);
       final gateway = InMemoryDebugConsoleAdminGateway(
@@ -112,22 +138,35 @@ void main() {
         find.byKey(const Key('admin_debug_console_screen')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('admin_debug_console_tabs')), findsOneWidget);
+      // The compact filter row replaces the old three tabs + Filters panel.
+      expect(
+        find.byKey(const Key('admin_debug_console_filter_bar')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_debug_console_filter_type')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_debug_console_search_field')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('admin_debug_console_refresh_button')),
         findsOneWidget,
       );
-      // Live-tail toggle defaults to off.
-      final toggleFinder = find.byKey(
-        const Key('admin_debug_console_live_tail_toggle'),
-      );
-      expect(toggleFinder, findsOneWidget);
-      final toggle = tester.widget<Switch>(toggleFinder);
-      expect(toggle.value, isFalse);
+      // The old tab bar + request-type key box are gone (folded into Type).
+      expect(find.byKey(const Key('admin_debug_console_tabs')), findsNothing);
       expect(
         find.byKey(const Key('admin_debug_console_use_case_key')),
+        findsNothing,
+      );
+      // Live chip present and off by default.
+      expect(
+        find.byKey(const Key('admin_debug_console_live_tail_toggle')),
         findsOneWidget,
       );
+      expect(find.text('Live'), findsOneWidget);
       // The view-only ff_support indicator is absent because the
       // default `editingEnabled = true` lands on the super_admin path.
       expect(
@@ -147,6 +186,12 @@ void main() {
           id: 'req-001',
           operatorId: 'op-A',
           startedAt: DateTime.utc(2026, 5, 3, 11, 50),
+          provider: 'anthropic',
+          modelId: 'claude-sonnet-4-6',
+          promptTokenCount: 820,
+          completionTokenCount: 240,
+          costUsd: 0.0117,
+          actorUserId: '11111111-1111-4111-8111-111111111111',
         ),
         seedEntry(
           id: 'req-002',
@@ -180,20 +225,106 @@ void main() {
       find.byKey(const Key('admin_debug_console_empty_state')),
       findsNothing,
     );
+    // Plain title (from the shared label catalog, unchanged).
     expect(find.text('Advisor answers'), findsWidgets);
-    expect(
-      find.text(
-        'Last checked: ${adminHumanDateTime(DateTime.utc(2026, 5, 3, 12))}',
-      ),
-      findsOneWidget,
-    );
+    // Header reads "Updated <relative>" (no monospace "Last checked").
+    expect(find.textContaining('Updated'), findsOneWidget);
+    expect(find.textContaining('Last checked'), findsNothing);
 
+    // Expand the first row → the plain "What happened" facts appear,
+    // including the human date as the "When" value.
     await tester.tap(find.byKey(const Key('admin_debug_console_row_req-001')));
     await tester.pumpAndSettle();
+    expect(find.text('What happened'.toUpperCase()), findsOneWidget);
     expect(
       find.text(adminHumanDateTime(DateTime.utc(2026, 5, 3, 11, 50))),
       findsOneWidget,
     );
+    expect(find.text('Worked'), findsWidgets);
+    // The real measured latency renders in seconds (412 ms -> 0.4 seconds).
+    expect(find.text('0.4 seconds'), findsOneWidget);
+  });
+
+  testWidgets('expanded technical reference shows real telemetry + honest '
+      'sentinels for missing fields', (tester) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryDebugConsoleAdminGateway(
+      seed: <RequestLogEntry>[
+        // An LLM request with full telemetry.
+        seedEntry(
+          id: 'req-rich',
+          operatorId: 'op-A',
+          provider: 'anthropic',
+          modelId: 'claude-sonnet-4-6',
+          promptTokenCount: 820,
+          completionTokenCount: 240,
+          costUsd: 0.0117,
+          actorUserId: '11111111-1111-4111-8111-111111111111',
+        ),
+        // A failed/timed-out LLM request: P1b writes stats only on
+        // success, so this row honestly carries NO telemetry → "—".
+        seedEntry(
+          id: 'req-bare',
+          operatorId: 'op-A',
+          usageClass: 'advisor_qa',
+          status: RequestLogStatus.timeout,
+          latencyMs: 0,
+        ),
+      ],
+      now: () => DateTime.utc(2026, 5, 3, 12),
+    );
+    await tester.pumpWidget(
+      wrap(
+        DebugConsoleAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await pressRefresh(tester);
+    expect(
+      find.byKey(const Key('admin_debug_console_row_req-rich')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_debug_console_row_req-bare')),
+      findsOneWidget,
+    );
+
+    // Open the failed/timed-out row first (it stays short) and reveal its
+    // Technical reference → model / tokens / cost are the honest empty
+    // sentinel, never a phantom 0.
+    await tester.tap(find.byKey(const Key('admin_debug_console_row_req-bare')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const Key('admin_debug_console_technical_toggle_req-bare'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('—'), findsWidgets);
+    // Collapse it again.
+    await tester.tap(find.byKey(const Key('admin_debug_console_row_req-bare')));
+    await tester.pumpAndSettle();
+
+    // Open the rich LLM row + its Technical reference → real telemetry.
+    await tester.tap(find.byKey(const Key('admin_debug_console_row_req-rich')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('admin_debug_console_technical_req-rich')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(
+        const Key('admin_debug_console_technical_toggle_req-rich'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('claude-sonnet-4-6'), findsOneWidget);
+    expect(find.text('820 in / 240 out'), findsOneWidget);
+    expect(find.text(r'$0.0117'), findsOneWidget);
+    // The raw request reference lives only inside the technical block.
+    expect(find.text('req-rich'), findsOneWidget);
   });
 
   testWidgets('initial filter loads the matching support logs', (tester) async {
@@ -220,8 +351,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Business: Exact business filter'), findsOneWidget);
-    expect(find.text('Location: Exact location filter'), findsOneWidget);
+    // The compact row no longer re-renders standalone Business/Location ID
+    // chips (scope fills them); only the matching row appears.
     expect(
       find.byKey(const Key('admin_debug_console_row_req-op-a')),
       findsOneWidget,
@@ -336,7 +467,6 @@ void main() {
       find.text('Org unit: Scope Group / Canada / Region'),
       findsOneWidget,
     );
-    expect(find.text('Covered locations: 2'), findsOneWidget);
     expect(
       find.byKey(const Key('admin_debug_console_row_req-covered-a')),
       findsOneWidget,
@@ -614,7 +744,9 @@ void main() {
     );
   });
 
-  testWidgets('status filter narrows the visible rows', (tester) async {
+  testWidgets('Result filter (Worked) narrows the visible rows', (
+    tester,
+  ) async {
     setLargeViewport(tester);
     final gateway = InMemoryDebugConsoleAdminGateway(
       seed: <RequestLogEntry>[
@@ -641,20 +773,22 @@ void main() {
     );
     await pressRefresh(tester);
 
+    // Result only offers Any / Worked / Not recorded (no error/timeout
+    // standing options). "Worked" maps to the real success status.
     await tester.tap(
       find.byKey(const Key('admin_debug_console_filter_status')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Error').last);
+    await tester.tap(find.text('Worked').last);
     await tester.pumpAndSettle();
 
     expect(
       find.byKey(const Key('admin_debug_console_row_req-ok')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(
       find.byKey(const Key('admin_debug_console_row_req-bad')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -698,7 +832,7 @@ void main() {
     );
   });
 
-  testWidgets('request use case key buttons filter and clear rows', (
+  testWidgets('Type filter narrows to an AI usage class and clears back', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -723,10 +857,7 @@ void main() {
     );
     await pressRefresh(tester);
 
-    await tester.tap(
-      find.byKey(const Key('admin_debug_console_use_case_filter_coach_qa')),
-    );
-    await tester.pumpAndSettle();
+    await pickType(tester, 'Coaching help');
 
     expect(
       find.byKey(const Key('admin_debug_console_row_req-advisor')),
@@ -736,70 +867,10 @@ void main() {
       find.byKey(const Key('admin_debug_console_row_req-coach')),
       findsOneWidget,
     );
-    expect(find.text('Request type: Coaching help'), findsOneWidget);
 
-    await tester.tap(
-      find.byKey(const Key('admin_debug_console_use_case_filter_coach_qa')),
-    );
-    await tester.pumpAndSettle();
+    // Clear back to All activity → both AI rows return.
+    await pickType(tester, 'All activity');
 
-    expect(
-      find.byKey(const Key('admin_debug_console_row_req-advisor')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_debug_console_row_req-coach')),
-      findsOneWidget,
-    );
-    expect(find.text('Request type: any'), findsOneWidget);
-  });
-
-  testWidgets('clearing a use case key queues refresh during in-flight load', (
-    tester,
-  ) async {
-    setLargeViewport(tester);
-    final gateway = _HoldableListRequestsGateway(
-      seed: <RequestLogEntry>[
-        seedEntry(
-          id: 'req-advisor',
-          operatorId: 'op-A',
-          usageClass: 'advisor_qa',
-        ),
-        seedEntry(id: 'req-coach', operatorId: 'op-A', usageClass: 'coach_qa'),
-      ],
-      now: () => DateTime.utc(2026, 5, 3, 12),
-    );
-    await tester.pumpWidget(
-      wrap(
-        DebugConsoleAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-
-    await tester.tap(
-      find.byKey(const Key('admin_debug_console_use_case_filter_coach_qa')),
-    );
-    await tester.pump();
-
-    expect(gateway.requestedFilters, hasLength(1));
-    expect(gateway.requestedFilters.single.usageClass, 'coach_qa');
-
-    await tester.tap(
-      find.byKey(const Key('admin_debug_console_use_case_filter_coach_qa')),
-    );
-    await tester.pump();
-
-    expect(find.text('Request type: any'), findsOneWidget);
-    expect(gateway.requestedFilters, hasLength(1));
-
-    gateway.holdRequests = false;
-    gateway.completeOldestRequest();
-    await tester.pumpAndSettle();
-
-    expect(gateway.requestedFilters, hasLength(2));
-    expect(gateway.requestedFilters.last.usageClass, isNull);
     expect(
       find.byKey(const Key('admin_debug_console_row_req-advisor')),
       findsOneWidget,
@@ -811,7 +882,80 @@ void main() {
   });
 
   testWidgets(
-    'super_admin + opt-in ON reveals the full content payload on expand',
+    'Type filter switches to the typed relationship and account groups',
+    (tester) async {
+      setLargeViewport(tester);
+      final gateway = InMemoryDebugConsoleAdminGateway(
+        seed: <RequestLogEntry>[
+          seedEntry(
+            id: 'req-relationship',
+            operatorId: 'op-A',
+            usageClass: 'relationship_review',
+            requestMeta: const <String, Object?>{
+              'summary': 'Relationship review',
+            },
+          ),
+          seedEntry(
+            id: 'req-account',
+            operatorId: 'op-A',
+            usageClass: 'account_help',
+            requestMeta: const <String, Object?>{'summary': 'MFA account check'},
+          ),
+          // A usage_class outside both support groups must not leak in even
+          // though its summary mentions "relationship".
+          seedEntry(
+            id: 'req-fuzzy-relationship',
+            operatorId: 'op-A',
+            usageClass: 'advisor_qa',
+            requestMeta: const <String, Object?>{
+              'summary': 'relationship word should not make this support help',
+            },
+          ),
+        ],
+        now: () => DateTime.utc(2026, 5, 3, 12),
+      );
+      await tester.pumpWidget(
+        wrap(
+          DebugConsoleAdminScreen(
+            gateway: gateway,
+            now: () => DateTime.utc(2026, 5, 3, 12),
+          ),
+        ),
+      );
+      await pressRefresh(tester);
+
+      // Relationship help group.
+      await pickType(tester, 'Relationship help');
+      expect(
+        find.byKey(const Key('admin_debug_console_row_req-relationship')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_debug_console_row_req-fuzzy-relationship'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_debug_console_row_req-account')),
+        findsNothing,
+      );
+
+      // Account help group.
+      await pickType(tester, 'Account help');
+      expect(
+        find.byKey(const Key('admin_debug_console_row_req-account')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_debug_console_row_req-relationship')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'super_admin + opt-in ON reveals the full message text on expand',
     (tester) async {
       setLargeViewport(tester);
       final gateway = InMemoryDebugConsoleAdminGateway(
@@ -861,7 +1005,7 @@ void main() {
     },
   );
 
-  testWidgets('super_admin + opt-in OFF keeps the full content locked', (
+  testWidgets('super_admin + opt-in OFF keeps the full message text locked', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -970,9 +1114,7 @@ void main() {
     },
   );
 
-  testWidgets('live-tail toggle starts polling when flipped on', (
-    tester,
-  ) async {
+  testWidgets('live chip starts polling when tapped on', (tester) async {
     setLargeViewport(tester);
     final gateway = InMemoryDebugConsoleAdminGateway(
       seed: <RequestLogEntry>[
@@ -995,8 +1137,8 @@ void main() {
       findsOneWidget,
     );
 
-    // Toggle live-tail on; the gateway already returns the existing
-    // row so the row count is unchanged but the tail poll should run.
+    // Tap the Live chip on; the gateway already returns the existing row
+    // so the row count is unchanged but the tail poll should run.
     await tester.tap(
       find.byKey(const Key('admin_debug_console_live_tail_toggle')),
     );
@@ -1023,90 +1165,6 @@ void main() {
     await tester.pumpWidget(wrap(const SizedBox.shrink()));
     await tester.pump(const Duration(milliseconds: 200));
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('Relationship and account help tabs render typed live panels', (
-    tester,
-  ) async {
-    setLargeViewport(tester);
-    final gateway = InMemoryDebugConsoleAdminGateway(
-      seed: <RequestLogEntry>[
-        seedEntry(
-          id: 'req-relationship',
-          operatorId: 'op-A',
-          usageClass: 'relationship_review',
-          requestMeta: const <String, Object?>{
-            'summary': 'Relationship review',
-          },
-        ),
-        seedEntry(
-          id: 'req-account',
-          operatorId: 'op-A',
-          usageClass: 'account_help',
-          requestMeta: const <String, Object?>{'summary': 'MFA account check'},
-        ),
-        seedEntry(
-          id: 'req-fuzzy-relationship',
-          operatorId: 'op-A',
-          usageClass: 'advisor_qa',
-          requestMeta: const <String, Object?>{
-            'summary': 'relationship word should not make this support help',
-          },
-        ),
-      ],
-      now: () => DateTime.utc(2026, 5, 3, 12),
-    );
-    await tester.pumpWidget(
-      wrap(
-        DebugConsoleAdminScreen(
-          gateway: gateway,
-          now: () => DateTime.utc(2026, 5, 3, 12),
-        ),
-      ),
-    );
-    await pressRefresh(tester);
-
-    await tester.tap(
-      find.byKey(const Key('admin_debug_console_tab_relationship_help')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('admin_debug_console_relationship_help_tab')),
-      findsOneWidget,
-    );
-    expect(find.text('Coming soon'), findsNothing);
-    expect(find.textContaining('not wired'), findsNothing);
-    expect(find.textContaining('Typed view of relationship'), findsOneWidget);
-    expect(
-      find.byKey(
-        const Key('admin_debug_console_relationship_help_row_req-relationship'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key(
-          'admin_debug_console_relationship_help_row_req-fuzzy-relationship',
-        ),
-      ),
-      findsNothing,
-    );
-
-    await tester.tap(
-      find.byKey(const Key('admin_debug_console_tab_account_help')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('admin_debug_console_account_help_tab')),
-      findsOneWidget,
-    );
-    expect(find.text('Coming soon'), findsNothing);
-    expect(find.textContaining('not wired'), findsNothing);
-    expect(find.textContaining('Typed view of account'), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_debug_console_account_help_row_req-account')),
-      findsOneWidget,
-    );
   });
 
   testWidgets('live-tail polls do not stack when the prior tailRecent has not '
@@ -1238,9 +1296,10 @@ void main() {
       // body overflowed ~124 px at the normal shell viewport when the
       // shell embedded the screen. The default Flutter test viewport
       // (800x600) is the same shape the shell uses, so a vanilla pump
-      // here exercises the same overflow surface. After the ListView
-      // refactor + tightened header the screen renders without
-      // throwing `RenderFlex overflowed`.
+      // here exercises the same overflow surface. The single-body
+      // (folded Type filter, no tabs) layout + tightened header must
+      // keep the screen rendering without throwing `RenderFlex
+      // overflowed`.
       final gateway = InMemoryDebugConsoleAdminGateway(
         seed: <RequestLogEntry>[
           seedEntry(id: 'req-default', operatorId: 'op-A'),
@@ -1262,6 +1321,13 @@ void main() {
         find.byKey(const Key('admin_debug_console_request_log_body')),
         findsOneWidget,
       );
+
+      // Expanding a row at the tight viewport must also stay overflow-free.
+      await tester.tap(
+        find.byKey(const Key('admin_debug_console_row_req-default')),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     },
   );
 }
@@ -1302,48 +1368,4 @@ class _HoldableDebugConsoleAdminGateway
       _pending.removeAt(0).complete(const <RequestLogEntry>[]);
     }
   }
-}
-
-/// Test gateway that holds request-list fetches open so the harness can
-/// tap filters while a previous server request is still in flight.
-class _HoldableListRequestsGateway extends InMemoryDebugConsoleAdminGateway {
-  _HoldableListRequestsGateway({super.seed, super.now});
-
-  bool holdRequests = true;
-  final List<RequestLogFilter> requestedFilters = <RequestLogFilter>[];
-  final List<_HeldRequestListCall> _pending = <_HeldRequestListCall>[];
-
-  @override
-  Future<List<RequestLogEntry>> listRequests(
-    RequestLogFilter filter, {
-    int limit = kDebugConsoleListLimit,
-  }) {
-    requestedFilters.add(filter);
-    if (!holdRequests) {
-      return super.listRequests(filter, limit: limit);
-    }
-    final completer = Completer<List<RequestLogEntry>>();
-    _pending.add(
-      _HeldRequestListCall(filter: filter, limit: limit, completer: completer),
-    );
-    return completer.future;
-  }
-
-  void completeOldestRequest() {
-    if (_pending.isEmpty) return;
-    final call = _pending.removeAt(0);
-    call.completer.complete(super.listRequests(call.filter, limit: call.limit));
-  }
-}
-
-class _HeldRequestListCall {
-  const _HeldRequestListCall({
-    required this.filter,
-    required this.limit,
-    required this.completer,
-  });
-
-  final RequestLogFilter filter;
-  final int limit;
-  final Completer<List<RequestLogEntry>> completer;
 }

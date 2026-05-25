@@ -1,49 +1,56 @@
-// Phase 11A.5 - Debug console admin surface (per-operator request log).
+// Phase 11A.5 / Support logs redesign P3 - Support logs admin surface
+// (per-operator request log; the RIGHT content pane only — the left
+// scope picker is owned elsewhere and intentionally untouched).
 //
-// Read-only operator-facing console for the proxy `proxy_requests`
-// projection. Three tabs reflect the support workflow:
+// Read-only support tool over the proxy `proxy_requests` projection,
+// now backed by the real per-request telemetry P1b/P2 added (provider,
+// model, tokens, cost, measured latency, real status, actor uid via
+// the `proxy_request_stats` LEFT JOIN). The redesign (plan §3/§12)
+// makes it plain English with the engineering detail tucked away:
 //
-//   * Request log - live filterable / searchable view of recent
-//                   proxy requests. Meta-only by default; expand-row
-//                   reveals the full content payload only when the
-//                   operator's `feature_flags` opt-in is on AND the
-//                   actor holds `super_admin`.
-//   * Relationship Help - typed relationship-review / knowledge-link
-//                   support requests, filterable by exact use-case ID.
-//   * Account Help - typed account / auth / MFA / session support
-//                   requests, filterable by exact use-case ID.
+//   * One compact filter row: Search + Type + When + Result. The Type
+//     filter folds what used to be three tabs (All requests /
+//     Relationship Help / Account Help) AND the old request-type key
+//     box into a single dropdown (All activity, the four AI types, and
+//     the two support-help groups). AI types reuse `listRequests`;
+//     support groups reuse `listSupportHelpRequests` — no gateway change.
+//   * Each row collapsed: a status dot + a plain title + a secondary
+//     "<result> · <relative time>" line (body font, no monospace).
+//   * Each row expanded: a plain "What happened" zone (What / Result /
+//     When / Who / Took) and a collapsible "Technical reference (for
+//     engineering)" zone that keeps the raw ids, model, tokens, and
+//     cost out of the way (monospace + copy there only).
 //
-// Live-tail is OFF by default. When toggled on, the screen polls
-// `tailRecent` every [kDebugConsoleTailPollInterval] seconds and
-// merges new rows into the table; the toggle stops polling when off
-// or when the screen disposes.
+// Honesty (Metric Honesty Doctrine): rich telemetry exists ONLY for
+// successful LLM requests. Support-help rows and failed / older /
+// pre-P1b requests have null telemetry and render the honest "—"
+// sentinel or "Not recorded" — never a fabricated value or phantom 0.
 //
-// Permission gating:
-//   * `super_admin` lands with `editingEnabled = true`. Full-content
-//     reveal is gated by the operator's `feature_flags` opt-in row.
-//   * `ff_support` lands with `editingEnabled = false`. The diff
-//     renders read-only meta - full content stays hidden even when
-//     the opt-in is on. The graphify walkthrough establishes this
-//     as the cross-surface convention; the proxy `/health` contract
-//     bans raw payloads from public health, and the same posture
-//     extends here so a less-privileged role cannot reveal
-//     operator-visible content.
+// Live refresh is OFF by default, surfaced as a small "Live" chip beside
+// Refresh in the header. When on, the screen polls `tailRecent` every
+// [kDebugConsoleTailPollInterval] seconds and merges new rows into the
+// table; the toggle stops polling when off or when the screen disposes.
+//
+// Permission gating (unchanged):
+//   * `super_admin` lands with `editingEnabled = true`. Full-message-
+//     text reveal is gated by the operator's `feature_flags` opt-in row.
+//   * `ff_support` lands with `editingEnabled = false` ("Support view
+//     only"). Full message text stays hidden even when the opt-in is on.
 //
 // The screen is performance-disciplined per
 // `docs/contracts/slice_runtime_acceptance_contract.md`:
 //   * cheap initial render - a manual fetch button surfaces the first
 //     request-log page rather than auto-polling on mount;
-//   * the live-tail toggle is opt-in and does not stack in-flight
-//     requests;
-//   * search and filter chips re-filter client-side first so a
+//   * the live chip is opt-in and does not stack in-flight requests;
+//   * search / filter changes re-filter client-side first so a
 //     narrowing change does not force a fresh round-trip.
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
-import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
@@ -56,10 +63,70 @@ import '../services/debug_console_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 
-const String _kRequestLogTab = 'request_log';
-const String _kRelationshipHelpTab = 'relationship_help';
-const String _kAccountHelpTab = 'account_help';
 const int _kMaxOrgUnitSupportLogLocationIds = 100;
+
+/// One option in the folded "Type" filter. Replaces the old three tabs
+/// (All requests / Relationship Help / Account Help) AND the separate
+/// request-type key box: a single dropdown picks the activity to show.
+///
+///   * [allActivity] — the four AI request types, unfiltered.
+///   * [advisorAnswers]/[coachingHelp]/[workflowPlanning]/
+///     [workflowScheduling] — one AI use class each (sets
+///     `RequestLogFilter.usageClass`, reusing `listRequests`).
+///   * [relationshipHelp]/[accountHelp] — the grouped support-help
+///     surfaces (reuse `listSupportHelpRequests`).
+enum _RequestTypeView {
+  allActivity,
+  advisorAnswers,
+  coachingHelp,
+  workflowPlanning,
+  workflowScheduling,
+  relationshipHelp,
+  accountHelp,
+}
+
+extension _RequestTypeViewCopy on _RequestTypeView {
+  /// Plain-English label shown in the Type dropdown + its trigger.
+  String get label {
+    switch (this) {
+      case _RequestTypeView.allActivity:
+        return 'All activity';
+      case _RequestTypeView.advisorAnswers:
+        return 'Advisor answers';
+      case _RequestTypeView.coachingHelp:
+        return 'Coaching help';
+      case _RequestTypeView.workflowPlanning:
+        return 'Workflow planning';
+      case _RequestTypeView.workflowScheduling:
+        return 'Workflow scheduling';
+      case _RequestTypeView.relationshipHelp:
+        return 'Relationship help';
+      case _RequestTypeView.accountHelp:
+        return 'Account help';
+    }
+  }
+
+  /// The AI `usage_class` this view filters `listRequests` to, or null
+  /// for [allActivity] and the support-help groups (which are served by
+  /// their own gateway calls, not a usage_class filter).
+  String? get usageClass {
+    switch (this) {
+      case _RequestTypeView.advisorAnswers:
+        return 'advisor_qa';
+      case _RequestTypeView.coachingHelp:
+        return 'coach_qa';
+      case _RequestTypeView.workflowPlanning:
+        return 'wf_pl';
+      case _RequestTypeView.workflowScheduling:
+        return 'wf_schedule';
+      case _RequestTypeView.allActivity:
+      case _RequestTypeView.relationshipHelp:
+      case _RequestTypeView.accountHelp:
+        return null;
+    }
+  }
+
+}
 
 class DebugConsoleAdminScreen extends StatefulWidget {
   const DebugConsoleAdminScreen({
@@ -106,10 +173,7 @@ class DebugConsoleAdminScreen extends StatefulWidget {
       _DebugConsoleAdminScreenState();
 }
 
-class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
-
+class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen> {
   bool _initialLoading = false;
   bool _refreshing = false;
   String? _loadError;
@@ -121,20 +185,17 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   List<FullContentOptIn> _optIns = const <FullContentOptIn>[];
 
   late RequestLogFilter _filter;
-  RequestLogFilter _relationshipHelpFilter = const RequestLogFilter();
-  RequestLogFilter _accountHelpFilter = const RequestLogFilter();
-  String? _relationshipHelpUseCase;
-  String? _accountHelpUseCase;
+
+  /// The folded Type filter selection. Drives which list renders and,
+  /// for AI types, the `usage_class` axis on [_filter]. Support-help
+  /// views read the dedicated support entries instead.
+  _RequestTypeView _typeView = _RequestTypeView.allActivity;
   RequestLogFilter? _serverFilter;
   bool _refreshQueued = false;
   List<String>? _scopeLocationIds;
   bool _scopeResolving = false;
   String? _scopeResolutionError;
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _relationshipHelpSearchController =
-      TextEditingController();
-  final TextEditingController _accountHelpSearchController =
-      TextEditingController();
   final Set<String> _expanded = <String>{};
 
   bool _liveTailOn = false;
@@ -147,7 +208,6 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   void initState() {
     super.initState();
     _filter = widget.initialFilter;
-    _tabs = TabController(length: 3, vsync: this);
     _startScopeResolution();
     if (!widget.initialFilter.isEmpty) {
       unawaited(_refresh());
@@ -165,11 +225,8 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
 
   @override
   void dispose() {
-    _tabs.dispose();
     _tailTimer?.cancel();
     _searchController.dispose();
-    _relationshipHelpSearchController.dispose();
-    _accountHelpSearchController.dispose();
     super.dispose();
   }
 
@@ -183,11 +240,10 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
   RequestLogFilter get _effectiveFilter => _scopeFilter(_filter);
 
   RequestLogFilter _effectiveSupportFilter(SupportHelpSurface surface) {
-    return _scopeFilter(
-      surface == SupportHelpSurface.relationship
-          ? _relationshipHelpFilter
-          : _accountHelpFilter,
-    );
+    // Support-help views reuse the single compact filter row (search /
+    // when / result), so the same `_filter` axes apply. The relationship
+    // vs account grouping is the surface itself, not a usage_class.
+    return _scopeFilter(_filter.copyWith(usageClass: null));
   }
 
   RequestLogFilter _scopeFilter(RequestLogFilter base) {
@@ -343,12 +399,10 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
         widget.gateway.listSupportHelpRequests(
           SupportHelpSurface.relationship,
           relationshipFilter,
-          supportUseCaseId: _relationshipHelpUseCase,
         ),
         widget.gateway.listSupportHelpRequests(
           SupportHelpSurface.account,
           accountFilter,
-          supportUseCaseId: _accountHelpUseCase,
         ),
       ]);
       if (!mounted) return;
@@ -414,46 +468,24 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     _onFilterChanged(_filter.copyWith(searchText: next.isEmpty ? null : next));
   }
 
-  void _onSupportFilterChanged(
-    SupportHelpSurface surface,
-    RequestLogFilter next,
-  ) {
+  /// Pick a folded Type filter option. AI types set the `usage_class`
+  /// axis (reusing `listRequests`); support-help groups clear it and
+  /// switch the rendered list to the dedicated support entries. All
+  /// four lists are already fetched on refresh, so switching the view
+  /// is local; we only re-fetch if the new `usage_class` is not covered
+  /// by the last server load.
+  void _onTypeViewChanged(_RequestTypeView next) {
     setState(() {
-      switch (surface) {
-        case SupportHelpSurface.relationship:
-          _relationshipHelpFilter = next;
-          break;
-        case SupportHelpSurface.account:
-          _accountHelpFilter = next;
-          break;
-      }
+      _typeView = next;
     });
-    unawaited(_refresh());
+    _onFilterChanged(_filter.copyWith(usageClass: next.usageClass));
   }
 
-  void _onSupportSearchChanged(SupportHelpSurface surface, String value) {
-    final next = value.trim();
-    final filter = surface == SupportHelpSurface.relationship
-        ? _relationshipHelpFilter
-        : _accountHelpFilter;
-    _onSupportFilterChanged(
-      surface,
-      filter.copyWith(searchText: next.isEmpty ? null : next),
-    );
-  }
-
-  void _onSupportUseCaseChanged(SupportHelpSurface surface, String? useCaseId) {
-    setState(() {
-      switch (surface) {
-        case SupportHelpSurface.relationship:
-          _relationshipHelpUseCase = useCaseId;
-          break;
-        case SupportHelpSurface.account:
-          _accountHelpUseCase = useCaseId;
-          break;
-      }
-    });
-    unawaited(_refresh());
+  /// The coarse Result filter (Any / Worked / Not recorded). Maps to the
+  /// real `status` axis without offering error/timeout as standing
+  /// options (production only emits success or unknown today).
+  void _onResultChanged(RequestLogStatus? status) {
+    _onFilterChanged(_filter.copyWith(status: status));
   }
 
   bool _filterCovers(RequestLogFilter loaded, RequestLogFilter requested) {
@@ -537,21 +569,42 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
     }
   }
 
+  /// The rows the current Type filter shows. AI views (All activity and
+  /// the four AI types) read [_entries]; the two support-help groups
+  /// read their dedicated lists. Every view is re-filtered client-side
+  /// by the shared compact filter (search / when / result) so a
+  /// narrowing change feels instant without a round-trip.
   List<RequestLogEntry> get _visibleEntries {
     final reference = _clockNow();
     final effectiveFilter = _effectiveFilter;
+    final List<RequestLogEntry> source;
+    switch (_typeView) {
+      case _RequestTypeView.relationshipHelp:
+        source = _relationshipHelpEntries;
+        break;
+      case _RequestTypeView.accountHelp:
+        source = _accountHelpEntries;
+        break;
+      case _RequestTypeView.allActivity:
+      case _RequestTypeView.advisorAnswers:
+      case _RequestTypeView.coachingHelp:
+      case _RequestTypeView.workflowPlanning:
+      case _RequestTypeView.workflowScheduling:
+        source = _entries;
+        break;
+    }
     return <RequestLogEntry>[
-      for (final entry in _entries)
+      for (final entry in source)
         if (effectiveFilter.matches(entry, now: reference)) entry,
     ];
   }
 
   @override
   Widget build(BuildContext context) {
-    // Fixed-height tabbed view (TabBar + Expanded TabBarView, the
-    // request-log tab being its own CustomScrollView): uses
-    // OperatorWebScreenFrame, not OperatorWebScreenBody. The sub-view
-    // (_SupportHelpTab) is single-axis and uses OperatorWebScreenBody.
+    // Single scrolling body (no tabs): the folded Type filter picks the
+    // activity, so one CustomScrollView carries the compact filter row +
+    // the rows. OperatorWebScreenFrame keeps the header pinned while the
+    // body scrolls.
     return Material(
       key: const Key('admin_debug_console_screen'),
       color: AppColors.backgroundDeep,
@@ -566,120 +619,42 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
               onRunRefresh: _refresh,
               loading: _initialLoading || _refreshing,
               editingEnabled: widget.editingEnabled,
+              liveTailOn: _liveTailOn,
+              onToggleLiveTail: _toggleLiveTail,
               onBackToBusinessAccounts: widget.onBackToBusinessAccounts,
-            ),
-            const SizedBox(height: 12),
-            TabBar(
-              key: const Key('admin_debug_console_tabs'),
-              controller: _tabs,
-              isScrollable: true,
-              labelColor: AppColors.textPrimary,
-              unselectedLabelColor: AppColors.textSecondary,
-              indicatorColor: AppColors.sunset,
-              tabs: const <Widget>[
-                Tab(
-                  key: Key('admin_debug_console_tab_$_kRequestLogTab'),
-                  text: 'All requests',
-                ),
-                Tab(
-                  key: Key('admin_debug_console_tab_$_kRelationshipHelpTab'),
-                  text: 'Relationship Help',
-                ),
-                Tab(
-                  key: Key('admin_debug_console_tab_$_kAccountHelpTab'),
-                  text: 'Account Help',
-                ),
-              ],
+              now: _clockNow,
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: TabBarView(
-                controller: _tabs,
-                children: <Widget>[
-                  _RequestLogTab(
-                    entries: _visibleEntries,
-                    expanded: _expanded,
-                    filter: _filter,
-                    hierarchyScope: widget.hierarchyScope,
-                    scopeLocationIds: _scopeLocationIds,
-                    scopeResolving: _scopeResolving,
-                    scopeResolutionError: _scopeResolutionError,
-                    searchController: _searchController,
-                    optInLookup: _optInOnFor,
-                    editingEnabled: widget.editingEnabled,
-                    initialLoading: _initialLoading,
-                    refreshing: _refreshing,
-                    loadError: _loadError,
-                    liveTailOn: _liveTailOn,
-                    onFilterChanged: _onFilterChanged,
-                    onSearchChanged: _onSearchChanged,
-                    onToggleExpanded: (id) => setState(() {
-                      if (_expanded.contains(id)) {
-                        _expanded.remove(id);
-                      } else {
-                        _expanded.add(id);
-                      }
-                    }),
-                    onToggleLiveTail: _toggleLiveTail,
-                    onRunRefresh: _refresh,
-                  ),
-                  _SupportHelpTab(
-                    key: const Key('admin_debug_console_relationship_help_tab'),
-                    surface: SupportHelpSurface.relationship,
-                    title: 'Relationship help',
-                    entries: _relationshipHelpEntries,
-                    filter: _relationshipHelpFilter,
-                    selectedUseCaseId: _relationshipHelpUseCase,
-                    searchController: _relationshipHelpSearchController,
-                    loading: _initialLoading || _refreshing,
-                    loadError: _loadError,
-                    onFilterChanged: (next) => _onSupportFilterChanged(
-                      SupportHelpSurface.relationship,
-                      next,
-                    ),
-                    onSearchChanged: (value) => _onSupportSearchChanged(
-                      SupportHelpSurface.relationship,
-                      value,
-                    ),
-                    onUseCaseChanged: (value) => _onSupportUseCaseChanged(
-                      SupportHelpSurface.relationship,
-                      value,
-                    ),
-                    onRunRefresh: _refresh,
-                    emptyBody:
-                        'No relationship review requests match the current filters.',
-                    body:
-                        'Typed view of relationship review, knowledge-link, and corpus relationship support requests.',
-                  ),
-                  _SupportHelpTab(
-                    key: const Key('admin_debug_console_account_help_tab'),
-                    surface: SupportHelpSurface.account,
-                    title: 'Account help',
-                    entries: _accountHelpEntries,
-                    filter: _accountHelpFilter,
-                    selectedUseCaseId: _accountHelpUseCase,
-                    searchController: _accountHelpSearchController,
-                    loading: _initialLoading || _refreshing,
-                    loadError: _loadError,
-                    onFilterChanged: (next) => _onSupportFilterChanged(
-                      SupportHelpSurface.account,
-                      next,
-                    ),
-                    onSearchChanged: (value) => _onSupportSearchChanged(
-                      SupportHelpSurface.account,
-                      value,
-                    ),
-                    onUseCaseChanged: (value) => _onSupportUseCaseChanged(
-                      SupportHelpSurface.account,
-                      value,
-                    ),
-                    onRunRefresh: _refresh,
-                    emptyBody:
-                        'No account support requests match the current filters.',
-                    body:
-                        'Typed view of account, sign-in, MFA, session, notification, and removal support requests.',
-                  ),
-                ],
+              child: _RequestLogTab(
+                entries: _visibleEntries,
+                expanded: _expanded,
+                filter: _filter,
+                typeView: _typeView,
+                hierarchyScope: widget.hierarchyScope,
+                scopeLocationIds: _scopeLocationIds,
+                scopeResolving: _scopeResolving,
+                scopeResolutionError: _scopeResolutionError,
+                searchController: _searchController,
+                optInLookup: _optInOnFor,
+                editingEnabled: widget.editingEnabled,
+                initialLoading: _initialLoading,
+                refreshing: _refreshing,
+                loadError: _loadError,
+                now: _clockNow(),
+                onSearchChanged: _onSearchChanged,
+                onTypeViewChanged: _onTypeViewChanged,
+                onTimeWindowChanged: (next) =>
+                    _onFilterChanged(_filter.copyWith(timeWindow: next)),
+                onResultChanged: _onResultChanged,
+                onToggleExpanded: (id) => setState(() {
+                  if (_expanded.contains(id)) {
+                    _expanded.remove(id);
+                  } else {
+                    _expanded.add(id);
+                  }
+                }),
+                onRunRefresh: _refresh,
               ),
             ),
           ],
@@ -695,14 +670,20 @@ class _Header extends StatelessWidget {
     required this.onRunRefresh,
     required this.loading,
     required this.editingEnabled,
+    required this.liveTailOn,
+    required this.onToggleLiveTail,
     required this.onBackToBusinessAccounts,
+    required this.now,
   });
 
   final DateTime? lastRefreshed;
   final Future<void> Function() onRunRefresh;
   final bool loading;
   final bool editingEnabled;
+  final bool liveTailOn;
+  final ValueChanged<bool> onToggleLiveTail;
   final VoidCallback? onBackToBusinessAccounts;
+  final DateTime Function() now;
 
   @override
   Widget build(BuildContext context) {
@@ -710,13 +691,15 @@ class _Header extends StatelessWidget {
       icon: Icons.bug_report_outlined,
       title: 'Support logs',
       subtitle:
-          'Translate recent backend requests into support-safe details. Use precise references only when support needs a targeted lookup.',
+          'Recent activity for the business you picked. Open a row for the '
+          'details support needs.',
+      subtitleKey: const Key('admin_debug_console_subtitle'),
       collapseBelowWidth: 640,
       actions: <Widget>[
         if (onBackToBusinessAccounts != null)
           AdminBusinessAccountsBackButton(onPressed: onBackToBusinessAccounts),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 320),
+          constraints: const BoxConstraints(maxWidth: 340),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
@@ -727,8 +710,8 @@ class _Header extends StatelessWidget {
                   child: Container(
                     key: const Key('admin_debug_console_view_only_indicator'),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
+                      horizontal: 9,
+                      vertical: 3,
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.warning.withValues(alpha: 0.12),
@@ -737,33 +720,45 @@ class _Header extends StatelessWidget {
                     ),
                     child: Text(
                       'Support view only',
-                      style: AppTextStyles.mono10(
+                      style: AppTextStyles.body12(
                         color: AppColors.warning,
                       ).copyWith(fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
-              OutlinedButton.icon(
-                key: const Key('admin_debug_console_refresh_button'),
-                onPressed: loading ? null : () => onRunRefresh(),
-                icon: loading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh, size: 16),
-                label: Text(loading ? 'Loading...' : 'Refresh'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                alignment: WrapAlignment.end,
+                children: <Widget>[
+                  _LiveChip(
+                    liveTailOn: liveTailOn,
+                    onToggleLiveTail: onToggleLiveTail,
+                  ),
+                  OutlinedButton.icon(
+                    key: const Key('admin_debug_console_refresh_button'),
+                    onPressed: loading ? null : () => onRunRefresh(),
+                    icon: loading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh, size: 16),
+                    label: Text(loading ? 'Loading...' : 'Refresh'),
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
               Text(
                 lastRefreshed == null
-                    ? 'Last checked: -'
-                    : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
+                    ? 'Not checked yet'
+                    : 'Updated ${_relativeUpdated(lastRefreshed!, now())}',
                 key: const Key('admin_debug_console_last_refreshed'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
+                style: AppTextStyles.body12(color: AppColors.textMuted),
               ),
             ],
           ),
@@ -773,11 +768,83 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Small "Live" chip + toggle replacing the old full-width live bar. The
+/// 5s opt-in polling and no-stacked-calls discipline are unchanged; this
+/// is a display swap only (the toggle still drives `_toggleLiveTail`).
+class _LiveChip extends StatelessWidget {
+  const _LiveChip({required this.liveTailOn, required this.onToggleLiveTail});
+
+  final bool liveTailOn;
+  final ValueChanged<bool> onToggleLiveTail;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = liveTailOn ? AppColors.positive : AppColors.textMuted;
+    return Tooltip(
+      message: liveTailOn
+          ? 'Live refresh on. Checking for new requests every 5 seconds. Tap to turn off.'
+          : 'Turn on live refresh to check for new requests every 5 seconds.',
+      child: InkWell(
+        key: const Key('admin_debug_console_live_tail_toggle'),
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => onToggleLiveTail(!liveTailOn),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: liveTailOn
+                ? AppColors.positive.withValues(alpha: 0.10)
+                : AppColors.backgroundSurface,
+            border: Border.all(color: accent, width: 1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                liveTailOn
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                size: 13,
+                color: accent,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Live',
+                style: AppTextStyles.body12(
+                  color: accent,
+                ).copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Human `Updated <relative>` wording for the header. Plain English, no
+/// monospace timestamp.
+String _relativeUpdated(DateTime updatedAt, DateTime now) {
+  final elapsed = now.toUtc().difference(updatedAt.toUtc());
+  if (elapsed.isNegative || elapsed.inSeconds < 45) return 'just now';
+  if (elapsed.inMinutes < 60) {
+    final m = elapsed.inMinutes;
+    return '$m minute${m == 1 ? '' : 's'} ago';
+  }
+  if (elapsed.inHours < 24) {
+    final h = elapsed.inHours;
+    return '$h hour${h == 1 ? '' : 's'} ago';
+  }
+  final d = elapsed.inDays;
+  return '$d day${d == 1 ? '' : 's'} ago';
+}
+
 class _RequestLogTab extends StatelessWidget {
   const _RequestLogTab({
     required this.entries,
     required this.expanded,
     required this.filter,
+    required this.typeView,
     required this.hierarchyScope,
     required this.scopeLocationIds,
     required this.scopeResolving,
@@ -788,17 +855,19 @@ class _RequestLogTab extends StatelessWidget {
     required this.initialLoading,
     required this.refreshing,
     required this.loadError,
-    required this.liveTailOn,
-    required this.onFilterChanged,
+    required this.now,
     required this.onSearchChanged,
+    required this.onTypeViewChanged,
+    required this.onTimeWindowChanged,
+    required this.onResultChanged,
     required this.onToggleExpanded,
-    required this.onToggleLiveTail,
     required this.onRunRefresh,
   });
 
   final List<RequestLogEntry> entries;
   final Set<String> expanded;
   final RequestLogFilter filter;
+  final _RequestTypeView typeView;
   final AdminHierarchyScopeIntent? hierarchyScope;
   final List<String>? scopeLocationIds;
   final bool scopeResolving;
@@ -809,19 +878,20 @@ class _RequestLogTab extends StatelessWidget {
   final bool initialLoading;
   final bool refreshing;
   final String? loadError;
-  final bool liveTailOn;
-  final ValueChanged<RequestLogFilter> onFilterChanged;
+  final DateTime now;
   final ValueChanged<String> onSearchChanged;
+  final ValueChanged<_RequestTypeView> onTypeViewChanged;
+  final ValueChanged<RequestLogTimeWindow?> onTimeWindowChanged;
+  final ValueChanged<RequestLogStatus?> onResultChanged;
   final ValueChanged<String> onToggleExpanded;
-  final ValueChanged<bool> onToggleLiveTail;
   final Future<void> Function() onRunRefresh;
 
   @override
   Widget build(BuildContext context) {
-    // Single scroll axis so the tab body never overflows when the
-    // shell embeds the screen at narrow viewports (the admin shell's
-    // detail pane gives the screen ~540x158 on the default 800x600
-    // test viewport, which is too tight for a Column-based layout).
+    // Single scroll axis so the body never overflows when the shell
+    // embeds the screen at narrow viewports (the admin shell's detail
+    // pane gives the screen ~540x158 on the default 800x600 test
+    // viewport, which is too tight for a Column-based layout).
     final showLoading = initialLoading;
     final showEmpty = !initialLoading && entries.isEmpty && loadError == null;
     return CustomScrollView(
@@ -839,20 +909,14 @@ class _RequestLogTab extends StatelessWidget {
         if (hierarchyScope != null)
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
         SliverToBoxAdapter(
-          child: _FilterBar(
+          child: _FilterRow(
             filter: filter,
-            hierarchyScope: hierarchyScope,
-            scopeLocationIds: scopeLocationIds,
+            typeView: typeView,
             searchController: searchController,
-            onFilterChanged: onFilterChanged,
             onSearchChanged: onSearchChanged,
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 12)),
-        SliverToBoxAdapter(
-          child: _LiveTailRow(
-            liveTailOn: liveTailOn,
-            onToggleLiveTail: onToggleLiveTail,
+            onTypeViewChanged: onTypeViewChanged,
+            onTimeWindowChanged: onTimeWindowChanged,
+            onResultChanged: onResultChanged,
           ),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 12)),
@@ -899,6 +963,7 @@ class _RequestLogTab extends StatelessWidget {
                 expanded: expanded.contains(entry.requestId),
                 optInOn: optInLookup(entry.operatorId),
                 editingEnabled: editingEnabled,
+                now: now,
                 onToggle: () => onToggleExpanded(entry.requestId),
               );
             },
@@ -1009,478 +1074,195 @@ class _ScopePill extends StatelessWidget {
   }
 }
 
-class _FilterBar extends StatelessWidget {
-  const _FilterBar({
+/// The single compact filter row: Search + Type + When + Result. Folds
+/// the old Filters panel, the three tabs, and the "Request type key" box
+/// into one row. Business/Location come from the left scope picker
+/// (mirrored by the scope banner above), so no standalone ID chips here.
+class _FilterRow extends StatelessWidget {
+  const _FilterRow({
     required this.filter,
-    required this.hierarchyScope,
-    required this.scopeLocationIds,
+    required this.typeView,
     required this.searchController,
-    required this.onFilterChanged,
     required this.onSearchChanged,
+    required this.onTypeViewChanged,
+    required this.onTimeWindowChanged,
+    required this.onResultChanged,
   });
 
   final RequestLogFilter filter;
-  final AdminHierarchyScopeIntent? hierarchyScope;
-  final List<String>? scopeLocationIds;
+  final _RequestTypeView typeView;
   final TextEditingController searchController;
-  final ValueChanged<RequestLogFilter> onFilterChanged;
   final ValueChanged<String> onSearchChanged;
+  final ValueChanged<_RequestTypeView> onTypeViewChanged;
+  final ValueChanged<RequestLogTimeWindow?> onTimeWindowChanged;
+  final ValueChanged<RequestLogStatus?> onResultChanged;
 
   @override
   Widget build(BuildContext context) {
-    return OperatorWebPanel(
+    return Wrap(
       key: const Key('admin_debug_console_filter_bar'),
-      title: 'Filters',
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          TextField(
+      spacing: 9,
+      runSpacing: 9,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: <Widget>[
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 200, maxWidth: 320),
+          child: TextField(
             key: const Key('admin_debug_console_search_field'),
             controller: searchController,
             onChanged: onSearchChanged,
+            style: AppTextStyles.body13(color: AppColors.textPrimary),
             decoration: const InputDecoration(
               isDense: true,
               prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search by request or retry reference',
+              hintText: 'Search by reference',
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              _StatusFilterChip(
-                value: filter.status,
-                onChanged: (next) =>
-                    onFilterChanged(filter.copyWith(status: next)),
-              ),
-              _TimeWindowFilterChip(
-                value: filter.timeWindow,
-                onChanged: (next) =>
-                    onFilterChanged(filter.copyWith(timeWindow: next)),
-              ),
-              _StringFilterChip(
-                keyName: const Key('admin_debug_console_filter_operator'),
-                label: 'Business',
-                value: filter.operatorId,
-                displayValue: _businessFilterLabel(filter.operatorId),
-                hint: 'Type an exact business ID for support lookup',
-                onChanged: (next) =>
-                    onFilterChanged(filter.copyWith(operatorId: next)),
-              ),
-              _StringFilterChip(
-                keyName: const Key('admin_debug_console_filter_location'),
-                label: 'Location',
-                value: filter.locationId,
-                displayValue: _locationFilterLabel(filter.locationId),
-                hint: 'Type an exact location ID for support lookup',
-                onChanged: (next) =>
-                    onFilterChanged(filter.copyWith(locationId: next)),
-              ),
-              if (scopeLocationIds != null)
-                _ChipShell(
-                  label: 'Covered locations: ${scopeLocationIds!.length}',
-                  active: true,
-                ),
-              _StringFilterChip(
-                keyName: const Key('admin_debug_console_filter_usage_class'),
-                label: 'Request type',
-                value: filter.usageClass,
-                displayValue: _requestTypeFilterLabel(filter.usageClass),
-                hint: 'advisor_qa, coach_qa, wf_pl',
-                onChanged: (next) =>
-                    onFilterChanged(filter.copyWith(usageClass: next)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Tip: choose View logs from a business, org unit, or location to fill the scope filters automatically.',
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 10),
-          _RequestUseCaseKey(
-            selectedUsageClass: filter.usageClass,
-            onSelected: (usageClass) {
-              final next = filter.usageClass == usageClass ? null : usageClass;
-              onFilterChanged(filter.copyWith(usageClass: next));
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  String? _businessFilterLabel(String? value) {
-    if (value == null || value.isEmpty) return null;
-    final scope = hierarchyScope;
-    if (scope != null && value == scope.operatorId) {
-      return scope.operatorName ?? scope.displayLabel;
-    }
-    return 'Exact business filter';
-  }
-
-  String? _locationFilterLabel(String? value) {
-    if (value == null || value.isEmpty) return null;
-    final scope = hierarchyScope;
-    if (scope != null && value == scope.locationId) {
-      return scope.locationName ?? scope.displayLabel;
-    }
-    return 'Exact location filter';
-  }
-
-  String? _requestTypeFilterLabel(String? value) {
-    if (value == null || value.isEmpty) return null;
-    return adminRequestUseCaseLabel(value);
-  }
-}
-
-class _StatusFilterChip extends StatelessWidget {
-  const _StatusFilterChip({
-    this.keyName = const Key('admin_debug_console_filter_status'),
-    required this.value,
-    required this.onChanged,
-  });
-
-  final Key keyName;
-  final RequestLogStatus? value;
-  final ValueChanged<RequestLogStatus?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = value == null
-        ? 'Status: any'
-        : 'Status: ${_statusLabel(value!)}';
-    return PopupMenuButton<RequestLogStatus?>(
-      key: keyName,
-      tooltip: 'Filter by status',
-      onSelected: onChanged,
-      itemBuilder: (_) => <PopupMenuEntry<RequestLogStatus?>>[
-        const PopupMenuItem<RequestLogStatus?>(value: null, child: Text('Any')),
-        const PopupMenuItem<RequestLogStatus?>(
-          value: RequestLogStatus.success,
-          child: Text('Success'),
         ),
-        const PopupMenuItem<RequestLogStatus?>(
-          value: RequestLogStatus.error,
-          child: Text('Error'),
+        _PickerControl<_RequestTypeView>(
+          keyName: const Key('admin_debug_console_filter_type'),
+          label: 'Type',
+          valueLabel: typeView.label,
+          active: typeView != _RequestTypeView.allActivity,
+          onSelected: onTypeViewChanged,
+          items: <PopupMenuEntry<_RequestTypeView>>[
+            for (final view in _RequestTypeView.values)
+              PopupMenuItem<_RequestTypeView>(
+                value: view,
+                child: Text(view.label),
+              ),
+          ],
         ),
-        const PopupMenuItem<RequestLogStatus?>(
-          value: RequestLogStatus.timeout,
-          child: Text('Timeout'),
+        _PickerControl<RequestLogTimeWindow?>(
+          keyName: const Key('admin_debug_console_filter_window'),
+          label: 'When',
+          valueLabel: filter.timeWindow == null
+              ? 'Any time'
+              : requestLogTimeWindowLabel(filter.timeWindow!),
+          active: filter.timeWindow != null,
+          onSelected: onTimeWindowChanged,
+          items: <PopupMenuEntry<RequestLogTimeWindow?>>[
+            const PopupMenuItem<RequestLogTimeWindow?>(
+              value: null,
+              child: Text('Any time'),
+            ),
+            for (final w in RequestLogTimeWindow.values)
+              PopupMenuItem<RequestLogTimeWindow?>(
+                value: w,
+                child: Text(requestLogTimeWindowLabel(w)),
+              ),
+          ],
+        ),
+        _PickerControl<RequestLogStatus?>(
+          keyName: const Key('admin_debug_console_filter_status'),
+          label: 'Result',
+          // Result reads the real status axis but only offers Any /
+          // Worked / Not recorded. Production never emits error/timeout
+          // here today (failures read as "unknown" -> Not recorded), so
+          // offering those would be a filter that always returns nothing.
+          valueLabel: _resultFilterLabel(filter.status),
+          active: filter.status != null,
+          onSelected: onResultChanged,
+          items: const <PopupMenuEntry<RequestLogStatus?>>[
+            PopupMenuItem<RequestLogStatus?>(value: null, child: Text('Any')),
+            PopupMenuItem<RequestLogStatus?>(
+              value: RequestLogStatus.success,
+              child: Text('Worked'),
+            ),
+            PopupMenuItem<RequestLogStatus?>(
+              value: RequestLogStatus.unknown,
+              child: Text('Not recorded'),
+            ),
+          ],
         ),
       ],
-      child: _ChipShell(label: label, active: value != null),
     );
+  }
+
+  static String _resultFilterLabel(RequestLogStatus? status) {
+    if (status == null) return 'Any';
+    return adminRequestResultWording(status);
   }
 }
 
-class _TimeWindowFilterChip extends StatelessWidget {
-  const _TimeWindowFilterChip({
-    this.keyName = const Key('admin_debug_console_filter_window'),
-    required this.value,
-    required this.onChanged,
-  });
-
-  final Key keyName;
-  final RequestLogTimeWindow? value;
-  final ValueChanged<RequestLogTimeWindow?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = value == null
-        ? 'Window: any'
-        : 'Window: ${requestLogTimeWindowLabel(value!)}';
-    return PopupMenuButton<RequestLogTimeWindow?>(
-      key: keyName,
-      tooltip: 'Filter by time window',
-      onSelected: onChanged,
-      itemBuilder: (_) => <PopupMenuEntry<RequestLogTimeWindow?>>[
-        const PopupMenuItem<RequestLogTimeWindow?>(
-          value: null,
-          child: Text('Any'),
-        ),
-        for (final w in RequestLogTimeWindow.values)
-          PopupMenuItem<RequestLogTimeWindow?>(
-            value: w,
-            child: Text(requestLogTimeWindowLabel(w)),
-          ),
-      ],
-      child: _ChipShell(label: label, active: value != null),
-    );
-  }
-}
-
-class _StringFilterChip extends StatefulWidget {
-  const _StringFilterChip({
+/// A compact `<label> <value> v` dropdown trigger used by the Type /
+/// When / Result filters. Plain body font, a `PopupMenuButton` under
+/// the hood so existing `find.byKey(...).tap` then `find.text(option)`
+/// test flows keep working.
+class _PickerControl<T> extends StatelessWidget {
+  const _PickerControl({
     required this.keyName,
     required this.label,
-    required this.value,
-    this.displayValue,
-    required this.hint,
-    required this.onChanged,
-  });
-
-  final Key keyName;
-  final String label;
-  final String? value;
-  final String? displayValue;
-  final String hint;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  State<_StringFilterChip> createState() => _StringFilterChipState();
-}
-
-class _StringFilterChipState extends State<_StringFilterChip> {
-  @override
-  Widget build(BuildContext context) {
-    final v = widget.value;
-    final label = (v == null || v.isEmpty)
-        ? '${widget.label}: any'
-        : '${widget.label}: ${widget.displayValue ?? v}';
-    return InkWell(
-      key: widget.keyName,
-      onTap: () async {
-        final next = await showDialog<String?>(
-          context: context,
-          builder: (ctx) => _StringFilterDialog(
-            label: widget.label,
-            hint: widget.hint,
-            initial: v ?? '',
-          ),
-        );
-        if (next == null) return;
-        widget.onChanged(next.isEmpty ? null : next);
-      },
-      child: _ChipShell(label: label, active: v != null && v.isNotEmpty),
-    );
-  }
-}
-
-class _StringFilterDialog extends StatefulWidget {
-  const _StringFilterDialog({
-    required this.label,
-    required this.hint,
-    required this.initial,
-  });
-
-  final String label;
-  final String hint;
-  final String initial;
-
-  @override
-  State<_StringFilterDialog> createState() => _StringFilterDialogState();
-}
-
-class _StringFilterDialogState extends State<_StringFilterDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initial);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebDialog(
-      title: 'Filter by ${widget.label.toLowerCase()}',
-      icon: Icons.filter_alt_outlined,
-      actions: <Widget>[
-        TextButton(
-          key: const Key('admin_debug_console_filter_clear'),
-          onPressed: () => Navigator.of(context).pop(''),
-          child: const Text('Clear'),
-        ),
-        FilledButton(
-          key: const Key('admin_debug_console_filter_apply'),
-          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          child: const Text('Apply'),
-        ),
-      ],
-      child: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: InputDecoration(hintText: widget.hint),
-      ),
-    );
-  }
-}
-
-class _ChipShell extends StatelessWidget {
-  const _ChipShell({required this.label, required this.active});
-
-  final String label;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = active ? AppColors.sunset : AppColors.borderSubtle;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: active
-            ? AppColors.sunset.withValues(alpha: 0.12)
-            : AppColors.backgroundSurface,
-        border: Border.all(color: color, width: 1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: AppTextStyles.mono11(
-          color: active ? AppColors.sunsetDark : AppColors.textPrimary,
-        ).copyWith(fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-}
-
-class _RequestUseCaseKey extends StatelessWidget {
-  const _RequestUseCaseKey({
-    required this.selectedUsageClass,
+    required this.valueLabel,
+    required this.active,
+    required this.items,
     required this.onSelected,
   });
 
-  final String? selectedUsageClass;
-  final ValueChanged<String> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_debug_console_use_case_key'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundDeep,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'Request type key',
-            style: AppTextStyles.body13(
-              color: AppColors.textPrimary,
-            ).copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: <Widget>[
-              for (final useCase in adminRequestUseCases)
-                _KeyChip(
-                  label: useCase.label,
-                  id: useCase.id,
-                  description: useCase.description,
-                  active: selectedUsageClass == useCase.id,
-                  onPressed: () => onSelected(useCase.id),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _KeyChip extends StatelessWidget {
-  const _KeyChip({
-    required this.label,
-    required this.id,
-    required this.description,
-    required this.active,
-    required this.onPressed,
-  });
-
+  final Key keyName;
   final String label;
-  final String id;
-  final String description;
+  final String valueLabel;
   final bool active;
-  final VoidCallback onPressed;
+  final List<PopupMenuEntry<T>> items;
+  final ValueChanged<T> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: active
-          ? 'Clear $label filter'
-          : 'Filter support logs to $description',
-      child: OutlinedButton(
-        key: Key('admin_debug_console_use_case_filter_$id'),
-        onPressed: onPressed,
-        style: AdminButtonStyles.filter(active: active),
-        child: Text(label),
-      ),
-    );
-  }
-}
-
-class _LiveTailRow extends StatelessWidget {
-  const _LiveTailRow({
-    required this.liveTailOn,
-    required this.onToggleLiveTail,
-  });
-
-  final bool liveTailOn;
-  final ValueChanged<bool> onToggleLiveTail;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_debug_console_live_tail_row'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: <Widget>[
-          Icon(
-            liveTailOn
-                ? Icons.radio_button_checked
-                : Icons.radio_button_unchecked,
-            size: 14,
-            color: liveTailOn ? AppColors.positive : AppColors.textMuted,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              liveTailOn
-                  ? 'Live refresh on. Checking for new requests every 5 seconds.'
-                  : 'Live refresh off. Turn it on to check for new requests every 5 seconds.',
-              style: AppTextStyles.body13(color: AppColors.textPrimary),
+    final accent = active ? AppColors.sunset : AppColors.borderSubtle;
+    return PopupMenuButton<T>(
+      key: keyName,
+      tooltip: 'Filter by ${label.toLowerCase()}',
+      onSelected: onSelected,
+      itemBuilder: (_) => items,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.sunset.withValues(alpha: 0.10)
+              : AppColors.backgroundSurface,
+          border: Border.all(color: accent, width: 1),
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              '$label  ',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
-          ),
-          const SizedBox(width: 8),
-          Switch(
-            key: const Key('admin_debug_console_live_tail_toggle'),
-            value: liveTailOn,
-            onChanged: onToggleLiveTail,
-          ),
-        ],
+            Text(
+              valueLabel,
+              style: AppTextStyles.body13(
+                color: active ? AppColors.sunsetDark : AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.keyboard_arrow_down,
+              size: 16,
+              color: AppColors.textMuted,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _RequestRow extends StatelessWidget {
+/// One activity row. Collapsed = status dot + plain title + a secondary
+/// `<result> · <relative time>` line (body font, no monospace, no raw
+/// summary, no "123 ms"). Expanded = a plain "What happened" zone and a
+/// collapsible "Technical reference (for engineering)" zone that keeps
+/// the raw identifiers (monospace + copy) tucked away.
+class _RequestRow extends StatefulWidget {
   const _RequestRow({
     super.key,
     required this.entry,
     required this.expanded,
     required this.optInOn,
     required this.editingEnabled,
+    required this.now,
     required this.onToggle,
   });
 
@@ -1488,147 +1270,131 @@ class _RequestRow extends StatelessWidget {
   final bool expanded;
   final bool optInOn;
   final bool editingEnabled;
+  final DateTime now;
   final VoidCallback onToggle;
+
+  @override
+  State<_RequestRow> createState() => _RequestRowState();
+}
+
+class _RequestRowState extends State<_RequestRow> {
+  bool _techOpen = false;
+
+  RequestLogEntry get entry => widget.entry;
 
   @override
   Widget build(BuildContext context) {
     final canRevealFullContent =
-        editingEnabled && optInOn && entry.fullContentPayload != null;
+        widget.editingEnabled &&
+        widget.optInOn &&
+        entry.fullContentPayload != null;
     final statusColor = _statusColor(entry.status);
     final requestType = adminRequestUseCaseLabel(entry.usageClass);
-    final summary = _requestSummary(entry);
+    final result = adminRequestResultWording(entry.status);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 9),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           InkWell(
-            onTap: onToggle,
+            onTap: widget.onToggle,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
               child: Row(
                 children: <Widget>[
-                  Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                    color: AppColors.textMuted,
+                  Container(
+                    width: 11,
+                    height: 11,
+                    margin: const EdgeInsets.only(top: 2),
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          requestType,
+                          style: AppTextStyles.body14(
+                            color: AppColors.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text.rich(
+                          TextSpan(
+                            children: <InlineSpan>[
+                              TextSpan(
+                                text: result,
+                                style: AppTextStyles.body12(color: statusColor)
+                                    .copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              TextSpan(
+                                text:
+                                    '  ·  ${_relativeUpdated(entry.startedAt, widget.now)}',
+                                style: AppTextStyles.body12(
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      requestType,
-                      style: AppTextStyles.body12(
-                        color: AppColors.textPrimary,
-                      ).copyWith(fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      summary,
-                      style: AppTextStyles.body12(
-                        color: AppColors.textSecondary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      _requestAge(entry.startedAt),
-                      style: AppTextStyles.body12(color: AppColors.textMuted),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.15),
-                      border: Border.all(color: statusColor, width: 1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _statusLabel(entry.status),
-                      style: AppTextStyles.mono10(
-                        color: statusColor,
-                      ).copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                    width: 88,
-                    child: Text(
-                      '${entry.latencyMs} ms',
-                      style: AppTextStyles.mono10(color: AppColors.textMuted),
-                      textAlign: TextAlign.end,
-                    ),
+                  Icon(
+                    widget.expanded
+                        ? Icons.expand_less
+                        : Icons.chevron_right,
+                    size: 20,
+                    color: AppColors.textMuted,
                   ),
                 ],
               ),
             ),
           ),
-          if (expanded)
+          if (widget.expanded)
             Padding(
-              padding: const EdgeInsets.fromLTRB(40, 0, 14, 14),
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  _MetaRow(label: 'Request reference', value: entry.requestId),
-                  _MetaRow(label: 'Retry reference', value: entry.idempotencyKey),
-                  _MetaRow(label: 'Operator ID', value: entry.operatorId),
-                  _MetaRow(
-                    label: 'Location ID',
-                    value: entry.locationId ?? 'Unknown',
+                  const Divider(height: 1, color: AppColors.borderSubtle),
+                  const SizedBox(height: 12),
+                  _ZoneHeading(label: 'What happened'),
+                  const SizedBox(height: 6),
+                  _FactRow(label: 'What', value: requestType),
+                  _FactRow(
+                    label: 'Result',
+                    value: result,
+                    valueColor: statusColor,
+                    emphasizeValue: true,
                   ),
-                  _MetaRow(
-                    label: 'Request use case',
-                    value: adminRequestUseCaseLabelWithId(entry.usageClass),
-                  ),
-                  if (_supportLogActorIdentity(entry).isNotEmpty)
-                    _MetaRow(
-                      label: 'Actor',
-                      value: _supportLogActorIdentity(entry),
-                    ),
-                  _MetaRow(
-                    label: 'Started',
+                  _FactRow(
+                    label: 'When',
                     value: adminHumanDateTime(entry.startedAt),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Request details',
-                    style: AppTextStyles.mono10(
-                      color: AppColors.textMuted,
-                    ).copyWith(fontWeight: FontWeight.w700),
+                  _FactRow(label: 'Who', value: _whoLabel(entry)),
+                  _FactRow(label: 'Took', value: _tookLabel(entry)),
+                  _TechnicalReference(
+                    entry: entry,
+                    open: _techOpen,
+                    onToggle: () => setState(() => _techOpen = !_techOpen),
                   ),
-                  const SizedBox(height: 4),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundDeep,
-                      border: Border.all(
-                        color: AppColors.borderSubtle,
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      _formatMap(entry.requestMeta),
-                      style: AppTextStyles.mono10(color: AppColors.textPrimary),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   if (canRevealFullContent)
                     _FullContentBlock(
                       key: Key(
@@ -1638,8 +1404,8 @@ class _RequestRow extends StatelessWidget {
                     )
                   else
                     _FullContentLockedBlock(
-                      editingEnabled: editingEnabled,
-                      optInOn: optInOn,
+                      editingEnabled: widget.editingEnabled,
+                      optInOn: widget.optInOn,
                       payloadPresent: entry.fullContentPayload != null,
                     ),
                 ],
@@ -1650,54 +1416,92 @@ class _RequestRow extends StatelessWidget {
     );
   }
 
-  static String _requestSummary(RequestLogEntry entry) {
-    final meta = entry.requestMeta;
-    final value =
-        meta['summary'] ??
-        meta['route'] ??
-        meta['path'] ??
-        meta['method'] ??
-        entry.idempotencyKey;
-    final text = value.toString().trim();
-    if (text.isEmpty) return 'Recent support request';
-    return text;
+  /// "Who" wording. Telemetry carries only the actor's UUID (PII is
+  /// resolved at render, never stored). Full name + role resolution via
+  /// the members lookup is a P3 follow-up (it needs the scoped members
+  /// gateway + an async per-operator lookup, beyond this front-end
+  /// slice); until then we render a short reference, or the honest "—"
+  /// sentinel when no actor is recorded (system / scheduled turn).
+  static String _whoLabel(RequestLogEntry entry) {
+    final uid = entry.actorUserId?.trim();
+    if (uid == null || uid.isEmpty) return '—';
+    final shortId = uid.length > 8 ? uid.substring(0, 8) : uid;
+    return 'User $shortId';
   }
 
-  static String _requestAge(DateTime startedAt) {
-    final elapsed = DateTime.now().toUtc().difference(startedAt.toUtc());
-    if (elapsed.inMinutes < 1) return 'just now';
-    if (elapsed.inHours < 1) return '${elapsed.inMinutes} min ago';
-    if (elapsed.inDays < 1) return '${elapsed.inHours} hr ago';
-    return '${elapsed.inDays} d ago';
+  /// "Took" wording from the real measured latency (P1b). Rendered in
+  /// seconds. Honest "—" when latency was not recorded (no stats row:
+  /// failed / pre-P1b / non-LLM support request) — NEVER a phantom 0.
+  static String _tookLabel(RequestLogEntry entry) {
+    // latency_ms is the coalesced real-or-derived value. The derived
+    // fallback is `updated_at - created_at` which is 0 for rows never
+    // updated; a 0 here is not a real measurement, so sentinel it.
+    if (entry.latencyMs <= 0) return '—';
+    final seconds = entry.latencyMs / 1000;
+    if (seconds < 0.1) return 'under 0.1 seconds';
+    return '${seconds.toStringAsFixed(1)} seconds';
   }
 }
 
-class _MetaRow extends StatelessWidget {
-  const _MetaRow({required this.label, required this.value});
+/// Uppercase zone heading inside the expanded row ("What happened",
+/// "Technical reference"). Body font, muted, tracked.
+class _ZoneHeading extends StatelessWidget {
+  const _ZoneHeading({required this.label});
 
   final String label;
-  final String value;
 
   @override
   Widget build(BuildContext context) {
+    return Text(
+      label.toUpperCase(),
+      style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+    );
+  }
+}
+
+/// One plain `Label    value` fact in the "What happened" zone. Body
+/// font (never monospace); "—" values render in the muted color so an
+/// honest empty reads as empty, not as data.
+class _FactRow extends StatelessWidget {
+  const _FactRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.emphasizeValue = false,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool emphasizeValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final isEmpty = value == '—';
+    final color = isEmpty
+        ? AppColors.textMuted
+        : (valueColor ?? AppColors.textPrimary);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(
-            width: 130,
+            width: 64,
             child: Text(
               label,
-              style: AppTextStyles.mono10(
-                color: AppColors.textMuted,
-              ).copyWith(fontWeight: FontWeight.w700),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               value,
-              style: AppTextStyles.mono10(color: AppColors.textPrimary),
+              style: AppTextStyles.body13(color: color).copyWith(
+                fontWeight: (emphasizeValue && !isEmpty)
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -1706,6 +1510,211 @@ class _MetaRow extends StatelessWidget {
   }
 }
 
+/// The collapsible "Technical reference (for engineering)" zone. Holds
+/// the raw identifiers support occasionally needs: request/retry
+/// references, request type + id, operator/location ids, model, tokens,
+/// cost. Monospace is acceptable HERE (copy accuracy); each value shows
+/// "—" when not recorded (Metric Honesty Doctrine — never a phantom 0).
+class _TechnicalReference extends StatelessWidget {
+  const _TechnicalReference({
+    required this.entry,
+    required this.open,
+    required this.onToggle,
+  });
+
+  final RequestLogEntry entry;
+  final bool open;
+  final VoidCallback onToggle;
+
+  static const String _dash = '—';
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = _tokensLabel(entry);
+    return Container(
+      key: Key('admin_debug_console_technical_${entry.requestId}'),
+      margin: const EdgeInsets.only(top: 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          InkWell(
+            key: Key(
+              'admin_debug_console_technical_toggle_${entry.requestId}',
+            ),
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.build_outlined,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'Technical reference (for engineering)',
+                      style: AppTextStyles.body12(
+                        color: AppColors.textSecondary,
+                      ).copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Icon(
+                    open ? Icons.expand_less : Icons.chevron_right,
+                    size: 18,
+                    color: AppColors.textMuted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (open)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(13, 0, 10, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  _TechRow(
+                    label: 'Request reference',
+                    value: entry.requestId.isEmpty ? _dash : entry.requestId,
+                    copyable: entry.requestId.isNotEmpty,
+                  ),
+                  _TechRow(
+                    label: 'Retry reference',
+                    value: entry.idempotencyKey.isEmpty
+                        ? _dash
+                        : entry.idempotencyKey,
+                    copyable: entry.idempotencyKey.isNotEmpty,
+                  ),
+                  _TechRow(
+                    label: 'Request type',
+                    value: adminRequestUseCaseLabelWithId(entry.usageClass),
+                  ),
+                  _TechRow(
+                    label: 'Operator id',
+                    value: entry.operatorId.isEmpty ? _dash : entry.operatorId,
+                    copyable: entry.operatorId.isNotEmpty,
+                  ),
+                  _TechRow(
+                    label: 'Location id',
+                    value: entry.locationId ?? _dash,
+                    copyable: entry.locationId != null,
+                  ),
+                  _TechRow(label: 'Model', value: entry.modelId ?? _dash),
+                  _TechRow(label: 'Tokens', value: tokens),
+                  _TechRow(
+                    label: 'Cost',
+                    value: entry.costUsd == null
+                        ? _dash
+                        : '\$${entry.costUsd!.toStringAsFixed(4)}',
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String _tokensLabel(RequestLogEntry entry) {
+    final inTok = entry.promptTokenCount;
+    final outTok = entry.completionTokenCount;
+    if (inTok == null && outTok == null) return _dash;
+    final inStr = inTok?.toString() ?? _dash;
+    final outStr = outTok?.toString() ?? _dash;
+    return '$inStr in / $outStr out';
+  }
+}
+
+/// One `label : value` reference inside the Technical reference block.
+/// Monospace value (copy accuracy) with an optional Copy affordance.
+class _TechRow extends StatelessWidget {
+  const _TechRow({
+    required this.label,
+    required this.value,
+    this.copyable = false,
+  });
+
+  final String label;
+  final String value;
+  final bool copyable;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 118,
+            child: Text(
+              label,
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
+              style: AppTextStyles.mono11(color: AppColors.textPrimary),
+            ),
+          ),
+          if (copyable) ...<Widget>[
+            const SizedBox(width: 8),
+            _CopyButton(value: value),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Small "Copy" affordance for a Technical-reference value. Writes to
+/// the clipboard and confirms with a brief snackbar.
+class _CopyButton extends StatelessWidget {
+  const _CopyButton({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: value));
+        if (!context.mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('Copied to clipboard'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      },
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: AppColors.sunsetDark,
+      ),
+      icon: const Icon(Icons.copy_outlined, size: 13),
+      label: Text(
+        'Copy',
+        style: AppTextStyles.body12(color: AppColors.sunsetDark),
+      ),
+    );
+  }
+}
+
+/// The unlocked full-message-text reveal. Gating is unchanged
+/// (super_admin + the operator's opt-in flag); only the wording and
+/// layout are reworded plainly. The payload itself is the raw saved
+/// prompt/response, so it stays in the monospace technical treatment.
 class _FullContentBlock extends StatelessWidget {
   const _FullContentBlock({super.key, required this.payload});
 
@@ -1713,43 +1722,69 @@ class _FullContentBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final entries = payload.entries.toList();
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.sunset, width: 1),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(7),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Icon(
-                Icons.lock_open,
-                size: 14,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 6),
+              const Icon(Icons.lock_open, size: 15, color: AppColors.sunsetDark),
+              const SizedBox(width: 7),
               Text(
-                'Full content (operator opt-in is on)',
-                style: AppTextStyles.mono10(
+                'Full message text',
+                style: AppTextStyles.body13(
                   color: AppColors.sunsetDark,
                 ).copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            _formatMap(payload),
-            style: AppTextStyles.mono10(color: AppColors.textPrimary),
-          ),
+          const SizedBox(height: 8),
+          if (entries.isEmpty)
+            Text(
+              'No saved message text for this request.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            )
+          else
+            for (final e in entries) ...<Widget>[
+              Text(
+                _humanizeKey(e.key),
+                style: AppTextStyles.body12(
+                  color: AppColors.textMuted,
+                ).copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 2),
+              SelectableText(
+                e.value?.toString() ?? '—',
+                style: AppTextStyles.mono11(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 8),
+            ],
         ],
       ),
     );
   }
+
+  static String _humanizeKey(String key) {
+    final words = key
+        .trim()
+        .replaceAll(RegExp(r'[_\-]+'), ' ')
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty);
+    if (words.isEmpty) return key;
+    final joined = words.join(' ');
+    return joined.substring(0, 1).toUpperCase() + joined.substring(1);
+  }
 }
 
+/// The locked full-message-text state. Same gating as before, reworded
+/// to plain English. Body font, never monospace.
 class _FullContentLockedBlock extends StatelessWidget {
   const _FullContentLockedBlock({
     required this.editingEnabled,
@@ -1764,23 +1799,23 @@ class _FullContentLockedBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reason = !editingEnabled
-        ? 'This support role cannot reveal full request content. Use ecosystem admin access to view it.'
+        ? 'Full message text is hidden. Your support role cannot open it; ecosystem admin access is needed.'
         : !optInOn
-        ? 'This operator has not allowed full request content. Enable the full-content opt-in in Launch controls to view it.'
-        : 'Full request content was not saved for this request.';
+        ? "Full message text is hidden. This business hasn't turned on full-content sharing."
+        : 'Full message text was not saved for this request.';
     return Container(
       key: const Key('admin_debug_console_full_content_locked'),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.backgroundDeep,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(7),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Icon(Icons.lock_outline, size: 14, color: AppColors.textMuted),
-          const SizedBox(width: 6),
+          const Icon(Icons.lock_outline, size: 15, color: AppColors.textMuted),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               reason,
@@ -1791,359 +1826,6 @@ class _FullContentLockedBlock extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SupportHelpTab extends StatelessWidget {
-  const _SupportHelpTab({
-    super.key,
-    required this.surface,
-    required this.title,
-    required this.entries,
-    required this.filter,
-    required this.selectedUseCaseId,
-    required this.searchController,
-    required this.loading,
-    required this.loadError,
-    required this.onFilterChanged,
-    required this.onSearchChanged,
-    required this.onUseCaseChanged,
-    required this.onRunRefresh,
-    required this.emptyBody,
-    required this.body,
-  });
-
-  final SupportHelpSurface surface;
-  final String title;
-  final List<RequestLogEntry> entries;
-  final RequestLogFilter filter;
-  final String? selectedUseCaseId;
-  final TextEditingController searchController;
-  final bool loading;
-  final String? loadError;
-  final ValueChanged<RequestLogFilter> onFilterChanged;
-  final ValueChanged<String> onSearchChanged;
-  final ValueChanged<String?> onUseCaseChanged;
-  final Future<void> Function() onRunRefresh;
-  final String emptyBody;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final rows = entries;
-    return OperatorWebScreenBody(
-      padding: const EdgeInsets.all(16),
-      maxContentWidth: 760,
-      child: OperatorWebPanel(
-        title: title,
-        subtitle: body,
-        trailing: _SupportHelpCountPill(count: rows.length),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            _SupportHelpFilterBar(
-              surface: surface,
-              filter: filter,
-              selectedUseCaseId: selectedUseCaseId,
-              searchController: searchController,
-              onFilterChanged: onFilterChanged,
-              onSearchChanged: onSearchChanged,
-              onUseCaseChanged: onUseCaseChanged,
-            ),
-            const SizedBox(height: 14),
-            if (loadError != null)
-              _ErrorBanner(message: loadError!)
-            else if (loading && rows.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.sunsetDark,
-                    ),
-                  ),
-                ),
-              )
-            else if (rows.isEmpty)
-              Text(
-                emptyBody,
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              )
-            else
-              for (final entry in rows.take(8))
-                _SupportHelpRequestRow(surface: surface, entry: entry),
-            if (rows.isEmpty && !loading && loadError == null) ...[
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                key: Key('admin_debug_console_${surface.name}_help_refresh'),
-                onPressed: onRunRefresh,
-                style: AdminButtonStyles.secondary(),
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Refresh'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SupportHelpFilterBar extends StatelessWidget {
-  const _SupportHelpFilterBar({
-    required this.surface,
-    required this.filter,
-    required this.selectedUseCaseId,
-    required this.searchController,
-    required this.onFilterChanged,
-    required this.onSearchChanged,
-    required this.onUseCaseChanged,
-  });
-
-  final SupportHelpSurface surface;
-  final RequestLogFilter filter;
-  final String? selectedUseCaseId;
-  final TextEditingController searchController;
-  final ValueChanged<RequestLogFilter> onFilterChanged;
-  final ValueChanged<String> onSearchChanged;
-  final ValueChanged<String?> onUseCaseChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: Key('admin_debug_console_${surface.name}_help_filter_bar'),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundDeep,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          TextField(
-            key: Key('admin_debug_console_${surface.name}_help_search'),
-            controller: searchController,
-            onChanged: onSearchChanged,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search by request or retry reference',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              _StatusFilterChip(
-                keyName: Key(
-                  'admin_debug_console_${surface.name}_help_filter_status',
-                ),
-                value: filter.status,
-                onChanged: (next) =>
-                    onFilterChanged(filter.copyWith(status: next)),
-              ),
-              _TimeWindowFilterChip(
-                keyName: Key(
-                  'admin_debug_console_${surface.name}_help_filter_window',
-                ),
-                value: filter.timeWindow,
-                onChanged: (next) =>
-                    onFilterChanged(filter.copyWith(timeWindow: next)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: <Widget>[
-              _KeyChip(
-                label: 'All ${surface.label}',
-                id: 'all',
-                description: 'all typed ${surface.label.toLowerCase()} rows',
-                active: selectedUseCaseId == null,
-                onPressed: () => onUseCaseChanged(null),
-              ),
-              for (final useCase in supportHelpUseCasesFor(surface))
-                _KeyChip(
-                  label: useCase.label,
-                  id: useCase.id,
-                  description: useCase.description,
-                  active: selectedUseCaseId == useCase.id,
-                  onPressed: () => onUseCaseChanged(
-                    selectedUseCaseId == useCase.id ? null : useCase.id,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SupportHelpCountPill extends StatelessWidget {
-  const _SupportHelpCountPill({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.peacock.withValues(alpha: 0.12),
-        border: Border.all(color: AppColors.peacockDark, width: 1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '$count request${count == 1 ? '' : 's'}',
-        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
-      ),
-    );
-  }
-}
-
-class _SupportHelpRequestRow extends StatelessWidget {
-  const _SupportHelpRequestRow({required this.surface, required this.entry});
-
-  final SupportHelpSurface surface;
-  final RequestLogEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final route = _friendlyRoute(entry);
-    return Container(
-      key: Key(
-        'admin_debug_console_${surface.name}_help_row_${entry.requestId}',
-      ),
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.cardGlow,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(
-            _statusIcon(entry.status),
-            size: 17,
-            color: _statusColor(entry.status),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  route,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.body14(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${requestLogStatusLabel(entry.status)} - ${entry.latencyMs} ms - ${_timeAgo(entry.startedAt)}',
-                  style: AppTextStyles.body12(color: AppColors.textSecondary),
-                ),
-                if (_supportLogActorIdentity(entry).isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    _supportLogActorIdentity(entry),
-                    style: AppTextStyles.body12(color: AppColors.textSecondary),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _friendlyRoute(RequestLogEntry entry) {
-    final meta = entry.requestMeta;
-    final value =
-        meta['summary'] ??
-        meta['route'] ??
-        meta['path'] ??
-        meta['method'] ??
-        entry.usageClass;
-    final text = value.toString().trim();
-    if (text.isEmpty) return 'Support request';
-    return text;
-  }
-
-  static IconData _statusIcon(RequestLogStatus status) {
-    switch (status) {
-      case RequestLogStatus.success:
-        return Icons.check_circle_outline;
-      case RequestLogStatus.error:
-        return Icons.error_outline;
-      case RequestLogStatus.timeout:
-        return Icons.timer_off_outlined;
-      case RequestLogStatus.unknown:
-        return Icons.help_outline;
-    }
-  }
-
-  static Color _statusColor(RequestLogStatus status) {
-    switch (status) {
-      case RequestLogStatus.success:
-        return AppColors.positive;
-      case RequestLogStatus.error:
-        return AppColors.negative;
-      case RequestLogStatus.timeout:
-        return AppColors.warning;
-      case RequestLogStatus.unknown:
-        return AppColors.textMuted;
-    }
-  }
-
-  static String _timeAgo(DateTime startedAt) {
-    final elapsed = DateTime.now().toUtc().difference(startedAt.toUtc());
-    if (elapsed.inMinutes < 1) return 'just now';
-    if (elapsed.inHours < 1) return '${elapsed.inMinutes} min ago';
-    if (elapsed.inDays < 1) return '${elapsed.inHours} hr ago';
-    return '${elapsed.inDays} d ago';
-  }
-}
-
-String _supportLogActorIdentity(RequestLogEntry entry) {
-  final meta = entry.requestMeta;
-  final name = _metaString(meta, const <String>[
-    'actor_display_name',
-    'actor_name',
-    'display_name',
-  ]);
-  final role = _metaString(meta, const <String>[
-    'actor_role',
-    'actor_role_label',
-    'role_label',
-    'role',
-  ]);
-  final email = _metaString(meta, const <String>['actor_email', 'email']);
-  if (name == null && role == null && email == null) return '';
-  return <String>[
-    name ?? 'Actor unavailable',
-    role ?? 'role unavailable',
-    email ?? 'email unavailable',
-  ].join(' - ');
-}
-
-String? _metaString(Map<String, Object?> meta, List<String> keys) {
-  for (final key in keys) {
-    final raw = meta[key];
-    if (raw is String && raw.trim().isNotEmpty) return raw.trim();
-  }
-  return null;
 }
 
 class _EmptyState extends StatelessWidget {
@@ -2239,22 +1921,3 @@ Color _statusColor(RequestLogStatus status) {
   }
 }
 
-String _statusLabel(RequestLogStatus status) {
-  final label = requestLogStatusLabel(status);
-  return label.substring(0, 1).toUpperCase() + label.substring(1);
-}
-
-String _formatMap(Map<String, Object?> map) {
-  if (map.isEmpty) return '{}';
-  final buf = StringBuffer('{\n');
-  for (final entry in map.entries) {
-    buf
-      ..write('  ')
-      ..write(entry.key)
-      ..write(': ')
-      ..write(entry.value)
-      ..write('\n');
-  }
-  buf.write('}');
-  return buf.toString();
-}
