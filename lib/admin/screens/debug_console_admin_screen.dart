@@ -60,6 +60,7 @@ import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
 import '../models/debug_console_admin_models.dart';
 import '../services/debug_console_admin_gateway.dart';
+import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 
@@ -128,11 +129,28 @@ extension _RequestTypeViewCopy on _RequestTypeView {
 
 }
 
+/// A resolved actor display, built live from the scoped operator's
+/// members. Holds only the friendly name + role label needed to render
+/// the "Who" line; no email or other PII is retained (resolution is at
+/// render only, per audit_attribution_contract.md).
+@immutable
+class _ActorDisplay {
+  const _ActorDisplay({required this.name, required this.roleLabel});
+
+  final String name;
+  final String roleLabel;
+
+  /// Plain "Name (Role)" wording. Role is omitted only if it resolved to
+  /// blank (it never does today: memberRoleLabel falls back to the key).
+  String get label => roleLabel.isEmpty ? name : '$name ($roleLabel)';
+}
+
 class DebugConsoleAdminScreen extends StatefulWidget {
   const DebugConsoleAdminScreen({
     super.key,
     required this.gateway,
     this.hierarchyGateway,
+    this.membersGateway,
     this.editingEnabled = true,
     this.hierarchyScope,
     this.initialFilter = const RequestLogFilter(),
@@ -143,6 +161,14 @@ class DebugConsoleAdminScreen extends StatefulWidget {
 
   final DebugConsoleAdminGateway gateway;
   final RolesHierarchySessionsAdminGateway? hierarchyGateway;
+
+  /// Members lookup used to resolve a row's actor UUID to a friendly
+  /// "Name (Role)" at render time. PII is NEVER stored on the log entry
+  /// (audit_attribution_contract.md): only the UUID is carried, and the
+  /// display name + role are resolved live from the scoped operator's
+  /// members here. Null (no gateway wired) keeps the honest short-id /
+  /// "—" fallback, so the row never blocks on this lookup.
+  final MembersAdminGateway? membersGateway;
 
   /// `true` when the signed-in actor is `super_admin`. Drives the
   /// expand-row full-content reveal - `false` (ff_support) hides the
@@ -195,6 +221,18 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen> {
   List<String>? _scopeLocationIds;
   bool _scopeResolving = false;
   String? _scopeResolutionError;
+
+  /// Resolved `uid -> {name, role label}` for the currently-loaded
+  /// operator, built once from [DebugConsoleAdminScreen.membersGateway]
+  /// and reused across every row (never refetched per row). Null while
+  /// the first fetch is in flight or when no members gateway is wired;
+  /// the "Who" line falls back gracefully in that window.
+  Map<String, _ActorDisplay>? _actorDisplays;
+
+  /// The operator id [_actorDisplays] was fetched for, so a scope change
+  /// to a different operator triggers exactly one refetch (and a repeat
+  /// of the same operator does not).
+  String? _actorDisplaysOperatorId;
   final TextEditingController _searchController = TextEditingController();
   final Set<String> _expanded = <String>{};
 
@@ -204,11 +242,24 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen> {
 
   DateTime _clockNow() => (widget.now ?? () => DateTime.now().toUtc())();
 
+  /// The operator whose members back the "Who" resolution. The scope
+  /// picker always carries the operator id for business / location /
+  /// org-unit scopes; the initial-filter operator id is the fallback for
+  /// the scope-less route seed. Empty -> no operator to fetch.
+  String? get _scopedOperatorId {
+    final scoped = widget.hierarchyScope?.operatorId.trim();
+    if (scoped != null && scoped.isNotEmpty) return scoped;
+    final seeded = widget.initialFilter.operatorId?.trim();
+    if (seeded != null && seeded.isNotEmpty) return seeded;
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
     _filter = widget.initialFilter;
     _startScopeResolution();
+    _startActorResolution();
     if (!widget.initialFilter.isEmpty) {
       unawaited(_refresh());
     }
@@ -220,6 +271,77 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen> {
     if (oldWidget.hierarchyScope?.cacheKey != widget.hierarchyScope?.cacheKey ||
         oldWidget.hierarchyGateway != widget.hierarchyGateway) {
       _startScopeResolution();
+    }
+    if (oldWidget.hierarchyScope?.operatorId !=
+            widget.hierarchyScope?.operatorId ||
+        oldWidget.initialFilter.operatorId !=
+            widget.initialFilter.operatorId ||
+        oldWidget.membersGateway != widget.membersGateway) {
+      _startActorResolution();
+    }
+  }
+
+  /// Fetch the scoped operator's members ONCE per operator and build the
+  /// `uid -> {name, role}` lookup the "Who" line resolves against. Cached
+  /// by operator id so switching back to an already-loaded operator does
+  /// not refetch, and the same fetch serves every row. Best-effort: a
+  /// gateway error simply leaves the lookup unresolved so rows keep the
+  /// honest short-id / "—" fallback (the actor UUID still shows in the
+  /// Technical reference zone regardless).
+  void _startActorResolution() {
+    final gateway = widget.membersGateway;
+    final operatorId = _scopedOperatorId;
+    if (gateway == null || operatorId == null) {
+      // Nothing to resolve against: clear any stale lookup so a scope
+      // change away from a resolvable operator falls back honestly.
+      if (_actorDisplays != null || _actorDisplaysOperatorId != null) {
+        setState(() {
+          _actorDisplays = null;
+          _actorDisplaysOperatorId = null;
+        });
+      }
+      return;
+    }
+    if (_actorDisplaysOperatorId == operatorId && _actorDisplays != null) {
+      // Already resolved for this operator; reuse, do not refetch.
+      return;
+    }
+    _actorDisplays = null;
+    _actorDisplaysOperatorId = operatorId;
+    unawaited(_resolveActorDisplays(gateway, operatorId));
+  }
+
+  Future<void> _resolveActorDisplays(
+    MembersAdminGateway gateway,
+    String operatorId,
+  ) async {
+    try {
+      final members = await gateway.listMembers(operatorId: operatorId);
+      if (!mounted || _scopedOperatorId != operatorId) return;
+      final lookup = <String, _ActorDisplay>{
+        for (final member in members)
+          if (member.userId.trim().isNotEmpty)
+            member.userId: _ActorDisplay(
+              name: member.displayName.trim().isEmpty
+                  ? member.userId
+                  : member.displayName.trim(),
+              // memberRoleLabel resolves a friendly label from the role
+              // key, falling back to the raw key for an unseeded role.
+              roleLabel: memberRoleLabel(member.roleKey),
+            ),
+      };
+      setState(() {
+        _actorDisplays = lookup;
+        _actorDisplaysOperatorId = operatorId;
+      });
+    } catch (_) {
+      // Best-effort resolution: leave the lookup unresolved on error so
+      // the "Who" line keeps its honest fallback rather than blocking.
+      if (!mounted || _scopedOperatorId != operatorId) return;
+      setState(() {
+        _actorDisplays = const <String, _ActorDisplay>{};
+        _actorDisplaysOperatorId = operatorId;
+      });
     }
   }
 
@@ -631,6 +753,7 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen> {
                 expanded: _expanded,
                 filter: _filter,
                 typeView: _typeView,
+                actorDisplays: _actorDisplays,
                 hierarchyScope: widget.hierarchyScope,
                 scopeLocationIds: _scopeLocationIds,
                 scopeResolving: _scopeResolving,
@@ -845,6 +968,7 @@ class _RequestLogTab extends StatelessWidget {
     required this.expanded,
     required this.filter,
     required this.typeView,
+    required this.actorDisplays,
     required this.hierarchyScope,
     required this.scopeLocationIds,
     required this.scopeResolving,
@@ -868,6 +992,11 @@ class _RequestLogTab extends StatelessWidget {
   final Set<String> expanded;
   final RequestLogFilter filter;
   final _RequestTypeView typeView;
+
+  /// Resolved `uid -> {name, role}` lookup for the loaded operator, or
+  /// null while the members fetch is in flight / no gateway is wired.
+  /// Passed down so the expanded "Who" line can resolve at render.
+  final Map<String, _ActorDisplay>? actorDisplays;
   final AdminHierarchyScopeIntent? hierarchyScope;
   final List<String>? scopeLocationIds;
   final bool scopeResolving;
@@ -963,6 +1092,7 @@ class _RequestLogTab extends StatelessWidget {
                 expanded: expanded.contains(entry.requestId),
                 optInOn: optInLookup(entry.operatorId),
                 editingEnabled: editingEnabled,
+                actorDisplay: _resolveActorDisplay(entry),
                 now: now,
                 onToggle: () => onToggleExpanded(entry.requestId),
               );
@@ -970,6 +1100,18 @@ class _RequestLogTab extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  /// The resolved actor for a row, or null when it cannot be resolved
+  /// (no actor uid recorded -> system / scheduled turn, the uid is not in
+  /// the loaded members, or members are still loading / unwired). Null
+  /// makes [_RequestRow] keep the honest short-id / "—" fallback.
+  _ActorDisplay? _resolveActorDisplay(RequestLogEntry entry) {
+    final lookup = actorDisplays;
+    if (lookup == null) return null;
+    final uid = entry.actorUserId?.trim();
+    if (uid == null || uid.isEmpty) return null;
+    return lookup[uid];
   }
 }
 
@@ -1262,6 +1404,7 @@ class _RequestRow extends StatefulWidget {
     required this.expanded,
     required this.optInOn,
     required this.editingEnabled,
+    required this.actorDisplay,
     required this.now,
     required this.onToggle,
   });
@@ -1270,6 +1413,12 @@ class _RequestRow extends StatefulWidget {
   final bool expanded;
   final bool optInOn;
   final bool editingEnabled;
+
+  /// The actor resolved from the scoped operator's members, or null when
+  /// unresolved (system actor, uid not in members, or still loading).
+  /// Drives the friendly "Name (Role)" "Who" line; null keeps the honest
+  /// short-id / "—" fallback.
+  final _ActorDisplay? actorDisplay;
   final DateTime now;
   final VoidCallback onToggle;
 
@@ -1387,7 +1536,10 @@ class _RequestRowState extends State<_RequestRow> {
                     label: 'When',
                     value: adminHumanDateTime(entry.startedAt),
                   ),
-                  _FactRow(label: 'Who', value: _whoLabel(entry)),
+                  _FactRow(
+                    label: 'Who',
+                    value: _whoLabel(entry, widget.actorDisplay),
+                  ),
                   _FactRow(label: 'Took', value: _tookLabel(entry)),
                   _TechnicalReference(
                     entry: entry,
@@ -1417,14 +1569,19 @@ class _RequestRowState extends State<_RequestRow> {
   }
 
   /// "Who" wording. Telemetry carries only the actor's UUID (PII is
-  /// resolved at render, never stored). Full name + role resolution via
-  /// the members lookup is a P3 follow-up (it needs the scoped members
-  /// gateway + an async per-operator lookup, beyond this front-end
-  /// slice); until then we render a short reference, or the honest "—"
-  /// sentinel when no actor is recorded (system / scheduled turn).
-  static String _whoLabel(RequestLogEntry entry) {
+  /// resolved at render, never stored — audit_attribution_contract.md).
+  /// P3.2: when the uid resolves against the scoped operator's members,
+  /// render the friendly "Name (Role)". Otherwise fall back gracefully
+  /// and never block the row:
+  ///   * no actor uid recorded (system / scheduled turn) -> "—";
+  ///   * uid present but unresolved (not in members, still loading, or
+  ///     no members gateway wired) -> a short `User <id8>` reference.
+  /// The raw actor UUID always stays visible in the Technical reference
+  /// zone regardless of what renders here.
+  static String _whoLabel(RequestLogEntry entry, _ActorDisplay? actorDisplay) {
     final uid = entry.actorUserId?.trim();
     if (uid == null || uid.isEmpty) return '—';
+    if (actorDisplay != null) return actorDisplay.label;
     final shortId = uid.length > 8 ? uid.substring(0, 8) : uid;
     return 'User $shortId';
   }
@@ -1605,6 +1762,19 @@ class _TechnicalReference extends StatelessWidget {
                     label: 'Location id',
                     value: entry.locationId ?? _dash,
                     copyable: entry.locationId != null,
+                  ),
+                  // The raw actor UUID. The "Who" line above resolves it
+                  // to a friendly name + role at render; this keeps the
+                  // exact id available for engineering (copy accuracy).
+                  // "—" when no actor was recorded (system / scheduled).
+                  _TechRow(
+                    label: 'Actor id',
+                    value: (entry.actorUserId == null ||
+                            entry.actorUserId!.trim().isEmpty)
+                        ? _dash
+                        : entry.actorUserId!.trim(),
+                    copyable: entry.actorUserId != null &&
+                        entry.actorUserId!.trim().isNotEmpty,
                   ),
                   _TechRow(label: 'Model', value: entry.modelId ?? _dash),
                   _TechRow(label: 'Tokens', value: tokens),
