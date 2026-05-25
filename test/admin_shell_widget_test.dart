@@ -391,7 +391,12 @@ void main() {
         find.byKey(const Key('admin_setup_workspace_scope_pane')),
         findsOneWidget,
       );
-      expect(find.text(scenario.title), findsWidgets);
+      expect(
+        find.text(
+          '${scenario.title} needs a selected business account before it can open.',
+        ),
+        findsOneWidget,
+      );
       expect(find.byKey(scenario.screenKey), findsNothing);
 
       await chooseWorkspaceBusinessScope(
@@ -528,8 +533,19 @@ void main() {
         findsNothing,
       );
       expect(find.text('Scope'), findsWidgets);
+
+      await tester.tap(find.widgetWithText(Tab, 'Team members'));
+      await pumpEventually(tester);
+
       expect(
-        find.text('Choose a business, org unit, or location.'),
+        find.byKey(
+          const Key('admin_setup_workspace_pick_business_first_state'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Pick a business first'), findsWidgets);
+      expect(
+        find.byKey(const Key('admin_setup_workspace_pick_business_first_link')),
         findsOneWidget,
       );
     },
@@ -744,9 +760,7 @@ void main() {
         findsNothing,
       );
       expect(
-        find.byKey(
-          const Key('admin_nav_per_business_cluster_inactive_hint'),
-        ),
+        find.byKey(const Key('admin_nav_per_business_cluster_inactive_hint')),
         findsOneWidget,
       );
       expect(find.text('Pick a business first'), findsOneWidget);
@@ -766,8 +780,8 @@ void main() {
   );
 
   testWidgets(
-    'tapping an inactive cluster row routes to Business accounts without '
-    'opening the per-business screen or auto-selecting a business',
+    'tapping an inactive cluster row opens a pick-business message with a '
+    'Business accounts link',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 1000);
       tester.view.devicePixelRatio = 1;
@@ -800,11 +814,28 @@ void main() {
       await tester.tap(teamRow);
       await pumpEventually(tester);
 
-      // Lands on Business accounts (the choose-a-business entry point), NOT
-      // the Team members screen, and no business was auto-selected (cluster
-      // stays inactive).
-      expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+      // Opens the selected tab's friendly no-business state, not the Team
+      // members table, and no business was auto-selected (cluster stays
+      // inactive).
+      expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
       expect(find.byKey(const Key('admin_members_screen')), findsNothing);
+      expect(
+        find.byKey(
+          const Key('admin_setup_workspace_pick_business_first_state'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Pick a business first'), findsWidgets);
+      expect(
+        find.text(
+          'Team members needs a selected business account before it can open.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_setup_workspace_pick_business_first_link')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('admin_nav_per_business_cluster_inactive')),
         findsOneWidget,
@@ -813,46 +844,52 @@ void main() {
         find.byKey(const Key('admin_nav_per_business_cluster')),
         findsNothing,
       );
-      expect(tester.takeException(), isNull);
-    },
-  );
 
-  testWidgets(
-    'tapping the inactive cluster hint routes to Business accounts',
-    (tester) async {
-      tester.view.physicalSize = const Size(1280, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
-
-      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
-      addTearDown(source.dispose);
-
-      await tester.pumpWidget(
-        wrap(
-          AdminShell(
-            session: superAdmin,
-            authSource: source,
-            initialRouteId: kAdminHealthRouteId,
-          ),
-        ),
+      await tester.tap(
+        find.byKey(const Key('admin_setup_workspace_pick_business_first_link')),
       );
-      await pumpEventually(tester);
-
-      final hint = find.byKey(
-        const Key('admin_nav_per_business_cluster_inactive_hint'),
-      );
-      await tester.ensureVisible(hint);
-      await pumpEventually(tester);
-      await tester.tap(hint);
       await pumpEventually(tester);
 
       expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('tapping the inactive cluster hint routes to Business accounts', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: superAdmin,
+          authSource: source,
+          initialRouteId: kAdminHealthRouteId,
+        ),
+      ),
+    );
+    await pumpEventually(tester);
+
+    final hint = find.byKey(
+      const Key('admin_nav_per_business_cluster_inactive_hint'),
+    );
+    await tester.ensureVisible(hint);
+    await pumpEventually(tester);
+    await tester.tap(hint);
+    await pumpEventually(tester);
+
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('Business accounts is pinned as the first wide-nav entry', (
     tester,
@@ -875,9 +912,7 @@ void main() {
     // The pinned Business accounts container is the topmost nav block:
     // above the per-business cluster and above every section panel.
     final pinnedTop = tester
-        .getTopLeft(
-          find.byKey(const Key('admin_nav_business_accounts_pinned')),
-        )
+        .getTopLeft(find.byKey(const Key('admin_nav_business_accounts_pinned')))
         .dy;
     expect(
       pinnedTop,
