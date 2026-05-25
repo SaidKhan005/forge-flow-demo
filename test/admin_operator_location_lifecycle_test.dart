@@ -60,6 +60,14 @@ void main() {
     await pumpEventually(tester);
   }
 
+  Future<void> selectHierarchyRow(WidgetTester tester, Key rowKey) async {
+    final row = find.byKey(rowKey);
+    await tester.ensureVisible(row);
+    await pumpEventually(tester);
+    await tester.tap(row);
+    await pumpEventually(tester);
+  }
+
   testWidgets('Account profile action edits the business contact email', (
     tester,
   ) async {
@@ -345,6 +353,10 @@ void main() {
     );
     await pumpEventually(tester);
     await selectBusiness(tester, operatorId: 'op-seed-1');
+    await selectHierarchyRow(
+      tester,
+      const Key('admin_hierarchy_location_loc-seed-1'),
+    );
 
     final editButton = find.byKey(const Key('admin_location_edit_loc-seed-1'));
     await tester.ensureVisible(editButton);
@@ -397,6 +409,10 @@ void main() {
     );
     await pumpEventually(tester);
     await selectBusiness(tester, operatorId: 'op-x');
+    await selectHierarchyRow(
+      tester,
+      const Key('admin_hierarchy_location_loc-x'),
+    );
 
     final removeButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_location_remove_loc-x')),
@@ -493,6 +509,10 @@ void main() {
     );
 
     // Delete it through the row's delete button + confirm dialog.
+    await selectHierarchyRow(
+      tester,
+      Key('admin_hierarchy_location_${added.locationId}'),
+    );
     final removeButton = find.byKey(
       Key('admin_location_remove_${added.locationId}'),
     );

@@ -70,6 +70,14 @@ void main() {
     await pumpEventually(tester);
   }
 
+  Future<void> selectHierarchyRow(WidgetTester tester, Key rowKey) async {
+    final row = find.byKey(rowKey);
+    await tester.ensureVisible(row);
+    await pumpEventually(tester);
+    await tester.tap(row);
+    await pumpEventually(tester);
+  }
+
   // Canonical scope-entity icons: every business / org-unit / location row
   // in the admin Business accounts surface (the shared left scope tree AND
   // the right detail hierarchy) must resolve its glyph through the shared
@@ -457,6 +465,10 @@ void main() {
       await pumpEventually(tester);
 
       await selectBusinessScope(tester, 'op-seed-1');
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-west'),
+      );
 
       // Lifecycle controls remain on the non-primary location row.
       expect(
@@ -534,6 +546,10 @@ void main() {
     await pumpEventually(tester);
 
     await selectBusinessScope(tester, 'op-seed-1');
+    await selectHierarchyRow(
+      tester,
+      const Key('admin_hierarchy_org_unit_org-root'),
+    );
 
     final addChild = find.byKey(
       const Key('admin_hierarchy_org_unit_add_child_org-root'),
@@ -619,6 +635,10 @@ void main() {
     await pumpEventually(tester);
 
     await selectBusinessScope(tester, 'op-seed-1');
+    await selectHierarchyRow(
+      tester,
+      const Key('admin_hierarchy_location_loc-seed-1'),
+    );
 
     final moveButton = find.byKey(const Key('admin_location_move_loc-seed-1'));
     await tester.ensureVisible(moveButton);
@@ -710,6 +730,10 @@ void main() {
     await pumpEventually(tester);
 
     await selectBusinessScope(tester, 'op-seed-1');
+    await selectHierarchyRow(
+      tester,
+      const Key('admin_hierarchy_org_unit_org-root'),
+    );
 
     final rootMoveButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_hierarchy_org_unit_move_org-root')),
@@ -718,6 +742,10 @@ void main() {
 
     final moveButton = find.byKey(
       const Key('admin_hierarchy_org_unit_move_org-east'),
+    );
+    await selectHierarchyRow(
+      tester,
+      const Key('admin_hierarchy_org_unit_org-east'),
     );
     await tester.ensureVisible(moveButton);
     await pumpEventually(tester);
@@ -803,6 +831,10 @@ void main() {
       await pumpEventually(tester);
 
       await selectBusinessScope(tester, 'op-seed-1');
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_org_unit_org-root'),
+      );
 
       final rootSuspend = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_org-root')),
@@ -811,6 +843,10 @@ void main() {
 
       final suspendButton = find.byKey(
         const Key('admin_hierarchy_org_unit_suspend_org-east'),
+      );
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_org_unit_org-east'),
       );
       await tester.ensureVisible(suspendButton);
       await pumpEventually(tester);
@@ -870,6 +906,10 @@ void main() {
 
       final deleteButton = find.byKey(
         const Key('admin_hierarchy_org_unit_delete_org-empty'),
+      );
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_org_unit_org-empty'),
       );
       await tester.ensureVisible(deleteButton);
       await pumpEventually(tester);
@@ -994,6 +1034,10 @@ void main() {
       await pumpEventually(tester);
 
       await selectBusinessScope(tester, 'op-seed-1');
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-primary'),
+      );
 
       final primaryDelete = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_location_remove_loc-primary')),
@@ -1002,6 +1046,10 @@ void main() {
 
       final suspendButton = find.byKey(
         const Key('admin_location_suspend_loc-west'),
+      );
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-west'),
       );
       await tester.ensureVisible(suspendButton);
       await pumpEventually(tester);
@@ -1061,6 +1109,10 @@ void main() {
 
       final deleteButton = find.byKey(
         const Key('admin_location_remove_loc-west'),
+      );
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-west'),
       );
       await tester.ensureVisible(deleteButton);
       await pumpEventually(tester);
@@ -1317,11 +1369,11 @@ void main() {
   );
 
   // ---------------------------------------------------------------------------
-  // 2026-05-24: hierarchy tree actions stay labeled, keyed, and aligned.
+  // 2026-05-25: hierarchy tree actions stay quiet until a row is selected.
   // ---------------------------------------------------------------------------
   testWidgets(
-    'hierarchy tree actions render as labeled buttons with the destructive '
-    'ones in the danger style, keeping their existing keys',
+    'hierarchy tree actions appear only on the selected row, keeping labels '
+    'and existing keys',
     (tester) async {
       useWideSurface(tester);
       final gateway = InMemoryOperatorLocationAdminGateway(
@@ -1368,14 +1420,23 @@ void main() {
 
       await selectBusinessScope(tester, 'op-seed-1');
 
-      // The hierarchy keeps visible labels, with tooltips for exact action
-      // meaning where the same label appears on multiple entity types.
+      expect(
+        find.byKey(const Key('admin_hierarchy_org_unit_add_child_org-east')),
+        findsNothing,
+        reason: 'unselected rows should not show action buttons',
+      );
+
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_org_unit_org-east'),
+      );
+
+      // The selected org-unit row keeps labeled buttons, with tooltips for
+      // exact action meaning where the same label appears on multiple types.
       for (final label in <String>[
         'Add org unit',
         'Move',
         'Suspend',
-        'Edit',
-        'Make primary',
         'Delete',
       ]) {
         expect(
@@ -1409,6 +1470,19 @@ void main() {
         const Key('admin_hierarchy_org_unit_add_child_org-east'),
         'Add org unit',
       );
+      expectLabeledButton(
+        const Key('admin_hierarchy_org_unit_move_org-east'),
+        'Move',
+      );
+      expectLabeledButton(
+        const Key('admin_hierarchy_org_unit_suspend_org-east'),
+        'Suspend',
+      );
+
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-seed-1'),
+      );
       expectLabeledButton(const Key('admin_location_edit_loc-seed-1'), 'Edit');
       expectLabeledButton(
         const Key('admin_location_make_primary_loc-seed-1'),
@@ -1422,9 +1496,22 @@ void main() {
       }
 
       expect(
+        find.byKey(const Key('admin_hierarchy_org_unit_delete_org-east')),
+        findsNothing,
+        reason: 'switching selected rows hides the previous row actions',
+      );
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_org_unit_org-east'),
+      );
+      expect(
         foregroundOf(const Key('admin_hierarchy_org_unit_delete_org-east')),
         equals(AppColors.negative),
         reason: 'Delete org unit must use the danger style',
+      );
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-seed-1'),
       );
       expect(
         foregroundOf(const Key('admin_location_remove_loc-seed-1')),
@@ -1432,12 +1519,26 @@ void main() {
         reason: 'Delete location must use the danger style',
       );
 
-      // Existing widget keys still resolve (tests + selectors keep working).
+      // Existing widget keys still resolve on the selected org-unit row.
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_org_unit_org-east'),
+      );
       for (final key in <Key>[
         const Key('admin_hierarchy_org_unit_add_child_org-east'),
         const Key('admin_hierarchy_org_unit_move_org-east'),
         const Key('admin_hierarchy_org_unit_suspend_org-east'),
         const Key('admin_hierarchy_org_unit_delete_org-east'),
+      ]) {
+        expect(find.byKey(key), findsOneWidget, reason: '$key must resolve');
+      }
+
+      // Existing widget keys still resolve on the selected location row.
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-seed-1'),
+      );
+      for (final key in <Key>[
         const Key('admin_location_move_loc-seed-1'),
         const Key('admin_location_suspend_loc-seed-1'),
         const Key('admin_location_edit_loc-seed-1'),
@@ -1682,6 +1783,10 @@ void main() {
       final deleteButton = find.byKey(
         const Key('admin_location_remove_loc-del-west'),
       );
+      await selectHierarchyRow(
+        tester,
+        const Key('admin_hierarchy_location_loc-del-west'),
+      );
       await tester.ensureVisible(deleteButton);
       await pumpEventually(tester);
       await tester.tap(deleteButton);
@@ -1875,121 +1980,129 @@ void main() {
       expect(leaf.orgUnitId, equals(eastOrgUnit));
     });
 
-    test('add then delete the location via the hierarchy gateway: no 404',
-        () async {
-      final gw = buildWiredGateways();
-      final added = await addLocation(
-        gw.operator,
-        name: 'East Annex',
-        orgUnitId: eastOrgUnit,
-        idempotencyKey: 'k-add-1',
-      );
+    test(
+      'add then delete the location via the hierarchy gateway: no 404',
+      () async {
+        final gw = buildWiredGateways();
+        final added = await addLocation(
+          gw.operator,
+          name: 'East Annex',
+          orgUnitId: eastOrgUnit,
+          idempotencyKey: 'k-add-1',
+        );
 
-      // The exact action that used to throw 404 unknown_location.
-      await gw.hierarchy.deleteLocation(
-        operatorId: operatorId,
-        locationId: added.locationId,
-        idempotencyKey: 'k-del-1',
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'closed location',
-      );
+        // The exact action that used to throw 404 unknown_location.
+        await gw.hierarchy.deleteLocation(
+          operatorId: operatorId,
+          locationId: added.locationId,
+          idempotencyKey: 'k-del-1',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'closed location',
+        );
 
-      final leaves = await gw.hierarchy.listHierarchyLocations(
-        operatorId: operatorId,
-      );
-      expect(
-        leaves.any((l) => l.locationId == added.locationId),
-        isFalse,
-        reason: 'the deleted leaf must drop out of the hierarchy read',
-      );
-    });
+        final leaves = await gw.hierarchy.listHierarchyLocations(
+          operatorId: operatorId,
+        );
+        expect(
+          leaves.any((l) => l.locationId == added.locationId),
+          isFalse,
+          reason: 'the deleted leaf must drop out of the hierarchy read',
+        );
+      },
+    );
 
-    test('add then move the location via the hierarchy gateway: no 404',
-        () async {
-      final gw = buildWiredGateways();
-      final added = await addLocation(
-        gw.operator,
-        name: 'East Annex',
-        orgUnitId: eastOrgUnit,
-        idempotencyKey: 'k-add-1',
-      );
+    test(
+      'add then move the location via the hierarchy gateway: no 404',
+      () async {
+        final gw = buildWiredGateways();
+        final added = await addLocation(
+          gw.operator,
+          name: 'East Annex',
+          orgUnitId: eastOrgUnit,
+          idempotencyKey: 'k-add-1',
+        );
 
-      final moved = await gw.hierarchy.moveLocation(
-        operatorId: operatorId,
-        locationId: added.locationId,
-        newOrgUnitId: westOrgUnit,
-        idempotencyKey: 'k-move-1',
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'reorg',
-      );
-      expect(moved.orgUnitId, equals(westOrgUnit));
+        final moved = await gw.hierarchy.moveLocation(
+          operatorId: operatorId,
+          locationId: added.locationId,
+          newOrgUnitId: westOrgUnit,
+          idempotencyKey: 'k-move-1',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'reorg',
+        );
+        expect(moved.orgUnitId, equals(westOrgUnit));
 
-      final leaves = await gw.hierarchy.listHierarchyLocations(
-        operatorId: operatorId,
-      );
-      final leaf = leaves.firstWhere((l) => l.locationId == added.locationId);
-      expect(leaf.orgUnitId, equals(westOrgUnit));
-    });
+        final leaves = await gw.hierarchy.listHierarchyLocations(
+          operatorId: operatorId,
+        );
+        final leaf = leaves.firstWhere((l) => l.locationId == added.locationId);
+        expect(leaf.orgUnitId, equals(westOrgUnit));
+      },
+    );
 
-    test('add then suspend the location via the hierarchy gateway: no 404',
-        () async {
-      final gw = buildWiredGateways();
-      final added = await addLocation(
-        gw.operator,
-        name: 'East Annex',
-        orgUnitId: eastOrgUnit,
-        idempotencyKey: 'k-add-1',
-      );
+    test(
+      'add then suspend the location via the hierarchy gateway: no 404',
+      () async {
+        final gw = buildWiredGateways();
+        final added = await addLocation(
+          gw.operator,
+          name: 'East Annex',
+          orgUnitId: eastOrgUnit,
+          idempotencyKey: 'k-add-1',
+        );
 
-      final suspended = await gw.hierarchy.suspendLocation(
-        operatorId: operatorId,
-        locationId: added.locationId,
-        idempotencyKey: 'k-suspend-1',
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'temporary closure',
-      );
-      expect(suspended.isSuspended, isTrue);
+        final suspended = await gw.hierarchy.suspendLocation(
+          operatorId: operatorId,
+          locationId: added.locationId,
+          idempotencyKey: 'k-suspend-1',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'temporary closure',
+        );
+        expect(suspended.isSuspended, isTrue);
 
-      final reactivated = await gw.hierarchy.reactivateLocation(
-        operatorId: operatorId,
-        locationId: added.locationId,
-        idempotencyKey: 'k-reactivate-1',
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'reopened',
-      );
-      expect(reactivated.isSuspended, isFalse);
-    });
+        final reactivated = await gw.hierarchy.reactivateLocation(
+          operatorId: operatorId,
+          locationId: added.locationId,
+          idempotencyKey: 'k-reactivate-1',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'reopened',
+        );
+        expect(reactivated.isSuspended, isFalse);
+      },
+    );
 
-    test('removing a location via the operator gateway drops the leaf too',
-        () async {
-      final gw = buildWiredGateways();
-      final added = await addLocation(
-        gw.operator,
-        name: 'East Annex',
-        orgUnitId: eastOrgUnit,
-        idempotencyKey: 'k-add-1',
-      );
+    test(
+      'removing a location via the operator gateway drops the leaf too',
+      () async {
+        final gw = buildWiredGateways();
+        final added = await addLocation(
+          gw.operator,
+          name: 'East Annex',
+          orgUnitId: eastOrgUnit,
+          idempotencyKey: 'k-add-1',
+        );
 
-      await gw.operator.removeLocation(
-        operatorId: operatorId,
-        locationId: added.locationId,
-        idempotencyKey: 'k-op-remove-1',
-      );
+        await gw.operator.removeLocation(
+          operatorId: operatorId,
+          locationId: added.locationId,
+          idempotencyKey: 'k-op-remove-1',
+        );
 
-      final leaves = await gw.hierarchy.listHierarchyLocations(
-        operatorId: operatorId,
-      );
-      expect(
-        leaves.any((l) => l.locationId == added.locationId),
-        isFalse,
-        reason:
-            'an operator-gateway removal must also drop the hierarchy leaf',
-      );
-    });
+        final leaves = await gw.hierarchy.listHierarchyLocations(
+          operatorId: operatorId,
+        );
+        expect(
+          leaves.any((l) => l.locationId == added.locationId),
+          isFalse,
+          reason:
+              'an operator-gateway removal must also drop the hierarchy leaf',
+        );
+      },
+    );
 
     testWidgets(
       'add a location in the tree then delete it: no 404 snackbar, row gone',
@@ -2032,9 +2145,7 @@ void main() {
           const Key('admin_location_timezone_field'),
           'America/Toronto',
         );
-        await tester.tap(
-          find.byKey(const Key('admin_location_submit_button')),
-        );
+        await tester.tap(find.byKey(const Key('admin_location_submit_button')));
         await pumpEventually(tester);
 
         // The added location is in BOTH stores now.
@@ -2049,6 +2160,7 @@ void main() {
 
         // Delete it from the tree. Before the fix this raised
         // "Could not delete location: ...404/unknown_location...".
+        await selectHierarchyRow(tester, rowKey);
         await tester.tap(
           find.byKey(Key('admin_location_remove_${added.locationId}')),
         );
