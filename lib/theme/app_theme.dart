@@ -448,6 +448,15 @@ class AppTextStyles {
     ),
   );
 
+  static TextStyle buttonLabel({Color? color}) => _sans(
+    TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      color: color ?? AppColors.textPrimary,
+      height: 1.2,
+    ),
+  );
+
   // ── Semantic roles (preferred in new code) ────────────────────────────────
   // Seven honest, named roles. These delegate to the primitives above so
   // there is exactly one place each size/weight lives. Use these names so
