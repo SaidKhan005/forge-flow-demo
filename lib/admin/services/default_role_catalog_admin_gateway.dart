@@ -24,11 +24,267 @@ import 'package:http/http.dart' as http;
 
 import 'admin_http_timeout.dart';
 
+/// Built-in v2 starter role catalog shown by the admin editor before
+/// any Default Role Catalog version has been published. This mirrors
+/// the operator-facing seeded roles from
+/// `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`.
+List<Object?> defaultRoleCatalogStarterPayload() => <Object?>[
+  _starterRole(
+    roleKey: 'operator_owner',
+    displayName: 'Owner',
+    description:
+        'Owns the business. Full operational access plus billing, '
+        'integrations, and team admin.',
+    permissionKeys: _starterAllPermissions,
+  ),
+  _starterRole(
+    roleKey: 'operator_general_manager',
+    displayName: 'General Manager',
+    description:
+        'Runs all locations and staff. Operational edit access plus '
+        'staff admin and audit view; no billing or subscription '
+        'mutations.',
+    permissionKeys: _starterOperationsPermissions,
+  ),
+  _starterRole(
+    roleKey: 'location_manager',
+    displayName: 'Location Manager',
+    description:
+        'Runs one location. Invites and removes staff, edits schedules, '
+        'sees variance and benchmarks at that location.',
+    permissionKeys: _starterLocationManagerPermissions,
+  ),
+  _starterRole(
+    roleKey: 'supervisor',
+    displayName: 'Supervisor',
+    description:
+        'Supervises shifts at one location. Edits short-term schedule, '
+        'marks shift covers, sees variance for shifts they ran.',
+    permissionKeys: _starterSupervisorPermissions,
+  ),
+  _starterRole(
+    roleKey: 'finance_analyst',
+    displayName: 'Finance Analyst',
+    description:
+        'Reviews invoices and usage, adjusts usage caps. Cannot change '
+        'the subscription plan or connect billing integrations.',
+    permissionKeys: _starterFinanceAnalystPermissions,
+  ),
+  _starterRole(
+    roleKey: 'auditor_compliance',
+    displayName: 'Auditor / Compliance',
+    description:
+        'Read-only audit trail and PII oversight. Sees who did what '
+        'and when, exports the audit log, cannot mutate data.',
+    permissionKeys: _starterAuditorCompliancePermissions,
+  ),
+  _starterRole(
+    roleKey: 'training_lead',
+    displayName: 'Training Lead',
+    description:
+        'Manages employee training and onboarding content. Edits '
+        'supervisor content and the interview playbook; does not edit '
+        'the F&F handbook source.',
+    permissionKeys: _starterTrainingLeadPermissions,
+  ),
+  _starterRole(
+    roleKey: 'team_admin',
+    displayName: 'Team Admin',
+    description:
+        'Manages the team roster, role assignments, MFA, and password '
+        'resets. Does not see operational dashboards.',
+    permissionKeys: _starterTeamAdminPermissions,
+  ),
+];
+
+Map<String, Object?> _starterRole({
+  required String roleKey,
+  required String displayName,
+  required String description,
+  required List<String> permissionKeys,
+}) {
+  return <String, Object?>{
+    'role_key': roleKey,
+    'display_name': displayName,
+    'description': description,
+    'permissions': <Object?>[
+      for (final key in permissionKeys)
+        <String, Object?>{'permission_key': key, 'effect': 'allow'},
+    ],
+  };
+}
+
+const List<String> _starterAllPermissions = <String>[
+  ..._starterOperationsPermissions,
+  'barrio.handbook.edit',
+  'team.roles.create_custom',
+  'team.hierarchy.suspend',
+  'team.hierarchy.delete',
+  'team.audit_log.export',
+  'billing.invoice.view',
+  'billing.usage.view',
+  'billing.usage_caps.edit',
+  'billing.subscription.manage',
+  'billing.payment_method.manage',
+  'account.configure',
+  'business_timing.configure',
+  'admin.users.reset_mfa_factors',
+  'admin.audit_log.export',
+  'admin.audit_privacy.read',
+];
+
+const List<String> _starterOperationsPermissions = <String>[
+  'product.forgeflow.access',
+  'product.barrio.access',
+  'forgeflow.shift.view',
+  'forgeflow.shift.edit',
+  'forgeflow.variance.view',
+  'forgeflow.variance.edit',
+  'forgeflow.schedule.view',
+  'forgeflow.schedule.edit',
+  'forgeflow.baseline.view',
+  'forgeflow.baseline.override',
+  'forgeflow.history.view',
+  'forgeflow.benchmark.view',
+  'forgeflow.benchmark.edit',
+  'forgeflow.target_profile.view',
+  'forgeflow.target_profile.manage',
+  'forgeflow.target_cycle.view',
+  'forgeflow.target_cycle.unlock',
+  'forgeflow.target_cycle.replace',
+  'forgeflow.weekly_plan.view',
+  'forgeflow.weekly_plan.lock',
+  'forgeflow.settings.view',
+  'forgeflow.settings.manage',
+  'barrio.handbook.view',
+  'barrio.interview_playbook.view',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.supervisor_content.edit',
+  'barrio.el_podio.view',
+  'barrio.streak.view',
+  'team.users.view',
+  'team.users.invite',
+  'team.users.deactivate',
+  'team.users.reactivate',
+  'team.users.reset_password',
+  'team.users.reset_mfa',
+  'team.users.self_update',
+  'team.roles.view',
+  'team.roles.assign',
+  'team.roles.revoke',
+  'team.audit_log.view',
+  'admin.users.view',
+  'admin.audit_log.view',
+  'workflow.catalog.view',
+  'workflow.run',
+  'workflow.history.view',
+];
+
+const List<String> _starterLocationManagerPermissions = <String>[
+  'product.forgeflow.access',
+  'product.barrio.access',
+  'forgeflow.shift.view',
+  'forgeflow.shift.edit',
+  'forgeflow.variance.view',
+  'forgeflow.schedule.view',
+  'forgeflow.schedule.edit',
+  'forgeflow.baseline.view',
+  'forgeflow.history.view',
+  'forgeflow.benchmark.view',
+  'forgeflow.target_profile.view',
+  'forgeflow.target_cycle.view',
+  'forgeflow.weekly_plan.view',
+  'forgeflow.settings.view',
+  'barrio.handbook.view',
+  'barrio.interview_playbook.view',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.el_podio.view',
+  'barrio.streak.view',
+  'team.users.view',
+  'team.users.invite',
+  'team.users.deactivate',
+  'team.users.self_update',
+  'team.roles.view',
+  'team.roles.assign',
+  'workflow.catalog.view',
+];
+
+const List<String> _starterSupervisorPermissions = <String>[
+  'product.forgeflow.access',
+  'product.barrio.access',
+  'forgeflow.shift.view',
+  'forgeflow.shift.edit',
+  'forgeflow.variance.view',
+  'forgeflow.schedule.view',
+  'forgeflow.history.view',
+  'forgeflow.weekly_plan.view',
+  'barrio.handbook.view',
+  'barrio.interview_playbook.view',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.el_podio.view',
+  'barrio.learning.complete_unit',
+  'barrio.streak.view',
+  'team.users.self_update',
+];
+
+const List<String> _starterFinanceAnalystPermissions = <String>[
+  'billing.invoice.view',
+  'billing.usage.view',
+  'billing.usage_caps.edit',
+  'admin.audit_log.view',
+  'team.users.self_update',
+];
+
+const List<String> _starterAuditorCompliancePermissions = <String>[
+  'admin.audit_log.view',
+  'admin.audit_log.export',
+  'admin.users.view',
+  'admin.audit_privacy.read',
+  'team.audit_log.view',
+  'team.audit_log.export',
+  'team.users.self_update',
+];
+
+const List<String> _starterTrainingLeadPermissions = <String>[
+  'product.barrio.access',
+  'barrio.handbook.view',
+  'barrio.interview_playbook.view',
+  'barrio.interview_playbook.edit',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.supervisor_content.edit',
+  'barrio.el_podio.view',
+  'barrio.streak.view',
+  'team.users.self_update',
+];
+
+const List<String> _starterTeamAdminPermissions = <String>[
+  'team.users.view',
+  'team.users.invite',
+  'team.users.deactivate',
+  'team.users.reactivate',
+  'team.users.reset_password',
+  'team.users.reset_mfa',
+  'team.users.self_update',
+  'team.roles.view',
+  'team.roles.assign',
+  'team.roles.revoke',
+  'team.audit_log.view',
+  'team.session.force_logout',
+  'admin.users.view',
+];
+
 /// Source for the bearer token the gateway attaches to every proxy
 /// call. Production binds this to the admin Firebase ID-token stream;
 /// tests pin a synthetic value.
-typedef DefaultRoleCatalogAdminBearerTokenProvider = Future<String>
-    Function();
+typedef DefaultRoleCatalogAdminBearerTokenProvider = Future<String> Function();
 
 /// Source for the next idempotency key. Production wires this to the
 /// admin idempotency-key minter; tests pin a deterministic value.
@@ -181,8 +437,8 @@ class HttpDefaultRoleCatalogAdminGateway
     required this.idempotencyKeyProvider,
     http.Client? httpClient,
     Duration timeout = kAdminHttpRequestTimeout,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _timeout = timeout;
+  }) : _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`). The
   /// gateway resolves `/v1/admin/auth/role-catalogs[/publish]` against
@@ -301,7 +557,8 @@ class HttpDefaultRoleCatalogAdminGateway
     throw DefaultRoleCatalogAdminGatewayError(
       statusCode: response.statusCode,
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
-      message: (parsed['message'] as String?) ??
+      message:
+          (parsed['message'] as String?) ??
           'admin default role catalog proxy returned an error',
     );
   }
@@ -321,11 +578,12 @@ class InMemoryDefaultRoleCatalogAdminGateway
     String Function()? versionIdGenerator,
     String? publishedByUserId,
     Map<String, DefaultRoleCatalogBlastRadius>? blastRadiusByVersionId,
-  })  : _now = now ?? DateTime.now,
-        _versionIdGenerator = versionIdGenerator ?? _defaultVersionIdGenerator,
-        _publishedByUserId = publishedByUserId ?? 'demo-admin-user',
-        _blastRadiusByVersionId =
-            blastRadiusByVersionId ?? const <String, DefaultRoleCatalogBlastRadius>{};
+  }) : _now = now ?? DateTime.now,
+       _versionIdGenerator = versionIdGenerator ?? _defaultVersionIdGenerator,
+       _publishedByUserId = publishedByUserId ?? 'demo-admin-user',
+       _blastRadiusByVersionId =
+           blastRadiusByVersionId ??
+           const <String, DefaultRoleCatalogBlastRadius>{};
 
   final DateTime Function() _now;
   final String Function() _versionIdGenerator;
@@ -341,10 +599,10 @@ class InMemoryDefaultRoleCatalogAdminGateway
     final sorted = List<DefaultRoleCatalogVersionView>.from(_versions)
       ..sort((a, b) => b.versionNumber.compareTo(a.versionNumber));
     final history = sorted.take(historyLimit).toList(growable: false);
-    final current = sorted.where((v) => v.isCurrent).cast<DefaultRoleCatalogVersionView?>().firstWhere(
-          (v) => v != null,
-          orElse: () => null,
-        );
+    final current = sorted
+        .where((v) => v.isCurrent)
+        .cast<DefaultRoleCatalogVersionView?>()
+        .firstWhere((v) => v != null, orElse: () => null);
     return DefaultRoleCatalogListing(current: current, history: history);
   }
 
@@ -356,9 +614,9 @@ class InMemoryDefaultRoleCatalogAdminGateway
     final nextVersion = _versions.isEmpty
         ? 1
         : _versions
-                .map((v) => v.versionNumber)
-                .reduce((a, b) => a > b ? a : b) +
-            1;
+                  .map((v) => v.versionNumber)
+                  .reduce((a, b) => a > b ? a : b) +
+              1;
     // Mark prior current as superseded.
     final supersededAt = _now().toUtc();
     for (var i = 0; i < _versions.length; i++) {

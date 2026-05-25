@@ -4,7 +4,7 @@
 // `lib/admin/screens/default_role_catalog_admin_screen.dart`:
 //
 //   * Genesis state (no current version) renders the empty-state
-//     panel + an empty draft. Publish button is disabled.
+//     panel + a prefilled built-in starter draft. Publish is enabled.
 //   * After a publish: current version panel + history row appear;
 //     draft pre-loads from the published payload; publish button is
 //     disabled while the draft equals the current.
@@ -53,10 +53,10 @@ void main() {
     );
   }
 
-  testWidgets('genesis: renders empty-state + empty draft + disabled publish', (
+  testWidgets('genesis: renders empty-state + starter seeded role draft', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.physicalSize = const Size(1280, 6000);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
       tester.view.resetPhysicalSize();
@@ -74,7 +74,7 @@ void main() {
       find.byKey(const Key('admin_default_role_catalog_screen')),
       findsOneWidget,
     );
-    expect(find.text('Default roles'), findsOneWidget);
+    expect(find.text('Default role catalog'), findsOneWidget);
 
     // Genesis empty-state panel.
     expect(
@@ -83,17 +83,41 @@ void main() {
     );
     expect(find.text('No default catalog published yet'), findsOneWidget);
 
-    // Empty draft.
+    // Built-in starter draft, editable before first publish.
     expect(
       find.byKey(const Key('admin_default_role_catalog_draft_empty')),
-      findsOneWidget,
+      findsNothing,
     );
+    const expectedRoleKeys = <String>[
+      'operator_owner',
+      'operator_general_manager',
+      'location_manager',
+      'supervisor',
+      'finance_analyst',
+      'auditor_compliance',
+      'training_lead',
+      'team_admin',
+    ];
+    for (var i = 0; i < expectedRoleKeys.length; i++) {
+      expect(
+        find.byKey(Key('admin_default_role_catalog_draft_row_$i')),
+        findsOneWidget,
+      );
+      final roleKey = tester.widget<TextFormField>(
+        find.byKey(Key('admin_default_role_catalog_draft_role_key_$i')),
+      );
+      expect(roleKey.initialValue, equals(expectedRoleKeys[i]));
+    }
 
-    // Publish disabled.
+    // Genesis starter draft can be published as version 1.
     final publish = tester.widget<FilledButton>(
       find.byKey(const Key('admin_default_role_catalog_publish_button')),
     );
-    expect(publish.onPressed, isNull);
+    expect(publish.onPressed, isNotNull);
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_draft_dirty_pill')),
+      findsOneWidget,
+    );
 
     // History empty.
     expect(
