@@ -806,90 +806,117 @@ class _OperatorDetail extends StatelessWidget {
   Widget build(BuildContext context) {
     final operator = bundle.operator;
     final canAddLocation = _canAddLocation;
+    final primaryLocation = bundle.primaryLocation?.name ?? 'No primary';
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AdminCard(
             key: const Key('admin_operator_profile_card'),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 16,
+                  runSpacing: 12,
                   children: [
-                    Expanded(
-                      child: Text(
-                        operator.businessName,
-                        style: AppTextStyles.display20(
-                          color: AppColors.textPrimary,
-                        ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 260),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              operator.businessName,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.display20(
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (operator.isSuspended) ...[
+                            const SizedBox(width: 10),
+                            _StatusPill(
+                              label: 'suspended',
+                              color: AppColors.negative,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (operator.isSuspended)
-                      _StatusPill(
-                        label: 'suspended',
-                        color: AppColors.negative,
-                      ),
+                    _ActionRowWrap(
+                      children: [
+                        if (editingEnabled)
+                          _OperatorActionButton(
+                            buttonKey: const Key('admin_operator_edit_button'),
+                            label: 'Edit',
+                            icon: Icons.edit_outlined,
+                            tooltip: 'Edit account profile',
+                            onPressed: () => onEditOperator(bundle),
+                          ),
+                        if (editingEnabled && operator.isSuspended)
+                          _OperatorActionButton(
+                            buttonKey: const Key(
+                              'admin_operator_reactivate_button',
+                            ),
+                            label: 'Reactivate',
+                            icon: Icons.play_arrow_outlined,
+                            tooltip: 'Reactivate this business account',
+                            onPressed: () => onReactivate(bundle),
+                          ),
+                        if (editingEnabled && !operator.isSuspended)
+                          _OperatorActionButton(
+                            buttonKey: const Key(
+                              'admin_operator_suspend_button',
+                            ),
+                            label: 'Suspend',
+                            icon: Icons.pause_outlined,
+                            tooltip: 'Suspend this business account',
+                            destructive: true,
+                            onPressed: () => onSuspend(bundle),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                AdminDetailRow(
-                  label: 'Contact email',
-                  value: operator.ownerEmail,
-                ),
-                AdminDetailRow(
-                  key: const Key('admin_operator_ai_plan_detail_row'),
-                  label: 'Forge & Flow AI plan',
-                  value: operator.subscriptionTier,
-                  muted: true,
-                ),
-                AdminDetailRow(
-                  label: 'Currency',
-                  value: operator.preferredCurrency,
-                ),
-                AdminDetailRow(
-                  label: 'Primary location',
-                  value: bundle.primaryLocation?.name ?? 'No primary location',
-                ),
                 const SizedBox(height: 14),
-                _ActionRowWrap(
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
                   children: [
-                    if (editingEnabled)
-                      _OperatorActionButton(
-                        buttonKey: const Key('admin_operator_edit_button'),
-                        label: 'Account profile',
-                        icon: Icons.badge_outlined,
-                        tooltip: 'Edit account profile',
-                        onPressed: () => onEditOperator(bundle),
-                      ),
-                    if (editingEnabled && operator.isSuspended)
-                      _OperatorActionButton(
-                        buttonKey: const Key(
-                          'admin_operator_reactivate_button',
-                        ),
-                        label: 'Reactivate',
-                        icon: Icons.play_arrow_outlined,
-                        tooltip: 'Reactivate this business account',
-                        onPressed: () => onReactivate(bundle),
-                      ),
-                    if (editingEnabled && !operator.isSuspended)
-                      _OperatorActionButton(
-                        buttonKey: const Key('admin_operator_suspend_button'),
-                        label: 'Suspend',
-                        icon: Icons.pause_outlined,
-                        tooltip: 'Suspend this business account',
-                        destructive: true,
-                        onPressed: () => onSuspend(bundle),
-                      ),
+                    _OperatorSummaryTile(
+                      label: 'Email',
+                      value: operator.ownerEmail,
+                      icon: Icons.mail_outline,
+                    ),
+                    _OperatorSummaryTile(
+                      label: 'Currency',
+                      value: operator.preferredCurrency,
+                      icon: Icons.payments_outlined,
+                    ),
+                    _OperatorSummaryTile(
+                      label: 'Primary',
+                      value: primaryLocation,
+                      icon: Icons.location_on_outlined,
+                    ),
+                    _OperatorSummaryTile(
+                      key: const Key('admin_operator_ai_plan_detail_row'),
+                      label: 'Plan',
+                      value: operator.subscriptionTier,
+                      icon: Icons.auto_awesome_outlined,
+                      muted: true,
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           _BusinessHierarchyPanel(
             bundle: bundle,
             gateway: hierarchyGateway,
@@ -907,6 +934,60 @@ class _OperatorDetail extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _OperatorSummaryTile extends StatelessWidget {
+  const _OperatorSummaryTile({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.muted = false,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      width: 220,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep.withValues(alpha: 0.48),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppColors.textMuted),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!muted) return content;
+    return Opacity(opacity: 0.56, child: content);
   }
 }
 
@@ -1569,8 +1650,8 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                 Wrap(
                   alignment: WrapAlignment.spaceBetween,
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 12,
+                  runSpacing: 10,
                   children: [
                     Text(
                       'Location hierarchy',
@@ -1588,27 +1669,20 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                           onPressed: widget.addLocationEnabled
                               ? widget.onAddLocation
                               : null,
+                          style: AdminButtonStyles.secondary(
+                            minWidth: 130,
+                            minHeight: 38,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 9,
+                            ),
+                          ),
                           icon: const Icon(Icons.add, size: 14),
                           label: const Text('Add location'),
                         ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  'Select business, org-unit, or location scope before opening setup.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                if (widget.editingEnabled && !widget.addLocationEnabled) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    'Select an org unit before adding a location.',
-                    key: const Key(
-                      'admin_location_parent_org_unit_required_copy',
-                    ),
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                ],
                 if (snapshot.hasError) ...[
                   const SizedBox(height: 10),
                   Text(
@@ -1625,7 +1699,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                     color: AppColors.sunsetDark,
                   ),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 _HierarchyScopeRow(
                   key: const Key('admin_hierarchy_business_scope_row'),
                   icon: scopeIcon(kind: ScopeEntityKind.business),
@@ -2467,7 +2541,7 @@ class _HierarchyScopeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(left: depth * 18.0, top: 6, bottom: 6),
+      padding: EdgeInsets.only(left: depth * 18.0, top: 5, bottom: 5),
       child: Material(
         color: selected
             ? AppColors.peacock.withValues(alpha: 0.10)
@@ -2477,7 +2551,7 @@ class _HierarchyScopeRow extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(6),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               border: Border.all(
                 color: selected ? AppColors.peacock : AppColors.borderSubtle,
@@ -2487,14 +2561,8 @@ class _HierarchyScopeRow extends StatelessWidget {
             ),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                // Labeled action buttons are wider than the former icons, so
-                // they stack onto their own full-width row below the label
-                // until the row is wide enough to hold them inline. When
-                // inline, the trailing area is `Flexible` so its `Wrap`
-                // receives a bounded width and flows onto extra lines rather
-                // than overflowing the row.
                 final compactActions =
-                    trailing != null && constraints.maxWidth < 520;
+                    trailing != null && constraints.maxWidth < 420;
                 final labelRow = Row(
                   children: [
                     Icon(icon, size: 17, color: AppColors.textSecondary),
@@ -2531,7 +2599,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                         ),
                       ),
                     if (trailing != null && !compactActions) ...[
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 12),
                       Flexible(child: trailing!),
                     ],
                   ],
@@ -2542,8 +2610,6 @@ class _HierarchyScopeRow extends StatelessWidget {
                   children: [
                     labelRow,
                     const SizedBox(height: 8),
-                    // Full-width so the trailing `Wrap` wraps the buttons
-                    // across the row instead of overflowing to the right.
                     SizedBox(width: double.infinity, child: trailing!),
                   ],
                 );
@@ -2590,15 +2656,6 @@ class _OperatorActionButton extends StatelessWidget {
   }
 }
 
-/// Labeled action button for the location-hierarchy tree rows (add child
-/// org unit, move, suspend/reactivate, delete, edit location, make
-/// primary, remove). Replaces the former icon-only `_hierarchyIconButton`
-/// so the tree controls read as words, mirroring `_OperatorActionButton`.
-/// Destructive actions (delete / remove) use the danger style. The same
-/// widget `key` and `tooltip` the icon button carried are preserved so
-/// existing selectors and hover hints keep working. `softWrap: false`
-/// keeps each label on one line; the surrounding `Wrap` flows the buttons
-/// onto additional rows when the trailing area is narrow.
 class _HierarchyActionButton extends StatelessWidget {
   const _HierarchyActionButton({
     required this.buttonKey,
@@ -2620,14 +2677,17 @@ class _HierarchyActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: OutlinedButton.icon(
+      child: IconButton(
         key: buttonKey,
         onPressed: onPressed,
         style: destructive
-            ? AdminButtonStyles.dangerSecondary()
-            : AdminButtonStyles.secondary(),
-        icon: Icon(icon, size: 14),
-        label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
+            ? AdminButtonStyles.icon.copyWith(
+                foregroundColor: const WidgetStatePropertyAll(
+                  AppColors.negative,
+                ),
+              )
+            : AdminButtonStyles.icon,
+        icon: Icon(icon, size: 18, semanticLabel: label),
       ),
     );
   }
