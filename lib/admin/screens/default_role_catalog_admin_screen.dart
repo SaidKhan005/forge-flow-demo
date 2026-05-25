@@ -75,9 +75,8 @@
 // Tested by:
 //   * test/admin/default_role_catalog_admin_screen_test.dart
 
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
@@ -85,6 +84,7 @@ import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../../auth/permission_key_metadata.dart';
 import '../../auth/permission_keys.dart';
 import '../../services/auth/custom_role_validator.dart' show RoleScope;
+import '../../services/auth/role_key_generator.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/role_permission_picker.dart';
 import '../admin_button_styles.dart';
@@ -678,8 +678,6 @@ Set<String> _expandedAllowKeysFromRole(Map<String, Object?> role) {
 String _roleTitle(Map<String, Object?> role) {
   final displayName = ((role['display_name'] as String?) ?? '').trim();
   if (displayName.isNotEmpty) return displayName;
-  final roleKey = ((role['role_key'] as String?) ?? '').trim();
-  if (roleKey.isNotEmpty) return roleKey;
   return 'Untitled role';
 }
 
@@ -699,7 +697,6 @@ class _RoleListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final roleKey = ((role['role_key'] as String?) ?? '').trim();
     final description = ((role['description'] as String?) ?? '').trim();
     final permissionCount = _expandedAllowKeysFromRole(role).length;
     return Container(
@@ -734,15 +731,17 @@ class _RoleListRow extends StatelessWidget {
                         color: AppColors.textPrimary,
                       ).copyWith(fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      description.isNotEmpty ? description : roleKey,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.body12(
-                        color: AppColors.textSecondary,
+                    if (description.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.body12(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -787,43 +786,36 @@ class _AddDefaultRoleDialog extends StatefulWidget {
 
 class _AddDefaultRoleDialogState extends State<_AddDefaultRoleDialog> {
   final _displayNameController = TextEditingController();
-  final _roleKeyController = TextEditingController();
   final _descriptionController = TextEditingController();
   final Set<String> _selectedPermissionKeys = <String>{};
   String? _displayNameError;
-  String? _roleKeyError;
   String? _permissionsError;
 
   @override
   void dispose() {
     _displayNameController.dispose();
-    _roleKeyController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
 
   void _submit() {
     final displayName = _displayNameController.text.trim();
-    final roleKey = _roleKeyController.text.trim();
     final effectivePermissions = PermissionKeyMetadataCatalog.expandImplies(
       _selectedPermissionKeys,
     );
     setState(() {
       _displayNameError = displayName.isEmpty ? 'Choose a display name.' : null;
-      _roleKeyError = roleKey.isEmpty
-          ? 'Choose a role key.'
-          : widget.existingRoleKeys.contains(roleKey)
-          ? 'A role with this key already exists.'
-          : null;
       _permissionsError = effectivePermissions.isEmpty
           ? 'Pick at least one permission.'
           : null;
     });
-    if (_displayNameError != null ||
-        _roleKeyError != null ||
-        _permissionsError != null) {
+    if (_displayNameError != null || _permissionsError != null) {
       return;
     }
+    final roleKey = generateRoleKeyFromDisplayName(
+      displayName,
+      existingKeys: widget.existingRoleKeys,
+    );
     Navigator.of(context).pop(<String, Object?>{
       'role_key': roleKey,
       'display_name': displayName,
@@ -874,10 +866,8 @@ class _AddDefaultRoleDialogState extends State<_AddDefaultRoleDialog> {
           children: <Widget>[
             _AddDefaultRoleFields(
               displayNameController: _displayNameController,
-              roleKeyController: _roleKeyController,
               descriptionController: _descriptionController,
               displayNameError: _displayNameError,
-              roleKeyError: _roleKeyError,
             ),
             const SizedBox(height: 10),
             Expanded(
@@ -897,51 +887,26 @@ class _AddDefaultRoleDialogState extends State<_AddDefaultRoleDialog> {
 class _AddDefaultRoleFields extends StatelessWidget {
   const _AddDefaultRoleFields({
     required this.displayNameController,
-    required this.roleKeyController,
     required this.descriptionController,
     required this.displayNameError,
-    required this.roleKeyError,
   });
 
   final TextEditingController displayNameController;
-  final TextEditingController roleKeyController;
   final TextEditingController descriptionController;
   final String? displayNameError;
-  final String? roleKeyError;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: TextField(
-                key: const Key(
-                  'admin_default_role_catalog_add_role_display_name',
-                ),
-                controller: displayNameController,
-                decoration: InputDecoration(
-                  labelText: 'Display name',
-                  border: const OutlineInputBorder(),
-                  errorText: displayNameError,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                key: const Key('admin_default_role_catalog_add_role_key'),
-                controller: roleKeyController,
-                decoration: InputDecoration(
-                  labelText: 'Role key',
-                  border: const OutlineInputBorder(),
-                  errorText: roleKeyError,
-                ),
-              ),
-            ),
-          ],
+        TextField(
+          key: const Key('admin_default_role_catalog_add_role_display_name'),
+          controller: displayNameController,
+          decoration: InputDecoration(
+            labelText: 'Display name',
+            border: const OutlineInputBorder(),
+            errorText: displayNameError,
+          ),
         ),
         const SizedBox(height: 10),
         TextField(
@@ -1156,7 +1121,6 @@ class _RoleEditorForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final roleKey = (role['role_key'] as String?) ?? '';
     final displayName = (role['display_name'] as String?) ?? '';
     final description = (role['description'] as String?) ?? '';
     final permissions = (role['permissions'] as List?) ?? const <Object?>[];
@@ -1167,35 +1131,13 @@ class _RoleEditorForm extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: _Field(
-                keyValue: Key(
-                  'admin_default_role_catalog_draft_role_key_$index',
-                ),
-                label: 'Role key',
-                initial: roleKey,
-                enabled: canEdit,
-                onChanged: (value) => onUpdate?.call('role_key', value),
-                hint: 'lowercase_snake_case',
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _Field(
-                keyValue: Key(
-                  'admin_default_role_catalog_draft_display_name_$index',
-                ),
-                label: 'Display name',
-                initial: displayName,
-                enabled: canEdit,
-                onChanged: (value) => onUpdate?.call('display_name', value),
-                hint: 'e.g. Floor Manager',
-              ),
-            ),
-          ],
+        _Field(
+          keyValue: Key('admin_default_role_catalog_draft_display_name_$index'),
+          label: 'Display name',
+          initial: displayName,
+          enabled: canEdit,
+          onChanged: (value) => onUpdate?.call('display_name', value),
+          hint: 'e.g. Floor Manager',
         ),
         const SizedBox(height: 8),
         _Field(
@@ -1451,9 +1393,22 @@ class _HistoryRow extends StatelessWidget {
                       ),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: SelectableText(
-                      _prettyJson(version.payload),
-                      style: AppTextStyles.mono10(color: AppColors.textPrimary),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        for (final entry in _historyRoleSummaries(
+                          version.payload,
+                        ))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              entry,
+                              style: AppTextStyles.body12(
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -1464,13 +1419,22 @@ class _HistoryRow extends StatelessWidget {
     );
   }
 
-  static String _prettyJson(Object? value) {
-    final encoder = JsonEncoder.withIndent('  ');
-    try {
-      return encoder.convert(value);
-    } catch (_) {
-      return value.toString();
-    }
+  static List<String> _historyRoleSummaries(List<Object?> payload) {
+    if (payload.isEmpty) return <String>['No roles in this version.'];
+    return <String>[
+      for (final entry in payload)
+        if (entry is Map<String, Object?>)
+          _historyRoleSummary(entry)
+        else
+          'Unknown role',
+    ];
+  }
+
+  static String _historyRoleSummary(Map<String, Object?> role) {
+    final permissions = (role['permissions'] as List?) ?? const <Object?>[];
+    final count = permissions.length;
+    return '${_roleTitle(role)}: '
+        '$count ${count == 1 ? 'permission' : 'permissions'}';
   }
 }
 
