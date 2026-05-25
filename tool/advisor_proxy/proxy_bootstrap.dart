@@ -9087,6 +9087,7 @@ class RepositoryVendorApplicabilityProxyGateway
   Future<List<Map<String, Object?>>> listAdmin({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     String? settingKind,
     String? settingKey,
     String? vendorSlug,
@@ -9096,6 +9097,7 @@ class RepositoryVendorApplicabilityProxyGateway
     return _wrapValidation(() async {
       final rows = await _repository.listAdmin(
         operatorId: operatorId,
+        locationId: locationId,
         settingKind: settingKind,
         settingKey: settingKey,
         vendorSlug: vendorSlug,
@@ -9110,6 +9112,7 @@ class RepositoryVendorApplicabilityProxyGateway
   Future<Map<String, Object?>> upsert({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     required String settingKind,
     required String settingKey,
     required String vendorSlug,
@@ -9123,6 +9126,7 @@ class RepositoryVendorApplicabilityProxyGateway
       final row = await _repository.upsert(
         scope: VendorApplicabilityScope(
           operatorId: operatorId,
+          locationId: locationId,
           settingKind: settingKind,
           settingKey: settingKey,
           vendorSlug: vendorSlug,
@@ -9144,6 +9148,7 @@ class RepositoryVendorApplicabilityProxyGateway
               'admin_reason': adminReason,
               'vendor_applicability_id': row.id,
               'operator_id': row.operatorId,
+              'location_id': row.locationId,
               'setting_kind': row.settingKind,
               'setting_key': row.settingKey,
               'vendor_slug': row.vendorSlug,
@@ -9163,6 +9168,7 @@ class RepositoryVendorApplicabilityProxyGateway
   Future<Map<String, Object?>?> end({
     required String actorUserId,
     String? operatorId,
+    String? locationId,
     required String settingKind,
     required String settingKey,
     required String vendorSlug,
@@ -9174,6 +9180,7 @@ class RepositoryVendorApplicabilityProxyGateway
       final row = await _repository.end(
         scope: VendorApplicabilityScope(
           operatorId: operatorId,
+          locationId: locationId,
           settingKind: settingKind,
           settingKey: settingKey,
           vendorSlug: vendorSlug,
@@ -9192,6 +9199,7 @@ class RepositoryVendorApplicabilityProxyGateway
               'admin_reason': adminReason,
               'vendor_applicability_id': row.id,
               'operator_id': row.operatorId,
+              'location_id': row.locationId,
               'setting_kind': row.settingKind,
               'setting_key': row.settingKey,
               'vendor_slug': row.vendorSlug,
