@@ -123,6 +123,12 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
   /// successful save so a second save patches instead of duplicating.
   AdminBusinessTimingProfileRecord? _existingProfile;
 
+  /// The values currently loaded into the editor. This can be the exact
+  /// selected-scope profile or the deepest inherited ancestor profile used
+  /// as the create baseline for a lower-scope override.
+  AdminBusinessTimingProfileRecord? _baselineProfile;
+  bool _baselineIsInherited = false;
+
   bool _loadingProfiles = true;
   bool _submitting = false;
   String? _error;
@@ -254,19 +260,123 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
         break;
       }
     }
-    final starterDefaults = match == null
+    AdminBusinessTimingProfileRecord? baseline = match;
+    var baselineIsInherited = false;
+    if (baseline == null) {
+      try {
+        baseline = await _loadInheritedBaselineProfile();
+      } on AdminBusinessTimingResolutionGatewayError catch (error) {
+        if (!mounted) return;
+        setState(() {
+          _loadingProfiles = false;
+          _error = error.message;
+        });
+        return;
+      } catch (error) {
+        if (!mounted) return;
+        setState(() {
+          _loadingProfiles = false;
+          _error = 'Could not load inherited timing: $error';
+        });
+        return;
+      }
+      baselineIsInherited = baseline != null;
+    }
+    final starterDefaults = baseline == null
         ? await _loadStarterDefaults()
         : _AdminTimingStarterDefaults.fallback;
     if (!mounted) return;
     setState(() {
       _loadingProfiles = false;
       _existingProfile = match;
-      if (match != null) {
-        _hydrateFromProfile(match);
+      _baselineProfile = baseline;
+      _baselineIsInherited = baselineIsInherited;
+      if (baseline != null) {
+        _hydrateFromProfile(baseline);
       } else {
         _hydrateStarter(starterDefaults);
       }
     });
+  }
+
+  Future<AdminBusinessTimingProfileRecord?>
+  _loadInheritedBaselineProfile() async {
+    if (_scopeKind == 'operator') return null;
+    final gateway = widget.timingResolutionGateway;
+    if (gateway == null) return null;
+    final locationId = await _resolutionLocationId();
+    if (locationId == null || locationId.isEmpty) return null;
+    final resolution = await gateway.resolve(
+      operatorId: widget.selectedScope.operatorId,
+      locationId: locationId,
+    );
+    final candidate = _inheritedCandidateForSelectedScope(resolution);
+    return candidate == null ? null : _recordFromResolutionCandidate(candidate);
+  }
+
+  Future<String?> _resolutionLocationId() async {
+    final selectedLocationId = widget.selectedScope.locationId?.trim();
+    if (selectedLocationId != null && selectedLocationId.isNotEmpty) {
+      return selectedLocationId;
+    }
+    if (widget.scopeLocationIds.isNotEmpty) {
+      return widget.scopeLocationIds.first;
+    }
+    try {
+      final bundles = await widget.operatorGateway.listOperators();
+      for (final bundle in bundles) {
+        if (bundle.operator.operatorId != widget.selectedScope.operatorId) {
+          continue;
+        }
+        return _starterLocation(bundle)?.locationId;
+      }
+    } catch (_) {
+      // Starter resolution is best-effort; profile loading owns hard errors.
+    }
+    return null;
+  }
+
+  AdminResolutionCandidate? _inheritedCandidateForSelectedScope(
+    AdminBusinessTimingResolution resolution,
+  ) {
+    final candidates = resolution.candidates;
+    if (candidates.isEmpty) return null;
+    switch (widget.selectedScope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return null;
+      case AdminHierarchyScopeType.location:
+        for (final candidate in candidates.reversed) {
+          if (candidate.scopeType != 'location') return candidate;
+        }
+        return null;
+      case AdminHierarchyScopeType.orgUnit:
+        final selectedDepth = widget.selectedScope.hierarchyPath.length + 1;
+        for (final candidate in candidates.reversed) {
+          if (candidate.scopeType == 'operator') return candidate;
+          if (candidate.scopeType == 'org_unit' &&
+              candidate.scopeId != _scopeId &&
+              candidate.scopeDepthRank < selectedDepth) {
+            return candidate;
+          }
+        }
+        return null;
+    }
+  }
+
+  AdminBusinessTimingProfileRecord _recordFromResolutionCandidate(
+    AdminResolutionCandidate candidate,
+  ) {
+    return AdminBusinessTimingProfileRecord(
+      profileId: candidate.profileId,
+      versionId: candidate.profileId,
+      scopeKind: candidate.scopeType,
+      scopeId: candidate.scopeId,
+      effectiveAtBusinessDate: candidate.effectiveAtBusinessDate,
+      ianaTimezone: candidate.ianaTimezone,
+      weekStartDay: candidate.weekStartDay,
+      businessDayStartLocal: candidate.businessDayStartLocal,
+      servicePeriods: candidate.servicePeriods,
+    );
   }
 
   Future<_AdminTimingStarterDefaults> _loadStarterDefaults() async {
@@ -382,9 +492,9 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
     setState(() {
       _error = null;
       _success = null;
-      final existing = _existingProfile;
-      if (existing != null) {
-        _hydrateFromProfile(existing);
+      final baseline = _baselineProfile;
+      if (baseline != null) {
+        _hydrateFromProfile(baseline);
       } else {
         _hydrateStarter();
       }
@@ -407,6 +517,9 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
     return 'admin-timing-${widget.selectedScope.cacheKey}-'
         '${DateTime.now().microsecondsSinceEpoch}-${_keySeq++}';
   }
+
+  String get _resetButtonText =>
+      _baselineIsInherited ? 'Reset to inherited' : 'Discard changes';
 
   Future<void> _pickEffectiveDate() async {
     final now = DateTime.now();
@@ -538,6 +651,8 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
     return OperatorWebScreenBody(
       key: const Key('admin_timing_setup_screen'),
       scrollKey: const Key('admin_timing_setup_screen_body'),
+      maxContentWidth: 520,
+      alignment: Alignment.topLeft,
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -641,14 +756,14 @@ class _AdminTimingSetupScreenState extends State<AdminTimingSetupScreen> {
                       : const Text('Save service periods'),
                 ),
               ),
-              if (_existingProfile != null)
+              if (_baselineProfile != null)
                 SizedBox(
                   height: 46,
                   child: OutlinedButton.icon(
                     key: const Key('admin_timing_editor_reset'),
                     onPressed: _submitting ? null : _resetToLoadedProfile,
                     icon: const Icon(Icons.undo_outlined, size: 16),
-                    label: const Text('Reset to inherited'),
+                    label: Text(_resetButtonText),
                   ),
                 ),
             ],

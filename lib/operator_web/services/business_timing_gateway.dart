@@ -80,6 +80,7 @@ class BusinessTimingServicePeriod {
     required this.startsAt,
     required this.endsAt,
     required this.sourceLabel,
+    this.inherited = true,
     this.rollsPastMidnight = false,
     this.daysLabel,
   });
@@ -88,6 +89,7 @@ class BusinessTimingServicePeriod {
   final String startsAt;
   final String endsAt;
   final String sourceLabel;
+  final bool inherited;
   final bool rollsPastMidnight;
 
   /// Fix #4 / S3 (G45 / Gap 28) — a plain-English list of the
