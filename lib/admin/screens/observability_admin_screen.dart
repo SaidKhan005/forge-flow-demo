@@ -454,23 +454,13 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
       icon: Icons.insights_outlined,
       title: 'Run metrics check',
       description:
-          'This reads recent usage, cost, limits, activity, and hosting data. It is read-only and can take 10-30 seconds.',
+          'This reads recent usage, cost, limits, activity, and hosting data. Expect it to take a few minutes.',
       confirmLabel: 'Run metrics check',
       facts: [
         AdminRunCheckFact(
-          icon: Icons.visibility_outlined,
-          label: 'Read-only',
-          text: 'No plans, limits, or records are changed.',
-        ),
-        AdminRunCheckFact(
-          icon: Icons.query_stats_outlined,
-          label: 'Scope',
-          text: 'Cost, usage, customer activity, graph, and hosting rows.',
-        ),
-        AdminRunCheckFact(
           icon: Icons.schedule_outlined,
           label: 'Timing',
-          text: 'Live staging metrics can take a few moments to load.',
+          text: 'Live staging metrics can take a few minutes to load.',
         ),
       ],
     );

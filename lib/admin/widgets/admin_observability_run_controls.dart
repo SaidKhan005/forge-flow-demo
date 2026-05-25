@@ -24,8 +24,7 @@ class AdminObservabilityManualRunPrompt extends StatelessWidget {
       key: const Key('admin_observability_manual_prompt'),
       icon: Icons.insights_outlined,
       title: 'Check AI Metrics',
-      description:
-          'Load cost, usage, customers, and platform signals.',
+      description: 'Load cost, usage, customers, and platform signals.',
       buttonKey: const Key('admin_observability_refresh_button'),
       buttonLabel: 'Run metrics check',
       loadingLabel: 'Running...',
@@ -47,7 +46,6 @@ class AdminObservabilityManualRunPrompt extends StatelessWidget {
           icon: Icons.calendar_month_outlined,
           label: 'Month view',
         ),
-        AdminRunCheckCue(icon: Icons.visibility_outlined, label: 'Read-only'),
       ],
     );
   }
