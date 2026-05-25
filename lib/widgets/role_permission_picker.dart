@@ -124,6 +124,7 @@ class RolePermissionPickerCard extends StatefulWidget {
     required this.onToggle,
     this.readOnly = false,
     this.barrioPlanIncluded = true,
+    this.lockedPermissionKeys = const <String>{},
     this.keyPrefix = 'role_permission_picker',
     this.header,
   });
@@ -143,6 +144,9 @@ class RolePermissionPickerCard extends StatefulWidget {
   /// True when the operator's plan includes Barrio. False renders
   /// the Barrio product greyed with a "Coming soon" badge.
   final bool barrioPlanIncluded;
+
+  /// Keys that must remain selected for host-specific safety rules.
+  final Set<String> lockedPermissionKeys;
 
   /// Prefix for every widget Key the picker stamps. Lets two pickers
   /// coexist (e.g. one per admin draft row) without key collisions.
@@ -333,6 +337,7 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
               categories: groups[product]!,
               selected: widget.selected,
               explicit: widget.explicit,
+              lockedPermissionKeys: widget.lockedPermissionKeys,
               readOnly: readOnly,
               onToggle: widget.onToggle,
             ),
@@ -439,6 +444,7 @@ class _ProductSection extends StatelessWidget {
     required this.categories,
     required this.selected,
     required this.explicit,
+    required this.lockedPermissionKeys,
     required this.readOnly,
     required this.onToggle,
   });
@@ -450,6 +456,7 @@ class _ProductSection extends StatelessWidget {
   final Map<String, List<String>> categories;
   final Set<String> selected;
   final Set<String> explicit;
+  final Set<String> lockedPermissionKeys;
   final bool readOnly;
   final void Function(String key, bool selected) onToggle;
 
@@ -503,6 +510,7 @@ class _ProductSection extends StatelessWidget {
               permissionKeys: categories[category]!,
               selected: selected,
               explicit: explicit,
+              lockedPermissionKeys: lockedPermissionKeys,
               readOnly: readOnly || dormant,
               onToggle: onToggle,
             ),
@@ -520,6 +528,7 @@ class _CategorySection extends StatelessWidget {
     required this.permissionKeys,
     required this.selected,
     required this.explicit,
+    required this.lockedPermissionKeys,
     required this.readOnly,
     required this.onToggle,
   });
@@ -529,6 +538,7 @@ class _CategorySection extends StatelessWidget {
   final List<String> permissionKeys;
   final Set<String> selected;
   final Set<String> explicit;
+  final Set<String> lockedPermissionKeys;
   final bool readOnly;
   final void Function(String key, bool selected) onToggle;
 
@@ -564,6 +574,7 @@ class _CategorySection extends StatelessWidget {
               keyPrefix: keyPrefix,
               permissionKey: permissionKey,
               isSelected: selected.contains(permissionKey),
+              isLocked: lockedPermissionKeys.contains(permissionKey),
               requiredBy: rolePermissionPickerRequiredBy(
                 permissionKey,
                 explicit,
@@ -583,6 +594,7 @@ class _PermissionRow extends StatelessWidget {
     required this.keyPrefix,
     required this.permissionKey,
     required this.isSelected,
+    required this.isLocked,
     required this.requiredBy,
     required this.readOnly,
     required this.onToggle,
@@ -591,6 +603,7 @@ class _PermissionRow extends StatelessWidget {
   final String keyPrefix;
   final String permissionKey;
   final bool isSelected;
+  final bool isLocked;
   final List<String> requiredBy;
   final bool readOnly;
   final void Function(String key, bool selected) onToggle;
@@ -605,11 +618,13 @@ class _PermissionRow extends StatelessWidget {
         ? null
         : (PermissionKeyMetadataCatalog.byKey[requiredBy.first]?.humanLabel ??
               requiredBy.first);
-    final tooltipMessage = isAutoAdded
+    final tooltipMessage = isLocked
+        ? 'Required platform safety permission'
+        : isAutoAdded
         ? 'Required because $parentLabel is selected'
         : null;
 
-    final checkboxOnChanged = readOnly || isAutoAdded
+    final checkboxOnChanged = readOnly || isAutoAdded || isLocked
         ? null
         : (bool? value) => onToggle(permissionKey, value ?? false);
 
