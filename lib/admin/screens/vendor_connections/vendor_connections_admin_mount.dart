@@ -150,6 +150,14 @@ class _VendorConnectionsAdminMountState
     } else {
       content = _embeddedVendorCard(location);
     }
+    // Operator-web parity (vendor_connections_screen.dart:176):
+    // "Manage the services connected to <location>." When a location is
+    // resolved we mirror web verbatim with the location name; the
+    // business / org-unit scope (which web never reaches because it is
+    // always location-bound) keeps a neutral, location-agnostic line.
+    final subtitle = location == null
+        ? 'Manage the services connected to a location.'
+        : 'Manage the services connected to ${location.locationName}.';
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_vendor_connections_screen_body'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -159,9 +167,7 @@ class _VendorConnectionsAdminMountState
           OperatorWebScreenHeader(
             icon: Icons.cable_outlined,
             title: 'Vendor integrations',
-            subtitle:
-                'Connect, test, disconnect, and review vendor setup per '
-                'location.',
+            subtitle: subtitle,
             actions: <Widget>[
               if (widget.onBackToBusinessAccounts != null)
                 AdminBusinessAccountsBackButton(
@@ -203,13 +209,16 @@ class _VendorConnectionsAdminMountState
     final selectedScopeLabel = scope == null
         ? 'No hierarchy scope selected'
         : '${scope.scopeType.label}: ${scope.displayLabel}';
+    // Operator-web parity (vendor_connections_screen.dart `_NoLocationSurface`):
+    // title + body copied verbatim so the admin embedded location-required
+    // panel reads 1:1 with the web "no location selected" surface.
     return OperatorWebPanel(
       key: const Key('admin_vendor_connections_location_required'),
-      title: 'Choose a location',
+      title: 'No location selected',
       subtitle:
-          'Vendor setup is location-only. Business and org-unit scopes narrow '
-          'the hierarchy context, but connect, test, disconnect, and sync-log '
-          'controls need a specific location.',
+          'Vendor integrations are configured per location, so this screen '
+          'needs to know which location you are setting up. Pick a location '
+          'from the side nav, then open Vendor integrations again.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
