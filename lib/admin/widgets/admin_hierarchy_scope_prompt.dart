@@ -280,11 +280,6 @@ class AdminHierarchyScopeBanner extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Showing $surfaceName for ${scope.scopeType.label.toLowerCase()} scope',
-                style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
-              ),
-              const SizedBox(height: 2),
-              Text(
                 scope.displayLabel,
                 overflow: TextOverflow.ellipsis,
                 style: AppTextStyles.body14(color: AppColors.textPrimary),

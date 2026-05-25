@@ -179,16 +179,6 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
     // budget as the notice.
     final hasListBody = !_loading && _loadError == null && _flags.isNotEmpty;
     final secondaryChildren = <Widget>[
-      if (widget.hierarchyScope != null)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            'Showing ${widget.hierarchyScope!.scopeType.label.toLowerCase()} '
-            'scope: ${widget.hierarchyScope!.displayLabel}. Global controls still affect every business; business and location controls stay within this hierarchy.',
-            key: const Key('admin_feature_flags_scope_note'),
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
-        ),
       if (!widget.editingEnabled)
         const _ReadOnlyBanner(key: Key('admin_feature_flags_readonly_banner')),
       if (_actionError != null)

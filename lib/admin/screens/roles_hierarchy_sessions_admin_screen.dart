@@ -671,10 +671,6 @@ class _AccessScopeFilterCard extends StatelessWidget {
             icon: _scopeIcon(scope.scopeType),
             label: scope.displayLabel,
           ),
-          Text(
-            'Role grants and hierarchy stay anchored to the selected scope.',
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
-          ),
         ],
       ),
     );

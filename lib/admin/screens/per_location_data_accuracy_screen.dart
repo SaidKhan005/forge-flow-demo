@@ -1459,9 +1459,9 @@ class _AdminExtrasHeading extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Admin extras: review every location under the selected scope, '
-          'repair several at once, and see the audit trail. The controls '
-          'above edit the single selected location the web way.',
+          'Admin extras: review every included location, repair several at '
+          'once, and see the audit trail. The controls above edit the '
+          'single selected location the web way.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
