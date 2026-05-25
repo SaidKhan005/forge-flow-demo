@@ -395,7 +395,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminTimingSetupRouteId,
-    title: 'Timing',
+    title: 'Service periods',
     path: '/admin/timing',
     icon: Icons.schedule_outlined,
     section: AdminRouteSection.operations,
@@ -1536,7 +1536,7 @@ Widget _buildTimingSetup(BuildContext context) {
   }
 
   return AdminSetupWorkspace(
-    functionTitle: 'Timing',
+    functionTitle: 'Service periods',
     showWorkspaceHeader: false,
     description:
         'Edit timezone, business day, week start, and service periods for the selected hierarchy scope.',
