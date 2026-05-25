@@ -19,6 +19,7 @@ import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../utils/iana_timezones.dart';
+import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
@@ -2137,76 +2138,11 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_hierarchy_add_child_org_unit_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Add child org unit',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
-      content: SizedBox(
-        width: 500,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              'Under ${widget.parent.name}',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: const Key('admin_hierarchy_add_org_unit_type'),
-              initialValue: _unitType,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Unit type',
-                border: OutlineInputBorder(),
-              ),
-              items: const <DropdownMenuItem<String>>[
-                DropdownMenuItem<String>(value: 'brand', child: Text('Brand')),
-                DropdownMenuItem<String>(
-                  value: 'region',
-                  child: Text('Region'),
-                ),
-                DropdownMenuItem<String>(
-                  value: 'district',
-                  child: Text('District'),
-                ),
-                DropdownMenuItem<String>(
-                  value: 'location_group',
-                  child: Text('Location group'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) setState(() => _unitType = value);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_hierarchy_add_org_unit_name'),
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Display name',
-                border: const OutlineInputBorder(),
-                errorText: _nameError,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('admin_hierarchy_add_org_unit_reason'),
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _reasonError,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: 'Add child org unit',
+      icon: Icons.account_tree_outlined,
+      maxWidth: 560,
       actions: <Widget>[
         TextButton(
           key: const Key('admin_hierarchy_add_org_unit_cancel'),
@@ -2220,6 +2156,63 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           child: const Text('Add'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'Under ${widget.parent.name}',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            key: const Key('admin_hierarchy_add_org_unit_type'),
+            initialValue: _unitType,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Unit type',
+              border: OutlineInputBorder(),
+            ),
+            items: const <DropdownMenuItem<String>>[
+              DropdownMenuItem<String>(value: 'brand', child: Text('Brand')),
+              DropdownMenuItem<String>(value: 'region', child: Text('Region')),
+              DropdownMenuItem<String>(
+                value: 'district',
+                child: Text('District'),
+              ),
+              DropdownMenuItem<String>(
+                value: 'location_group',
+                child: Text('Location group'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _unitType = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_hierarchy_add_org_unit_name'),
+            controller: _nameController,
+            decoration: InputDecoration(
+              labelText: 'Display name',
+              border: const OutlineInputBorder(),
+              errorText: _nameError,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('admin_hierarchy_add_org_unit_reason'),
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _reasonError,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2288,53 +2281,11 @@ class _MoveHierarchyDialogState extends State<_MoveHierarchyDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: widget.dialogKey,
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
-        width: 500,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            DropdownButtonFormField<String>(
-              key: widget.targetKey,
-              initialValue: _selectedTargetId,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: widget.targetLabel,
-                border: const OutlineInputBorder(),
-              ),
-              items: <DropdownMenuItem<String>>[
-                for (final candidate in widget.candidates)
-                  DropdownMenuItem<String>(
-                    value: candidate.id,
-                    child: Text(candidate.label),
-                  ),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _selectedTargetId = value);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: widget.reasonKey,
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _missingReason
-                    ? 'Add a reason before continuing.'
-                    : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: widget.title,
+      icon: Icons.drive_file_move_outlined,
+      maxWidth: 560,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -2347,6 +2298,46 @@ class _MoveHierarchyDialogState extends State<_MoveHierarchyDialog> {
           child: const Text('Move'),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          DropdownButtonFormField<String>(
+            key: widget.targetKey,
+            initialValue: _selectedTargetId,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: widget.targetLabel,
+              border: const OutlineInputBorder(),
+            ),
+            items: <DropdownMenuItem<String>>[
+              for (final candidate in widget.candidates)
+                DropdownMenuItem<String>(
+                  value: candidate.id,
+                  child: Text(candidate.label),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => _selectedTargetId = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: widget.reasonKey,
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _missingReason
+                  ? 'Add a reason before continuing.'
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2395,37 +2386,11 @@ class _HierarchyReasonDialogState extends State<_HierarchyReasonDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: widget.dialogKey,
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(widget.title, style: AdminButtonStyles.dialogTitleStyle),
-      content: SizedBox(
-        width: 500,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              widget.message,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: widget.reasonKey,
-              controller: _reasonController,
-              minLines: 1,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                border: const OutlineInputBorder(),
-                errorText: _missingReason
-                    ? 'Add a reason before continuing.'
-                    : null,
-              ),
-            ),
-          ],
-        ),
-      ),
+      title: widget.title,
+      icon: widget.danger ? Icons.warning_amber_outlined : Icons.edit_note,
+      maxWidth: 560,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -2440,6 +2405,30 @@ class _HierarchyReasonDialogState extends State<_HierarchyReasonDialog> {
           child: Text(widget.submitLabel),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            widget.message,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: widget.reasonKey,
+            controller: _reasonController,
+            minLines: 1,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Reason',
+              border: const OutlineInputBorder(),
+              errorText: _missingReason
+                  ? 'Add a reason before continuing.'
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2899,83 +2888,11 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_onboard_operator_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'New operator',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 420,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _DialogField(
-                  fieldKey: const Key('admin_onboard_business_name'),
-                  controller: _businessName,
-                  label: 'Business name',
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _DialogField(
-                  fieldKey: const Key('admin_onboard_owner_email'),
-                  controller: _ownerEmail,
-                  label: 'Contact email',
-                  helperText:
-                      'Business contact for records. This does not create console access.',
-                  keyboardType: TextInputType.emailAddress,
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _DialogField(
-                  fieldKey: const Key('admin_onboard_admin_email'),
-                  controller: _adminEmail,
-                  label: 'Owner login email',
-                  helperText:
-                      'Invite is sent here. This is the person who signs in.',
-                  keyboardType: TextInputType.emailAddress,
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _SubscriptionTierDropdown(value: _subscriptionTier),
-                const SizedBox(height: 12),
-                _CurrencyDropdown(
-                  value: _preferredCurrency,
-                  onChanged: (v) => setState(() => _preferredCurrency = v),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Primary location',
-                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 6),
-                _DialogField(
-                  fieldKey: const Key('admin_onboard_location_name'),
-                  controller: _locationName,
-                  label: 'Location name',
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _TimezoneDropdown(
-                  fieldKey: const Key('admin_onboard_location_timezone'),
-                  value: _locationTimezone,
-                  onChanged: (v) => setState(() => _locationTimezone = v),
-                ),
-                const SizedBox(height: 12),
-                const _LegacyRolloverReadOnly(
-                  key: Key('admin_onboard_legacy_rollover_readonly'),
-                  rolloverHour: _kLegacyRolloverHourDefault,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      title: 'New operator',
+      icon: Icons.business_outlined,
+      maxWidth: 520,
       actions: [
         TextButton(
           key: const Key('admin_onboard_cancel_button'),
@@ -2989,6 +2906,73 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
           child: const Text('Onboard operator'),
         ),
       ],
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _DialogField(
+                fieldKey: const Key('admin_onboard_business_name'),
+                controller: _businessName,
+                label: 'Business name',
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _DialogField(
+                fieldKey: const Key('admin_onboard_owner_email'),
+                controller: _ownerEmail,
+                label: 'Contact email',
+                helperText:
+                    'Business contact for records. This does not create console access.',
+                keyboardType: TextInputType.emailAddress,
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _DialogField(
+                fieldKey: const Key('admin_onboard_admin_email'),
+                controller: _adminEmail,
+                label: 'Owner login email',
+                helperText:
+                    'Invite is sent here. This is the person who signs in.',
+                keyboardType: TextInputType.emailAddress,
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _SubscriptionTierDropdown(value: _subscriptionTier),
+              const SizedBox(height: 12),
+              _CurrencyDropdown(
+                value: _preferredCurrency,
+                onChanged: (v) => setState(() => _preferredCurrency = v),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Primary location',
+                style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 6),
+              _DialogField(
+                fieldKey: const Key('admin_onboard_location_name'),
+                controller: _locationName,
+                label: 'Location name',
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _TimezoneDropdown(
+                fieldKey: const Key('admin_onboard_location_timezone'),
+                value: _locationTimezone,
+                onChanged: (v) => setState(() => _locationTimezone = v),
+              ),
+              const SizedBox(height: 12),
+              const _LegacyRolloverReadOnly(
+                key: Key('admin_onboard_legacy_rollover_readonly'),
+                rolloverHour: _kLegacyRolloverHourDefault,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -3054,56 +3038,11 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_edit_operator_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Account profile',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 420,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _DialogField(
-                  fieldKey: const Key('admin_edit_business_name'),
-                  controller: _businessName,
-                  label: 'Business name',
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _DialogField(
-                  fieldKey: const Key('admin_edit_owner_email'),
-                  controller: _ownerEmail,
-                  label: 'Contact email',
-                  helperText:
-                      'Updates business contact only. Team access is managed from Members.',
-                  keyboardType: TextInputType.emailAddress,
-                  validator: _requiredValidator,
-                ),
-                const SizedBox(height: 12),
-                _SubscriptionTierDropdown(value: _subscriptionTier),
-                const SizedBox(height: 12),
-                _CurrencyDropdown(
-                  value: _preferredCurrency,
-                  onChanged: (v) => setState(() => _preferredCurrency = v),
-                ),
-                const SizedBox(height: 12),
-                _PrimaryLocationDropdown(
-                  locations: widget.bundle.locations,
-                  value: _primaryLocationId,
-                  onChanged: (v) => setState(() => _primaryLocationId = v),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      title: 'Account profile',
+      icon: Icons.business_center_outlined,
+      maxWidth: 520,
       actions: [
         TextButton(
           key: const Key('admin_edit_cancel_button'),
@@ -3117,6 +3056,46 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
           child: const Text('Save profile'),
         ),
       ],
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _DialogField(
+                fieldKey: const Key('admin_edit_business_name'),
+                controller: _businessName,
+                label: 'Business name',
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _DialogField(
+                fieldKey: const Key('admin_edit_owner_email'),
+                controller: _ownerEmail,
+                label: 'Contact email',
+                helperText:
+                    'Updates business contact only. Team access is managed from Members.',
+                keyboardType: TextInputType.emailAddress,
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 12),
+              _SubscriptionTierDropdown(value: _subscriptionTier),
+              const SizedBox(height: 12),
+              _CurrencyDropdown(
+                value: _preferredCurrency,
+                onChanged: (v) => setState(() => _preferredCurrency = v),
+              ),
+              const SizedBox(height: 12),
+              _PrimaryLocationDropdown(
+                locations: widget.bundle.locations,
+                value: _primaryLocationId,
+                onChanged: (v) => setState(() => _primaryLocationId = v),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -3191,54 +3170,13 @@ class _LocationDialogState extends State<_LocationDialog> {
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
-    return AlertDialog(
+    return OperatorWebDialog(
       key: Key(
         isEdit ? 'admin_location_edit_dialog' : 'admin_location_add_dialog',
       ),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        isEdit ? 'Edit location' : 'Add location',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 380,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (!isEdit) ...[
-                _LocationParentOrgUnitField(
-                  label: widget.parentOrgUnitLabel?.trim().isNotEmpty == true
-                      ? widget.parentOrgUnitLabel!.trim()
-                      : widget.parentOrgUnitId ?? 'Selected org unit',
-                ),
-                const SizedBox(height: 12),
-              ],
-              _DialogField(
-                fieldKey: const Key('admin_location_name_field'),
-                controller: _name,
-                label: 'Location name',
-                validator: _requiredValidator,
-              ),
-              const SizedBox(height: 12),
-              _TimezoneDropdown(
-                fieldKey: const Key('admin_location_timezone_field'),
-                value: _timezone,
-                onChanged: (v) => setState(() => _timezone = v),
-              ),
-              const SizedBox(height: 12),
-              _LegacyRolloverReadOnly(
-                key: const Key('admin_location_legacy_rollover_readonly'),
-                rolloverHour:
-                    widget.existing?.businessDayRolloverHour ??
-                    _kLegacyRolloverHourDefault,
-              ),
-            ],
-          ),
-        ),
-      ),
+      title: isEdit ? 'Edit location' : 'Add location',
+      icon: Icons.place_outlined,
+      maxWidth: 480,
       actions: [
         TextButton(
           key: const Key('admin_location_cancel_button'),
@@ -3252,6 +3190,42 @@ class _LocationDialogState extends State<_LocationDialog> {
           child: Text(isEdit ? 'Save' : 'Add'),
         ),
       ],
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!isEdit) ...[
+              _LocationParentOrgUnitField(
+                label: widget.parentOrgUnitLabel?.trim().isNotEmpty == true
+                    ? widget.parentOrgUnitLabel!.trim()
+                    : widget.parentOrgUnitId ?? 'Selected org unit',
+              ),
+              const SizedBox(height: 12),
+            ],
+            _DialogField(
+              fieldKey: const Key('admin_location_name_field'),
+              controller: _name,
+              label: 'Location name',
+              validator: _requiredValidator,
+            ),
+            const SizedBox(height: 12),
+            _TimezoneDropdown(
+              fieldKey: const Key('admin_location_timezone_field'),
+              value: _timezone,
+              onChanged: (v) => setState(() => _timezone = v),
+            ),
+            const SizedBox(height: 12),
+            _LegacyRolloverReadOnly(
+              key: const Key('admin_location_legacy_rollover_readonly'),
+              rolloverHour:
+                  widget.existing?.businessDayRolloverHour ??
+                  _kLegacyRolloverHourDefault,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -3269,20 +3243,11 @@ class _ConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_confirm_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        title,
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 320,
-        child: Text(
-          message,
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ),
+      title: title,
+      icon: Icons.warning_amber_outlined,
+      maxWidth: 420,
       actions: [
         TextButton(
           key: const Key('admin_confirm_cancel_button'),
@@ -3296,6 +3261,10 @@ class _ConfirmDialog extends StatelessWidget {
           child: Text(confirmLabel),
         ),
       ],
+      child: Text(
+        message,
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
+      ),
     );
   }
 }
@@ -3617,15 +3586,19 @@ class _TimezonePickerDialogState extends State<_TimezonePickerDialog> {
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredOptions();
-    return AlertDialog(
+    return OperatorWebDialog(
       key: const Key('admin_timezone_picker_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Select IANA timezone',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: 420,
+      title: 'Select IANA timezone',
+      icon: Icons.public_outlined,
+      maxWidth: 520,
+      actions: [
+        TextButton(
+          key: const Key('admin_timezone_cancel_button'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+      child: SizedBox(
         height: 430,
         child: Column(
           children: [
@@ -3731,13 +3704,6 @@ class _TimezonePickerDialogState extends State<_TimezonePickerDialog> {
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          key: const Key('admin_timezone_cancel_button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-      ],
     );
   }
 }
