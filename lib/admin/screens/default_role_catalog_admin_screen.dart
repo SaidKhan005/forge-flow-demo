@@ -264,19 +264,19 @@ class _DefaultRoleCatalogAdminScreenState
   }
 
   Future<void> _addRole() async {
-    final nextIndex = _draft.length;
+    final role = await showDialog<Map<String, Object?>>(
+      context: context,
+      builder: (_) => _AddDefaultRoleDialog(
+        existingRoleKeys: {
+          for (final role in _draft)
+            (((role['role_key'] as String?) ?? '').trim()),
+        }..remove(''),
+      ),
+    );
+    if (!mounted || role == null) return;
     setState(() {
-      _draft = <Map<String, Object?>>[
-        ..._draft,
-        <String, Object?>{
-          'role_key': '',
-          'display_name': '',
-          'description': '',
-          'permissions': <Object?>[],
-        },
-      ];
+      _draft = <Map<String, Object?>>[..._draft, role];
     });
-    await _openRoleDialog(nextIndex);
   }
 
   void _removeRole(int index) {
@@ -581,8 +581,8 @@ class _DraftEditorPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebPanel(
       key: const Key('admin_default_role_catalog_draft_panel'),
-      title: 'Draft roles',
-      subtitle: 'Draft changes stay local until Publish.',
+      title: 'Default roles',
+      subtitle: 'Changes stay local until Publish.',
       trailing: !draftEqualsCurrent
           ? _Pill(
               key: const Key('admin_default_role_catalog_draft_dirty_pill'),
@@ -604,7 +604,7 @@ class _DraftEditorPanel extends StatelessWidget {
               key: const Key('admin_default_role_catalog_draft_empty'),
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Text(
-                'Draft is empty. Add at least one role to publish.',
+                'Add at least one default role to publish.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
             )
@@ -639,7 +639,7 @@ class _DraftEditorPanel extends StatelessWidget {
                     foregroundColor: AppColors.textPrimary,
                     borderColor: AppColors.borderSubtle,
                   ),
-                  child: const Text('Discard draft'),
+                  child: const Text('Discard changes'),
                 ),
               FilledButton(
                 key: const Key('admin_default_role_catalog_publish_button'),
@@ -762,6 +762,244 @@ class _RoleListRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+List<Object?> _allowPermissionEntries(Set<String> permissionKeys) {
+  final expanded = PermissionKeyMetadataCatalog.expandImplies(
+    permissionKeys,
+  ).toList()..sort();
+  return <Object?>[
+    for (final key in expanded)
+      <String, Object?>{'permission_key': key, 'effect': 'allow'},
+  ];
+}
+
+class _AddDefaultRoleDialog extends StatefulWidget {
+  const _AddDefaultRoleDialog({required this.existingRoleKeys});
+
+  final Set<String> existingRoleKeys;
+
+  @override
+  State<_AddDefaultRoleDialog> createState() => _AddDefaultRoleDialogState();
+}
+
+class _AddDefaultRoleDialogState extends State<_AddDefaultRoleDialog> {
+  final _displayNameController = TextEditingController();
+  final _roleKeyController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final Set<String> _selectedPermissionKeys = <String>{};
+  String? _displayNameError;
+  String? _roleKeyError;
+  String? _permissionsError;
+
+  @override
+  void dispose() {
+    _displayNameController.dispose();
+    _roleKeyController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final displayName = _displayNameController.text.trim();
+    final roleKey = _roleKeyController.text.trim();
+    final effectivePermissions = PermissionKeyMetadataCatalog.expandImplies(
+      _selectedPermissionKeys,
+    );
+    setState(() {
+      _displayNameError = displayName.isEmpty ? 'Choose a display name.' : null;
+      _roleKeyError = roleKey.isEmpty
+          ? 'Choose a role key.'
+          : widget.existingRoleKeys.contains(roleKey)
+          ? 'A role with this key already exists.'
+          : null;
+      _permissionsError = effectivePermissions.isEmpty
+          ? 'Pick at least one permission.'
+          : null;
+    });
+    if (_displayNameError != null ||
+        _roleKeyError != null ||
+        _permissionsError != null) {
+      return;
+    }
+    Navigator.of(context).pop(<String, Object?>{
+      'role_key': roleKey,
+      'display_name': displayName,
+      'description': _descriptionController.text.trim(),
+      'permissions': _allowPermissionEntries(_selectedPermissionKeys),
+    });
+  }
+
+  void _togglePermission(String permissionKey, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedPermissionKeys.add(permissionKey);
+      } else {
+        _selectedPermissionKeys.remove(permissionKey);
+      }
+      _permissionsError = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = (MediaQuery.sizeOf(context).height * 0.45)
+        .clamp(300.0, 520.0)
+        .toDouble();
+    return OperatorWebDialog(
+      key: const Key('admin_default_role_catalog_add_role_dialog'),
+      title: 'New default role',
+      icon: Icons.person_add_alt_outlined,
+      maxWidth: 780,
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_default_role_catalog_add_role_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_default_role_catalog_add_role_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _submit,
+          child: const Text('Add role'),
+        ),
+      ],
+      child: SizedBox(
+        width: 720,
+        height: maxHeight,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            _AddDefaultRoleFields(
+              displayNameController: _displayNameController,
+              roleKeyController: _roleKeyController,
+              descriptionController: _descriptionController,
+              displayNameError: _displayNameError,
+              roleKeyError: _roleKeyError,
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: _AddDefaultRolePermissions(
+                selectedPermissionKeys: _selectedPermissionKeys,
+                permissionsError: _permissionsError,
+                onToggle: _togglePermission,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddDefaultRoleFields extends StatelessWidget {
+  const _AddDefaultRoleFields({
+    required this.displayNameController,
+    required this.roleKeyController,
+    required this.descriptionController,
+    required this.displayNameError,
+    required this.roleKeyError,
+  });
+
+  final TextEditingController displayNameController;
+  final TextEditingController roleKeyController;
+  final TextEditingController descriptionController;
+  final String? displayNameError;
+  final String? roleKeyError;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              child: TextField(
+                key: const Key(
+                  'admin_default_role_catalog_add_role_display_name',
+                ),
+                controller: displayNameController,
+                decoration: InputDecoration(
+                  labelText: 'Display name',
+                  border: const OutlineInputBorder(),
+                  errorText: displayNameError,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                key: const Key('admin_default_role_catalog_add_role_key'),
+                controller: roleKeyController,
+                decoration: InputDecoration(
+                  labelText: 'Role key',
+                  border: const OutlineInputBorder(),
+                  errorText: roleKeyError,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          key: const Key('admin_default_role_catalog_add_role_description'),
+          controller: descriptionController,
+          minLines: 1,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Description',
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddDefaultRolePermissions extends StatelessWidget {
+  const _AddDefaultRolePermissions({
+    required this.selectedPermissionKeys,
+    required this.permissionsError,
+    required this.onToggle,
+  });
+
+  final Set<String> selectedPermissionKeys;
+  final String? permissionsError;
+  final void Function(String key, bool selected) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(
+          child: SingleChildScrollView(
+            child: RolePermissionPickerCard(
+              key: const Key('admin_default_role_catalog_add_role_permissions'),
+              selected: PermissionKeyMetadataCatalog.expandImplies(
+                selectedPermissionKeys,
+              ),
+              explicit: selectedPermissionKeys,
+              roleScope: RoleScope.business,
+              onToggle: onToggle,
+              keyPrefix: 'admin_default_role_catalog_add_role_picker',
+            ),
+          ),
+        ),
+        if (permissionsError != null) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            permissionsError!,
+            key: const Key(
+              'admin_default_role_catalog_add_role_permissions_error',
+            ),
+            style: AppTextStyles.body12(color: AppColors.negative),
+          ),
+        ],
+      ],
     );
   }
 }

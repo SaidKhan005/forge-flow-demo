@@ -9,7 +9,8 @@
 //     draft pre-loads from the published payload; publish button is
 //     disabled while the draft equals the current.
 //   * Editor: the page renders a compact role list; tapping a role
-//     opens the full editor dialog. Add role opens that same dialog.
+//     opens the full editor dialog. Add role opens a matching create
+//     dialog before the role is added to the draft.
 //   * Publish flow opens the dialog (B2.2 publish dialog).
 //   * Read-only mode (`editingEnabled: false`) hides the add /
 //     discard / publish affordances.
@@ -51,6 +52,46 @@ void main() {
       ],
       notes: 'Seeded for tests.',
     );
+  }
+
+  Future<void> addDefaultRole(
+    WidgetTester tester, {
+    String roleKey = 'location_manager',
+    String displayName = 'Location Manager',
+  }) async {
+    final addRole = find.byKey(
+      const Key('admin_default_role_catalog_add_role'),
+    );
+    await tester.ensureVisible(addRole);
+    await tester.pumpAndSettle();
+    await tester.tap(addRole);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('admin_default_role_catalog_add_role_display_name')),
+      displayName,
+    );
+    await tester.enterText(
+      find.byKey(const Key('admin_default_role_catalog_add_role_key')),
+      roleKey,
+    );
+    await tester.enterText(
+      find.byKey(const Key('admin_default_role_catalog_add_role_description')),
+      '$displayName role.',
+    );
+    final permission = find.byKey(
+      const Key(
+        'admin_default_role_catalog_add_role_picker_perm_team.users.view_checkbox',
+      ),
+    );
+    await tester.ensureVisible(permission);
+    await tester.pumpAndSettle();
+    await tester.tap(permission);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('admin_default_role_catalog_add_role_submit')),
+    );
+    await tester.pumpAndSettle();
   }
 
   testWidgets('genesis: renders empty-state + starter seeded role draft', (
@@ -228,33 +269,27 @@ void main() {
     );
     await tester.ensureVisible(addRoleFinder);
     await tester.pumpAndSettle();
-    // Add role → publish should still be disabled (empty role_key / name).
+    // Cancel leaves the role list unchanged.
     await tester.tap(addRoleFinder);
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('admin_default_role_catalog_role_dialog_2')),
+      find.byKey(const Key('admin_default_role_catalog_add_role_dialog')),
       findsOneWidget,
     );
-    final afterAdd = tester.widget<FilledButton>(
-      find.byKey(const Key('admin_default_role_catalog_publish_button')),
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_draft_row_2')),
+      findsNothing,
     );
-    expect(afterAdd.onPressed, isNull);
+    await tester.tap(
+      find.byKey(const Key('admin_default_role_catalog_add_role_cancel')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_draft_row_2')),
+      findsNothing,
+    );
 
-    // Fill the new row's required fields.
-    final roleKeyField = find.byKey(
-      const Key('admin_default_role_catalog_draft_role_key_2'),
-    );
-    await tester.ensureVisible(roleKeyField);
-    await tester.pumpAndSettle();
-    await tester.enterText(roleKeyField, 'location_manager');
-    final displayNameField = find.byKey(
-      const Key('admin_default_role_catalog_draft_display_name_2'),
-    );
-    await tester.ensureVisible(displayNameField);
-    await tester.pumpAndSettle();
-    await tester.enterText(displayNameField, 'Location Manager');
-    await tester.pump();
-    // Now publish is enabled.
+    await addDefaultRole(tester);
     final afterFill = tester.widget<FilledButton>(
       find.byKey(const Key('admin_default_role_catalog_publish_button')),
     );
@@ -264,7 +299,10 @@ void main() {
       findsOneWidget,
     );
 
-    // Remove the row again.
+    await tester.tap(
+      find.byKey(const Key('admin_default_role_catalog_draft_row_2')),
+    );
+    await tester.pumpAndSettle();
     final removeFinder = find.byKey(
       const Key('admin_default_role_catalog_draft_remove_2'),
     );
@@ -382,35 +420,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Add and fill a new role to enable publish. The picker per draft
-    // row now pushes the add / publish affordances down the panel
-    // so each tap needs an ensureVisible scroll first.
-    final addRole = find.byKey(
-      const Key('admin_default_role_catalog_add_role'),
-    );
-    await tester.ensureVisible(addRole);
-    await tester.pumpAndSettle();
-    await tester.tap(addRole);
-    await tester.pumpAndSettle();
-    final roleKeyField = find.byKey(
-      const Key('admin_default_role_catalog_draft_role_key_2'),
-    );
-    await tester.ensureVisible(roleKeyField);
-    await tester.pumpAndSettle();
-    await tester.enterText(roleKeyField, 'location_manager');
-    final displayNameField = find.byKey(
-      const Key('admin_default_role_catalog_draft_display_name_2'),
-    );
-    await tester.ensureVisible(displayNameField);
-    await tester.pumpAndSettle();
-    await tester.enterText(displayNameField, 'Location Manager');
-    await tester.pump();
-
-    // Tap Publish → dialog opens.
-    await tester.tap(
-      find.byKey(const Key('admin_default_role_catalog_role_dialog_done_2')),
-    );
-    await tester.pumpAndSettle();
+    await addDefaultRole(tester);
 
     final publishButton = find.byKey(
       const Key('admin_default_role_catalog_publish_button'),
@@ -447,20 +457,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Add a row to dirty the draft. The picker per draft row pushes
-    // the buttons below the visible viewport so each tap needs an
-    // ensureVisible scroll.
-    final addRole = find.byKey(
-      const Key('admin_default_role_catalog_add_role'),
-    );
-    await tester.ensureVisible(addRole);
-    await tester.pumpAndSettle();
-    await tester.tap(addRole);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('admin_default_role_catalog_role_dialog_done_2')),
-    );
-    await tester.pumpAndSettle();
+    await addDefaultRole(tester);
     expect(
       find.byKey(const Key('admin_default_role_catalog_draft_row_2')),
       findsOneWidget,
