@@ -822,44 +822,56 @@ class _AdminScopeAndEffectiveSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _AdminTimezoneDropdown(
-                  controller: timezoneController,
-                  enabled: enabled,
-                  onChanged: onAnyTextChanged,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 620;
+              final timezoneField = _AdminTimezoneDropdown(
+                controller: timezoneController,
+                enabled: enabled,
+                onChanged: onAnyTextChanged,
+              );
+              final dayStartField = TextField(
+                key: const Key('admin_timing_editor_business_day_start'),
+                controller: businessDayStartController,
+                enabled: enabled,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                  LengthLimitingTextInputFormatter(5),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Business day starts (HH:MM)',
+                  border: OutlineInputBorder(),
                 ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 200,
-                child: TextField(
-                  key: const Key('admin_timing_editor_business_day_start'),
-                  controller: businessDayStartController,
-                  enabled: enabled,
-                  inputFormatters: <TextInputFormatter>[
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
-                    LengthLimitingTextInputFormatter(5),
+                onChanged: (value) {
+                  _normalizeTimeController(businessDayStartController, value);
+                  onAnyTextChanged();
+                },
+                onEditingComplete: () {
+                  _normalizeTimeController(
+                    businessDayStartController,
+                    businessDayStartController.text,
+                  );
+                  onAnyTextChanged();
+                },
+              );
+              if (compact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    timezoneField,
+                    const SizedBox(height: 12),
+                    dayStartField,
                   ],
-                  decoration: const InputDecoration(
-                    labelText: 'Business day starts (HH:MM)',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (value) {
-                    _normalizeTimeController(businessDayStartController, value);
-                    onAnyTextChanged();
-                  },
-                  onEditingComplete: () {
-                    _normalizeTimeController(
-                      businessDayStartController,
-                      businessDayStartController.text,
-                    );
-                    onAnyTextChanged();
-                  },
-                ),
-              ),
-            ],
+                );
+              }
+              return Row(
+                children: <Widget>[
+                  Expanded(child: timezoneField),
+                  const SizedBox(width: 12),
+                  SizedBox(width: 200, child: dayStartField),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -923,6 +935,7 @@ class _AdminTimezoneDropdown extends StatelessWidget {
     return DropdownButtonFormField<String>(
       key: const Key('admin_timing_editor_timezone_dropdown'),
       initialValue: selected,
+      isExpanded: true,
       decoration: const InputDecoration(
         labelText: 'Timezone',
         border: OutlineInputBorder(),
@@ -932,7 +945,10 @@ class _AdminTimezoneDropdown extends StatelessWidget {
           .map(
             (timezone) => DropdownMenuItem<String>(
               value: timezone,
-              child: Text(_timezoneLabel(timezone)),
+              child: Text(
+                _timezoneLabel(timezone),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           )
           .toList(growable: false),
