@@ -103,7 +103,7 @@ void main() {
               jsonEncode(<String, Object?>{
                 'connection_id': 'conn-toast',
                 'connected_at': '2026-05-08T12:00:00.000Z',
-                'first_backfill_status': 'enqueued',
+                'first_backfill': const <String, Object?>{'started': true},
               }),
               200,
             );
@@ -163,54 +163,161 @@ void main() {
       for (var i = 0; i < captured.length; i += 1) {
         final request = captured[i];
         expect(request.headers['authorization'], 'Bearer admin-token');
-        expect(request.headers['Idempotency-Key'], 'idem-${i + 1}');
         expect(request.body['operator_id'], operatorId);
         expect(request.body['location_id'], locationId);
       }
+      expect(captured[0].headers['Idempotency-Key'], 'idem-1');
+      expect(captured[2].headers['Idempotency-Key'], 'idem-2');
       expect(captured[1].body['api_key'], 'toast-key');
-      expect(captured[1].body['username'], 'restaurant-guid');
-      expect(captured[1].body.containsKey('api_secret'), isFalse);
+      expect(captured[1].body['api_secret'], 'restaurant-guid');
+      expect(captured[1].body.containsKey('username'), isFalse);
+      expect(captured[1].headers['Idempotency-Key'], startsWith('admin-'));
+      expect(captured[3].headers['Idempotency-Key'], startsWith('admin-'));
+      expect(captured[1].headers['Idempotency-Key'], isNot('idem-2'));
+      expect(captured[3].headers['Idempotency-Key'], isNot('idem-3'));
     },
   );
 
+  test('api-key connect and disconnect use stable idempotency keys', () async {
+    final captured = <_CapturedRequest>[];
+    final gateway = AdminHttpVendorConnectionsGateway(
+      baseUri: Uri.parse(proxyBase),
+      bearerTokenProvider: tokenProvider,
+      httpClient: MockClient((request) async {
+        captured.add(_CapturedRequest.from(request));
+        return http.Response(
+          jsonEncode(<String, Object?>{'connection_id': 'conn-toast'}),
+          200,
+        );
+      }),
+    );
+
+    await gateway.connectWithApiKey(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+      apiKey: 'toast-key',
+      apiSecret: 'secret-1',
+    );
+    await gateway.connectWithApiKey(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+      apiKey: 'toast-key',
+      apiSecret: 'secret-1',
+    );
+    await gateway.connectWithApiKey(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+      apiKey: 'toast-key',
+      apiSecret: 'secret-2',
+    );
+    await gateway.disconnect(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+      reason: 'qa',
+    );
+    await gateway.disconnect(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+      reason: 'qa',
+    );
+    await gateway.disconnect(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+      reason: 'rotate',
+    );
+
+    final keys = captured
+        .map((request) => request.headers['Idempotency-Key'])
+        .toList(growable: false);
+    expect(keys[0], keys[1]);
+    expect(keys[0], isNot(keys[2]));
+    expect(keys[3], keys[4]);
+    expect(keys[3], isNot(keys[5]));
+  });
+
+  test('loadBundle ignores enqueued as a first_backfill alias', () async {
+    final gateway = AdminHttpVendorConnectionsGateway(
+      baseUri: Uri.parse(proxyBase),
+      bearerTokenProvider: tokenProvider,
+      httpClient: MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'operator_id': operatorId,
+            'location_id': locationId,
+            'connections': <Object?>[
+              <String, Object?>{
+                'connection_id': 'conn-toast',
+                'vendor_id': 'toast',
+                'category': 'pos',
+                'status': 'connected',
+                'first_backfill': const <String, Object?>{'status': 'enqueued'},
+              },
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+
+    final bundle = await gateway.loadBundle(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+
+    expect(bundle.posConnection!.firstBackfill, isNull);
+  });
+
+  test('test connection authValid only follows auth_valid', () async {
+    final gateway = AdminHttpVendorConnectionsGateway(
+      baseUri: Uri.parse(proxyBase),
+      bearerTokenProvider: tokenProvider,
+      httpClient: MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'ok': true,
+            'auth_valid': false,
+            'elapsed_ms': 10,
+          }),
+          200,
+        );
+      }),
+    );
+
+    final result = await gateway.testConnection(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+    );
+
+    expect(result.authValid, isFalse);
+  });
+
   test(
-    'loadLogs uses the admin sync-log route with location query scope',
+    'loadLogs throws the missing-route gateway error without hitting proxy',
     () async {
-      late http.Request captured;
       final gateway = AdminHttpVendorConnectionsGateway(
         baseUri: Uri.parse(proxyBase),
         bearerTokenProvider: tokenProvider,
         httpClient: MockClient((request) async {
-          captured = request;
-          return http.Response(
-            jsonEncode(<String, Object?>{
-              'logs': <Object?>[
-                <String, Object?>{
-                  'occurred_at': '2026-05-08T13:00:00.000Z',
-                  'event_kind': 'poll_success',
-                  'records_count': 3,
-                },
-              ],
-            }),
-            200,
-          );
+          throw StateError('logs route should not be invoked');
         }),
       );
 
-      final logs = await gateway.loadLogs(
-        operatorId: operatorId,
-        locationId: locationId,
-        vendorId: 'toast',
-        limit: 25,
+      await expectLater(
+        gateway.loadLogs(
+          operatorId: operatorId,
+          locationId: locationId,
+          vendorId: 'toast',
+          limit: 25,
+        ),
+        throwsA(isA<VendorConnectionsGatewayError>()),
       );
-
-      expect(captured.method, 'GET');
-      expect(captured.url.path, '/v1/admin/integrations/toast/logs');
-      expect(captured.url.queryParameters['operator_id'], operatorId);
-      expect(captured.url.queryParameters['location_id'], locationId);
-      expect(captured.url.queryParameters['limit'], '25');
-      expect(logs.single.eventKind, 'poll_success');
-      expect(logs.single.recordsCount, 3);
     },
   );
 
