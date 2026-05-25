@@ -1,0 +1,126 @@
+{
+  "results": [
+    {
+      "name": "business-account",
+      "route": "/account",
+      "url": "http://127.0.0.1:8181/account?qa=1779335793525",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\business-account.png"
+    },
+    {
+      "name": "business-timing",
+      "route": "/business-timing",
+      "url": "http://127.0.0.1:8181/business-timing?qa=1779335802303",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\business-timing.png"
+    },
+    {
+      "name": "locations",
+      "route": "/locations",
+      "url": "http://127.0.0.1:8181/locations?qa=1779335807223",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\locations.png"
+    },
+    {
+      "name": "my-account",
+      "route": "/my-account",
+      "url": "http://127.0.0.1:8181/my-account?qa=1779335814089",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\my-account.png"
+    },
+    {
+      "name": "team-members",
+      "route": "/members",
+      "url": "http://127.0.0.1:8181/members?qa=1779335818468",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\team-members.png"
+    },
+    {
+      "name": "roles-permissions",
+      "route": "/roles",
+      "url": "http://127.0.0.1:8181/roles?qa=1779335824862",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\roles-permissions.png"
+    },
+    {
+      "name": "audit-log",
+      "route": "/audit-log",
+      "url": "http://127.0.0.1:8181/audit-log?qa=1779335829743",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\audit-log.png"
+    },
+    {
+      "name": "data-accuracy",
+      "route": "/data-accuracy",
+      "url": "http://127.0.0.1:8181/data-accuracy?qa=1779335836104",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\data-accuracy.png"
+    },
+    {
+      "name": "vendor-integrations",
+      "route": "/vendor-connections",
+      "url": "http://127.0.0.1:8181/vendor-connections?qa=1779335841419",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\vendor-integrations.png"
+    },
+    {
+      "name": "notifications",
+      "route": "/notifications",
+      "url": "http://127.0.0.1:8181/notifications?qa=1779335847645",
+      "title": "Forge & Flow - Operator Web Console",
+      "screenshot": "C:\\Git Local Repos\\forge_flow_demo\\.codex\\worktrees\\operator-web-backend-frontend-gap-audit\\.codex-qa\\screenshots\\notifications.png"
+    }
+  ],
+  "logs": [
+    {
+      "route": "http://127.0.0.1:8181/account?qa=1779335793525",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/business-timing?qa=1779335802303",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/locations?qa=1779335807223",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/my-account?qa=1779335814089",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/members?qa=1779335818468",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/roles?qa=1779335824862",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/audit-log?qa=1779335829743",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/data-accuracy?qa=1779335836104",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/vendor-connections?qa=1779335841419",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    },
+    {
+      "route": "http://127.0.0.1:8181/notifications?qa=1779335847645",
+      "type": "error",
+      "text": "Connecting to 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9AC2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8CTyFprO0AAAAASUVORK5CYII=' violates the following Content Security Policy directive: \"connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app\". The action has been blocked."
+    }
+  ]
+}
