@@ -549,6 +549,33 @@ void main() {
   });
 
   group('Roles tab gating', () {
+    testWidgets('platform roles render in their own same-tab section', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            canEditSeededRoles: true,
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      expect(
+        find.byKey(const Key('admin_rhs_roles_platform_group')),
+        findsOneWidget,
+      );
+      expect(find.text('Forge & Flow access (2)'), findsOneWidget);
+      expect(find.text('Ecosystem admin'), findsOneWidget);
+      expect(find.text('Support access'), findsOneWidget);
+      expect(find.text('Default roles (8)'), findsOneWidget);
+    });
+
     testWidgets('seeded-role edit hidden when canEditSeededRoles is false', (
       tester,
     ) async {
