@@ -829,7 +829,7 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(find.text('Suspended child org unit'), findsOneWidget);
+      expect(find.text('Suspended org unit'), findsOneWidget);
       final suspended = (await hierarchyGateway.listOrgUnits(
         operatorId: 'op-seed-1',
       )).singleWhere((unit) => unit.orgUnitId == 'org-east');
@@ -1020,7 +1020,7 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(find.text('Suspended child location'), findsOneWidget);
+      expect(find.text('Suspended location'), findsOneWidget);
       final suspended = (await hierarchyGateway.listHierarchyLocations(
         operatorId: 'op-seed-1',
       )).singleWhere((location) => location.locationId == 'loc-west');
@@ -1371,7 +1371,7 @@ void main() {
       // The hierarchy keeps visible labels, with tooltips for exact action
       // meaning where the same label appears on multiple entity types.
       for (final label in <String>[
-        'Add child',
+        'Add org unit',
         'Move',
         'Suspend',
         'Edit',
@@ -1385,11 +1385,7 @@ void main() {
         );
       }
 
-      for (final label in <String>[
-        'Root org unit',
-        'Child org unit',
-        'Primary location',
-      ]) {
+      for (final label in <String>['Org unit', 'Primary location']) {
         expect(
           find.text(label),
           findsWidgets,
@@ -1411,7 +1407,7 @@ void main() {
 
       expectLabeledButton(
         const Key('admin_hierarchy_org_unit_add_child_org-east'),
-        'Add child',
+        'Add org unit',
       );
       expectLabeledButton(const Key('admin_location_edit_loc-seed-1'), 'Edit');
       expectLabeledButton(

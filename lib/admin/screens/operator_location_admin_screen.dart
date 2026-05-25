@@ -1848,11 +1848,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           // hardcoded `Icons.account_tree_outlined`).
           icon: scopeIconForUnitType(unit.unitType),
           label: unit.name,
-          subtitle: unit.isSuspended
-              ? (depth == 0
-                    ? 'Suspended root org unit'
-                    : 'Suspended child org unit')
-              : (depth == 0 ? 'Root org unit' : 'Child org unit'),
+          subtitle: _orgUnitSubtitle(unit),
           depth: depth,
           selected:
               widget.selectedScope.scopeType ==
@@ -1909,6 +1905,28 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     return rows;
   }
 
+  String _orgUnitSubtitle(OrgUnitAdminNode unit) {
+    final label = _orgUnitTypeLabel(unit.unitType);
+    if (!unit.isSuspended) return label;
+    return 'Suspended ${_lowerInitial(label)}';
+  }
+
+  String _orgUnitTypeLabel(String? unitType) {
+    return switch (unitType) {
+      'corp' => 'Business',
+      'brand' => 'Brand',
+      'region' => 'Region',
+      'district' => 'District',
+      'location_group' => 'Location group',
+      _ => 'Org unit',
+    };
+  }
+
+  String _lowerInitial(String value) {
+    if (value.isEmpty) return value;
+    return value[0].toLowerCase() + value.substring(1);
+  }
+
   /// Trailing action-button cluster for an org-unit hierarchy row.
   ///
   /// Extracted from [_buildOrgUnitRows] verbatim (behavior-preserving) to
@@ -1929,8 +1947,8 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           buttonKey: Key(
             'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
           ),
-          label: 'Add child',
-          tooltip: 'Add child org unit',
+          label: 'Add org unit',
+          tooltip: 'Add org unit',
           onPressed: () => _onAddChildOrgUnit(unit),
           icon: Icons.add,
         ),
@@ -2019,17 +2037,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         widget.bundle.operator.isSuspended ||
         location.isSuspended ||
         hierarchyLeaf?.isSuspended == true;
+    final locationBaseSubtitle = isPrimary ? 'Primary location' : 'Location';
     final locationSubtitle = isSuspended
-        ? (isPrimary
-              ? 'Suspended primary location'
-              : depth == 0
-              ? 'Suspended location'
-              : 'Suspended child location')
-        : (isPrimary
-              ? 'Primary location'
-              : depth == 0
-              ? 'Location'
-              : 'Child location');
+        ? 'Suspended ${_lowerInitial(locationBaseSubtitle)}'
+        : locationBaseSubtitle;
     return Opacity(
       key: Key('admin_location_suspended_fade_${location.locationId}'),
       opacity: isSuspended ? 0.55 : 1,
@@ -2217,7 +2228,7 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
   Widget build(BuildContext context) {
     return OperatorWebDialog(
       key: const Key('admin_hierarchy_add_child_org_unit_dialog'),
-      title: 'Add child org unit',
+      title: 'Add org unit',
       icon: Icons.account_tree_outlined,
       maxWidth: 560,
       actions: <Widget>[
@@ -2543,32 +2554,27 @@ class _HierarchyScopeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final depthIndent = depth * 28.0;
+    final depthIndent = depth * 20.0;
     final isNested = depth > 0;
     final radius = BorderRadius.circular(6);
     final fillColor = selected
-        ? AppColors.peacock.withValues(alpha: 0.10)
-        : isNested
-        ? AppColors.backgroundMid.withValues(alpha: 0.32)
+        ? AppColors.sunset.withValues(alpha: 0.10)
         : Colors.transparent;
     final borderColor = selected
-        ? AppColors.peacock
-        : isNested
-        ? AppColors.borderSubtle.withValues(alpha: 0.78)
-        : AppColors.borderSubtle;
+        ? AppColors.sunset.withValues(alpha: 0.45)
+        : Colors.transparent;
     return Padding(
-      padding: EdgeInsets.only(left: depthIndent, top: 5, bottom: 5),
+      padding: EdgeInsets.only(left: depthIndent, top: 3, bottom: 3),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (isNested) ...[
             Container(
-              width: 2,
-              height: 46,
-              margin: const EdgeInsets.only(right: 12),
+              width: 1,
+              height: 40,
+              margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
-                color: selected
-                    ? AppColors.peacock.withValues(alpha: 0.85)
-                    : AppColors.sunset.withValues(alpha: 0.28),
+                color: AppColors.borderSubtle.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -2581,15 +2587,9 @@ class _HierarchyScopeRow extends StatelessWidget {
                 onTap: onTap,
                 borderRadius: radius,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(10, 9, 12, 9),
                   decoration: BoxDecoration(
-                    border: Border.all(
-                      color: borderColor,
-                      width: selected ? 1.4 : 1,
-                    ),
+                    border: Border.all(color: borderColor, width: 1),
                     borderRadius: radius,
                   ),
                   child: LayoutBuilder(
@@ -2599,14 +2599,28 @@ class _HierarchyScopeRow extends StatelessWidget {
                       final showLeadingIcon = constraints.maxWidth >= 72;
                       final showSelectedIcon =
                           selected && constraints.maxWidth >= 96;
+                      final showAccent = constraints.maxWidth >= 104;
                       final labelBlock = Row(
                         children: [
+                          if (showAccent) ...[
+                            Container(
+                              width: 3,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? AppColors.sunsetDark
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                          ],
                           if (showLeadingIcon) ...[
                             Icon(
                               icon,
                               size: 17,
                               color: selected
-                                  ? AppColors.peacockDark
+                                  ? AppColors.sunsetDark
                                   : AppColors.textSecondary,
                             ),
                             const SizedBox(width: 10),
@@ -2619,7 +2633,9 @@ class _HierarchyScopeRow extends StatelessWidget {
                                   label,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppTextStyles.body14(
-                                    color: AppColors.textPrimary,
+                                    color: selected
+                                        ? AppColors.textPrimary
+                                        : AppColors.textSecondary,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -2639,7 +2655,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                               child: Icon(
                                 Icons.check_circle,
                                 size: 16,
-                                color: AppColors.peacockDark,
+                                color: AppColors.sunsetDark,
                               ),
                             ),
                         ],
