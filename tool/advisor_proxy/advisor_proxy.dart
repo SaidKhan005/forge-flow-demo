@@ -435,6 +435,16 @@ part 'advisor_agentic_answer_part.dart';
 // + the three repository imports above. No `kAdvisorProxyMaxLines` raise.
 part 'advisor_operational_tools_part.dart';
 
+// Advisor Knowledge Activation — Slice A4.2a: the `retrieve_methodology`
+// answer tool + the shared embed→search→rerank pipeline helper it wraps
+// (the helper itself lives in advisor_retrieve_route_group_part.dart,
+// factored out of the retrieve route behavior-preservingly). The tool
+// definition + its OperatorContext/gateway-bound factory live in this
+// sibling part file. INERT: NO route, NO routeRequest dispatch, NO
+// bootstrap wiring (all A4.2b). The monolith gains only this declaration.
+// No `kAdvisorProxyMaxLines` raise.
+part 'advisor_answer_tools_part.dart';
+
 /// Default in-memory idempotency cache shared by the password
 /// change / reset request / reset confirm routes when the route
 /// caller does not inject one. Production bootstrap can override

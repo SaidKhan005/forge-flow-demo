@@ -86,6 +86,21 @@ const String kVoyageQueryEmbeddingUsageClass = 'voyage_query_embedding';
 /// instead of hardcoding it.
 const String kVoyageRerankUsageClass = 'voyage_rerank';
 
+/// Usage-class string for the advisor agentic ANSWER turn (the Anthropic
+/// tool-use loop driven by `AdvisorAgenticAnswerEngine`, Slice A4.x).
+///
+/// HP #9 (AI cost metered by class): the Anthropic answer spend is a
+/// distinct cost class from the two Voyage retrieval classes
+/// (`voyage_query_embedding` embed + `voyage_rerank` rerank), so it is
+/// recorded under its own `usage_logs.usage_class`. Introduced INERT in
+/// Slice A4.2a alongside the `retrieve_methodology` tool + shared
+/// retrieval-pipeline helper; the A4.2b answer route is what records under
+/// it. `usage_class` is a free-form text column (1 to 64 chars), so no
+/// migration is needed for a new class. Exposed as a top-level const so
+/// route code and tests reference the same literal instead of hardcoding
+/// it.
+const String kAdvisorAnswerUsageClass = 'advisor_answer';
+
 /// Per-model token-cost rates. Cents per million tokens, stored as ints
 /// so we can do integer-arithmetic cost computation without floats.
 /// Numbers are list prices per provider as of late 2025 / early 2026 —
