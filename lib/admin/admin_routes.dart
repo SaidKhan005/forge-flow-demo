@@ -330,13 +330,11 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminDefaultRoleCatalogRouteId,
-    title: 'Default role catalog',
+    title: 'Default roles',
     path: '/default-roles',
     icon: Icons.shield_outlined,
     section: AdminRouteSection.serviceSetup,
-    subtitle:
-        'This surface is for F&F admins only. Operators cannot see it. '
-        'Edit the starter role catalog every business begins with.',
+    subtitle: 'Edit the starter roles every new business receives.',
     builder: _buildDefaultRoleCatalog,
   ),
   AdminRoute(

@@ -110,14 +110,14 @@ void main() {
       find.byKey(const Key('admin_default_role_catalog_screen')),
       findsOneWidget,
     );
-    expect(find.text('Default role catalog'), findsOneWidget);
+    expect(find.text('Default roles'), findsOneWidget);
 
     // Genesis empty-state panel.
     expect(
       find.byKey(const Key('admin_default_role_catalog_current_empty')),
       findsOneWidget,
     );
-    expect(find.text('No default catalog published yet'), findsOneWidget);
+    expect(find.text('Using built-in starter roles'), findsOneWidget);
 
     // Built-in starter draft, editable before first publish.
     expect(
