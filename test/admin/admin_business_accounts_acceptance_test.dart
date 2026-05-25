@@ -44,7 +44,6 @@ import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart'
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
-import 'package:forge_and_flow/admin/widgets/admin_action_controls.dart';
 import 'package:forge_and_flow/admin/widgets/admin_business_accounts_back_button.dart';
 import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
 
@@ -415,7 +414,7 @@ void main() {
       await tapKey(tester, Key('admin_hierarchy_org_unit_$dinerOrgUnitEast'));
 
       // With an org unit selected the add-location button is enabled.
-      final addButton = tester.widget<AdminActionButton>(
+      final addButton = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_operator_add_location_button')),
       );
       expect(
