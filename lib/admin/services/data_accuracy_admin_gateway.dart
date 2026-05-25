@@ -2863,8 +2863,12 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       // under the synthetic `__unallocated__` key so the per-vendor
       // sum still equals `totalCost`. The display shows it as
       // "(no vendor cadence set)" - see [kUnallocatedVendorId].
-      final vendorIds = entry.pollingCadencePerVendorSeconds.keys.toList()
-        ..sort();
+      final tierDefaults = _tierDefinitions[entry.tierKey];
+      final effectiveCadence = entry.pollingCadencePerVendorSeconds.isEmpty
+          ? tierDefaults?.pollingCadencePerVendorSeconds ??
+                const <String, int>{}
+          : entry.pollingCadencePerVendorSeconds;
+      final vendorIds = effectiveCadence.keys.toList()..sort();
       if (vendorIds.isEmpty) {
         if (cost > 0) {
           perVendorAcc[kUnallocatedVendorId] =

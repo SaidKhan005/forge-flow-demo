@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_surface.dart';
+import '../admin_human_labels.dart';
 import '../admin_button_styles.dart';
 import '../services/data_accuracy_admin_gateway.dart';
 
@@ -74,17 +74,17 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
             runSpacing: 12,
             children: [
               _Metric(
-                label: 'Total monthly tier revenue (USD)',
+                label: 'Revenue',
                 value: formatCents(rollup.totalMonthlyPriceCents),
                 color: AppColors.textPrimary,
               ),
               _Metric(
-                label: 'Total monthly vendor API cost basis (USD)',
+                label: 'Vendor cost',
                 value: formatCents(totalCost),
                 color: AppColors.textPrimary,
               ),
               _Metric(
-                label: 'Net monthly margin (USD)',
+                label: 'Net margin',
                 value: formatCents(marginCents),
                 color: marginColor,
               ),
@@ -140,34 +140,26 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
               cells: <DataCell>[
                 DataCell(
                   Text(
-                    entry.tierKey.wire,
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    adminPollingTierLabel(entry.tierKey),
+                    style: AppTextStyles.body13(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
                   Text(
                     '${entry.assignmentCount}',
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
                   Text(
                     formatCents(entry.totalMonthlyPriceCents),
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
                   Text(
                     formatCents(entry.totalMonthlyVendorCostCents),
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
@@ -191,10 +183,7 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
 
   /// Per-vendor monthly-cost table with each vendor's share of total
   /// cost, or an empty-state line. Extracted from [build] verbatim.
-  static Widget _perVendorBreakdown(
-    TierMarginRollup rollup,
-    int totalCost,
-  ) {
+  static Widget _perVendorBreakdown(TierMarginRollup rollup, int totalCost) {
     if (rollup.perVendor.isEmpty) {
       return Text(
         'No per-vendor cost data yet.',
@@ -229,9 +218,7 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
                 DataCell(
                   Text(
                     formatCents(entry.totalMonthlyVendorCostCents),
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
                 DataCell(
@@ -239,9 +226,7 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
                     totalCost <= 0
                         ? '-'
                         : '${(entry.totalMonthlyVendorCostCents * 100 / totalCost).toStringAsFixed(1)}%',
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                   ),
                 ),
               ],

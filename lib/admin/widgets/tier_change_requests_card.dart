@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_human_labels.dart';
@@ -84,7 +83,7 @@ class _RequestRow extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '${request.operatorRef.businessName} • '
+                  '${request.operatorRef.businessName} / '
                   '${request.operatorRef.locationName}',
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
@@ -94,12 +93,12 @@ class _RequestRow extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Tier change: ${request.currentTier.wire} → ${request.requestedTier.wire}',
+            'Tier change: ${adminPollingTierLabel(request.currentTier)} to ${adminPollingTierLabel(request.requestedTier)}',
             style: AppTextStyles.body13(color: AppColors.textPrimary),
           ),
           const SizedBox(height: 4),
           Text(
-            'Reason: ${request.operatorNote.isEmpty ? '-' : request.operatorNote}',
+            'Reason: ${request.operatorNote.isEmpty ? 'No reason provided.' : request.operatorNote}',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 4),
@@ -145,7 +144,7 @@ class _RequestRow extends StatelessWidget {
             )
           else if (!isPending)
             Text(
-              'Resolved as ${request.status.wire}.',
+              'Resolved as ${_statusLabel(request.status).toLowerCase()}.',
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
         ],
@@ -187,7 +186,23 @@ class _StatusBadge extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(status.wire, style: AppTextStyles.chipLabel(color: fg)),
+      child: Text(
+        _statusLabel(status),
+        style: AppTextStyles.chipLabel(color: fg),
+      ),
     );
+  }
+}
+
+String _statusLabel(TierChangeRequestStatus status) {
+  switch (status) {
+    case TierChangeRequestStatus.pending:
+      return 'Pending';
+    case TierChangeRequestStatus.approved:
+      return 'Approved';
+    case TierChangeRequestStatus.denied:
+      return 'Denied';
+    case TierChangeRequestStatus.negotiating:
+      return 'Negotiating';
   }
 }
