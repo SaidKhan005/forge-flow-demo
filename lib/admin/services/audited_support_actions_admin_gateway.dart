@@ -632,7 +632,7 @@ class HttpAuditedSupportActionsAdminGateway
     AuditLogScope? scope,
   }) async {
     final actorUserIds = filters.effectiveActorUserIds;
-    if (scope != null && !scope.isOperatorWide) {
+    if (scope != null) {
       return _listAuditLogByHierarchy(
         operatorId: operatorId,
         filters: filters,
