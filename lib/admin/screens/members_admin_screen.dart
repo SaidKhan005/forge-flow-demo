@@ -921,12 +921,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
               onShowConflict: _showEmailUsage,
               onChangeOperator: widget.onChangeOperator,
             ),
-          _PeopleAccessScopeCard(
-            pickedOperator: widget.pickedOperator,
-            initialScope: widget.initialScope,
-            accessScopes: _availableAccessScopes,
-          ),
-          const SizedBox(height: 12),
           _MembersFilterBar(
             statusFilter: _statusFilter,
             roleFilter: _roleFilter,
