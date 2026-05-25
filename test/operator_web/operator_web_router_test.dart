@@ -957,6 +957,46 @@ void main() {
       },
     );
 
+    testWidgets(
+      'location Business setup edit writes a location-scoped timing profile',
+      (tester) async {
+        await sizeViewport(tester);
+        final writeGateway = _CapturingBusinessTimingGateway();
+        final source = _BusinessTimingHierarchyOperatorWebSource(writeGateway);
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavBusinessSetup,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(
+          find.byKey(const Key('operator_web_business_timing_edit_button')),
+        );
+        await tester.tap(
+          find.byKey(const Key('operator_web_business_timing_edit_button')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(
+          find.byKey(const Key('operator_web_business_timing_editor_save')),
+        );
+        await tester.tap(
+          find.byKey(const Key('operator_web_business_timing_editor_save')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(writeGateway.creates, hasLength(1));
+        expect(writeGateway.creates.single.scopeKind, 'location');
+        expect(writeGateway.creates.single.scopeId, 'demo-location');
+      },
+    );
+
     testWidgets('standard demo hides schedule timing action', (tester) async {
       await sizeViewport(tester);
       final writeGateway = DemoOperatorWebBusinessTimingWriteGateway();

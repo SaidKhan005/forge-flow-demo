@@ -669,6 +669,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                   orgUnitId: businessTimingOrgUnitScope?.id,
                   orgUnitName: businessTimingOrgUnitScope?.label,
                   orgUnitHelper: businessTimingOrgUnitScope?.helper,
+                  initialScopeKind: 'location',
                   gateway: gateway,
                   existingProfile: _resolvedExistingTimingProfile(
                     locationScope.id,
@@ -1659,6 +1660,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             orgUnitId: businessTimingOrgUnitScope?.id,
             orgUnitName: businessTimingOrgUnitScope?.label,
             orgUnitHelper: businessTimingOrgUnitScope?.helper,
+            initialScopeKind: 'location',
             gateway: _webBusinessTimingGateway,
             existingProfile: _resolvedExistingTimingProfile(locationScope.id),
             scheduleMode: _schedulingBusinessTiming,
