@@ -1,11 +1,12 @@
-// Plans & Limits V1 (Phase 1) - admin Plans & limits screen.
+// Plans & Limits V1 (Phase 1 + Phase 2) - admin Plans & limits screen.
 //
 // Rebuilt to the operator-approved mockup
 // `docs/_mockups/admin_plans_and_limits_redesign.html` and the
 // reconciled pricing model in
 // `docs/phases/phase_11a/phase_11a_decision_register.md`
-// ("Reconciled pricing model (2026-05-24)"). FRONT-END ONLY: this
-// slice adds no backend routes and reuses the existing gateways.
+// ("Reconciled pricing model (2026-05-24)"). Phase 1 was front-end
+// only; Phase 2 turns on two live affordances against new proxy routes
+// (see below): delete-a-limit and a month-to-date spend-summary feed.
 //
 // Two views:
 //
@@ -24,19 +25,25 @@
 //     and the usage-limits list where each limit draws a spend-vs-cap
 //     bar.
 //
-// Spend / margin / cap-breach numbers are READ from the existing
-// observability gateway (`ObservabilityAdminGateway`). In demo that
-// gateway returns a deterministic seeded envelope; that is expected.
-// Cost telemetry, cap events, and margin estimates are joined to each
-// operator by `operator_id` (and `usage_class` for the per-limit
-// bars). No live spend-summary endpoint is called - that is Phase 2.
+// Margin / cap-breach numbers are READ from the existing observability
+// gateway (`ObservabilityAdminGateway`). In demo that gateway returns a
+// deterministic seeded envelope; that is expected. Cost telemetry, cap
+// events, and margin estimates are joined to each operator by
+// `operator_id`.
+//
+// The per-limit spend-vs-cap bars prefer the Phase 2
+// `GET /v1/admin/pricing/operators/{id}/spend-summary` endpoint (live
+// month-to-date `SUM(cost_usd)` per cap identity), FALLING BACK to the
+// observability cost telemetry (joined by `usage_class`) when that
+// endpoint is unavailable - so demo mode, which has no spend-summary
+// endpoint, keeps painting exactly as Phase 1 did.
 //
 // Usage-limit add/edit keeps the existing cap upsert through the
-// pricing gateway. The only change is that "use case" is now a
-// dropdown of the known classes with friendly labels; the raw IDs stay
-// visible in a details expander. There is no delete-limit action - the
-// DELETE route is Phase 2 and does not exist, so no delete affordance
-// is rendered (no fake affordance for unbuilt backend).
+// pricing gateway. "Use case" is a dropdown of the known classes with
+// friendly labels; the raw IDs stay visible in a details expander.
+// Phase 2 re-enables delete-a-limit: each limit row carries a delete
+// button that confirms, then calls the idempotent + audited Phase 2
+// `DELETE /v1/admin/pricing/usage-caps` route through the gateway.
 //
 // Inheritance is DISPLAY ONLY: a cap shows "Inherited" vs "Set here"
 // from the existing scope info. No inheritance backend is built here.
@@ -115,6 +122,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   String? _loadError;
   List<PricingOperatorBundle> _bundles = const <PricingOperatorBundle>[];
   ObservabilityEnvelope? _observability;
+
+  /// Live month-to-date spend per operator from the Phase 2
+  /// `spend-summary` endpoint, joined onto the spend-vs-cap bars. A
+  /// missing entry (endpoint unavailable, e.g. demo mode) leaves the
+  /// bars to fall back to the observability envelope, so demo keeps
+  /// working. Keyed by `operator_id`.
+  final Map<String, OperatorSpendSummary> _spendSummaries =
+      <String, OperatorSpendSummary>{};
   String? _selectedOperatorId;
   String? _actionError;
   int _idempotencyCounter = 0;
@@ -149,10 +164,17 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       // read-only figures are unavailable. A failure here is swallowed
       // into a null envelope rather than blocking the whole screen.
       final observability = await _fetchObservability();
+      // Live per-operator spend-summary (Phase 2). Best-effort too: a
+      // host without the endpoint (demo mode) leaves the map empty and
+      // the bars fall back to the observability envelope.
+      final spendSummaries = await _fetchSpendSummaries(bundles);
       if (!mounted) return;
       setState(() {
         _bundles = bundles;
         _observability = observability;
+        _spendSummaries
+          ..clear()
+          ..addAll(spendSummaries);
         _loading = false;
         final visible = _visibleBundles;
         final preferredOperatorId = widget.hierarchyScope?.operatorId;
@@ -195,6 +217,38 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       return null;
     }
   }
+
+  /// Fetches the Phase 2 `spend-summary` for each visible operator,
+  /// best-effort. A failure on any one operator (or the whole endpoint
+  /// being absent in demo) is swallowed so the bars fall back to the
+  /// observability envelope and the screen still paints. Returns a map
+  /// keyed by `operator_id`; absent keys signal "no live figure, use
+  /// the fallback".
+  Future<Map<String, OperatorSpendSummary>> _fetchSpendSummaries(
+    List<PricingOperatorBundle> bundles,
+  ) async {
+    final result = <String, OperatorSpendSummary>{};
+    // Only the operators in scope are rendered, so only fetch those.
+    final scope = widget.hierarchyScope;
+    final targets = <PricingOperatorBundle>[
+      for (final bundle in bundles)
+        if (scope == null || bundle.operatorId == scope.operatorId) bundle,
+    ];
+    for (final bundle in targets) {
+      try {
+        result[bundle.operatorId] = await widget.gateway.fetchSpendSummary(
+          bundle.operatorId,
+        );
+      } catch (_) {
+        // Endpoint unavailable for this operator: leave it out so the
+        // bar uses the observability fallback.
+      }
+    }
+    return result;
+  }
+
+  OperatorSpendSummary? _spendSummaryFor(String operatorId) =>
+      _spendSummaries[operatorId];
 
   PricingOperatorBundle? get _selected {
     final id = _selectedOperatorId;
@@ -398,10 +452,12 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
           : _OperatorPricingDetail(
               bundle: _selected!,
               observability: _observability,
+              spendSummary: _spendSummaryFor(_selected!.operatorId),
               editingEnabled: widget.editingEnabled,
               onApplyTemplate: _onApplyTemplate,
               onEditCap: _onEditCap,
               onAddCap: _onAddCap,
+              onDeleteCap: _onDeleteCap,
             ),
     );
   }
@@ -465,6 +521,32 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     await _runAndRefresh(() async {
       await widget.gateway.upsertUsageCap(command);
     }, successHint: 'Usage limit added.');
+  }
+
+  Future<void> _onDeleteCap(
+    PricingOperatorBundle bundle,
+    UsageCapRow row,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _ConfirmDialog(
+        title: 'Delete this usage limit?',
+        message:
+            'Removes the ${adminRequestUseCaseLabel(row.usageClass)} limit '
+            '(${_money2(row.monthlyCapUsd)} per month) from '
+            '${bundle.businessName}. Advisor spend for this use case will no '
+            'longer be capped here until you add a new limit. Spending '
+            'already recorded this month is not changed.',
+        confirmLabel: 'Delete limit',
+      ),
+    );
+    if (confirmed != true) return;
+    final key = _nextIdempotencyKey();
+    await _runAndRefresh(() async {
+      await widget.gateway.deleteUsageCap(
+        UsageCapDeleteCommand.forRow(row, idempotencyKey: key),
+      );
+    }, successHint: 'Usage limit deleted.');
   }
 
   String? _defaultLocationId(PricingOperatorBundle bundle) {
@@ -586,6 +668,34 @@ double? _spendForCap(
     }
   }
   return matched ? sum : null;
+}
+
+/// Month-to-date spend for one cap, preferring the live Phase 2
+/// `spend-summary` (matched on the exact cap identity:
+/// location + usage_class + staff + workflow) and FALLING BACK to the
+/// observability envelope when no live summary line exists for the cap.
+/// The fallback keeps demo mode working: demo has no `spend-summary`
+/// endpoint, so [summary] is null there and the bar uses the seeded
+/// observability cost telemetry exactly as Phase 1 did. Returns null
+/// when neither source has a figure (honest empty, not a zero bar).
+double? _liveSpendForCap(
+  OperatorSpendSummary? summary,
+  ObservabilityEnvelope? envelope,
+  String operatorId,
+  UsageCapRow cap,
+) {
+  if (summary != null) {
+    for (final line in summary.lines) {
+      if (line.locationId == cap.locationId &&
+          _normalizeUsageClass(line.usageClass) ==
+              _normalizeUsageClass(cap.usageClass) &&
+          line.staffId == cap.staffId &&
+          line.workflowId == cap.workflowId) {
+        return line.monthlyUsedUsd;
+      }
+    }
+  }
+  return _spendForCap(envelope, operatorId, cap);
 }
 
 /// Folds the workflow class aliases together so `workflow`, `wf_pl`,
@@ -1068,19 +1178,23 @@ class _OperatorPricingDetail extends StatelessWidget {
   const _OperatorPricingDetail({
     required this.bundle,
     required this.observability,
+    required this.spendSummary,
     required this.editingEnabled,
     required this.onApplyTemplate,
     required this.onEditCap,
     required this.onAddCap,
+    required this.onDeleteCap,
   });
 
   final PricingOperatorBundle bundle;
   final ObservabilityEnvelope? observability;
+  final OperatorSpendSummary? spendSummary;
   final bool editingEnabled;
   final void Function(PricingOperatorBundle, PricingTierTemplate)
   onApplyTemplate;
   final void Function(PricingOperatorBundle, UsageCapRow) onEditCap;
   final void Function(PricingOperatorBundle) onAddCap;
+  final void Function(PricingOperatorBundle, UsageCapRow) onDeleteCap;
 
   @override
   Widget build(BuildContext context) {
@@ -1105,9 +1219,11 @@ class _OperatorPricingDetail extends StatelessWidget {
           _UsageLimitsCard(
             bundle: bundle,
             observability: observability,
+            spendSummary: spendSummary,
             editingEnabled: editingEnabled,
             onEdit: onEditCap,
             onAdd: onAddCap,
+            onDelete: onDeleteCap,
           ),
         ],
       ),
@@ -1402,16 +1518,20 @@ class _UsageLimitsCard extends StatelessWidget {
   const _UsageLimitsCard({
     required this.bundle,
     required this.observability,
+    required this.spendSummary,
     required this.editingEnabled,
     required this.onEdit,
     required this.onAdd,
+    required this.onDelete,
   });
 
   final PricingOperatorBundle bundle;
   final ObservabilityEnvelope? observability;
+  final OperatorSpendSummary? spendSummary;
   final bool editingEnabled;
   final void Function(PricingOperatorBundle, UsageCapRow) onEdit;
   final void Function(PricingOperatorBundle) onAdd;
+  final void Function(PricingOperatorBundle, UsageCapRow) onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -1441,13 +1561,15 @@ class _UsageLimitsCard extends StatelessWidget {
               (row) => _UsageCapRowTile(
                 bundle: bundle,
                 row: row,
-                spendUsd: _spendForCap(
+                spendUsd: _liveSpendForCap(
+                  spendSummary,
                   observability,
                   bundle.operatorId,
                   row,
                 ),
                 editingEnabled: editingEnabled,
                 onEdit: onEdit,
+                onDelete: onDelete,
               ),
             ),
         ],
@@ -1577,6 +1699,7 @@ class _UsageCapRowTile extends StatelessWidget {
     required this.spendUsd,
     required this.editingEnabled,
     required this.onEdit,
+    required this.onDelete,
   });
 
   final PricingOperatorBundle bundle;
@@ -1584,6 +1707,7 @@ class _UsageCapRowTile extends StatelessWidget {
   final double? spendUsd;
   final bool editingEnabled;
   final void Function(PricingOperatorBundle, UsageCapRow) onEdit;
+  final void Function(PricingOperatorBundle, UsageCapRow) onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -1633,6 +1757,14 @@ class _UsageCapRowTile extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   tooltip: 'Edit usage limit',
                   onPressed: () => onEdit(bundle, row),
+                ),
+                IconButton(
+                  key: Key('admin_pricing_cap_delete_$keySuffix'),
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Delete usage limit',
+                  color: AppColors.negative,
+                  onPressed: () => onDelete(bundle, row),
                 ),
               ],
             ],
