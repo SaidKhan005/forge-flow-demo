@@ -33,7 +33,7 @@ import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_scope_tree_pane.dart';
 
 const int _kLegacyRolloverHourDefault = 4;
-const double _kBusinessAccountDetailMaxWidth = 1120;
+const double _kBusinessAccountDetailMaxWidth = 1360;
 
 class OperatorLocationAdminScreen extends StatefulWidget {
   const OperatorLocationAdminScreen({
@@ -838,78 +838,18 @@ class _OperatorDetail extends StatelessWidget {
               children: [
                 Container(
                   key: const Key('admin_operator_profile_card'),
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                  padding: const EdgeInsets.fromLTRB(40, 38, 40, 34),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 16,
-                        runSpacing: 12,
-                        children: [
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(minWidth: 260),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    operator.businessName,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTextStyles.display20(
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                                if (operator.isSuspended) ...[
-                                  const SizedBox(width: 10),
-                                  _StatusPill(
-                                    label: 'suspended',
-                                    color: AppColors.negative,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          _ActionRowWrap(
-                            children: [
-                              if (editingEnabled)
-                                _OperatorActionButton(
-                                  buttonKey: const Key(
-                                    'admin_operator_edit_button',
-                                  ),
-                                  label: 'Edit',
-                                  icon: Icons.badge_outlined,
-                                  tooltip: 'Edit account profile',
-                                  onPressed: () => onEditOperator(bundle),
-                                ),
-                              if (editingEnabled && operator.isSuspended)
-                                _OperatorActionButton(
-                                  buttonKey: const Key(
-                                    'admin_operator_reactivate_button',
-                                  ),
-                                  label: 'Reactivate',
-                                  icon: Icons.play_arrow_outlined,
-                                  tooltip: 'Reactivate this business account',
-                                  onPressed: () => onReactivate(bundle),
-                                ),
-                              if (editingEnabled && !operator.isSuspended)
-                                _OperatorActionButton(
-                                  buttonKey: const Key(
-                                    'admin_operator_suspend_button',
-                                  ),
-                                  label: 'Suspend',
-                                  icon: Icons.pause_outlined,
-                                  tooltip: 'Suspend this business account',
-                                  destructive: true,
-                                  onPressed: () => onSuspend(bundle),
-                                ),
-                            ],
-                          ),
-                        ],
+                      _OperatorProfileHeader(
+                        operator: operator,
+                        editingEnabled: editingEnabled,
+                        onEdit: () => onEditOperator(bundle),
+                        onSuspend: () => onSuspend(bundle),
+                        onReactivate: () => onReactivate(bundle),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 34),
                       _OperatorSummaryStrip(
                         children: [
                           _OperatorSummaryTile(
@@ -940,7 +880,7 @@ class _OperatorDetail extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
                   child: Container(
                     height: 1,
                     color: AppColors.borderSubtle.withValues(alpha: 0.58),
@@ -967,6 +907,98 @@ class _OperatorDetail extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _OperatorProfileHeader extends StatelessWidget {
+  const _OperatorProfileHeader({
+    required this.operator,
+    required this.editingEnabled,
+    required this.onEdit,
+    required this.onSuspend,
+    required this.onReactivate,
+  });
+
+  final OperatorAdminRecord operator;
+  final bool editingEnabled;
+  final VoidCallback onEdit;
+  final VoidCallback onSuspend;
+  final VoidCallback onReactivate;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            operator.businessName,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
+          ),
+        ),
+        if (operator.isSuspended) ...[
+          const SizedBox(width: 10),
+          _StatusPill(label: 'suspended', color: AppColors.negative),
+        ],
+      ],
+    );
+    final actions = _ActionRowWrap(
+      children: [
+        if (editingEnabled)
+          _OperatorActionButton(
+            buttonKey: const Key('admin_operator_edit_button'),
+            label: 'Edit',
+            icon: Icons.edit_outlined,
+            tooltip: 'Edit account profile',
+            onPressed: onEdit,
+          ),
+        if (editingEnabled && operator.isSuspended)
+          _OperatorActionButton(
+            buttonKey: const Key('admin_operator_reactivate_button'),
+            label: 'Reactivate',
+            icon: Icons.play_arrow_outlined,
+            tooltip: 'Reactivate this business account',
+            onPressed: onReactivate,
+          ),
+        if (editingEnabled && !operator.isSuspended)
+          _OperatorActionButton(
+            buttonKey: const Key('admin_operator_suspend_button'),
+            label: 'Suspend',
+            icon: Icons.pause_outlined,
+            tooltip: 'Suspend this business account',
+            destructive: true,
+            onPressed: onSuspend,
+          ),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 640) {
+          return Wrap(
+            spacing: 16,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 240),
+                child: title,
+              ),
+              actions,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: 24),
+            actions,
+          ],
+        );
+      },
     );
   }
 }
@@ -1014,11 +1046,11 @@ class _OperatorSummaryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 150, maxWidth: 220),
+      constraints: const BoxConstraints(minWidth: 190, maxWidth: 270),
       child: Row(
         children: [
-          Icon(icon, size: 15, color: AppColors.textMuted),
-          const SizedBox(width: 8),
+          _HierarchyIconTile(icon: icon, muted: muted),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1042,6 +1074,49 @@ class _OperatorSummaryTile extends StatelessWidget {
     );
     if (!muted) return content;
     return Opacity(opacity: 0.56, child: content);
+  }
+}
+
+class _HierarchyIconTile extends StatelessWidget {
+  const _HierarchyIconTile({
+    required this.icon,
+    this.selected = false,
+    this.muted = false,
+  });
+
+  final IconData icon;
+  final bool selected;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = selected ? AppColors.sunsetDark : AppColors.textMuted;
+    final color = muted ? activeColor.withValues(alpha: 0.72) : activeColor;
+    return Container(
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: selected
+            ? AppColors.sunset.withValues(alpha: 0.08)
+            : AppColors.backgroundSurface,
+        border: Border.all(
+          color: selected
+              ? AppColors.sunsetDark.withValues(alpha: 0.34)
+              : AppColors.borderSubtle.withValues(alpha: 0.74),
+        ),
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: [
+          if (!selected)
+            BoxShadow(
+              color: AppColors.textPrimary.withValues(alpha: 0.025),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+        ],
+      ),
+      child: Icon(icon, size: 21, color: color),
+    );
   }
 }
 
@@ -1752,7 +1827,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
   Widget build(BuildContext context) {
     return Padding(
       key: const Key('admin_business_hierarchy_panel'),
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+      padding: const EdgeInsets.fromLTRB(40, 24, 40, 44),
       child: FutureBuilder<_HierarchyPanelData>(
         future: _future,
         builder: (context, snapshot) {
@@ -2665,18 +2740,17 @@ class _HierarchyScopeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final depthIndent = depth * 22.0;
     final isNested = depth > 0;
     final radius = BorderRadius.circular(6);
-    final rowMaxWidth = trailing == null ? 760.0 : 960.0;
+    final rowMaxWidth = trailing == null ? 1080.0 : 1260.0;
     final fillColor = selected
-        ? AppColors.sunset.withValues(alpha: 0.055)
+        ? AppColors.sunset.withValues(alpha: 0.06)
         : Colors.transparent;
     final borderColor = selected
-        ? AppColors.sunsetDark.withValues(alpha: 0.14)
+        ? AppColors.sunsetDark.withValues(alpha: 0.16)
         : Colors.transparent;
     return Padding(
-      padding: EdgeInsets.only(left: depthIndent, top: 4, bottom: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Align(
         alignment: Alignment.centerLeft,
         child: ConstrainedBox(
@@ -2684,17 +2758,7 @@ class _HierarchyScopeRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (isNested) ...[
-                Container(
-                  width: 1,
-                  height: 42,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.borderSubtle.withValues(alpha: 0.48),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ],
+              if (isNested) _HierarchyConnector(depth: depth),
               Expanded(
                 child: Material(
                   color: fillColor,
@@ -2703,7 +2767,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                     onTap: onTap,
                     borderRadius: radius,
                     child: Container(
-                      padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                       decoration: BoxDecoration(
                         border: Border.all(color: borderColor, width: 1),
                         borderRadius: radius,
@@ -2711,32 +2775,29 @@ class _HierarchyScopeRow extends StatelessWidget {
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final compactActions =
-                              trailing != null && constraints.maxWidth < 820;
-                          final showLeadingIcon = constraints.maxWidth >= 72;
+                              trailing != null && constraints.maxWidth < 880;
+                          final showLeadingIcon = constraints.maxWidth >= 96;
                           final showAccent =
-                              selected && constraints.maxWidth >= 104;
+                              selected && constraints.maxWidth >= 128;
                           final labelBlock = Row(
                             children: [
                               if (showAccent) ...[
                                 Container(
                                   width: 3,
-                                  height: 32,
+                                  height: 42,
                                   decoration: BoxDecoration(
                                     color: AppColors.sunsetDark,
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 12),
                               ],
                               if (showLeadingIcon) ...[
-                                Icon(
-                                  icon,
-                                  size: 17,
-                                  color: selected
-                                      ? AppColors.sunsetDark
-                                      : AppColors.textSecondary,
+                                _HierarchyIconTile(
+                                  icon: icon,
+                                  selected: selected,
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 14),
                               ],
                               Expanded(
                                 child: Column(
@@ -2783,7 +2844,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                                     const SizedBox(width: 16),
                                     ConstrainedBox(
                                       constraints: const BoxConstraints(
-                                        maxWidth: 580,
+                                        maxWidth: 650,
                                       ),
                                       child: Align(
                                         alignment: Alignment.centerRight,
@@ -2805,6 +2866,76 @@ class _HierarchyScopeRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _HierarchyConnector extends StatelessWidget {
+  const _HierarchyConnector({required this.depth});
+
+  final int depth;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      key: Key('admin_hierarchy_connector_depth_$depth'),
+      width: depth * 52.0,
+      height: 64,
+      child: CustomPaint(painter: _DashedHierarchyConnectorPainter(depth)),
+    );
+  }
+}
+
+class _DashedHierarchyConnectorPainter extends CustomPainter {
+  const _DashedHierarchyConnectorPainter(this.depth);
+
+  final int depth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (depth <= 0) return;
+    final paint = Paint()
+      ..color = AppColors.borderSubtle.withValues(alpha: 0.9)
+      ..strokeWidth = 1.35
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final centerY = size.height / 2;
+    for (var level = 0; level < depth; level++) {
+      final x = 22.0 + (level * 52.0);
+      _drawDashedLine(canvas, Offset(x, 0), Offset(x, size.height), paint);
+    }
+    final elbowX = 22.0 + ((depth - 1) * 52.0);
+    _drawDashedLine(
+      canvas,
+      Offset(elbowX, centerY),
+      Offset(size.width - 9, centerY),
+      paint,
+    );
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+    const dash = 4.5;
+    const gap = 4.0;
+    final isVertical = start.dx == end.dx;
+    final length = isVertical
+        ? (end.dy - start.dy).abs()
+        : (end.dx - start.dx).abs();
+    var distance = 0.0;
+    while (distance < length) {
+      final next = distance + dash > length ? length : distance + dash;
+      final segmentStart = isVertical
+          ? Offset(start.dx, start.dy + distance)
+          : Offset(start.dx + distance, start.dy);
+      final segmentEnd = isVertical
+          ? Offset(end.dx, start.dy + next)
+          : Offset(start.dx + next, end.dy);
+      canvas.drawLine(segmentStart, segmentEnd, paint);
+      distance += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedHierarchyConnectorPainter oldDelegate) {
+    return oldDelegate.depth != depth;
   }
 }
 
@@ -2835,7 +2966,7 @@ class _OperatorActionButton extends StatelessWidget {
         style: destructive
             ? AdminButtonStyles.dangerSecondary()
             : AdminButtonStyles.secondary(),
-        icon: Icon(icon, size: 14),
+        icon: Icon(icon, size: 18),
         label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
       ),
     );

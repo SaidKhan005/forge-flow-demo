@@ -206,8 +206,48 @@ void main() {
       final gateway = InMemoryOperatorLocationAdminGateway(
         seed: <OperatorAdminBundle>[seedBundle()],
       );
+      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-seed-1': const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'Demo Diner Co.',
+              operatorId: 'op-seed-1',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: 'org-east',
+              name: 'East region',
+              operatorId: 'op-seed-1',
+              parentOrgUnitId: 'org-root',
+              unitType: 'region',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: 'org-west',
+              name: 'West region',
+              operatorId: 'op-seed-1',
+              parentOrgUnitId: 'org-root',
+              unitType: 'region',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-seed-1': const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: 'loc-seed-1',
+              name: 'Toronto Yorkville',
+              operatorId: 'op-seed-1',
+              orgUnitId: 'org-east',
+            ),
+          ],
+        },
+      );
       await tester.pumpWidget(
-        wrap(OperatorLocationAdminScreen(gateway: gateway)),
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            hierarchyGateway: hierarchyGateway,
+          ),
+        ),
       );
       await pumpEventually(tester);
 
@@ -229,6 +269,12 @@ void main() {
       final hierarchyRect = tester.getRect(
         find.byKey(const Key('admin_business_hierarchy_panel')),
       );
+      final editButtonRect = tester.getRect(
+        find.byKey(const Key('admin_operator_edit_button')),
+      );
+      final suspendButtonRect = tester.getRect(
+        find.byKey(const Key('admin_operator_suspend_button')),
+      );
       final firstActionRect = tester.getRect(
         find.byKey(const Key('admin_location_move_loc-seed-1')),
       );
@@ -243,8 +289,13 @@ void main() {
       );
       expect(
         surfaceRect.width,
-        lessThan(1160),
-        reason: 'the account surface should stay compact on wide screens',
+        greaterThan(1280),
+        reason: 'the account surface should match the wide reference render',
+      );
+      expect(
+        surfaceRect.width,
+        lessThan(1400),
+        reason: 'the account surface should still be centered and contained',
       );
       expect(
         hierarchyRect.width,
@@ -258,8 +309,28 @@ void main() {
         reason: 'the account surface should be centered inside the right pane',
       );
       expect(
+        editButtonRect.top,
+        closeTo(suspendButtonRect.top, 1),
+        reason: 'top account actions should align as one button row',
+      );
+      expect(
+        surfaceRect.right - suspendButtonRect.right,
+        closeTo(40, 2),
+        reason: 'top account actions should sit on the profile right edge',
+      );
+      expect(
+        find.byKey(const Key('admin_hierarchy_connector_depth_1')),
+        findsWidgets,
+        reason: 'child rows should expose visible dotted hierarchy links',
+      );
+      expect(
+        find.byKey(const Key('admin_hierarchy_connector_depth_2')),
+        findsWidgets,
+        reason: 'grandchild rows should expose visible dotted hierarchy links',
+      );
+      expect(
         lastActionRect.right - firstActionRect.left,
-        lessThan(560),
+        lessThan(680),
         reason: 'selected hierarchy actions should stay compact inside the row',
       );
     },
