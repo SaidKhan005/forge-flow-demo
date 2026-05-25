@@ -1,0 +1,37 @@
+test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1162:3: Error: Type 'PackagePostgresPool' not found.
+  PackagePostgresPool pool, {
+  ^^^^^^^^^^^^^^^^^^^
+test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1202:3: Error: Type 'PackagePostgresPool' not found.
+  PackagePostgresPool pool, {
+  ^^^^^^^^^^^^^^^^^^^
+test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1226:3: Error: Type 'PackagePostgresPool' not found.
+  PackagePostgresPool pool, {
+  ^^^^^^^^^^^^^^^^^^^
+test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1250:3: Error: Type 'PackagePostgresPool' not found.
+  PackagePostgresPool pool, {
+  ^^^^^^^^^^^^^^^^^^^
+test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1162:3: Error: 'PackagePostgresPool' isn't a type.
+  PackagePostgresPool pool, {
+  ^^^^^^^^^^^^^^^^^^^
+test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1202:3: Error: 'PackagePostgresPool' isn't a type.
+  PackagePostgresPool pool, {
+  ^^^^^^^^^^^^^^^^^^^
+test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1226:3: Error: 'PackagePostgresPool' isn't a type.
+  PackagePostgresPool pool, {
+  ^^^^^^^^^^^^^^^^^^^
+test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1250:3: Error: 'PackagePostgresPool' isn't a type.
+  PackagePostgresPool pool, {
+  ^^^^^^^^^^^^^^^^^^^
+test/operator_web/screens/audit_log_hierarchy_filter_pane_test.dart:340:7: Error: The non-abstract class '_StaticWebTeamHierarchyGateway' is missing implementations for these members:
+ - WebTeamHierarchyGateway.renameOrgUnit
+Try to either
+ - provide an implementation,
+ - inherit an implementation from a superclass or mixin,
+ - mark the class as abstract, or
+ - provide a 'noSuchMethod' implementation.
+
+class _StaticWebTeamHierarchyGateway implements WebTeamHierarchyGateway {
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/operator_web/services/web_team_hierarchy_gateway.dart:53:30: Context: 'WebTeamHierarchyGateway.renameOrgUnit' is defined here.
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+                             ^^^^^^^^^^^^^

@@ -1,0 +1,640 @@
+=== COUNTS ===
+total(non-hidden tests done): 9880
+passed: 9751
+failed: 33
+error: 87
+skipped: 9
+other: 0
+
+=== FAILURES ===
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: 7shifts post-.7S.upgrade is in perEmployeeWithDollars; aggregator consumes vendor-supplied total_pay -> vendor_seven_shifts_per_employee_actual_dollars  (line 749)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: Concern A: re-aggregation after cycle roll preserves target_profile_version_id verbatim  (line 382)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: Humanity per-position fixture: rate × hours -> vendor_humanity_per_position_actual_dollars  (line 685)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: Pattern A: Square + Libro operator with operator_walk_in_count -> covers source = vendor_libro_seated_plus_operator_walk_in_count  (line 549)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: Square (coversFieldExposed=false) trio: vendor row covers=0 + forecast available -> aggregator emits vendor_square_covers_unavailable_app_forecast_substituted  (line 498)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: Tock fixture without seated_at: aggregator buckets by reservation_at; SEATED party_size sums; NO_SHOW excluded  (line 617)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: operator manual entry per daypart -> sourceSystem = operator_manual_entry; provenance = operator_manual_entry_per_daypart  (line 826)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: trio chain: Oracle Simphony + QuickBooks Time + Libro fixture -> aggregator + writer + sync -> SQLite shift_records row carries vendor provenance  (line 134)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  test: wage source = manual_mix -> labor_dollars provenance = target_wage_substituted (acceptance #15)  (line 880)
+  error: type 'Null' is not a subtype of type 'String' in type cast
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/admin_shell_widget_test.dart
+  test: side nav lists primary routes and hides setup-only routes  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: side nav lists primary routes and hides setup-only routes
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/auth/permission_catalog_b5b_test.dart
+  test: B5.b catalog tri-mirror contract documents grant intent and MFA posture  (line 38)
+  error: Expected: contains '`operator_owner` and `operator_admin`'
+      Actual: '# Auth Permission Key Catalog\r\n'
+                '\r\n'
+                '**Status:** Active. Lands with Phase 9.0.\r\n'
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/current_state_alignment_test.dart
+  test: B â€” shift dashboard read model getShiftDashboard returns null when no locked weekly plan exists  (line 92)
+  error: Expected: null
+      Actual: <Instance of 'ShiftDashboardReadModel'>
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/current_state_alignment_test.dart
+  test: J — 7.56c.0 Full Week plan daypart alignment J1b: locked Schedule loads canonical weights when provider weights are not ready, so Fri Lunch and every subrow match plan truth  (line 810)
+  error: Expected: <64>
+      Actual: <61>
+    Mon/lunch: Schedule covers must match the canonical Plan daypart allocation even when provider weights were not ready at construction.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/db/migrations/forward_apply_populated_db_test.dart
+  test: Test 1: fresh DB — apply all pending migrations with no SQL errors  (line 37)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/db/migrations/forward_apply_populated_db_test.dart
+  test: Test 2: pre-populated DB — apply all migrations; rows survive  (line 57)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/demo_flip_race_test.dart
+  test: Demo-flip race — live Postgres (regression guard) two concurrent flip calls result in exactly ONE flip event in demo_mode_state (WHERE is_demo=true serializes the race)  (line 161)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 1 — cutoff + IANA-zone round-trip CONTRACT GAP — invalid IANA zone is enforced at the LOCATION row, not on the profile. The profile schema intentionally does not carry an `iana_timezone` column. Phase 6 frame the IANA invalid-zone reject test as a `locations` write check; this profile-side test asserts the boundary by writing a bogus timezone onto `locations` and checking that `listCandidateProfilesForLocation` surfaces it verbatim — i.e. the profile resolver does not re-validate IANA names. IANA validation lives in `IanaTimezoneConverter._resolveLocation`.  (line 299)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 1 — cutoff + IANA-zone round-trip createProfile + loadProfileById round-trips the rollover cutoff (`business_day_start_local_time`) verbatim, and the IANA zone surfaces from `locations.timezone` via listCandidateProfilesForLocation  (line 109)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 1 — cutoff + IANA-zone round-trip rejects a non-quarter-hour cutoff — 04:07 violates `business_timing_time_is_quarter_hour(time)` check constraint  (line 266)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 1 — cutoff + IANA-zone round-trip rollover-cutoff boundary cases — 00:00 (midnight) and 23:00 (one-hour-before-midnight) both persist; both honour the quarter-hour check constraint  (line 220)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 1 — cutoff + IANA-zone round-trip updateProfile rewrites `business_day_start_local_time` and reread returns the new value (operator-scoped UPDATE, audited)  (line 181)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 2 — hierarchy-scoped resolution "inherited from" metadata identifies the source scope — every candidate row exposes scope_type/scope_id so the operator-web editor can render the resolution provenance  (line 477)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 2 — hierarchy-scoped resolution business + location overrides — operator-scope profile is inherited; location-scope profile wins when present  (line 383)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 3 — business_date derivation honours the cutoff DST fall-back — IANA-tz business-date converter against `locations.business_day_rollover_hour = 4`. The 01:30 wall clock occurs twice on the November fall-back Sunday; business_date is determined by the absolute UTC instant projected through the IANA database.  (line 693)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 3 — business_date derivation honours the cutoff DST spring-forward — IANA-tz business-date converter pinned against `locations.business_day_rollover_hour = 4`. UTC 06:30 on 2026-03-08 (spring-forward Sunday in America/Toronto) is restaurant-local 02:30 EST during the skipped hour; converter projects to the same calendar date because rollover hour 4 is after the skipped wall-clock window.  (line 652)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 3 — business_date derivation honours the cutoff before-rollover wall clock with cutoff 04:00 → prior business date; same wall clock with cutoff 00:00 → same business date  (line 557)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 3 — business_date derivation honours the cutoff cutoff 00:00 — every wall-clock instant on a calendar date maps to that calendar date as business_date  (line 607)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 4 — operator-scoped read isolation operator A in tenant context cannot reach into operator B's profile rows even via crafted SQL through the same tx — RLS predicate `operator_id = public.app_current_operator()` blocks  (line 880)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 4 — operator-scoped read isolation system-scope listing (`set local role forge_admin`) sees both tenants — escape hatch is preserved for support flows  (line 816)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 4 — operator-scoped read isolation tenant A creates a profile; tenant B running through listProfilesForOperator with operator A's id sees nothing (RLS denies under tenant B SET LOCAL)  (line 749)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 5 — `op.rollover_hour does not exist` regression locations.business_day_rollover_hour column exists with int type and 0..23 check constraint — fresh schema must support the production business_date derivation  (line 955)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  test: Group 5 — `op.rollover_hour does not exist` regression production read path runs end-to-end against a fresh schema — seed an operator + location + profile, then exercise listCandidateProfilesForLocation. If `op.rollover_hour` (or any sibling column) goes missing, this test fails with a clear postgres error rather than a sanitized 5xx  (line 997)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: active_target_profiles RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: active_target_profiles RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: active_target_profiles RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: advisor_conversation_log RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: advisor_conversation_log RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: advisor_conversation_log RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: auth_invites RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: auth_invites RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: auth_invites RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: business_timing_profiles RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: business_timing_profiles RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: business_timing_profiles RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: forecast_contexts RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: forecast_contexts RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: forecast_contexts RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: mobile_push_outbox RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: mobile_push_outbox RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: mobile_push_outbox RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: mobile_push_tokens RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: mobile_push_tokens RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: mobile_push_tokens RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: open_shift_snapshots RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: open_shift_snapshots RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: open_shift_snapshots RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: operator_account RLS isolation operator A in location Y cannot read rows scoped to location X (location-scoped RLS posture documentation)  (line 173)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: operator_account RLS isolation operator B cannot read operator A rows (cross-tenant isolation)  (line 88)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+  test: operator_account RLS isolation query without tenant context returns empty (no SET LOCAL → wrappers return empty UUID)  (line 129)
+  error: Severity.error Server does not support SSL, but it was required (default configuration). To disable secure connections, use `ConnectionSettings(sslMode: SslMode.disable)`.
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/role_permissions_repository_test.dart
+  test: RolePermissionsRepository.upsertCell — permission_key catalog round-trip all 103 catalog keys round-trip — the repo never rejects a syntactically-valid key (catalog membership is enforced by the DB FK, not the repo)  (line 219)
+  error: Expected: <103>
+      Actual: <106>
+    auth_permission_key_catalog.md contract calls out 103 keys total after additive catalog slices; a count drift here is a doc-vs-code drift to investigate
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart
+  test: loading C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart  (line None)
+  error: Failed to load "C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart":
+    Compilation failed for testPath=C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart: test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart:1162:3: Error: Type 'PackagePostgresPool' not found.
+      PackagePostgresPool pool, {
+      ^^^^^^^^^^^^^^^^^^^
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/labor/agendrix_labor_adapter_test.dart
+  test: AgendrixLaborAdapter — banned items grep webhook signature verifier file does NOT exist for poll-only adapter  (line 503)
+  error: Expected: false
+      Actual: <true>
+    pollOnly vendor must not ship a signature verifier; webhook_signature.md documents this as N/A
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/labor/humanity_labor_adapter_test.dart
+  test: Banned items grep (Test 8) adapter has no webhook signature verifier file (pollOnly — N/A)  (line 678)
+  error: Expected: <false>
+      Actual: <true>
+    pollOnly vendors do not ship a webhook signature verifier; the file existing would contradict the capability profile
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/labor/push_operations_labor_adapter_test.dart
+  test: PushOperationsLaborAdapter — banned items grep webhook signature verifier file does NOT exist for poll-only adapter  (line 503)
+  error: Expected: false
+      Actual: <true>
+    pollOnly vendor must not ship a signature verifier; webhook_signature.md documents this as N/A
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/labor/quickbooks_time_labor_adapter_test.dart
+  test: Banned items grep (Test 9) webhook signature verifier file does NOT exist for poll-only adapter  (line 750)
+  error: Expected: false
+      Actual: <true>
+    pollOnly vendor must not ship a signature verifier; webhook_signature.md documents this as N/A
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/reservation/sevenrooms_credential_bridge_test.dart
+  test: persistIssuedBearerToken records client_id + client_secret + venue_id on metadata patch  (line 69)
+  error: Converting object to an encodable object failed: Instance of 'DateTime'
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/mobile_push_notification_service_test.dart
+  test: MobilePushNotificationCoordinator routes opened and initially-opened pushes to Notifications  (line 160)
+  error: MissingPluginException(No implementation found for method getAll on channel plugins.flutter.io/shared_preferences)
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/account/mfa_card_controller_test.dart
+  test: MfaCardController cancel during the grace window requires step-up and returns enrolled  (line 97)
+  error: Expected: contains 'cancelling 2FA removal'
+      Actual: ['removing two-factor sign-in', 'cancelling two-factor sign-in removal']
+       Which: does not contain 'cancelling 2FA removal'
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/account/mfa_card_controller_test.dart
+  test: MfaCardController walks NotEnrolled -> Enrolled -> RemovalRequested -> Removable  (line 13)
+  error: Expected: contains 'removing 2FA'
+      Actual: ['removing two-factor sign-in']
+       Which: does not contain 'removing 2FA'
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/operator_web_router_test.dart
+  test: OperatorWebRouter auth stages management picker drives location-scoped vendor route  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: management picker drives location-scoped vendor route
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/screens/audit_log_hierarchy_filter_pane_test.dart
+  test: loading C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/screens/audit_log_hierarchy_filter_pane_test.dart  (line None)
+  error: Failed to load "C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/screens/audit_log_hierarchy_filter_pane_test.dart":
+    Compilation failed for testPath=C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/screens/audit_log_hierarchy_filter_pane_test.dart: test/operator_web/screens/audit_log_hierarchy_filter_pane_test.dart:340:7: Error: The non-abstract class '_StaticWebTeamHierarchyGateway' is missing implementations for these members:
+     - WebTeamHierarchyGateway.renameOrgUnit
+    Try to either
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/widgets/vendor_relativity_label_test.dart
+  test: composeVendorRelativityLines — polling (acceptance item H) QuickBooks Time connected (poll-only) — copy mentions QBT and F&F controls cadence  (line 192)
+  error: Expected: true
+      Actual: <false>
+    expected tier-control copy, got [Forge & Flow checks QuickBooks Time for new data on a regular schedule. Your tier sets how often., Forge & Flow manages the schedule at the tier level. Tap "Request faster data freshness" below if you need a different cadence.]
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart
+  test: cold boot (real current date) — non-Downtown locations are NOT HISTORICAL ONLY on a real device clock  (line 260)
+  error: Expected: '2026-05-17'
+      Actual: '2026-05-16'
+       Which: is different.
+              Expected: 2026-05-17
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  test: K â€” real pre-v8 upgrade path active target profile exists after v8 migration  (line 742)
+  error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?) sql 'DELETE FROM target_cycle_dayparts WHERE cycle_id = ?' args [demo_cycle_2026-03-27] {details: {database: {path: C:\Users\saidu\AppData\Local\Temp\forge_v8_upgrade_test_1778980051543.db, id: 9, readOnly: false, singleInstance: true}}}
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  test: K â€” real pre-v8 upgrade path compat version row exists after v8 migration  (line 730)
+  error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?) sql 'DELETE FROM target_cycle_dayparts WHERE cycle_id = ?' args [demo_cycle_2026-03-27] {details: {database: {path: C:\Users\saidu\AppData\Local\Temp\forge_v8_upgrade_test_1778980049214.db, id: 8, readOnly: false, singleInstance: true}}}
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  test: K â€” real pre-v8 upgrade path migrated shift row rehydrates as ShiftRecord with locked fields  (line 751)
+  error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?) sql 'DELETE FROM target_cycle_dayparts WHERE cycle_id = ?' args [demo_cycle_2026-03-27] {details: {database: {path: C:\Users\saidu\AppData\Local\Temp\forge_v8_upgrade_test_1778980053297.db, id: 10, readOnly: false, singleInstance: true}}}
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  test: K â€” real pre-v8 upgrade path old shift row has target-profile provenance after v8 migration  (line 718)
+  error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?) sql 'DELETE FROM target_cycle_dayparts WHERE cycle_id = ?' args [demo_cycle_2026-03-27] {details: {database: {path: C:\Users\saidu\AppData\Local\Temp\forge_v8_upgrade_test_1778980041662.db, id: 7, readOnly: false, singleInstance: true}}}
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  test: K â€” real pre-v8 upgrade path old shift row survives v8 migration with locked targets backfilled  (line 702)
+  error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?) sql 'DELETE FROM target_cycle_dayparts WHERE cycle_id = ?' args [demo_cycle_2026-03-27] {details: {database: {path: C:\Users\saidu\AppData\Local\Temp\forge_v8_upgrade_test_1778980033162.db, id: 6, readOnly: false, singleInstance: true}}}
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  test: L â€” partial-migration provenance repair compat version row exists after partial-migration repair  (line 965)
+  error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?) sql 'DELETE FROM target_cycle_dayparts WHERE cycle_id = ?' args [demo_cycle_2026-03-27] {details: {database: {path: C:\Users\saidu\AppData\Local\Temp\forge_partial_test_1778980057433.db, id: 12, readOnly: false, singleInstance: true}}}
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  test: L â€” partial-migration provenance repair partially migrated row gets provenance repaired  (line 947)
+  error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?) sql 'DELETE FROM target_cycle_dayparts WHERE cycle_id = ?' args [demo_cycle_2026-03-27] {details: {database: {path: C:\Users\saidu\AppData\Local\Temp\forge_partial_test_1778980055130.db, id: 11, readOnly: false, singleInstance: true}}}
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  test: L â€” partial-migration provenance repair repaired row rehydrates with full locked-field access  (line 974)
+  error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: target_cycle_dayparts, SQL logic error (code 1)
+      Causing statement: DELETE FROM target_cycle_dayparts WHERE cycle_id = ?) sql 'DELETE FROM target_cycle_dayparts WHERE cycle_id = ?' args [demo_cycle_2026-03-27] {details: {database: {path: C:\Users\saidu\AppData\Local\Temp\forge_partial_test_1778980059082.db, id: 13, readOnly: false, singleInstance: true}}}
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0a_scope_extensions_test.dart
+  test: PermissionKeys catalog mirror (9.0a) PermissionKeys.all has 103 entries after additive catalog slices  (line 221)
+  error: Expected: <103>
+      Actual: <106>
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_e_event_outbox_test.dart
+  test: Phase 10a plan alignment with event_outbox contract (setUpAll)  (line 573)
+  error: Expected: true
+      Actual: <false>
+    Phase 10a plan doc must exist for the cross-doc alignment check
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_chain_e2e_test.dart
+  test: audit_logs receives auth-event family Login event → audit_logs row exists with actor_kind=user, valid prev_row_hash (null on first row of the chain), and the chain remains valid through AuditChainHasher.verifyChain  (line 282)
+  error: Expected: 'user'
+      Actual: 'team_member'
+       Which: is different.
+              Expected: user
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_chain_e2e_test.dart
+  test: audit_logs receives auth-event family MFA enroll event → audit_logs row exists with actor_kind=user, prev_row_hash links to the prior row, and the chain stays valid. Firebase boundary is mocked at the repository pool; everything below — repository write, trigger semantics, hash chain — is real  (line 326)
+  error: Expected: 'user'
+      Actual: 'team_member'
+       Which: is different.
+              Expected: user
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_chain_e2e_test.dart
+  test: audit_logs receives auth-event family Password change event → audit_logs row exists with actor_kind=user, action matching the production gateway event_type "auth.password_changed" (RepositoryPasswordChangeGateway._audit), and target_kind/target_id naming the user whose password rotated. Chain remains valid.  (line 388)
+  error: Expected: 'user'
+      Actual: 'team_member'
+       Which: is different.
+              Expected: user
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_logs_test.dart
+  test: audit_anchor CLI (env-name only, no live secret values) runCli sweep maps a reader failure to exit 3 without leaking the underlying error type to the operator  (line 1036)
+  error: SignalException: Failed to listen for SIGTERM, osError: OS Error: The request is not supported.
+    , errno = 50
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_logs_test.dart
+  test: audit_anchor CLI (env-name only, no live secret values) runCli sweep mode resolves operators via OperatorIdReader and drives the existing per-operator anchor logic (B43: the daily Cloud Run firing exits 0 instead of failing parseArgs)  (line 949)
+  error: SignalException: Failed to listen for SIGTERM, osError: OS Error: The request is not supported.
+    , errno = 50
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_logs_test.dart
+  test: audit_anchor CLI (env-name only, no live secret values) runCli sweep with an empty public.operators returns 0 with a "0 operators" stdout line (a brand-new tenant is not a tamper signal)  (line 1003)
+  error: SignalException: Failed to listen for SIGTERM, osError: OS Error: The request is not supported.
+    , errno = 50
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_logs_test.dart
+  test: audit_anchor CLI (env-name only, no live secret values) runCli verify path returns 0 with an injected orchestrator (no env, no live wiring needed for the success path)  (line 1207)
+  error: SignalException: Failed to listen for SIGTERM, osError: OS Error: The request is not supported.
+    , errno = 50
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_logs_test.dart
+  test: audit_anchor CLI (env-name only, no live secret values) runCli without poolFactory override uses PackagePostgresPool.fromUrl by default — production CLI is runnable as-is from `dart run tool/audit_anchor/main.dart` without a follow-up wiring slice  (line 1149)
+  error: SignalException: Failed to listen for SIGTERM, osError: OS Error: The request is not supported.
+    , errno = 50
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_h2_audit_privacy_role_test.dart
+  test: Phase 9.0Σ.h2 PermissionKeys catalog sync PermissionKeys.all has 99 entries after the 11A.14 admin.users.reset_mfa_factors and 11W.5 team.audit_log.export catalog additions  (line 231)
+  error: Expected: <99>
+      Actual: <106>
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/pressure/p3c_oauth_refresh_storm_runner_test.dart
+  test: Closure registry coverage oauth-flavored vendors NOT in the worker registry surface a missing-closure finding (Agendrix / OpenTable / ADP / SevenRooms)  (line 310)
+  error: Expected: contains all of ['agendrix', 'opentable', 'adp', 'sevenrooms']
+      Actual: ['agendrix']
+       Which: has too few elements (1 < 4)
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/pressure/p3c_oauth_refresh_storm_runner_test.dart
+  test: Closure registry coverage worker registry wires exactly the 11 expected OAuth vendors when all app credentials are present  (line 225)
+  error: Expected: an object with length of <10>
+      Actual: [
+                'adp',
+                'aloha_ncr_voyix',
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/provider_credentials_repository_test.dart
+  test: Contract 4 — consecutive_refresh_failures counter contract a refresh that fails increments consecutive_refresh_failures by 1; a subsequent successful refresh resets the counter to 0  (line 616)
+  error: Expected: <1>
+      Actual: <0>
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/provider_credentials_repository_test.dart
+  test: Contract 4 — consecutive_refresh_failures counter contract no-closure vendors (Humanity, ADP, OpenTable, SevenRooms, Tock, Push Operations, Agendrix) run through the worker tick: log-and-skip path does NOT call recordRefreshFailure (counter stays at 0 per PR #455 docs)  (line 769)
+  error: Expected: an object with length of <7>
+      Actual: ['agendrix', 'humanity', 'push_operations', 'tock']
+       Which: has length of <4>
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/restaurant_timing_config_repository_test.dart
+  test: B — service-period definitions round-trip lunch applies to weekdays 1-5 only  (line 76)
+  error: Expected: [1, 2, 3, 4, 5]
+      Actual: [1, 2, 3, 4, 5, 6, 7]
+       Which: at location [5] is [1, 2, 3, 4, 5, 6, 7] which longer than expected
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/services/advisor/advisor_model_config_service_test.dart
+  test: probeForgeFlowProxyHealth hits /healthz on the configured proxy and returns cannotCheck when proxy responds 2xx (catalog not exposed)  (line 33)
+  error: Expected: contains 'reachable'
+      Actual: 'F&F proxy returned HTTP 400 from /healthz. Cannot verify advisor model availability.'
+       Which: does not contain 'reachable'
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/services/advisor/advisor_model_config_service_test.dart
+  test: probeForgeFlowProxyHealth preserves a path prefix on proxyBaseUri when probing /healthz  (line 102)
+  error: Expected: an object with length of <1>
+      Actual: []
+       Which: has length of <0>
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/services/advisor/advisor_model_config_service_test.dart
+  test: probeForgeFlowProxyHealth returns cannotCheck (with status code in message) when proxy returns 5xx  (line 72)
+  error: Expected: contains '503'
+      Actual: 'F&F proxy returned HTTP 400 from /healthz. Cannot verify advisor model availability.'
+       Which: does not contain '503'
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_dashboard_empty_state_widget_test.dart
+  test: ShiftDashboard empty state renders no-data state instead of spinner  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: renders no-data state instead of spinner
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_dashboard_notifier_test.dart
+  test: notifier read model includes inTheBooksCovers after reseed  (line 29)
+  error: Expected: <72>
+      Actual: <144>
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_service_close_shift_test.dart
+  test: 7.55q.10: frozen dollar impact windows at close all 14 closed -> WeekRecord carries month + 60-day + closedAt  (line 360)
+  error: Bad state: No element
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_service_close_shift_test.dart
+  test: 7.55q.10: frozen dollar impact windows at close frozenAnnualizedImpact uses the (365/60) trend formula  (line 390)
+  error: Bad state: No element
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_service_close_shift_test.dart
+  test: 7.55q.5: closing all 14 shifts preserves locked plan FOH/BOH hours from the snapshot in force  (line 258)
+  error: Bad state: No element
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_service_close_shift_test.dart
+  test: 7.55q.5: closing all 14 shifts without a snapshot leaves preserved plan hours null (honest legacy)  (line 288)
+  error: Bad state: No element
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_service_close_shift_test.dart
+  test: closing all 14 shifts creates a WeekRecord for the week  (line 215)
+  error: Expected: <1>
+      Actual: <0>
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_service_close_shift_test.dart
+  test: projected Fri dinner slot is replaced cleanly  (line 127)
+  error: Expected: <14>
+      Actual: <16>
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_visual_widget_test.dart
+  test: F â€” reservation book signal COVERS card renders “In the books 72” when reservation exists  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: COVERS card renders “In the books 72” when reservation exists
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_visual_widget_test.dart
+  test: ShiftDashboard smoke renders provider-backed dashboard scaffolding  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: renders provider-backed dashboard scaffolding
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/state/restaurant_scope_notifier_test.dart
+  test: RestaurantScopeNotifier boot-time drawer seed (no session) a subsequent seedAvailableScopesFromLocal call with a real operatorId still overwrites the boot-time placeholder  (line 317)
+  error: Expected: an object with length of <1>
+      Actual: [
+                Instance of 'BusinessScope',
+                Instance of 'BusinessScope',
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/state/restaurant_scope_notifier_test.dart
+  test: RestaurantScopeNotifier boot-time drawer seed (no session) default constructor hydrates availableScopes from the seeded restaurant_locations rows so the drawer is non-empty in demo  (line 268)
+  error: Expected: an object with length of <1>
+      Actual: [
+                Instance of 'BusinessScope',
+                Instance of 'BusinessScope',
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/target_state_alignment_test.dart
+  test: E â€” week truth stability stored week target fields do not change after profile change  (line 329)
+  error: Bad state: No element
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/tool/advisor_proxy/admin_integrations_response_sanitization_test.dart
+  test: Phase80IntegrationRoutes — response sanitization webhook 500 path: returns adapterError outcome label for the dispatch wrapper catch  (line 137)
+  error: Expected: 'adapterError'
+      Actual: <null>
+       Which: not an <Instance of 'String'>
+    dispatch wrapper sanitized 500 must mirror WebhookOutcome.adapterError per triage Section 5.D
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/tool/audit_anchor/advisory_lock_test.dart
+  test: A3 advisory-lock guard — SweepAdvisoryLock sweep mode emits the structured "advisory-lock id resolved" log line before acquiring the lock, with the lock_kind label  (line 138)
+  error: SignalException: Failed to listen for SIGTERM, osError: OS Error: The request is not supported.
+    , errno = 50
+
+[FAILURE] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/tool/oauth_refresh_worker/main_test.dart
+  test: buildProductionRefreshClosures registers all 12 closures when every optional credential set is present (Humanity is intentionally omitted — keyPaste path)  (line 294)
+  error: Expected: [
+                'adp',
+                'aloha_ncr_voyix',
+                'clover',
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/variance_visual_widget_test.dart
+  test: E — History tab section Previous Weeks header shows the real displayed week range  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: Previous Weeks header shows the real displayed week range
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/widget/baseline_operating_strip_align_test.dart
+  test: Operating Inputs strip header bands align at 360px  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: Operating Inputs strip header bands align at 360px
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/widget/baseline_operating_strip_align_test.dart
+  test: Operating Inputs strip rows pixel-align across halves at 360px  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: Operating Inputs strip rows pixel-align across halves at 360px
+
+[ERROR] C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/widget/shift_dashboard_daypart_parity_test.dart
+  test: Per-Daypart V1 Slice 4 — Shift daypart card full parity whole-day LABOR card render is unchanged — Theoretical sub-line + delta pill still present (Promise 3 / Layer 9, byte-untouched)  (line 174)
+  error: Test failed. See exception logs above.
+    The test description was: whole-day LABOR card render is unchanged — Theoretical sub-line + delta pill still present (Promise 3 / Layer 9, byte-untouched)
+
+=== FAIL FILE SUMMARY ===
+ 27  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/rls_isolation_p2_repos_test.dart
+ 16  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository_test.dart
+  9  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/_execution/spine_bridge_v2_smoke_test.dart
+  8  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/persistence_scope_alignment_test.dart
+  6  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_service_close_shift_test.dart
+  5  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_logs_test.dart
+  3  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_f_audit_chain_e2e_test.dart
+  3  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/services/advisor/advisor_model_config_service_test.dart
+  2  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/db/migrations/forward_apply_populated_db_test.dart
+  2  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/current_state_alignment_test.dart
+  2  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/account/mfa_card_controller_test.dart
+  2  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/pressure/p3c_oauth_refresh_storm_runner_test.dart
+  2  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/provider_credentials_repository_test.dart
+  2  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_visual_widget_test.dart
+  2  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/state/restaurant_scope_notifier_test.dart
+  2  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/widget/baseline_operating_strip_align_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/admin_shell_widget_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/auth/permission_catalog_b5b_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/demo_flip_race_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/role_permissions_repository_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/labor/agendrix_labor_adapter_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/labor/humanity_labor_adapter_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/labor/push_operations_labor_adapter_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/labor/quickbooks_time_labor_adapter_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/integrations/reservation/sevenrooms_credential_bridge_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/mobile_push_notification_service_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/screens/audit_log_hierarchy_filter_pane_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/operator_web_router_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/operator_web/widgets/vendor_relativity_label_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0a_scope_extensions_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_e_event_outbox_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/phase_9_0sigma_h2_audit_privacy_role_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/restaurant_timing_config_repository_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_dashboard_empty_state_widget_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/shift_dashboard_notifier_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/tool/advisor_proxy/admin_integrations_response_sanitization_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/tool/audit_anchor/advisory_lock_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/tool/oauth_refresh_worker/main_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/target_state_alignment_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/variance_visual_widget_test.dart
+  1  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ebc703d1ba5735f/test/widget/shift_dashboard_daypart_parity_test.dart
