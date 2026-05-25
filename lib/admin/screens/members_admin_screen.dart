@@ -36,6 +36,7 @@ import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../admin_button_styles.dart';
+import '../admin_console_style.dart';
 import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
@@ -898,8 +899,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   Widget build(BuildContext context) {
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_members_screen'),
-      maxContentWidth: 1120,
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      maxContentWidth: AdminConsoleLayout.maxContentWidth,
+      padding: AdminConsoleLayout.screenPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

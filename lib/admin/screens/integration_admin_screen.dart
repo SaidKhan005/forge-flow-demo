@@ -42,6 +42,7 @@ import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
+import '../admin_console_style.dart';
 import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
@@ -283,8 +284,8 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
       return const SizedBox.shrink();
     }
     return OperatorWebScreenBody(
-      maxContentWidth: 1120,
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      maxContentWidth: AdminConsoleLayout.maxContentWidth,
+      padding: AdminConsoleLayout.screenPadding.copyWith(top: 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

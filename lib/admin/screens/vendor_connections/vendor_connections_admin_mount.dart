@@ -17,6 +17,7 @@ import '../../../widgets/console/console_screen_body.dart';
 import '../../../widgets/console/console_screen_header.dart';
 import '../../../widgets/console/console_surface.dart';
 import '../../admin_route_handoff.dart';
+import '../../admin_console_style.dart';
 import '../../widgets/admin_business_accounts_back_button.dart';
 import '../../widgets/admin_responsive_layout.dart';
 
@@ -152,7 +153,7 @@ class _VendorConnectionsAdminMountState
     }
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_vendor_connections_screen_body'),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      padding: AdminConsoleLayout.screenPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

@@ -56,6 +56,7 @@ import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
+import '../admin_console_style.dart';
 import '../admin_auth_gate.dart';
 import '../services/admin_account_gateway.dart';
 import '../services/admin_security_gateway.dart';
@@ -199,7 +200,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
         final twoColumnProfile = constraints.maxWidth >= 800;
         return OperatorWebScreenBody(
           scrollKey: const Key('admin_my_account_screen'),
-          padding: const EdgeInsets.all(28),
+          padding: AdminConsoleLayout.screenPadding,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

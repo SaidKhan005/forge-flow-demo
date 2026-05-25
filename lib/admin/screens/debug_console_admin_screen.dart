@@ -49,6 +49,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 
 import '../admin_button_styles.dart';
+import '../admin_console_style.dart';
 import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
 import '../models/debug_console_admin_models.dart';
@@ -1605,7 +1606,10 @@ class _RequestRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   _MetaRow(label: 'Request reference', value: entry.requestId),
-                  _MetaRow(label: 'Retry reference', value: entry.idempotencyKey),
+                  _MetaRow(
+                    label: 'Retry reference',
+                    value: entry.idempotencyKey,
+                  ),
                   _MetaRow(label: 'Operator ID', value: entry.operatorId),
                   _MetaRow(
                     label: 'Location ID',
@@ -1851,8 +1855,8 @@ class _SupportHelpTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final rows = entries;
     return OperatorWebScreenBody(
-      padding: const EdgeInsets.all(16),
-      maxContentWidth: 760,
+      maxContentWidth: AdminConsoleLayout.narrowContentWidth,
+      padding: AdminConsoleLayout.screenPadding,
       child: OperatorWebPanel(
         title: title,
         subtitle: body,

@@ -17,6 +17,7 @@ import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
+import '../admin_console_style.dart';
 import '../admin_route_handoff.dart';
 import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
@@ -646,11 +647,13 @@ class _PollingAndPricingAdminScreenState
       );
     }
     return OperatorWebScreenBody(
-      maxContentWidth: 1120,
+      maxContentWidth: AdminConsoleLayout.maxContentWidth,
       // Top inset is owned by the pinned header block above when the page
       // header shows; when it is gated off (scope-pane mount) the body owns
       // the top inset so content is not flush against the pane edge.
-      padding: EdgeInsets.fromLTRB(24, widget.showPageHeader ? 0 : 24, 24, 32),
+      padding: widget.showPageHeader
+          ? AdminConsoleLayout.screenPadding.copyWith(top: 0)
+          : AdminConsoleLayout.screenPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

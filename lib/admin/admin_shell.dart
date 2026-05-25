@@ -16,6 +16,7 @@ import '../theme/app_theme.dart';
 import '../theme/scope_icons.dart';
 import '../widgets/console/console_surface.dart';
 import 'admin_button_styles.dart';
+import 'admin_console_style.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
@@ -31,7 +32,7 @@ const double _kCompactShellBreakpoint = 720;
 /// rather than truncating with an ellipsis. The label column works out
 /// to roughly `_kSideNavWidth - 80` after the container, section-panel,
 /// nav-item, and icon insets.
-const double _kSideNavWidth = 280;
+const double _kSideNavWidth = AdminConsoleLayout.sideNavWidth;
 
 /// UX-parity Slice C — the six per-business screens, in the order the
 /// approved mock renders them (`docs/_mockups/admin_unified_scope_sample.html`,
@@ -720,14 +721,7 @@ class _AdminSideNav extends StatelessWidget {
         key: const Key('admin_nav_business_accounts_pinned'),
         padding: const EdgeInsets.only(bottom: 12),
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.sunset.withValues(alpha: 0.055),
-            border: Border.all(
-              color: AppColors.sunset.withValues(alpha: 0.18),
-              width: 1,
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: AdminConsoleChrome.navAccentDecoration(AppColors.sunset),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
             child: _NavItem(
@@ -861,14 +855,7 @@ class _AdminSideNav extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: DecoratedBox(
         key: key,
-        decoration: BoxDecoration(
-          color: AppColors.sunset.withValues(alpha: 0.055),
-          border: Border.all(
-            color: AppColors.sunset.withValues(alpha: 0.18),
-            width: 1,
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
+        decoration: AdminConsoleChrome.navAccentDecoration(AppColors.sunset),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
           child: Column(
@@ -905,14 +892,7 @@ class _AdminSideNav extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 12),
         child: DecoratedBox(
           key: Key('admin_nav_section_panel_${section.section.name}'),
-          decoration: BoxDecoration(
-            color: section.accentColor.withValues(alpha: 0.055),
-            border: Border.all(
-              color: section.accentColor.withValues(alpha: 0.18),
-              width: 1,
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: AdminConsoleChrome.navSectionDecoration(),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
             child: Column(
@@ -957,10 +937,7 @@ class _PerBusinessClusterHeader extends StatelessWidget {
             width: 26,
             height: 26,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.sunset.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
-            ),
+            decoration: AdminConsoleChrome.iconTileDecoration(AppColors.sunset),
             child: Icon(
               scopeIcon(kind: ScopeEntityKind.business),
               size: 16,
@@ -1013,7 +990,7 @@ class _PerBusinessClusterInactiveHint extends StatelessWidget {
                   height: 26,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.sunset.withValues(alpha: 0.08),
+                    color: AppColors.backgroundMid.withValues(alpha: 0.92),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
@@ -1114,9 +1091,8 @@ class _NavSectionHeader extends StatelessWidget {
                 width: 26,
                 height: 26,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: section.accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                decoration: AdminConsoleChrome.iconTileDecoration(
+                  section.accentColor,
                 ),
                 child: Icon(
                   section.icon,

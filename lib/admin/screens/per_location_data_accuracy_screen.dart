@@ -50,6 +50,7 @@ import '../../domain/services/service_period_definition_resolver.dart';
 import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
+import '../admin_console_style.dart';
 import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
@@ -388,8 +389,8 @@ class _PerLocationDataAccuracyScreenState
     }
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_data_accuracy_screen_body'),
-      maxContentWidth: 1120,
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      maxContentWidth: AdminConsoleLayout.maxContentWidth,
+      padding: AdminConsoleLayout.screenPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

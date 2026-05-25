@@ -50,6 +50,7 @@ import '../../theme/scope_icons.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
+import '../admin_console_style.dart';
 import '../services/admin_audit_chain_anchors_gateway.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -648,8 +649,8 @@ class _AuditedSupportActionsAdminScreenState
   Widget build(BuildContext context) {
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_audited_support_actions_screen'),
-      maxContentWidth: 1120,
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      maxContentWidth: AdminConsoleLayout.maxContentWidth,
+      padding: AdminConsoleLayout.screenPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

@@ -18,10 +18,10 @@ import '../auth/auth_session.dart';
 import '../auth/fresh_mfa_resolver.dart';
 import '../auth/permission_keys.dart';
 import '../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
-import '../theme/app_theme.dart';
 import '../theme/scope_icons.dart';
 import 'admin_auth_gate.dart';
 import 'admin_capability_gate.dart';
+import 'admin_console_style.dart';
 import 'admin_destructive_gate.dart';
 import 'admin_route_handoff.dart';
 import 'admin_route_model.dart';
@@ -282,7 +282,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Plans and limits',
     path: '/pricing',
     icon: Icons.tune_outlined,
-    section: AdminRouteSection.ai,    subtitle:
+    section: AdminRouteSection.ai,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Review AI plans and usage limits.',
     builder: _buildPricing,
   ),
@@ -291,7 +292,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Knowledge base',
     path: '/corpus',
     icon: Icons.menu_book_outlined,
-    section: AdminRouteSection.ai,    subtitle:
+    section: AdminRouteSection.ai,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Publish advisor knowledge content.',
     builder: _buildCorpus,
   ),
@@ -300,7 +302,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Connected services',
     path: '/integrations',
     icon: Icons.extension_outlined,
-    section: AdminRouteSection.serviceSetup,    subtitle:
+    section: AdminRouteSection.serviceSetup,
+    subtitle:
         'Review global provider health and platform service keys; operator edits live on Operator Web.',
     builder: _buildIntegrations,
   ),
@@ -309,7 +312,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System health',
     path: '/health',
     icon: Icons.monitor_heart_outlined,
-    section: AdminRouteSection.systemMonitoring,    subtitle:
+    section: AdminRouteSection.systemMonitoring,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Run read-only system checks.',
     builder: _buildHealth,
   ),
@@ -318,7 +322,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Launch controls',
     path: '/feature-flags',
     icon: Icons.flag_outlined,
-    section: AdminRouteSection.serviceSetup,    subtitle:
+    section: AdminRouteSection.serviceSetup,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Control staged features.',
     builder: _buildFeatureFlags,
   ),
@@ -327,7 +332,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Default roles',
     path: '/default-roles',
     icon: Icons.shield_outlined,
-    section: AdminRouteSection.serviceSetup,    subtitle:
+    section: AdminRouteSection.serviceSetup,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. '
         'Edit the starter role catalog every business begins with.',
     builder: _buildDefaultRoleCatalog,
@@ -337,7 +343,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Support logs',
     path: '/debug',
     icon: Icons.bug_report_outlined,
-    section: AdminRouteSection.systemMonitoring,    subtitle:
+    section: AdminRouteSection.systemMonitoring,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Inspect support-safe request details.',
     builder: _buildDebugConsole,
   ),
@@ -346,7 +353,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'AI Metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
-    section: AdminRouteSection.ai,    subtitle:
+    section: AdminRouteSection.ai,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Review advisor usage, cost, and model activity.',
     builder: _buildObservability,
   ),
@@ -356,7 +364,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
         'Data accuracy', // UX-parity Slice C: operator-web nav label (screen header unchanged).
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,    subtitle:
+    section: AdminRouteSection.operations,
+    subtitle:
         'Review effective covers, wages, and walk-ins by location; super admins can apply audited location repairs.',
     builder: _buildDataAccuracy,
     visibleInNav: false,
@@ -367,7 +376,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Vendor Applicability',
     path: '/vendor-applicability',
     icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,    subtitle:
+    section: AdminRouteSection.operations,
+    subtitle:
         'This surface is for F&F admins only - choose which vendors can power wage, covers, and polling settings.',
     builder: _buildVendorApplicability,
   ),
@@ -376,7 +386,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Polling Setup',
     path: '/polling-pricing',
     icon: Icons.payments_outlined,
-    section: AdminRouteSection.operations,    subtitle:
+    section: AdminRouteSection.operations,
+    subtitle:
         'This surface is for F&F admins only. Operators cannot see it. Operator Web reads the published tier status.',
     builder: _buildPollingPricing,
     visibleInNav: false,
@@ -387,7 +398,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Vendor integrations',
     path: '/admin/vendor-integrations',
     icon: Icons.link_outlined,
-    section: AdminRouteSection.operations,    subtitle:
+    section: AdminRouteSection.operations,
+    subtitle:
         'Review location-scoped vendor connections; super admins can connect, test, disconnect, and inspect logs.',
     builder: _buildVendorIntegrations,
     visibleInNav: false,
@@ -903,43 +915,19 @@ class _SupportOperatorViewRouteShellState
   Widget build(BuildContext context) {
     final picked = _picked;
     if (picked == null) {
-      return Container(
+      return AdminConsoleEmptyState(
         key: const Key('admin_support_operator_view_no_scope_state'),
-        color: AppColors.backgroundDeep,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Choose a business',
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Support work starts with one business and one location '
-                    'scope. After that, People, Access, Security, Audit, and '
-                    'Vendors stay in the same workspace.',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    key: const Key('admin_support_operator_view_open_picker'),
-                    onPressed: _openPicker,
-                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
-                        size: 16),
-                    label: const Text('Choose business'),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        icon: scopeIcon(kind: ScopeEntityKind.business),
+        title: 'Choose a business',
+        message:
+            'Support work starts with one business and one location scope. '
+            'After that, People, Access, Security, Audit, and Vendors stay '
+            'in the same workspace.',
+        action: FilledButton.icon(
+          key: const Key('admin_support_operator_view_open_picker'),
+          onPressed: _openPicker,
+          icon: Icon(scopeIcon(kind: ScopeEntityKind.business), size: 16),
+          label: const Text('Choose business'),
         ),
       );
     }
@@ -969,8 +957,9 @@ Widget _buildPricing(BuildContext context) {
   // figures from the existing observability gateway (read-only). In
   // demo this returns the seeded envelope keyed by the same demo
   // operators; no new backend route is added.
-  final observabilityGateway =
-      AdminConsoleServicesScope.observabilityGatewayOf(context);
+  final observabilityGateway = AdminConsoleServicesScope.observabilityGatewayOf(
+    context,
+  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   return _buildScopedAdminWorkspace(
     context: context,
@@ -1768,43 +1757,19 @@ class _MembersAdminRouteShellState extends State<_MembersAdminRouteShell> {
   Widget build(BuildContext context) {
     final picked = _picked;
     if (picked == null) {
-      return Container(
+      return AdminConsoleEmptyState(
         key: const Key('admin_members_no_operator_state'),
-        color: AppColors.backgroundDeep,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Choose an operator',
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Team work is scoped to one operator. Choose an operator '
-                    'once, then move between Team, Access, and Audit without '
-                    'choosing again.',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    key: const Key('admin_members_open_picker'),
-                    onPressed: _openPicker,
-                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
-                        size: 16),
-                    label: const Text('Choose operator'),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        icon: scopeIcon(kind: ScopeEntityKind.business),
+        maxWidth: 420,
+        title: 'Choose an operator',
+        message:
+            'Team work is scoped to one operator. Choose an operator once, '
+            'then move between Team, Access, and Audit without choosing again.',
+        action: FilledButton.icon(
+          key: const Key('admin_members_open_picker'),
+          onPressed: _openPicker,
+          icon: Icon(scopeIcon(kind: ScopeEntityKind.business), size: 16),
+          label: const Text('Choose operator'),
         ),
       );
     }
@@ -2084,43 +2049,19 @@ class _RolesHierarchySessionsRouteShellState
   Widget build(BuildContext context) {
     final picked = _picked;
     if (picked == null) {
-      return Container(
+      return AdminConsoleEmptyState(
         key: const Key('admin_rhs_no_operator_state'),
-        color: AppColors.backgroundDeep,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Choose an operator',
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Access work is scoped to one operator. Choose an operator '
-                    'once, then move between Team, Access, and Audit without '
-                    'choosing again.',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    key: const Key('admin_rhs_open_picker'),
-                    onPressed: _openPicker,
-                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
-                        size: 16),
-                    label: const Text('Choose operator'),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        icon: scopeIcon(kind: ScopeEntityKind.business),
+        maxWidth: 420,
+        title: 'Choose an operator',
+        message:
+            'Access work is scoped to one operator. Choose an operator once, '
+            'then move between Team, Access, and Audit without choosing again.',
+        action: FilledButton.icon(
+          key: const Key('admin_rhs_open_picker'),
+          onPressed: _openPicker,
+          icon: Icon(scopeIcon(kind: ScopeEntityKind.business), size: 16),
+          label: const Text('Choose operator'),
         ),
       );
     }
@@ -2469,43 +2410,20 @@ class _AuditedSupportActionsRouteShellState
   Widget build(BuildContext context) {
     final picked = _picked;
     if (picked == null) {
-      return Container(
+      return AdminConsoleEmptyState(
         key: const Key('admin_asa_no_operator_state'),
-        color: AppColors.backgroundDeep,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Choose an operator',
-                    style: AppTextStyles.display20(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Audit and support work is scoped to one operator. Choose '
-                    'an operator once, then move between Team, Access, and '
-                    'Audit without choosing again.',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    key: const Key('admin_asa_open_picker'),
-                    onPressed: _openPicker,
-                    icon: Icon(scopeIcon(kind: ScopeEntityKind.business),
-                        size: 16),
-                    label: const Text('Choose operator'),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        icon: scopeIcon(kind: ScopeEntityKind.business),
+        maxWidth: 420,
+        title: 'Choose an operator',
+        message:
+            'Audit and support work is scoped to one operator. Choose an '
+            'operator once, then move between Team, Access, and Audit without '
+            'choosing again.',
+        action: FilledButton.icon(
+          key: const Key('admin_asa_open_picker'),
+          onPressed: _openPicker,
+          icon: Icon(scopeIcon(kind: ScopeEntityKind.business), size: 16),
+          label: const Text('Choose operator'),
         ),
       );
     }
@@ -2644,9 +2562,7 @@ Widget _buildMyAccount(BuildContext context) {
           onOpenAuditLog: handoff == null
               ? null
               : () => handoff.onSelectRoute(
-                  AdminRouteIntent(
-                    routeId: kAdminAuditedSupportActionsRouteId,
-                  ),
+                  AdminRouteIntent(routeId: kAdminAuditedSupportActionsRouteId),
                 ),
         );
       }
@@ -2676,43 +2592,11 @@ class _MyAccountUnauthenticatedFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      key: const Key('admin_my_account_unauthenticated_fallback'),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: const [
-                  Icon(
-                    Icons.person_outline,
-                    size: 22,
-                    color: AppColors.sunsetDark,
-                  ),
-                  SizedBox(width: 10),
-                  Text(
-                    'My account',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Sign in to the admin console to see your account details.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return const AdminConsoleEmptyState(
+      key: Key('admin_my_account_unauthenticated_fallback'),
+      icon: Icons.person_outline,
+      title: 'My account',
+      message: 'Sign in to the admin console to see your account details.',
     );
   }
 }

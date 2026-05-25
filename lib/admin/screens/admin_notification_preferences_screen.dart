@@ -62,6 +62,7 @@ import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
+import '../admin_console_style.dart';
 import '../services/admin_notification_preferences_gateway.dart';
 
 /// Wiring-readiness state for one catalog entry. Mirrors the
@@ -292,7 +293,7 @@ class _AdminNotificationPreferencesScreenState
     }
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_notification_preferences_screen'),
-      padding: const EdgeInsets.all(28),
+      padding: AdminConsoleLayout.screenPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
