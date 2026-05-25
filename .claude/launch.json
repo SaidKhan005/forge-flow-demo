@@ -103,6 +103,18 @@
         "docs/_mockups"
       ],
       "port": 8190
+    },
+    {
+      "name": "admin-web-alt",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8211",
+        "--directory",
+        "build/web"
+      ],
+      "port": 8211
     }
   ]
 }
