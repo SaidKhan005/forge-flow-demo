@@ -34,6 +34,7 @@ import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_scope_tree_pane.dart';
 
 const int _kLegacyRolloverHourDefault = 4;
+const double _kBusinessAccountDetailMaxWidth = 1320;
 
 class OperatorLocationAdminScreen extends StatefulWidget {
   const OperatorLocationAdminScreen({
@@ -811,137 +812,148 @@ class _OperatorDetail extends StatelessWidget {
     final primaryLocation = bundle.primaryLocation?.name ?? 'No primary';
     return SingleChildScrollView(
       key: Key('admin_operator_detail_${operator.operatorId}'),
-      padding: const EdgeInsets.fromLTRB(4, 0, 4, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            key: const Key('admin_operator_profile_card'),
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundSurface.withValues(alpha: 0.72),
-              border: Border(
-                bottom: BorderSide(
-                  color: AppColors.borderSubtle.withValues(alpha: 0.72),
-                ),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 16,
-                  runSpacing: 12,
-                  children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 260),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              operator.businessName,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyles.display20(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (operator.isSuspended) ...[
-                            const SizedBox(width: 10),
-                            _StatusPill(
-                              label: 'suspended',
-                              color: AppColors.negative,
-                            ),
-                          ],
-                        ],
-                      ),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: _kBusinessAccountDetailMaxWidth,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                key: const Key('admin_operator_profile_card'),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundSurface.withValues(alpha: 0.72),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: AppColors.borderSubtle.withValues(alpha: 0.72),
                     ),
-                    _ActionRowWrap(
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 16,
+                      runSpacing: 12,
                       children: [
-                        if (editingEnabled)
-                          _OperatorActionButton(
-                            buttonKey: const Key('admin_operator_edit_button'),
-                            label: 'Edit',
-                            icon: Icons.badge_outlined,
-                            tooltip: 'Edit account profile',
-                            onPressed: () => onEditOperator(bundle),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(minWidth: 260),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  operator.businessName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.display20(
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              if (operator.isSuspended) ...[
+                                const SizedBox(width: 10),
+                                _StatusPill(
+                                  label: 'suspended',
+                                  color: AppColors.negative,
+                                ),
+                              ],
+                            ],
                           ),
-                        if (editingEnabled && operator.isSuspended)
-                          _OperatorActionButton(
-                            buttonKey: const Key(
-                              'admin_operator_reactivate_button',
-                            ),
-                            label: 'Reactivate',
-                            icon: Icons.play_arrow_outlined,
-                            tooltip: 'Reactivate this business account',
-                            onPressed: () => onReactivate(bundle),
-                          ),
-                        if (editingEnabled && !operator.isSuspended)
-                          _OperatorActionButton(
-                            buttonKey: const Key(
-                              'admin_operator_suspend_button',
-                            ),
-                            label: 'Suspend',
-                            icon: Icons.pause_outlined,
-                            tooltip: 'Suspend this business account',
-                            destructive: true,
-                            onPressed: () => onSuspend(bundle),
-                          ),
+                        ),
+                        _ActionRowWrap(
+                          children: [
+                            if (editingEnabled)
+                              _OperatorActionButton(
+                                buttonKey: const Key(
+                                  'admin_operator_edit_button',
+                                ),
+                                label: 'Edit',
+                                icon: Icons.badge_outlined,
+                                tooltip: 'Edit account profile',
+                                onPressed: () => onEditOperator(bundle),
+                              ),
+                            if (editingEnabled && operator.isSuspended)
+                              _OperatorActionButton(
+                                buttonKey: const Key(
+                                  'admin_operator_reactivate_button',
+                                ),
+                                label: 'Reactivate',
+                                icon: Icons.play_arrow_outlined,
+                                tooltip: 'Reactivate this business account',
+                                onPressed: () => onReactivate(bundle),
+                              ),
+                            if (editingEnabled && !operator.isSuspended)
+                              _OperatorActionButton(
+                                buttonKey: const Key(
+                                  'admin_operator_suspend_button',
+                                ),
+                                label: 'Suspend',
+                                icon: Icons.pause_outlined,
+                                tooltip: 'Suspend this business account',
+                                destructive: true,
+                                onPressed: () => onSuspend(bundle),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 22,
+                      runSpacing: 8,
+                      children: [
+                        _OperatorSummaryTile(
+                          label: 'Email',
+                          value: operator.ownerEmail,
+                          icon: Icons.mail_outline,
+                        ),
+                        _OperatorSummaryTile(
+                          label: 'Currency',
+                          value: operator.preferredCurrency,
+                          icon: Icons.payments_outlined,
+                        ),
+                        _OperatorSummaryTile(
+                          label: 'Primary',
+                          value: primaryLocation,
+                          icon: Icons.location_on_outlined,
+                        ),
+                        _OperatorSummaryTile(
+                          key: const Key('admin_operator_ai_plan_detail_row'),
+                          label: 'Plan',
+                          value: operator.subscriptionTier,
+                          icon: Icons.auto_awesome_outlined,
+                          muted: true,
+                        ),
                       ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 22,
-                  runSpacing: 8,
-                  children: [
-                    _OperatorSummaryTile(
-                      label: 'Email',
-                      value: operator.ownerEmail,
-                      icon: Icons.mail_outline,
-                    ),
-                    _OperatorSummaryTile(
-                      label: 'Currency',
-                      value: operator.preferredCurrency,
-                      icon: Icons.payments_outlined,
-                    ),
-                    _OperatorSummaryTile(
-                      label: 'Primary',
-                      value: primaryLocation,
-                      icon: Icons.location_on_outlined,
-                    ),
-                    _OperatorSummaryTile(
-                      key: const Key('admin_operator_ai_plan_detail_row'),
-                      label: 'Plan',
-                      value: operator.subscriptionTier,
-                      icon: Icons.auto_awesome_outlined,
-                      muted: true,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 14),
+              _BusinessHierarchyPanel(
+                bundle: bundle,
+                gateway: hierarchyGateway,
+                actorUserId: actorUserId,
+                idempotencyKeyFactory: idempotencyKeyFactory,
+                selectedScope: selectedHierarchyScope,
+                onSelectScope: onSelectHierarchyScope,
+                onAddLocation: canAddLocation
+                    ? () => onAddLocation(bundle)
+                    : null,
+                addLocationEnabled: canAddLocation,
+                onEditLocation: onEditLocation,
+                onRemoveLocation: onRemoveLocation,
+                onSetPrimary: (location) => onSetPrimary(bundle, location),
+                editingEnabled: editingEnabled,
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          _BusinessHierarchyPanel(
-            bundle: bundle,
-            gateway: hierarchyGateway,
-            actorUserId: actorUserId,
-            idempotencyKeyFactory: idempotencyKeyFactory,
-            selectedScope: selectedHierarchyScope,
-            onSelectScope: onSelectHierarchyScope,
-            onAddLocation: canAddLocation ? () => onAddLocation(bundle) : null,
-            addLocationEnabled: canAddLocation,
-            onEditLocation: onEditLocation,
-            onRemoveLocation: onRemoveLocation,
-            onSetPrimary: (location) => onSetPrimary(bundle, location),
-            editingEnabled: editingEnabled,
-          ),
-        ],
+        ),
       ),
     );
   }

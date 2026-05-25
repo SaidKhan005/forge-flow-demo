@@ -195,6 +195,52 @@ void main() {
     },
   );
 
+  testWidgets(
+    'business detail centers the profile and hierarchy on wide panes',
+    (tester) async {
+      tester.view.physicalSize = const Size(1920, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final gateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[seedBundle()],
+      );
+      await tester.pumpWidget(
+        wrap(OperatorLocationAdminScreen(gateway: gateway)),
+      );
+      await pumpEventually(tester);
+
+      await selectBusinessScope(tester, 'op-seed-1');
+
+      final detailRect = tester.getRect(
+        find.byKey(const Key('admin_operators_detail_pane')),
+      );
+      final profileRect = tester.getRect(
+        find.byKey(const Key('admin_operator_profile_card')),
+      );
+      final hierarchyRect = tester.getRect(
+        find.byKey(const Key('admin_business_hierarchy_panel')),
+      );
+
+      expect(
+        profileRect.width,
+        closeTo(hierarchyRect.width, 1),
+        reason: 'profile and hierarchy should share one visual column',
+      );
+      expect(
+        hierarchyRect.width,
+        lessThan(detailRect.width - 100),
+        reason: 'wide screens should not stretch the detail shell edge to edge',
+      );
+      expect(
+        hierarchyRect.center.dx,
+        closeTo(detailRect.center.dx, 2),
+        reason: 'the detail shell should be centered inside the right pane',
+      );
+    },
+  );
+
   testWidgets('operator AI plan selection is read-only while coming soon', (
     tester,
   ) async {
