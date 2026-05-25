@@ -1698,7 +1698,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                   key: const Key('admin_hierarchy_business_scope_row'),
                   icon: scopeIcon(kind: ScopeEntityKind.business),
                   label: widget.bundle.operator.businessName,
-                  subtitle: 'Business scope',
+                  subtitle: 'Business',
                   selected:
                       widget.selectedScope.scopeType ==
                       AdminHierarchyScopeType.business,
@@ -1836,6 +1836,9 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     required List<String> path,
   }) {
     final nextPath = _appendHierarchyPath(path, unit.name);
+    final selected =
+        widget.selectedScope.scopeType == AdminHierarchyScopeType.orgUnit &&
+        widget.selectedScope.orgUnitId == unit.orgUnitId;
     final rows = <Widget>[
       Opacity(
         opacity: unit.isSuspended ? 0.6 : 1,
@@ -1850,10 +1853,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           label: unit.name,
           subtitle: _orgUnitSubtitle(unit),
           depth: depth,
-          selected:
-              widget.selectedScope.scopeType ==
-                  AdminHierarchyScopeType.orgUnit &&
-              widget.selectedScope.orgUnitId == unit.orgUnitId,
+          selected: selected,
           onTap: () => widget.onSelectScope(
             AdminHierarchyScopeIntent.orgUnit(
               operatorId: widget.bundle.operator.operatorId,
@@ -1867,7 +1867,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                   : 'Read-only',
             ),
           ),
-          trailing: _buildOrgUnitActions(unit),
+          trailing: selected ? _buildOrgUnitActions(unit) : null,
         ),
       ),
     ];
@@ -2041,6 +2041,9 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     final locationSubtitle = isSuspended
         ? 'Suspended ${_lowerInitial(locationBaseSubtitle)}'
         : locationBaseSubtitle;
+    final selected =
+        widget.selectedScope.scopeType == AdminHierarchyScopeType.location &&
+        widget.selectedScope.locationId == location.locationId;
     return Opacity(
       key: Key('admin_location_suspended_fade_${location.locationId}'),
       opacity: isSuspended ? 0.55 : 1,
@@ -2050,10 +2053,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         label: location.name,
         subtitle: locationSubtitle,
         depth: depth,
-        selected:
-            widget.selectedScope.scopeType ==
-                AdminHierarchyScopeType.location &&
-            widget.selectedScope.locationId == location.locationId,
+        selected: selected,
         onTap: () => widget.onSelectScope(
           AdminHierarchyScopeIntent.location(
             operatorId: widget.bundle.operator.operatorId,
@@ -2070,7 +2070,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                 : 'Read-only',
           ),
         ),
-        trailing: widget.editingEnabled
+        trailing: selected && widget.editingEnabled
             ? OperatorWebActionBar(
                 spacing: 6,
                 runSpacing: 6,
@@ -2558,11 +2558,9 @@ class _HierarchyScopeRow extends StatelessWidget {
     final isNested = depth > 0;
     final radius = BorderRadius.circular(6);
     final fillColor = selected
-        ? AppColors.sunset.withValues(alpha: 0.10)
+        ? AppColors.sunset.withValues(alpha: 0.07)
         : Colors.transparent;
-    final borderColor = selected
-        ? AppColors.sunset.withValues(alpha: 0.45)
-        : Colors.transparent;
+    const borderColor = Colors.transparent;
     return Padding(
       padding: EdgeInsets.only(left: depthIndent, top: 3, bottom: 3),
       child: Row(
@@ -2587,7 +2585,7 @@ class _HierarchyScopeRow extends StatelessWidget {
                 onTap: onTap,
                 borderRadius: radius,
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(10, 9, 12, 9),
+                  padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
                   decoration: BoxDecoration(
                     border: Border.all(color: borderColor, width: 1),
                     borderRadius: radius,
