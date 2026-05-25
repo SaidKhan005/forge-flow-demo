@@ -4543,6 +4543,279 @@ void main() {
       });
     });
 
+    // ── Phase 5a — feature-entitlements matrix GET + PATCH. ─────────
+    // Mirrors the Phase 3 plan-route coverage: auth-required (read role
+    // for GET, write role for PATCH), updates + audit reason, idempotency,
+    // and 404 on an unknown plan or feature.
+    test('Phase 5a GET /v1/admin/pricing/entitlements returns the rows',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()
+          ..entitlementsResult = const <Map<String, Object?>>[
+            <String, Object?>{
+              'tier_key': 'premium',
+              'feature_slug': 'lms',
+              'enabled': true,
+              'updated_at': null,
+              'updated_by': null,
+            },
+          ];
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(adminPricingEntitlementsPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final entitlements =
+              (body['entitlements']! as List).cast<Map<String, Object?>>();
+          expect(entitlements.single['tier_key'], equals('premium'));
+          expect(entitlements.single['feature_slug'], equals('lms'));
+          expect(gateway.lastReason, contains('admin.pricing.GET'));
+          expect(gateway.lastReason, contains('entitlements_list'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 5a GET /v1/admin/pricing/entitlements admits ff_support',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway()
+          ..entitlementsResult = const <Map<String, Object?>>[];
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(adminPricingEntitlementsPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.lastActorUserId, equals('user_support'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+        'Phase 5a PATCH .../entitlements/{tier}/{slug} rejects ff_support '
+        '(403, write)', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve('${adminPricingEntitlementsPrefix}premium/lms'),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'enabled': true},
+          );
+          // PATCH is a write method → strict super_admin-only set.
+          expect(response.statusCode, equals(403));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('permission_denied'));
+          expect(gateway.lastEntitlementTierKey, isNull);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 5a PATCH .../entitlements/{tier}/{slug} toggles + audits',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve('${adminPricingEntitlementsPrefix}premium/lms'),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-ent-1',
+            body: const <String, Object?>{'enabled': true},
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect((body['entitlement']! as Map)['tier_key'], equals('premium'));
+          expect(gateway.lastEntitlementTierKey, equals('premium'));
+          expect(gateway.lastEntitlementFeatureSlug, equals('lms'));
+          expect(gateway.lastEntitlementEnabled, isTrue);
+          // The admin reason threads the entitlement action for honest
+          // audit attribution.
+          expect(gateway.lastReason, contains('admin.pricing.PATCH'));
+          expect(gateway.lastReason, contains('entitlement:premium:lms'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 5a PATCH .../entitlements requires a boolean enabled (400)',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(initialClaims: superAdminClaims);
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve('${adminPricingEntitlementsPrefix}premium/lms'),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{},
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('missing_enabled'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 5a PATCH .../entitlements 404s for an unknown plan',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(initialClaims: superAdminClaims);
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '${adminPricingEntitlementsPrefix}megapremium/lms',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'enabled': true},
+          );
+          expect(response.statusCode, equals(404));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('unknown_plan'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 5a PATCH .../entitlements 404s for an unknown feature',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(initialClaims: superAdminClaims);
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '${adminPricingEntitlementsPrefix}premium/teleportation',
+            ),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'enabled': true},
+          );
+          expect(response.statusCode, equals(404));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('unknown_feature'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 5a PATCH .../entitlements is idempotent: replay one result',
+        () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          Future<int> patchOnce() async {
+            final response = await httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '${adminPricingEntitlementsPrefix}premium/lms',
+              ),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-ent-replay',
+              body: const <String, Object?>{'enabled': true},
+            );
+            return response.statusCode;
+          }
+
+          final first = await patchOnce();
+          final second = await patchOnce();
+          expect(first, equals(200));
+          expect(second, anyOf(equals(200), equals(409)));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Phase 5a OPTIONS preflight allows PATCH for /entitlements',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final request = await ctx.client.openUrl(
+            'OPTIONS',
+            ctx.baseUri.resolve('${adminPricingEntitlementsPrefix}premium/lms'),
+          );
+          request.persistentConnection = false;
+          request.headers.set('Origin', 'https://admin.forgeflow.app');
+          request.headers.set('Access-Control-Request-Method', 'PATCH');
+          request.headers.set(
+            'Access-Control-Request-Headers',
+            'authorization,content-type,idempotency-key',
+          );
+          request.contentLength = 0;
+          final response = await request.close();
+          await response.drain<void>();
+          expect(response.statusCode, equals(HttpStatus.noContent));
+          final allowMethods =
+              response.headers.value('access-control-allow-methods') ?? '';
+          expect(allowMethods.toUpperCase(), contains('PATCH'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     // ── Phase 4a — Pilot free-trial start + convert. ────────────────
     // HP #2: these routes flip the trial FLAG + tier on a REAL operator.
     // No `demo_*` table, no parallel demo seeder. The route forwards the

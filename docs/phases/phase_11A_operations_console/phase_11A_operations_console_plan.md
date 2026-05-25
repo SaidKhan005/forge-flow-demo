@@ -152,6 +152,12 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
+`202605241700_plans_and_limits_phase5a_feature_entitlements.sql`
+(Plans & Limits V1 Phase 5a feature-entitlements foundation: creates the
+GLOBAL `public.feature_entitlements` plan/feature matrix — no `operator_id` /
+RLS, admin-pool BYPASSRLS posture like `pricing_plan_catalog`; records which
+features each plan includes, foundation only and does not gate the app),
+preceded by
 `202605241600_plans_and_limits_phase4_operator_trial_mode.sql`
 (Plans & Limits V1 Phase 4a Pilot free-trial flag: adds `trial_mode` +
 `trial_expires_at` to the tenant-root `public.operators` table — a per-operator

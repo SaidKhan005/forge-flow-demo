@@ -132,6 +132,14 @@ Do not re-open stale findings unless the repo regresses:
   plus a CHECK that an expiry exists iff trial_mode is true) — a per-operator
   trial FLAG, NOT a `demo_*` table and NOT a second demo mode (HP #2); inherits
   the existing operators RLS, no new policy (schema; gated on operator
+  approval). Plans & Limits V1 Phase 5a then advances the cutoff to
+  `202605241700_plans_and_limits_phase5a_feature_entitlements.sql`, which
+  creates the GLOBAL `public.feature_entitlements` plan/feature matrix
+  (composite PK `(tier_key, feature_slug)`, CHECK on the six tiers, `enabled`
+  flag, TIMESTAMPTZ `updated_at`) with no `operator_id` / RLS (admin-pool
+  BYPASSRLS posture like `pricing_plan_catalog`) and an idempotent
+  cumulative-ladder seed; records which features each plan includes,
+  foundation only and does not gate the app (schema; gated on operator
   approval). The Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
