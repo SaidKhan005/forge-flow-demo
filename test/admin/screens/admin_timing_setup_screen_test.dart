@@ -49,10 +49,9 @@ void main() {
     });
   }
 
-  // The editor does not depend on operator data; an empty operator
-  // gateway is fine. The secondary "Effective timing" summary resolves
-  // it but renders the honest "add a location" state when empty, which
-  // is irrelevant to the editor assertions below.
+  // The editor uses operator data only to seed starter timezone/day-start
+  // when no timing profile exists. Empty data falls back to the starter
+  // profile, which keeps the editor assertions focused.
   OperatorLocationAdminGateway emptyOperatorGateway() =>
       InMemoryOperatorLocationAdminGateway();
 
@@ -84,8 +83,11 @@ void main() {
       await tester.pumpWidget(wrap(buildScreen(profilesGateway: gateway)));
       await pumpEventually(tester);
 
-      expect(find.byKey(const Key('admin_timing_setup_screen')), findsOneWidget);
-      expect(find.byKey(const Key('admin_timing_editor_panel')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_timing_setup_screen')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_timing_editor_panel')), findsNothing);
       // No read-only banner for super_admin.
       expect(
         find.byKey(const Key('admin_timing_readonly_banner')),
@@ -104,7 +106,10 @@ void main() {
         find.byKey(const Key('admin_timing_editor_week_start')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('admin_timing_editor_periods')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_timing_editor_periods')),
+        findsOneWidget,
+      );
 
       final save = tester.widget<FilledButton>(
         find.byKey(const Key('admin_timing_editor_save')),
@@ -144,12 +149,26 @@ void main() {
         // CREATE captured (no existing profile) with reason + scope.
         expect(gateway.capturedCreates, hasLength(1));
         expect(gateway.capturedPatches, isEmpty);
-        expect(gateway.capturedAdminReasons, equals(<String>['shift start repair']));
+        expect(
+          gateway.capturedAdminReasons,
+          equals(<String>['shift start repair']),
+        );
         final create = gateway.capturedCreates.single;
         expect(create.scopeKind, 'operator');
         expect(create.scopeId, operatorId);
         // Starter periods carried through (lunch + dinner).
         expect(create.servicePeriods, hasLength(2));
+        expect(create.servicePeriods.first.applicableDays, <int>[
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+        ]);
+        expect(create.servicePeriods.first.shortLabel, isNotNull);
+        expect(create.servicePeriods.first.sortOrder, isNonNegative);
         // Success banner renders.
         expect(
           find.byKey(const Key('admin_timing_editor_success')),
@@ -198,6 +217,9 @@ void main() {
           gateway.capturedPatches.single.profileId,
           stored.single.profileId,
         );
+        final patch = gateway.capturedPatches.single.patch;
+        expect(patch.scopeKind, 'operator');
+        expect(patch.scopeId, operatorId);
       },
     );
 
@@ -260,11 +282,8 @@ void main() {
         find.byKey(const Key('admin_timing_editor_save')),
       );
       expect(save.onPressed, isNull);
-      // Reset is also disabled in read-only mode.
-      final reset = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_timing_editor_reset')),
-      );
-      expect(reset.onPressed, isNull);
+      // Ops only shows Reset when an inherited/existing profile exists.
+      expect(find.byKey(const Key('admin_timing_editor_reset')), findsNothing);
     });
 
     testWidgets('read-only Save never writes even if tapped', (tester) async {
@@ -281,10 +300,7 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(
-        find.byKey(const Key('admin_timing_reason_dialog')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('admin_timing_reason_dialog')), findsNothing);
       expect(gateway.capturedCreates, isEmpty);
       expect(gateway.capturedPatches, isEmpty);
     });

@@ -669,6 +669,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                   orgUnitId: businessTimingOrgUnitScope?.id,
                   orgUnitName: businessTimingOrgUnitScope?.label,
                   orgUnitHelper: businessTimingOrgUnitScope?.helper,
+                  initialScopeKind: 'location',
                   gateway: gateway,
                   existingProfile: _resolvedExistingTimingProfile(
                     locationScope.id,
@@ -1659,6 +1660,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             orgUnitId: businessTimingOrgUnitScope?.id,
             orgUnitName: businessTimingOrgUnitScope?.label,
             orgUnitHelper: businessTimingOrgUnitScope?.helper,
+            initialScopeKind: 'location',
             gateway: _webBusinessTimingGateway,
             existingProfile: _resolvedExistingTimingProfile(locationScope.id),
             scheduleMode: _schedulingBusinessTiming,
@@ -2196,12 +2198,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     return _routerOwnedTimingGateway ??= const DemoBusinessTimingGateway();
   }
 
-  /// Doc 1 timing web/admin live parity (2026-05-08): when the live
-  /// read gateway has already loaded the operator's profile list, hand
-  /// the resolved profile (location override if present, otherwise the
-  /// operator default) to the editor so it edits in place instead of
-  /// defaulting to a brand-new profile. Returns `null` when no profiles
-  /// exist yet so the editor can still mount in create mode.
+  /// Hands an exact location profile to the editor when one exists; otherwise
+  /// the location editor opens in create mode and inherits from the read view.
   BusinessTimingProfileWriteResult? _resolvedExistingTimingProfile(
     String locationId,
   ) {
