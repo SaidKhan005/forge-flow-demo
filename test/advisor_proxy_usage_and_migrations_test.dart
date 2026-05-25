@@ -765,6 +765,79 @@ void main() {
       expect(statsCall.parameters['latency_ms'], equals(250));
     });
 
+    test('P1b.2 — recordRequestStats writes the failure row in its OWN '
+        'tenant transaction with honest-null tokens/cost and the real '
+        'error/timeout status', () async {
+      final pool = AccountingPostgresPool();
+      final store = PostgresProxyAccountingStore(
+        wrapper: TenantTransactionWrapper(pool),
+      );
+      final operator = defaultUuidOperatorContext();
+
+      await store.recordRequestStats(
+        operator: operator,
+        stats: const ProxyRequestStats(
+          usageClass: 'advisor_qa',
+          resultStatus: 'error',
+          requestId: '44444444-4444-4444-8444-444444444444',
+          actorUserId: '11111111-1111-4111-8111-111111111111',
+          provider: 'anthropic',
+          modelId: 'claude-haiku-4-5',
+          modelVersion: null,
+          // Provider returned nothing on failure -> unknown, honest null.
+          promptTokenCount: null,
+          completionTokenCount: null,
+          costUsd: null,
+          latencyMs: 250,
+        ),
+      );
+
+      // Exactly one transaction — a single standalone INSERT (no completion
+      // update rides along on the failure path).
+      expect(pool.transactions, hasLength(1));
+      final tx = pool.transactions.single;
+      expect(tx.committed, isTrue);
+      expect(tx.rolledBack, isFalse);
+
+      // SET LOCAL tenant context applied, then the stats INSERT — no
+      // proxy_requests completion update on this path.
+      expect(
+        tx.executedSql,
+        containsAll(<String>[
+          "select set_config('app.operator_id', @value, true)",
+          "select set_config('app.location_id', @value, true)",
+        ]),
+      );
+      expect(
+        tx.executeCalls.where(
+          (call) => call.sql.contains('update public.proxy_requests'),
+        ),
+        isEmpty,
+      );
+      final statsCall = tx.executeCalls.singleWhere(
+        (call) => call.sql.contains('insert into public.proxy_request_stats'),
+      );
+      // No content/encrypted columns.
+      expect(statsCall.sql, isNot(contains('payload')));
+      expect(statsCall.sql, isNot(contains('content')));
+      // Tenant + correlation key.
+      expect(statsCall.parameters['operator_id'], equals(operator.operatorId));
+      expect(statsCall.parameters['location_id'], equals(operator.locationId));
+      expect(
+        statsCall.parameters['request_id'],
+        equals('44444444-4444-4444-8444-444444444444'),
+      );
+      // Real failure status + honest nulls for the unknown telemetry.
+      expect(statsCall.parameters['result_status'], equals('error'));
+      expect(statsCall.parameters['usage_class'], equals('advisor_qa'));
+      expect(statsCall.parameters['model_id'], equals('claude-haiku-4-5'));
+      expect(statsCall.parameters['provider'], equals('anthropic'));
+      expect(statsCall.parameters['prompt_token_count'], isNull);
+      expect(statsCall.parameters['completion_token_count'], isNull);
+      expect(statsCall.parameters['cost_usd'], isNull);
+      expect(statsCall.parameters['latency_ms'], equals(250));
+    });
+
     test('P1b — providerFromModelId maps the proxy model families and '
         'returns null rather than fabricate', () {
       expect(providerFromModelId('claude-haiku-4-5'), equals('anthropic'));
