@@ -453,14 +453,13 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
       confirmButtonKey: Key('admin_observability_confirm_run'),
       icon: Icons.insights_outlined,
       title: 'Run metrics check',
-      description:
-          'This reads recent usage, cost, limits, activity, and hosting data. Expect it to take a few minutes.',
+      description: 'Refresh the current AI Metrics snapshot from staging.',
       confirmLabel: 'Run metrics check',
       facts: [
         AdminRunCheckFact(
           icon: Icons.schedule_outlined,
           label: 'Timing',
-          text: 'Live staging metrics can take a few minutes to load.',
+          text: 'The page can take a few minutes to update.',
         ),
       ],
     );
