@@ -211,6 +211,43 @@ void main() {
       expect(taps, 1);
     });
 
+    testWidgets('custom action copy keeps the card reusable for admin mounts', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        _wrap(
+          PollingTierStatusCard(
+            status: standardStatus(),
+            bundle: null,
+            onRequestTierChange: () {
+              taps += 1;
+            },
+            actionLabel: 'Open Polling Setup',
+            actionDescription:
+                'Change this location\'s polling tier in Admin Polling Setup.',
+            actionIcon: Icons.open_in_new_outlined,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Open Polling Setup'), findsOneWidget);
+      expect(find.text('Request faster data freshness'), findsNothing);
+      expect(
+        find.text(
+          'Change this location\'s polling tier in Admin Polling Setup.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      await tester.pumpAndSettle();
+      expect(taps, 1);
+    });
+
     testWidgets(
       'empty cadences map renders a plain-English real-time confirmation line',
       (tester) async {

@@ -119,6 +119,7 @@ void main() {
     required AdminHierarchyScopeIntent scope,
     AdminBusinessTimingResolutionGateway? timing,
     bool editingEnabled = true,
+    VoidCallback? onOpenPollingSetup,
   }) {
     return PerLocationDataAccuracyScreen(
       gateway: gateway,
@@ -127,6 +128,7 @@ void main() {
       vendorApplicabilityGateway: const _EmptyVendorApplicabilityAdminGateway(),
       editingEnabled: editingEnabled,
       initialHierarchyScope: scope,
+      onOpenPollingSetup: onOpenPollingSetup,
       nowUtc: () => DateTime.utc(2026, 5, 24, 15),
       showPageHeader: false,
       showScopeControls: false,
@@ -253,6 +255,14 @@ void main() {
         findsOneWidget,
       );
       expect(
+        find.byKey(const Key('admin_data_accuracy_location_required_banner')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Select a location to edit data accuracy'),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(const Key('operator_web_data_accuracy_screen')),
         findsNothing,
       );
@@ -261,6 +271,38 @@ void main() {
         findsNothing,
       );
       expect(find.byKey(const Key('admin_data_accuracy_table')), findsNothing);
+    });
+
+    testWidgets('admin freshness action redirects to Polling Setup', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      var openedPollingSetup = 0;
+      final gateway = buildGateway();
+      await tester.pumpWidget(
+        wrap(
+          buildScreen(
+            gateway: gateway,
+            scope: locationScope,
+            onOpenPollingSetup: () {
+              openedPollingSetup += 1;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Open Polling Setup'), findsOneWidget);
+      expect(find.text('Request faster data freshness'), findsNothing);
+
+      final action = find.byKey(
+        const Key('polling_tier_request_change_button'),
+      );
+      await tester.ensureVisible(action);
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+
+      expect(openedPollingSetup, 1);
     });
 
     testWidgets('missing timing resolution shows the ops-style error posture', (

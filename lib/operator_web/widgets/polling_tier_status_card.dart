@@ -76,6 +76,13 @@ class PollingTierStatusCard extends StatelessWidget {
     required this.bundle,
     required this.onRequestTierChange,
     this.appliesToConnectedVendors = true,
+    this.actionLabel = 'Request faster data freshness',
+    this.actionDescription =
+        'Request a change when poll-only vendors need fresher '
+        'data than this tier provides.',
+    this.actionIcon = Icons.bolt_outlined,
+    this.actionEnabled = true,
+    this.actionAvailableWhenNotApplicable = false,
   });
 
   /// Current tier status. Null while loading — renders a placeholder.
@@ -90,6 +97,11 @@ class PollingTierStatusCard extends StatelessWidget {
   /// False when the selected location has no poll-only vendors. In that
   /// state there is nothing for an operator to change on this surface.
   final bool appliesToConnectedVendors;
+  final String actionLabel;
+  final String actionDescription;
+  final IconData actionIcon;
+  final bool actionEnabled;
+  final bool actionAvailableWhenNotApplicable;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +114,15 @@ class PollingTierStatusCard extends StatelessWidget {
           'set by this location\'s tier. Webhook vendors update when they '
           'send data, so this tier does not change them.',
       child: !appliesToConnectedVendors
-          ? _FreshnessDoesNotApplyBlock(bundle: bundle)
+          ? _FreshnessDoesNotApplyBlock(
+              bundle: bundle,
+              actionLabel: actionLabel,
+              actionIcon: actionIcon,
+              onRequestTierChange:
+                  actionEnabled && actionAvailableWhenNotApplicable
+                  ? onRequestTierChange
+                  : null,
+            )
           : status == null
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -121,8 +141,8 @@ class PollingTierStatusCard extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: FilledButton.icon(
                     key: const Key('polling_tier_request_change_button'),
-                    onPressed: onRequestTierChange,
-                    icon: const Icon(Icons.bolt_outlined, size: 16),
+                    onPressed: actionEnabled ? onRequestTierChange : null,
+                    icon: Icon(actionIcon, size: 16),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.sunsetDark,
                       foregroundColor: AppColors.backgroundSurface,
@@ -131,13 +151,12 @@ class PollingTierStatusCard extends StatelessWidget {
                         vertical: 12,
                       ),
                     ),
-                    label: const Text('Request faster data freshness'),
+                    label: Text(actionLabel),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Request a change when poll-only vendors need fresher '
-                  'data than this tier provides.',
+                  actionDescription,
                   style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 14),
@@ -152,9 +171,17 @@ class PollingTierStatusCard extends StatelessWidget {
 }
 
 class _FreshnessDoesNotApplyBlock extends StatelessWidget {
-  const _FreshnessDoesNotApplyBlock({required this.bundle});
+  const _FreshnessDoesNotApplyBlock({
+    required this.bundle,
+    required this.actionLabel,
+    required this.actionIcon,
+    this.onRequestTierChange,
+  });
 
   final VendorConnectionsBundle? bundle;
+  final String actionLabel;
+  final IconData actionIcon;
+  final VoidCallback? onRequestTierChange;
 
   @override
   Widget build(BuildContext context) {
@@ -192,9 +219,9 @@ class _FreshnessDoesNotApplyBlock extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
             key: const Key('polling_tier_request_change_button'),
-            onPressed: null,
-            icon: const Icon(Icons.bolt_outlined, size: 16),
-            label: const Text('Request faster data freshness'),
+            onPressed: onRequestTierChange,
+            icon: Icon(actionIcon, size: 16),
+            label: Text(actionLabel),
           ),
         ),
       ],

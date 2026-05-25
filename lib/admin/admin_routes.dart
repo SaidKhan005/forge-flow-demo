@@ -1348,6 +1348,14 @@ Widget _buildDataAccuracy(BuildContext context) {
         initialHierarchyScope: selectedScope,
         scopeLocationIds: selection.locationIds,
         onBackToBusinessAccounts: null,
+        onOpenPollingSetup: handoff == null
+            ? null
+            : () => handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminPollingPricingRouteId,
+                  hierarchyScope: selectedScope,
+                ),
+              ),
         showPageHeader: false,
         showScopeControls: false,
       );
@@ -1371,6 +1379,14 @@ Widget _buildDataAccuracy(BuildContext context) {
           initialHierarchyScope: selectedScope,
           scopeLocationIds: selection.locationIds,
           onBackToBusinessAccounts: null,
+          onOpenPollingSetup: handoff == null
+              ? null
+              : () => handoff.onSelectRoute(
+                  AdminRouteIntent(
+                    routeId: kAdminPollingPricingRouteId,
+                    hierarchyScope: selectedScope,
+                  ),
+                ),
           showPageHeader: false,
           showScopeControls: false,
         );
