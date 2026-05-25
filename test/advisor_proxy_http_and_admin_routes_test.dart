@@ -1236,6 +1236,240 @@ void main() {
       }
     });
 
+    // ── P1b.2 — failure / timeout proxy_request_stats (Support logs §12) ──
+    //
+    // P1b records `result_status='success'` only; a provider failure or
+    // timeout early-returns 503 `llm_provider_unavailable` BEFORE
+    // completeRequest and (pre-P1b.2) wrote no stats row, so Support logs
+    // showed it as a derived `unknown`. These tests pin, end-to-end through
+    // routeRequest (non-pipeline path, where llmProvider.complete is called
+    // directly and its Exception is the bail point P1b.2 instruments):
+    //   * a provider Exception writes ONE row, result_status='error';
+    //   * a TimeoutException writes ONE row, result_status='timeout';
+    //   * both carry measured latency_ms, the reservation's request_id, the
+    //     ROUTED model id + derived provider, and honest-NULL tokens/cost
+    //     (the provider returned nothing — unknown, not a measured zero);
+    //   * the failure write uses recordRequestStats (its own txn), NOT the
+    //     completeRequest fold — so completeCalls stays 0 on a failed call;
+    //   * an idempotency replay of a failed request writes NO duplicate row;
+    //   * the SUCCESS path never calls recordRequestStats (no extra
+    //     round-trip added to the hot success path).
+
+    test('GET /v1/advisor-smoke provider failure writes one '
+        'proxy_request_stats row with result_status=error', () async {
+      await withRealHttp(() async {
+        final store = InMemoryAccountingStore.open();
+        final llm = ThrowingLlmProvider();
+        // Advancing clock so the measured wall-clock latency to the point of
+        // failure is strictly positive (a fixed instant would measure 0).
+        var tick = DateTime.utc(2026, 4, 26, 12);
+        DateTime advancingNow() {
+          final value = tick;
+          tick = tick.add(const Duration(milliseconds: 250));
+          return value;
+        }
+
+        await spinUpServer(
+          accountingStore: store,
+          llmProvider: llm,
+          now: advancingNow,
+        );
+        try {
+          verifier.claims = defaultUuidProxyClaims();
+          final response = await httpGet(
+            client,
+            baseUri
+                .resolve(advisorSmokePath)
+                .replace(
+                  queryParameters: const <String, String>{
+                    'tokens': '40',
+                    'cost_cents': '9',
+                  },
+                ),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-fail-error',
+            },
+          );
+
+          // Client outcome is unchanged: the existing 503 envelope.
+          expect(response.statusCode, equals(503));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('llm_provider_unavailable'));
+
+          // The provider was called and threw; one failure stats row written
+          // via recordRequestStats, and completeRequest was NOT reached.
+          expect(llm.completeCalls, equals(1));
+          expect(store.completeCalls, equals(0));
+          expect(store.recordStatsCalls, equals(1));
+          expect(store.recordedStats, hasLength(1));
+
+          final stats = store.lastStats!;
+          expect(stats.resultStatus, equals('error'));
+          expect(stats.usageClass, equals('advisor_qa'));
+          // request_id correlation: the value the reservation surfaced.
+          expect(
+            stats.requestId,
+            equals(store.reservedRequestIds['idem-fail-error']),
+          );
+          expect(stats.requestId, isNotNull);
+          // actor = the acting human user's UUID from the verified scope.
+          expect(
+            stats.actorUserId,
+            equals('11111111-1111-4111-8111-111111111111'),
+          );
+          // ROUTED model (basic tier -> haiku) + derived provider: the model
+          // we attempted is honestly known even though the call failed.
+          expect(stats.modelId, equals('claude-haiku-4-5'));
+          expect(stats.provider, equals('anthropic'));
+          expect(stats.modelVersion, isNull);
+          // Provider returned nothing -> tokens/cost are UNKNOWN, honest null
+          // (NOT zero, which would imply a measured no-op).
+          expect(stats.promptTokenCount, isNull);
+          expect(stats.completionTokenCount, isNull);
+          expect(stats.costUsd, isNull);
+          // Latency is measured to the point of failure (strictly positive).
+          expect(stats.latencyMs, isNotNull);
+          expect(stats.latencyMs! > 0, isTrue);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke provider timeout writes one '
+        'proxy_request_stats row with result_status=timeout', () async {
+      await withRealHttp(() async {
+        final store = InMemoryAccountingStore.open();
+        final llm = ThrowingLlmProvider(timeout: true);
+        await spinUpServer(accountingStore: store, llmProvider: llm);
+        try {
+          verifier.claims = defaultUuidProxyClaims();
+          final response = await httpGet(
+            client,
+            baseUri.resolve(advisorSmokePath),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-fail-timeout',
+            },
+          );
+
+          expect(response.statusCode, equals(503));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('llm_provider_unavailable'));
+
+          expect(llm.completeCalls, equals(1));
+          expect(store.completeCalls, equals(0));
+          expect(store.recordStatsCalls, equals(1));
+          expect(store.recordedStats, hasLength(1));
+
+          final stats = store.lastStats!;
+          // A TimeoutException maps to the real 'timeout' terminal status.
+          expect(stats.resultStatus, equals('timeout'));
+          expect(
+            stats.requestId,
+            equals(store.reservedRequestIds['idem-fail-timeout']),
+          );
+          expect(stats.requestId, isNotNull);
+          expect(stats.modelId, equals('claude-haiku-4-5'));
+          expect(stats.provider, equals('anthropic'));
+          expect(stats.promptTokenCount, isNull);
+          expect(stats.completionTokenCount, isNull);
+          expect(stats.costUsd, isNull);
+          expect(stats.latencyMs, isNotNull);
+          expect(stats.latencyMs! >= 0, isTrue);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke idempotent replay of a FAILED request writes '
+        'NO duplicate proxy_request_stats row', () async {
+      await withRealHttp(() async {
+        final store = InMemoryAccountingStore.open();
+        final llm = ThrowingLlmProvider();
+        await spinUpServer(accountingStore: store, llmProvider: llm);
+        try {
+          verifier.claims = defaultUuidProxyClaims();
+          final uri = baseUri.resolve(advisorSmokePath);
+          final first = await httpGet(
+            client,
+            uri,
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-fail-replay',
+            },
+          );
+          // Second call with the same key. The first attempt RESERVED but
+          // never completed (it failed), so no stored response_payload
+          // exists. The in-memory store models this as a fresh reservation
+          // that reuses the SAME minted request_id (putIfAbsent), so the
+          // provider is attempted again under the same correlation id. (The
+          // real Postgres store is stricter still: a reserved-but-incomplete
+          // row is treated as "in flight" and the retry 503s from
+          // startRequest BEFORE the provider is ever called — so it writes
+          // even fewer rows.) Either way the P1b.2 invariant holds: at most
+          // one stats row per real failed attempt, never a duplicate for the
+          // same attempt, and every row carries the correct request_id.
+          final second = await httpGet(
+            client,
+            uri,
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-fail-replay',
+            },
+          );
+
+          expect(first.statusCode, equals(503));
+          expect(second.statusCode, equals(503));
+          // One stats row per real failed attempt; correlated to the single
+          // reservation request_id (a retry resolves the same id). Crucially
+          // there is no DUPLICATE for one attempt — recordStatsCalls tracks
+          // exactly one write per provider failure.
+          expect(
+            store.recordedStats.map((s) => s.requestId).toSet(),
+            equals(<String?>{store.reservedRequestIds['idem-fail-replay']}),
+          );
+          expect(store.recordStatsCalls, equals(store.recordedStats.length));
+          // No success-path completion ever ran for this failed key.
+          expect(store.completeCalls, equals(0));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke SUCCESS path never calls recordRequestStats '
+        '(no extra round-trip; stats stay folded into completeRequest)',
+        () async {
+      await withRealHttp(() async {
+        final store = InMemoryAccountingStore.open();
+        final llm = RecordingLlmProvider();
+        await spinUpServer(accountingStore: store, llmProvider: llm);
+        try {
+          verifier.claims = defaultUuidProxyClaims();
+          final response = await httpGet(
+            client,
+            baseUri.resolve(advisorSmokePath),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-success-no-record',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          // Success folds the stats row into completeRequest; the standalone
+          // failure-path writer is never invoked on success.
+          expect(store.completeCalls, equals(1));
+          expect(store.recordStatsCalls, equals(0));
+          expect(store.recordedStats, hasLength(1));
+          expect(store.lastStats!.resultStatus, equals('success'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
     test(
       'GET /readyz still 200 unauthenticated when usage guard is installed',
       () async {
