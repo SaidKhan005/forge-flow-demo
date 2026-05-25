@@ -22,11 +22,14 @@
 //     from the static presentation. When `editingEnabled` is false the
 //     Edit buttons are hidden (the `ff_support` read-only walkthrough).
 //
-//   * Businesses - master/detail. The master is the business list with
-//     a health dot, this-month spend, and margin %. The detail shows a
-//     plan + margin card, a recent-limit-hits strip, the plan presets,
-//     and the usage-limits list where each limit draws a spend-vs-cap
-//     bar.
+//   * Businesses - the detail for the business the left scope tree
+//     (`hierarchyScope`) selects. The left scope tree is the single
+//     business selector here, exactly like every other admin screen, so
+//     this tab carries no redundant business master list of its own. The
+//     detail shows a plan + margin card, a recent-limit-hits strip, the
+//     plan presets, and the usage-limits list where each limit draws a
+//     spend-vs-cap bar. With no business resolved from the scope it shows
+//     a "Choose a business" empty state.
 //
 // Spend / margin / cap-breach numbers come from two sources. The
 // per-limit spend-vs-cap bar prefers the Phase 2 live spend-summary
@@ -218,19 +221,20 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
           };
         }
         _loading = false;
+        // The left scope tree is the single business selector: the focused
+        // operator is the one the scope resolves, never an auto-picked
+        // first row. When the scope resolves no operator (nothing selected,
+        // or its operator is absent from the gateway result) the selection
+        // stays null and the Businesses tab shows the pick-a-business empty
+        // state instead of silently defaulting to a random business.
         final visible = _visibleBundles;
         final preferredOperatorId = widget.hierarchyScope?.operatorId;
         if (preferredOperatorId != null &&
             visible.any((b) => b.operatorId == preferredOperatorId)) {
           _selectedOperatorId = preferredOperatorId;
-        }
-        if (_selectedOperatorId != null &&
-            visible.every((b) => b.operatorId != _selectedOperatorId)) {
+        } else {
           _selectedOperatorId = null;
         }
-        _selectedOperatorId ??= visible.isEmpty
-            ? null
-            : visible.first.operatorId;
       });
       // Best-effort live spend for the operator now in focus. A failure
       // here is swallowed so the bars fall back to the observability
@@ -423,12 +427,6 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     }
   }
 
-  /// Floor height the master/detail body needs before the compact
-  /// (stacked) layout can render without clipping. Pure layout: no
-  /// change to which affordances render or to any gateway call.
-  static const double _kBodyMinHeight =
-      kAdminDefaultCompactMasterHeight + 16 + 200;
-
   @override
   Widget build(BuildContext context) {
     // Centre + max-width cap matching the shared operator-web body kit.
@@ -465,32 +463,15 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
                   onSelect: (view) => setState(() => _view = view),
                 ),
                 const SizedBox(height: 16),
-                Expanded(child: _buildBoundedBody()),
+                // Every view (Plans map, Features matrix, and the now
+                // single-pane Businesses detail / empty state) is its own
+                // scroll view, so the body needs no master/detail floor.
+                Expanded(child: _buildBody()),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildBoundedBody() {
-    if (_view == _PricingView.plans || _view == _PricingView.features) {
-      // The plan map + features matrix are each their own scroll view; no
-      // master/detail floor.
-      return _buildBody();
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final body = _buildBody();
-        if (!constraints.hasBoundedHeight ||
-            constraints.maxHeight >= _kBodyMinHeight) {
-          return body;
-        }
-        return SingleChildScrollView(
-          child: SizedBox(height: _kBodyMinHeight, child: body),
-        );
-      },
     );
   }
 
@@ -533,58 +514,95 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     return _buildBusinessesBody();
   }
 
+  /// Businesses tab body. The left scope tree is the single business
+  /// selector now (it drives every other admin screen): this tab shows the
+  /// detail for the operator the scope resolves and renders no redundant
+  /// master list of its own. The scoped operator is [_selected], set in
+  /// [_refresh] strictly from `hierarchyScope.operatorId` (never an
+  /// auto-picked first row).
+  ///
+  /// When no operator resolves (nothing selected in the scope panel, or the
+  /// selected scope's operator is not in the gateway result), it shows a
+  /// clean empty state rather than crashing or silently picking a random
+  /// operator. The distinct "no operators on file" empty state still shows
+  /// when the gateway returns no businesses at all.
   Widget _buildBusinessesBody() {
-    final visibleBundles = _visibleBundles;
-    if (visibleBundles.isEmpty) {
-      return Center(
-        key: const Key('admin_pricing_empty'),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'No operators on file',
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Create an operator first, then return here to review the AI plan and usage limits.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-              ],
-            ),
+    if (_bundles.isEmpty) {
+      return _buildNoOperatorsEmptyState();
+    }
+    final selected = _selected;
+    if (selected == null) {
+      return _buildPickBusinessEmptyState();
+    }
+    return _OperatorPricingDetail(
+      bundle: selected,
+      observability: _observability,
+      spendSummary: _spendSummaries[selected.operatorId],
+      editingEnabled: widget.editingEnabled,
+      onApplyTemplate: _onApplyTemplate,
+      onEditCap: _onEditCap,
+      onAddCap: _onAddCap,
+      onDeleteCap: _onDeleteCap,
+    );
+  }
+
+  /// The gateway returned no businesses at all. Distinct from the
+  /// "pick a business" prompt (which fires when businesses exist but the
+  /// scope has not resolved one).
+  Widget _buildNoOperatorsEmptyState() {
+    return Center(
+      key: const Key('admin_pricing_empty'),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'No operators on file',
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Create an operator first, then return here to review the AI plan and usage limits.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ],
           ),
         ),
-      );
-    }
-    return AdminMasterDetailLayout(
-      master: _OperatorList(
-        bundles: visibleBundles,
-        observability: _observability,
-        selectedOperatorId: _selectedOperatorId,
-        onSelect: (id) {
-          setState(() => _selectedOperatorId = id);
-          if (!_spendSummaries.containsKey(id)) {
-            unawaited(_fetchSpendSummaryFor(id));
-          }
-        },
       ),
-      detail: _selected == null
-          ? const SizedBox.shrink()
-          : _OperatorPricingDetail(
-              bundle: _selected!,
-              observability: _observability,
-              spendSummary: _spendSummaries[_selected!.operatorId],
-              editingEnabled: widget.editingEnabled,
-              onApplyTemplate: _onApplyTemplate,
-              onEditCap: _onEditCap,
-              onAddCap: _onAddCap,
-              onDeleteCap: _onDeleteCap,
-            ),
+    );
+  }
+
+  /// Businesses exist but the scope panel has not resolved one (nothing
+  /// picked, or a non-business scope whose operator is absent here). Mirrors
+  /// the empty prompt the other scope-driven admin screens use.
+  Widget _buildPickBusinessEmptyState() {
+    return Center(
+      key: const Key('admin_pricing_pick_business'),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Choose a business',
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Choose a business in the scope panel to see its plan and limits.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1464,7 +1482,12 @@ class _EntitlementsFootnote extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Businesses view: master list.
+// Businesses view: banners.
+//
+// The redundant per-business master list was removed: the left scope tree
+// (`hierarchyScope`) is the single business selector, matching every other
+// admin screen. The Businesses tab renders the selected operator's detail
+// directly (see `_buildBusinessesBody`).
 // ---------------------------------------------------------------------------
 
 class _ReadOnlyBanner extends StatelessWidget {
@@ -1477,118 +1500,6 @@ class _ReadOnlyBanner extends StatelessWidget {
       child: OperatorWebBanner(
         icon: Icons.lock_outline,
         message: 'View only: pricing edits require ecosystem admin access.',
-      ),
-    );
-  }
-}
-
-class _OperatorList extends StatelessWidget {
-  const _OperatorList({
-    required this.bundles,
-    required this.observability,
-    required this.selectedOperatorId,
-    required this.onSelect,
-  });
-
-  final List<PricingOperatorBundle> bundles;
-  final ObservabilityEnvelope? observability;
-  final String? selectedOperatorId;
-  final ValueChanged<String> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_pricing_operator_list'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: bundles.length,
-        separatorBuilder: (_, __) => Container(
-          height: 1,
-          color: AppColors.borderSubtle.withValues(alpha: 0.4),
-        ),
-        itemBuilder: (context, index) {
-          final bundle = bundles[index];
-          final selected = bundle.operatorId == selectedOperatorId;
-          final spend = _spendForOperator(observability, bundle.operatorId);
-          return Material(
-            color: selected
-                ? AppColors.sunset.withValues(alpha: 0.10)
-                : Colors.transparent,
-            child: InkWell(
-              key: Key('admin_pricing_row_${bundle.operatorId}'),
-              onTap: () => onSelect(bundle.operatorId),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                child: Row(
-                  children: <Widget>[
-                    _HealthDot(health: spend.health),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            bundle.businessName,
-                            style: AppTextStyles.mono14(
-                              color: AppColors.textPrimary,
-                              weight: FontWeight.w600,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${_tierDisplayName(bundle.subscriptionTier)} · '
-                            '${_money(spend.spendUsd)} spent',
-                            style: AppTextStyles.mono11(
-                              color: AppColors.textMuted,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      spend.marginRatio == null
-                          ? '—'
-                          : '${(spend.marginRatio! * 100).round()}%',
-                      style: AppTextStyles.mono14(
-                        color: _healthColor(spend.health),
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _HealthDot extends StatelessWidget {
-  const _HealthDot({required this.health});
-
-  final _MarginHealth health;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 9,
-      height: 9,
-      decoration: BoxDecoration(
-        color: _healthColor(health),
-        shape: BoxShape.circle,
       ),
     );
   }
