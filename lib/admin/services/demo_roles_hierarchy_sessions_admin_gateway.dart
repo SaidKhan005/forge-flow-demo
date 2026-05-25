@@ -186,6 +186,73 @@ class InMemoryRolesHierarchySessionsAdminGateway
     return _sessions.putIfAbsent(operatorId, () => <SessionAdminRow>[]);
   }
 
+  /// Demo / share-preview store-sync hook. The admin console wires the
+  /// operator/location demo gateway's `addLocation` to call this so a
+  /// location added through that gateway also becomes a live
+  /// [HierarchyLocationLeaf] here, under [orgUnitId]. Without it the two
+  /// in-memory demo stores diverge and every hierarchy operation
+  /// (delete / move / suspend / reactivate) on a freshly-added location
+  /// 404s with `unknown_location`. No-op (idempotent) if a live leaf for
+  /// [locationId] already exists. NOT part of the
+  /// [RolesHierarchySessionsAdminGateway] contract: the live HTTP gateway
+  /// stays a pure transport and the proxy remains the single writer.
+  /// Demo / share-preview wiring only (called from `admin_routes`); the
+  /// live HTTP gateway never exposes it.
+  void registerDemoLocationLeaf({
+    required String operatorId,
+    required String locationId,
+    required String name,
+    required String orgUnitId,
+  }) {
+    final locations = _locationsFor(operatorId);
+    final existing = locations.indexWhere(
+      (l) => l.locationId == locationId && !l.isDeleted,
+    );
+    if (existing >= 0) return;
+    locations.add(
+      HierarchyLocationLeaf(
+        locationId: locationId,
+        name: name,
+        operatorId: operatorId,
+        orgUnitId: orgUnitId,
+      ),
+    );
+  }
+
+  /// Synchronous snapshot of the org units the demo store currently
+  /// holds for [operatorId] (including soft-deleted ones; callers filter
+  /// `isDeleted`). The add-mirror callback in `admin_routes` needs the
+  /// business-root org-unit id without awaiting the async
+  /// [listOrgUnits]. Demo / share-preview wiring only.
+  List<OrgUnitAdminNode> demoOrgUnitsSnapshot(String operatorId) {
+    return List<OrgUnitAdminNode>.unmodifiable(_orgUnitsFor(operatorId));
+  }
+
+  /// Demo / share-preview store-sync hook for the operator-gateway
+  /// `removeLocation` path (the hard-delete the operator detail panel
+  /// uses). Soft-deletes the matching leaf so the hierarchy view stops
+  /// surfacing it, keeping the two demo stores consistent. No-op if the
+  /// leaf is absent or already deleted. Companion to
+  /// [registerDemoLocationLeaf]; same not-in-contract, demo-only-wiring
+  /// rationale.
+  void softDeleteDemoLocationLeaf({
+    required String operatorId,
+    required String locationId,
+  }) {
+    final locations = _locationsFor(operatorId);
+    final index = locations.indexWhere((l) => l.locationId == locationId);
+    if (index < 0 || locations[index].isDeleted) return;
+    final prev = locations[index];
+    locations[index] = HierarchyLocationLeaf(
+      locationId: prev.locationId,
+      name: prev.name,
+      operatorId: prev.operatorId,
+      orgUnitId: prev.orgUnitId,
+      suspendedAt: prev.suspendedAt,
+      deletedAt: _clock().toUtc(),
+    );
+  }
+
   @override
   Future<List<RoleAdminRow>> listRoles({required String operatorId}) async {
     return List<RoleAdminRow>.unmodifiable(_rolesFor(operatorId));
