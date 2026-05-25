@@ -13,9 +13,9 @@ import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import '../../operator_web/widgets/hierarchy_map_picker.dart';
 import '../../operator_web/widgets/hierarchy_tree_picker.dart';
 import '../../theme/app_theme.dart';
-import '../admin_button_styles.dart';
 import '../models/email_conflict_details.dart';
 import '../services/members_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 
 /// Lightweight ref pair the dialog renders in its location dropdown.
 /// The screen owns the source of truth (it knows the operator's
@@ -317,16 +317,17 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
       icon: Icons.person_add_alt_1_outlined,
       maxWidth: 520,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_members_invite_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_members_invite_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Send invite',
           onPressed: _onSubmit,
-          child: const Text('Send invite'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Flexible(
@@ -480,11 +481,13 @@ class _ValidationBanner extends StatelessWidget {
             _EmailConflictSummary(usage: usage!),
             if (onReview != null) ...[
               const SizedBox(height: 6),
-              TextButton.icon(
+              AdminActionButton(
                 key: const Key('admin_members_invite_show_existing_email'),
+                label: 'Show where it is used',
                 onPressed: onReview,
-                icon: const Icon(Icons.manage_search, size: 16),
-                label: const Text('Show where it is used'),
+                icon: Icons.manage_search,
+                role: AdminActionRole.quiet,
+                compact: true,
               ),
             ],
           ],

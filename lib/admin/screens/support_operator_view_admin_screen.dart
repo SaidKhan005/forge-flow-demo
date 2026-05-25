@@ -14,10 +14,10 @@ import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../widgets/console/console_screen_body.dart';
 import '../../widgets/console/console_screen_header.dart';
-import '../admin_button_styles.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_responsive_layout.dart';
 import 'audited_support_actions_admin_screen.dart';
 import 'members_admin_screen.dart';
@@ -78,14 +78,13 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
                     'for people, access, security, audit, and vendors.',
                 actions: <Widget>[
                   if (onChangeOperator != null)
-                    OutlinedButton.icon(
+                    AdminActionButton(
                       key: const Key(
                         'admin_support_operator_view_change_business',
                       ),
+                      label: 'Change business',
                       onPressed: onChangeOperator,
-                      style: AdminButtonStyles.secondary(),
-                      icon: const Icon(Icons.swap_horiz, size: 16),
-                      label: const Text('Change business'),
+                      icon: Icons.swap_horiz,
                     ),
                 ],
               ),

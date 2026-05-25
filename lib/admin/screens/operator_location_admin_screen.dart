@@ -24,13 +24,13 @@ import '../../widgets/console/console_screen_body.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
-import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/admin_business_timing_resolution_gateway.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_responsive_layout.dart';
 import '../widgets/admin_scope_tree_pane.dart';
 
@@ -511,17 +511,13 @@ class _OperatorLocationAdminScreenState
     if (!widget.editingEnabled) return null;
     return SizedBox(
       width: double.infinity,
-      child: FilledButton.icon(
+      child: AdminActionButton(
         key: const Key('admin_operators_new_button'),
+        label: 'New business',
         onPressed: _openOnboardingDialog,
-        style: AdminButtonStyles.primary.copyWith(
-          minimumSize: const WidgetStatePropertyAll(Size(168, 52)),
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-          ),
-        ),
-        icon: const Icon(Icons.add, size: 18),
-        label: const Text('New business'),
+        icon: Icons.add,
+        role: AdminActionRole.primary,
+        minWidth: 168,
       ),
     );
   }
@@ -1848,21 +1844,14 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                         message: widget.addLocationEnabled
                             ? 'Add location'
                             : 'Select an org unit before adding a location',
-                        child: OutlinedButton.icon(
+                        child: AdminActionButton(
                           key: const Key('admin_operator_add_location_button'),
+                          label: 'Add location',
                           onPressed: widget.addLocationEnabled
                               ? widget.onAddLocation
                               : null,
-                          style: AdminButtonStyles.secondary(
-                            minWidth: 136,
-                            minHeight: 38,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 9,
-                            ),
-                          ),
-                          icon: const Icon(Icons.add, size: 14),
-                          label: const Text('Add location'),
+                          icon: Icons.add,
+                          minWidth: 136,
                         ),
                       )
                     : null,
@@ -2141,45 +2130,51 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           onPressed: () => _onAddChildOrgUnit(unit),
           icon: Icons.add,
         ),
-        _HierarchyActionButton(
-          buttonKey: Key('admin_hierarchy_org_unit_move_${unit.orgUnitId}'),
-          label: 'Move',
-          tooltip: unit.parentOrgUnitId == null
-              ? 'Business root stays at business level'
-              : 'Move org unit',
-          onPressed: unit.parentOrgUnitId == null
-              ? null
-              : () => _onMoveOrgUnit(unit),
-          icon: Icons.drive_file_move_outlined,
-        ),
-        _buildOrgUnitSuspendButton(unit),
-        _HierarchyActionButton(
-          buttonKey: Key('admin_hierarchy_org_unit_delete_${unit.orgUnitId}'),
-          label: 'Delete',
-          tooltip: unit.parentOrgUnitId == null
-              ? 'Business root cannot be deleted'
-              : 'Delete org unit',
-          onPressed: unit.parentOrgUnitId == null
-              ? null
-              : () => _onDeleteOrgUnit(unit),
-          icon: Icons.delete_outline,
-          destructive: true,
+        _HierarchyOverflowMenu(
+          menuKey: Key('admin_hierarchy_org_unit_more_${unit.orgUnitId}'),
+          tooltip: 'More org unit actions',
+          actions: <_HierarchyOverflowAction>[
+            _HierarchyOverflowAction(
+              itemKey: Key('admin_hierarchy_org_unit_move_${unit.orgUnitId}'),
+              label: 'Move',
+              tooltip: unit.parentOrgUnitId == null
+                  ? 'Business root stays at business level'
+                  : 'Move org unit',
+              onSelected: unit.parentOrgUnitId == null
+                  ? null
+                  : () => _onMoveOrgUnit(unit),
+              icon: Icons.drive_file_move_outlined,
+            ),
+            _buildOrgUnitSuspendAction(unit),
+            _HierarchyOverflowAction(
+              itemKey: Key('admin_hierarchy_org_unit_delete_${unit.orgUnitId}'),
+              label: 'Delete',
+              tooltip: unit.parentOrgUnitId == null
+                  ? 'Business root cannot be deleted'
+                  : 'Delete org unit',
+              onSelected: unit.parentOrgUnitId == null
+                  ? null
+                  : () => _onDeleteOrgUnit(unit),
+              icon: Icons.delete_outline,
+              destructive: true,
+            ),
+          ],
         ),
       ],
     );
   }
 
-  /// Suspend / reactivate action button for an org-unit hierarchy row.
+  /// Suspend / reactivate overflow action for an org-unit hierarchy row.
   ///
   /// Extracted verbatim from the action cluster (behavior-preserving) so
-  /// both [_buildOrgUnitActions] and this button stay under the
+  /// both [_buildOrgUnitActions] and this action stay under the
   /// cyclomatic-complexity bar; the business-root guard, the
   /// suspended-vs-active key/label/icon swap, and the nested tooltip
   /// ternary are unchanged. Widget keys are identical to the prior inline
   /// expression.
-  Widget _buildOrgUnitSuspendButton(OrgUnitAdminNode unit) {
-    return _HierarchyActionButton(
-      buttonKey: Key(
+  _HierarchyOverflowAction _buildOrgUnitSuspendAction(OrgUnitAdminNode unit) {
+    return _HierarchyOverflowAction(
+      itemKey: Key(
         unit.isSuspended
             ? 'admin_hierarchy_org_unit_reactivate_${unit.orgUnitId}'
             : 'admin_hierarchy_org_unit_suspend_${unit.orgUnitId}',
@@ -2190,7 +2185,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           : unit.isSuspended
           ? 'Reactivate org unit'
           : 'Suspend org unit',
-      onPressed: unit.parentOrgUnitId == null
+      onSelected: unit.parentOrgUnitId == null
           ? null
           : () => _onToggleOrgUnitSuspension(unit),
       icon: unit.isSuspended
@@ -2266,44 +2261,6 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                 children: <Widget>[
                   _HierarchyActionButton(
                     buttonKey: Key(
-                      'admin_location_move_${location.locationId}',
-                    ),
-                    label: 'Move',
-                    tooltip: 'Move location',
-                    onPressed:
-                        widget.gateway == null ||
-                            orgUnits
-                                .where((unit) => unit.orgUnitId != orgUnitId)
-                                .isEmpty
-                        ? null
-                        : () => _onMoveLocation(
-                            location,
-                            currentOrgUnitId: orgUnitId,
-                          ),
-                    icon: Icons.drive_file_move_outlined,
-                  ),
-                  _HierarchyActionButton(
-                    buttonKey: Key(
-                      isSuspended
-                          ? 'admin_location_reactivate_${location.locationId}'
-                          : 'admin_location_suspend_${location.locationId}',
-                    ),
-                    label: isSuspended ? 'Reactivate' : 'Suspend',
-                    tooltip: isSuspended
-                        ? 'Reactivate location'
-                        : 'Suspend location',
-                    onPressed: widget.gateway == null
-                        ? null
-                        : () => _onToggleLocationSuspension(
-                            location,
-                            isSuspended: isSuspended,
-                          ),
-                    icon: isSuspended
-                        ? Icons.play_circle_outline
-                        : Icons.pause_circle_outline,
-                  ),
-                  _HierarchyActionButton(
-                    buttonKey: Key(
                       'admin_location_edit_${location.locationId}',
                     ),
                     label: 'Edit',
@@ -2311,28 +2268,74 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                     onPressed: () => widget.onEditLocation(location),
                     icon: Icons.edit_outlined,
                   ),
-                  _HierarchyActionButton(
-                    buttonKey: Key(
-                      'admin_location_make_primary_${location.locationId}',
-                    ),
-                    label: 'Make primary',
-                    tooltip: 'Make primary location',
-                    onPressed: isPrimary
-                        ? null
-                        : () => widget.onSetPrimary(location),
-                    icon: Icons.star_outline,
-                  ),
-                  _HierarchyActionButton(
-                    buttonKey: Key(
-                      'admin_location_remove_${location.locationId}',
-                    ),
-                    label: 'Delete',
-                    tooltip: 'Delete location',
-                    onPressed: isPrimary
-                        ? null
-                        : () => _onDeleteHierarchyLocation(location),
-                    icon: Icons.delete_outline,
-                    destructive: true,
+                  _HierarchyOverflowMenu(
+                    menuKey: Key('admin_location_more_${location.locationId}'),
+                    tooltip: 'More location actions',
+                    actions: <_HierarchyOverflowAction>[
+                      _HierarchyOverflowAction(
+                        itemKey: Key(
+                          'admin_location_move_${location.locationId}',
+                        ),
+                        label: 'Move',
+                        tooltip: 'Move location',
+                        onSelected:
+                            widget.gateway == null ||
+                                orgUnits
+                                    .where(
+                                      (unit) => unit.orgUnitId != orgUnitId,
+                                    )
+                                    .isEmpty
+                            ? null
+                            : () => _onMoveLocation(
+                                location,
+                                currentOrgUnitId: orgUnitId,
+                              ),
+                        icon: Icons.drive_file_move_outlined,
+                      ),
+                      _HierarchyOverflowAction(
+                        itemKey: Key(
+                          isSuspended
+                              ? 'admin_location_reactivate_${location.locationId}'
+                              : 'admin_location_suspend_${location.locationId}',
+                        ),
+                        label: isSuspended ? 'Reactivate' : 'Suspend',
+                        tooltip: isSuspended
+                            ? 'Reactivate location'
+                            : 'Suspend location',
+                        onSelected: widget.gateway == null
+                            ? null
+                            : () => _onToggleLocationSuspension(
+                                location,
+                                isSuspended: isSuspended,
+                              ),
+                        icon: isSuspended
+                            ? Icons.play_circle_outline
+                            : Icons.pause_circle_outline,
+                      ),
+                      _HierarchyOverflowAction(
+                        itemKey: Key(
+                          'admin_location_make_primary_${location.locationId}',
+                        ),
+                        label: 'Make primary',
+                        tooltip: 'Make primary location',
+                        onSelected: isPrimary
+                            ? null
+                            : () => widget.onSetPrimary(location),
+                        icon: Icons.star_outline,
+                      ),
+                      _HierarchyOverflowAction(
+                        itemKey: Key(
+                          'admin_location_remove_${location.locationId}',
+                        ),
+                        label: 'Delete',
+                        tooltip: 'Delete location',
+                        onSelected: isPrimary
+                            ? null
+                            : () => _onDeleteHierarchyLocation(location),
+                        icon: Icons.delete_outline,
+                        destructive: true,
+                      ),
+                    ],
                   ),
                 ],
               )
@@ -2421,16 +2424,17 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
       icon: Icons.account_tree_outlined,
       maxWidth: 560,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_hierarchy_add_org_unit_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_hierarchy_add_org_unit_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Add',
           onPressed: _onSubmit,
-          child: const Text('Add'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(
@@ -2564,15 +2568,16 @@ class _MoveHierarchyDialogState extends State<_MoveHierarchyDialog> {
       icon: Icons.drive_file_move_outlined,
       maxWidth: 560,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: widget.submitKey,
-          style: AdminButtonStyles.primary,
+          label: 'Move',
           onPressed: _onSubmit,
-          child: const Text('Move'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Column(
@@ -2669,17 +2674,18 @@ class _HierarchyReasonDialogState extends State<_HierarchyReasonDialog> {
       icon: widget.danger ? Icons.warning_amber_outlined : Icons.edit_note,
       maxWidth: 560,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: widget.submitKey,
-          style: widget.danger
-              ? AdminButtonStyles.danger
-              : AdminButtonStyles.primary,
+          label: widget.submitLabel,
           onPressed: _onSubmit,
-          child: Text(widget.submitLabel),
+          role: widget.danger
+              ? AdminActionRole.danger
+              : AdminActionRole.primary,
         ),
       ],
       child: Column(
@@ -2963,14 +2969,14 @@ class _OperatorActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: OutlinedButton.icon(
+      child: AdminActionButton(
         key: buttonKey,
+        label: label,
         onPressed: onPressed,
-        style: destructive
-            ? AdminButtonStyles.dangerSecondary()
-            : AdminButtonStyles.secondary(),
-        icon: Icon(icon, size: 18),
-        label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
+        icon: icon,
+        role: destructive
+            ? AdminActionRole.dangerSecondary
+            : AdminActionRole.secondary,
       ),
     );
   }
@@ -2983,7 +2989,6 @@ class _HierarchyActionButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.destructive = false,
   });
 
   final Key buttonKey;
@@ -2991,34 +2996,97 @@ class _HierarchyActionButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
-  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: OutlinedButton.icon(
+      child: AdminActionButton(
         key: buttonKey,
+        label: label,
         onPressed: onPressed,
-        style: destructive
-            ? AdminButtonStyles.dangerSecondary(minWidth: 84).copyWith(
-                minimumSize: const WidgetStatePropertyAll(Size(84, 32)),
-                padding: const WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                ),
-              )
-            : AdminButtonStyles.secondary(
-                minWidth: 84,
-                minHeight: 32,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-              ),
-        icon: Icon(icon, size: 14),
-        label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
+        icon: icon,
+        role: AdminActionRole.secondary,
+        compact: true,
+        minWidth: 84,
       ),
     );
+  }
+}
+
+class _HierarchyOverflowAction {
+  const _HierarchyOverflowAction({
+    required this.itemKey,
+    required this.label,
+    required this.tooltip,
+    required this.icon,
+    required this.onSelected,
+    this.destructive = false,
+  });
+
+  final Key itemKey;
+  final String label;
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onSelected;
+  final bool destructive;
+}
+
+class _HierarchyOverflowMenu extends StatelessWidget {
+  const _HierarchyOverflowMenu({
+    required this.menuKey,
+    required this.tooltip,
+    required this.actions,
+  });
+
+  final Key menuKey;
+  final String tooltip;
+  final List<_HierarchyOverflowAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<_HierarchyOverflowAction>(
+      key: menuKey,
+      tooltip: tooltip,
+      icon: const Icon(Icons.more_horiz, size: 18),
+      onSelected: (action) => action.onSelected?.call(),
+      itemBuilder: (context) {
+        return <PopupMenuEntry<_HierarchyOverflowAction>>[
+          for (final action in actions)
+            PopupMenuItem<_HierarchyOverflowAction>(
+              key: action.itemKey,
+              value: action,
+              enabled: action.onSelected != null,
+              child: Tooltip(
+                message: action.tooltip,
+                child: Row(
+                  children: <Widget>[
+                    Icon(
+                      action.icon,
+                      size: 16,
+                      color: _overflowActionColor(action),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        action.label,
+                        style: AppTextStyles.buttonLabel(
+                          color: _overflowActionColor(action),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ];
+      },
+    );
+  }
+
+  Color _overflowActionColor(_HierarchyOverflowAction action) {
+    if (action.onSelected == null) return AppColors.textMuted;
+    return action.destructive ? AppColors.negative : AppColors.textPrimary;
   }
 }
 
@@ -3212,10 +3280,12 @@ class _OperatorEmailConflictTile extends StatelessWidget {
           ),
           if (canOpen) ...[
             const SizedBox(width: 8),
-            TextButton(
+            AdminActionButton(
               key: Key('admin_operators_email_conflict_open_${usage.email}'),
+              label: 'Open operator',
               onPressed: () => onShowConflict!(usage),
-              child: const Text('Open operator'),
+              role: AdminActionRole.quiet,
+              compact: true,
             ),
           ],
         ],
@@ -3283,16 +3353,17 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
       icon: Icons.business_outlined,
       maxWidth: 520,
       actions: [
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_onboard_cancel_button'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_onboard_submit_button'),
+          label: 'Onboard operator',
           onPressed: _submit,
-          style: AdminButtonStyles.primary,
-          child: const Text('Onboard operator'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Form(
@@ -3433,16 +3504,17 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
       icon: Icons.business_center_outlined,
       maxWidth: 520,
       actions: [
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_edit_cancel_button'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_edit_submit_button'),
+          label: 'Save profile',
           onPressed: _submit,
-          style: AdminButtonStyles.primary,
-          child: const Text('Save profile'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Form(
@@ -3567,16 +3639,17 @@ class _LocationDialogState extends State<_LocationDialog> {
       icon: Icons.place_outlined,
       maxWidth: 480,
       actions: [
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_location_cancel_button'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_location_submit_button'),
+          label: isEdit ? 'Save' : 'Add',
           onPressed: _submit,
-          style: AdminButtonStyles.primary,
-          child: Text(isEdit ? 'Save' : 'Add'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: Form(
@@ -3638,16 +3711,17 @@ class _ConfirmDialog extends StatelessWidget {
       icon: Icons.warning_amber_outlined,
       maxWidth: 420,
       actions: [
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_confirm_cancel_button'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_confirm_confirm_button'),
+          label: confirmLabel,
           onPressed: () => Navigator.of(context).pop(true),
-          style: AdminButtonStyles.danger,
-          child: Text(confirmLabel),
+          role: AdminActionRole.danger,
         ),
       ],
       child: Text(
@@ -3981,10 +4055,11 @@ class _TimezonePickerDialogState extends State<_TimezonePickerDialog> {
       icon: Icons.public_outlined,
       maxWidth: 520,
       actions: [
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_timezone_cancel_button'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
       ],
       child: SizedBox(
