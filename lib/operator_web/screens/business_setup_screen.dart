@@ -456,8 +456,12 @@ class _ServicePeriodRow extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: _TimingStatusPill(
-                      label: 'Inherited',
-                      color: AppColors.textMuted,
+                      label: period.inherited
+                          ? 'Inherited'
+                          : period.sourceLabel,
+                      color: period.inherited
+                          ? AppColors.textMuted
+                          : AppColors.peacockDark,
                     ),
                   ),
               ],
