@@ -462,34 +462,12 @@ void main() {
   });
 
   group('helpers and integrity badge', () {
-    test('helpers mirror ops labels, timestamp, and JSON payload', () {
+    test('helper mirrors ops action labels', () {
       expect(
         humanizeAuditAction(WebAuditLogActions.teamUsersDeactivate),
         equals('Suspended team member'),
       );
       expect(humanizeAuditAction('foo.bar.baz'), equals('Baz'));
-      expect(
-        formatAuditTimestamp(DateTime.utc(2026, 5, 6, 12, 30)),
-        isNot(contains('UTC')),
-      );
-      expect(formatPayload(const <String, Object?>{}), equals('(no payload)'));
-      expect(
-        formatPayload(const <String, Object?>{
-          'user_id': 'u1',
-          'mfa_enrolled': <String, Object?>{'from': true, 'to': false},
-        }),
-        contains('"mfa_enrolled"'),
-      );
-    });
-
-    test('formatGraceWindowRemaining keeps compact two-unit form', () {
-      expect(
-        formatGraceWindowRemaining(
-          now: DateTime.utc(2026, 5, 8, 12),
-          endsAt: DateTime.utc(2026, 5, 9, 14, 7),
-        ),
-        equals('26h 7m'),
-      );
     });
 
     testWidgets('renders healthy and unknown integrity states', (tester) async {

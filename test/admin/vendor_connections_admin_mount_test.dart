@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -63,7 +64,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Lifecycle actions are not live'),
+      find.textContaining('Vendor integrations gateway is not configured'),
       findsOneWidget,
     );
     expect(
@@ -99,48 +100,82 @@ void main() {
       find.byKey(const Key('vendor_connections_section_pos')),
       findsOneWidget,
     );
+    final widget = tester.widget<VendorConnectionsWidget>(
+      find.byType(VendorConnectionsWidget),
+    );
+    expect(widget.onConnectFlowStarted, isNotNull);
   });
 
-  testWidgets(
-    'business scope shows the location-required copy',
-    (tester) async {
-      await tester.pumpWidget(
-        wrap(
-          VendorConnectionsAdminMount(
-            operatorId: 'op-1',
-            selectedScope: businessScope,
-            scopeOptions: const <AdminHierarchyScopeIntent>[
-              businessScope,
-              orgUnitScope,
-              locationScope,
-            ],
-            gateway: InMemoryVendorConnectionsGateway(),
-          ),
+  testWidgets('read-only mode keeps vendor status visible without mutate '
+      'controls', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        VendorConnectionsAdminMount(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          locationName: 'Harbour',
+          gateway: InMemoryVendorConnectionsGateway(),
+          canMutate: false,
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('admin_hierarchy_scope_prompt')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_vendor_connections_location_required')),
-        findsOneWidget,
-      );
-      expect(find.text('Location required'), findsWidgets);
-      expect(
-        find.textContaining(
-          'Choose a location to show connect, test, disconnect',
+    expect(
+      find.byKey(const Key('vendor_connections_section_pos')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('vendor_connections_connect_pos')),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('You do not have permission to connect a vendor'),
+      findsWidgets,
+    );
+
+    final widget = tester.widget<VendorConnectionsWidget>(
+      find.byType(VendorConnectionsWidget),
+    );
+    expect(widget.canMutate, isFalse);
+  });
+
+  testWidgets('business scope shows the location-required copy', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        VendorConnectionsAdminMount(
+          operatorId: 'op-1',
+          selectedScope: businessScope,
+          scopeOptions: const <AdminHierarchyScopeIntent>[
+            businessScope,
+            orgUnitScope,
+            locationScope,
+          ],
+          gateway: InMemoryVendorConnectionsGateway(),
         ),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('vendor_connections_section_pos')),
-        findsNothing,
-      );
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_hierarchy_scope_prompt')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_vendor_connections_location_required')),
+      findsOneWidget,
+    );
+    expect(find.text('Location required'), findsWidgets);
+    expect(
+      find.textContaining(
+        'Choose a location to show connect, test, disconnect',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('vendor_connections_section_pos')),
+      findsNothing,
+    );
+  });
 
   testWidgets(
     'org-unit scope shows location-required state without old scope popup',
@@ -279,35 +314,32 @@ void main() {
     },
   );
 
-  testWidgets(
-    'embedded location scope without a gateway shows the web-style '
-    'not-wired panel',
-    (tester) async {
-      await tester.pumpWidget(
-        wrap(
-          const VendorConnectionsAdminMount(
-            operatorId: 'op-1',
-            selectedScope: locationScope,
-            embedded: true,
-          ),
+  testWidgets('embedded location scope without a gateway shows the web-style '
+      'not-wired panel', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        const VendorConnectionsAdminMount(
+          operatorId: 'op-1',
+          selectedScope: locationScope,
+          embedded: true,
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('admin_vendor_connections_screen_body')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_vendor_connections_not_wired')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('vendor_connections_section_pos')),
-        findsNothing,
-      );
-    },
-  );
+    expect(
+      find.byKey(const Key('admin_vendor_connections_screen_body')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_vendor_connections_not_wired')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('vendor_connections_section_pos')),
+      findsNothing,
+    );
+  });
 
   testWidgets(
     'embedded business scope shows the web-style location-required panel',

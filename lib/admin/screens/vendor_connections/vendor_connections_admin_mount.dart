@@ -12,7 +12,9 @@ import 'package:flutter/material.dart';
 
 import '../../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
+import '../../../operator_web/services/operator_web_url_launcher.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/console/console_info_button.dart';
 import '../../../widgets/console/console_screen_body.dart';
 import '../../../widgets/console/console_screen_header.dart';
 import '../../../widgets/console/console_surface.dart';
@@ -96,6 +98,20 @@ class _VendorConnectionsAdminMountState
     return widget.selectedScope != null || widget.scopeOptions.isNotEmpty;
   }
 
+  Future<void> _openConnectFlow(VendorConnectFlowStart flow) async {
+    if (flow.flowKind != VendorConnectFlowKind.oauthRedirect) return;
+    final uri = Uri.tryParse(flow.redirectUrl);
+    if (uri == null) {
+      throw VendorConnectionsGatewayError(
+        message: 'The admin proxy returned an invalid connection URL.',
+        remediation:
+            'Select the location again and retry. If it repeats, check the '
+            'admin integration OAuth route binding for this vendor.',
+      );
+    }
+    await openOperatorWebRedirect(uri.toString());
+  }
+
   @override
   Widget build(BuildContext context) {
     // Embedded inside AdminSetupWorkspace (the per-operator screen): the
@@ -169,6 +185,14 @@ class _VendorConnectionsAdminMountState
             title: 'Vendor integrations',
             subtitle: subtitle,
             actions: <Widget>[
+              OperatorWebInfoButton(
+                title: 'Vendor integrations',
+                tooltip: 'Vendor integrations',
+                body: Text(
+                  'Forge & Flow reads data from the connected services for this location.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
               if (widget.onBackToBusinessAccounts != null)
                 AdminBusinessAccountsBackButton(
                   onPressed: widget.onBackToBusinessAccounts,
@@ -201,6 +225,7 @@ class _VendorConnectionsAdminMountState
         gateway: widget.gateway,
         canMutate: widget.canMutate,
         showHeader: false,
+        onConnectFlowStarted: _openConnectFlow,
       ),
     );
   }
@@ -232,27 +257,17 @@ class _VendorConnectionsAdminMountState
   Widget _embeddedNotWiredPanel(String locationName) {
     return OperatorWebPanel(
       key: const Key('admin_vendor_connections_not_wired'),
-      title: 'Lifecycle actions are not live',
+      title: 'Vendor integrations gateway is not configured',
       subtitle:
-          'Connect, test, disconnect, and sync-log actions are not exposed '
-          'from this admin route in preview. This page is intentionally '
-          'read-only rather than showing demo vendor data. The live provider '
-          'summary stays available in Connected services.',
+          'This admin route needs the live vendor integrations gateway before '
+          'it can show the same connection workflow as Operator Web.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           AdminDetailRow(label: 'Location', value: locationName),
           const AdminDetailRow(
             label: 'Current admin status',
-            value: 'Not routed',
-          ),
-          const AdminDetailRow(
-            label: 'Safe live view',
-            value: 'Connected services',
-          ),
-          const AdminDetailRow(
-            label: 'Mutation state',
-            value: 'Disabled until backend bindings exist',
+            value: 'Gateway missing',
           ),
         ],
       ),
@@ -305,6 +320,7 @@ class _VendorConnectionsAdminMountState
             locationNameOverride: location.locationName,
             gateway: resolvedGateway,
             canMutate: widget.canMutate,
+            onConnectFlowStarted: _openConnectFlow,
             headerLeading:
                 widget.embedded && widget.onBackToBusinessAccounts != null
                 ? AdminBusinessAccountsBackButton(
@@ -461,7 +477,7 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
             icon: Icons.cable_outlined,
             title: 'Vendor integrations',
             subtitle:
-                'Live provider summary is available in Connected services. Per-location lifecycle actions stay disabled here until the proxy route has production bindings.',
+                'This admin route needs the live vendor integrations gateway before it can show the same connection workflow as Operator Web.',
             actions: <Widget>[
               if (onBackToBusinessAccounts != null)
                 AdminBusinessAccountsBackButton(
@@ -489,14 +505,14 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            'Lifecycle actions are not live for $locationName',
+                            'Vendor integrations gateway is not configured for $locationName',
                             style: AppTextStyles.sectionTitle(
                               color: AppColors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Connect, test, disconnect, and sync-log actions are not exposed from this admin route in preview. This page is intentionally read-only rather than showing demo vendor data.',
+                            'Connect, test, disconnect, and sync-log actions need the live admin gateway.',
                             style: AppTextStyles.body13(
                               color: AppColors.textSecondary,
                             ),
@@ -510,15 +526,7 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
                 AdminDetailRow(label: 'Location', value: locationName),
                 const AdminDetailRow(
                   label: 'Current admin status',
-                  value: 'Not routed',
-                ),
-                const AdminDetailRow(
-                  label: 'Safe live view',
-                  value: 'Connected services',
-                ),
-                const AdminDetailRow(
-                  label: 'Mutation state',
-                  value: 'Disabled until backend bindings exist',
+                  value: 'Gateway missing',
                 ),
               ],
             ),

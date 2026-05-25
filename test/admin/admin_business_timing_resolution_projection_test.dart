@@ -16,8 +16,6 @@
 //    values — the deleted hardcoded 3-period / "Monday" / close-rule
 //    path could not have produced this.
 
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_gateway.dart';
@@ -29,18 +27,40 @@ import 'package:forge_and_flow/domain/services/business_timing_profile_resolver.
 
 void main() {
   group('AdminBusinessTimingResolutionProjection', () {
-    test('admin Timing dialog labels timezone as location-owned', () {
-      // Reconciled 2026-05-24: the Business-accounts scope-pane rebuild
-      // removed the in-screen per-location Timing dialog from
-      // `operator_location_admin_screen.dart`; Timing is now reached
-      // through the always-on sidebar cluster's Timing setup screen, so
-      // the provenance labels live only in `admin_timing_setup_screen.dart`.
-      final timingSetupSource = File(
-        'lib/admin/screens/admin_timing_setup_screen.dart',
-      ).readAsStringSync();
-      expect(timingSetupSource, contains("label: 'Timezone source'"));
-      expect(timingSetupSource, contains("value: 'Location timezone'"));
-      expect(timingSetupSource, contains("label: 'Week-start source'"));
+    test('location-scoped chain projects timezone as location-owned', () {
+      final projection = AdminBusinessTimingResolutionProjection.project(
+        _resolution(
+          candidates: <AdminResolutionCandidate>[
+            _candidate(
+              profileId: 'op-default',
+              scopeType: 'operator',
+              scopeId: 'op-1',
+              scopeLabel: 'Acme Eats',
+              rank: 0,
+              tz: 'America/Toronto',
+              weekStart: 'monday',
+            ),
+            _candidate(
+              profileId: 'loc-override',
+              scopeType: 'location',
+              scopeId: 'loc-1',
+              scopeLabel: 'Yonge & Bloor',
+              rank: 1,
+              tz: 'America/Vancouver',
+              weekStart: 'tuesday',
+            ),
+          ],
+        ),
+      );
+
+      expect(
+        projection.effective.businessTimezone,
+        equals('America/Vancouver'),
+      );
+      expect(projection.effective.weekStartDay, equals(DateTime.tuesday));
+      expect(projection.provenance.sourceLabel, equals('Location override'));
+      expect(projection.provenance.detailLabel, equals('Location override'));
+      expect(projection.hasLocationOverride, isTrue);
     });
 
     test(
