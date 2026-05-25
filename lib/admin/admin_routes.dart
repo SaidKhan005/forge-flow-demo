@@ -443,10 +443,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     id: kAdminAuditedSupportActionsRouteId,
     title: 'Audit log', // UX-parity Slice C: operator-web nav label.
     path: '/admin/audited-support-actions',
-    icon: Icons.security_outlined,
+    icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
-    subtitle:
-        'Review audit history and gated support actions for one operator.',
+    subtitle: 'Review audit history for one business.',
     builder: _buildAuditedSupportActions,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -801,6 +800,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
       canEditSeededRoles: false,
       canResetMfaFactors: false,
       canIssuePairedErasure: false,
+      canViewAuditLog: true,
       canExportAuditLog: false,
       adminUid: null,
       initialPicked: initialPicked,
@@ -817,6 +817,14 @@ Widget _buildSupportOperatorView(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
+      final canViewAuditLog = adminCanEdit(
+        session,
+        requiredKey: PermissionKeys.adminAuditLogView,
+      );
+      final canExportAuditLog = adminCanEdit(
+        session,
+        requiredKey: PermissionKeys.adminAuditLogExport,
+      );
       return _SupportOperatorViewRouteShell(
         membersGateway: membersGateway,
         rolesGateway: rolesGateway,
@@ -832,7 +840,8 @@ Widget _buildSupportOperatorView(BuildContext context) {
         canEditSeededRoles: _isAdminMfaFresh(session),
         canResetMfaFactors: _isAdminMfaFresh(session),
         canIssuePairedErasure: _isAdminMfaFresh(session),
-        canExportAuditLog: _isAdminMfaFresh(session),
+        canViewAuditLog: canViewAuditLog,
+        canExportAuditLog: canExportAuditLog,
         adminUid: session?.uid,
         initialPicked: initialPicked,
         initialScope: initialScope,
@@ -853,6 +862,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
     required this.canEditSeededRoles,
     required this.canResetMfaFactors,
     required this.canIssuePairedErasure,
+    required this.canViewAuditLog,
     required this.canExportAuditLog,
     required this.adminUid,
     required this.initialPicked,
@@ -869,6 +879,7 @@ class _SupportOperatorViewRouteShell extends StatefulWidget {
   final bool canEditSeededRoles;
   final bool canResetMfaFactors;
   final bool canIssuePairedErasure;
+  final bool canViewAuditLog;
   final bool canExportAuditLog;
   final String? adminUid;
   final OperatorPickerResult? initialPicked;
@@ -982,7 +993,9 @@ class _SupportOperatorViewRouteShellState
       canEditSeededRoles: widget.canEditSeededRoles,
       canResetMfaFactors: widget.canResetMfaFactors,
       canIssuePairedErasure: widget.canIssuePairedErasure,
+      canViewAuditLog: widget.canViewAuditLog,
       canExportAuditLog: widget.canExportAuditLog,
+      hierarchyScope: widget.initialScope,
       onChangeOperator: _openPicker,
     );
   }
