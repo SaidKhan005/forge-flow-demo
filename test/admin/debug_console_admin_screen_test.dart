@@ -38,7 +38,9 @@ import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/debug_console_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/debug_console_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/debug_console_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 import 'package:forge_and_flow/theme/scope_icons.dart';
@@ -98,6 +100,28 @@ void main() {
       completionTokenCount: completionTokenCount,
       costUsd: costUsd,
       actorUserId: actorUserId,
+    );
+  }
+
+  MemberAdminRow seedMember({
+    required String userId,
+    required String displayName,
+    String roleKey = 'location_manager',
+    String operatorId = 'op-A',
+  }) {
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    return MemberAdminRow(
+      userId: userId,
+      email: 'redacted@example.test',
+      displayName: displayName,
+      roleKey: roleKey,
+      primaryLocationId: 'loc-1',
+      primaryLocationName: 'Location 1',
+      status: MemberStatus.active,
+      mfaEnrolled: false,
+      lastActiveAt: epoch,
+      createdAt: epoch,
+      updatedAt: epoch,
     );
   }
 
@@ -244,6 +268,215 @@ void main() {
     // The real measured latency renders in seconds (412 ms -> 0.4 seconds).
     expect(find.text('0.4 seconds'), findsOneWidget);
   });
+
+  testWidgets(
+    'P3.2: the "Who" line resolves the actor uid to "Name (Role)" via the '
+    'members gateway',
+    (tester) async {
+      setLargeViewport(tester);
+      const actorUid = '11111111-1111-4111-8111-111111111111';
+      final gateway = InMemoryDebugConsoleAdminGateway(
+        seed: <RequestLogEntry>[
+          seedEntry(
+            id: 'req-known-actor',
+            operatorId: 'op-A',
+            actorUserId: actorUid,
+          ),
+        ],
+        now: () => DateTime.utc(2026, 5, 3, 12),
+      );
+      final membersGateway = InMemoryMembersAdminGateway(
+        membersByOperator: <String, List<MemberAdminRow>>{
+          'op-A': <MemberAdminRow>[
+            seedMember(
+              userId: actorUid,
+              displayName: 'Dana Ruiz',
+              roleKey: 'location_manager',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          DebugConsoleAdminScreen(
+            gateway: gateway,
+            membersGateway: membersGateway,
+            initialFilter: const RequestLogFilter(operatorId: 'op-A'),
+            now: () => DateTime.utc(2026, 5, 3, 12),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('admin_debug_console_row_req-known-actor')),
+      );
+      await tester.pumpAndSettle();
+
+      // Friendly "Name (Role)" replaces the raw uid in the "Who" line.
+      expect(find.text('Dana Ruiz (Location Manager)'), findsOneWidget);
+      // The short-id fallback must NOT render once it resolves.
+      expect(find.text('User 11111111'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'P3.2: an actor uid not in members falls back to the short reference',
+    (tester) async {
+      setLargeViewport(tester);
+      final gateway = InMemoryDebugConsoleAdminGateway(
+        seed: <RequestLogEntry>[
+          seedEntry(
+            id: 'req-stranger',
+            operatorId: 'op-A',
+            actorUserId: '99999999-9999-4999-8999-999999999999',
+          ),
+        ],
+        now: () => DateTime.utc(2026, 5, 3, 12),
+      );
+      // Members load successfully but do NOT contain this actor.
+      final membersGateway = InMemoryMembersAdminGateway(
+        membersByOperator: <String, List<MemberAdminRow>>{
+          'op-A': <MemberAdminRow>[
+            seedMember(
+              userId: '11111111-1111-4111-8111-111111111111',
+              displayName: 'Dana Ruiz',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          DebugConsoleAdminScreen(
+            gateway: gateway,
+            membersGateway: membersGateway,
+            initialFilter: const RequestLogFilter(operatorId: 'op-A'),
+            now: () => DateTime.utc(2026, 5, 3, 12),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('admin_debug_console_row_req-stranger')),
+      );
+      await tester.pumpAndSettle();
+
+      // Unresolved uid keeps the honest short "User <id8>" reference and
+      // never borrows another member's name.
+      expect(find.text('User 99999999'), findsOneWidget);
+      expect(find.text('Dana Ruiz (Location Manager)'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'P3.2: a system / service actor with no uid renders the honest "—" '
+    'sentinel',
+    (tester) async {
+      setLargeViewport(tester);
+      final gateway = InMemoryDebugConsoleAdminGateway(
+        seed: <RequestLogEntry>[
+          // No actorUserId: a system / scheduled turn. Real latency so the
+          // "Took" fact is not itself a dash, isolating the "Who" dash.
+          seedEntry(
+            id: 'req-system',
+            operatorId: 'op-A',
+            latencyMs: 412,
+          ),
+        ],
+        now: () => DateTime.utc(2026, 5, 3, 12),
+      );
+      final membersGateway = InMemoryMembersAdminGateway(
+        membersByOperator: <String, List<MemberAdminRow>>{
+          'op-A': <MemberAdminRow>[
+            seedMember(
+              userId: '11111111-1111-4111-8111-111111111111',
+              displayName: 'Dana Ruiz',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          DebugConsoleAdminScreen(
+            gateway: gateway,
+            membersGateway: membersGateway,
+            initialFilter: const RequestLogFilter(operatorId: 'op-A'),
+            now: () => DateTime.utc(2026, 5, 3, 12),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('admin_debug_console_row_req-system')),
+      );
+      await tester.pumpAndSettle();
+
+      // The expanded "What happened" zone shows exactly one "—" (the Who
+      // line). The Technical reference zone stays collapsed, so its own
+      // sentinels do not count here.
+      expect(find.text('—'), findsOneWidget);
+      expect(find.textContaining('User '), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'P3.2: while members are still loading, the "Who" line keeps the short '
+    'fallback, then resolves once they arrive',
+    (tester) async {
+      setLargeViewport(tester);
+      const actorUid = '22222222-2222-4222-8222-222222222222';
+      final gateway = InMemoryDebugConsoleAdminGateway(
+        seed: <RequestLogEntry>[
+          seedEntry(
+            id: 'req-loading-actor',
+            operatorId: 'op-A',
+            actorUserId: actorUid,
+          ),
+        ],
+        now: () => DateTime.utc(2026, 5, 3, 12),
+      );
+      // Holdable members gateway: listMembers stays pending until released.
+      final membersGateway = _HoldableMembersAdminGateway(
+        membersByOperator: <String, List<MemberAdminRow>>{
+          'op-A': <MemberAdminRow>[
+            seedMember(
+              userId: actorUid,
+              displayName: 'Priya Shah',
+              roleKey: 'supervisor',
+            ),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        wrap(
+          DebugConsoleAdminScreen(
+            gateway: gateway,
+            membersGateway: membersGateway,
+            initialFilter: const RequestLogFilter(operatorId: 'op-A'),
+            now: () => DateTime.utc(2026, 5, 3, 12),
+          ),
+        ),
+      );
+      // The request list resolves; the members fetch is still held open.
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('admin_debug_console_row_req-loading-actor')),
+      );
+      await tester.pump();
+
+      // Still loading -> honest short reference, never a blocked / blank row.
+      expect(find.text('User 22222222'), findsOneWidget);
+      expect(find.text('Priya Shah (Supervisor)'), findsNothing);
+
+      // Release the members fetch; the "Who" line resolves to Name (Role).
+      membersGateway.releaseAll();
+      await tester.pumpAndSettle();
+      expect(find.text('Priya Shah (Supervisor)'), findsOneWidget);
+      expect(find.text('User 22222222'), findsNothing);
+    },
+  );
 
   testWidgets('expanded technical reference shows real telemetry + honest '
       'sentinels for missing fields', (tester) async {
@@ -1367,5 +1600,46 @@ class _HoldableDebugConsoleAdminGateway
     while (_pending.isNotEmpty) {
       _pending.removeAt(0).complete(const <RequestLogEntry>[]);
     }
+  }
+}
+
+/// Members gateway whose `listMembers` stays pending until [releaseAll],
+/// so the P3.2 "still loading -> short fallback, then resolves" test can
+/// observe both states deterministically. All other gateway methods
+/// defer to the in-memory base.
+class _HoldableMembersAdminGateway extends InMemoryMembersAdminGateway {
+  _HoldableMembersAdminGateway({super.membersByOperator});
+
+  final List<Completer<void>> _gate = <Completer<void>>[];
+
+  @override
+  Future<List<MemberAdminRow>> listMembers({
+    required String operatorId,
+    MemberStatus? status,
+    String? roleKey,
+    String? locationId,
+    String? contextLocationId,
+    bool? mfaEnrolled,
+    String? search,
+  }) async {
+    final completer = Completer<void>();
+    _gate.add(completer);
+    await completer.future;
+    return super.listMembers(
+      operatorId: operatorId,
+      status: status,
+      roleKey: roleKey,
+      locationId: locationId,
+      contextLocationId: contextLocationId,
+      mfaEnrolled: mfaEnrolled,
+      search: search,
+    );
+  }
+
+  void releaseAll() {
+    for (final completer in _gate) {
+      if (!completer.isCompleted) completer.complete();
+    }
+    _gate.clear();
   }
 }
