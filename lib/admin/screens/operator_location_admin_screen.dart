@@ -19,6 +19,7 @@ import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../utils/iana_timezones.dart';
+import '../../widgets/console/console_action_bar.dart';
 import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
@@ -1925,10 +1926,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
     if (!widget.editingEnabled || widget.gateway == null) {
       return null;
     }
-    return Wrap(
+    return OperatorWebActionBar(
       spacing: 6,
       runSpacing: 6,
-      children: [
+      children: <Widget>[
         _HierarchyActionButton(
           buttonKey: Key(
             'admin_hierarchy_org_unit_add_child_${unit.orgUnitId}',
@@ -2055,10 +2056,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           ),
         ),
         trailing: widget.editingEnabled
-            ? Wrap(
+            ? OperatorWebActionBar(
                 spacing: 6,
                 runSpacing: 6,
-                children: [
+                children: <Widget>[
                   _HierarchyActionButton(
                     buttonKey: Key(
                       'admin_location_move_${location.locationId}',

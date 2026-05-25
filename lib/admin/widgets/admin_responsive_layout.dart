@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_action_bar.dart';
 import 'package:forge_and_flow/widgets/console/console_header_visibility.dart';
 
 import '../../theme/app_theme.dart';
@@ -84,8 +85,11 @@ class AdminPageHeader extends StatelessWidget {
     if (suppressTitle && trailing == null) {
       return const SizedBox.shrink();
     }
+    final action = trailing == null
+        ? null
+        : OperatorWebActionBar(children: <Widget>[trailing!]);
     if (suppressTitle) {
-      return Align(alignment: Alignment.centerRight, child: trailing!);
+      return Align(alignment: Alignment.centerRight, child: action);
     }
 
     final titleText = Text(
@@ -115,7 +119,6 @@ class AdminPageHeader extends StatelessWidget {
         ),
       ],
     );
-    final action = trailing;
     if (action == null) return titleBlock;
 
     return LayoutBuilder(
@@ -124,7 +127,11 @@ class AdminPageHeader extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: [titleBlock, const SizedBox(height: 10), action],
+            children: [
+              titleBlock,
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: action),
+            ],
           );
         }
         return Row(
