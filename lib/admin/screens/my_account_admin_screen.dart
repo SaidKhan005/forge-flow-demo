@@ -55,6 +55,7 @@ import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
+import '../admin_button_styles.dart';
 import '../admin_auth_gate.dart';
 import '../services/admin_account_gateway.dart';
 import '../services/admin_security_gateway.dart';
@@ -461,17 +462,9 @@ class _AdminIdentityCard extends StatelessWidget {
                   onPressed: onEditIdentity,
                   icon: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('Edit identity'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.sunsetDark,
-                    side: const BorderSide(color: AppColors.sunsetDark),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+                  style: AdminButtonStyles.secondary(
+                    minHeight: 38,
                     padding: const EdgeInsets.symmetric(horizontal: 14),
-                    textStyle: AppTextStyles.mono14(
-                      color: AppColors.sunsetDark,
-                      weight: FontWeight.w600,
-                    ),
                   ),
                 ),
               ),
@@ -965,21 +958,12 @@ class _AdminActionRow extends StatelessWidget {
       child: OutlinedButton(
         key: actionKey,
         onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.sunsetDark,
-          disabledForegroundColor: AppColors.textMuted,
-          side: BorderSide(
-            color: onPressed == null
-                ? AppColors.borderSubtle
-                : AppColors.sunsetDark,
-            width: 1,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        style: AdminButtonStyles.secondary(
+          minHeight: 38,
+          borderColor: onPressed == null
+              ? AppColors.borderSubtle
+              : AppColors.sunsetDark,
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          textStyle: AppTextStyles.mono14(
-            color: AppColors.sunsetDark,
-            weight: FontWeight.w600,
-          ),
         ),
         child: Text(buttonLabel),
       ),
@@ -1458,9 +1442,10 @@ class _AdminActiveSessionsCard extends StatelessWidget {
           onPressed: () => _openManageDialog(context),
           icon: const Icon(Icons.devices_other_outlined, size: 16),
           label: const Text('Manage active sessions here'),
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.sunsetDark,
-            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+          style: AdminButtonStyles.text.copyWith(
+            padding: const WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+            ),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             alignment: Alignment.centerLeft,
           ),
@@ -1639,13 +1624,7 @@ class _AdminActiveSessionsDialogState
           onPressed: _handleLocalSignOut,
           icon: const Icon(Icons.logout_outlined, size: 16),
           label: const Text('Sign out of this session'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.sunsetDark,
-            side: const BorderSide(color: AppColors.sunsetDark),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(6),
-            ),
-          ),
+          style: AdminButtonStyles.secondary(),
         ),
         if (hasGateway)
           OutlinedButton.icon(
@@ -1663,12 +1642,9 @@ class _AdminActiveSessionsDialogState
                   ? 'Signing out everywhere...'
                   : 'Sign out everywhere',
             ),
-            style: OutlinedButton.styleFrom(
+            style: AdminButtonStyles.secondary(
               foregroundColor: AppColors.negative,
-              side: const BorderSide(color: AppColors.negative),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
+              borderColor: AppColors.negative,
             ),
           ),
       ],
@@ -1891,17 +1867,11 @@ class _AdminAuditLogCard extends StatelessWidget {
             onPressed: onOpenAuditLog,
             icon: const Icon(Icons.history, size: 16),
             label: const Text('View audit log'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.sunsetDark,
-              disabledForegroundColor: AppColors.textMuted,
-              side: BorderSide(
-                color: onOpenAuditLog == null
-                    ? AppColors.borderSubtle
-                    : AppColors.sunsetDark,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
+            style: AdminButtonStyles.secondary(
+              minHeight: 38,
+              borderColor: onOpenAuditLog == null
+                  ? AppColors.borderSubtle
+                  : AppColors.sunsetDark,
               padding: const EdgeInsets.symmetric(horizontal: 14),
             ),
           ),
@@ -1973,14 +1943,12 @@ class _AdminSessionRow extends StatelessWidget {
             child: OutlinedButton(
               key: Key('admin_my_account_session_revoke_${entry.sessionId}'),
               onPressed: revoking ? null : onRevoke,
-              style: OutlinedButton.styleFrom(
+              style: AdminButtonStyles.secondary(
                 foregroundColor: AppColors.negative,
-                side: const BorderSide(color: AppColors.negative),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
+                borderColor: AppColors.negative,
+                minWidth: 0,
+                minHeight: 32,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                textStyle: AppTextStyles.mono11(color: AppColors.negative),
               ),
               child: revoking
                   ? const SizedBox(

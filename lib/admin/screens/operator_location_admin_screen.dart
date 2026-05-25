@@ -508,21 +508,11 @@ class _OperatorLocationAdminScreenState
       child: FilledButton.icon(
         key: const Key('admin_operators_new_button'),
         onPressed: _openOnboardingDialog,
-        style: FilledButton.styleFrom(
-          backgroundColor: AppColors.sunset,
-          foregroundColor: AppColors.backgroundSurface,
-          disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.45),
-          disabledForegroundColor: AppColors.backgroundSurface.withValues(
-            alpha: 0.78,
+        style: AdminButtonStyles.primary.copyWith(
+          minimumSize: const WidgetStatePropertyAll(Size(168, 52)),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 22, vertical: 15),
           ),
-          minimumSize: const Size(168, 52),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
-          ),
-          textStyle: AppTextStyles.body14(
-            color: AppColors.backgroundSurface,
-          ).copyWith(fontWeight: FontWeight.w700),
         ),
         icon: const Icon(Icons.add, size: 18),
         label: const Text('New business'),
@@ -1004,11 +994,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
   /// soft-deleted) location ids. Changes whenever a location is added or
   /// removed, which is exactly when the hierarchy panel must reload.
   static String _locationSignature(OperatorAdminBundle bundle) {
-    final ids =
-        <String>[
-          for (final location in bundle.locations)
-            if (!location.isDeleted) location.locationId,
-        ]..sort();
+    final ids = <String>[
+      for (final location in bundle.locations)
+        if (!location.isDeleted) location.locationId,
+    ]..sort();
     return ids.join('|');
   }
 
@@ -1875,9 +1864,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           icon: Icons.add,
         ),
         _HierarchyActionButton(
-          buttonKey: Key(
-            'admin_hierarchy_org_unit_move_${unit.orgUnitId}',
-          ),
+          buttonKey: Key('admin_hierarchy_org_unit_move_${unit.orgUnitId}'),
           label: 'Move',
           tooltip: unit.parentOrgUnitId == null
               ? 'Business root stays at business level'
@@ -1889,9 +1876,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         ),
         _buildOrgUnitSuspendButton(unit),
         _HierarchyActionButton(
-          buttonKey: Key(
-            'admin_hierarchy_org_unit_delete_${unit.orgUnitId}',
-          ),
+          buttonKey: Key('admin_hierarchy_org_unit_delete_${unit.orgUnitId}'),
           label: 'Delete',
           tooltip: unit.parentOrgUnitId == null
               ? 'Business root cannot be deleted'

@@ -411,14 +411,22 @@ class _AssignmentToolbar extends StatelessWidget {
         ),
         Tooltip(
           message: ascending ? 'Sort descending' : 'Sort ascending',
-          child: IconButton.outlined(
-            key: const Key('admin_tier_assignment_sort_direction'),
-            onPressed: onDirectionPressed,
-            icon: Icon(
-              ascending
-                  ? Icons.arrow_upward_outlined
-                  : Icons.arrow_downward_outlined,
-              size: 18,
+          child: SizedBox.square(
+            dimension: 42,
+            child: OutlinedButton(
+              key: const Key('admin_tier_assignment_sort_direction'),
+              onPressed: onDirectionPressed,
+              style: AdminButtonStyles.secondary(
+                minWidth: 42,
+                minHeight: 42,
+                padding: EdgeInsets.zero,
+              ),
+              child: Icon(
+                ascending
+                    ? Icons.arrow_upward_outlined
+                    : Icons.arrow_downward_outlined,
+                size: 18,
+              ),
             ),
           ),
         ),

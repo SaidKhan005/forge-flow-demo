@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/app_theme.dart';
+import '../admin_button_styles.dart';
 
 const Key kAdminBusinessAccountsBackButtonKey = Key(
   'admin_business_accounts_back_button',
@@ -21,13 +21,10 @@ class AdminBusinessAccountsBackButton extends StatelessWidget {
         child: OutlinedButton(
           key: kAdminBusinessAccountsBackButtonKey,
           onPressed: onPressed,
-          style: OutlinedButton.styleFrom(
+          style: AdminButtonStyles.secondary(
+            minWidth: 36,
+            minHeight: 36,
             padding: EdgeInsets.zero,
-            foregroundColor: AppColors.textPrimary,
-            side: const BorderSide(color: AppColors.borderSubtle, width: 1),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(6),
-            ),
           ),
           child: const Icon(Icons.arrow_back, size: 18),
         ),

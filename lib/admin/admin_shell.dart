@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/scope_icons.dart';
+import 'admin_button_styles.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
@@ -243,7 +244,9 @@ class _AdminShellState extends State<AdminShell> {
                               // Only feed a scope to the cluster once a
                               // business has been deliberately chosen, so the
                               // cluster is absent on the bare landing.
-                              scope: _businessScopeChosen ? _hierarchyScope : null,
+                              scope: _businessScopeChosen
+                                  ? _hierarchyScope
+                                  : null,
                               onSelect: _select,
                             ),
                             Expanded(child: _buildRouteBody()),
@@ -395,7 +398,9 @@ bool _intentChoosesBusinessScope(AdminRouteIntent intent, String nextRouteId) {
 /// [routes]. Top-level helper so the nested lookup does not count against
 /// the side-nav cluster builder's complexity ratchet.
 List<AdminRoute> _resolvePerBusinessClusterRoutes(List<AdminRoute> routes) {
-  final byId = <String, AdminRoute>{for (final route in routes) route.id: route};
+  final byId = <String, AdminRoute>{
+    for (final route in routes) route.id: route,
+  };
   return <AdminRoute>[
     for (final routeId in kAdminPerBusinessClusterRouteIds)
       if (byId[routeId] case final AdminRoute route) route,
@@ -554,8 +559,7 @@ class _AdminHeaderBar extends StatelessWidget {
       );
     }
     return Tooltip(
-      message:
-          'Sign out: ends this session and returns to the welcome screen.',
+      message: 'Sign out: ends this session and returns to the welcome screen.',
       child: TextButton.icon(
         key: const Key('admin_header_signout'),
         onPressed: onSignOut,
@@ -568,11 +572,12 @@ class _AdminHeaderBar extends StatelessWidget {
           'Sign out',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          foregroundColor: AppColors.textSecondary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
+        style: AdminButtonStyles.text.copyWith(
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          foregroundColor: const WidgetStatePropertyAll(
+            AppColors.textSecondary,
           ),
         ),
       ),
