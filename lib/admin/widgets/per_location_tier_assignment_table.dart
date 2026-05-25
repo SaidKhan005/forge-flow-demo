@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
@@ -306,7 +305,7 @@ class _PerLocationTierAssignmentTableState
                 const SizedBox(height: 8),
                 notesBlock,
                 const SizedBox(height: 10),
-                action,
+                Align(alignment: Alignment.centerRight, child: action),
               ],
             );
           }

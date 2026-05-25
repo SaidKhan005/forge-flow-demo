@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import 'console_action_bar.dart';
 import 'console_header_visibility.dart';
 
 /// Shared screen-level identity header for the operator-web console.
@@ -65,12 +66,7 @@ class OperatorWebScreenHeader extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final actionBar = Wrap(
-      spacing: 10,
-      runSpacing: 8,
-      alignment: WrapAlignment.end,
-      children: actions,
-    );
+    final actionBar = OperatorWebActionBar(children: actions);
 
     if (suppressTitle) {
       return actionBar;

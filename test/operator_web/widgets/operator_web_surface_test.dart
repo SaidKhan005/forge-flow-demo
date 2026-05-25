@@ -35,6 +35,33 @@ void main() {
     expect(find.text('Timezone: America/Toronto'), findsOneWidget);
   });
 
+  testWidgets('section heading keeps actions in a predictable right rail', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        SizedBox(
+          width: 220,
+          child: OperatorWebPanel(
+            title: 'People filters',
+            trailing: OutlinedButton(
+              onPressed: () {},
+              child: const Text('Clear filters'),
+            ),
+            child: const Text('Active filters'),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('People filters'), findsOneWidget);
+    expect(find.text('Clear filters'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Clear filters')).dy,
+      greaterThan(tester.getTopLeft(find.text('People filters')).dy),
+    );
+  });
+
   testWidgets('OperatorWebBanner supports tone, title, and action', (
     tester,
   ) async {

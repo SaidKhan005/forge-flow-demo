@@ -62,6 +62,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/console/console_action_bar.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
@@ -1869,23 +1870,27 @@ class _UsageCapRowTile extends StatelessWidget {
                 _inheritanceLabel(bundle, row),
                 style: AppTextStyles.mono11(color: AppColors.textMuted),
               ),
-              if (editingEnabled) ...<Widget>[
-                const SizedBox(width: 2),
-                IconButton(
-                  key: Key('admin_pricing_cap_edit_$keySuffix'),
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Edit usage limit',
-                  onPressed: () => onEdit(bundle, row),
+              if (editingEnabled)
+                OperatorWebActionBar(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: <Widget>[
+                    IconButton(
+                      key: Key('admin_pricing_cap_edit_$keySuffix'),
+                      icon: const Icon(Icons.edit_outlined, size: 16),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Edit usage limit',
+                      onPressed: () => onEdit(bundle, row),
+                    ),
+                    IconButton(
+                      key: Key('admin_pricing_cap_delete_$keySuffix'),
+                      icon: const Icon(Icons.delete_outline, size: 16),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Remove usage limit',
+                      onPressed: () => onDelete(bundle, row),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  key: Key('admin_pricing_cap_delete_$keySuffix'),
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Remove usage limit',
-                  onPressed: () => onDelete(bundle, row),
-                ),
-              ],
             ],
           ),
           if (row.staffId != null || row.workflowId != null) ...<Widget>[
