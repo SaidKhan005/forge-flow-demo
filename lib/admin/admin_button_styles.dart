@@ -6,14 +6,14 @@ class AdminButtonStyles {
   const AdminButtonStyles._();
 
   static const double radius = 8;
-  static const double controlHeight = 40;
-  static const double denseControlHeight = 36;
-  static const double iconHitTarget = 44;
-  static const double defaultMinWidth = 88;
+  static const double controlHeight = 44;
+  static const double denseControlHeight = 40;
+  static const double iconHitTarget = 48;
+  static const double defaultMinWidth = 96;
   static const Size defaultMinimumSize = Size(defaultMinWidth, controlHeight);
   static const EdgeInsets defaultPadding = EdgeInsets.symmetric(
-    horizontal: 16,
-    vertical: 10,
+    horizontal: 18,
+    vertical: 12,
   );
 
   // Operator-web is the typography gold standard: its dialog titles render
@@ -29,15 +29,25 @@ class AdminButtonStyles {
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.backgroundSurface,
         surfaceTintColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
         titleTextStyle: dialogTitleStyle,
         contentTextStyle: AppTextStyles.body13(color: AppColors.textSecondary),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actionsPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: const BorderSide(color: AppColors.borderSubtle, width: 1),
         ),
       ),
+      inputDecorationTheme: _inputDecorationTheme,
+      dataTableTheme: _dataTableTheme,
+      tabBarTheme: _tabBarTheme,
+      listTileTheme: _listTileTheme,
+      chipTheme: _chipTheme(base.chipTheme),
+      dropdownMenuTheme: _dropdownMenuTheme,
+      popupMenuTheme: _popupMenuTheme,
+      snackBarTheme: _snackBarTheme,
+      tooltipTheme: _tooltipTheme,
+      segmentedButtonTheme: _segmentedButtonTheme,
       filledButtonTheme: FilledButtonThemeData(style: primary),
       outlinedButtonTheme: OutlinedButtonThemeData(style: secondary()),
       textButtonTheme: TextButtonThemeData(style: text),
@@ -134,8 +144,8 @@ class AdminButtonStyles {
         color: active ? AppColors.sunset : AppColors.borderSubtle,
         width: active ? 1.2 : 1,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      minimumSize: const Size(40, 36),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      minimumSize: const Size(44, 40),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius),
       ),
@@ -150,8 +160,8 @@ class AdminButtonStyles {
     return FilledButton.styleFrom(
       backgroundColor: background,
       foregroundColor: AppColors.backgroundSurface,
-      minimumSize: const Size(88, 36),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      minimumSize: const Size(96, 40),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius),
       ),
@@ -173,7 +183,7 @@ class AdminButtonStyles {
   static ButtonStyle get text => TextButton.styleFrom(
     foregroundColor: AppColors.sunsetDark,
     disabledForegroundColor: AppColors.textMuted.withValues(alpha: 0.55),
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
     textStyle: AppTextStyles.buttonLabel(color: AppColors.sunsetDark),
   );
@@ -185,7 +195,133 @@ class AdminButtonStyles {
     hoverColor: AppColors.sunset.withValues(alpha: 0.08),
     focusColor: AppColors.sunset.withValues(alpha: 0.10),
     minimumSize: const Size(iconHitTarget, iconHitTarget),
-    padding: const EdgeInsets.all(6),
+    padding: const EdgeInsets.all(8),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
   );
+
+  static InputDecorationThemeData get _inputDecorationTheme {
+    final radius = BorderRadius.circular(AdminButtonStyles.radius);
+    final border = OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
+    );
+    return InputDecorationThemeData(
+      filled: true,
+      fillColor: AppColors.backgroundSurface,
+      isDense: false,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: border,
+      enabledBorder: border,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: const BorderSide(color: AppColors.sunsetDark, width: 1.4),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: const BorderSide(color: AppColors.negative, width: 1.2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: const BorderSide(color: AppColors.negative, width: 1.4),
+      ),
+      labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
+      floatingLabelStyle: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
+      hintStyle: AppTextStyles.body13(color: AppColors.textMuted),
+      helperStyle: AppTextStyles.caption(color: AppColors.textSecondary),
+      errorStyle: AppTextStyles.caption(color: AppColors.negative),
+    );
+  }
+
+  static DataTableThemeData get _dataTableTheme => DataTableThemeData(
+    headingTextStyle: AppTextStyles.body15Bold(color: AppColors.textPrimary),
+    dataTextStyle: AppTextStyles.body13(color: AppColors.textPrimary),
+    headingRowHeight: 52,
+    dataRowMinHeight: 52,
+    dataRowMaxHeight: 76,
+    horizontalMargin: 18,
+    columnSpacing: 28,
+    dividerThickness: 1,
+    decoration: BoxDecoration(
+      color: AppColors.backgroundSurface,
+      border: Border.all(color: AppColors.borderSubtle, width: 1),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+  );
+
+  static TabBarThemeData get _tabBarTheme => TabBarThemeData(
+    labelColor: AppColors.textPrimary,
+    unselectedLabelColor: AppColors.textMuted,
+    labelStyle: AppTextStyles.body15Bold(color: AppColors.textPrimary),
+    unselectedLabelStyle: AppTextStyles.body13(color: AppColors.textMuted),
+    indicatorColor: AppColors.sunsetDark,
+    indicatorSize: TabBarIndicatorSize.label,
+    dividerColor: AppColors.borderSubtle,
+  );
+
+  static ListTileThemeData get _listTileTheme => ListTileThemeData(
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    minVerticalPadding: 10,
+    titleTextStyle: AppTextStyles.body14(color: AppColors.textPrimary),
+    subtitleTextStyle: AppTextStyles.body13(color: AppColors.textSecondary),
+    leadingAndTrailingTextStyle: AppTextStyles.body13(
+      color: AppColors.textSecondary,
+    ),
+    iconColor: AppColors.sunsetDark,
+  );
+
+  static ChipThemeData _chipTheme(ChipThemeData base) => base.copyWith(
+    labelStyle: AppTextStyles.chipLabel(color: AppColors.textPrimary),
+    secondaryLabelStyle: AppTextStyles.chipLabel(color: AppColors.textPrimary),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    side: const BorderSide(color: AppColors.borderSubtle, width: 1),
+  );
+
+  static DropdownMenuThemeData get _dropdownMenuTheme => DropdownMenuThemeData(
+    textStyle: AppTextStyles.body13(color: AppColors.textPrimary),
+    inputDecorationTheme: _inputDecorationTheme,
+  );
+
+  static PopupMenuThemeData get _popupMenuTheme => PopupMenuThemeData(
+    color: AppColors.backgroundSurface,
+    surfaceTintColor: Colors.transparent,
+    textStyle: AppTextStyles.body13(color: AppColors.textPrimary),
+    labelTextStyle: WidgetStatePropertyAll(
+      AppTextStyles.body13(color: AppColors.textPrimary),
+    ),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(radius),
+      side: const BorderSide(color: AppColors.borderSubtle, width: 1),
+    ),
+  );
+
+  static SnackBarThemeData get _snackBarTheme => SnackBarThemeData(
+    backgroundColor: AppColors.textPrimary,
+    contentTextStyle: AppTextStyles.body13(color: AppColors.backgroundSurface),
+    actionTextColor: AppColors.jade,
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+  );
+
+  static TooltipThemeData get _tooltipTheme => TooltipThemeData(
+    textStyle: AppTextStyles.caption(color: AppColors.backgroundSurface),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    margin: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: BoxDecoration(
+      color: AppColors.textPrimary,
+      borderRadius: BorderRadius.circular(radius),
+    ),
+  );
+
+  static SegmentedButtonThemeData get _segmentedButtonTheme =>
+      SegmentedButtonThemeData(
+        style: ButtonStyle(
+          textStyle: WidgetStatePropertyAll(
+            AppTextStyles.buttonLabel(color: AppColors.textPrimary),
+          ),
+          minimumSize: const WidgetStatePropertyAll(Size(44, 40)),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
+        ),
+      );
 }
