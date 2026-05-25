@@ -60,6 +60,7 @@ import 'admin/services/corpus_admin_gateway.dart';
 import 'admin/services/data_accuracy_admin_gateway.dart';
 import 'admin/services/debug_console_admin_gateway.dart';
 import 'admin/services/default_role_catalog_admin_gateway.dart';
+import 'admin/services/demo_vendor_connections_admin_gateway.dart';
 import 'admin/services/feature_flags_admin_gateway.dart';
 import 'admin/services/health_admin_gateway.dart';
 import 'admin/services/integration_admin_gateway.dart';
@@ -295,9 +296,9 @@ Future<void> main() async {
     final integrationGateway = gateway == null
         ? null
         : _resolveIntegrationAdminGateway(authBinding.authClient);
-    final vendorConnectionsGateway = gateway == null
-        ? null
-        : _resolveVendorConnectionsGateway(authBinding.authClient);
+    final vendorConnectionsGateway = _resolveVendorConnectionsGateway(
+      authBinding.authClient,
+    );
     final healthGateway = gateway == null ? null : _resolveHealthAdminGateway();
     final observabilityGateway = gateway == null
         ? null
@@ -381,9 +382,10 @@ Future<void> main() async {
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
     // Corpus / Integrations / Feature Flags routes can read
     // `adminAuthSource` and switch to the read-only branch for
-    // `ff_support`. Live gateways are still null in demo mode; the
-    // route accessors fall back to the seeded in-memory demo gateways
-    // in `admin_routes.dart`.
+    // `ff_support`. Most live gateways are still null in demo mode; the
+    // route accessors fall back to seeded in-memory demo gateways in
+    // `admin_routes.dart`. Vendor connections is passed a seeded demo
+    // gateway directly so it can render the full shared widget.
     runApp(
       AdminConsoleServicesScope(
         operatorLocationGateway: gateway,
@@ -662,13 +664,17 @@ IntegrationAdminGateway? _resolveIntegrationAdminGateway(
   );
 }
 
-/// Slice 9 - per-location vendor connections admin gateway. Demo mode
-/// returns null so the route shows the explicit not-wired state instead
-/// of using in-memory vendor data.
+/// Slice 9 - per-location vendor connections admin gateway. Demo and
+/// share-preview builds get the seeded Admin fixture so the walkthrough
+/// renders the same mixed vendor-state story as Operator Web / Mobile.
+/// Live mode still returns null when `ADMIN_PROXY_BASE_URI` is missing,
+/// so production wiring failures stay loud on the route.
 VendorConnectionsGateway? _resolveVendorConnectionsGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) {
+    return AdminDemoVendorConnectionsFixture.gateway();
+  }
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;

@@ -126,6 +126,23 @@ class DemoVendorIntegrationStateFixture {
     'demo-loc-harbour': DemoVendorIntegrationLocation.harbour,
   };
 
+  /// Admin Console demo location ids -> logical location. Mirrors the
+  /// location ids in `admin_routes_demo_gateways_part.dart` /
+  /// `demo_members_admin_gateway.dart` so Admin demo wiring can reuse
+  /// this same fixture instead of carrying a second status table.
+  static const Map<String, DemoVendorIntegrationLocation>
+      _adminConsoleLocationIds = <String, DemoVendorIntegrationLocation>{
+    // Demo Diner Co. -> Toronto Yorkville: mixed connected/error demo.
+    '00000000-0000-4000-8000-0000000000a1':
+        DemoVendorIntegrationLocation.downtown,
+    // Demo Diner Co. -> Vancouver Robson: already-live simulated state.
+    '00000000-0000-4000-8000-0000000000a2':
+        DemoVendorIntegrationLocation.riverside,
+    // Sunset Cafe Group -> Brooklyn Williamsburg: clean demo state.
+    '00000000-0000-4000-8000-0000000000b1':
+        DemoVendorIntegrationLocation.harbour,
+  };
+
   // Vendor identities reused from `InMemoryVendorConnectionsGateway`'s
   // catalog so the operator-web card chrome (display name, picker
   // alignment) stays faithful.
@@ -245,7 +262,9 @@ class DemoVendorIntegrationStateFixture {
       _resolve(locationId) != null;
 
   static DemoVendorIntegrationLocation? _resolve(String locationId) =>
-      _mobileLocationIds[locationId] ?? _operatorWebLocationIds[locationId];
+      _mobileLocationIds[locationId] ??
+      _operatorWebLocationIds[locationId] ??
+      _adminConsoleLocationIds[locationId];
 
   static Map<IntegrationCategory, DemoVendorCategoryState> _statesFor(
     String locationId,

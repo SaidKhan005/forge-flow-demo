@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_header_visibility.dart';
 
@@ -21,6 +23,9 @@ typedef AdminSetupWorkspaceBuilder =
 /// and the Business accounts screen share one type; existing callers
 /// (e.g. `admin_routes.dart`) keep using `AdminSetupWorkspaceSelection`.
 typedef AdminSetupWorkspaceSelection = AdminScopeSelection;
+
+const double _kWideShellSideNavWidth = 304;
+const double _kWideShellBreakpoint = 720;
 
 class AdminSetupWorkspace extends StatefulWidget {
   const AdminSetupWorkspace({
@@ -149,7 +154,14 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 920;
+        final viewportWidth = MediaQuery.sizeOf(context).width;
+        final shellBodyWidth = viewportWidth >= _kWideShellBreakpoint
+            ? viewportWidth - _kWideShellSideNavWidth
+            : viewportWidth;
+        final workspaceWidth = constraints.hasBoundedWidth
+            ? math.min(constraints.maxWidth, shellBodyWidth)
+            : shellBodyWidth;
+        final compact = workspaceWidth < 920;
         return FutureBuilder<List<AdminScopeTree>>(
           future: _future,
           builder: (context, snapshot) {
@@ -208,40 +220,47 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
               showWorkspaceHeader: widget.showWorkspaceHeader,
               child: functionChild,
             );
-            if (compact) {
-              return DefaultTabController(
-                length: 2,
-                child: Column(
-                  key: const Key('admin_setup_workspace_tabs'),
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Material(
-                      color: AppColors.backgroundMid,
-                      child: TabBar(
-                        labelColor: AppColors.textPrimary,
-                        unselectedLabelColor: AppColors.textMuted,
-                        indicatorColor: AppColors.sunsetDark,
-                        tabs: [
-                          const Tab(text: 'Scope'),
-                          Tab(text: widget.functionTitle),
+            return Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: workspaceWidth,
+                child: compact
+                    ? DefaultTabController(
+                        length: 2,
+                        child: Column(
+                          key: const Key('admin_setup_workspace_tabs'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Material(
+                              color: AppColors.backgroundMid,
+                              child: TabBar(
+                                labelColor: AppColors.textPrimary,
+                                unselectedLabelColor: AppColors.textMuted,
+                                indicatorColor: AppColors.sunsetDark,
+                                tabs: [
+                                  const Tab(text: 'Scope'),
+                                  Tab(text: widget.functionTitle),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: TabBarView(
+                                children: [scopePane, functionPane],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Row(
+                        key: const Key('admin_setup_workspace_split'),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(width: 360, child: scopePane),
+                          const VerticalDivider(width: 1),
+                          Expanded(child: functionPane),
                         ],
                       ),
-                    ),
-                    Expanded(
-                      child: TabBarView(children: [scopePane, functionPane]),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return Row(
-              key: const Key('admin_setup_workspace_split'),
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(width: 360, child: scopePane),
-                const VerticalDivider(width: 1),
-                Expanded(child: functionPane),
-              ],
+              ),
             );
           },
         );
@@ -278,7 +297,7 @@ class _FunctionPane extends StatelessWidget {
                 ),
               ),
             )
-          : child!,
+          : SizedBox.expand(child: child!),
     );
   }
 }
