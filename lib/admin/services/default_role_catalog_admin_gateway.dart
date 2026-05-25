@@ -34,7 +34,7 @@ List<Object?> defaultRoleCatalogStarterPayload() => <Object?>[
     roleKey: PermissionKeys.roleSuperAdmin,
     displayName: 'Ecosystem admin',
     description: 'Full Forge & Flow platform administration access.',
-    permissionKeys: _starterEcosystemAdminPermissions,
+    permissionKeys: _starterEcosystemAdminPermissions(),
   ),
   _starterRole(
     roleKey: PermissionKeys.roleFfSupport,
@@ -127,22 +127,49 @@ Map<String, Object?> _starterRole({
   };
 }
 
-const List<String> _starterEcosystemAdminPermissions = <String>[
-  PermissionKeys.adminRolesView,
-  PermissionKeys.adminRolesEditSeeded,
-  PermissionKeys.teamRolesView,
-  PermissionKeys.teamRolesDefaultCatalogView,
-  PermissionKeys.teamRolesDefaultCatalogEdit,
-  PermissionKeys.adminUsersView,
-  PermissionKeys.adminAuditLogView,
-];
+List<String> _starterEcosystemAdminPermissions() =>
+    PermissionKeys.all.toList(growable: false);
 
 const List<String> _starterSupportAccessPermissions = <String>[
-  PermissionKeys.adminRolesView,
-  PermissionKeys.teamRolesView,
-  PermissionKeys.teamRolesDefaultCatalogView,
+  PermissionKeys.productForgeflowAccess,
+  PermissionKeys.productBarrioAccess,
+  PermissionKeys.forgeflowShiftView,
+  PermissionKeys.forgeflowVarianceView,
+  PermissionKeys.forgeflowScheduleView,
+  PermissionKeys.forgeflowBaselineView,
+  PermissionKeys.forgeflowHistoryView,
+  PermissionKeys.forgeflowBenchmarkView,
+  PermissionKeys.forgeflowTargetProfileView,
+  PermissionKeys.forgeflowTargetCycleView,
+  PermissionKeys.forgeflowWeeklyPlanView,
+  PermissionKeys.forgeflowSettingsView,
+  PermissionKeys.barrioHandbookView,
+  PermissionKeys.barrioInterviewPlaybookView,
+  PermissionKeys.barrioJimTaylorView,
+  PermissionKeys.barrioPrestonLeeView,
+  PermissionKeys.barrioSupervisorContentView,
+  PermissionKeys.barrioElPodioView,
   PermissionKeys.adminUsersView,
   PermissionKeys.adminAuditLogView,
+  PermissionKeys.adminAuditLogExport,
+  PermissionKeys.adminDebugConsoleView,
+  PermissionKeys.adminFeatureFlagView,
+  PermissionKeys.adminPricingTierView,
+  PermissionKeys.adminRolesView,
+  PermissionKeys.adminUsersResetMfaFactors,
+  PermissionKeys.adminAuditPrivacyRead,
+  PermissionKeys.adminHierarchyCreate,
+  PermissionKeys.adminHierarchyMove,
+  PermissionKeys.adminHierarchyRename,
+  PermissionKeys.adminHierarchySuspend,
+  PermissionKeys.adminHierarchyDelete,
+  PermissionKeys.teamRolesView,
+  PermissionKeys.teamRolesDefaultCatalogView,
+  PermissionKeys.billingInvoiceView,
+  PermissionKeys.billingUsageView,
+  PermissionKeys.integrationToastView,
+  PermissionKeys.integration7shiftsView,
+  PermissionKeys.integrationOpentableView,
 ];
 
 const List<String> _starterAllPermissions = <String>[
