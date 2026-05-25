@@ -268,6 +268,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   List<WebVendorApplicabilityRow> _coversApplicabilityRows =
       const <WebVendorApplicabilityRow>[];
   int _coversApplicabilityLoadGeneration = 0;
+  List<WebVendorApplicabilityRow> _pollingApplicabilityRows =
+      const <WebVendorApplicabilityRow>[];
+  int _pollingApplicabilityLoadGeneration = 0;
 
   // Keyed `data_accuracy_service_period_settings` rows (server-owned;
   // mobile mirrors them through operational sync). The screen reads
@@ -314,6 +317,21 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       .map((row) => row.vendorSlug)
       .toList(growable: false);
 
+  // Vendor slugs the admin has turned OFF for scheduled polling at this
+  // (operator, location). DENY model: a current winner
+  // (`setting_kind == 'polling'`, `effectiveUntil == null`) with
+  // `enabled == false` means OFF. `enabled == true` or no row leaves the
+  // vendor polled by default. Consistent with the background worker.
+  List<String> get _polledOffVendorSlugs => _pollingApplicabilityRows
+      .where(
+        (row) =>
+            row.settingKind == 'polling' &&
+            !row.enabled &&
+            row.effectiveUntil == null,
+      )
+      .map((row) => row.vendorSlug)
+      .toList(growable: false);
+
   @override
   void initState() {
     super.initState();
@@ -329,6 +347,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _loadSettings();
     _loadWageApplicability();
     _loadCoversApplicability();
+    _loadPollingApplicability();
     _loadServicePeriodSettings();
     _loadServicePeriods();
   }
@@ -443,6 +462,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _wageApplicabilityError = null;
         _wageApplicabilityRows = const <WebVendorApplicabilityRow>[];
         _coversApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _pollingApplicabilityRows = const <WebVendorApplicabilityRow>[];
         _servicePeriodsLoading = widget.dataAccuracyGateway != null;
         _servicePeriodLoadError = null;
         _servicePeriodSaveError = null;
@@ -454,6 +474,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       _loadSettings();
       _loadWageApplicability();
       _loadCoversApplicability();
+      _loadPollingApplicability();
       _loadServicePeriodSettings();
       _loadServicePeriods();
     }
@@ -570,6 +591,41 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       if (!mounted || generation != _coversApplicabilityLoadGeneration) return;
       setState(() {
         _coversApplicabilityRows = const <WebVendorApplicabilityRow>[];
+      });
+    }
+  }
+
+  // Mirrors [_loadCoversApplicability] for the `polling` setting kind.
+  // Unlike wage/covers (allow-list), polling is a DENY model: the card
+  // is interested in current winners that are turned OFF
+  // (`enabled == false`), so we keep ALL current rows
+  // (`effectiveUntil == null`) here and let [_polledOffVendorSlugs]
+  // select the disabled ones. On error the rows stay empty, which means
+  // "no turn-offs": the card keeps its default polled behavior rather
+  // than silently hiding vendors.
+  Future<void> _loadPollingApplicability() async {
+    final gateway = widget.vendorApplicabilityGateway;
+    if (gateway == null) return;
+    final generation = ++_pollingApplicabilityLoadGeneration;
+    try {
+      final rows = await gateway.list(settingKind: 'polling');
+      final current =
+          rows
+              .where(
+                (row) =>
+                    row.settingKind == 'polling' &&
+                    row.effectiveUntil == null,
+              )
+              .toList(growable: false)
+            ..sort((a, b) => a.vendorSlug.compareTo(b.vendorSlug));
+      if (!mounted || generation != _pollingApplicabilityLoadGeneration) return;
+      setState(() {
+        _pollingApplicabilityRows = current;
+      });
+    } catch (_) {
+      if (!mounted || generation != _pollingApplicabilityLoadGeneration) return;
+      setState(() {
+        _pollingApplicabilityRows = const <WebVendorApplicabilityRow>[];
       });
     }
   }
@@ -1087,7 +1143,15 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   bool get _showAnyFallbackCard =>
       _anyDaypartManual || _showWalkInCard || _showHistoricalSeedCard;
 
-  bool get _dataFreshnessApplies => dataFreshnessAppliesToBundle(_bundle);
+  // True only when at least one CONNECTED poll-only vendor is still
+  // polled (i.e. NOT turned off by the admin). Honors the polling
+  // applicability DENY model when the gateway is bound; falls back to
+  // the connection-only check otherwise.
+  bool get _dataFreshnessApplies => dataFreshnessAppliesHonoringApplicability(
+    bundle: _bundle,
+    vendorApplicabilityBound: _vendorApplicabilityBound,
+    turnedOffVendorSlugs: _polledOffVendorSlugs,
+  );
 
   PollingTierStatus? get _displayTierStatus {
     final tier =
@@ -1099,9 +1163,13 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       tier: tier.tier,
       tierDisplayLabel: tier.tierDisplayLabel,
       monthlyPriceLabel: tier.monthlyPriceLabel,
-      perVendorCadenceSeconds: connectedPollingCadences(
-        _bundle,
-        tier.perVendorCadenceSeconds,
+      // Drop the admin-turned-off poll-only vendors from the cadence
+      // list so the card only shows vendors F&F still polls.
+      perVendorCadenceSeconds: connectedPollingCadencesHonoringApplicability(
+        bundle: _bundle,
+        source: tier.perVendorCadenceSeconds,
+        vendorApplicabilityBound: _vendorApplicabilityBound,
+        turnedOffVendorSlugs: _polledOffVendorSlugs,
       ),
     );
   }

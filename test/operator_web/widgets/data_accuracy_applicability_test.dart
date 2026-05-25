@@ -108,6 +108,118 @@ void main() {
     });
 
     test(
+      'polling turn-offs drop a vendor only when applicability is bound',
+      () {
+        // Two connected poll-only vendors: a POS and a labor vendor.
+        final twoPollOnly = bundle(
+          pos: row(
+            vendorId: 'oracle_micros_simphony',
+            category: VendorCategory.pos,
+          ),
+          labor: row(
+            vendorId: 'quickbooks_time',
+            category: VendorCategory.labor,
+          ),
+        );
+        const source = <String, int>{
+          'oracle_micros_simphony': 300,
+          'quickbooks_time': 300,
+        };
+
+        // Default (no turn-offs) leaves both vendors, bound or not.
+        for (final bound in <bool>[true, false]) {
+          expect(
+            connectedPollingCadencesHonoringApplicability(
+              bundle: twoPollOnly,
+              source: source,
+              vendorApplicabilityBound: bound,
+              turnedOffVendorSlugs: const <String>[],
+            ),
+            source,
+            reason: 'No turn-offs must not change the cadence map.',
+          );
+        }
+
+        // When bound, a turned-off vendor is dropped.
+        expect(
+          connectedPollingCadencesHonoringApplicability(
+            bundle: twoPollOnly,
+            source: source,
+            vendorApplicabilityBound: true,
+            turnedOffVendorSlugs: const <String>['quickbooks_time'],
+          ),
+          const <String, int>{'oracle_micros_simphony': 300},
+        );
+
+        // When NOT bound, the turn-off list is ignored: behavior is
+        // exactly connectedPollingCadences (never loosened/changed).
+        expect(
+          connectedPollingCadencesHonoringApplicability(
+            bundle: twoPollOnly,
+            source: source,
+            vendorApplicabilityBound: false,
+            turnedOffVendorSlugs: const <String>['quickbooks_time'],
+          ),
+          connectedPollingCadences(twoPollOnly, source),
+          reason:
+              'Unbound applicability must not honor turn-offs, leaving the '
+              'existing connection-only behavior intact.',
+        );
+
+        // dataFreshnessAppliesHonoringApplicability mirrors the above.
+        // Both on by default -> applies regardless of bound.
+        for (final bound in <bool>[true, false]) {
+          expect(
+            dataFreshnessAppliesHonoringApplicability(
+              bundle: twoPollOnly,
+              vendorApplicabilityBound: bound,
+              turnedOffVendorSlugs: const <String>[],
+            ),
+            isTrue,
+          );
+        }
+
+        // One of two turned off (bound) still applies (the other polls).
+        expect(
+          dataFreshnessAppliesHonoringApplicability(
+            bundle: twoPollOnly,
+            vendorApplicabilityBound: true,
+            turnedOffVendorSlugs: const <String>['quickbooks_time'],
+          ),
+          isTrue,
+        );
+
+        // BOTH connected poll-only vendors turned off (bound) -> does
+        // not apply: the card shows the "does not apply" state.
+        expect(
+          dataFreshnessAppliesHonoringApplicability(
+            bundle: twoPollOnly,
+            vendorApplicabilityBound: true,
+            turnedOffVendorSlugs: const <String>[
+              'oracle_micros_simphony',
+              'quickbooks_time',
+            ],
+          ),
+          isFalse,
+        );
+
+        // Same both-off list, but NOT bound -> still applies (turn-offs
+        // ignored). Guards against loosening when unbound.
+        expect(
+          dataFreshnessAppliesHonoringApplicability(
+            bundle: twoPollOnly,
+            vendorApplicabilityBound: false,
+            turnedOffVendorSlugs: const <String>[
+              'oracle_micros_simphony',
+              'quickbooks_time',
+            ],
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test(
       'covers choices are locked to connected POS and reservation vendors',
       () {
         expect(

@@ -9521,13 +9521,21 @@ class RepositoryVendorApplicabilityProxyGateway
     String? settingKey,
   }) async {
     return _wrapValidation(() async {
+      // Return the current winner per (setting_key, vendor) INCLUDING
+      // disabled rows. The operator-web Data Accuracy readers apply the
+      // DENY model client-side: a winner with enabled=false means the
+      // admin turned that vendor OFF for this setting. The wage/covers
+      // readers already filter `enabled && effectiveUntil == null`, so
+      // they ignore disabled winners; the data-freshness card needs the
+      // disabled winners to drop turned-off poll-only vendors. Matches
+      // the background worker's deny semantics (enabled=false => off).
       final rows = await _repository.listCurrentForOperator(
         operatorId: scope.operatorId,
         locationId: scope.locationId,
         actorUserId: scope.userId,
         settingKind: settingKind,
         settingKey: settingKey,
-        enabledOnly: true,
+        enabledOnly: false,
       );
       return <Map<String, Object?>>[for (final row in rows) row.toJson()];
     });

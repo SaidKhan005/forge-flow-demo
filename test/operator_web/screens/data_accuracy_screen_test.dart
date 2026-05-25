@@ -1212,6 +1212,139 @@ void main() {
         findsNothing,
       );
     });
+
+    // Admin polling turn-off (DENY model): a `setting_kind == 'polling'`
+    // winner with `enabled == false` removes that vendor's row from the
+    // data-freshness card. The other connected poll-only vendor keeps
+    // its row, so the card still applies.
+    testWidgets(
+      'admin polling turn-off drops just that vendor row from the card',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1800));
+        // Two connected poll-only vendors: Oracle (POS) + QuickBooks
+        // Time (labor). Seed a tier carrying both cadences.
+        final gateway = _RecordingDataAccuracyGateway()
+          ..seedPollingTier = OperatorWebPollingTierSnapshot(
+            operatorId: ownerSession.operatorId,
+            locationId: ownerSession.primaryLocationId ?? '',
+            tierKey: 'standard',
+            pollingCadencePerVendorSeconds: const <String, int>{
+              'oracle_micros_simphony': 300,
+              'quickbooks_time': 300,
+            },
+            monthlyPriceCents: null,
+            effectiveAt: DateTime.utc(2026, 5, 20),
+          );
+        final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+          ..rows = <WebVendorApplicabilityRow>[
+            _vendorApplicabilityRow(
+              id: 'qbt-polling-off',
+              vendorSlug: 'quickbooks_time',
+              enabled: false,
+              settingKind: 'polling',
+            ),
+          ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
+              gateway: gatewayWithBundle(
+                ownerSession,
+                bundleFor(
+                  session: ownerSession,
+                  pos: row(
+                    vendorId: 'oracle_micros_simphony',
+                    displayName: 'Oracle MICROS Simphony',
+                    category: VendorCategory.pos,
+                  ),
+                  labor: row(
+                    vendorId: 'quickbooks_time',
+                    displayName: 'QuickBooks Time',
+                    category: VendorCategory.labor,
+                  ),
+                ),
+              ),
+              dataAccuracyGateway: gateway,
+              vendorApplicabilityGateway: applicabilityGateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(applicabilityGateway.calls, contains('polling'));
+        // Turned-off vendor is gone; the still-polled vendor remains.
+        expect(
+          find.byKey(
+            const Key('polling_tier_vendor_row_quickbooks_time'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(
+            const Key('polling_tier_vendor_row_oracle_micros_simphony'),
+          ),
+          findsOneWidget,
+        );
+        // Card still applies: not-applicable notice must NOT show.
+        expect(
+          find.byKey(const Key('polling_tier_not_applicable_notice')),
+          findsNothing,
+        );
+      },
+    );
+
+    // When EVERY connected poll-only vendor is turned off, the card
+    // collapses to the "does not apply" state.
+    testWidgets(
+      'all poll-only vendors turned off shows the not-applicable notice',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1600));
+        // pollOnlyGateway connects exactly one poll-only vendor
+        // (QuickBooks Time). Turn it off via a polling deny row.
+        final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+          ..rows = <WebVendorApplicabilityRow>[
+            _vendorApplicabilityRow(
+              id: 'qbt-polling-off',
+              vendorSlug: 'quickbooks_time',
+              enabled: false,
+              settingKind: 'polling',
+            ),
+          ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              businessDateIso: testBusinessDateIso,
+              gateway: pollOnlyGateway(ownerSession),
+              vendorApplicabilityGateway: applicabilityGateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(applicabilityGateway.calls, contains('polling'));
+        expect(
+          find.byKey(const Key('polling_tier_not_applicable_notice')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('polling_tier_vendor_row_quickbooks_time'),
+          ),
+          findsNothing,
+        );
+        // Request-change button is disabled in the not-applicable state.
+        final button = tester.widget<FilledButton>(
+          find.byKey(const Key('polling_tier_request_change_button')),
+        );
+        expect(button.onPressed, isNull);
+      },
+    );
   });
 
   // ─── Acceptance item I — UX writing audit ────────────────────────
