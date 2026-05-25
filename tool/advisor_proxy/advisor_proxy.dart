@@ -9292,7 +9292,7 @@ Future<void> routeRequest(
 
             if (request.method == 'GET' &&
                 authOperationPath == adminAuthAuditLogPath) {
-              if (!await requirePermission('team.users.view')) return;
+              if (!await requirePermission('admin.audit_log.view')) return;
               final params = request.uri.queryParameters;
               final rawLimit = int.tryParse(params['limit'] ?? '');
               final rawCursor = int.tryParse(params['cursor'] ?? '');

@@ -604,7 +604,8 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
     return 'admin-my-account-2fa-$action-$ts-$r-$_idempotencyCounter';
   }
 
-  void _showToast(String message) => _showToastInternal(message, isError: false);
+  void _showToast(String message) =>
+      _showToastInternal(message, isError: false);
 
   /// Negative (red) toast for a fail-closed gateway error.
   void _showErrorToast(String message) =>
@@ -2187,10 +2188,9 @@ class _AdminAuditLogCard extends StatelessWidget {
       cardKey: const Key('admin_my_account_audit_log_card'),
       title: 'Audit log',
       headerExplainer:
-          'Open the audit log to review activity, active sessions, and '
-          'support actions for a business you choose. You pick a business '
-          'first, then see its full audit history. Your own sign-in '
-          'history is in Security, under Recent sign-in activity.',
+          'Open the audit log to review the full change history for a '
+          'business you choose. Your own sign-in history is in Security, '
+          'under Recent sign-in activity.',
       child: Align(
         alignment: Alignment.centerLeft,
         child: SizedBox(
@@ -2198,7 +2198,7 @@ class _AdminAuditLogCard extends StatelessWidget {
           child: OutlinedButton.icon(
             key: const Key('admin_my_account_audit_log_link'),
             onPressed: onOpenAuditLog,
-            icon: const Icon(Icons.history, size: 16),
+            icon: const Icon(Icons.fact_check_outlined, size: 16),
             label: const Text('View audit log'),
             style: AdminButtonStyles.secondary(
               minHeight: 38,

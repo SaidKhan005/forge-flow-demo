@@ -6,6 +6,8 @@
 // business/scope picker lives in the admin workspace shell and is the
 // intentional exception.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,6 +57,7 @@ void main() {
     WidgetTester tester, {
     InMemoryAuditedSupportActionsAdminGateway? gateway,
     AdminAuditChainAnchorsGateway? anchorsGateway,
+    bool canViewAuditLog = true,
     bool canExportAuditLog = false,
     DateTime Function()? anchorBadgeClock,
     AdminHierarchyScopeIntent? hierarchyScope,
@@ -68,6 +71,7 @@ void main() {
           anchorsGateway: anchorsGateway,
           actorUserId: 'demo-super-admin',
           pickedOperator: demoPick(),
+          canViewAuditLog: canViewAuditLog,
           canExportAuditLog: canExportAuditLog,
           anchorBadgeClock: anchorBadgeClock,
           hierarchyScope: hierarchyScope,
@@ -120,6 +124,28 @@ void main() {
       );
       expect(find.byKey(const Key('admin_asa_scope_banner')), findsNothing);
       expect(find.textContaining('Cursor-paginated rows'), findsNothing);
+    });
+
+    testWidgets('uses the ops forbidden state when view access is missing', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      await pumpScreen(tester, canViewAuditLog: false);
+
+      expect(
+        find.byKey(const Key('admin_asa_audit_log_forbidden')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Audit log is not available for this account'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_asa_filters')), findsNothing);
+      expect(find.byKey(const Key('admin_asa_audit_log_list')), findsNothing);
+      expect(
+        find.byKey(const Key('admin_audit_log_integrity_badge')),
+        findsNothing,
+      );
     });
 
     testWidgets('lists seeded rows with ops row copy and actor chips', (
@@ -406,7 +432,12 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(calls.single, contains('event_id,occurred_at,action'));
+      expect(
+        calls.single,
+        contains(
+          'created_at,action,actor_user_id,actor_display_name,actor_email',
+        ),
+      );
       expect(downloads, hasLength(1));
       expect(
         find.byKey(const Key('admin_asa_audit_log_export_message')),
@@ -474,6 +505,7 @@ void main() {
         find.byKey(const Key('admin_audit_log_integrity_badge_healthy_title')),
         findsOneWidget,
       );
+      expect(find.textContaining('Last anchor 4 hours ago.'), findsOneWidget);
 
       await pumpScreen(tester);
       expect(
@@ -481,6 +513,34 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('admin_asa_audit_log_list')), findsOneWidget);
+    });
+
+    testWidgets('integrity badge body copy matches ops copy', (tester) async {
+      wideViewport(tester);
+      await pumpScreen(tester, anchorsGateway: _LoadingAnchorGateway());
+      expect(
+        find.text('Loading the most recent anchor for your operator.'),
+        findsOneWidget,
+      );
+
+      await pumpScreen(
+        tester,
+        anchorsGateway: InMemoryAdminAuditChainAnchorsGateway(
+          snapshot: const AdminAuditChainAnchorSnapshot(
+            status: AdminAuditChainAnchorStatus.failed,
+          ),
+        ),
+      );
+      expect(
+        find.textContaining('Your audit log entries are still being recorded'),
+        findsOneWidget,
+      );
+
+      await pumpScreen(tester, anchorsGateway: _FailingAnchorGateway());
+      expect(
+        find.textContaining('Refresh the page to try again.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('rendered audit tab copy has no em dash', (tester) async {
@@ -500,6 +560,28 @@ void main() {
       }
     });
   });
+}
+
+class _LoadingAnchorGateway implements AdminAuditChainAnchorsGateway {
+  final Completer<AdminAuditChainAnchorSnapshot> _completer =
+      Completer<AdminAuditChainAnchorSnapshot>();
+
+  @override
+  Future<AdminAuditChainAnchorSnapshot> latest({required String operatorId}) =>
+      _completer.future;
+}
+
+class _FailingAnchorGateway implements AdminAuditChainAnchorsGateway {
+  @override
+  Future<AdminAuditChainAnchorSnapshot> latest({
+    required String operatorId,
+  }) async {
+    throw const AdminAuditChainAnchorsGatewayError(
+      statusCode: 503,
+      errorCode: 'unavailable',
+      message: 'unavailable',
+    );
+  }
 }
 
 AuditLogRow _auditRow({
