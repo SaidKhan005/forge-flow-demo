@@ -24,6 +24,7 @@
 
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import 'admin_business_timing_resolution_gateway.dart'
@@ -46,7 +47,8 @@ class AdminBusinessTimingProfileGatewayError implements Exception {
   final String message;
 
   @override
-  String toString() => 'AdminBusinessTimingProfileGatewayError('
+  String toString() =>
+      'AdminBusinessTimingProfileGatewayError('
       '$statusCode/$errorCode): $message';
 }
 
@@ -73,14 +75,14 @@ class AdminServicePeriodWrite {
   final int sortOrder;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'key': key,
-        'label': label,
-        'startLocal': startLocal,
-        'endLocal': endLocal,
-        'applicableDays': applicableDays,
-        'shortLabel': shortLabel,
-        'sortOrder': sortOrder,
-      };
+    'key': key,
+    'label': label,
+    'startLocal': startLocal,
+    'endLocal': endLocal,
+    'applicableDays': applicableDays,
+    'shortLabel': shortLabel,
+    'sortOrder': sortOrder,
+  };
 }
 
 /// Full create payload for `POST .../business-timing-profiles`. Mirrors
@@ -107,16 +109,16 @@ class AdminBusinessTimingProfileCreate {
   final List<AdminServicePeriodWrite> servicePeriods;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'scopeKind': scopeKind,
-        'scopeId': scopeId,
-        'effectiveAtBusinessDate': effectiveAtBusinessDate,
-        'ianaTimezone': ianaTimezone,
-        'weekStartDay': weekStartDay,
-        'businessDayStartLocal': businessDayStartLocal,
-        'servicePeriods': <Map<String, Object?>>[
-          for (final period in servicePeriods) period.toJson(),
-        ],
-      };
+    'scopeKind': scopeKind,
+    'scopeId': scopeId,
+    'effectiveAtBusinessDate': effectiveAtBusinessDate,
+    'ianaTimezone': ianaTimezone,
+    'weekStartDay': weekStartDay,
+    'businessDayStartLocal': businessDayStartLocal,
+    'servicePeriods': <Map<String, Object?>>[
+      for (final period in servicePeriods) period.toJson(),
+    ],
+  };
 }
 
 /// Partial update payload for `PATCH .../business-timing-profiles/:id`.
@@ -127,6 +129,8 @@ class AdminBusinessTimingProfileCreate {
 /// override semantics).
 class AdminBusinessTimingProfilePatch {
   const AdminBusinessTimingProfilePatch({
+    this.scopeKind,
+    this.scopeId,
     this.effectiveAtBusinessDate,
     this.ianaTimezone,
     this.weekStartDay,
@@ -134,6 +138,8 @@ class AdminBusinessTimingProfilePatch {
     this.servicePeriods,
   });
 
+  final String? scopeKind;
+  final String? scopeId;
   final String? effectiveAtBusinessDate;
   final String? ianaTimezone;
   final String? weekStartDay;
@@ -142,6 +148,8 @@ class AdminBusinessTimingProfilePatch {
 
   Map<String, Object?> toJson() {
     final json = <String, Object?>{};
+    if (scopeKind != null) json['scopeKind'] = scopeKind;
+    if (scopeId != null) json['scopeId'] = scopeId;
     if (effectiveAtBusinessDate != null) {
       json['effectiveAtBusinessDate'] = effectiveAtBusinessDate;
     }
@@ -193,7 +201,9 @@ class AdminBusinessTimingProfileRecord {
       // V1: profile_id doubles as version_id; accept either key.
       versionId: (json['versionId'] as String?) ?? profileId,
       scopeKind:
-          (json['scopeKind'] as String?) ?? (json['scopeType'] as String?) ?? '',
+          (json['scopeKind'] as String?) ??
+          (json['scopeType'] as String?) ??
+          '',
       scopeId: (json['scopeId'] as String?) ?? '',
       effectiveAtBusinessDate:
           (json['effectiveAtBusinessDate'] as String?) ?? '',
@@ -201,8 +211,7 @@ class AdminBusinessTimingProfileRecord {
       weekStartDay: (json['weekStartDay'] as String?) ?? '',
       businessDayStartLocal: (json['businessDayStartLocal'] as String?) ?? '',
       servicePeriods: <AdminResolutionServicePeriod>[
-        for (final p
-            in (json['servicePeriods'] as List?) ?? const <Object?>[])
+        for (final p in (json['servicePeriods'] as List?) ?? const <Object?>[])
           AdminResolutionServicePeriod.fromJson(
             (p as Map).cast<String, Object?>(),
           ),
@@ -244,14 +253,17 @@ class HttpAdminBusinessTimingProfilesGateway
     required this.bearerTokenProvider,
     http.Client? httpClient,
     Duration timeout = kAdminHttpRequestTimeout,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _timeout = timeout;
+    bool useStablePayloadIdempotencyKeys = true,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout,
+       _useStablePayloadIdempotencyKeys = useStablePayloadIdempotencyKeys;
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`).
   final Uri baseUri;
   final AdminBearerTokenProvider bearerTokenProvider;
   final http.Client _httpClient;
   final Duration _timeout;
+  final bool _useStablePayloadIdempotencyKeys;
 
   static String profilesPath(String operatorId) =>
       '/v1/admin/operators/${Uri.encodeComponent(operatorId)}'
@@ -298,8 +310,17 @@ class HttpAdminBusinessTimingProfilesGateway
       ...profile.toJson(),
       'admin_reason': adminReason,
     };
-    final request = _jsonWrite('POST', uri, payload, idempotencyKey,
-        await bearerTokenProvider());
+    final request = _jsonWrite(
+      'POST',
+      uri,
+      payload,
+      _idempotencyKeyForWrite(
+        action: 'timing-profile-create',
+        parts: <Object?>[operatorId, payload],
+        callerIdempotencyKey: idempotencyKey,
+      ),
+      await bearerTokenProvider(),
+    );
     final body = await _send(request, expected: 201);
     return AdminBusinessTimingProfileRecord.fromJson(body);
   }
@@ -317,10 +338,64 @@ class HttpAdminBusinessTimingProfilesGateway
       ...patch.toJson(),
       'admin_reason': adminReason,
     };
-    final request = _jsonWrite('PATCH', uri, payload, idempotencyKey,
-        await bearerTokenProvider());
+    final request = _jsonWrite(
+      'PATCH',
+      uri,
+      payload,
+      _idempotencyKeyForWrite(
+        action: 'timing-profile-update',
+        parts: <Object?>[operatorId, profileId, payload],
+        callerIdempotencyKey: idempotencyKey,
+      ),
+      await bearerTokenProvider(),
+    );
     final body = await _send(request, expected: 200);
     return AdminBusinessTimingProfileRecord.fromJson(body);
+  }
+
+  String _idempotencyKeyForWrite({
+    required String action,
+    required List<Object?> parts,
+    required String callerIdempotencyKey,
+  }) {
+    if (_useStablePayloadIdempotencyKeys) {
+      return stablePayloadIdempotencyKey(action, parts);
+    }
+    return callerIdempotencyKey.trim();
+  }
+
+  /// Admin parity with operator-web G60: same logical write, same
+  /// `Idempotency-Key`; different payload, different key. The public
+  /// admin gateway API still accepts a caller key for legacy tests and
+  /// in-memory gateways, but production HTTP calls derive a stable key
+  /// from the admin payload by default.
+  static String stablePayloadIdempotencyKey(
+    String action,
+    List<Object?> parts,
+  ) {
+    final canonical = StringBuffer('admin:$action');
+    for (final part in parts) {
+      canonical.write('|');
+      canonical.write(_canonicalisePart(part));
+    }
+    final digest = sha256.convert(utf8.encode(canonical.toString()));
+    return 'admin-$action-$digest';
+  }
+
+  static String _canonicalisePart(Object? part) {
+    if (part == null) return ' ';
+    if (part is Map) {
+      final entries =
+          part.entries
+              .map((entry) => (key: entry.key.toString(), value: entry.value))
+              .toList(growable: false)
+            ..sort((a, b) => a.key.compareTo(b.key));
+      return '{${entries.map((entry) => '${entry.key}=${_canonicalisePart(entry.value)}').join(',')}}';
+    }
+    if (part is Iterable) {
+      return '[${part.map(_canonicalisePart).join(',')}]';
+    }
+    return part.toString();
   }
 
   http.Request _jsonWrite(
@@ -360,7 +435,8 @@ class HttpAdminBusinessTimingProfilesGateway
       throw AdminBusinessTimingProfileGatewayError(
         statusCode: response.statusCode,
         errorCode: (body['error'] as String?) ?? 'request_failed',
-        message: (body['message'] as String?) ??
+        message:
+            (body['message'] as String?) ??
             'admin business-timing profile write failed',
       );
     }
@@ -412,7 +488,7 @@ class InMemoryAdminBusinessTimingProfilesGateway
 
   /// Every (profileId, patch) captured, in call order (test affordance).
   final List<({String profileId, AdminBusinessTimingProfilePatch patch})>
-      capturedPatches =
+  capturedPatches =
       <({String profileId, AdminBusinessTimingProfilePatch patch})>[];
 
   int _idSeq = 0;
@@ -421,9 +497,7 @@ class InMemoryAdminBusinessTimingProfilesGateway
   Future<List<AdminBusinessTimingProfileRecord>> listProfiles({
     required String operatorId,
   }) async {
-    return <AdminBusinessTimingProfileRecord>[
-      ...?_byOperator[operatorId],
-    ];
+    return <AdminBusinessTimingProfileRecord>[...?_byOperator[operatorId]];
   }
 
   @override
@@ -447,8 +521,9 @@ class InMemoryAdminBusinessTimingProfilesGateway
       businessDayStartLocal: profile.businessDayStartLocal,
       servicePeriods: _periodsFromWrite(profile.servicePeriods),
     );
-    (_byOperator[operatorId] ??= <AdminBusinessTimingProfileRecord>[])
-        .add(record);
+    (_byOperator[operatorId] ??= <AdminBusinessTimingProfileRecord>[]).add(
+      record,
+    );
     return record;
   }
 
@@ -482,8 +557,8 @@ class InMemoryAdminBusinessTimingProfilesGateway
     final merged = AdminBusinessTimingProfileRecord(
       profileId: existing.profileId,
       versionId: existing.versionId,
-      scopeKind: existing.scopeKind,
-      scopeId: existing.scopeId,
+      scopeKind: patch.scopeKind ?? existing.scopeKind,
+      scopeId: patch.scopeId ?? existing.scopeId,
       effectiveAtBusinessDate:
           patch.effectiveAtBusinessDate ?? existing.effectiveAtBusinessDate,
       ianaTimezone: patch.ianaTimezone ?? existing.ianaTimezone,
