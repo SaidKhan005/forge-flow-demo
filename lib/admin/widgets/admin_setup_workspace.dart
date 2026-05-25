@@ -40,6 +40,8 @@ class AdminSetupWorkspace extends StatefulWidget {
     this.description,
     this.showWorkspaceHeader = true,
     this.allowAllBusinessesScope = false,
+    this.initialAllBusinessesSelected = false,
+    this.onAllBusinessesSelected,
     this.allBusinessesBuilder,
   });
 
@@ -66,6 +68,16 @@ class AdminSetupWorkspace extends StatefulWidget {
   /// other setup surfaces that share this workspace are unaffected.
   final bool allowAllBusinessesScope;
 
+  /// When true, the workspace opens on the aggregate all-businesses view
+  /// instead of the "pick a business first" empty state. Used by surfaces
+  /// whose primary mode is platform-wide but which still offer the shared
+  /// hierarchy tree for scoped drill-in.
+  final bool initialAllBusinessesSelected;
+
+  /// Called when the all-businesses row is selected so the shell can clear
+  /// any remembered hierarchy scope for this route.
+  final VoidCallback? onAllBusinessesSelected;
+
   /// Builds the function pane for the "All businesses" selection. Receives
   /// no hierarchy scope because the platform-wide view aggregates across
   /// every business (the screen reads with `operator_id = null`).
@@ -87,6 +99,11 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
   void initState() {
     super.initState();
     _selectedScope = widget.initialScope;
+    _allBusinessesSelected =
+        widget.initialScope == null &&
+        widget.initialAllBusinessesSelected &&
+        widget.allowAllBusinessesScope &&
+        widget.allBusinessesBuilder != null;
     final initialOperatorId = widget.initialScope?.operatorId;
     if (initialOperatorId != null) {
       _expandedOperatorIds.add(initialOperatorId);
@@ -104,10 +121,20 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
         oldWidget.hierarchyGateway != widget.hierarchyGateway) {
       _future = _load();
     }
-    if (oldWidget.initialScope != widget.initialScope &&
-        widget.initialScope != null) {
-      _selectedScope = widget.initialScope;
-      _expandedOperatorIds.add(widget.initialScope!.operatorId);
+    if (oldWidget.initialScope != widget.initialScope ||
+        oldWidget.initialAllBusinessesSelected !=
+            widget.initialAllBusinessesSelected) {
+      final nextInitialScope = widget.initialScope;
+      if (nextInitialScope != null) {
+        _selectedScope = nextInitialScope;
+        _allBusinessesSelected = false;
+        _expandedOperatorIds.add(nextInitialScope.operatorId);
+      } else if (widget.initialAllBusinessesSelected &&
+          widget.allowAllBusinessesScope &&
+          widget.allBusinessesBuilder != null) {
+        _selectedScope = null;
+        _allBusinessesSelected = true;
+      }
     }
   }
 
@@ -138,6 +165,7 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
       _allBusinessesSelected = true;
       _selectedScope = null;
     });
+    widget.onAllBusinessesSelected?.call();
   }
 
   void _toggleExpanded(String operatorId) {
