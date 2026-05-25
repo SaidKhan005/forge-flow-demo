@@ -1439,12 +1439,18 @@ class _ConfidenceChip extends StatelessWidget {
     if (score == null) {
       return const SizedBox.shrink();
     }
-    // B-r1: the raw confidence score is a machine-flavored detail, so it
-    // only shows when the "Show technical details" toggle is ON. OFF
-    // (default) keeps the everyday Connections view free of numbers.
-    if (!_CorpusTechDetailsScope.of(context)) return const SizedBox.shrink();
     final low = candidate.hasLowConfidence;
+    final showTech = _CorpusTechDetailsScope.of(context);
+    // The low-confidence WARNING is a plain-English clarity signal, so it
+    // always shows. The raw numeric score is a machine-flavored detail,
+    // appended only when "Show technical details" is ON. A normal
+    // (not-low) confidence chip is just a number, so it hides entirely
+    // when the toggle is OFF (the default), matching the approved preview.
+    if (!low && !showTech) return const SizedBox.shrink();
     final scoreText = score.toStringAsFixed(2);
+    final label = low
+        ? (showTech ? 'Low confidence ($scoreText)' : 'Low confidence')
+        : 'Confidence $scoreText';
     return Container(
       key: low
           ? Key('admin_corpus_graph_candidate_warning_${candidate.candidateId}')
@@ -1459,7 +1465,7 @@ class _ConfidenceChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
       ),
       child: Text(
-        low ? 'Low confidence ($scoreText)' : 'Confidence $scoreText',
+        label,
         style: AppTextStyles.mono8(
           color: low ? AppColors.warning : AppColors.positive,
         ),
