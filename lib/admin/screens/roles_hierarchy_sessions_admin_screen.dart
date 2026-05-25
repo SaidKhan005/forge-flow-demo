@@ -266,19 +266,32 @@ class _RolesHierarchySessionsAdminScreenState
     if (!widget.canEditSeededRoles) return;
     final result = await showDialog<EditSeededRoleResult>(
       context: context,
-      builder: (_) => EditSeededRoleDialog(initial: row),
+      builder: (_) => EditSeededRoleDialog(
+        initial: row,
+        lockedPermissionKeys: platformRoleLockedPermissionKeys(row.roleKey),
+      ),
     );
     if (result == null) return;
     await _runAndRefresh(
-      () => widget.gateway.editSeededRole(
-        operatorId: widget.pickedOperator.operatorId,
-        roleId: row.roleId,
-        permissionKeys: result.permissionKeys,
-        idempotencyKey: _nextIdempotencyKey('roles-edit-seeded'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-      ),
+      () => row.isPlatformRole
+          ? widget.gateway.editPlatformRole(
+              operatorId: widget.pickedOperator.operatorId,
+              roleId: row.roleId,
+              permissionKeys: result.permissionKeys,
+              idempotencyKey: _nextIdempotencyKey('roles-edit-platform'),
+              actorUserId: widget.actorUserId,
+              actorIsForgeAdmin: widget.editingEnabled,
+              adminReason: result.adminReason,
+            )
+          : widget.gateway.editSeededRole(
+              operatorId: widget.pickedOperator.operatorId,
+              roleId: row.roleId,
+              permissionKeys: result.permissionKeys,
+              idempotencyKey: _nextIdempotencyKey('roles-edit-seeded'),
+              actorUserId: widget.actorUserId,
+              actorIsForgeAdmin: widget.editingEnabled,
+              adminReason: result.adminReason,
+            ),
       refresh: _refreshRoles,
       successHint: 'Updated ${roleAdminDisplayLabel(row)}',
     );
@@ -790,13 +803,17 @@ class RolePolicyAdminPanel extends StatefulWidget {
 }
 
 class _RolePolicyAdminPanelState extends State<RolePolicyAdminPanel> {
+  bool _showAllPlatform = false;
   bool _showAllSeeded = false;
   bool _showAllCustom = false;
 
   @override
   Widget build(BuildContext context) {
+    final platform = widget.roles
+        .where((r) => r.isPlatformRole)
+        .toList(growable: false);
     final seeded = widget.roles
-        .where((r) => r.isSeeded)
+        .where((r) => r.isSeeded && !r.isPlatformRole)
         .toList(growable: false);
     final custom = widget.roles
         .where((r) => !r.isSeeded)
@@ -810,10 +827,16 @@ class _RolePolicyAdminPanelState extends State<RolePolicyAdminPanel> {
             AdminStatStrip(
               items: <AdminStatItem>[
                 AdminStatItem(
+                  label: 'Forge & Flow access',
+                  value: platform.length.toString(),
+                  icon: Icons.admin_panel_settings_outlined,
+                  tone: AppColors.peacock,
+                ),
+                AdminStatItem(
                   label: 'Default roles',
                   value: seeded.length.toString(),
                   icon: Icons.verified_user_outlined,
-                  tone: AppColors.peacock,
+                  tone: AppColors.textMuted,
                 ),
                 AdminStatItem(
                   label: 'Custom roles',
@@ -831,6 +854,29 @@ class _RolePolicyAdminPanelState extends State<RolePolicyAdminPanel> {
             ),
             const SizedBox(height: 16),
           ],
+          AdminRolePolicySection(
+            title: 'Forge & Flow access',
+            roles: platform,
+            sectionKey: const Key('admin_rhs_roles_platform'),
+            emptyText: 'No Forge & Flow access roles are configured.',
+            showAll: _showAllPlatform,
+            rolePreviewLimit: widget.rolePreviewLimit,
+            toggleKey: const Key('admin_rhs_roles_platform_toggle'),
+            onToggleExpanded: () {
+              setState(() => _showAllPlatform = !_showAllPlatform);
+            },
+            rowBuilder: (role) => _RoleRowTile(
+              key: Key('admin_rhs_role_row_${role.roleId}'),
+              row: role,
+              editingEnabled:
+                  widget.editingEnabled && widget.canEditSeededRoles,
+              isSeeded: true,
+              badgeLabel: 'Platform',
+              onEdit: widget.onEditSeeded,
+              onDelete: widget.onDeleteCustom,
+            ),
+          ),
+          const SizedBox(height: 16),
           AdminRolePolicySection(
             title: 'Default roles',
             roles: seeded,
@@ -900,6 +946,7 @@ class _RoleRowTile extends StatelessWidget {
     required this.isSeeded,
     required this.onEdit,
     required this.onDelete,
+    this.badgeLabel = 'Seeded',
   });
 
   final RoleAdminRow row;
@@ -907,6 +954,7 @@ class _RoleRowTile extends StatelessWidget {
   final bool isSeeded;
   final ValueChanged<RoleAdminRow> onEdit;
   final ValueChanged<RoleAdminRow> onDelete;
+  final String badgeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -946,7 +994,7 @@ class _RoleRowTile extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      'Seeded',
+                      badgeLabel,
                       style: AppTextStyles.mono11(color: AppColors.textMuted),
                     ),
                   ),
@@ -2271,10 +2319,12 @@ class _AdminProductPermissionPicker extends StatefulWidget {
     required this.selected,
     required this.barrioPlanIncluded,
     required this.onToggle,
+    this.lockedPermissionKeys = const <String>{},
   });
 
   final Set<String> selected;
   final bool barrioPlanIncluded;
+  final Set<String> lockedPermissionKeys;
   final void Function(String permissionKey, bool selected) onToggle;
 
   @override
@@ -2348,6 +2398,7 @@ class _AdminProductPermissionPickerState
                     permissionKeys: entry.value,
                     selected: widget.selected,
                     disabled: disabled,
+                    lockedPermissionKeys: widget.lockedPermissionKeys,
                     onToggle: widget.onToggle,
                   ),
               ],
@@ -2400,6 +2451,7 @@ class _AdminPermissionResourceSection extends StatelessWidget {
     required this.permissionKeys,
     required this.selected,
     required this.disabled,
+    required this.lockedPermissionKeys,
     required this.onToggle,
   });
 
@@ -2407,6 +2459,7 @@ class _AdminPermissionResourceSection extends StatelessWidget {
   final List<String> permissionKeys;
   final Set<String> selected;
   final bool disabled;
+  final Set<String> lockedPermissionKeys;
   final void Function(String permissionKey, bool selected) onToggle;
 
   @override
@@ -2441,6 +2494,7 @@ class _AdminPermissionResourceSection extends StatelessWidget {
               permissionKey: key,
               selected: selected.contains(key),
               disabled: disabled,
+              locked: lockedPermissionKeys.contains(key),
               onChanged: (value) => onToggle(key, value ?? false),
             ),
         ],
@@ -2455,12 +2509,14 @@ class _AdminPermissionCheckbox extends StatelessWidget {
     required this.permissionKey,
     required this.selected,
     required this.disabled,
+    required this.locked,
     required this.onChanged,
   });
 
   final String permissionKey;
   final bool selected;
   final bool disabled;
+  final bool locked;
   final ValueChanged<bool?> onChanged;
 
   @override
@@ -2469,7 +2525,7 @@ class _AdminPermissionCheckbox extends StatelessWidget {
     return CheckboxListTile(
       key: Key('admin_rhs_role_editor_checkbox_$permissionKey'),
       value: selected,
-      onChanged: disabled ? null : onChanged,
+      onChanged: disabled || locked ? null : onChanged,
       dense: true,
       contentPadding: EdgeInsets.zero,
       controlAffinity: ListTileControlAffinity.leading,
@@ -2491,10 +2547,15 @@ class _AdminPermissionCheckbox extends StatelessWidget {
             ),
         ],
       ),
-      subtitle: Text(
-        permissionKey,
-        style: AppTextStyles.mono10(color: AppColors.textMuted),
-      ),
+      subtitle: locked
+          ? Text(
+              'Required for platform safety.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            )
+          : Text(
+              permissionKey,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
     );
   }
 }
@@ -2510,9 +2571,14 @@ class EditSeededRoleResult {
 }
 
 class EditSeededRoleDialog extends StatefulWidget {
-  const EditSeededRoleDialog({super.key, required this.initial});
+  const EditSeededRoleDialog({
+    super.key,
+    required this.initial,
+    this.lockedPermissionKeys = const <String>{},
+  });
 
   final RoleAdminRow initial;
+  final Set<String> lockedPermissionKeys;
 
   @override
   State<EditSeededRoleDialog> createState() => _EditSeededRoleDialogState();
@@ -2520,9 +2586,17 @@ class EditSeededRoleDialog extends StatefulWidget {
 
 class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
   final _reasonController = TextEditingController();
-  late final Set<String> _selectedPermissionKeys = widget.initial.permissionKeys
-      .toSet();
+  late final Set<String> _selectedPermissionKeys;
   bool _violated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedPermissionKeys = <String>{
+      ...widget.initial.permissionKeys,
+      ...widget.lockedPermissionKeys,
+    };
+  }
 
   @override
   void dispose() {
@@ -2548,7 +2622,7 @@ class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
     setState(() {
       if (selected) {
         _selectedPermissionKeys.add(permissionKey);
-      } else {
+      } else if (!widget.lockedPermissionKeys.contains(permissionKey)) {
         _selectedPermissionKeys.remove(permissionKey);
       }
     });
@@ -2584,11 +2658,19 @@ class _EditSeededRoleDialogState extends State<EditSeededRoleDialog> {
               'Pick permissions by product, then add a reason.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
+            if (widget.lockedPermissionKeys.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                'Required platform safety permissions stay enabled.',
+                style: AppTextStyles.body12(color: AppColors.textSecondary),
+              ),
+            ],
             const SizedBox(height: 12),
             Expanded(
               child: _AdminProductPermissionPicker(
                 selected: _selectedPermissionKeys,
                 barrioPlanIncluded: false,
+                lockedPermissionKeys: widget.lockedPermissionKeys,
                 onToggle: _togglePermission,
               ),
             ),

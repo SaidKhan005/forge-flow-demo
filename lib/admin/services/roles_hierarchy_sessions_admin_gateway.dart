@@ -100,6 +100,21 @@ class RoleAdminRow {
   /// per the parity contract § "Custom-role builder" which pins
   /// custom-role rows to carry `operator_id`.
   final String? operatorId;
+
+  bool get isPlatformRole =>
+      roleKey == PermissionKeys.roleSuperAdmin ||
+      roleKey == PermissionKeys.roleFfSupport;
+}
+
+Set<String> platformRoleLockedPermissionKeys(String roleKey) {
+  if (roleKey != PermissionKeys.roleSuperAdmin) return const <String>{};
+  return const <String>{
+    PermissionKeys.adminRolesView,
+    PermissionKeys.adminRolesEditSeeded,
+    PermissionKeys.teamRolesView,
+    PermissionKeys.teamRolesDefaultCatalogView,
+    PermissionKeys.teamRolesDefaultCatalogEdit,
+  };
 }
 
 /// One node in the org-unit hierarchy. Roots have
@@ -355,6 +370,16 @@ abstract class RolesHierarchySessionsAdminGateway {
   /// Edit permissions on a seeded role. Gated on
   /// `admin.roles.edit_seeded` (MFA-required) per the parity contract.
   Future<RoleAdminRow> editSeededRole({
+    required String operatorId,
+    required String roleId,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
+  Future<RoleAdminRow> editPlatformRole({
     required String operatorId,
     required String roleId,
     required List<String> permissionKeys,
@@ -644,6 +669,27 @@ class HttpRolesHierarchySessionsAdminGateway
       },
     );
     return _roleRowFromJson(_asMap(body['role']));
+  }
+
+  @override
+  Future<RoleAdminRow> editPlatformRole({
+    required String operatorId,
+    required String roleId,
+    required List<String> permissionKeys,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) {
+    return editSeededRole(
+      operatorId: operatorId,
+      roleId: roleId,
+      permissionKeys: permissionKeys,
+      idempotencyKey: idempotencyKey,
+      actorUserId: actorUserId,
+      actorIsForgeAdmin: actorIsForgeAdmin,
+      adminReason: adminReason,
+    );
   }
 
   @override
@@ -1296,8 +1342,8 @@ DateTime? _optionalDateTime(Object? value) {
 /// view-only for everyone except a super_admin holding
 /// `admin.roles.edit_seeded`).
 const Map<String, String> kRoleDisplayNamesForAdmin = <String, String>{
-  'super_admin': 'F&F super admin',
-  'ff_support': 'F&F support',
+  'super_admin': 'Ecosystem admin',
+  'ff_support': 'Support access',
   'operator_owner': 'Owner',
   'operator_general_manager': 'General Manager',
   'location_manager': 'Location Manager',

@@ -9376,12 +9376,54 @@ Future<void> routeRequest(
                 });
                 return;
               }
+              final permissionKeys = _permissionKeyList(
+                body['permission_keys'],
+              );
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
               final cached = await authOpsCache.runOrReplay(
                 route: '$adminAuthRolePrefix$roleId/permissions',
                 key: idempotencyKey,
                 compute: () async {
+                  final listed = await authOperationsGateway.listRoles(
+                    TeamRoleCatalogListCommand(
+                      actorUserId: scope.userId,
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                    ),
+                  );
+                  TeamRoleCatalogEntry? targetRole;
+                  for (final role in listed.roles) {
+                    if (role.roleId == roleId) {
+                      targetRole = role;
+                      break;
+                    }
+                  }
+                  if (targetRole?.roleKey == PermissionKeys.roleSuperAdmin) {
+                    final requested = permissionKeys.toSet();
+                    final locked = <String>{
+                      PermissionKeys.adminRolesView,
+                      PermissionKeys.adminRolesEditSeeded,
+                      PermissionKeys.teamRolesView,
+                      PermissionKeys.teamRolesDefaultCatalogView,
+                      PermissionKeys.teamRolesDefaultCatalogEdit,
+                    };
+                    final missing =
+                        locked.where((key) => !requested.contains(key)).toList()
+                          ..sort();
+                    if (missing.isNotEmpty) {
+                      return CachedProxyResponse(
+                        statusCode: 400,
+                        body: <String, Object?>{
+                          'error': 'platform_role_locked_permission',
+                          'message':
+                              'Ecosystem admin keeps required safety '
+                              'permissions.',
+                          'missing_permission_keys': missing,
+                        },
+                      );
+                    }
+                  }
                   final patched = await authOperationsGateway
                       .editSeededRolePermissions(
                         TeamSeededRolePermissionsEditCommand(
@@ -9389,9 +9431,7 @@ Future<void> routeRequest(
                           operatorId: scope.operatorId,
                           locationId: scope.locationId,
                           roleId: roleId,
-                          permissionKeys: _permissionKeyList(
-                            body['permission_keys'],
-                          ),
+                          permissionKeys: permissionKeys,
                           reason: reason,
                         ),
                       );
@@ -15036,7 +15076,8 @@ void _assertVendorApplicabilityLocationHasOperator({
     throw const _AdminInputError(
       statusCode: 400,
       code: 'location_requires_operator',
-      message: 'location_id requires operator_id (a location belongs to one '
+      message:
+          'location_id requires operator_id (a location belongs to one '
           'operator)',
     );
   }
@@ -15467,9 +15508,7 @@ Future<void> _routePricingAdmin({
       actorUserId: actorUserId,
       adminReason: '$reasonPrefix:entitlements_list',
     );
-    _writeJson(response, 200, <String, Object?>{
-      'entitlements': entitlements,
-    });
+    _writeJson(response, 200, <String, Object?>{'entitlements': entitlements});
     return;
   }
 
