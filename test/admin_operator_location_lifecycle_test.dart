@@ -492,7 +492,7 @@ void main() {
       (l) => l.name == 'West Coast',
     );
 
-    // Remove it through the row's delete button + confirm dialog.
+    // Delete it through the row's delete button + confirm dialog.
     final removeButton = find.byKey(
       Key('admin_location_remove_${added.locationId}'),
     );

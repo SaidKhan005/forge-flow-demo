@@ -17,7 +17,7 @@
 // Safety-Support) and the per-location drill-in buttons (Support view
 // / People / Access / Timing) were removed because the sidebar now
 // owns that navigation; the lifecycle buttons (Edit / Make primary /
-// Remove) stay. Tests select a business in the left tree before
+// Delete) stay. Tests select a business in the left tree before
 // interacting with the detail, and assert the removed affordances are
 // gone while lifecycle + "New business" stay reachable.
 //
@@ -829,7 +829,7 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(find.text('Suspended branch'), findsOneWidget);
+      expect(find.text('Suspended child org unit'), findsOneWidget);
       final suspended = (await hierarchyGateway.listOrgUnits(
         operatorId: 'op-seed-1',
       )).singleWhere((unit) => unit.orgUnitId == 'org-east');
@@ -1020,7 +1020,7 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(find.text('Suspended location'), findsOneWidget);
+      expect(find.text('Suspended child location'), findsOneWidget);
       final suspended = (await hierarchyGateway.listHierarchyLocations(
         operatorId: 'op-seed-1',
       )).singleWhere((location) => location.locationId == 'loc-west');
@@ -1377,12 +1377,23 @@ void main() {
         'Edit',
         'Make primary',
         'Delete',
-        'Remove',
       ]) {
         expect(
           find.text(label),
           findsWidgets,
           reason: 'tree action "$label" must render as visible text',
+        );
+      }
+
+      for (final label in <String>[
+        'Root org unit',
+        'Child org unit',
+        'Primary location',
+      ]) {
+        expect(
+          find.text(label),
+          findsWidgets,
+          reason: 'hierarchy level "$label" must render as visible text',
         );
       }
 
@@ -1422,7 +1433,7 @@ void main() {
       expect(
         foregroundOf(const Key('admin_location_remove_loc-seed-1')),
         equals(AppColors.negative),
-        reason: 'Remove location must use the danger style',
+        reason: 'Delete location must use the danger style',
       );
 
       // Existing widget keys still resolve (tests + selectors keep working).

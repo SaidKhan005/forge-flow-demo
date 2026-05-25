@@ -696,11 +696,11 @@ class _OperatorLocationAdminScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => _ConfirmDialog(
-        title: 'Remove ${location.name}?',
+        title: 'Delete ${location.name}?',
         message:
             'This cannot be undone. The location must not be the '
             "operator's primary location.",
-        confirmLabel: 'Remove',
+        confirmLabel: 'Delete',
       ),
     );
     if (confirmed != true) return;
@@ -711,7 +711,7 @@ class _OperatorLocationAdminScreenState
         locationId: location.locationId,
         idempotencyKey: key,
       );
-    }, successHint: 'Location removed.');
+    }, successHint: 'Location deleted.');
   }
 
   Future<void> _setPrimaryLocation(
@@ -1849,8 +1849,10 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
           icon: scopeIconForUnitType(unit.unitType),
           label: unit.name,
           subtitle: unit.isSuspended
-              ? (depth == 0 ? 'Suspended org unit' : 'Suspended branch')
-              : (depth == 0 ? 'Org unit' : 'Org unit branch'),
+              ? (depth == 0
+                    ? 'Suspended root org unit'
+                    : 'Suspended child org unit')
+              : (depth == 0 ? 'Root org unit' : 'Child org unit'),
           depth: depth,
           selected:
               widget.selectedScope.scopeType ==
@@ -2017,6 +2019,17 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         widget.bundle.operator.isSuspended ||
         location.isSuspended ||
         hierarchyLeaf?.isSuspended == true;
+    final locationSubtitle = isSuspended
+        ? (isPrimary
+              ? 'Suspended primary location'
+              : depth == 0
+              ? 'Suspended location'
+              : 'Suspended child location')
+        : (isPrimary
+              ? 'Primary location'
+              : depth == 0
+              ? 'Location'
+              : 'Child location');
     return Opacity(
       key: Key('admin_location_suspended_fade_${location.locationId}'),
       opacity: isSuspended ? 0.55 : 1,
@@ -2024,9 +2037,7 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
         key: Key('admin_hierarchy_location_${location.locationId}'),
         icon: scopeIcon(kind: ScopeEntityKind.location),
         label: location.name,
-        subtitle: isSuspended
-            ? (isPrimary ? 'Suspended primary location' : 'Suspended location')
-            : (isPrimary ? 'Primary location' : 'Location'),
+        subtitle: locationSubtitle,
         depth: depth,
         selected:
             widget.selectedScope.scopeType ==
@@ -2115,10 +2126,8 @@ class _BusinessHierarchyPanelState extends State<_BusinessHierarchyPanel> {
                     buttonKey: Key(
                       'admin_location_remove_${location.locationId}',
                     ),
-                    label: 'Remove',
-                    tooltip: widget.gateway == null
-                        ? 'Remove location'
-                        : 'Delete location',
+                    label: 'Delete',
+                    tooltip: 'Delete location',
                     onPressed: isPrimary
                         ? null
                         : () => _onDeleteHierarchyLocation(location),
@@ -2534,95 +2543,144 @@ class _HierarchyScopeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final depthIndent = depth * 28.0;
+    final isNested = depth > 0;
+    final radius = BorderRadius.circular(6);
+    final fillColor = selected
+        ? AppColors.peacock.withValues(alpha: 0.10)
+        : isNested
+        ? AppColors.backgroundMid.withValues(alpha: 0.32)
+        : Colors.transparent;
+    final borderColor = selected
+        ? AppColors.peacock
+        : isNested
+        ? AppColors.borderSubtle.withValues(alpha: 0.78)
+        : AppColors.borderSubtle;
     return Padding(
-      padding: EdgeInsets.only(left: depth * 18.0, top: 5, bottom: 5),
-      child: Material(
-        color: selected
-            ? AppColors.peacock.withValues(alpha: 0.10)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: selected ? AppColors.peacock : AppColors.borderSubtle,
-                width: selected ? 1.4 : 1,
+      padding: EdgeInsets.only(left: depthIndent, top: 5, bottom: 5),
+      child: Row(
+        children: [
+          if (isNested) ...[
+            Container(
+              width: 2,
+              height: 46,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.peacock.withValues(alpha: 0.85)
+                    : AppColors.sunset.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(2),
               ),
-              borderRadius: BorderRadius.circular(6),
             ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final compactActions =
-                    trailing != null && constraints.maxWidth < 760;
-                final labelBlock = Row(
-                  children: [
-                    Icon(icon, size: 17, color: AppColors.textSecondary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            label,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.body14(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.mono11(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
+          ],
+          Expanded(
+            child: Material(
+              color: fillColor,
+              borderRadius: radius,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: radius,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: borderColor,
+                      width: selected ? 1.4 : 1,
                     ),
-                    if (selected)
-                      const Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: Icon(
-                          Icons.check_circle,
-                          size: 16,
-                          color: AppColors.peacockDark,
-                        ),
-                      ),
-                  ],
-                );
-                if (trailing == null) return labelBlock;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (compactActions) ...[
-                      labelBlock,
-                      const SizedBox(height: 10),
-                      Align(alignment: Alignment.centerRight, child: trailing!),
-                    ] else
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                    borderRadius: radius,
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compactActions =
+                          trailing != null && constraints.maxWidth < 940;
+                      final showLeadingIcon = constraints.maxWidth >= 72;
+                      final showSelectedIcon =
+                          selected && constraints.maxWidth >= 96;
+                      final labelBlock = Row(
                         children: [
-                          Expanded(child: labelBlock),
-                          const SizedBox(width: 18),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 760),
-                            child: Align(
+                          if (showLeadingIcon) ...[
+                            Icon(
+                              icon,
+                              size: 17,
+                              color: selected
+                                  ? AppColors.peacockDark
+                                  : AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: 10),
+                          ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  label,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.body14(
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.mono11(
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (showSelectedIcon)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 8),
+                              child: Icon(
+                                Icons.check_circle,
+                                size: 16,
+                                color: AppColors.peacockDark,
+                              ),
+                            ),
+                        ],
+                      );
+                      if (trailing == null) return labelBlock;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (compactActions) ...[
+                            labelBlock,
+                            const SizedBox(height: 10),
+                            Align(
                               alignment: Alignment.centerRight,
                               child: trailing!,
                             ),
-                          ),
+                          ] else
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(child: labelBlock),
+                                const SizedBox(width: 18),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 760,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: trailing!,
+                                  ),
+                                ),
+                              ],
+                            ),
                         ],
-                      ),
-                  ],
-                );
-              },
+                      );
+                    },
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
