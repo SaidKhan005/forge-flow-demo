@@ -524,42 +524,188 @@ class MockIntegrationReplaySeed {
   //    (`replay_week_driver_rotation_test`).
   //
   // Cluster semantics by membership position (the realistic shapes the
-  // benchmark range should show):
-  //  * positions 0,1,2 — GOOD core: CPLH, SPLH, PPA all lifted together
-  //    (high covers-per-hour WITH strong sales-per-hour and spend).
-  //  * position 3 — STRETCHED: CPLH high, SPLH and PPA collapsed
-  //    (above-OPZ-ceiling behaviour — running lean on bodies but the
-  //    revenue per labour hour / per cover did not follow).
-  //  * positions 4,5 — SOFT / overstaffed: CPLH below target, spend
-  //    roughly normal.
-  // Net mix ≈ 50% good / 14% stretched / 36% soft across the cohort
-  // (6-slot periods 3/1/2; the 2-slot late_night contributes 1 good /
-  // 1 soft) — good is the plurality, soft is the remainder.
-  static const List<double> _realismCPLH6 = [
-    0.014, 0.018, 0.022, 0.026, -0.038, -0.042,
+  // benchmark range should show). Slice SA.1 (closes SD §5.7): SA's
+  // original ±2-4% clustered offsets passed SA's *unfiltered* dispersion
+  // test but COLLAPSED after SB's eligibility gates + MAD outlier filter
+  // (the all-three-strong good core landed on ≈one CPLH value → SB
+  // `building_flat`; late_night's good cohort was < `minBenchmark` = 5).
+  // Real restaurants vary shift-to-shift far more than ±2-5%; SA was
+  // over-constrained to protect demo goldens. SA.1 widens the NON-driver
+  // per-shift spread to the validated realistic shape (good core whose
+  // CPLH/SPLH/PPA rise *together* with genuine within-core spread, a
+  // stretched cluster, soft shifts) so that AFTER SB's gates+MAD every
+  // demo daypart's kept-cohort CPLH stdev clears SB's principled
+  // `minKeptStdevCPLH` = 0.05 floor (lands ≈0.15-0.30) AND ≥5 shifts are
+  // jointly strong on CPLH∧SPLH∧PPA. SB's floor is UNCHANGED — it is
+  // correctly rejecting unrealistically-flat data; SA.1 only feeds it
+  // realistic data.
+  //
+  // Hard invariants preserved (no SB / model / threshold change):
+  //  * Determinism — pure function of (weekIndex, periodMemberIndex);
+  //    NO RNG, NO DateTime.now(). Byte-stable across reseeds.
+  //  * The owned axis is NEVER touched (caller passes 1.0 for it and for
+  //    this week's tilted axis), and every offset here is STRICTLY below
+  //    its `determineLever` firing threshold (cplh/splh |Δ| < 0.05, ppa
+  //    |Δ| < 0.03) so a perturbed non-owned axis can never become a
+  //    false `determineLever` candidate — the per-shift driver, the
+  //    8-family span, the covers_down share, and the recurring Fri-dinner
+  //    `ppa_down` / Tue-lunch `ppa_up` pins all hold
+  //    (`demo_slice_b_driver_variance_test`).
+  //  * Each axis's offset table sums to EXACTLY zero across its period's
+  //    membership positions, and the weekly rotation is a pure cyclic
+  //    permutation, so the per-(week, period) MEAN on every axis is
+  //    byte-unchanged — the week aggregate `determineLever` result and
+  //    the 12 distinct week-driver families are preserved with NO
+  //    week-tilt retuning (`replay_week_driver_rotation_test`).
+  //
+  // 7-member periods (lunch / dinner — Mon-Sun each have a lunch and a
+  // dinner slot). Positions by cluster role:
+  //  * roles 0,1,2 — GOOD core: CPLH, SPLH, PPA all lifted together,
+  //    with real spread between the three so the all-three-strong
+  //    benchmark set forms a teachable BAND (not a spike).
+  //  * role 3 — STRETCHED: CPLH highest, SPLH/PPA collapsed (Ch.11
+  //    above-ceiling — excluded from the all-three-strong set).
+  //  * roles 4,5,6 — SOFT / overstaffed: CPLH below target, spend ~normal.
+  // Each table sums to 0.0. The coarse role table is combined with a
+  // second zero-sum "fine" 7-vector rotated by a DIFFERENT stride (3·w)
+  // so the effective per-shift offset takes many distinct values across
+  // the 84-shift cohort (continuous-enough that the all-three-strong
+  // benchmark band has real P25-P75 width and the per-location scaled
+  // recommendation TARGET stays materially distinct across the 4 demo
+  // locations after 2-decimal rounding — pinned by
+  // `per_daypart_v1_demo_seed_per_location_data_test`). Both vectors are
+  // pure cyclic permutations of zero-sum vectors, so their sum is also
+  // zero-sum per (week, period): the week aggregate is byte-unchanged
+  // (`replay_week_driver_rotation_test`). Combined max: |cplh| =
+  // 0.040+0.006 = 0.046, |splh| = 0.038+0.006 = 0.044 (< 0.05); |ppa| =
+  // 0.022+0.004 = 0.026 (< 0.03) — strictly sub-lever-threshold.
+  static const List<double> _realismCPLH7 = [
+    0.040, 0.026, 0.014, 0.038, -0.040, -0.040, -0.038,
   ];
-  static const List<double> _realismSPLH6 = [
-    0.014, 0.018, 0.022, -0.030, -0.013, -0.011,
+  static const List<double> _realismSPLH7 = [
+    0.038, 0.024, 0.012, -0.040, -0.010, -0.012, -0.012,
   ];
-  static const List<double> _realismPPA6 = [
-    0.009, 0.012, 0.016, -0.020, -0.009, -0.008,
+  static const List<double> _realismPPA7 = [
+    0.022, 0.014, 0.008, -0.024, -0.006, -0.007, -0.007,
   ];
-  // late_night has only two slots/week (Fri + Sat); a symmetric
-  // zero-sum pair keeps the same mean while still breaking the old
-  // 100%-identical-CPLH degeneracy.
-  static const List<double> _realismCPLH2 = [0.026, -0.026];
-  static const List<double> _realismSPLH2 = [0.020, -0.020];
-  static const List<double> _realismPPA2 = [0.013, -0.013];
+
+  // Fine zero-sum 7-vectors, rotated by a co-prime-ish stride (3·w) so
+  // (coarse role) × (fine role) yields a near-continuous spread of
+  // distinct per-shift offsets across the cohort. Sums to 0.0; tiny
+  // magnitude (well within the headroom left below the lever threshold).
+  static const List<double> _realismFineCPLH7 = [
+    0.006, -0.001, 0.003, -0.006, 0.001, -0.004, 0.001,
+  ];
+  static const List<double> _realismFineSPLH7 = [
+    0.006, -0.002, 0.003, -0.005, 0.001, -0.004, 0.001,
+  ];
+  static const List<double> _realismFinePPA7 = [
+    0.004, -0.001, 0.002, -0.004, 0.001, -0.003, 0.001,
+  ];
+
+  // late_night has only two slots/week (Fri + Sat) → just 24 historical
+  // shifts. A symmetric 2-value pair (SA's original shape) yields only
+  // two distinct CPLH values, so the all-three-strong set was < 5 (SB
+  // `building_few_strong`). SA.1 instead indexes a 12-element per-week
+  // zero-sum table by `weekIndex`, combined with a small Fri/Sat member
+  // tilt, so across the in-window late_night shifts there is a
+  // continuous good / soft spread with ≥5 jointly-strong members.
+  //
+  // THREE structural constraints determine which week-indices are good:
+  //  1. The recommendation runs over the SB 60-day window
+  //     (`_seedRecommendationCandidates`: businessDate − 59 days). For
+  //     the default demo scenario (businessDate 2026-03-27) that window
+  //     keeps only weekIndex 4..11 (weeks W05..W12); weekIndex 0..3
+  //     (W53,W02,W03,W04) fall OUT and never reach the engine. So the
+  //     good-core indices MUST live in 4..11.
+  //  2. Sat late_night OWNS `splh` (driven down), so a Sat shift can
+  //     never clear the kept SPLH median → only the Fri late_night
+  //     shifts (which own the lever-NEUTRAL `covers` axis, so
+  //     cplh/splh/ppa realism always applies) can be all-three-strong.
+  //  3. `_weekDriverIntent` drives an axis DOWN on week 8 (splh-) and
+  //     week 10 (cplh-); those in-window weeks zero that axis's realism
+  //     AND tilt it down, so they are soft by construction.
+  // Therefore the SIX good-core week-indices are {4,5,6,7,9,11} (all
+  // in-window, none of them an 8/10 down-tilt week) and the SIX soft are
+  // {0,1,2,3,8,10}. Six in-window good Fri shifts → ≥5 clear all three
+  // medians (> `minBenchmark` = 5) with margin, AND distinct enough
+  // across the per-location rate scale that the per-location late_night
+  // recommendation TARGET stays materially distinct after 2-decimal
+  // rounding (`per_daypart_v1_demo_seed_per_location_data_test`).
+  //
+  // Each axis table sums to EXACTLY zero across the 12 weeks; the member
+  // tilt is an exact ± pair (Fri +δ / Sat -δ) so the per-(week) two-slot
+  // mean is preserved and the late_night week aggregate is byte-unchanged
+  // (`replay_week_driver_rotation_test`). Capped at |0.043| (cplh/splh)
+  // and |0.025| (ppa) so that even with the ±0.006/±0.004 member tilt
+  // the combined offset stays strictly below the lever threshold
+  // (0.043+0.006 = 0.049 < 0.05; 0.025+0.004 = 0.029 < 0.03).
+  // Index = weekIndex (0..11). Good: 4,5,6,7,9,11 ; soft: 0,1,2,3,8,10.
+  // The six good values span a WIDE continuous range (0.043 → 0.010 on
+  // cplh) so the all-three-strong benchmark band keeps a teachable
+  // P25-P75 width (> SB `minTeachableWidthCPLH` = 0.03) even after each
+  // location's sub-threshold rate scale AND 2-decimal rounding — i.e.
+  // late_night stays `teachable` for EVERY demo location, not just
+  // Downtown (`per_daypart_v1_demo_seed_per_location_data_test`).
+  // The six in-window good values form a graded continuum (cplh ≈
+  // +0.038 → +0.012) so the kept cohort spans a real range (kept-CPLH
+  // stdev > SB `minKeptStdevCPLH` = 0.05) while the kept median still
+  // lands below all six good Fri shifts → ≥5 clear the all-three-strong
+  // gate (> `minBenchmark` = 5) AND the benchmark P25-P75 width stays in
+  // (0.03, 1.25] — verified by an exact-pipeline parameter search to
+  // hold simultaneously for ALL FOUR per-location rate scales (1.000 /
+  // 1.045 / 0.962 / 1.028) after 2-decimal rounding. The four
+  // out-of-window weeks {0,1,2,3} (dropped by the SB 60-day window for
+  // the default scenario) carry the zero-sum residual so the 12-week
+  // table sum is EXACTLY zero — the late_night week aggregate is
+  // byte-unchanged (`replay_week_driver_rotation_test`). Good
+  // week-indices: 4,5,6,7,9,11 ; soft: 0,1,2,3 (oow), 8, 10.
+  static const List<double> _realismCPLHLate12 = [
+    -0.022, -0.022, -0.022, -0.022, // 0,1,2,3 soft (out-of-window)
+    0.038, 0.033, 0.028, 0.022, //     4,5,6,7  good (in-window)
+    -0.030, 0.017, -0.032, 0.012, //   8 soft, 9 good, 10 soft, 11 good
+  ];
+  static const List<double> _realismSPLHLate12 = [
+    -0.022, -0.022, -0.022, -0.022,
+    0.038, 0.033, 0.028, 0.022,
+    -0.030, 0.017, -0.032, 0.012, // Σ = 0.000
+  ];
+  static const List<double> _realismPPALate12 = [
+    -0.012, -0.012, -0.012, -0.011,
+    0.020, 0.018, 0.015, 0.012,
+    -0.016, 0.009, -0.017, 0.006, // Σ = 0.000
+  ];
+  // Fine zero-sum 12-vector indexed by weekIndex, added to BOTH Fri and
+  // Sat so it does not disturb the exact ±member-tilt symmetry. It de-
+  // duplicates the per-location scaled+rounded late_night CPLH so the
+  // benchmark median is not a single repeated value across locations.
+  // Strict sub-threshold bound (worst case = max|table| + member tilt +
+  // max|fine|, an absolute triangle bound regardless of index alignment):
+  // cplh/splh = 0.038 + 0.005 + 0.005 = 0.048 < 0.05; ppa = 0.020 +
+  // 0.004 + 0.005 = 0.029 < 0.03. So no non-owned axis can ever become a
+  // `determineLever` candidate (pinned by `demo_slice_b_driver_variance`
+  // + `replay_week_driver_rotation` staying green). |x| ≤ 0.005, Σ = 0.
+  static const List<double> _realismFineLate12 = [
+    0.005, -0.002, 0.003, -0.004, 0.002, -0.005,
+    0.004, -0.003, 0.001, -0.002, 0.002, -0.001,
+  ];
+  // Exact ± member tilt (Fri = +, Sat = -) — preserves each week's
+  // late_night two-slot mean while breaking the old identical-pair
+  // degeneracy. Strictly sub-threshold (with the capped tables above).
+  static const double _lateMemberTiltCPLH = 0.005;
+  static const double _lateMemberTiltSPLH = 0.005;
+  static const double _lateMemberTiltPPA = 0.004;
 
   /// Multiplicative realism factors `(cplh, splh, ppa)` for one closed
   /// shift, applied to the NON-owned rate axes only (the caller skips
-  /// the owned axis). `weekIndex` rotates the role assignment so a given
-  /// slot is not stuck in one cluster across history (realistic
-  /// week-to-week movement) while the per-(week, period) sum stays
-  /// exactly the pre-Slice-SA mean (rotation preserves the zero sum).
+  /// the owned axis and this week's tilted axis). `weekIndex` rotates the
+  /// role assignment so a given slot is not stuck in one cluster across
+  /// history (realistic week-to-week movement) while the per-(week,
+  /// period) sum on every axis stays exactly zero (rotation is a pure
+  /// cyclic permutation — week aggregate byte-unchanged).
   ///
   /// `periodMemberIndex` is the slot's 0-based position within its
-  /// period's ordered slot list for the week (lunch/dinner have six,
+  /// period's ordered slot list for the week (lunch/dinner have seven,
   /// late_night two). Pure function — no RNG, byte-stable across runs.
   static ({double cplh, double splh, double ppa}) _realismProfile({
     required String daypart,
@@ -567,22 +713,37 @@ class MockIntegrationReplaySeed {
     required int weekIndex,
   }) {
     if (daypart == 'late_night') {
-      final r = (periodMemberIndex + weekIndex) % 2;
+      // Continuous spread keyed on the historical week (role table +
+      // fine de-dup vector, both indexed by weekIndex) so the in-window
+      // late_night shifts form a real range that survives per-location
+      // scaling+rounding; exact Fri(+)/Sat(-) member tilt preserves the
+      // per-week two-slot mean (week aggregate byte-unchanged).
+      final wRole = weekIndex % _realismCPLHLate12.length;
+      final fine = _realismFineLate12[weekIndex % _realismFineLate12.length];
+      final sign = periodMemberIndex.isEven ? 1 : -1;
       return (
-        cplh: 1 + _realismCPLH2[r],
-        splh: 1 + _realismSPLH2[r],
-        ppa: 1 + _realismPPA2[r],
+        cplh:
+            1 + _realismCPLHLate12[wRole] + fine + sign * _lateMemberTiltCPLH,
+        splh:
+            1 + _realismSPLHLate12[wRole] + fine + sign * _lateMemberTiltSPLH,
+        ppa: 1 + _realismPPALate12[wRole] + fine + sign * _lateMemberTiltPPA,
       );
     }
-    // 6-slot period (lunch / dinner). Rotate the role by the week so
-    // each membership position cycles through all six cluster roles
-    // across history; the rotation is a pure permutation so the
-    // per-(week, period) sum on every axis stays exactly zero.
-    final role = (periodMemberIndex + weekIndex) % 6;
+    // 7-member period (lunch / dinner). Two independent rotations: the
+    // coarse cluster role (stride 1·w) and a fine spread (stride 3·w).
+    // Both are pure cyclic permutations of zero-sum vectors, so each
+    // sum (and therefore the per-(week, period) mean on every axis) is
+    // exactly zero — week aggregate byte-unchanged. The two strides
+    // (1 and 3, vs period length 7) make (coarse, fine) cycle through
+    // many distinct pairings across history, giving the all-three-strong
+    // benchmark band genuine P25-P75 width and keeping the per-location
+    // scaled recommendation target distinct after rounding.
+    final role = (periodMemberIndex + weekIndex) % 7;
+    final fine = (periodMemberIndex + 3 * weekIndex) % 7;
     return (
-      cplh: 1 + _realismCPLH6[role],
-      splh: 1 + _realismSPLH6[role],
-      ppa: 1 + _realismPPA6[role],
+      cplh: 1 + _realismCPLH7[role] + _realismFineCPLH7[fine],
+      splh: 1 + _realismSPLH7[role] + _realismFineSPLH7[fine],
+      ppa: 1 + _realismPPA7[role] + _realismFinePPA7[fine],
     );
   }
 
