@@ -20,8 +20,10 @@
 // "§ Idempotency keys" + "§ Audit-row shape".
 
 import 'package:flutter/material.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../auth/permission_key_metadata.dart';
@@ -33,6 +35,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../../widgets/permission_explainer_view.dart';
+import '../../widgets/role_permission_picker.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
@@ -310,6 +313,39 @@ class _RolesHierarchySessionsAdminScreenState
     );
   }
 
+  Future<void> _onEditCustomRole(RoleAdminRow row) async {
+    final scope =
+        widget.initialScope ?? _scopeFromPickedOperator(widget.pickedOperator);
+    final result = await showDialog<CustomRoleDraft>(
+      context: context,
+      builder: (_) => CreateCustomRoleDialog(
+        existingRoleKeys: <String>{
+          for (final r in _roles)
+            if (r.roleId != row.roleId) r.roleKey,
+        },
+        existing: row,
+        roleScope: _roleScopeFromAdminScope(scope.scopeType),
+      ),
+    );
+    if (result == null) return;
+    await _runAndRefresh(
+      () => widget.gateway.updateCustomRole(
+        operatorId: widget.pickedOperator.operatorId,
+        roleId: row.roleId,
+        displayName: result.displayName,
+        description: result.description,
+        previousPermissionKeys: row.permissionKeys,
+        permissionKeys: result.permissionKeys,
+        idempotencyKey: _nextIdempotencyKey('roles-update-custom'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: result.adminReason,
+      ),
+      refresh: _refreshRoles,
+      successHint: 'Updated ${result.displayName}',
+    );
+  }
+
   Future<void> _onDeleteCustomRole(RoleAdminRow row) async {
     final reason = await _promptAdminReason(
       'Delete ${roleAdminDisplayLabel(row)}',
@@ -500,7 +536,7 @@ class _RolesHierarchySessionsAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             OperatorWebScreenHeader(
-              icon: Icons.account_tree_outlined,
+              icon: Icons.shield_outlined,
               title: 'Roles & permissions',
               actions: _buildHeaderActions(),
             ),
@@ -541,6 +577,21 @@ class _RolesHierarchySessionsAdminScreenState
 
   List<Widget> _buildHeaderActions() {
     final children = <Widget>[
+      SizedBox(
+        height: 38,
+        child: FilledButton.icon(
+          key: const Key('admin_rhs_roles_new_role'),
+          onPressed: widget.editingEnabled ? _onCreateCustomRole : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.sunset,
+            foregroundColor: AppColors.backgroundSurface,
+            disabledBackgroundColor: AppColors.borderSubtle,
+            disabledForegroundColor: AppColors.textMuted,
+          ),
+          icon: const Icon(Icons.add, size: 16),
+          label: const Text('New role'),
+        ),
+      ),
       if (widget.onBackToBusinessAccounts != null)
         AdminBusinessAccountsBackButton(
           onPressed: widget.onBackToBusinessAccounts,
