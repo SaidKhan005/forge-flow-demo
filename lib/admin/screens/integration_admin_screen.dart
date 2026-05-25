@@ -46,8 +46,6 @@ import '../admin_route_handoff.dart';
 import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
 import '../services/integration_admin_gateway.dart';
-import '../widgets/admin_scope_notice_adapter.dart';
-import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart'
     show VendorCategory;
 
@@ -233,17 +231,14 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                 const _Header(),
                 const SizedBox(height: 14),
                 if (widget.hierarchyScope != null)
-                  HierarchyScopeNotice(
-                    keyName: 'admin_integration_scope_notice',
-                    selectedScope: adminScopeLevel(
-                      widget.hierarchyScope!.scopeType,
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Showing ${widget.hierarchyScope!.scopeType.label.toLowerCase()} '
+                      'scope: ${widget.hierarchyScope!.displayLabel}. Vendor reachability follows this hierarchy; platform service keys remain shared ecosystem keys.',
+                      key: const Key('admin_integrations_scope_note'),
+                      style: AppTextStyles.body12(color: AppColors.textMuted),
                     ),
-                    scopeName: widget.hierarchyScope!.displayLabel,
-                    effectiveValueSummary:
-                        'Vendor API reachability for the selected scope.',
-                    backendOnlyHelpTitle: 'About platform service keys',
-                    backendOnlyExplainer:
-                        'Platform service keys remain shared ecosystem keys and are not stored per business.',
                   ),
                 if (!widget.editingEnabled)
                   const _ReadOnlyBanner(

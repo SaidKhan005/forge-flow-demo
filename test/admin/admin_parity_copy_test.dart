@@ -6,6 +6,7 @@ import 'package:forge_and_flow/admin/screens/integration_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/per_location_data_accuracy_screen.dart';
 import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.dart';
 import 'package:forge_and_flow/admin/screens/vendor_applicability_admin_screen.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -164,6 +165,12 @@ void main() {
           IntegrationAdminScreen(
             gateway: InMemoryIntegrationAdminGateway(),
             editingEnabled: false,
+            hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
+              operatorId: 'op-1',
+              orgUnitId: 'ou-1',
+              operatorName: 'Demo Diner Co.',
+              orgUnitName: 'Downtown',
+            ),
           ),
         ),
       );
@@ -182,6 +189,15 @@ void main() {
           'Operator edits live on Operator Web; this view is for F&F support.',
         ),
         findsNWidgets(2),
+      );
+      expect(
+        find.byKey(const Key('admin_integrations_scope_note')),
+        findsOneWidget,
+      );
+      expect(find.text('Where this applies'), findsNothing);
+      expect(
+        find.byKey(const Key('admin_integration_scope_notice')),
+        findsNothing,
       );
     });
   });
