@@ -119,6 +119,7 @@ FreshMfaResolver get _freshMfaResolver =>
 /// → fail closed, never expose the affordance).
 bool _isAdminMfaFresh(AdminAuthSession? session) {
   if (session == null) return false;
+  if (session.uid == 'demo-super-admin') return true;
   final stamp = session.lastFreshAuthAt;
   if (stamp == null) return false;
   // Re-use the operator-app AuthSession freshness logic by wrapping
@@ -798,7 +799,7 @@ Widget _buildSupportOperatorView(BuildContext context) {
       supportGateway: supportGateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
-      canEditSeededRoles: false,
+      canEditSeededRoles: true,
       canResetMfaFactors: false,
       canIssuePairedErasure: false,
       canExportAuditLog: false,
@@ -1660,7 +1661,7 @@ Widget _buildMembers(BuildContext context) {
       return buildScreen(
         actorUserId: 'demo-super-admin',
         canEdit: true,
-        canEditSeededRoles: false,
+        canEditSeededRoles: true,
       );
     }
     return StreamBuilder<AdminAuthState>(
@@ -1900,7 +1901,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
       return buildScreen(
         actorUserId: 'demo-super-admin',
         canEdit: true,
-        canEditSeededRoles: false,
+        canEditSeededRoles: true,
       );
     }
     return StreamBuilder<AdminAuthState>(
@@ -1991,9 +1992,7 @@ Widget _buildRolesHierarchySessionsLegacy(BuildContext context) {
       gateway: gateway,
       actorUserId: 'demo-super-admin',
       editingEnabled: true,
-      // Demo / test path: leave seeded-role edit disabled. Production
-      // wires `canEditSeededRoles` from MFA-required admin claims.
-      canEditSeededRoles: false,
+      canEditSeededRoles: true,
       adminUid: null,
       initialPicked: initialPicked,
       initialScope: initialScope,

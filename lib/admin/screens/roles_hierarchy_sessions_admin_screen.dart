@@ -788,24 +788,10 @@ class RolePolicyAdminPanel extends StatelessWidget {
               onDelete: onDeleteCustom,
             ),
           const SizedBox(height: 18),
-          if (platform.isNotEmpty) ...<Widget>[
-            _RoleGroup(
-              key: const Key('admin_rhs_roles_platform_group'),
-              title: 'Forge & Flow access (${platform.length})',
-              roles: platform,
-              canWrite: false,
-              canEditSeededRoles: canEditSeededRoles,
-              onEditSeeded: onEditSeeded,
-              onEditCustom: onEditCustom,
-              onDelete: onDeleteCustom,
-            ),
-            const SizedBox(height: 18),
-          ],
-          _RoleGroup(
+          _DefaultRolesGroup(
             key: const Key('admin_rhs_roles_seeded_group'),
-            title: 'Default roles (${seeded.length})',
-            roles: seeded,
-            canWrite: false,
+            platformRoles: platform,
+            businessRoles: seeded,
             canEditSeededRoles: canEditSeededRoles,
             onEditSeeded: onEditSeeded,
             onEditCustom: onEditCustom,
@@ -885,6 +871,132 @@ class _RoleGroup extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DefaultRolesGroup extends StatelessWidget {
+  const _DefaultRolesGroup({
+    super.key,
+    required this.platformRoles,
+    required this.businessRoles,
+    required this.canEditSeededRoles,
+    required this.onEditSeeded,
+    required this.onEditCustom,
+    required this.onDelete,
+  });
+
+  final List<RoleAdminRow> platformRoles;
+  final List<RoleAdminRow> businessRoles;
+  final bool canEditSeededRoles;
+  final ValueChanged<RoleAdminRow> onEditSeeded;
+  final ValueChanged<RoleAdminRow> onEditCustom;
+  final ValueChanged<RoleAdminRow> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = platformRoles.length + businessRoles.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        OperatorWebSectionHeading(title: 'Default roles ($total)'),
+        const SizedBox(height: 10),
+        if (platformRoles.isNotEmpty) ...<Widget>[
+          _RoleSubgroupLabel(
+            key: const Key('admin_rhs_roles_platform_group'),
+            label: 'Forge & Flow internal (${platformRoles.length})',
+          ),
+          const SizedBox(height: 6),
+          _RoleListBox(
+            roles: platformRoles,
+            canWrite: false,
+            canEditSeededRoles: canEditSeededRoles,
+            onEditSeeded: onEditSeeded,
+            onEditCustom: onEditCustom,
+            onDelete: onDelete,
+          ),
+          const SizedBox(height: 12),
+        ],
+        _RoleSubgroupLabel(
+          key: const Key('admin_rhs_roles_business_defaults_group'),
+          label: 'Business defaults (${businessRoles.length})',
+        ),
+        const SizedBox(height: 6),
+        _RoleListBox(
+          roles: businessRoles,
+          canWrite: false,
+          canEditSeededRoles: canEditSeededRoles,
+          onEditSeeded: onEditSeeded,
+          onEditCustom: onEditCustom,
+          onDelete: onDelete,
+        ),
+      ],
+    );
+  }
+}
+
+class _RoleSubgroupLabel extends StatelessWidget {
+  const _RoleSubgroupLabel({super.key, required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2),
+      child: Text(
+        label,
+        style: AppTextStyles.mono11(
+          color: AppColors.textSecondary,
+        ).copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _RoleListBox extends StatelessWidget {
+  const _RoleListBox({
+    required this.roles,
+    required this.canWrite,
+    required this.canEditSeededRoles,
+    required this.onEditSeeded,
+    required this.onEditCustom,
+    required this.onDelete,
+  });
+
+  final List<RoleAdminRow> roles;
+  final bool canWrite;
+  final bool canEditSeededRoles;
+  final ValueChanged<RoleAdminRow> onEditSeeded;
+  final ValueChanged<RoleAdminRow> onEditCustom;
+  final ValueChanged<RoleAdminRow> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Column(
+          children: <Widget>[
+            for (var i = 0; i < roles.length; i++)
+              _RoleRowTile(
+                key: Key('admin_rhs_role_row_${roles[i].roleId}'),
+                row: roles[i],
+                isLast: i == roles.length - 1,
+                canWrite: canWrite,
+                canEditSeededRoles: canEditSeededRoles,
+                onEditSeeded: onEditSeeded,
+                onEditCustom: onEditCustom,
+                onDelete: onDelete,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
