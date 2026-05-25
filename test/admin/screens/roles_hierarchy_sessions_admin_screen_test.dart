@@ -549,7 +549,7 @@ void main() {
   });
 
   group('Roles tab gating', () {
-    testWidgets('platform roles render in their own same-tab section', (
+    testWidgets('platform roles render under the Default roles section', (
       tester,
     ) async {
       wideViewport(tester);
@@ -570,10 +570,11 @@ void main() {
         find.byKey(const Key('admin_rhs_roles_platform_group')),
         findsOneWidget,
       );
-      expect(find.text('Forge & Flow access (2)'), findsOneWidget);
+      expect(find.text('Default roles (10)'), findsOneWidget);
+      expect(find.text('Forge & Flow internal (2)'), findsOneWidget);
+      expect(find.text('Business defaults (8)'), findsOneWidget);
       expect(find.text('Ecosystem admin'), findsOneWidget);
       expect(find.text('Support access'), findsOneWidget);
-      expect(find.text('Default roles (8)'), findsOneWidget);
     });
 
     testWidgets('seeded-role edit hidden when canEditSeededRoles is false', (
