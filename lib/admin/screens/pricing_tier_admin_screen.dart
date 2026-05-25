@@ -972,7 +972,6 @@ class _PlanCard extends StatelessWidget {
     // Price reads from the editable catalog entry; the static
     // presentation supplies the laddered accent + "what it adds" copy.
     final monthly = entry?.monthlyUsd ?? presentation?.monthlyUsd;
-    final priceText = monthly == null ? 'Custom' : '\$${monthly.round()}';
     final seatText = _seatLine(entry, presentation);
     final onboardingText = _onboardingLine(entry, presentation);
     return Container(
@@ -995,23 +994,7 @@ class _PlanCard extends StatelessWidget {
             ).copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 3),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: <Widget>[
-              Text(
-                priceText,
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              if (monthly != null) ...<Widget>[
-                const SizedBox(width: 3),
-                Text(
-                  '/mo',
-                  style: AppTextStyles.mono11(color: AppColors.textMuted),
-                ),
-              ],
-            ],
-          ),
+          _priceRow(monthly),
           const SizedBox(height: 3),
           Text(
             seatText,
@@ -1038,22 +1021,55 @@ class _PlanCard extends StatelessWidget {
             'Onboarding $onboardingText',
             style: AppTextStyles.mono10(color: AppColors.textMuted),
           ),
-          if (editingEnabled && entry != null) ...<Widget>[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: Key('admin_pricing_plan_edit_${template.tierKey}'),
-                style: AdminButtonStyles.secondary(),
-                onPressed: () => onEdit(entry!),
-                icon: const Icon(Icons.edit_outlined, size: 15),
-                label: const Text('Edit pricing'),
-              ),
-            ),
-          ],
+          ..._editButton(),
         ],
       ),
     );
+  }
+
+  /// Price headline row. Renders the monthly price (or "Custom" when the
+  /// plan has no fixed monthly) and appends a "/mo" suffix only when a
+  /// monthly price exists. Extracted from [build] verbatim.
+  Widget _priceRow(double? monthly) {
+    final priceText = monthly == null ? 'Custom' : '\$${monthly.round()}';
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: <Widget>[
+        Text(
+          priceText,
+          style: AppTextStyles.display20(color: AppColors.textPrimary),
+        ),
+        if (monthly != null) ...<Widget>[
+          const SizedBox(width: 3),
+          Text(
+            '/mo',
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Trailing "Edit pricing" affordance, shown only when editing is
+  /// enabled and a catalog entry exists. Returns an empty list otherwise
+  /// so the caller can spread it into the card column. Extracted from
+  /// [build] verbatim.
+  List<Widget> _editButton() {
+    if (!editingEnabled || entry == null) return const <Widget>[];
+    return <Widget>[
+      const SizedBox(height: 12),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          key: Key('admin_pricing_plan_edit_${template.tierKey}'),
+          style: AdminButtonStyles.secondary(),
+          onPressed: () => onEdit(entry!),
+          icon: const Icon(Icons.edit_outlined, size: 15),
+          label: const Text('Edit pricing'),
+        ),
+      ),
+    ];
   }
 
   /// Per-seat line built from the editable catalog entry, falling back to

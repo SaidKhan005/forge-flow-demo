@@ -101,135 +101,150 @@ class _MarginRollupCardState extends State<MarginRollupCard> {
             style: AppTextStyles.uiLabel(color: AppColors.textMuted),
           ),
           const SizedBox(height: 6),
-          if (rollup.perTier.isEmpty)
-            Text(
-              'No tier assignments yet.',
-              style: AppTextStyles.body13(color: AppColors.textMuted),
-            )
-          else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columns: const <DataColumn>[
-                  DataColumn(label: Text('Tier')),
-                  DataColumn(label: Text('Count')),
-                  DataColumn(label: Text('Revenue')),
-                  DataColumn(label: Text('Cost')),
-                  DataColumn(label: Text('Margin')),
-                ],
-                rows: <DataRow>[
-                  for (final entry in rollup.perTier)
-                    DataRow(
-                      cells: <DataCell>[
-                        DataCell(
-                          Text(
-                            entry.tierKey.wire,
-                            style: AppTextStyles.mono12(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            '${entry.assignmentCount}',
-                            style: AppTextStyles.mono12(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            formatCents(entry.totalMonthlyPriceCents),
-                            style: AppTextStyles.mono12(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            formatCents(entry.totalMonthlyVendorCostCents),
-                            style: AppTextStyles.mono12(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            formatCents(entry.marginCents),
-                            style: AppTextStyles.mono14(
-                              color: entry.marginCents > 0
-                                  ? AppColors.positive
-                                  : (entry.marginCents < 0
-                                        ? AppColors.negative
-                                        : AppColors.textMuted),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
+          _perTierBreakdown(rollup),
           const SizedBox(height: 16),
           Text(
             'Per-vendor cost breakdown',
             style: AppTextStyles.uiLabel(color: AppColors.textMuted),
           ),
           const SizedBox(height: 6),
-          if (rollup.perVendor.isEmpty)
-            Text(
-              'No per-vendor cost data yet.',
-              style: AppTextStyles.body13(color: AppColors.textMuted),
-            )
-          else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columns: const <DataColumn>[
-                  DataColumn(label: Text('Vendor')),
-                  DataColumn(label: Text('Monthly cost basis')),
-                  DataColumn(label: Text('% of total cost')),
-                ],
-                rows: <DataRow>[
-                  for (final entry in rollup.perVendor)
-                    DataRow(
-                      cells: <DataCell>[
-                        DataCell(
-                          Text(
-                            entry.vendorId == kUnallocatedVendorId
-                                ? kUnallocatedVendorDisplayName
-                                : (kPollOnlyVendorDisplayNames[entry
-                                          .vendorId] ??
-                                      entry.vendorId),
-                            style: AppTextStyles.body13(
-                              color: entry.vendorId == kUnallocatedVendorId
-                                  ? AppColors.textMuted
-                                  : AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            formatCents(entry.totalMonthlyVendorCostCents),
-                            style: AppTextStyles.mono12(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            totalCost <= 0
-                                ? '-'
-                                : '${(entry.totalMonthlyVendorCostCents * 100 / totalCost).toStringAsFixed(1)}%',
-                            style: AppTextStyles.mono12(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
+          _perVendorBreakdown(rollup, totalCost),
+        ],
+      ),
+    );
+  }
+
+  /// Per-tier revenue/cost/margin table, or an empty-state line when no
+  /// tier assignments exist. Extracted from [build] verbatim so the
+  /// dispatcher stays flat.
+  static Widget _perTierBreakdown(TierMarginRollup rollup) {
+    if (rollup.perTier.isEmpty) {
+      return Text(
+        'No tier assignments yet.',
+        style: AppTextStyles.body13(color: AppColors.textMuted),
+      );
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: const <DataColumn>[
+          DataColumn(label: Text('Tier')),
+          DataColumn(label: Text('Count')),
+          DataColumn(label: Text('Revenue')),
+          DataColumn(label: Text('Cost')),
+          DataColumn(label: Text('Margin')),
+        ],
+        rows: <DataRow>[
+          for (final entry in rollup.perTier)
+            DataRow(
+              cells: <DataCell>[
+                DataCell(
+                  Text(
+                    entry.tierKey.wire,
+                    style: AppTextStyles.mono12(
+                      color: AppColors.textPrimary,
                     ),
-                ],
-              ),
+                  ),
+                ),
+                DataCell(
+                  Text(
+                    '${entry.assignmentCount}',
+                    style: AppTextStyles.mono12(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  Text(
+                    formatCents(entry.totalMonthlyPriceCents),
+                    style: AppTextStyles.mono12(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  Text(
+                    formatCents(entry.totalMonthlyVendorCostCents),
+                    style: AppTextStyles.mono12(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  Text(
+                    formatCents(entry.marginCents),
+                    style: AppTextStyles.mono14(
+                      color: entry.marginCents > 0
+                          ? AppColors.positive
+                          : (entry.marginCents < 0
+                                ? AppColors.negative
+                                : AppColors.textMuted),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Per-vendor monthly-cost table with each vendor's share of total
+  /// cost, or an empty-state line. Extracted from [build] verbatim.
+  static Widget _perVendorBreakdown(
+    TierMarginRollup rollup,
+    int totalCost,
+  ) {
+    if (rollup.perVendor.isEmpty) {
+      return Text(
+        'No per-vendor cost data yet.',
+        style: AppTextStyles.body13(color: AppColors.textMuted),
+      );
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: const <DataColumn>[
+          DataColumn(label: Text('Vendor')),
+          DataColumn(label: Text('Monthly cost basis')),
+          DataColumn(label: Text('% of total cost')),
+        ],
+        rows: <DataRow>[
+          for (final entry in rollup.perVendor)
+            DataRow(
+              cells: <DataCell>[
+                DataCell(
+                  Text(
+                    entry.vendorId == kUnallocatedVendorId
+                        ? kUnallocatedVendorDisplayName
+                        : (kPollOnlyVendorDisplayNames[entry.vendorId] ??
+                              entry.vendorId),
+                    style: AppTextStyles.body13(
+                      color: entry.vendorId == kUnallocatedVendorId
+                          ? AppColors.textMuted
+                          : AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  Text(
+                    formatCents(entry.totalMonthlyVendorCostCents),
+                    style: AppTextStyles.mono12(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  Text(
+                    totalCost <= 0
+                        ? '-'
+                        : '${(entry.totalMonthlyVendorCostCents * 100 / totalCost).toStringAsFixed(1)}%',
+                    style: AppTextStyles.mono12(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
             ),
         ],
       ),
