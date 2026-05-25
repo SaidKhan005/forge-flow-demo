@@ -62,20 +62,13 @@ void main() {
 
   Future<void> selectRoleEditorPermission(
     WidgetTester tester,
-    String permissionKey,
-  ) async {
+    String permissionKey, {
+    String keyPrefix = 'admin_rhs_custom_role_editor',
+  }) async {
     final checkbox = find.byKey(
-      Key('admin_rhs_role_editor_checkbox_$permissionKey'),
+      Key('${keyPrefix}_perm_${permissionKey}_checkbox'),
     );
-    final pickerScrollable = find.descendant(
-      of: find.byKey(const Key('admin_rhs_role_editor_permission_picker')),
-      matching: find.byType(Scrollable),
-    );
-    await tester.scrollUntilVisible(
-      checkbox,
-      240,
-      scrollable: pickerScrollable,
-    );
+    await tester.ensureVisible(checkbox);
     await pumpEventually(tester);
     await tester.tap(checkbox);
     await pumpEventually(tester);
@@ -103,8 +96,8 @@ void main() {
       expect(find.byKey(const Key('admin_rhs_tab_hierarchy')), findsOneWidget);
       expect(find.byKey(const Key('admin_rhs_tab_sessions')), findsNothing);
       expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
-      expect(find.text('Scope context'), findsOneWidget);
-      expect(find.text('Selected location scope'), findsOneWidget);
+      expect(find.text('Scope context'), findsNothing);
+      expect(find.text('Selected location scope'), findsNothing);
     });
 
     testWidgets('renders provided hierarchy scope context', (tester) async {
@@ -127,8 +120,8 @@ void main() {
       );
       await pumpEventually(tester);
 
-      expect(find.text('Selected org unit scope'), findsOneWidget);
-      expect(find.text('Demo Diner Co. / East Region'), findsOneWidget);
+      expect(find.text('Selected org unit scope'), findsNothing);
+      expect(find.text('Demo Diner Co. / East Region'), findsNothing);
     });
 
     testWidgets('loads only the selected tab until another tab is opened', (
@@ -248,10 +241,7 @@ void main() {
           ),
           findsNothing,
         );
-        expect(
-          find.textContaining('gated until'),
-          findsNothing,
-        );
+        expect(find.textContaining('gated until'), findsNothing);
         expect(
           find.byKey(const Key('admin_rhs_move_org_unit_dialog')),
           findsNothing,
@@ -608,7 +598,9 @@ void main() {
       );
     });
 
-    testWidgets('view-only mode hides every mutate affordance', (tester) async {
+    testWidgets('view-only mode disables or hides every mutate affordance', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = buildDemoGateway();
       await tester.pumpWidget(
@@ -628,10 +620,10 @@ void main() {
         find.byKey(const Key('admin_rhs_readonly_banner')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const Key('admin_rhs_roles_create_custom')),
-        findsNothing,
+      final newRole = tester.widget<FilledButton>(
+        find.byKey(const Key('admin_rhs_roles_new_role')),
       );
+      expect(newRole.onPressed, isNull);
       expect(
         find.byKey(
           const Key('admin_rhs_role_delete_role-custom-floor-captain'),
@@ -709,49 +701,31 @@ void main() {
         await pumpEventually(tester);
 
         await tester.ensureVisible(
-          find.byKey(const Key('admin_rhs_roles_create_custom')),
+          find.byKey(const Key('admin_rhs_roles_new_role')),
         );
         await pumpEventually(tester);
-        await tester.tap(
-          find.byKey(const Key('admin_rhs_roles_create_custom')),
-        );
+        await tester.tap(find.byKey(const Key('admin_rhs_roles_new_role')));
         await pumpEventually(tester);
 
         expect(
-          find.byKey(const Key('admin_rhs_role_editor_product_tabs')),
+          find.byKey(const Key('admin_rhs_custom_role_editor_search')),
           findsOneWidget,
         );
-        await tester.tap(
-          find.byKey(const Key('admin_rhs_role_editor_tab_barrio')),
-        );
-        await pumpEventually(tester);
         expect(
-          find.byKey(const Key('admin_rhs_role_editor_barrio_coming_soon')),
+          find.byKey(
+            const Key('admin_rhs_custom_role_editor_product_forgeflow'),
+          ),
           findsOneWidget,
         );
-        final barrioCheckbox = find.byKey(
-          const Key('admin_rhs_role_editor_checkbox_barrio.handbook.view'),
-        );
-        await tester.ensureVisible(barrioCheckbox);
-        await pumpEventually(tester);
         expect(
-          tester.widget<CheckboxListTile>(barrioCheckbox).onChanged,
-          isNull,
+          find.byKey(const Key('admin_rhs_create_custom_role_key')),
+          findsNothing,
         );
-
-        await tester.tap(
-          find.byKey(const Key('admin_rhs_role_editor_tab_forgeflow')),
-        );
-        await pumpEventually(tester);
         await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
 
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_name')),
           'Line Lead',
-        );
-        await tester.enterText(
-          find.byKey(const Key('admin_rhs_create_custom_role_key')),
-          'custom.line_lead',
         );
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_reason')),
@@ -792,12 +766,10 @@ void main() {
         await pumpEventually(tester);
 
         await tester.ensureVisible(
-          find.byKey(const Key('admin_rhs_roles_create_custom')),
+          find.byKey(const Key('admin_rhs_roles_new_role')),
         );
         await pumpEventually(tester);
-        await tester.tap(
-          find.byKey(const Key('admin_rhs_roles_create_custom')),
-        );
+        await tester.tap(find.byKey(const Key('admin_rhs_roles_new_role')));
         await pumpEventually(tester);
 
         await tester.enterText(
@@ -805,17 +777,13 @@ void main() {
           'Line Lead',
         );
         await tester.enterText(
-          find.byKey(const Key('admin_rhs_create_custom_role_key')),
-          'custom.line_lead',
-        );
-        await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_reason')),
           'support-onboarding',
         );
-        await tester.tap(
+        final submit = tester.widget<FilledButton>(
           find.byKey(const Key('admin_rhs_create_custom_role_submit')),
         );
-        await pumpEventually(tester);
+        expect(submit.onPressed, isNull);
 
         expect(
           find.byKey(const Key('admin_rhs_create_custom_role_dialog')),
@@ -825,11 +793,7 @@ void main() {
           find.byKey(
             const Key('admin_rhs_create_custom_role_permissions_error'),
           ),
-          findsOneWidget,
-        );
-        expect(
-          find.text('Pick at least one permission for this role.'),
-          findsOneWidget,
+          findsNothing,
         );
         expect(gateway.capturedAuditEvents, isEmpty);
       },
@@ -852,28 +816,22 @@ void main() {
         await pumpEventually(tester);
 
         await tester.ensureVisible(
-          find.byKey(const Key('admin_rhs_roles_create_custom')),
+          find.byKey(const Key('admin_rhs_roles_new_role')),
         );
         await pumpEventually(tester);
-        await tester.tap(
-          find.byKey(const Key('admin_rhs_roles_create_custom')),
-        );
+        await tester.tap(find.byKey(const Key('admin_rhs_roles_new_role')));
         await pumpEventually(tester);
 
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_name')),
           'Line Lead',
         );
-        await tester.enterText(
-          find.byKey(const Key('admin_rhs_create_custom_role_key')),
-          'custom.line_lead',
-        );
         await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
         // Reason intentionally left blank.
-        await tester.tap(
+        final submit = tester.widget<FilledButton>(
           find.byKey(const Key('admin_rhs_create_custom_role_submit')),
         );
-        await pumpEventually(tester);
+        expect(submit.onPressed, isNull);
 
         // Dialog stays open + no audit row was written.
         expect(
@@ -881,6 +839,67 @@ void main() {
           findsOneWidget,
         );
         expect(gateway.capturedAuditEvents, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'edit custom role uses the Ops-shaped editor and writes audit',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = buildDemoGateway();
+        await tester.pumpWidget(
+          wrap(
+            RolesHierarchySessionsAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+            ),
+          ),
+        );
+        await pumpEventually(tester);
+
+        await tester.tap(
+          find.byKey(
+            const Key('admin_rhs_role_edit_role-custom-floor-captain'),
+          ),
+        );
+        await pumpEventually(tester);
+
+        expect(find.text('Edit role'), findsOneWidget);
+        expect(
+          find.byKey(const Key('admin_rhs_custom_role_editor_search')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('admin_rhs_create_custom_role_key')),
+          findsNothing,
+        );
+
+        await tester.enterText(
+          find.byKey(const Key('admin_rhs_create_custom_role_name')),
+          'Shift Captain',
+        );
+        await tester.enterText(
+          find.byKey(const Key('admin_rhs_create_custom_role_reason')),
+          'support role cleanup',
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_rhs_create_custom_role_submit')),
+        );
+        await pumpEventually(tester);
+
+        final event = gateway.capturedAuditEvents.singleWhere(
+          (event) => event.action == 'team.roles.update_custom',
+        );
+        expect(event.adminReason, equals('support role cleanup'));
+        expect(event.actorKind, equals('forge_admin'));
+        expect(
+          event.payload['display_name'],
+          equals(<String, Object?>{
+            'from': 'Floor Captain',
+            'to': 'Shift Captain',
+          }),
+        );
       },
     );
   });
@@ -1341,8 +1360,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('Heads up: this role has 1 thing worth a second look'),
-          findsOneWidget);
+      expect(
+        find.text('Heads up: this role has 1 thing worth a second look'),
+        findsOneWidget,
+      );
       expect(find.text(_AlwaysWarnValidator.kMessage), findsOneWidget);
     });
 
@@ -1379,10 +1400,6 @@ void main() {
       await tester.enterText(
         find.byKey(const Key('admin_rhs_create_custom_role_name')),
         'Line Lead',
-      );
-      await tester.enterText(
-        find.byKey(const Key('admin_rhs_create_custom_role_key')),
-        'custom.line_lead',
       );
       await tester.enterText(
         find.byKey(const Key('admin_rhs_create_custom_role_reason')),

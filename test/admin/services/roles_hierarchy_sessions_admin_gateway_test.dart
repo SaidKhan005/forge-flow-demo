@@ -1102,12 +1102,90 @@ void main() {
         adminReason: 'support',
       );
       expect(captured.url.path, equals('/v1/admin/auth/roles'));
+      expect(captured.method, equals('POST'));
+      expect(captured.headers['Idempotency-Key'], equals('idem-1'));
       final body = jsonDecode(captured.body) as Map<String, Object?>;
       expect(body['operator_id'], equals('op-1'));
       expect(body['role_key'], equals('custom.lead'));
       expect(body['admin_reason'], equals('support'));
-      expect(body['permission_keys'], equals(<String>['team.users.view']));
+      expect(body['reason'], equals('support'));
+      expect(
+        body['permissions'],
+        equals(<Object?>[
+          <String, String>{
+            'permission_key': 'team.users.view',
+            'effect': 'allow',
+          },
+        ]),
+      );
+      expect(body.containsKey('permission_keys'), isFalse);
     });
+
+    test(
+      'updateCustomRole PATCH pins role id + replacement permissions',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'role': <String, Object?>{
+                'role_id': 'r1',
+                'role_key': 'custom.lead',
+                'display_name': 'Lead',
+                'description': 'Updated',
+                'is_seeded': false,
+                'permission_keys': <String>['team.roles.assign'],
+                'operator_id': 'op-1',
+              },
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        await gateway.updateCustomRole(
+          operatorId: 'op-1',
+          roleId: 'r1',
+          displayName: 'Lead',
+          description: 'Updated',
+          previousPermissionKeys: const <String>['team.users.view'],
+          permissionKeys: const <String>['team.roles.assign'],
+          idempotencyKey: 'idem-patch-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'support',
+        );
+
+        expect(captured.method, equals('PATCH'));
+        expect(captured.url.path, equals('/v1/admin/auth/roles/r1'));
+        expect(captured.headers['Idempotency-Key'], equals('idem-patch-1'));
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(body['operator_id'], equals('op-1'));
+        expect(body['display_name'], equals('Lead'));
+        expect(body['description'], equals('Updated'));
+        expect(body['admin_reason'], equals('support'));
+        expect(body['reason'], equals('support'));
+        expect(
+          body['permissions'],
+          equals(<Object?>[
+            <String, String>{
+              'permission_key': 'team.roles.assign',
+              'effect': 'allow',
+            },
+            <String, String>{
+              'permission_key': 'team.users.view',
+              'effect': 'inherit',
+            },
+          ]),
+        );
+      },
+    );
 
     test(
       'createOrgUnit POST pins /v1/admin/auth/org-units + body + idempotency + admin_reason',

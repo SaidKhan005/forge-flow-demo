@@ -1497,7 +1497,7 @@ void main() {
       expect(find.byKey(const Key('admin_rhs_roles_tab')), findsOneWidget);
       expect(
         find.byKey(const Key('admin_rhs_permission_explainer')),
-        findsOneWidget,
+        findsNothing,
       );
     });
 
