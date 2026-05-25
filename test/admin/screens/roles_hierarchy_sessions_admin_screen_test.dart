@@ -95,6 +95,8 @@ void main() {
       expect(find.text('Roles & permissions'), findsOneWidget);
       expect(find.text('Custom roles (1)'), findsOneWidget);
       expect(find.text('Default roles (10)'), findsOneWidget);
+      expect(find.text('Forge & Flow internal (2)'), findsOneWidget);
+      expect(find.text('Business defaults (8)'), findsOneWidget);
     });
 
     testWidgets('loads roles only and never pulls hierarchy data', (
@@ -125,37 +127,48 @@ void main() {
       expect(gateway.listSessionsCalls, equals(0));
     });
 
-    testWidgets('default roles have no edit affordance even with admin flag', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
+    testWidgets(
+      'default roles are editable when seeded-role access is granted',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = buildDemoGateway();
 
-      await tester.pumpWidget(
-        wrap(
-          RolesHierarchySessionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-            canEditSeededRoles: true,
+        await tester.pumpWidget(
+          wrap(
+            RolesHierarchySessionsAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+              canEditSeededRoles: true,
+            ),
           ),
-        ),
-      );
-      await pumpEventually(tester);
+        );
+        await pumpEventually(tester);
 
-      expect(
-        find.byKey(const Key('admin_rhs_role_row_role-seed-operator-owner')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_rhs_role_edit_role-seed-operator-owner')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_rhs_role_delete_role-seed-operator-owner')),
-        findsNothing,
-      );
-    });
+        expect(
+          find.byKey(const Key('admin_rhs_role_row_role-seed-operator-owner')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('admin_rhs_role_edit_role-seed-operator-owner')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('admin_rhs_role_delete_role-seed-operator-owner'),
+          ),
+          findsNothing,
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_rhs_role_edit_role-seed-operator-owner')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('admin_rhs_edit_seeded_role_dialog')),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('read-only mode disables custom-role mutations', (
       tester,
