@@ -492,6 +492,7 @@ class RecordingAuthOperationsGateway implements AuthOperationsGateway {
   final roleLists = <TeamRoleCatalogListCommand>[];
   final roleCreates = <TeamRoleCreateCommand>[];
   final rolePatches = <TeamRolePatchCommand>[];
+  final seededRoleEdits = <TeamSeededRolePermissionsEditCommand>[];
   final roleDeletes = <TeamRoleDeleteCommand>[];
   final inviteLists = <TeamInviteListCommand>[];
   final inviteCreates = <TeamInviteCreateCommand>[];
@@ -547,7 +548,9 @@ class RecordingAuthOperationsGateway implements AuthOperationsGateway {
     TeamRoleCatalogListCommand command,
   ) async {
     roleLists.add(command);
-    return TeamRoleCatalogListed(roles: <TeamRoleCatalogEntry>[proxyAuthTeamRole]);
+    return TeamRoleCatalogListed(
+      roles: <TeamRoleCatalogEntry>[proxyAuthTeamRole],
+    );
   }
 
   @override
@@ -598,6 +601,14 @@ class RecordingAuthOperationsGateway implements AuthOperationsGateway {
   @override
   Future<TeamRolePatched> patchRole(TeamRolePatchCommand command) async {
     rolePatches.add(command);
+    return const TeamRolePatched(role: proxyAuthTeamRole, bumpedUsers: 2);
+  }
+
+  @override
+  Future<TeamRolePatched> editSeededRolePermissions(
+    TeamSeededRolePermissionsEditCommand command,
+  ) async {
+    seededRoleEdits.add(command);
     return const TeamRolePatched(role: proxyAuthTeamRole, bumpedUsers: 2);
   }
 

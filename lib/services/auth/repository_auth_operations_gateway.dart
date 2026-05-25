@@ -111,8 +111,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     if (nextDisplayName == null && nextEmail == null) {
       throw const AuthOperationRejected(
         code: 'no_profile_fields',
-        message:
-            'edit member requires at least one of email or display_name',
+        message: 'edit member requires at least one of email or display_name',
         statusCode: 400,
       );
     }
@@ -262,8 +261,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     if (nextDisplayName == null && nextEmail == null) {
       throw const AuthOperationRejected(
         code: 'no_profile_fields',
-        message:
-            'self-edit requires at least one of email or display_name',
+        message: 'self-edit requires at least one of email or display_name',
         statusCode: 400,
       );
     }
@@ -516,6 +514,94 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     );
     return TeamRolePatched(
       role: await _roleEntry(command, role),
+      bumpedUsers: bumpedUsers,
+    );
+  }
+
+  @override
+  Future<TeamRolePatched> editSeededRolePermissions(
+    TeamSeededRolePermissionsEditCommand command,
+  ) async {
+    final role = await rolesRepository.visibleRoleById(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      roleId: command.roleId,
+      actorUserId: command.actorUserId,
+    );
+    if (!role.isSeeded) {
+      throw const AuthOperationRejected(
+        code: 'not_seeded_role',
+        message: 'only seeded roles can be edited through this path',
+        statusCode: 400,
+      );
+    }
+    final nextKeys = <String>{};
+    for (final raw in command.permissionKeys) {
+      final key = _requiredTrimmed(raw, 'permissionKey');
+      if (!nextKeys.add(key)) {
+        throw AuthOperationRejected(
+          code: 'duplicate_permission_update',
+          message: 'permission update for $key appears more than once',
+          statusCode: 400,
+        );
+      }
+    }
+    final previousRows = await rolePermissionsRepository.listForRole(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      roleId: command.roleId,
+      actorUserId: command.actorUserId,
+    );
+    final updates = <TeamRolePermissionUpdate>[
+      for (final key in nextKeys)
+        TeamRolePermissionUpdate(permissionKey: key, effect: 'allow'),
+      for (final row in previousRows)
+        if (!nextKeys.contains(row.permissionKey))
+          TeamRolePermissionUpdate(
+            permissionKey: row.permissionKey,
+            effect: null,
+          ),
+    ];
+    final permissionAudit = await _applyRolePermissionUpdates(
+      command: command,
+      roleId: command.roleId,
+      updates: updates,
+    );
+    final permissionChanges = permissionAudit.changed;
+    var bumpedUsers = 0;
+    if (permissionChanges > 0) {
+      bumpedUsers = await userRolesRepository.bumpActiveGrantHoldersForRole(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        roleId: command.roleId,
+      );
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        actorKind: 'forge_admin',
+        eventType: 'team.roles.edit_seeded',
+        targetKind: 'role',
+        targetId: command.roleId,
+        payload: <String, Object?>{
+          'role_id': command.roleId,
+          'permission_changes': permissionChanges,
+          'bumped_users': bumpedUsers,
+          'change_payload': permissionAudit.toPayload(),
+          if (command.reason != null) 'admin_reason': command.reason,
+        },
+        adminReason: command.reason,
+      );
+    }
+    final updated = await rolesRepository.visibleRoleById(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      roleId: command.roleId,
+      actorUserId: command.actorUserId,
+    );
+    return TeamRolePatched(
+      role: await _roleEntry(command, updated),
       bumpedUsers: bumpedUsers,
     );
   }
@@ -1897,6 +1983,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       TeamRoleCatalogListCommand(:final operatorId) => operatorId,
       TeamRoleCreateCommand(:final operatorId) => operatorId,
       TeamRolePatchCommand(:final operatorId) => operatorId,
+      TeamSeededRolePermissionsEditCommand(:final operatorId) => operatorId,
       TeamRoleDeleteCommand(:final operatorId) => operatorId,
       _ => throw ArgumentError.value(command, 'command'),
     };
@@ -1904,6 +1991,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       TeamRoleCatalogListCommand(:final locationId) => locationId,
       TeamRoleCreateCommand(:final locationId) => locationId,
       TeamRolePatchCommand(:final locationId) => locationId,
+      TeamSeededRolePermissionsEditCommand(:final locationId) => locationId,
       TeamRoleDeleteCommand(:final locationId) => locationId,
       _ => throw ArgumentError.value(command, 'command'),
     };
@@ -1911,6 +1999,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       TeamRoleCatalogListCommand(:final actorUserId) => actorUserId,
       TeamRoleCreateCommand(:final actorUserId) => actorUserId,
       TeamRolePatchCommand(:final actorUserId) => actorUserId,
+      TeamSeededRolePermissionsEditCommand(:final actorUserId) => actorUserId,
       TeamRoleDeleteCommand(:final actorUserId) => actorUserId,
       _ => throw ArgumentError.value(command, 'command'),
     };
@@ -1990,16 +2079,19 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     final operatorId = switch (command) {
       TeamRoleCreateCommand(:final operatorId) => operatorId,
       TeamRolePatchCommand(:final operatorId) => operatorId,
+      TeamSeededRolePermissionsEditCommand(:final operatorId) => operatorId,
       _ => throw ArgumentError.value(command, 'command'),
     };
     final locationId = switch (command) {
       TeamRoleCreateCommand(:final locationId) => locationId,
       TeamRolePatchCommand(:final locationId) => locationId,
+      TeamSeededRolePermissionsEditCommand(:final locationId) => locationId,
       _ => throw ArgumentError.value(command, 'command'),
     };
     final actorUserId = switch (command) {
       TeamRoleCreateCommand(:final actorUserId) => actorUserId,
       TeamRolePatchCommand(:final actorUserId) => actorUserId,
+      TeamSeededRolePermissionsEditCommand(:final actorUserId) => actorUserId,
       _ => throw ArgumentError.value(command, 'command'),
     };
     if (updates.isEmpty) {
@@ -2104,27 +2196,25 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     required String operatorId,
     required String locationId,
     required String eventType,
+    String actorKind = 'user',
     String? actorUserId,
     String? targetUserId,
     String? targetKind,
     String? targetId,
     Map<String, Object?> payload = const <String, Object?>{},
+    String? adminReason,
   }) async {
-    // User-initiated: every Team / user-management write on this
-    // gateway runs behind a `/v1/auth/*` HTTP route bound to the
-    // operator-admin / team-admin JWT. Tag the audit row as 'user'
-    // so the actor's identity (JWT subject) carries through to the
-    // hash-chained audit_logs row.
     await auditRepository.insertEvent(
       operatorId: operatorId,
       locationId: locationId,
-      actorKind: 'user',
+      actorKind: actorKind,
       actorUserId: actorUserId,
       targetUserId: targetUserId,
       targetKind: targetKind,
       targetId: targetId,
       eventType: eventType,
       payload: payload,
+      adminReason: adminReason,
     );
   }
 

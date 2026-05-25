@@ -329,7 +329,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   ),
   AdminRoute(
     id: kAdminDefaultRoleCatalogRouteId,
-    title: 'Default roles',
+    title: 'Default role catalog',
     path: '/default-roles',
     icon: Icons.shield_outlined,
     section: AdminRouteSection.serviceSetup,

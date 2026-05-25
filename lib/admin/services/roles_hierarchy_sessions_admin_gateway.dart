@@ -710,7 +710,9 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyCreate);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyCreate,
+    );
     _requireEditable(actorIsForgeAdmin, 'createOrgUnit');
     _requireAdminReason(adminReason, 'createOrgUnit');
     final body = await _send(
@@ -749,7 +751,9 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyMove);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyMove,
+    );
     _requireEditable(actorIsForgeAdmin, 'moveOrgUnit');
     _requireAdminReason(adminReason, 'moveOrgUnit');
     final body = await _send(
@@ -787,7 +791,9 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyRename);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyRename,
+    );
     _requireEditable(actorIsForgeAdmin, 'renameOrgUnit');
     _requireAdminReason(adminReason, 'renameOrgUnit');
     final body = await _send(
@@ -860,7 +866,9 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchySuspend);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchySuspend,
+    );
     _requireEditable(actorIsForgeAdmin, operation);
     _requireAdminReason(adminReason, operation);
     final body = await _send(
@@ -884,7 +892,9 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyDelete);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyDelete,
+    );
     _requireEditable(actorIsForgeAdmin, 'deleteOrgUnit');
     _requireAdminReason(adminReason, 'deleteOrgUnit');
     await _send(
@@ -908,7 +918,9 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyMove);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyMove,
+    );
     _requireEditable(actorIsForgeAdmin, 'moveLocation');
     _requireAdminReason(adminReason, 'moveLocation');
     final body = await _send(
@@ -983,7 +995,9 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchySuspend);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchySuspend,
+    );
     _requireEditable(actorIsForgeAdmin, operation);
     _requireAdminReason(adminReason, operation);
     final body = await _send(
@@ -1008,7 +1022,9 @@ class HttpRolesHierarchySessionsAdminGateway
     required bool actorIsForgeAdmin,
     required String adminReason,
   }) async {
-    await _evaluateHierarchyGate(requiredKey: PermissionKeys.adminHierarchyDelete);
+    await _evaluateHierarchyGate(
+      requiredKey: PermissionKeys.adminHierarchyDelete,
+    );
     _requireEditable(actorIsForgeAdmin, 'deleteLocation');
     _requireAdminReason(adminReason, 'deleteLocation');
     await _send(
@@ -1286,6 +1302,10 @@ const Map<String, String> kRoleDisplayNamesForAdmin = <String, String>{
   'operator_general_manager': 'General Manager',
   'location_manager': 'Location Manager',
   'supervisor': 'Supervisor',
+  'finance_analyst': 'Finance Analyst',
+  'auditor_compliance': 'Auditor / Compliance',
+  'training_lead': 'Training Lead',
+  'team_admin': 'Team Admin',
 };
 
 String roleAdminDisplayLabel(RoleAdminRow row) {
