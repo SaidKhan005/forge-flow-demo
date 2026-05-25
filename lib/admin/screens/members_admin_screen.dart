@@ -2,11 +2,12 @@
 //
 // Cross-operator members + invites table for the admin console.
 // Mirrors the operator-web sibling (`11W.1`) parity surface: same
-// filter set (status / role / location / mfa_enrolled / search),
-// same locked validation copy on the invite dialog, same pagination,
-// same table layout, and same Team-tab row actions (Edit, Suspend /
-// Reactivate, Remove from team, Reset password, Reset MFA). The
-// admin path still writes through `/v1/admin/auth/*` with
+// filter set, minus Operator Web's in-page Location dropdown because
+// the admin shell's left hierarchy scope picker already owns that
+// narrowing; same locked validation copy on the invite dialog, same
+// pagination, same table layout, and same Team-tab row actions (Edit,
+// Suspend / Reactivate, Remove from team, Reset password, Reset MFA).
+// The admin path still writes through `/v1/admin/auth/*` with
 // `actor_kind = forge_admin` and a non-empty `admin_reason`, but the
 // Team tab UX follows operator web. Role policy and restore workflows
 // stay outside this tab.
@@ -112,10 +113,9 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   Timer? _searchDebounce;
   int _refreshGeneration = 0;
 
-  // Filter state. Mirrors the parity-contract filter set verbatim.
+  // Filter state. Location narrowing is owned by the left hierarchy scope.
   MemberStatus? _statusFilter;
   String? _roleFilter;
-  String? _locationFilter;
   bool? _mfaEnrolledFilter;
   String _searchQuery = '';
   int _pageIndex = 0;
@@ -155,14 +155,12 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           operatorId: widget.pickedOperator.operatorId,
           status: _statusFilter,
           roleKey: _roleFilter,
-          locationId: _locationFilter,
           contextLocationId: widget.pickedOperator.locationId,
           mfaEnrolled: _mfaEnrolledFilter,
           search: _searchQuery,
         ),
         widget.gateway.listInvites(
           operatorId: widget.pickedOperator.operatorId,
-          locationId: _locationFilter,
           contextLocationId: widget.pickedOperator.locationId,
         ),
         if (rolesGateway != null) ...<Future<Object>>[
@@ -239,7 +237,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     setState(() {
       _statusFilter = null;
       _roleFilter = null;
-      _locationFilter = null;
       _mfaEnrolledFilter = null;
       _searchQuery = '';
       _pageIndex = 0;
@@ -281,7 +278,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   }) {
     final query = _searchQuery.trim().toLowerCase();
     final roleFilter = _roleFilter;
-    final locationFilter = _locationFilter;
     final scopeLocationIds = _locationIdsForHierarchyScope(hierarchyLocations);
     final filtered = rows
         .where((row) {
@@ -294,11 +290,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           if (roleFilter != null &&
               roleFilter.isNotEmpty &&
               !_roleMatches(row.roleKey, roleFilter)) {
-            return false;
-          }
-          if (locationFilter != null &&
-              locationFilter.isNotEmpty &&
-              row.primaryLocationId != locationFilter) {
             return false;
           }
           if (_mfaEnrolledFilter != null &&
@@ -788,11 +779,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     setState(() {
       _statusFilter = null;
       _roleFilter = null;
-      _locationFilter =
-          usage.operatorId == null ||
-              usage.operatorId == widget.pickedOperator.operatorId
-          ? usage.locationId
-          : null;
       _mfaEnrolledFilter = null;
       _searchQuery = usage.email;
       _actionError = null;
@@ -907,10 +893,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           _MembersFilterBar(
             statusFilter: _statusFilter,
             roleFilter: _roleFilter,
-            locationFilter: _locationFilter,
             mfaEnrolledFilter: _mfaEnrolledFilter,
             searchQuery: _searchQuery,
-            locations: _availableLocations,
             roles: _roleFilterOptions,
             onStatusChanged: (v) {
               setState(() => _statusFilter = v);
@@ -918,10 +902,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
             },
             onRoleChanged: (v) {
               setState(() => _roleFilter = v);
-              _resetPageAndRefresh();
-            },
-            onLocationChanged: (v) {
-              setState(() => _locationFilter = v);
               _resetPageAndRefresh();
             },
             onMfaEnrolledChanged: (v) {
@@ -1097,14 +1077,11 @@ class _MembersFilterBar extends StatefulWidget {
   const _MembersFilterBar({
     required this.statusFilter,
     required this.roleFilter,
-    required this.locationFilter,
     required this.mfaEnrolledFilter,
     required this.searchQuery,
-    required this.locations,
     required this.roles,
     required this.onStatusChanged,
     required this.onRoleChanged,
-    required this.onLocationChanged,
     required this.onMfaEnrolledChanged,
     required this.onSearchChanged,
     required this.onClearFilters,
@@ -1112,14 +1089,11 @@ class _MembersFilterBar extends StatefulWidget {
 
   final MemberStatus? statusFilter;
   final String? roleFilter;
-  final String? locationFilter;
   final bool? mfaEnrolledFilter;
   final String searchQuery;
-  final List<MemberLocationRef> locations;
   final List<_RoleFilterOption> roles;
   final ValueChanged<MemberStatus?> onStatusChanged;
   final ValueChanged<String?> onRoleChanged;
-  final ValueChanged<String?> onLocationChanged;
   final ValueChanged<bool?> onMfaEnrolledChanged;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onClearFilters;
@@ -1160,7 +1134,6 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
     final activeFilters = <String>[
       if (widget.statusFilter != null) 'Status',
       if (widget.roleFilter != null) 'Role',
-      if (widget.locationFilter != null) 'Location',
       if (widget.mfaEnrolledFilter != null) 'MFA',
       if (widget.searchQuery.trim().isNotEmpty) 'Search',
     ];
@@ -1239,31 +1212,6 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
                   ),
               ],
               onChanged: widget.onRoleChanged,
-            ),
-          ),
-          SizedBox(
-            width: 220,
-            child: DropdownButtonFormField<String?>(
-              key: const Key('admin_members_filter_location'),
-              initialValue: widget.locationFilter,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Location',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-              items: <DropdownMenuItem<String?>>[
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Any location'),
-                ),
-                for (final loc in widget.locations)
-                  DropdownMenuItem<String?>(
-                    value: loc.locationId,
-                    child: Text(loc.name),
-                  ),
-              ],
-              onChanged: widget.onLocationChanged,
             ),
           ),
           SizedBox(
