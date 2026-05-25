@@ -46,7 +46,6 @@ import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
-import '../../domain/models/inheritance_tree_node.dart';
 import '../../operator_web/services/web_team_audit_log_gateway.dart'
     as operator_audit;
 import '../../operator_web/widgets/audit_log_row.dart'
@@ -69,11 +68,11 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.canResetMfaFactors = false,
     this.canIssuePairedErasure = false,
+    this.canViewAuditLog = true,
     this.canExportAuditLog = false,
     this.sessionsGateway,
     this.anchorsGateway,
     this.hierarchyScope,
-    this.auditScopeRootNode,
     this.idempotencyKeyFactory,
     this.onCsvReady,
     this.copyToClipboard,
@@ -114,6 +113,10 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   final bool canIssuePairedErasure;
 
   /// Per the parity contract § Audit Log line 147: CSV export is
+  /// gated on `admin.audit_log.view`.
+  final bool canViewAuditLog;
+
+  /// Per the parity contract § Audit Log line 147: CSV export is
   /// gated on `admin.audit_log.export`.
   final bool canExportAuditLog;
 
@@ -125,18 +128,6 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   /// Scope selected from the business hierarchy workspace before the
   /// Security/audit/sessions tile was opened.
   final AdminHierarchyScopeIntent? hierarchyScope;
-
-  /// GAP B3 — Business → Org Unit → Location scope tree for the
-  /// in-screen audit-log scope picker. Built (route-side) from the
-  /// org-units + locations the EXISTING
-  /// [RolesHierarchySessionsAdminGateway] already exposes via the pure
-  /// [buildAuditLogAdminRootNode] helper — no new proxy route, no new
-  /// gateway method. When non-null the audit-log region renders the
-  /// shared [InheritanceTree] as the default scope selector; when null
-  /// the screen falls back to the read-only scope banner the upstream
-  /// hierarchy workspace already supplies (no regression to that
-  /// path).
-  final InheritanceTreeNode? auditScopeRootNode;
 
   final String Function()? idempotencyKeyFactory;
 
@@ -203,15 +194,6 @@ class _AuditedSupportActionsAdminScreenState
   final Map<String, String> _actorPickerCatalog = <String, String>{};
   int _refreshGeneration = 0;
 
-  /// GAP B3 — the scope the admin selected in the in-screen
-  /// [InheritanceTree] picker (when [AuditedSupportActionsAdminScreen.
-  /// auditScopeRootNode] is supplied). Seeded from the upstream
-  /// workspace scope so the banner stays consistent before the admin
-  /// touches the tree. The audit-log read stays operator-wide — the
-  /// gateway exposes no scoped aggregate route yet — so this only
-  /// drives the scope banner copy, identical to the prior read-only
-  /// banner behaviour.
-
   /// Admin audit-integrity badge — most-recent anchor snapshot for the
   /// selected operator. Null while loading or when no gateway is wired
   /// (the badge renders the neutral "unknown" state in both cases).
@@ -251,8 +233,12 @@ class _AuditedSupportActionsAdminScreenState
   @override
   void initState() {
     super.initState();
-    _refresh();
-    _loadAnchorBadge();
+    if (widget.canViewAuditLog) {
+      _refresh();
+      _loadAnchorBadge();
+    } else {
+      _loading = false;
+    }
   }
 
   @override
@@ -263,6 +249,29 @@ class _AuditedSupportActionsAdminScreenState
     // Admin audit-integrity badge — re-read when the selected operator
     // or the wired gateway changes so the badge follows the operator
     // the admin switched to.
+    if (!widget.canViewAuditLog) {
+      _refreshGeneration += 1;
+      _anchorGeneration += 1;
+      if (oldWidget.canViewAuditLog) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+          _loadError = null;
+          _rows = const <AuditLogRow>[];
+          _nextCursor = null;
+          _expandedRowIds.clear();
+          _anchorSnapshot = null;
+          _anchorLoading = false;
+          _anchorTransientError = false;
+        });
+      }
+      return;
+    }
+    if (!oldWidget.canViewAuditLog) {
+      unawaited(_refresh());
+      _loadAnchorBadge();
+      return;
+    }
     if (oldWidget.pickedOperator.operatorId !=
             widget.pickedOperator.operatorId ||
         oldWidget.anchorsGateway != widget.anchorsGateway) {
@@ -270,6 +279,7 @@ class _AuditedSupportActionsAdminScreenState
     }
     if (oldWidget.pickedOperator.operatorId !=
             widget.pickedOperator.operatorId ||
+        oldWidget.gateway != widget.gateway ||
         oldWidget.hierarchyScope?.cacheKey != widget.hierarchyScope?.cacheKey) {
       unawaited(_refresh());
     }
@@ -281,6 +291,7 @@ class _AuditedSupportActionsAdminScreenState
   /// gateway error maps to the neutral "unavailable" state rather than
   /// "failed", so a transient proxy outage does not alarm the admin.
   Future<void> _loadAnchorBadge() async {
+    if (!widget.canViewAuditLog) return;
     final gateway = widget.anchorsGateway;
     final generation = ++_anchorGeneration;
     if (gateway == null) {
@@ -354,9 +365,11 @@ class _AuditedSupportActionsAdminScreenState
   }
 
   Future<void> _refresh() async {
+    if (!widget.canViewAuditLog) return;
     final generation = ++_refreshGeneration;
     setState(() {
       _loading = true;
+      _loadingMore = false;
       _loadError = null;
     });
     try {
@@ -375,22 +388,10 @@ class _AuditedSupportActionsAdminScreenState
         _refreshActorCatalog(page.rows);
         _loading = false;
       });
-    } on AuditedSupportActionsGatewayError catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadError = error.message;
-        _loading = false;
-      });
-    } on AuditedSupportActionsForbiddenException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadError = error.message;
-        _loading = false;
-      });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       setState(() {
-        _loadError = 'Could not load: $error';
+        _loadError = _friendlyLoadError(error);
         _loading = false;
       });
     }
@@ -399,9 +400,9 @@ class _AuditedSupportActionsAdminScreenState
   Future<void> _loadMore() async {
     final cursor = _nextCursor;
     if (cursor == null || _loadingMore) return;
+    final generation = _refreshGeneration;
     setState(() {
       _loadingMore = true;
-      _loadError = null;
     });
     try {
       final next = await widget.gateway.listAuditLog(
@@ -410,23 +411,17 @@ class _AuditedSupportActionsAdminScreenState
         cursor: cursor,
         scope: _selectedAuditLogScope,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _rows = <AuditLogRow>[..._rows, ...next.rows];
         _nextCursor = next.nextCursor;
         _loadingMore = false;
         _refreshActorCatalog(next.rows);
       });
-    } on AuditedSupportActionsGatewayError catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadError = error.message;
-        _loadingMore = false;
-      });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _refreshGeneration) return;
       setState(() {
-        _loadError = error.toString();
+        _loadError = _friendlyLoadError(error);
         _loadingMore = false;
       });
     }
@@ -493,16 +488,21 @@ class _AuditedSupportActionsAdminScreenState
     if (scope == null) return null;
     switch (scope.scopeType) {
       case AdminHierarchyScopeType.business:
-        return null;
+        return AuditLogScope(
+          scopeType: AuditLogScopeType.operatorWide,
+          locationId: widget.pickedOperator.locationId,
+        );
       case AdminHierarchyScopeType.orgUnit:
         return AuditLogScope(
           scopeType: AuditLogScopeType.orgUnit,
           orgUnitId: scope.orgUnitId,
+          locationId: widget.pickedOperator.locationId,
         );
       case AdminHierarchyScopeType.location:
         return AuditLogScope(
           scopeType: AuditLogScopeType.location,
           locationFilter: scope.locationId,
+          locationId: widget.pickedOperator.locationId,
         );
     }
   }
@@ -672,23 +672,19 @@ class _AuditedSupportActionsAdminScreenState
       if (!mounted) return;
       setState(() {
         _exporting = false;
-        _exportMessage = error.message;
+        _exportMessage = _friendlyExportError(error);
       });
     } on AuditedSupportActionsGatewayError catch (error) {
       if (!mounted) return;
       setState(() {
         _exporting = false;
-        _exportMessage =
-            'Could not export the audit log (${error.errorCode}). Try a '
-            'narrower filter and try again.';
+        _exportMessage = _friendlyExportError(error);
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _exporting = false;
-        _exportMessage =
-            'Could not export the audit log. Try a narrower filter and '
-            'try again.';
+        _exportMessage = _friendlyExportError(error);
       });
     }
   }
@@ -710,6 +706,28 @@ class _AuditedSupportActionsAdminScreenState
       adminReason: 'Audit log CSV export',
     );
     return operator_audit.WebAuditLogCsvExport(csv: csv, filename: filename);
+  }
+
+  String _friendlyLoadError(Object error) {
+    if (error is AuditedSupportActionsForbiddenException) {
+      return 'You do not have permission to view the audit log for this '
+          'operator.';
+    }
+    if (error is AuditedSupportActionsGatewayError) {
+      return 'Could not load the audit log (${error.errorCode}). Refresh the '
+          'page or try again in a moment.';
+    }
+    return 'Could not load the audit log. Refresh the page or try again '
+        'in a moment.';
+  }
+
+  String _friendlyExportError(Object error) {
+    if (error is AuditedSupportActionsGatewayError) {
+      return 'Could not export the audit log (${error.errorCode}). Try a '
+          'narrower filter and try again.';
+    }
+    return 'Could not export the audit log. Try a narrower filter and '
+        'try again.';
   }
 
   Future<operator_audit.WebAuditLogCsvExport> _exportSelectedScopeCsv(
@@ -873,6 +891,11 @@ class _AuditedSupportActionsAdminScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.canViewAuditLog) {
+      return const _AdminAuditLogForbiddenSurface(
+        key: Key('admin_asa_audit_log_forbidden'),
+      );
+    }
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_audited_support_actions_screen'),
       maxContentWidth: 1120,
@@ -903,7 +926,7 @@ class _AuditedSupportActionsAdminScreenState
             transientError: _anchorTransientError,
             now: widget.anchorBadgeClock?.call(),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
           _buildBody(),
         ],
       ),
@@ -944,14 +967,6 @@ class _AuditedSupportActionsAdminScreenState
       key: const Key('admin_asa_body'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // GAP B3 — when a scope tree is available, the shared
-        // InheritanceTree is the DEFAULT scope selector for the
-        // audit-log view (operator decision: close the gap where
-        // admins actually are). The selected node updates the scope
-        // banner below. When no tree is available the screen keeps
-        // the read-only scope banner the upstream hierarchy
-        // workspace already supplies — graceful fallback, no
-        // regression.
         _AdminAuditLogFilters(
           filters: _filters,
           selectedActions: _selectedActions,
@@ -988,6 +1003,54 @@ class _AuditedSupportActionsAdminScreenState
             onLoadMore: _loadMore,
           ),
       ],
+    );
+  }
+}
+
+class _AdminAuditLogForbiddenSurface extends StatelessWidget {
+  const _AdminAuditLogForbiddenSurface({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Icon(
+                    Icons.lock_outline,
+                    size: 20,
+                    color: AppColors.sunsetDark,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Audit log is not available for this account',
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'The Audit Log shows every change someone made to your '
+                'team, your roles, and your sign-in security. Operator '
+                'owners and managers see it from the web console; line '
+                'staff stay on the mobile app.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

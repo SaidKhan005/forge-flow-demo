@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../admin_route_handoff.dart';
 import '../../operator_web/services/operator_web_csv_download.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
@@ -36,7 +37,9 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
     this.canEditSeededRoles = false,
     this.canResetMfaFactors = false,
     this.canIssuePairedErasure = false,
+    this.canViewAuditLog = true,
     this.canExportAuditLog = false,
+    this.hierarchyScope,
     this.onChangeOperator,
   });
 
@@ -49,7 +52,9 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
   final bool canEditSeededRoles;
   final bool canResetMfaFactors;
   final bool canIssuePairedErasure;
+  final bool canViewAuditLog;
   final bool canExportAuditLog;
+  final AdminHierarchyScopeIntent? hierarchyScope;
   final VoidCallback? onChangeOperator;
 
   @override
@@ -182,7 +187,9 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
                       editingEnabled: editingEnabled,
                       canResetMfaFactors: canResetMfaFactors,
                       canIssuePairedErasure: canIssuePairedErasure,
+                      canViewAuditLog: canViewAuditLog,
                       canExportAuditLog: canExportAuditLog,
+                      hierarchyScope: hierarchyScope,
                       onCsvReady: downloadOperatorWebCsv,
                       onChangeOperator: onChangeOperator,
                     ),

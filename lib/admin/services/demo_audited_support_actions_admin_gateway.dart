@@ -13,6 +13,8 @@
 // can hop from Members / Roles / Hierarchy / Sessions straight into
 // the Audited support actions surface for the same operator.
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'audited_support_actions_admin_gateway.dart';
@@ -195,11 +197,18 @@ class InMemoryAuditedSupportActionsAdminGateway
       filtered = filtered.where((r) => wanted.contains(r.action));
     }
     if (filters.targetKind != null) {
-      filtered = filtered.where((r) => r.targetKind == filters.targetKind);
+      final wanted = filters.targetKind!.trim().toLowerCase();
+      if (wanted.isNotEmpty) {
+        filtered = filtered.where(
+          (r) => r.targetKind.toLowerCase().contains(wanted),
+        );
+      }
     }
     if (filters.targetId != null && filters.targetId!.trim().isNotEmpty) {
-      final wanted = filters.targetId!.trim();
-      filtered = filtered.where((r) => r.targetId == wanted);
+      final wanted = filters.targetId!.trim().toLowerCase();
+      filtered = filtered.where(
+        (r) => r.targetId.toLowerCase().contains(wanted),
+      );
     }
     if (filters.actorKinds.isNotEmpty) {
       final wanted = filters.actorKinds.toSet();
@@ -266,15 +275,23 @@ class InMemoryAuditedSupportActionsAdminGateway
     );
     final buf = StringBuffer();
     buf.writeln(
-      'event_id,occurred_at,action,actor_user_id,actor_kind,'
-      'target_kind,target_id,admin_reason',
+      'created_at,action,actor_user_id,actor_display_name,actor_email,'
+      'actor_kind,target_kind,target_id,admin_reason,payload',
     );
     for (final row in page.rows) {
       buf.writeln(
-        '${row.eventId},${row.occurredAt.toIso8601String()},${row.action},'
-        '${row.actorUserId},${row.actorKind.wire},'
-        '${row.targetKind},${row.targetId},'
-        '${(row.adminReason ?? '').replaceAll(',', ' ')}',
+        <String>[
+          _csv(row.occurredAt.toUtc().toIso8601String()),
+          _csv(row.action),
+          _csv(row.actorUserId),
+          _csv(row.actorDisplayName),
+          _csv(row.actorEmail),
+          _csv(row.actorKind.wire),
+          _csv(row.targetKind),
+          _csv(row.targetId),
+          _csv(row.adminReason ?? ''),
+          _csv(row.payload.isEmpty ? '' : jsonEncode(row.payload)),
+        ].join(','),
       );
     }
     _appendAuditRow(
@@ -292,6 +309,15 @@ class InMemoryAuditedSupportActionsAdminGateway
     final csv = buf.toString();
     _idempotentResults[idempotencyKey] = csv;
     return csv;
+  }
+
+  static String _csv(String raw) {
+    if (raw.isEmpty) return '';
+    if (raw.contains(',') || raw.contains('"') || raw.contains('\n')) {
+      final escaped = raw.replaceAll('"', '""');
+      return '"$escaped"';
+    }
+    return raw;
   }
 
   @override
