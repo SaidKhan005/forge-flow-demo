@@ -103,6 +103,18 @@
         "docs/_mockups"
       ],
       "port": 8190
+    },
+    {
+      "name": "admin-redesign-qa",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8188",
+        "--directory",
+        "C:/Git Local Repos/forge_flow_demo/.claude/worktrees/admin-qa/build/web"
+      ],
+      "port": 8188
     }
   ]
 }
