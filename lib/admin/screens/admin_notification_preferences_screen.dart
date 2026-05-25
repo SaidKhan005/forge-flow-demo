@@ -62,6 +62,7 @@ import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
+import 'package:forge_and_flow/widgets/console/console_switch_row.dart';
 import '../services/admin_notification_preferences_gateway.dart';
 
 /// Wiring-readiness state for one catalog entry. Mirrors the
@@ -508,11 +509,20 @@ class _EventRow extends StatelessWidget {
         for (final channel in kNotificationChannelOrder)
           Padding(
             padding: const EdgeInsets.only(left: 12),
-            child: _ChannelToggle(
-              event: event,
-              channel: channel,
-              enabled: resolveEnabled(event, channel),
-              onToggle: isAvailable ? onToggle : null,
+            child: ConsoleChannelToggle(
+              switchKey: Key(
+                'admin_notification_preferences_toggle_'
+                '${event.eventKey}_$channel',
+              ),
+              label: kNotificationChannelLabels[channel] ?? channel,
+              value: resolveEnabled(event, channel),
+              onChanged: isAvailable && onToggle != null
+                  ? (_) => onToggle!(
+                      event: event,
+                      channel: channel,
+                      currentlyEnabled: resolveEnabled(event, channel),
+                    )
+                  : null,
             ),
           ),
       ],
@@ -560,48 +570,3 @@ class _StateBadge extends StatelessWidget {
   }
 }
 
-class _ChannelToggle extends StatelessWidget {
-  const _ChannelToggle({
-    required this.event,
-    required this.channel,
-    required this.enabled,
-    required this.onToggle,
-  });
-
-  final NotificationCatalogEntry event;
-  final String channel;
-  final bool enabled;
-  final Future<void> Function({
-    required NotificationCatalogEntry event,
-    required String channel,
-    required bool currentlyEnabled,
-  })?
-  onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = kNotificationChannelLabels[channel] ?? channel;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
-        const SizedBox(height: 4),
-        Switch(
-          key: Key(
-            'admin_notification_preferences_toggle_'
-            '${event.eventKey}_$channel',
-          ),
-          value: enabled,
-          onChanged: onToggle == null
-              ? null
-              : (_) => onToggle!(
-                  event: event,
-                  channel: channel,
-                  currentlyEnabled: enabled,
-                ),
-          activeThumbColor: AppColors.sunsetDark,
-        ),
-      ],
-    );
-  }
-}

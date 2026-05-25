@@ -41,6 +41,7 @@ import '../../widgets/console/console_info_button.dart';
 import '../../widgets/console/console_screen_body.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
+import '../../widgets/console/console_switch_row.dart';
 
 import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
@@ -1275,27 +1276,16 @@ class _TechDetailsToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     // Sized to its content so it sits on the right of the Wrap controls
     // row. The label is capped + ellipsizes so it never overflows on a
-    // narrow (mobile-width) admin viewport.
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 220),
-          child: Text(
-            'Show technical details',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Switch(
-          key: const Key('admin_health_tech_toggle'),
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: AppColors.sunsetDark,
-        ),
-      ],
+    // narrow (mobile-width) admin viewport. Shared premium switch row so it
+    // matches every other on/off control across both consoles.
+    return ConsoleSwitchRow(
+      switchKey: const Key('admin_health_tech_toggle'),
+      label: 'Show technical details',
+      labelStyle: AppTextStyles.body13(color: AppColors.textSecondary),
+      compact: true,
+      maxLabelWidth: 220,
+      value: value,
+      onChanged: onChanged,
     );
   }
 }
