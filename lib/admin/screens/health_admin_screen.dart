@@ -337,12 +337,14 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
               // clutter). It keeps only a compact, right-aligned actions row
               // carrying the single Run button + the "Last checked" stamp, in
               // every state (empty, loading, loaded).
-              _HealthActionsRow(
-                lastRefreshed: _lastRefreshed,
-                onRunHealthCheck: _confirmAndRefresh,
-                loading: _loading || _refreshing,
-              ),
-              const SizedBox(height: 12),
+              if (!showManualPrompt) ...<Widget>[
+                _HealthActionsRow(
+                  lastRefreshed: _lastRefreshed,
+                  onRunHealthCheck: _confirmAndRefresh,
+                  loading: _loading || _refreshing,
+                ),
+                const SizedBox(height: 12),
+              ],
               // System health is platform-wide: the proxy `/health` envelope
               // carries no operator/tenant/scope identifiers (see
               // docs/contracts/proxy_health_contract.md), so a per-scope
@@ -352,13 +354,9 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
               // not change per scope (the scope is still sent to the gateway
               // fetch above for request shaping, not for display).
               if (widget.hierarchyScope != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'These checks are platform-wide. The selected scope does not change them.',
-                    key: const Key('admin_health_platform_note'),
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
-                  ),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: _HealthPlatformNote(),
                 ),
               if (_loadError != null)
                 _ErrorBanner(
@@ -380,7 +378,8 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
                     ),
                   ),
                 ),
-              if (showManualPrompt) const _ManualHealthHint(),
+              if (showManualPrompt)
+                _ManualHealthHint(onRunHealthCheck: _confirmAndRefresh),
             ];
             final column = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
