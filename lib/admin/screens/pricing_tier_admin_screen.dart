@@ -2080,19 +2080,32 @@ class _PlanPresetsCard extends StatelessWidget {
     return OperatorWebPanel(
       title: 'Change plan',
       padding: const EdgeInsets.all(16),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: <Widget>[
-          for (final template in kPricingTierTemplates)
-            _PresetTile(
-              template: template,
-              isCurrent:
-                  template.tierKey.toLowerCase() == current ||
-                  template.subscriptionTier.toLowerCase() == current,
-              onTap: () => onApplyTemplate(bundle, template),
-            ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const spacing = 12.0;
+          final columns = constraints.maxWidth >= 760
+              ? 3
+              : constraints.maxWidth >= 500
+              ? 2
+              : 1;
+          final tileWidth =
+              (constraints.maxWidth - (columns - 1) * spacing) / columns;
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: <Widget>[
+              for (final template in kPricingTierTemplates)
+                _PresetTile(
+                  width: tileWidth,
+                  template: template,
+                  isCurrent:
+                      template.tierKey.toLowerCase() == current ||
+                      template.subscriptionTier.toLowerCase() == current,
+                  onTap: () => onApplyTemplate(bundle, template),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2100,11 +2113,13 @@ class _PlanPresetsCard extends StatelessWidget {
 
 class _PresetTile extends StatelessWidget {
   const _PresetTile({
+    required this.width,
     required this.template,
     required this.isCurrent,
     required this.onTap,
   });
 
+  final double width;
   final PricingTierTemplate template;
   final bool isCurrent;
   final VoidCallback onTap;
@@ -2113,21 +2128,23 @@ class _PresetTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final presentation = findPricingPlanPresentation(template.tierKey);
     return SizedBox(
-      width: 160,
+      width: width,
+      height: 96,
       child: OutlinedButton(
         key: Key('admin_pricing_template_${template.tierKey}_button'),
         onPressed: onTap,
         style:
             AdminButtonStyles.secondary(
-              minWidth: 160,
-              minHeight: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              minWidth: width,
+              minHeight: 96,
+              padding: const EdgeInsets.all(12),
               borderColor: isCurrent
                   ? AppColors.sunsetDark
                   : AppColors.borderSubtle,
               emphasized: isCurrent,
             ).copyWith(
-              alignment: Alignment.centerLeft,
+              alignment: Alignment.topLeft,
+              fixedSize: WidgetStatePropertyAll(Size(width, 96)),
               backgroundColor: WidgetStatePropertyAll(
                 isCurrent
                     ? AppColors.sunset.withValues(alpha: 0.08)
@@ -2147,26 +2164,43 @@ class _PresetTile extends StatelessWidget {
                       color: AppColors.textPrimary,
                       weight: FontWeight.w700,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (isCurrent)
-                  Text(
-                    'CURRENT',
-                    style: AppTextStyles.mono8(
-                      color: AppColors.peacockDark,
-                    ).copyWith(fontWeight: FontWeight.w700),
-                  ),
+                if (isCurrent) const _CurrentPlanPill(),
               ],
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 8),
             Text(
               presentation?.priceLine ?? template.summary,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CurrentPlanPill extends StatelessWidget {
+  const _CurrentPlanPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'Current',
+        style: AppTextStyles.mono8(
+          color: AppColors.peacockDark,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -2195,13 +2229,14 @@ class _UsageLimitsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebPanel(
       title: 'Usage limits',
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       trailing: editingEnabled
           ? AdminActionButton(
               key: const Key('admin_pricing_add_cap_button'),
               label: 'Add usage limit',
               onPressed: () => onAdd(bundle),
               icon: Icons.add,
+              minWidth: 168,
             )
           : null,
       child: Column(
@@ -2405,47 +2440,59 @@ class _UsageCapRowTile extends StatelessWidget {
         : null;
     return Container(
       key: Key('admin_pricing_cap_$keySuffix'),
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(
-          color: AppColors.borderSubtle.withValues(alpha: 0.6),
+          color: AppColors.borderSubtle.withValues(alpha: 0.82),
           width: 1,
         ),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Expanded(
-                child: Text(
-                  adminRequestUseCaseLabel(row.usageClass),
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      adminRequestUseCaseLabel(row.usageClass),
+                      style: AppTextStyles.sectionTitle(
+                        color: AppColors.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (row.staffId != null || row.workflowId != null) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        _limitScopeLabel(row),
+                        style: AppTextStyles.body12(color: AppColors.textMuted),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              Text(
-                _inheritanceLabel(bundle, row),
-                style: AppTextStyles.mono11(color: AppColors.textMuted),
-              ),
-              if (editingEnabled)
-                AdminActionBar(
-                  spacing: 4,
-                  runSpacing: 4,
+              const SizedBox(width: 14),
+              _UsageLimitStatusPill(label: _inheritanceLabel(bundle, row)),
+              if (editingEnabled) ...<Widget>[
+                const SizedBox(width: 12),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    AdminIconAction(
+                    _UsageLimitIconButton(
                       key: Key('admin_pricing_cap_edit_$keySuffix'),
                       icon: Icons.edit_outlined,
                       tooltip: 'Edit usage limit',
                       onPressed: () => onEdit(bundle, row),
                     ),
-                    AdminIconAction(
+                    const SizedBox(width: 8),
+                    _UsageLimitIconButton(
                       key: Key('admin_pricing_cap_delete_$keySuffix'),
                       icon: Icons.delete_outline,
                       tooltip: 'Remove usage limit',
@@ -2454,24 +2501,23 @@ class _UsageCapRowTile extends StatelessWidget {
                     ),
                   ],
                 ),
+              ],
             ],
           ),
-          if (row.staffId != null || row.workflowId != null) ...<Widget>[
-            const SizedBox(height: 2),
-            Text(
-              _limitScopeLabel(row),
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-          const SizedBox(height: 9),
+          const SizedBox(height: 18),
           _SpendVsCapBar(spendUsd: spendUsd, capUsd: cap, ratio: ratio),
-          const SizedBox(height: 7),
-          Text(
-            '${_money2(row.perInvocationCapUsd)} per request · '
-            'Updated ${adminHumanDateTime(row.updatedAt)}',
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
-            overflow: TextOverflow.ellipsis,
+          const SizedBox(height: 16),
+          _UsageLimitMetaGrid(
+            items: <_UsageLimitMetaItem>[
+              _UsageLimitMetaItem(
+                label: 'Per request',
+                value: _money2(row.perInvocationCapUsd),
+              ),
+              _UsageLimitMetaItem(
+                label: 'Updated',
+                value: adminHumanDateTime(row.updatedAt),
+              ),
+            ],
           ),
           _PricingAdvancedDetails(
             keyName: 'admin_pricing_cap_details_$keySuffix',
@@ -2491,6 +2537,126 @@ class _UsageCapRowTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _UsageLimitStatusPill extends StatelessWidget {
+  const _UsageLimitStatusPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.body12(
+          color: AppColors.peacockDark,
+        ).copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _UsageLimitIconButton extends StatelessWidget {
+  const _UsageLimitIconButton({
+    Key? key,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.destructive = false,
+  }) : _controlKey = key,
+       super(key: null);
+
+  final Key? _controlKey;
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = destructive ? AppColors.negative : AppColors.sunsetDark;
+    return IconButton(
+      key: _controlKey,
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 22),
+      style: IconButton.styleFrom(
+        foregroundColor: color,
+        backgroundColor: destructive
+            ? AppColors.negative.withValues(alpha: 0.06)
+            : AppColors.backgroundSurface,
+        hoverColor: color.withValues(alpha: 0.08),
+        focusColor: color.withValues(alpha: 0.10),
+        highlightColor: color.withValues(alpha: 0.10),
+        minimumSize: const Size(44, 44),
+        padding: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        side: BorderSide(
+          color: destructive
+              ? AppColors.negative.withValues(alpha: 0.45)
+              : AppColors.borderSubtle,
+          width: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _UsageLimitMetaItem {
+  const _UsageLimitMetaItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+}
+
+class _UsageLimitMetaGrid extends StatelessWidget {
+  const _UsageLimitMetaGrid({required this.items});
+
+  final List<_UsageLimitMetaItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 16.0;
+        final columns = constraints.maxWidth < 460 ? 1 : 2;
+        final itemWidth =
+            (constraints.maxWidth - (columns - 1) * spacing) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: 8,
+          children: <Widget>[
+            for (final item in items)
+              SizedBox(
+                width: itemWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      item.label,
+                      style: AppTextStyles.body12(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item.value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
