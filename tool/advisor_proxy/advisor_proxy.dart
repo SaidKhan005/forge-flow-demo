@@ -4520,6 +4520,30 @@ const String adminPricingUsageCapsPath = '/v1/admin/pricing/usage-caps';
 const String adminPricingPlansPath = '/v1/admin/pricing/plans';
 const String adminPricingPlansPrefix = '$adminPricingPlansPath/';
 
+// Plans & Limits V1 Phase 5a — editable feature-entitlements matrix. GET
+// lists every (plan, feature) row (gated by the read role set); PATCH on
+// `/entitlements/{tier_key}/{feature_slug}` toggles one pair (write role
+// set, MFA, idempotent + audited). Backed by the GLOBAL
+// `feature_entitlements` table (no operator_id, no RLS — admin-pool
+// BYPASSRLS posture, exactly like `pricing_plan_catalog`). FOUNDATION
+// ONLY: records the matrix; does not gate the app (deferred Phase 5d).
+const String adminPricingEntitlementsPath = '/v1/admin/pricing/entitlements';
+const String adminPricingEntitlementsPrefix = '$adminPricingEntitlementsPath/';
+
+/// Locked feature slugs the proxy accepts on the entitlements PATCH.
+/// Mirrors `kFeatureSlugCatalog` in
+/// `lib/admin/models/pricing_tier_admin_models.dart`. Keep in sync.
+/// `advisor` covers the AI advisor / manager chatbot — there is no
+/// separate "chatbots" product concept.
+const Set<String> kProxyFeatureSlugKeys = <String>{
+  'advisor',
+  'lms',
+  'scoreboard',
+  'staff_coach',
+  'sops',
+  'workflows',
+};
+
 // Phase 8 spine-bridge .C -- Data Accuracy + Polling & Pricing admin
 // routes. This surface is separate from 11A.2 pricing caps: it exposes
 // per-location data accuracy settings, polling tier assignments, and
@@ -4733,6 +4757,28 @@ abstract class PricingTierAdminProxyGateway {
     required double? additionalSeatUsd,
     required double? onboardingMinUsd,
     required double? onboardingMaxUsd,
+    required String adminReason,
+  });
+
+  /// Phase 5a — list the editable feature-entitlements matrix. Returns one
+  /// map per (plan, feature) pair (`tier_key` + `feature_slug` + `enabled`
+  /// + `updated_at` / `updated_by`), ordered so the admin matrix renders
+  /// deterministically.
+  Future<List<Map<String, Object?>>> listEntitlements({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  /// Phase 5a — toggle one plan/feature pair's `enabled` flag. Returns the
+  /// resulting entitlement row JSON. The route validates `tierKey` (six
+  /// keys) + `featureSlug` (known catalog) before this call, so this never
+  /// sees an unknown pair; the gateway UPSERTs so a known-but-unseeded
+  /// pair is created on first toggle.
+  Future<Map<String, Object?>> setEntitlement({
+    required String actorUserId,
+    required String tierKey,
+    required String featureSlug,
+    required bool enabled,
     required String adminReason,
   });
 
@@ -14023,6 +14069,12 @@ bool _isAdminPricingPath(String path) {
       path.startsWith(adminPricingPlansPrefix)) {
     return true;
   }
+  // Phase 5a — feature-entitlements matrix GET (collection) + PATCH
+  // (single pair). Shares the pricing CORS + role gate.
+  if (path == adminPricingEntitlementsPath ||
+      path.startsWith(adminPricingEntitlementsPrefix)) {
+    return true;
+  }
   return false;
 }
 
@@ -14203,6 +14255,14 @@ bool _isAdminPricingOperation(String path, String method) {
   // flow through the same method-scoped gate as the routes above.
   if (method == 'GET' && path == adminPricingPlansPath) return true;
   if (method == 'PATCH' && path.startsWith(adminPricingPlansPrefix)) {
+    return true;
+  }
+  // Phase 5a — feature-entitlements matrix. GET lists the matrix (read
+  // role set); PATCH on `/entitlements/{tier_key}/{feature_slug}` toggles
+  // one pair (write role set). Both flow through the same method-scoped
+  // gate as the routes above.
+  if (method == 'GET' && path == adminPricingEntitlementsPath) return true;
+  if (method == 'PATCH' && path.startsWith(adminPricingEntitlementsPrefix)) {
     return true;
   }
   return false;
@@ -15310,6 +15370,78 @@ Future<void> _routePricingAdmin({
           );
         }
         return (statusCode: 200, payload: <String, Object?>{'plan': updated});
+      },
+    );
+    return;
+  }
+
+  // Phase 5a — GET /v1/admin/pricing/entitlements. Lists the editable
+  // feature-entitlements matrix (one row per plan/feature pair). Read-only:
+  // no idempotency key (a GET is naturally idempotent). Gated by the read
+  // role set in the dispatch layer (super_admin + ff_support).
+  if (method == 'GET' && path == adminPricingEntitlementsPath) {
+    final entitlements = await gateway.listEntitlements(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:entitlements_list',
+    );
+    _writeJson(response, 200, <String, Object?>{
+      'entitlements': entitlements,
+    });
+    return;
+  }
+
+  // Phase 5a — PATCH /v1/admin/pricing/entitlements/{tier_key}/{feature_slug}.
+  // Toggles one plan/feature pair. Write role set (super_admin only),
+  // idempotent + audited like the plan-pricing PATCH: a retried PATCH under
+  // the same Idempotency-Key collapses to one toggle + one audit row.
+  // Unknown tier_key or feature_slug answers 404; a missing/non-boolean
+  // `enabled` answers 400.
+  if (method == 'PATCH' && path.startsWith(adminPricingEntitlementsPrefix)) {
+    // Two path segments: {tier_key}/{feature_slug}. (_pathSuffix rejects a
+    // multi-segment tail, so split the remainder directly like the
+    // spend-summary handler.)
+    final tail = path.substring(adminPricingEntitlementsPrefix.length);
+    final parts = tail.split('/');
+    if (parts.length != 2 || parts.any((p) => p.isEmpty)) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final tierKey = Uri.decodeComponent(parts[0]);
+    final featureSlug = Uri.decodeComponent(parts[1]);
+    if (!kProxyPricingTierTemplateKeys.contains(tierKey)) {
+      throw _AdminInputError(
+        statusCode: 404,
+        code: 'unknown_plan',
+        message: 'tier_key "$tierKey" is not a known plan',
+      );
+    }
+    if (!kProxyFeatureSlugKeys.contains(featureSlug)) {
+      throw _AdminInputError(
+        statusCode: 404,
+        code: 'unknown_feature',
+        message: 'feature_slug "$featureSlug" is not a known feature',
+      );
+    }
+    final enabled = _requireBodyBool(body, 'enabled');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.pricing.entitlement_updated',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final updated = await gateway.setEntitlement(
+          actorUserId: actorUserId,
+          tierKey: tierKey,
+          featureSlug: featureSlug,
+          enabled: enabled,
+          adminReason: '$reasonPrefix:entitlement:$tierKey:$featureSlug',
+        );
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'entitlement': updated},
+        );
       },
     );
     return;
