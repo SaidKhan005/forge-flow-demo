@@ -760,7 +760,7 @@ class _AdminSideNav extends StatelessWidget {
     if (clusterRoutes.isEmpty) return const <Widget>[];
     final activeScope = scope;
     return activeScope == null
-        ? _buildInactivePerBusinessCluster(clusterRoutes)
+        ? _buildInactivePerBusinessCluster(context, clusterRoutes)
         : _buildActivePerBusinessCluster(activeScope, clusterRoutes);
   }
 
@@ -790,8 +790,10 @@ class _AdminSideNav extends StatelessWidget {
 
   /// The inactive cluster shown before a business is picked: the same six
   /// rows, muted and non-navigating, under a "Pick a business first" hint.
-  /// Every row (and the hint) routes to Business accounts via `onSelect`.
+  /// The hint routes to Business accounts. The inactive rows open a dialog
+  /// so the operator gets feedback before choosing a business.
   List<Widget> _buildInactivePerBusinessCluster(
+    BuildContext context,
     List<AdminRoute> clusterRoutes,
   ) {
     void goToBusinessAccounts() => onSelect(kAdminOperatorsRouteId);
@@ -807,11 +809,73 @@ class _AdminSideNav extends StatelessWidget {
               route: route,
               selected: false,
               enabled: false,
-              onTap: () => onSelect(route.id),
+              onTap: () => _showPickBusinessFirstDialog(
+                context,
+                routeTitle: route.title,
+              ),
             ),
         ],
       ),
     ];
+  }
+
+  Future<void> _showPickBusinessFirstDialog(
+    BuildContext context, {
+    required String routeTitle,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('admin_pick_business_first_dialog'),
+        backgroundColor: AppColors.backgroundSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        title: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.sunset.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                scopeIcon(kind: ScopeEntityKind.business),
+                size: 19,
+                color: AppColors.sunsetDark,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Pick a business first',
+                style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '$routeTitle needs a business account before it can open. '
+          'Go to Business accounts and pick the business you want to work on.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Stay here'),
+          ),
+          FilledButton.icon(
+            key: const Key('admin_pick_business_first_dialog_link'),
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              onSelect(kAdminOperatorsRouteId);
+            },
+            icon: const Icon(Icons.apartment_outlined, size: 18),
+            label: const Text('Open Business accounts'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// The sunset-tinted container both cluster states share.

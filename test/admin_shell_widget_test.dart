@@ -821,26 +821,24 @@ void main() {
       await tester.tap(teamRow);
       await pumpEventually(tester);
 
-      // Opens the selected tab's friendly no-business state, not the Team
-      // members table, and no business was auto-selected (cluster stays
-      // inactive).
+      // Opens a dialog, not the Team members table, and no business was
+      // auto-selected (cluster stays inactive).
       expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
       expect(find.byKey(const Key('admin_members_screen')), findsNothing);
       expect(
-        find.byKey(
-          const Key('admin_setup_workspace_pick_business_first_state'),
-        ),
+        find.byKey(const Key('admin_pick_business_first_dialog')),
         findsOneWidget,
       );
       expect(find.text('Pick a business first'), findsWidgets);
       expect(
         find.text(
-          'Team members needs a selected business account before it can open.',
+          'Team members needs a business account before it can open. '
+          'Go to Business accounts and pick the business you want to work on.',
         ),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('admin_setup_workspace_pick_business_first_link')),
+        find.byKey(const Key('admin_pick_business_first_dialog_link')),
         findsOneWidget,
       );
       expect(
@@ -853,7 +851,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(const Key('admin_setup_workspace_pick_business_first_link')),
+        find.byKey(const Key('admin_pick_business_first_dialog_link')),
       );
       await pumpEventually(tester);
 
