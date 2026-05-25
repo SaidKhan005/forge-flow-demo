@@ -133,9 +133,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.textContaining(
-        'hosting and the knowledge graph stay platform-wide',
-      ),
+      find.textContaining('hosting and the knowledge graph stay platform-wide'),
       findsNothing,
     );
     expect(
@@ -179,6 +177,9 @@ void main() {
     await runCheck(tester);
 
     expect(find.byKey(const Key('admin_observability_screen')), findsOneWidget);
+    expect(find.text('Refresh'), findsOneWidget);
+    expect(find.text('Run metrics check'), findsNothing);
+    expect(find.textContaining('Updated'), findsOneWidget);
     expect(find.byKey(const Key('admin_observability_tabs')), findsOneWidget);
     for (final suffix in const <String>[
       'money',
@@ -763,11 +764,11 @@ void main() {
     expect(selector, findsOneWidget);
     // Defaults to All: the chip shows "All" and the full-breakdown spend
     // caption ("Across every use case this month.").
-    expect(find.descendant(of: selector, matching: find.text('All')), findsOneWidget);
     expect(
-      find.text('Across every use case this month.'),
+      find.descendant(of: selector, matching: find.text('All')),
       findsOneWidget,
     );
+    expect(find.text('Across every use case this month.'), findsOneWidget);
   });
 
   testWidgets('selecting a use case scopes the hero spend and the Money panels '
@@ -953,9 +954,7 @@ void main() {
       find.byKey(const Key('admin_observability_use_case_selector')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('admin_observability_use_case_all')),
-    );
+    await tester.tap(find.byKey(const Key('admin_observability_use_case_all')));
     await tester.pumpAndSettle();
 
     expect(

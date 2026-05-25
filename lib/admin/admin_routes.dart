@@ -710,6 +710,7 @@ Widget _buildScopedAdminWorkspace({
   required String functionTitle,
   required String description,
   required AdminSetupWorkspaceBuilder functionBuilder,
+  bool showWorkspaceHeader = true,
   bool allowAllBusinessesScope = false,
   WidgetBuilder? allBusinessesBuilder,
 }) {
@@ -726,6 +727,7 @@ Widget _buildScopedAdminWorkspace({
     hierarchyGateway: hierarchyGateway,
     initialScope: handoff?.effectiveHierarchyScope,
     onBackToBusinessAccounts: _backToBusinessAccounts(context),
+    showWorkspaceHeader: showWorkspaceHeader,
     onScopeChanged: handoff == null
         ? null
         : (scope) => handoff.onSelectRoute(
@@ -1141,6 +1143,7 @@ Widget _buildObservability(BuildContext context) {
     // (operator_id = null). The screen already reads cross-business when
     // its hierarchy scope is null, so the all-businesses builder simply
     // omits the scope.
+    showWorkspaceHeader: false,
     allowAllBusinessesScope: true,
     allBusinessesBuilder: (context) => ObservabilityAdminScreen(
       key: const ValueKey<String>('observability-all-businesses'),
@@ -2607,6 +2610,7 @@ Widget _buildDebugConsole(BuildContext context) {
     hierarchyGateway: hierarchyGateway,
     initialScope: initialScope,
     onBackToBusinessAccounts: onBackToBusinessAccounts,
+    showWorkspaceHeader: false,
     onScopeChanged: handoff == null
         ? null
         : (scope) => handoff.onSelectRoute(

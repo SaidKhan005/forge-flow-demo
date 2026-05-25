@@ -196,6 +196,9 @@ void main() {
     await runHealthCheck(tester);
 
     expect(find.byKey(const Key('admin_health_screen')), findsOneWidget);
+    expect(find.text('Refresh'), findsOneWidget);
+    expect(find.text('Run system check'), findsNothing);
+    expect(find.textContaining('Updated'), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tabs')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tab_retrieval')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tab_proxy')), findsOneWidget);
@@ -617,7 +620,8 @@ void main() {
       // alarm; it drops to the calmer amber "needs attention" banner so the
       // banner colour and word match the yellow card. Matches the approved
       // mockup, which only alarmed red on a real red tier-1 fail.
-      (json['metrics']! as Map<String, Object?>)['circuit_breaker_anthropic_state'] =
+      (json['metrics']!
+              as Map<String, Object?>)['circuit_breaker_anthropic_state'] =
           <String, Object?>{
             'status': 'yellow',
             'value': 'half_open',

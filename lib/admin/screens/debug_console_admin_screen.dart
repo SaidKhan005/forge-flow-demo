@@ -63,6 +63,7 @@ import '../services/debug_console_admin_gateway.dart';
 import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
+import '../widgets/admin_run_check_controls.dart';
 
 const int _kMaxOrgUnitSupportLogLocationIds = 100;
 
@@ -126,7 +127,6 @@ extension _RequestTypeViewCopy on _RequestTypeView {
         return null;
     }
   }
-
 }
 
 /// A resolved actor display, built live from the scoped operator's
@@ -274,8 +274,7 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen> {
     }
     if (oldWidget.hierarchyScope?.operatorId !=
             widget.hierarchyScope?.operatorId ||
-        oldWidget.initialFilter.operatorId !=
-            widget.initialFilter.operatorId ||
+        oldWidget.initialFilter.operatorId != widget.initialFilter.operatorId ||
         oldWidget.membersGateway != widget.membersGateway) {
       _startActorResolution();
     }
@@ -819,74 +818,58 @@ class _Header extends StatelessWidget {
       subtitleKey: const Key('admin_debug_console_subtitle'),
       collapseBelowWidth: 640,
       actions: <Widget>[
-        if (onBackToBusinessAccounts != null)
-          AdminBusinessAccountsBackButton(onPressed: onBackToBusinessAccounts),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 340),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!editingEnabled)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Container(
-                    key: const Key('admin_debug_console_view_only_indicator'),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: 0.12),
-                      border: Border.all(color: AppColors.warning, width: 1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'Support view only',
-                      style: AppTextStyles.body12(
-                        color: AppColors.warning,
-                      ).copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                alignment: WrapAlignment.end,
-                children: <Widget>[
-                  _LiveChip(
-                    liveTailOn: liveTailOn,
-                    onToggleLiveTail: onToggleLiveTail,
-                  ),
-                  OutlinedButton.icon(
-                    key: const Key('admin_debug_console_refresh_button'),
-                    onPressed: loading ? null : () => onRunRefresh(),
-                    icon: loading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh, size: 16),
-                    label: Text(loading ? 'Loading...' : 'Refresh'),
-                  ),
-                ],
+        AdminRefreshHeaderActions(
+          maxWidth: 460,
+          statusKey: const Key('admin_debug_console_last_refreshed'),
+          statusText: lastRefreshed == null
+              ? 'Not checked yet'
+              : 'Updated ${adminRelativeUpdated(lastRefreshed!, now())}',
+          buttonKey: const Key('admin_debug_console_refresh_button'),
+          buttonLabel: 'Refresh',
+          loadingLabel: 'Loading...',
+          icon: Icons.refresh,
+          loading: loading,
+          onPressed: () {
+            onRunRefresh();
+          },
+          badges: <Widget>[
+            if (!editingEnabled) const _SupportViewOnlyIndicator(),
+          ],
+          leading: <Widget>[
+            if (onBackToBusinessAccounts != null)
+              AdminBusinessAccountsBackButton(
+                onPressed: onBackToBusinessAccounts,
               ),
-              const SizedBox(height: 6),
-              Text(
-                lastRefreshed == null
-                    ? 'Not checked yet'
-                    : 'Updated ${_relativeUpdated(lastRefreshed!, now())}',
-                key: const Key('admin_debug_console_last_refreshed'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.body12(color: AppColors.textMuted),
-              ),
-            ],
-          ),
+            _LiveChip(
+              liveTailOn: liveTailOn,
+              onToggleLiveTail: onToggleLiveTail,
+            ),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _SupportViewOnlyIndicator extends StatelessWidget {
+  const _SupportViewOnlyIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_debug_console_view_only_indicator'),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.warning, width: 1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        'Support view only',
+        style: AppTextStyles.body12(
+          color: AppColors.warning,
+        ).copyWith(fontWeight: FontWeight.w700),
+      ),
     );
   }
 }
@@ -943,23 +926,6 @@ class _LiveChip extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Human `Updated <relative>` wording for the header. Plain English, no
-/// monospace timestamp.
-String _relativeUpdated(DateTime updatedAt, DateTime now) {
-  final elapsed = now.toUtc().difference(updatedAt.toUtc());
-  if (elapsed.isNegative || elapsed.inSeconds < 45) return 'just now';
-  if (elapsed.inMinutes < 60) {
-    final m = elapsed.inMinutes;
-    return '$m minute${m == 1 ? '' : 's'} ago';
-  }
-  if (elapsed.inHours < 24) {
-    final h = elapsed.inHours;
-    return '$h hour${h == 1 ? '' : 's'} ago';
-  }
-  final d = elapsed.inDays;
-  return '$d day${d == 1 ? '' : 's'} ago';
 }
 
 class _RequestLogTab extends StatelessWidget {
@@ -1187,7 +1153,6 @@ class _ScopeBanner extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _ScopePill extends StatelessWidget {
@@ -1485,12 +1450,13 @@ class _RequestRowState extends State<_RequestRow> {
                             children: <InlineSpan>[
                               TextSpan(
                                 text: result,
-                                style: AppTextStyles.body12(color: statusColor)
-                                    .copyWith(fontWeight: FontWeight.w600),
+                                style: AppTextStyles.body12(
+                                  color: statusColor,
+                                ).copyWith(fontWeight: FontWeight.w600),
                               ),
                               TextSpan(
                                 text:
-                                    '  ·  ${_relativeUpdated(entry.startedAt, widget.now)}',
+                                    '  ·  ${adminRelativeUpdated(entry.startedAt, widget.now)}',
                                 style: AppTextStyles.body12(
                                   color: AppColors.textMuted,
                                 ),
@@ -1505,9 +1471,7 @@ class _RequestRowState extends State<_RequestRow> {
                   ),
                   const SizedBox(width: 8),
                   Icon(
-                    widget.expanded
-                        ? Icons.expand_less
-                        : Icons.chevron_right,
+                    widget.expanded ? Icons.expand_less : Icons.chevron_right,
                     size: 20,
                     color: AppColors.textMuted,
                   ),
@@ -1700,9 +1664,7 @@ class _TechnicalReference extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           InkWell(
-            key: Key(
-              'admin_debug_console_technical_toggle_${entry.requestId}',
-            ),
+            key: Key('admin_debug_console_technical_toggle_${entry.requestId}'),
             onTap: onToggle,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
@@ -1769,11 +1731,13 @@ class _TechnicalReference extends StatelessWidget {
                   // "—" when no actor was recorded (system / scheduled).
                   _TechRow(
                     label: 'Actor id',
-                    value: (entry.actorUserId == null ||
+                    value:
+                        (entry.actorUserId == null ||
                             entry.actorUserId!.trim().isEmpty)
                         ? _dash
                         : entry.actorUserId!.trim(),
-                    copyable: entry.actorUserId != null &&
+                    copyable:
+                        entry.actorUserId != null &&
                         entry.actorUserId!.trim().isNotEmpty,
                   ),
                   _TechRow(label: 'Model', value: entry.modelId ?? _dash),
@@ -1905,7 +1869,11 @@ class _FullContentBlock extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Icon(Icons.lock_open, size: 15, color: AppColors.sunsetDark),
+              const Icon(
+                Icons.lock_open,
+                size: 15,
+                color: AppColors.sunsetDark,
+              ),
               const SizedBox(width: 7),
               Text(
                 'Full message text',
@@ -2090,4 +2058,3 @@ Color _statusColor(RequestLogStatus status) {
       return AppColors.neutral;
   }
 }
-
