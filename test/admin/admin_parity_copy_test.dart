@@ -111,7 +111,7 @@ void main() {
       );
       expect(
         routeById(kAdminTimingSetupRouteId).subtitle,
-        contains('super admin repair routes are server-side'),
+        contains('service periods for the selected scope'),
       );
 
       expect(routeById(kAdminIntegrationsRouteId).badge, isNull);
@@ -132,9 +132,6 @@ void main() {
         kAdminFeatureFlagsRouteId,
         kAdminDebugConsoleRouteId,
         kAdminObservabilityRouteId,
-        // Lane B B2.2 — Default Role catalog admin editor is an
-        // ecosystem-only surface; same admin-only ownership contract.
-        kAdminDefaultRoleCatalogRouteId,
       ]) {
         final route = routeById(routeId);
         // Route-level nav badges were removed across the admin console as
@@ -143,6 +140,14 @@ void main() {
         expect(route.badge, isNull, reason: routeId);
         expect(route.subtitle, contains(adminOnlyCopy), reason: routeId);
       }
+
+      final defaultRolesRoute = routeById(kAdminDefaultRoleCatalogRouteId);
+      expect(defaultRolesRoute.badge, isNull);
+      expect(defaultRolesRoute.title, 'Default roles');
+      expect(
+        defaultRolesRoute.subtitle,
+        contains('starter roles every new business receives'),
+      );
     });
 
     testWidgets('vendor applicability route builds reachable admin page', (
