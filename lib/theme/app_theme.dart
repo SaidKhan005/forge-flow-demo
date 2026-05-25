@@ -504,6 +504,7 @@ class AppTheme {
     ),
     dividerColor: AppColors.borderSubtle,
     cardColor: AppColors.backgroundSurface,
+    switchTheme: _switchTheme,
     textTheme: AppTextStyles._usesRuntimeGoogleFonts
         ? GoogleFonts.ibmPlexSansTextTheme(
             const TextTheme(
@@ -518,5 +519,59 @@ class AppTheme {
             fontFamily: kIsWeb ? AppTextStyles.webFallbackFontFamily : null,
           ),
     useMaterial3: true,
+  );
+
+  /// One on/off switch treatment for BOTH consoles (admin + operator-web).
+  ///
+  /// Premium binary control per the toggle research basis:
+  ///   * ON  — high-contrast accent track ([AppColors.sunsetDark], the same
+  ///           active/selected colour the nav rail and section rails use) with
+  ///           a white thumb so the lit state reads at a glance.
+  ///   * OFF — a clearly different, calm neutral track with a hairline outline
+  ///           so the empty state stays visible on the warm-cream background,
+  ///           and a muted thumb.
+  ///   * Disabled — the same shapes dimmed (lower alpha) so a read-only /
+  ///           unavailable switch still reads as off-vs-on without looking
+  ///           broken.
+  ///
+  /// Centralising this here is what makes every `Switch` across both consoles
+  /// render identically; call sites no longer hand-set `activeThumbColor`.
+  static final SwitchThemeData _switchTheme = SwitchThemeData(
+    thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+      if (states.contains(WidgetState.disabled)) {
+        return states.contains(WidgetState.selected)
+            ? AppColors.backgroundSurface.withValues(alpha: 0.85)
+            : AppColors.textMuted.withValues(alpha: 0.45);
+      }
+      return states.contains(WidgetState.selected)
+          ? AppColors.backgroundSurface
+          : AppColors.textMuted;
+    }),
+    trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+      if (states.contains(WidgetState.disabled)) {
+        return states.contains(WidgetState.selected)
+            ? AppColors.sunsetDark.withValues(alpha: 0.40)
+            : AppColors.borderSubtle.withValues(alpha: 0.45);
+      }
+      return states.contains(WidgetState.selected)
+          ? AppColors.sunsetDark
+          : AppColors.backgroundMid;
+    }),
+    trackOutlineColor: WidgetStateProperty.resolveWith<Color>((states) {
+      if (states.contains(WidgetState.selected)) {
+        return Colors.transparent;
+      }
+      if (states.contains(WidgetState.disabled)) {
+        return AppColors.borderSubtle.withValues(alpha: 0.50);
+      }
+      return AppColors.borderSubtle;
+    }),
+    trackOutlineWidth: const WidgetStatePropertyAll<double>(1.5),
+    // Keep a comfortable >=44px hit target even though the visible control is
+    // smaller (NN/g toggle guidance) and never show the Material splash on web.
+    materialTapTargetSize: MaterialTapTargetSize.padded,
+    overlayColor: WidgetStatePropertyAll<Color>(
+      AppColors.sunsetDark.withValues(alpha: 0.10),
+    ),
   );
 }
