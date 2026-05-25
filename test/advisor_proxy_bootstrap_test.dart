@@ -18,6 +18,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/pricing_contract_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/pricing_plan_catalog_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
@@ -671,6 +672,7 @@ void main() {
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
         entitlementsRepository: _StubFeatureEntitlementsRepository(),
+        contractOverridesRepository: _StubPricingContractOverridesRepository(),
         auditRepository: auditRepository,
       );
 
@@ -704,6 +706,7 @@ void main() {
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
         entitlementsRepository: _StubFeatureEntitlementsRepository(),
+        contractOverridesRepository: _StubPricingContractOverridesRepository(),
         auditRepository: auditRepository,
       );
 
@@ -739,6 +742,7 @@ void main() {
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
         entitlementsRepository: _StubFeatureEntitlementsRepository(),
+        contractOverridesRepository: _StubPricingContractOverridesRepository(),
         auditRepository: auditRepository,
       );
 
@@ -772,6 +776,7 @@ void main() {
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
         entitlementsRepository: _StubFeatureEntitlementsRepository(),
+        contractOverridesRepository: _StubPricingContractOverridesRepository(),
         auditRepository: auditRepository,
       );
 
@@ -809,6 +814,7 @@ void main() {
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
         entitlementsRepository: _StubFeatureEntitlementsRepository(),
+        contractOverridesRepository: _StubPricingContractOverridesRepository(),
         auditRepository: auditRepository,
       );
 
@@ -1422,6 +1428,11 @@ class _StubFeatureEntitlementsRepository extends FeatureEntitlementsRepository {
       updatedBy: updatedByUserId,
     );
   }
+}
+
+class _StubPricingContractOverridesRepository
+    extends PricingContractOverridesRepository {
+  _StubPricingContractOverridesRepository() : super(_dummyTenantWrapper());
 }
 
 class _StubCorpusRepository extends CorpusRepository {

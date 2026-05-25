@@ -1,4 +1,4 @@
-﻿// 11a / 11A — HTTP scaffold + admin route tests (Advisor proxy).
+// 11a / 11A — HTTP scaffold + admin route tests (Advisor proxy).
 //
 // Bucket 5c-http+admin of the 2026-05-20 test-suite tightening audit:
 // split out of `test/advisor_proxy_test.dart` (8,328 lines). This is
@@ -1032,83 +1032,86 @@ void main() {
     //   * the writer fires for every LLM usage class (one shared
     //     completion path), not just the advisor_qa default.
 
-    test('GET /v1/advisor-smoke writes one proxy_request_stats row with '
-        'measured latency, real status, actor, request_id, model + cost', () async {
-      await withRealHttp(() async {
-        final store = InMemoryAccountingStore.open();
-        final llm = RecordingLlmProvider();
-        // Advancing clock: each clock() read steps +250ms so the measured
-        // wall-clock latency between the post-validation anchor and
-        // completion is strictly positive (the rest of the suite uses a
-        // fixed instant, which would measure 0).
-        var tick = DateTime.utc(2026, 4, 26, 12);
-        DateTime advancingNow() {
-          final value = tick;
-          tick = tick.add(const Duration(milliseconds: 250));
-          return value;
-        }
+    test(
+      'GET /v1/advisor-smoke writes one proxy_request_stats row with '
+      'measured latency, real status, actor, request_id, model + cost',
+      () async {
+        await withRealHttp(() async {
+          final store = InMemoryAccountingStore.open();
+          final llm = RecordingLlmProvider();
+          // Advancing clock: each clock() read steps +250ms so the measured
+          // wall-clock latency between the post-validation anchor and
+          // completion is strictly positive (the rest of the suite uses a
+          // fixed instant, which would measure 0).
+          var tick = DateTime.utc(2026, 4, 26, 12);
+          DateTime advancingNow() {
+            final value = tick;
+            tick = tick.add(const Duration(milliseconds: 250));
+            return value;
+          }
 
-        await spinUpServer(
-          accountingStore: store,
-          llmProvider: llm,
-          now: advancingNow,
-        );
-        try {
-          verifier.claims = defaultUuidProxyClaims();
-          final response = await httpGet(
-            client,
-            baseUri
-                .resolve(advisorSmokePath)
-                .replace(
-                  queryParameters: const <String, String>{
-                    'subscription_tier': 'premium',
-                    // premium + recommendation routes to sonnet (matches
-                    // the happy-path test), proving the stats model id
-                    // tracks the model actually used, not the default.
-                    'query_class': 'recommendation',
-                    'tokens': '40',
-                    'cost_cents': '9',
-                  },
-                ),
-            authorization: 'Bearer fake.token',
-            headers: const <String, String>{'Idempotency-Key': 'idem-stats'},
+          await spinUpServer(
+            accountingStore: store,
+            llmProvider: llm,
+            now: advancingNow,
           );
+          try {
+            verifier.claims = defaultUuidProxyClaims();
+            final response = await httpGet(
+              client,
+              baseUri
+                  .resolve(advisorSmokePath)
+                  .replace(
+                    queryParameters: const <String, String>{
+                      'subscription_tier': 'premium',
+                      // premium + recommendation routes to sonnet (matches
+                      // the happy-path test), proving the stats model id
+                      // tracks the model actually used, not the default.
+                      'query_class': 'recommendation',
+                      'tokens': '40',
+                      'cost_cents': '9',
+                    },
+                  ),
+              authorization: 'Bearer fake.token',
+              headers: const <String, String>{'Idempotency-Key': 'idem-stats'},
+            );
 
-          expect(response.statusCode, equals(200));
-          expect(store.completeCalls, equals(1));
-          expect(store.recordedStats, hasLength(1));
+            expect(response.statusCode, equals(200));
+            expect(store.completeCalls, equals(1));
+            expect(store.recordedStats, hasLength(1));
 
-          final stats = store.lastStats!;
-          expect(stats.usageClass, equals('advisor_qa'));
-          expect(stats.resultStatus, equals('success'));
-          // request_id correlation: the value the reservation surfaced.
-          expect(
-            stats.requestId,
-            equals(store.reservedRequestIds['idem-stats']),
-          );
-          expect(stats.requestId, isNotNull);
-          // actor = the acting human user's UUID from the verified scope.
-          expect(
-            stats.actorUserId,
-            equals('11111111-1111-4111-8111-111111111111'),
-          );
-          // premium tier routes to sonnet; provider derived from model id.
-          expect(stats.modelId, equals('claude-sonnet-4-6'));
-          expect(stats.provider, equals('anthropic'));
-          expect(stats.modelVersion, isNull);
-          // RecordingLlmProvider returns outputTokens=12; input estimate 40.
-          expect(stats.promptTokenCount, equals(40));
-          expect(stats.completionTokenCount, equals(12));
-          // cost = final estimate (9 + provider 1) cents -> $0.10.
-          expect(stats.costUsd, closeTo(0.10, 1e-9));
-          // measured wall-clock latency is strictly positive.
-          expect(stats.latencyMs, isNotNull);
-          expect(stats.latencyMs! > 0, isTrue);
-        } finally {
-          await shutDown();
-        }
-      });
-    });
+            final stats = store.lastStats!;
+            expect(stats.usageClass, equals('advisor_qa'));
+            expect(stats.resultStatus, equals('success'));
+            // request_id correlation: the value the reservation surfaced.
+            expect(
+              stats.requestId,
+              equals(store.reservedRequestIds['idem-stats']),
+            );
+            expect(stats.requestId, isNotNull);
+            // actor = the acting human user's UUID from the verified scope.
+            expect(
+              stats.actorUserId,
+              equals('11111111-1111-4111-8111-111111111111'),
+            );
+            // premium tier routes to sonnet; provider derived from model id.
+            expect(stats.modelId, equals('claude-sonnet-4-6'));
+            expect(stats.provider, equals('anthropic'));
+            expect(stats.modelVersion, isNull);
+            // RecordingLlmProvider returns outputTokens=12; input estimate 40.
+            expect(stats.promptTokenCount, equals(40));
+            expect(stats.completionTokenCount, equals(12));
+            // cost = final estimate (9 + provider 1) cents -> $0.10.
+            expect(stats.costUsd, closeTo(0.10, 1e-9));
+            // measured wall-clock latency is strictly positive.
+            expect(stats.latencyMs, isNotNull);
+            expect(stats.latencyMs! > 0, isTrue);
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
 
     test('GET /v1/advisor-smoke idempotent replay writes NO duplicate '
         'proxy_request_stats row', () async {
@@ -1440,35 +1443,37 @@ void main() {
       });
     });
 
-    test('GET /v1/advisor-smoke SUCCESS path never calls recordRequestStats '
-        '(no extra round-trip; stats stay folded into completeRequest)',
-        () async {
-      await withRealHttp(() async {
-        final store = InMemoryAccountingStore.open();
-        final llm = RecordingLlmProvider();
-        await spinUpServer(accountingStore: store, llmProvider: llm);
-        try {
-          verifier.claims = defaultUuidProxyClaims();
-          final response = await httpGet(
-            client,
-            baseUri.resolve(advisorSmokePath),
-            authorization: 'Bearer fake.token',
-            headers: const <String, String>{
-              'Idempotency-Key': 'idem-success-no-record',
-            },
-          );
-          expect(response.statusCode, equals(200));
-          // Success folds the stats row into completeRequest; the standalone
-          // failure-path writer is never invoked on success.
-          expect(store.completeCalls, equals(1));
-          expect(store.recordStatsCalls, equals(0));
-          expect(store.recordedStats, hasLength(1));
-          expect(store.lastStats!.resultStatus, equals('success'));
-        } finally {
-          await shutDown();
-        }
-      });
-    });
+    test(
+      'GET /v1/advisor-smoke SUCCESS path never calls recordRequestStats '
+      '(no extra round-trip; stats stay folded into completeRequest)',
+      () async {
+        await withRealHttp(() async {
+          final store = InMemoryAccountingStore.open();
+          final llm = RecordingLlmProvider();
+          await spinUpServer(accountingStore: store, llmProvider: llm);
+          try {
+            verifier.claims = defaultUuidProxyClaims();
+            final response = await httpGet(
+              client,
+              baseUri.resolve(advisorSmokePath),
+              authorization: 'Bearer fake.token',
+              headers: const <String, String>{
+                'Idempotency-Key': 'idem-success-no-record',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            // Success folds the stats row into completeRequest; the standalone
+            // failure-path writer is never invoked on success.
+            expect(store.completeCalls, equals(1));
+            expect(store.recordStatsCalls, equals(0));
+            expect(store.recordedStats, hasLength(1));
+            expect(store.lastStats!.resultStatus, equals('success'));
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
 
     test(
       'GET /readyz still 200 unauthenticated when usage guard is installed',
@@ -2168,7 +2173,6 @@ void main() {
       },
     );
   });
-
 
   group('11A.1 admin operator/location routes', () {
     Future<T> withRealHttp<T>(Future<T> Function() body) async {
@@ -3183,7 +3187,6 @@ void main() {
     );
   });
 
-
   group('B5 admin business-timing dispatcher route gate', () {
     const operatorId = '11111111-1111-1111-1111-111111111111';
     const path = '/v1/admin/operators/$operatorId/business-timing-profiles';
@@ -3352,7 +3355,6 @@ void main() {
       });
     });
   });
-
 
   group('11A.2 admin pricing tier routes', () {
     Future<T> withRealHttp<T>(Future<T> Function() body) async {
@@ -3975,78 +3977,82 @@ void main() {
       roles: <String>['super_admin'],
     );
 
-    test('Phase 2 DELETE /v1/admin/pricing/usage-caps rejects ff_support (403)',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway();
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: const ProxyJwtClaims(
-            userId: 'user_support',
-            operatorId: null,
-            locationId: null,
-            roles: <String>['ff_support'],
-          ),
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'DELETE',
-            ctx.baseUri.resolve(adminPricingUsageCapsPath),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{
-              'operator_id': 'op-1',
-              'location_id': 'loc-1',
-              'usage_class': 'advisor_qa',
-            },
+    test(
+      'Phase 2 DELETE /v1/admin/pricing/usage-caps rejects ff_support (403)',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
           );
-          // DELETE is a write method, so the strict super_admin-only set
-          // applies (ff_support is read-only).
-          expect(response.statusCode, equals(403));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('permission_denied'));
-          expect(gateway.lastDeleteOperatorId, isNull);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'usage_class': 'advisor_qa',
+              },
+            );
+            // DELETE is a write method, so the strict super_admin-only set
+            // applies (ff_support is read-only).
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+            expect(gateway.lastDeleteOperatorId, isNull);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 2 DELETE /v1/admin/pricing/usage-caps deletes by logical key',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway()..deleteResult = true;
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'DELETE',
-            ctx.baseUri.resolve(adminPricingUsageCapsPath),
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-delete-1',
-            body: const <String, Object?>{
-              'operator_id': 'op-1',
-              'location_id': 'loc-1',
-              'usage_class': 'advisor_qa',
-            },
+    test(
+      'Phase 2 DELETE /v1/admin/pricing/usage-caps deletes by logical key',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()..deleteResult = true;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
           );
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['deleted'], isTrue);
-          expect(gateway.lastDeleteOperatorId, equals('op-1'));
-          expect(gateway.lastDeleteUsageClass, equals('advisor_qa'));
-          expect(gateway.lastReason, contains('admin.pricing.DELETE'));
-          expect(gateway.lastReason, contains('usage_caps_delete'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-delete-1',
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'usage_class': 'advisor_qa',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['deleted'], isTrue);
+            expect(gateway.lastDeleteOperatorId, equals('op-1'));
+            expect(gateway.lastDeleteUsageClass, equals('advisor_qa'));
+            expect(gateway.lastReason, contains('admin.pricing.DELETE'));
+            expect(gateway.lastReason, contains('usage_caps_delete'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('Phase 2 DELETE answers 404 when no matching cap exists', () async {
       await withRealHttp(() async {
@@ -4225,294 +4231,312 @@ void main() {
 
     // ── Phase 3 — editable plan-pricing catalog. ───────────────────
 
-    test('Phase 3 GET /v1/admin/pricing/plans returns the catalog rows',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway()
-          ..planCatalogResult = const <Map<String, Object?>>[
-            <String, Object?>{
-              'tier_key': 'elite',
-              'monthly_usd': 250.0,
-              'first_n_seats': 20,
-              'first_seat_usd': 10.0,
-              'additional_seat_usd': 5.0,
-              'onboarding_min_usd': 1500.0,
-              'onboarding_max_usd': 3500.0,
-              'updated_at': null,
-              'updated_by': null,
-            },
-          ];
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(adminPricingPlansPath),
-            authorization: 'Bearer fake.token',
+    test(
+      'Phase 3 GET /v1/admin/pricing/plans returns the catalog rows',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()
+            ..planCatalogResult = const <Map<String, Object?>>[
+              <String, Object?>{
+                'tier_key': 'elite',
+                'monthly_usd': 250.0,
+                'first_n_seats': 20,
+                'first_seat_usd': 10.0,
+                'additional_seat_usd': 5.0,
+                'onboarding_min_usd': 1500.0,
+                'onboarding_max_usd': 3500.0,
+                'updated_at': null,
+                'updated_by': null,
+              },
+            ];
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
           );
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          final plans = (body['plans']! as List).cast<Map<String, Object?>>();
-          expect(plans.single['tier_key'], equals('elite'));
-          expect(gateway.lastReason, contains('admin.pricing.GET'));
-          expect(gateway.lastReason, contains('plans_list'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingPlansPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            final plans = (body['plans']! as List).cast<Map<String, Object?>>();
+            expect(plans.single['tier_key'], equals('elite'));
+            expect(gateway.lastReason, contains('admin.pricing.GET'));
+            expect(gateway.lastReason, contains('plans_list'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 3 GET /v1/admin/pricing/plans admits ff_support (read-only)',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway()
-          ..planCatalogResult = const <Map<String, Object?>>[];
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: const ProxyJwtClaims(
-            userId: 'user_support',
-            operatorId: null,
-            locationId: null,
-            roles: <String>['ff_support'],
-          ),
-        );
-        try {
-          final response = await httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(adminPricingPlansPath),
-            authorization: 'Bearer fake.token',
+    test(
+      'Phase 3 GET /v1/admin/pricing/plans admits ff_support (read-only)',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()
+            ..planCatalogResult = const <Map<String, Object?>>[];
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
           );
-          expect(response.statusCode, equals(200));
-          expect(gateway.lastActorUserId, equals('user_support'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingPlansPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastActorUserId, equals('user_support'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 3 GET /v1/admin/pricing/plans rejects operator_owner (403)',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(
-          initialClaims: const ProxyJwtClaims(
-            userId: 'user_x',
-            operatorId: 'op_x',
-            locationId: 'loc_x',
-            roles: <String>['operator_owner'],
-          ),
-        );
-        try {
-          final response = await httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(adminPricingPlansPath),
-            authorization: 'Bearer fake.token',
+    test(
+      'Phase 3 GET /v1/admin/pricing/plans rejects operator_owner (403)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_x',
+              operatorId: 'op_x',
+              locationId: 'loc_x',
+              roles: <String>['operator_owner'],
+            ),
           );
-          expect(response.statusCode, equals(403));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('permission_denied'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingPlansPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 3 PATCH .../plans/{tier_key} rejects ff_support (403, write)',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway();
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: const ProxyJwtClaims(
-            userId: 'user_support',
-            operatorId: null,
-            locationId: null,
-            roles: <String>['ff_support'],
-          ),
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve('${adminPricingPlansPrefix}premium'),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{'monthly_usd': 300.0},
+    test(
+      'Phase 3 PATCH .../plans/{tier_key} rejects ff_support (403, write)',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
           );
-          // PATCH is a write method → strict super_admin-only set.
-          expect(response.statusCode, equals(403));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('permission_denied'));
-          expect(gateway.lastPlanUpdateTierKey, isNull);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
-
-    test('Phase 3 PATCH .../plans/{tier_key} updates pricing + audits',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway();
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve('${adminPricingPlansPrefix}premium'),
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-plan-1',
-            body: const <String, Object?>{
-              'monthly_usd': 300.0,
-              'first_n_seats': 25,
-              'first_seat_usd': 6.0,
-              'additional_seat_usd': 4.0,
-              'onboarding_min_usd': 800.0,
-              'onboarding_max_usd': 2200.0,
-            },
-          );
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect((body['plan']! as Map)['tier_key'], equals('premium'));
-          expect(gateway.lastPlanUpdateTierKey, equals('premium'));
-          expect(gateway.lastPlanUpdateMonthlyUsd, equals(300.0));
-          expect(gateway.lastPlanUpdateFirstNSeats, equals(25));
-          // The admin reason threads the plan-pricing action so the audit
-          // row carries honest attribution.
-          expect(gateway.lastReason, contains('admin.pricing.PATCH'));
-          expect(gateway.lastReason, contains('plan_pricing:premium'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
-
-    test('Phase 3 PATCH .../plans accepts explicit null fields (clear)',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway()
-          ..planUpdateResult = <String, Object?>{
-            'tier_key': 'enterprise',
-            'monthly_usd': null,
-            'first_n_seats': null,
-            'first_seat_usd': null,
-            'additional_seat_usd': null,
-            'onboarding_min_usd': null,
-            'onboarding_max_usd': null,
-            'updated_at': null,
-            'updated_by': 'user_admin',
-          };
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve('${adminPricingPlansPrefix}enterprise'),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{
-              'monthly_usd': null,
-              'first_seat_usd': null,
-            },
-          );
-          expect(response.statusCode, equals(200));
-          expect(gateway.lastPlanUpdateTierKey, equals('enterprise'));
-          expect(gateway.lastPlanUpdateMonthlyUsd, isNull);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
-
-    test('Phase 3 PATCH .../plans/{tier_key} 404s for an unknown plan',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(initialClaims: superAdminClaims);
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve('${adminPricingPlansPrefix}megapremium'),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{'monthly_usd': 100.0},
-          );
-          expect(response.statusCode, equals(404));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('unknown_plan'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
-
-    test('Phase 3 PATCH .../plans rejects a negative monthly fee (400)',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(initialClaims: superAdminClaims);
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve('${adminPricingPlansPrefix}starter'),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{'monthly_usd': -5.0},
-          );
-          expect(response.statusCode, equals(400));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('invalid_monthly_usd'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
-
-    test('Phase 3 PATCH .../plans is idempotent: replay returns one result',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway();
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          Future<int> patchOnce() async {
+          try {
             final response = await httpJson(
               ctx.client,
               'PATCH',
               ctx.baseUri.resolve('${adminPricingPlansPrefix}premium'),
               authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-plan-replay',
               body: const <String, Object?>{'monthly_usd': 300.0},
             );
-            return response.statusCode;
+            // PATCH is a write method → strict super_admin-only set.
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+            expect(gateway.lastPlanUpdateTierKey, isNull);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
           }
+        });
+      },
+    );
 
-          final first = await patchOnce();
-          final second = await patchOnce();
-          expect(first, equals(200));
-          // The proxy idempotency layer collapses the replay; without a
-          // store wired in this harness both still succeed (no 409), and
-          // the gateway never throws on the second call.
-          expect(second, anyOf(equals(200), equals(409)));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'Phase 3 PATCH .../plans/{tier_key} updates pricing + audits',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
+          );
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve('${adminPricingPlansPrefix}premium'),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-plan-1',
+              body: const <String, Object?>{
+                'monthly_usd': 300.0,
+                'first_n_seats': 25,
+                'first_seat_usd': 6.0,
+                'additional_seat_usd': 4.0,
+                'onboarding_min_usd': 800.0,
+                'onboarding_max_usd': 2200.0,
+              },
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect((body['plan']! as Map)['tier_key'], equals('premium'));
+            expect(gateway.lastPlanUpdateTierKey, equals('premium'));
+            expect(gateway.lastPlanUpdateMonthlyUsd, equals(300.0));
+            expect(gateway.lastPlanUpdateFirstNSeats, equals(25));
+            // The admin reason threads the plan-pricing action so the audit
+            // row carries honest attribution.
+            expect(gateway.lastReason, contains('admin.pricing.PATCH'));
+            expect(gateway.lastReason, contains('plan_pricing:premium'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'Phase 3 PATCH .../plans accepts explicit null fields (clear)',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()
+            ..planUpdateResult = <String, Object?>{
+              'tier_key': 'enterprise',
+              'monthly_usd': null,
+              'first_n_seats': null,
+              'first_seat_usd': null,
+              'additional_seat_usd': null,
+              'onboarding_min_usd': null,
+              'onboarding_max_usd': null,
+              'updated_at': null,
+              'updated_by': 'user_admin',
+            };
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
+          );
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve('${adminPricingPlansPrefix}enterprise'),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{
+                'monthly_usd': null,
+                'first_seat_usd': null,
+              },
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastPlanUpdateTierKey, equals('enterprise'));
+            expect(gateway.lastPlanUpdateMonthlyUsd, isNull);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'Phase 3 PATCH .../plans/{tier_key} 404s for an unknown plan',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(initialClaims: superAdminClaims);
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve('${adminPricingPlansPrefix}megapremium'),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{'monthly_usd': 100.0},
+            );
+            expect(response.statusCode, equals(404));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('unknown_plan'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'Phase 3 PATCH .../plans rejects a negative monthly fee (400)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(initialClaims: superAdminClaims);
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve('${adminPricingPlansPrefix}starter'),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{'monthly_usd': -5.0},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('invalid_monthly_usd'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'Phase 3 PATCH .../plans is idempotent: replay returns one result',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
+          );
+          try {
+            Future<int> patchOnce() async {
+              final response = await httpJson(
+                ctx.client,
+                'PATCH',
+                ctx.baseUri.resolve('${adminPricingPlansPrefix}premium'),
+                authorization: 'Bearer fake.token',
+                idempotencyKey: 'idem-plan-replay',
+                body: const <String, Object?>{'monthly_usd': 300.0},
+              );
+              return response.statusCode;
+            }
+
+            final first = await patchOnce();
+            final second = await patchOnce();
+            expect(first, equals(200));
+            // The proxy idempotency layer collapses the replay; without a
+            // store wired in this harness both still succeed (no 409), and
+            // the gateway never throws on the second call.
+            expect(second, anyOf(equals(200), equals(409)));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('Phase 3 OPTIONS preflight allows PATCH for /plans', () async {
       await withRealHttp(() async {
@@ -4547,75 +4571,78 @@ void main() {
     // Mirrors the Phase 3 plan-route coverage: auth-required (read role
     // for GET, write role for PATCH), updates + audit reason, idempotency,
     // and 404 on an unknown plan or feature.
-    test('Phase 5a GET /v1/admin/pricing/entitlements returns the rows',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway()
-          ..entitlementsResult = const <Map<String, Object?>>[
-            <String, Object?>{
-              'tier_key': 'premium',
-              'feature_slug': 'lms',
-              'enabled': true,
-              'updated_at': null,
-              'updated_by': null,
-            },
-          ];
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(adminPricingEntitlementsPath),
-            authorization: 'Bearer fake.token',
+    test(
+      'Phase 5a GET /v1/admin/pricing/entitlements returns the rows',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()
+            ..entitlementsResult = const <Map<String, Object?>>[
+              <String, Object?>{
+                'tier_key': 'premium',
+                'feature_slug': 'lms',
+                'enabled': true,
+                'updated_at': null,
+                'updated_by': null,
+              },
+            ];
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
           );
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          final entitlements =
-              (body['entitlements']! as List).cast<Map<String, Object?>>();
-          expect(entitlements.single['tier_key'], equals('premium'));
-          expect(entitlements.single['feature_slug'], equals('lms'));
-          expect(gateway.lastReason, contains('admin.pricing.GET'));
-          expect(gateway.lastReason, contains('entitlements_list'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
-
-    test('Phase 5a GET /v1/admin/pricing/entitlements admits ff_support',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway()
-          ..entitlementsResult = const <Map<String, Object?>>[];
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: const ProxyJwtClaims(
-            userId: 'user_support',
-            operatorId: null,
-            locationId: null,
-            roles: <String>['ff_support'],
-          ),
-        );
-        try {
-          final response = await httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(adminPricingEntitlementsPath),
-            authorization: 'Bearer fake.token',
-          );
-          expect(response.statusCode, equals(200));
-          expect(gateway.lastActorUserId, equals('user_support'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingEntitlementsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            final entitlements = (body['entitlements']! as List)
+                .cast<Map<String, Object?>>();
+            expect(entitlements.single['tier_key'], equals('premium'));
+            expect(entitlements.single['feature_slug'], equals('lms'));
+            expect(gateway.lastReason, contains('admin.pricing.GET'));
+            expect(gateway.lastReason, contains('entitlements_list'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test(
-        'Phase 5a PATCH .../entitlements/{tier}/{slug} rejects ff_support '
+      'Phase 5a GET /v1/admin/pricing/entitlements admits ff_support',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()
+            ..entitlementsResult = const <Map<String, Object?>>[];
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
+          );
+          try {
+            final response = await httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingEntitlementsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastActorUserId, equals('user_support'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('Phase 5a PATCH .../entitlements/{tier}/{slug} rejects ff_support '
         '(403, write)', () async {
       await withRealHttp(() async {
         final gateway = FakePricingAdminGateway();
@@ -4648,64 +4675,74 @@ void main() {
       });
     });
 
-    test('Phase 5a PATCH .../entitlements/{tier}/{slug} toggles + audits',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway();
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve('${adminPricingEntitlementsPrefix}premium/lms'),
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-ent-1',
-            body: const <String, Object?>{'enabled': true},
+    test(
+      'Phase 5a PATCH .../entitlements/{tier}/{slug} toggles + audits',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
           );
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect((body['entitlement']! as Map)['tier_key'], equals('premium'));
-          expect(gateway.lastEntitlementTierKey, equals('premium'));
-          expect(gateway.lastEntitlementFeatureSlug, equals('lms'));
-          expect(gateway.lastEntitlementEnabled, isTrue);
-          // The admin reason threads the entitlement action for honest
-          // audit attribution.
-          expect(gateway.lastReason, contains('admin.pricing.PATCH'));
-          expect(gateway.lastReason, contains('entitlement:premium:lms'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '${adminPricingEntitlementsPrefix}premium/lms',
+              ),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-ent-1',
+              body: const <String, Object?>{'enabled': true},
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(
+              (body['entitlement']! as Map)['tier_key'],
+              equals('premium'),
+            );
+            expect(gateway.lastEntitlementTierKey, equals('premium'));
+            expect(gateway.lastEntitlementFeatureSlug, equals('lms'));
+            expect(gateway.lastEntitlementEnabled, isTrue);
+            // The admin reason threads the entitlement action for honest
+            // audit attribution.
+            expect(gateway.lastReason, contains('admin.pricing.PATCH'));
+            expect(gateway.lastReason, contains('entitlement:premium:lms'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 5a PATCH .../entitlements requires a boolean enabled (400)',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(initialClaims: superAdminClaims);
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve('${adminPricingEntitlementsPrefix}premium/lms'),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{},
-          );
-          expect(response.statusCode, equals(400));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('missing_enabled'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'Phase 5a PATCH .../entitlements requires a boolean enabled (400)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(initialClaims: superAdminClaims);
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '${adminPricingEntitlementsPrefix}premium/lms',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('missing_enabled'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 5a PATCH .../entitlements 404s for an unknown plan',
-        () async {
+    test('Phase 5a PATCH .../entitlements 404s for an unknown plan', () async {
       await withRealHttp(() async {
         final ctx = await spinUp(initialClaims: superAdminClaims);
         try {
@@ -4728,66 +4765,69 @@ void main() {
       });
     });
 
-    test('Phase 5a PATCH .../entitlements 404s for an unknown feature',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(initialClaims: superAdminClaims);
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'PATCH',
-            ctx.baseUri.resolve(
-              '${adminPricingEntitlementsPrefix}premium/teleportation',
-            ),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{'enabled': true},
-          );
-          expect(response.statusCode, equals(404));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('unknown_feature'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
-
-    test('Phase 5a PATCH .../entitlements is idempotent: replay one result',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway();
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          Future<int> patchOnce() async {
+    test(
+      'Phase 5a PATCH .../entitlements 404s for an unknown feature',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(initialClaims: superAdminClaims);
+          try {
             final response = await httpJson(
               ctx.client,
               'PATCH',
               ctx.baseUri.resolve(
-                '${adminPricingEntitlementsPrefix}premium/lms',
+                '${adminPricingEntitlementsPrefix}premium/teleportation',
               ),
               authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-ent-replay',
               body: const <String, Object?>{'enabled': true},
             );
-            return response.statusCode;
+            expect(response.statusCode, equals(404));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('unknown_feature'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
           }
+        });
+      },
+    );
 
-          final first = await patchOnce();
-          final second = await patchOnce();
-          expect(first, equals(200));
-          expect(second, anyOf(equals(200), equals(409)));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'Phase 5a PATCH .../entitlements is idempotent: replay one result',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
+          );
+          try {
+            Future<int> patchOnce() async {
+              final response = await httpJson(
+                ctx.client,
+                'PATCH',
+                ctx.baseUri.resolve(
+                  '${adminPricingEntitlementsPrefix}premium/lms',
+                ),
+                authorization: 'Bearer fake.token',
+                idempotencyKey: 'idem-ent-replay',
+                body: const <String, Object?>{'enabled': true},
+              );
+              return response.statusCode;
+            }
 
-    test('Phase 5a OPTIONS preflight allows PATCH for /entitlements',
-        () async {
+            final first = await patchOnce();
+            final second = await patchOnce();
+            expect(first, equals(200));
+            expect(second, anyOf(equals(200), equals(409)));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('Phase 5a OPTIONS preflight allows PATCH for /entitlements', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
         try {
@@ -4809,6 +4849,122 @@ void main() {
           final allowMethods =
               response.headers.value('access-control-allow-methods') ?? '';
           expect(allowMethods.toUpperCase(), contains('PATCH'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Scoped contracts GET effective forwards hierarchy scope', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$adminPricingScopedContractsEffectivePath'
+              '?operator_id=op-1&scope_type=location'
+              '&org_unit_id=ou-east&location_id=loc-1',
+            ),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200), reason: response.body);
+          expect(gateway.lastScopedContractOperatorId, equals('op-1'));
+          expect(gateway.lastScopedContractScopeType, equals('location'));
+          expect(gateway.lastScopedContractOrgUnitId, equals('ou-east'));
+          expect(gateway.lastScopedContractLocationId, equals('loc-1'));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final contract = body['effective_contract']! as Map<String, Object?>;
+          expect(contract['override_status'], equals('set_here'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Scoped contracts PUT saves custom terms + audits', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'PUT',
+            ctx.baseUri.resolve(adminPricingScopedContractsPath),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-scoped-contract-save',
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'scope_type': 'location',
+              'org_unit_id': 'ou-east',
+              'location_id': 'loc-1',
+              'tier_key': 'enterprise',
+              'monthly_usd': 500.0,
+              'advisor_cap_monthly_usd': 300.0,
+              'contract_label': 'Yorkville terms',
+              'admin_reason': 'Signed local enterprise amendment',
+            },
+          );
+          expect(response.statusCode, equals(200), reason: response.body);
+          expect(gateway.lastScopedContractOperatorId, equals('op-1'));
+          expect(gateway.lastScopedContractTierKey, equals('enterprise'));
+          expect(gateway.lastScopedContractMonthlyUsd, equals(500.0));
+          expect(gateway.lastScopedContractAdvisorCapMonthlyUsd, equals(300.0));
+          expect(
+            gateway.lastScopedContractAdminReason,
+            contains('Signed local enterprise amendment'),
+          );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('Scoped contracts DELETE clears one override by id', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'DELETE',
+            ctx.baseUri.resolve(
+              '${adminPricingScopedContractsPrefix}contract-1',
+            ),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-scoped-contract-delete',
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'scope_type': 'location',
+              'org_unit_id': 'ou-east',
+              'location_id': 'loc-1',
+              'admin_reason': 'Clear location override',
+            },
+          );
+          expect(response.statusCode, equals(200), reason: response.body);
+          expect(gateway.lastScopedContractOverrideId, equals('contract-1'));
+          expect(
+            gateway.lastScopedContractAdminReason,
+            contains('Clear location override'),
+          );
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -4859,66 +5015,70 @@ void main() {
       });
     });
 
-    test('Phase 4a POST .../start-pilot honors an explicit trial_days',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway();
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'POST',
-            ctx.baseUri.resolve(
-              '${adminPricingOperatorsPrefix}op-1/start-pilot',
-            ),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{'trial_days': 14},
+    test(
+      'Phase 4a POST .../start-pilot honors an explicit trial_days',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
           );
-          expect(response.statusCode, equals(200), reason: response.body);
-          expect(gateway.lastStartPilotTrialDays, equals(14));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/start-pilot',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{'trial_days': 14},
+            );
+            expect(response.statusCode, equals(200), reason: response.body);
+            expect(gateway.lastStartPilotTrialDays, equals(14));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 4a POST .../start-pilot rejects ff_support (403, write)',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(
-          initialClaims: const ProxyJwtClaims(
-            userId: 'user_support',
-            operatorId: null,
-            locationId: null,
-            roles: <String>['ff_support'],
-          ),
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'POST',
-            ctx.baseUri.resolve(
-              '${adminPricingOperatorsPrefix}op-1/start-pilot',
+    test(
+      'Phase 4a POST .../start-pilot rejects ff_support (403, write)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
             ),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{},
           );
-          expect(response.statusCode, equals(403));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('permission_denied'));
-          // Write rejection lists the super_admin-only write set.
-          final required = (body['required_roles']! as List).cast<String>();
-          expect(required, equals(<String>['super_admin']));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/start-pilot',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+            // Write rejection lists the super_admin-only write set.
+            final required = (body['required_roles']! as List).cast<String>();
+            expect(required, equals(<String>['super_admin']));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('Phase 4a POST .../start-pilot rejects an out-of-range trial_days '
         '(400)', () async {
@@ -4950,33 +5110,35 @@ void main() {
       });
     });
 
-    test('Phase 4a POST .../start-pilot 404s for an unknown operator',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway()..startPilotResult = null;
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'POST',
-            ctx.baseUri.resolve(
-              '${adminPricingOperatorsPrefix}op-missing/start-pilot',
-            ),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{},
+    test(
+      'Phase 4a POST .../start-pilot 404s for an unknown operator',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()..startPilotResult = null;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
           );
-          expect(response.statusCode, equals(404));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('unknown_operator'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-missing/start-pilot',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(404));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('unknown_operator'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('Phase 4a POST .../start-pilot accepts an Idempotency-Key on '
         'replay', () async {
@@ -5093,84 +5255,90 @@ void main() {
       });
     });
 
-    test('Phase 4a POST .../convert-trial 404s for an unknown operator',
-        () async {
-      await withRealHttp(() async {
-        final gateway = FakePricingAdminGateway()
-          ..convertTrialResult = const TrialConversionOutcome.notFound();
-        final ctx = await spinUp(
-          customGateway: gateway,
-          initialClaims: superAdminClaims,
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'POST',
-            ctx.baseUri.resolve(
-              '${adminPricingOperatorsPrefix}op-missing/convert-trial',
-            ),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{},
+    test(
+      'Phase 4a POST .../convert-trial 404s for an unknown operator',
+      () async {
+        await withRealHttp(() async {
+          final gateway = FakePricingAdminGateway()
+            ..convertTrialResult = const TrialConversionOutcome.notFound();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: superAdminClaims,
           );
-          expect(response.statusCode, equals(404));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('unknown_operator'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-missing/convert-trial',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(404));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('unknown_operator'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 4a POST .../convert-trial rejects ff_support (403, write)',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(
-          initialClaims: const ProxyJwtClaims(
-            userId: 'user_support',
-            operatorId: null,
-            locationId: null,
-            roles: <String>['ff_support'],
-          ),
-        );
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'POST',
-            ctx.baseUri.resolve(
-              '${adminPricingOperatorsPrefix}op-1/convert-trial',
+    test(
+      'Phase 4a POST .../convert-trial rejects ff_support (403, write)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
             ),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{},
           );
-          expect(response.statusCode, equals(403));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/convert-trial',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(403));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('Phase 4a unknown operator action under the pricing prefix 404s',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(initialClaims: superAdminClaims);
-        try {
-          final response = await httpJson(
-            ctx.client,
-            'POST',
-            ctx.baseUri.resolve(
-              '${adminPricingOperatorsPrefix}op-1/bogus-action',
-            ),
-            authorization: 'Bearer fake.token',
-            body: const <String, Object?>{},
-          );
-          expect(response.statusCode, equals(404));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'Phase 4a unknown operator action under the pricing prefix 404s',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(initialClaims: superAdminClaims);
+          try {
+            final response = await httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/bogus-action',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(404));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
   });
 }

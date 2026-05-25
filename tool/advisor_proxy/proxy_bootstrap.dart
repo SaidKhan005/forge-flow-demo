@@ -55,6 +55,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_unit_account_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/pricing_plan_catalog_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/pricing_contract_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/target_cycle_repository.dart';
@@ -779,7 +780,7 @@ class ProxyProductionBindings {
   /// Operational read repo (A4.6) backing the `get_week_plan` answer tool.
   /// Tenant-pool-backed. Optional (see [advisorAnswerTargetCycleRepository]).
   final weekly_snapshot.WeeklyPlanSnapshotRepository?
-      advisorAnswerWeeklyPlanSnapshotRepository;
+  advisorAnswerWeeklyPlanSnapshotRepository;
 
   /// Operational read repo (A4.6) backing the `get_shift_variance` answer
   /// tool (and the HP #4 restaurant-scope resolver). Tenant-pool-backed.
@@ -1605,6 +1606,9 @@ ProxyProductionBindings buildProxyProductionBindings(
       // rationale: the GLOBAL `feature_entitlements` is platform-wide
       // (no operator_id, no RLS), read/written under forge_admin.
       entitlementsRepository: FeatureEntitlementsRepository(adminWrapper),
+      contractOverridesRepository: PricingContractOverridesRepository(
+        adminWrapper,
+      ),
       auditRepository: adminAudit,
     ),
     // Phase 11A.3a — corpus admin gateway. Same admin pool rationale
@@ -1934,10 +1938,12 @@ ProxyProductionBindings buildProxyProductionBindings(
     advisorAnswerTargetCycleRepository: TargetCycleRepository(tenantWrapper),
     advisorAnswerWeeklyPlanSnapshotRepository:
         weekly_snapshot.WeeklyPlanSnapshotRepository(tenantWrapper),
-    advisorAnswerShiftRecordsReadRepository:
-        ShiftRecordsReadRepository(tenantWrapper),
-    advisorConversationLogRepository:
-        AdvisorConversationLogRepository(tenantWrapper),
+    advisorAnswerShiftRecordsReadRepository: ShiftRecordsReadRepository(
+      tenantWrapper,
+    ),
+    advisorConversationLogRepository: AdvisorConversationLogRepository(
+      tenantWrapper,
+    ),
     // ENCRYPTION-FIRST (A4-ENC): tryCreate returns null when
     // ADVISOR_CONVERSATION_CMK is not provisioned, so the proxy still boots
     // and the answer route fails closed until the key is set. HP #7: the
@@ -5608,6 +5614,7 @@ class RepositoryPricingTierAdminProxyGateway
     required OrgUnitsRepository orgUnitsRepository,
     required PricingPlanCatalogRepository planCatalogRepository,
     required FeatureEntitlementsRepository entitlementsRepository,
+    required PricingContractOverridesRepository contractOverridesRepository,
     required AuthEventsAuditRepository auditRepository,
   }) : _operators = operatorsRepository,
        _locations = locationsRepository,
@@ -5615,6 +5622,7 @@ class RepositoryPricingTierAdminProxyGateway
        _orgUnits = orgUnitsRepository,
        _planCatalog = planCatalogRepository,
        _entitlements = entitlementsRepository,
+       _contractOverrides = contractOverridesRepository,
        _auditRepository = auditRepository;
 
   final OperatorsRepository _operators;
@@ -5623,6 +5631,7 @@ class RepositoryPricingTierAdminProxyGateway
   final OrgUnitsRepository _orgUnits;
   final PricingPlanCatalogRepository _planCatalog;
   final FeatureEntitlementsRepository _entitlements;
+  final PricingContractOverridesRepository _contractOverrides;
   final AuthEventsAuditRepository _auditRepository;
 
   /// Resolves the operator's root `org_units` id (the row with
@@ -6017,6 +6026,153 @@ class RepositoryPricingTierAdminProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>?> resolveScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String adminReason,
+  }) async {
+    final target = _pricingContractTarget(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    final resolved = await _contractOverrides.resolveEffective(
+      operatorId: operatorId,
+      selectedScope: target,
+      adminReason: adminReason,
+    );
+    if (resolved == null) return null;
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      eventType: 'admin.pricing.scoped_contract_resolved',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'scope_type': scopeType,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
+        if (locationId != null) 'location_id': locationId,
+        'override_status': resolved.overrideStatus.wireName,
+      },
+    );
+    return _scopedContractEnvelope(resolved);
+  }
+
+  @override
+  Future<Map<String, Object?>?> saveScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String tierKey,
+    String? billingOwnerOrgUnitId,
+    double? monthlyUsd,
+    int? firstNSeats,
+    double? firstSeatUsd,
+    double? additionalSeatUsd,
+    double? onboardingMinUsd,
+    double? onboardingMaxUsd,
+    double? advisorCapMonthlyUsd,
+    String? effectiveFrom,
+    String? effectiveUntil,
+    String? contractLabel,
+    String? internalNote,
+    String? contractOverrideId,
+    required String adminReason,
+  }) async {
+    final target = _pricingContractTarget(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    await _contractOverrides.upsertOverride(
+      override: PricingContractOverrideWrite(
+        operatorId: operatorId,
+        target: target,
+        tierKey: tierKey,
+        billingOwnerOrgUnitId: billingOwnerOrgUnitId,
+        monthlyUsd: monthlyUsd,
+        firstNSeats: firstNSeats,
+        firstSeatUsd: firstSeatUsd,
+        additionalSeatUsd: additionalSeatUsd,
+        onboardingMinUsd: onboardingMinUsd,
+        onboardingMaxUsd: onboardingMaxUsd,
+        advisorCapMonthlyUsd: advisorCapMonthlyUsd,
+        effectiveFromDate: _dateOnlyOrToday(effectiveFrom),
+        effectiveUntilDate: _dateOnlyOrNull(effectiveUntil),
+        contractLabel: contractLabel,
+        internalNote: internalNote,
+        updatedBy: actorUserId,
+      ),
+      adminReason: adminReason,
+    );
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      eventType: 'admin.pricing.scoped_contract_saved',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'scope_type': scopeType,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
+        if (locationId != null) 'location_id': locationId,
+        'tier_key': tierKey,
+        'contract_override_id': contractOverrideId,
+        'monthly_usd': monthlyUsd,
+        'advisor_cap_monthly_usd': advisorCapMonthlyUsd,
+      },
+    );
+    return resolveScopedContract(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+      adminReason: '$adminReason:resolve_after_save',
+    );
+  }
+
+  @override
+  Future<Map<String, Object?>?> deleteScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String contractOverrideId,
+    required String adminReason,
+  }) async {
+    final deleted = await _contractOverrides.deleteOverrideById(
+      operatorId: operatorId,
+      overrideId: contractOverrideId,
+      adminReason: adminReason,
+    );
+    if (!deleted) return null;
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      eventType: 'admin.pricing.scoped_contract_deleted',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'contract_override_id': contractOverrideId,
+        'scope_type': scopeType,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
+        if (locationId != null) 'location_id': locationId,
+      },
+    );
+    return resolveScopedContract(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+      adminReason: '$adminReason:resolve_after_delete',
+    );
+  }
+
+  @override
   Future<Map<String, Object?>?> startPilotTrial({
     required String actorUserId,
     required String operatorId,
@@ -6088,6 +6244,102 @@ class RepositoryPricingTierAdminProxyGateway
           bundle: await _bundleFor(operator, adminReason: adminReason),
         );
     }
+  }
+
+  PricingContractScopeTarget _pricingContractTarget({
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+  }) {
+    switch (scopeType) {
+      case 'business':
+        return const PricingContractScopeTarget.business();
+      case 'org_unit':
+        if (orgUnitId == null) {
+          throw const PricingTierAdminGatewayValidationError(
+            statusCode: 400,
+            code: 'missing_org_unit_id',
+            message: 'org_unit scope requires org_unit_id',
+          );
+        }
+        return PricingContractScopeTarget.orgUnit(orgUnitId: orgUnitId);
+      case 'location':
+        if (locationId == null) {
+          throw const PricingTierAdminGatewayValidationError(
+            statusCode: 400,
+            code: 'missing_location_id',
+            message: 'location scope requires location_id',
+          );
+        }
+        return PricingContractScopeTarget.location(locationId: locationId);
+      default:
+        throw const PricingTierAdminGatewayValidationError(
+          statusCode: 400,
+          code: 'invalid_scope_type',
+          message: 'scope_type must be one of: business, org_unit, location',
+        );
+    }
+  }
+
+  Map<String, Object?> _scopedContractEnvelope(
+    PricingContractEffectiveResolution resolved,
+  ) {
+    final selectedScope = <String, Object?>{
+      'operator_id': resolved.operatorId,
+      'scope_type': resolved.selectedScope.scopeType.wireName,
+      'org_unit_id': resolved.selectedScope.orgUnitId,
+      'location_id': resolved.selectedScope.locationId,
+      'display_name': resolved.selectedScope.scopeLabel,
+    };
+    final source = resolved.inheritedSource;
+    final sourceType = source.sourceType == 'catalog'
+        ? 'catalog_default'
+        : 'scoped_override';
+    return <String, Object?>{
+      'selected_scope': selectedScope,
+      'override_status': resolved.overrideStatus.wireName,
+      'inherited_source': <String, Object?>{
+        'source_type': sourceType,
+        if (source.sourceType != 'catalog')
+          'scope': <String, Object?>{
+            'operator_id': resolved.operatorId,
+            'scope_type': source.sourceType,
+            'org_unit_id': source.sourceType == 'org_unit'
+                ? source.sourceId
+                : null,
+            'location_id': source.sourceType == 'location'
+                ? source.sourceId
+                : null,
+            'display_name': source.sourceLabel,
+          },
+        'override_id': source.overrideId,
+        'display_name': source.sourceLabel,
+        'tier_key': resolved.effective.tierKey,
+      },
+      'effective_value': resolved.effective.toJson(),
+      'mutation_target': <String, Object?>{
+        'scope': selectedScope,
+        'existing_override_id': resolved.mutationTarget.existingOverrideId,
+        'can_save': true,
+        'can_delete': resolved.mutationTarget.canClear,
+      },
+    };
+  }
+
+  String _dateOnlyOrToday(String? value) {
+    final parsed = _dateOnlyOrNull(value);
+    if (parsed != null) return parsed;
+    final now = DateTime.now().toUtc();
+    return '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+  }
+
+  String? _dateOnlyOrNull(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final trimmed = value.trim();
+    if (trimmed.length >= 10) return trimmed.substring(0, 10);
+    return trimmed;
   }
 
   Future<Map<String, Object?>> _bundleFor(

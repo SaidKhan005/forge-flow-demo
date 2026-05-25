@@ -390,6 +390,16 @@ Current known post-cutoff staging additions:
   nothing`. Records which features each plan includes; FOUNDATION ONLY (does
   not gate the app yet). Schema; build-only, gated on explicit operator
   approval before any apply.
+- `db/migrations/202605251000_plans_and_limits_scoped_contract_overrides.sql`
+  creates operator-scoped `public.pricing_contract_overrides` for scoped
+  Enterprise/custom commercial terms at business, org-unit, or location scope.
+  The resolver uses location, then nearest org-unit ancestor, then business,
+  then catalog defaults; lower scopes override higher scopes. Stores monthly,
+  seat-ramp, onboarding, advisor-cap, billing-owner, label, note, and
+  effective-date fields. RLS-enabled with `app_current_operator()` tenant
+  policy, operator-leading indexes, service/forge admin grants, and an
+  updated-at trigger. Schema + RLS + proxy-writing surface; build-only, gated
+  on explicit operator approval before any apply.
 
 Migration drift automation:
 

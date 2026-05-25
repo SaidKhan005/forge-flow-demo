@@ -4662,6 +4662,12 @@ const String adminPricingPlansPrefix = '$adminPricingPlansPath/';
 // ONLY: records the matrix; does not gate the app (deferred Phase 5d).
 const String adminPricingEntitlementsPath = '/v1/admin/pricing/entitlements';
 const String adminPricingEntitlementsPrefix = '$adminPricingEntitlementsPath/';
+const String adminPricingScopedContractsPath =
+    '/v1/admin/pricing/scoped-contracts';
+const String adminPricingScopedContractsPrefix =
+    '$adminPricingScopedContractsPath/';
+const String adminPricingScopedContractsEffectivePath =
+    '$adminPricingScopedContractsPath/effective';
 
 /// Locked feature slugs the proxy accepts on the entitlements PATCH.
 /// Mirrors `kFeatureSlugCatalog` in
@@ -4916,6 +4922,48 @@ abstract class PricingTierAdminProxyGateway {
   });
 
   /// Plans & Limits V1 Phase 4a — start a Pilot free trial on a real
+  Future<Map<String, Object?>?> resolveScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> saveScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String tierKey,
+    String? billingOwnerOrgUnitId,
+    double? monthlyUsd,
+    int? firstNSeats,
+    double? firstSeatUsd,
+    double? additionalSeatUsd,
+    double? onboardingMinUsd,
+    double? onboardingMaxUsd,
+    double? advisorCapMonthlyUsd,
+    String? effectiveFrom,
+    String? effectiveUntil,
+    String? contractLabel,
+    String? internalNote,
+    String? contractOverrideId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> deleteScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String contractOverrideId,
+    required String adminReason,
+  });
+
   /// operator. Sets `subscription_tier = 'pilot'`, `trial_mode = true`,
   /// and `trial_expires_at = now() + [trialDays] days`. Returns the
   /// post-update operator bundle (same shape as [updateOperatorTier]),
@@ -14408,6 +14456,11 @@ bool _isAdminPricingPath(String path) {
       path.startsWith(adminPricingEntitlementsPrefix)) {
     return true;
   }
+  if (path == adminPricingScopedContractsPath ||
+      path == adminPricingScopedContractsEffectivePath ||
+      path.startsWith(adminPricingScopedContractsPrefix)) {
+    return true;
+  }
   return false;
 }
 
@@ -14596,6 +14649,16 @@ bool _isAdminPricingOperation(String path, String method) {
   // gate as the routes above.
   if (method == 'GET' && path == adminPricingEntitlementsPath) return true;
   if (method == 'PATCH' && path.startsWith(adminPricingEntitlementsPrefix)) {
+    return true;
+  }
+  if (method == 'GET' && path == adminPricingScopedContractsEffectivePath) {
+    return true;
+  }
+  if (method == 'PUT' && path == adminPricingScopedContractsPath) {
+    return true;
+  }
+  if (method == 'DELETE' &&
+      path.startsWith(adminPricingScopedContractsPrefix)) {
     return true;
   }
   return false;
@@ -15781,6 +15844,169 @@ Future<void> _routePricingAdmin({
   // catalog (one row per plan). Read-only: no idempotency key (a GET is
   // naturally idempotent). Gated by the read role set in the dispatch
   // layer (super_admin + ff_support).
+  if (method == 'GET' && path == adminPricingScopedContractsEffectivePath) {
+    final params = request.uri.queryParameters;
+    final operatorId = _requireQueryString(params, 'operator_id');
+    final scopeType = _requireQueryString(params, 'scope_type');
+    final orgUnitId = _optionalQueryString(params, 'org_unit_id');
+    final locationId = _optionalQueryString(params, 'location_id');
+    _validateScopedPricingContractScope(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    final resolved = await gateway.resolveScopedContract(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+      adminReason: '$reasonPrefix:scoped_contracts_effective:$operatorId',
+    );
+    if (resolved == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_pricing_scope',
+        'message': 'operator or pricing scope not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{
+      'effective_contract': resolved,
+    });
+    return;
+  }
+
+  if (method == 'PUT' && path == adminPricingScopedContractsPath) {
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final scopeType = _requireBodyString(body, 'scope_type');
+    final orgUnitId = _optionalBodyString(body, 'org_unit_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    _validateScopedPricingContractScope(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    final tierKey = _requireBodyString(body, 'tier_key');
+    if (!kProxyPricingTierTemplateKeys.contains(tierKey)) {
+      throw _AdminInputError(
+        statusCode: 404,
+        code: 'unknown_plan',
+        message: 'tier_key "$tierKey" is not a known plan',
+      );
+    }
+    final adminReason = _requireBodyString(body, 'admin_reason');
+    final contractOverrideId =
+        _optionalBodyString(body, 'id') ??
+        _optionalBodyString(body, 'contract_override_id');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.pricing.scoped_contract_saved',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final resolved = await gateway.saveScopedContract(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          scopeType: scopeType,
+          orgUnitId: orgUnitId,
+          locationId: locationId,
+          tierKey: tierKey,
+          billingOwnerOrgUnitId: _optionalBodyString(
+            body,
+            'billing_owner_org_unit_id',
+          ),
+          monthlyUsd: _optionalBodyMoney(body, 'monthly_usd'),
+          firstNSeats: _optionalBodyInt(body, 'first_n_seats'),
+          firstSeatUsd: _optionalBodyMoney(body, 'first_seat_usd'),
+          additionalSeatUsd: _optionalBodyMoney(body, 'additional_seat_usd'),
+          onboardingMinUsd: _optionalBodyMoney(body, 'onboarding_min_usd'),
+          onboardingMaxUsd: _optionalBodyMoney(body, 'onboarding_max_usd'),
+          advisorCapMonthlyUsd: _optionalBodyMoney(
+            body,
+            'advisor_cap_monthly_usd',
+          ),
+          effectiveFrom: _optionalBodyString(body, 'effective_from'),
+          effectiveUntil: _optionalBodyString(body, 'effective_until'),
+          contractLabel: _optionalBodyString(body, 'contract_label'),
+          internalNote: _optionalBodyString(body, 'internal_note'),
+          contractOverrideId: contractOverrideId,
+          adminReason:
+              '$reasonPrefix:scoped_contract_saved:$operatorId:$adminReason',
+        );
+        if (resolved == null) {
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_pricing_scope',
+              'message': 'operator or pricing scope not found',
+            },
+          );
+        }
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'effective_contract': resolved},
+        );
+      },
+    );
+    return;
+  }
+
+  if (method == 'DELETE' &&
+      path.startsWith(adminPricingScopedContractsPrefix)) {
+    final tail = _pathSuffix(path, adminPricingScopedContractsPrefix);
+    if (tail == null || tail.contains('/')) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final contractOverrideId = Uri.decodeComponent(tail);
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final scopeType = _requireBodyString(body, 'scope_type');
+    final orgUnitId = _optionalBodyString(body, 'org_unit_id');
+    final locationId = _optionalBodyString(body, 'location_id');
+    _validateScopedPricingContractScope(
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
+      locationId: locationId,
+    );
+    final adminReason = _requireBodyString(body, 'admin_reason');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.pricing.scoped_contract_deleted',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final resolved = await gateway.deleteScopedContract(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          scopeType: scopeType,
+          orgUnitId: orgUnitId,
+          locationId: locationId,
+          contractOverrideId: contractOverrideId,
+          adminReason:
+              '$reasonPrefix:scoped_contract_deleted:$operatorId:$adminReason',
+        );
+        if (resolved == null) {
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_scoped_contract',
+              'message': 'scoped contract override not found',
+            },
+          );
+        }
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'effective_contract': resolved},
+        );
+      },
+    );
+    return;
+  }
+
   if (method == 'GET' && path == adminPricingPlansPath) {
     final plans = await gateway.listPlanCatalog(
       actorUserId: actorUserId,
@@ -16122,6 +16348,66 @@ String _requireBodyString(Map<String, Object?> body, String field) {
     );
   }
   return raw.trim();
+}
+
+String _requireQueryString(Map<String, String> query, String field) {
+  final raw = query[field];
+  if (raw == null || raw.trim().isEmpty) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'missing_$field',
+      message: '$field is required',
+    );
+  }
+  return raw.trim();
+}
+
+String? _optionalQueryString(Map<String, String> query, String field) {
+  final raw = query[field];
+  if (raw == null || raw.trim().isEmpty) return null;
+  return raw.trim();
+}
+
+void _validateScopedPricingContractScope({
+  required String scopeType,
+  String? orgUnitId,
+  String? locationId,
+}) {
+  switch (scopeType) {
+    case 'business':
+      if (orgUnitId != null || locationId != null) {
+        throw const _AdminInputError(
+          statusCode: 400,
+          code: 'invalid_scope_payload',
+          message: 'business scope must not include org_unit_id or location_id',
+        );
+      }
+      return;
+    case 'org_unit':
+      if (orgUnitId == null || locationId != null) {
+        throw const _AdminInputError(
+          statusCode: 400,
+          code: 'invalid_scope_payload',
+          message: 'org_unit scope requires org_unit_id only',
+        );
+      }
+      return;
+    case 'location':
+      if (locationId == null) {
+        throw const _AdminInputError(
+          statusCode: 400,
+          code: 'invalid_scope_payload',
+          message: 'location scope requires location_id',
+        );
+      }
+      return;
+    default:
+      throw const _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_scope_type',
+        message: 'scope_type must be one of: business, org_unit, location',
+      );
+  }
 }
 
 bool _rejectLegacyCoversSourceWriteKeys(
@@ -17812,18 +18098,6 @@ Map<String, Object?> _teamOrgLocationToJson(TeamOrgLocationEntry entry) {
     if (entry.deletedAt != null)
       'deleted_at': entry.deletedAt!.toUtc().toIso8601String(),
   };
-}
-
-String _requireQueryString(Map<String, String> params, String field) {
-  final value = _nonBlankString(params[field]);
-  if (value == null) {
-    throw _AdminInputError(
-      statusCode: 400,
-      code: 'missing_$field',
-      message: '$field query parameter is required',
-    );
-  }
-  return value;
 }
 
 int _clampedQueryInt(
