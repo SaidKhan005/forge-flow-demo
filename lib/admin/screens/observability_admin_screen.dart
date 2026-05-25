@@ -573,9 +573,10 @@ class _HeroCards extends StatelessWidget {
       builder: (context, constraints) {
         const gap = 14.0;
         // Equal-width AND equal-height tiles (IntrinsicHeight + stretch),
-        // mirroring the mockup's `repeat(4, 1fr)` grid: 4-up when wide,
-        // 2x2 when narrow. No more content-sized Wrap with ragged heights.
-        final perRow = constraints.maxWidth >= 900 ? 4 : 2;
+        // mirroring the mockup's `repeat(4, 1fr)` grid: 4-up at the admin
+        // content width (nav rail + scope pane leave ~880px), 2x2 only when
+        // genuinely narrow. No more content-sized Wrap with ragged heights.
+        final perRow = constraints.maxWidth >= 640 ? 4 : 2;
         final rows = <Widget>[];
         for (var i = 0; i < cards.length; i += perRow) {
           final end = (i + perRow) > cards.length ? cards.length : i + perRow;
@@ -683,7 +684,6 @@ class _HeroCard extends StatelessWidget {
     // above the body.
     return Container(
       key: Key(keyName),
-      constraints: const BoxConstraints(minHeight: 178),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
