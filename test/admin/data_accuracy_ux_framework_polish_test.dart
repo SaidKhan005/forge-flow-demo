@@ -776,6 +776,82 @@ void main() {
       expect(find.text('Duckworth Street'), findsNothing);
     });
 
+    testWidgets('polling setup overview and requests use admin labels', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final now = DateTime.utc(2026, 5, 5, 12);
+      final gateway = InMemoryDataAccuracyAdminGateway(
+        operatorLocations: const <OperatorLocationRef>[ref],
+        initialTierDefinitions: <PollingTierKey, TierDefinition>{
+          PollingTierKey.standard: kDemoStandardTierDefinition(),
+          PollingTierKey.premium: kDemoPremiumTierDefinition(),
+          PollingTierKey.custom: kDemoCustomTierDefinition(),
+        },
+        initialAssignments: <String, ForgeFlowPollingTierAssignment>{
+          'op-1/loc-1': ForgeFlowPollingTierAssignment(
+            assignmentId: 'a-1',
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            tierKey: PollingTierKey.standard,
+            pollingCadencePerVendorSeconds: const <String, int>{},
+            monthlyPriceCents: 9900,
+            vendorApiCostEstimateCentsMonthly: 1200,
+            effectiveAt: now,
+            createdAt: now,
+          ),
+        },
+        initialChangeRequests: <TierChangeRequest>[
+          TierChangeRequest(
+            requestId: 'req-1',
+            operatorRef: ref,
+            currentTier: PollingTierKey.standard,
+            requestedTier: PollingTierKey.premium,
+            operatorNote: 'Dinner volume needs fresher data.',
+            submittedAt: now,
+            status: TierChangeRequestStatus.pending,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.themeData,
+          home: Scaffold(
+            body: PollingAndPricingAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_polling_setup_overview_panel')),
+        findsOneWidget,
+      );
+      expect(find.text('Locations shown'), findsOneWidget);
+      expect(find.text('Assigned'), findsOneWidget);
+      expect(find.text('Pending requests'), findsOneWidget);
+      expect(find.text('Monthly margin'), findsOneWidget);
+      expect(find.text('Tier change: Regular to Premium'), findsOneWidget);
+      expect(find.text('Pending'), findsOneWidget);
+
+      final overviewY = tester
+          .getTopLeft(
+            find.byKey(const Key('admin_polling_setup_overview_panel')),
+          )
+          .dy;
+      final assignmentsY = tester
+          .getTopLeft(find.byKey(const Key('admin_tier_assignment_table')))
+          .dy;
+      expect(overviewY, lessThan(assignmentsY));
+    });
+
     testWidgets('tier assignment dialog uses human tier labels', (
       tester,
     ) async {

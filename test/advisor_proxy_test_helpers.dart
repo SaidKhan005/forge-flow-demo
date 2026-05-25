@@ -1,4 +1,4 @@
-﻿// Shared test helpers for the advisor_proxy_*_test.dart split.
+// Shared test helpers for the advisor_proxy_*_test.dart split.
 //
 // Bucket 5c of the 2026-05-20 test-suite tightening audit: extracted out of
 // `test/advisor_proxy_test.dart` (8,328 lines) when the original monolith
@@ -47,7 +47,8 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
   };
 
   bool deleteResult = true;
-  List<Map<String, Object?>>? spendSummaryResult = const <Map<String, Object?>>[];
+  List<Map<String, Object?>>? spendSummaryResult =
+      const <Map<String, Object?>>[];
 
   List<Map<String, Object?>> planCatalogResult = const <Map<String, Object?>>[];
   Map<String, Object?>? planUpdateResult = <String, Object?>{
@@ -82,7 +83,8 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
   int? lastPlanUpdateFirstNSeats;
 
   // Plans & Limits V1 Phase 5a — feature-entitlements matrix.
-  List<Map<String, Object?>> entitlementsResult = const <Map<String, Object?>>[];
+  List<Map<String, Object?>> entitlementsResult =
+      const <Map<String, Object?>>[];
   Map<String, Object?> entitlementUpdateResult = <String, Object?>{
     'tier_key': 'premium',
     'feature_slug': 'lms',
@@ -93,6 +95,67 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
   String? lastEntitlementTierKey;
   String? lastEntitlementFeatureSlug;
   bool? lastEntitlementEnabled;
+
+  Map<String, Object?>? scopedContractResult = <String, Object?>{
+    'selected_scope': <String, Object?>{
+      'operator_id': 'op-1',
+      'scope_type': 'location',
+      'org_unit_id': 'ou-east',
+      'location_id': 'loc-1',
+      'display_name': 'Toronto Yorkville',
+    },
+    'override_status': 'set_here',
+    'inherited_source': <String, Object?>{
+      'source_type': 'scoped_override',
+      'scope': <String, Object?>{
+        'operator_id': 'op-1',
+        'scope_type': 'location',
+        'location_id': 'loc-1',
+        'display_name': 'Toronto Yorkville',
+      },
+      'override_id': 'contract-1',
+      'display_name': 'Toronto Yorkville',
+      'tier_key': 'enterprise',
+    },
+    'effective_value': <String, Object?>{
+      'tier_key': 'enterprise',
+      'monthly_usd': 500.0,
+      'first_n_seats': 20,
+      'first_seat_usd': 12.0,
+      'additional_seat_usd': 8.0,
+      'onboarding_min_usd': 1500.0,
+      'onboarding_max_usd': 3000.0,
+      'advisor_cap_monthly_usd': 300.0,
+      'billing_owner_org_unit_id': 'ou-finance',
+      'effective_from': '2026-06-01',
+      'effective_until': null,
+      'contract_label': 'Yorkville terms',
+      'internal_note': 'Signed locally',
+      'updated_at': '2026-04-30T12:00:00.000Z',
+      'updated_by': 'user_admin',
+    },
+    'mutation_target': <String, Object?>{
+      'scope': <String, Object?>{
+        'operator_id': 'op-1',
+        'scope_type': 'location',
+        'org_unit_id': 'ou-east',
+        'location_id': 'loc-1',
+        'display_name': 'Toronto Yorkville',
+      },
+      'existing_override_id': 'contract-1',
+      'can_save': true,
+      'can_delete': true,
+    },
+  };
+  String? lastScopedContractOperatorId;
+  String? lastScopedContractScopeType;
+  String? lastScopedContractOrgUnitId;
+  String? lastScopedContractLocationId;
+  String? lastScopedContractTierKey;
+  String? lastScopedContractOverrideId;
+  double? lastScopedContractMonthlyUsd;
+  double? lastScopedContractAdvisorCapMonthlyUsd;
+  String? lastScopedContractAdminReason;
 
   // Plans & Limits V1 Phase 4a — Pilot trial start + convert.
   Map<String, Object?>? startPilotResult = <String, Object?>{
@@ -269,6 +332,83 @@ class FakePricingAdminGateway implements PricingTierAdminProxyGateway {
     lastEntitlementFeatureSlug = featureSlug;
     lastEntitlementEnabled = enabled;
     return entitlementUpdateResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> resolveScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastScopedContractAdminReason = adminReason;
+    lastScopedContractOperatorId = operatorId;
+    lastScopedContractScopeType = scopeType;
+    lastScopedContractOrgUnitId = orgUnitId;
+    lastScopedContractLocationId = locationId;
+    return scopedContractResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> saveScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String tierKey,
+    String? billingOwnerOrgUnitId,
+    double? monthlyUsd,
+    int? firstNSeats,
+    double? firstSeatUsd,
+    double? additionalSeatUsd,
+    double? onboardingMinUsd,
+    double? onboardingMaxUsd,
+    double? advisorCapMonthlyUsd,
+    String? effectiveFrom,
+    String? effectiveUntil,
+    String? contractLabel,
+    String? internalNote,
+    String? contractOverrideId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastScopedContractAdminReason = adminReason;
+    lastScopedContractOperatorId = operatorId;
+    lastScopedContractScopeType = scopeType;
+    lastScopedContractOrgUnitId = orgUnitId;
+    lastScopedContractLocationId = locationId;
+    lastScopedContractTierKey = tierKey;
+    lastScopedContractOverrideId = contractOverrideId;
+    lastScopedContractMonthlyUsd = monthlyUsd;
+    lastScopedContractAdvisorCapMonthlyUsd = advisorCapMonthlyUsd;
+    return scopedContractResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> deleteScopedContract({
+    required String actorUserId,
+    required String operatorId,
+    required String scopeType,
+    String? orgUnitId,
+    String? locationId,
+    required String contractOverrideId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastScopedContractAdminReason = adminReason;
+    lastScopedContractOperatorId = operatorId;
+    lastScopedContractScopeType = scopeType;
+    lastScopedContractOrgUnitId = orgUnitId;
+    lastScopedContractLocationId = locationId;
+    lastScopedContractOverrideId = contractOverrideId;
+    return scopedContractResult;
   }
 
   @override

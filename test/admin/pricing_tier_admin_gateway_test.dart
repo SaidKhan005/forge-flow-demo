@@ -73,8 +73,7 @@ void main() {
   });
 
   group('InMemoryPricingTierAdminGateway — listOperators', () {
-    test('lists seeded operators alphabetically by business name',
-        () async {
+    test('lists seeded operators alphabetically by business name', () async {
       final gateway = InMemoryPricingTierAdminGateway(
         seed: <PricingOperatorBundle>[
           bundle(operatorId: 'op-z'),
@@ -82,8 +81,10 @@ void main() {
         ],
       );
       final list = await gateway.listOperators();
-      expect(list.map((b) => b.operatorId).toList(),
-          equals(<String>['op-a', 'op-z']));
+      expect(
+        list.map((b) => b.operatorId).toList(),
+        equals(<String>['op-a', 'op-z']),
+      );
     });
   });
 
@@ -140,10 +141,7 @@ void main() {
         thrown = e;
       }
       expect(thrown, isA<PricingTierAdminGatewayError>());
-      expect(
-        (thrown! as PricingTierAdminGatewayError).statusCode,
-        equals(404),
-      );
+      expect((thrown! as PricingTierAdminGatewayError).statusCode, equals(404));
     });
   });
 
@@ -323,41 +321,44 @@ void main() {
       );
     });
 
-    test('replayed delete under the same key is a no-op (idempotent)',
-        () async {
-      final gateway = InMemoryPricingTierAdminGateway(
-        seed: <PricingOperatorBundle>[
-          bundle(caps: <UsageCapRow>[capRow()]),
-        ],
-      );
-      const command = UsageCapDeleteCommand(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-        usageClass: 'advisor_qa',
-        idempotencyKey: 'k-del-replay',
-      );
-      await gateway.deleteUsageCap(command);
-      // Second call with the same key must NOT throw 404 even though the
-      // row is already gone (mirrors the proxy's idempotent replay).
-      await gateway.deleteUsageCap(command);
-      final list = await gateway.listOperators();
-      expect(list.single.caps, isEmpty);
-    });
+    test(
+      'replayed delete under the same key is a no-op (idempotent)',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(
+          seed: <PricingOperatorBundle>[
+            bundle(caps: <UsageCapRow>[capRow()]),
+          ],
+        );
+        const command = UsageCapDeleteCommand(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          usageClass: 'advisor_qa',
+          idempotencyKey: 'k-del-replay',
+        );
+        await gateway.deleteUsageCap(command);
+        // Second call with the same key must NOT throw 404 even though the
+        // row is already gone (mirrors the proxy's idempotent replay).
+        await gateway.deleteUsageCap(command);
+        final list = await gateway.listOperators();
+        expect(list.single.caps, isEmpty);
+      },
+    );
 
-    test('fetchSpendSummary returns an empty summary in demo (fallback path)',
-        () async {
-      final gateway = InMemoryPricingTierAdminGateway(
-        seed: <PricingOperatorBundle>[bundle()],
-      );
-      final summary = await gateway.fetchSpendSummary('op-1');
-      expect(summary.byLocationAndClass, isEmpty);
-      expect(summary.spendFor('loc-1', 'advisor_qa'), isNull);
-    });
+    test(
+      'fetchSpendSummary returns an empty summary in demo (fallback path)',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(
+          seed: <PricingOperatorBundle>[bundle()],
+        );
+        final summary = await gateway.fetchSpendSummary('op-1');
+        expect(summary.byLocationAndClass, isEmpty);
+        expect(summary.spendFor('loc-1', 'advisor_qa'), isNull);
+      },
+    );
   });
 
   group('InMemoryPricingTierAdminGateway — applyTierTemplate', () {
-    test('Premium template seeds advisor_qa cap and switches tier',
-        () async {
+    test('Premium template seeds advisor_qa cap and switches tier', () async {
       final gateway = InMemoryPricingTierAdminGateway(
         seed: <PricingOperatorBundle>[bundle(tier: 'starter')],
       );
@@ -391,8 +392,7 @@ void main() {
       expect(classes, contains('workflow_schedule'));
     });
 
-    test('Enterprise template flips tier without overwriting caps',
-        () async {
+    test('Enterprise template flips tier without overwriting caps', () async {
       final cap = UsageCapRow(
         capId: 'cap-prior',
         operatorId: 'op-1',
@@ -448,12 +448,9 @@ void main() {
       );
     });
 
-    test('rejects when the operator has no primary_location_id',
-        () async {
+    test('rejects when the operator has no primary_location_id', () async {
       final gateway = InMemoryPricingTierAdminGateway(
-        seed: <PricingOperatorBundle>[
-          bundle(primaryLocationId: null),
-        ],
+        seed: <PricingOperatorBundle>[bundle(primaryLocationId: null)],
       );
       Object? thrown;
       try {
@@ -481,8 +478,14 @@ void main() {
       final plans = await gateway.listPlanCatalog();
       expect(
         plans.map((p) => p.tierKey).toList(),
-        equals(<String>['pilot', 'starter', 'premium', 'elite', 'pro',
-            'enterprise']),
+        equals(<String>[
+          'pilot',
+          'starter',
+          'premium',
+          'elite',
+          'pro',
+          'enterprise',
+        ]),
       );
       // Seed values mirror the migration + reconciled pricing model.
       final elite = plans.firstWhere((p) => p.tierKey == 'elite');
@@ -498,34 +501,34 @@ void main() {
       expect(enterprise.onboardingMinUsd, isNull);
     });
 
-    test('updatePlanPricing mutates the row and listPlanCatalog reflects it',
-        () async {
-      final gateway = InMemoryPricingTierAdminGateway(
-        actorUserId: 'actor-x',
-      );
-      final updated = await gateway.updatePlanPricing(
-        const PricingPlanPricingUpdateCommand(
-          tierKey: 'premium',
-          monthlyUsd: 300,
-          firstNSeats: 25,
-          firstSeatUsd: 6,
-          additionalSeatUsd: 4,
-          onboardingMinUsd: 800,
-          onboardingMaxUsd: 2200,
-          idempotencyKey: 'k-plan-premium',
-        ),
-      );
-      expect(updated.monthlyUsd, equals(300));
-      expect(updated.firstSeatUsd, equals(6));
-      expect(updated.updatedBy, equals('actor-x'));
-      expect(updated.updatedAt, isNotNull);
+    test(
+      'updatePlanPricing mutates the row and listPlanCatalog reflects it',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(actorUserId: 'actor-x');
+        final updated = await gateway.updatePlanPricing(
+          const PricingPlanPricingUpdateCommand(
+            tierKey: 'premium',
+            monthlyUsd: 300,
+            firstNSeats: 25,
+            firstSeatUsd: 6,
+            additionalSeatUsd: 4,
+            onboardingMinUsd: 800,
+            onboardingMaxUsd: 2200,
+            idempotencyKey: 'k-plan-premium',
+          ),
+        );
+        expect(updated.monthlyUsd, equals(300));
+        expect(updated.firstSeatUsd, equals(6));
+        expect(updated.updatedBy, equals('actor-x'));
+        expect(updated.updatedAt, isNotNull);
 
-      final plans = await gateway.listPlanCatalog();
-      final premium = plans.firstWhere((p) => p.tierKey == 'premium');
-      expect(premium.monthlyUsd, equals(300));
-      expect(premium.firstNSeats, equals(25));
-      expect(premium.additionalSeatUsd, equals(4));
-    });
+        final plans = await gateway.listPlanCatalog();
+        final premium = plans.firstWhere((p) => p.tierKey == 'premium');
+        expect(premium.monthlyUsd, equals(300));
+        expect(premium.firstNSeats, equals(25));
+        expect(premium.additionalSeatUsd, equals(4));
+      },
+    );
 
     test('updatePlanPricing accepts null fields (clear to none)', () async {
       final gateway = InMemoryPricingTierAdminGateway();
@@ -545,8 +548,7 @@ void main() {
       expect(updated.firstSeatUsd, isNull);
     });
 
-    test('updatePlanPricing rejects an unknown tier_key (404-style)',
-        () async {
+    test('updatePlanPricing rejects an unknown tier_key (404-style)', () async {
       final gateway = InMemoryPricingTierAdminGateway();
       Object? thrown;
       try {
@@ -597,36 +599,38 @@ void main() {
       );
     });
 
-    test('replayed updatePlanPricing under the same key returns the cached row',
-        () async {
-      final gateway = InMemoryPricingTierAdminGateway();
-      const command = PricingPlanPricingUpdateCommand(
-        tierKey: 'starter',
-        monthlyUsd: 275,
-        firstNSeats: null,
-        firstSeatUsd: null,
-        additionalSeatUsd: null,
-        onboardingMinUsd: 500,
-        onboardingMaxUsd: 1000,
-        idempotencyKey: 'k-plan-replay',
-      );
-      final first = await gateway.updatePlanPricing(command);
-      // Replay with a DIFFERENT value under the same key — cached wins.
-      final second = await gateway.updatePlanPricing(
-        const PricingPlanPricingUpdateCommand(
+    test(
+      'replayed updatePlanPricing under the same key returns the cached row',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway();
+        const command = PricingPlanPricingUpdateCommand(
           tierKey: 'starter',
-          monthlyUsd: 999,
+          monthlyUsd: 275,
           firstNSeats: null,
           firstSeatUsd: null,
           additionalSeatUsd: null,
           onboardingMinUsd: 500,
           onboardingMaxUsd: 1000,
           idempotencyKey: 'k-plan-replay',
-        ),
-      );
-      expect(second.monthlyUsd, equals(first.monthlyUsd));
-      expect(second.monthlyUsd, equals(275));
-    });
+        );
+        final first = await gateway.updatePlanPricing(command);
+        // Replay with a DIFFERENT value under the same key — cached wins.
+        final second = await gateway.updatePlanPricing(
+          const PricingPlanPricingUpdateCommand(
+            tierKey: 'starter',
+            monthlyUsd: 999,
+            firstNSeats: null,
+            firstSeatUsd: null,
+            additionalSeatUsd: null,
+            onboardingMinUsd: 500,
+            onboardingMaxUsd: 1000,
+            idempotencyKey: 'k-plan-replay',
+          ),
+        );
+        expect(second.monthlyUsd, equals(first.monthlyUsd));
+        expect(second.monthlyUsd, equals(275));
+      },
+    );
   });
 
   group('InMemoryPricingTierAdminGateway — entitlements (Phase 5a)', () {
@@ -662,43 +666,47 @@ void main() {
       }
     });
 
-    test('listEntitlements returns rows in tier-ladder, feature order',
-        () async {
-      final gateway = InMemoryPricingTierAdminGateway();
-      final entitlements = await gateway.listEntitlements();
-      // The first six rows are Pilot's features in display order.
-      expect(
-        entitlements.take(kFeatureSlugOrder.length).map((e) => e.tierKey),
-        everyElement(equals('pilot')),
-      );
-      expect(
-        entitlements.take(kFeatureSlugOrder.length).map((e) => e.featureSlug),
-        equals(kFeatureSlugOrder),
-      );
-    });
+    test(
+      'listEntitlements returns rows in tier-ladder, feature order',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway();
+        final entitlements = await gateway.listEntitlements();
+        // The first six rows are Pilot's features in display order.
+        expect(
+          entitlements.take(kFeatureSlugOrder.length).map((e) => e.tierKey),
+          everyElement(equals('pilot')),
+        );
+        expect(
+          entitlements.take(kFeatureSlugOrder.length).map((e) => e.featureSlug),
+          equals(kFeatureSlugOrder),
+        );
+      },
+    );
 
-    test('updateEntitlement toggles a cell and listEntitlements reflects it',
-        () async {
-      final gateway = InMemoryPricingTierAdminGateway(actorUserId: 'actor-x');
-      // Turn LMS ON for Starter (off by default).
-      final updated = await gateway.updateEntitlement(
-        const FeatureEntitlementUpdateCommand(
-          tierKey: 'starter',
-          featureSlug: 'lms',
-          enabled: true,
-          idempotencyKey: 'k-ent-starter-lms',
-        ),
-      );
-      expect(updated.enabled, isTrue);
-      expect(updated.updatedBy, equals('actor-x'));
-      expect(updated.updatedAt, isNotNull);
+    test(
+      'updateEntitlement toggles a cell and listEntitlements reflects it',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(actorUserId: 'actor-x');
+        // Turn LMS ON for Starter (off by default).
+        final updated = await gateway.updateEntitlement(
+          const FeatureEntitlementUpdateCommand(
+            tierKey: 'starter',
+            featureSlug: 'lms',
+            enabled: true,
+            idempotencyKey: 'k-ent-starter-lms',
+          ),
+        );
+        expect(updated.enabled, isTrue);
+        expect(updated.updatedBy, equals('actor-x'));
+        expect(updated.updatedAt, isNotNull);
 
-      final entitlements = await gateway.listEntitlements();
-      final starterLms = entitlements.firstWhere(
-        (e) => e.tierKey == 'starter' && e.featureSlug == 'lms',
-      );
-      expect(starterLms.enabled, isTrue);
-    });
+        final entitlements = await gateway.listEntitlements();
+        final starterLms = entitlements.firstWhere(
+          (e) => e.tierKey == 'starter' && e.featureSlug == 'lms',
+        );
+        expect(starterLms.enabled, isTrue);
+      },
+    );
 
     test('updateEntitlement can turn a feature OFF', () async {
       final gateway = InMemoryPricingTierAdminGateway();
@@ -719,8 +727,7 @@ void main() {
       expect(premiumAdvisor.enabled, isFalse);
     });
 
-    test('updateEntitlement rejects an unknown tier_key (404-style)',
-        () async {
+    test('updateEntitlement rejects an unknown tier_key (404-style)', () async {
       final gateway = InMemoryPricingTierAdminGateway();
       Object? thrown;
       try {
@@ -741,49 +748,246 @@ void main() {
       expect(error.statusCode, equals(404));
     });
 
-    test('updateEntitlement rejects an unknown feature_slug (404-style)',
-        () async {
-      final gateway = InMemoryPricingTierAdminGateway();
+    test(
+      'updateEntitlement rejects an unknown feature_slug (404-style)',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway();
+        Object? thrown;
+        try {
+          await gateway.updateEntitlement(
+            const FeatureEntitlementUpdateCommand(
+              tierKey: 'premium',
+              featureSlug: 'teleportation',
+              enabled: true,
+              idempotencyKey: 'k-ent-bad-feature',
+            ),
+          );
+        } catch (e) {
+          thrown = e;
+        }
+        expect(thrown, isA<PricingTierAdminGatewayError>());
+        final error = thrown! as PricingTierAdminGatewayError;
+        expect(error.errorCode, equals('unknown_feature'));
+        expect(error.statusCode, equals(404));
+      },
+    );
+
+    test(
+      'replayed updateEntitlement under the same key returns cached row',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway();
+        const command = FeatureEntitlementUpdateCommand(
+          tierKey: 'starter',
+          featureSlug: 'lms',
+          enabled: true,
+          idempotencyKey: 'k-ent-replay',
+        );
+        final first = await gateway.updateEntitlement(command);
+        // Replay with a DIFFERENT value under the same key — cached wins.
+        final second = await gateway.updateEntitlement(
+          const FeatureEntitlementUpdateCommand(
+            tierKey: 'starter',
+            featureSlug: 'lms',
+            enabled: false,
+            idempotencyKey: 'k-ent-replay',
+          ),
+        );
+        expect(second.enabled, equals(first.enabled));
+        expect(second.enabled, isTrue);
+      },
+    );
+  });
+
+  group('InMemoryPricingTierAdminGateway - scoped contracts', () {
+    test('location inherits the nearest scoped custom contract', () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[bundle(tier: 'enterprise')],
+        scopedContractsSeed: <ScopedPricingContractOverride>[
+          const ScopedPricingContractOverride(
+            id: 'contract-business',
+            scope: ScopedPricingContractScope(
+              operatorId: 'op-1',
+              scopeType: ScopedPricingContractScopeType.business,
+              displayName: 'Cafe op-1',
+            ),
+            value: ScopedPricingContractValue(
+              tierKey: 'enterprise',
+              monthlyUsd: 2500,
+              advisorCapMonthlyUsd: 400,
+              contractLabel: 'Enterprise MSA',
+            ),
+          ),
+        ],
+      );
+
+      final effective = await gateway.fetchEffectiveScopedContract(
+        const ScopedPricingContractScope(
+          operatorId: 'op-1',
+          scopeType: ScopedPricingContractScopeType.location,
+          orgUnitId: 'ou-east',
+          locationId: 'loc-1',
+          displayName: 'Toronto Yorkville',
+        ),
+      );
+
+      expect(
+        effective.overrideStatus,
+        equals(ScopedPricingContractOverrideStatus.inherited),
+      );
+      expect(effective.inheritedSource.overrideId, equals('contract-business'));
+      expect(effective.effectiveValue.monthlyUsd, equals(2500));
+      expect(effective.effectiveValue.advisorCapMonthlyUsd, equals(400));
+      expect(effective.mutationTarget.existingOverrideId, isNull);
+      expect(effective.mutationTarget.canDelete, isFalse);
+    });
+
+    test(
+      'saveScopedContract sets the selected scope and resolves set_here',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(
+          seed: <PricingOperatorBundle>[bundle(tier: 'enterprise')],
+          actorUserId: 'admin-1',
+          idGenerator: () => 'contract-location',
+        );
+
+        final saved = await gateway.saveScopedContract(
+          ScopedPricingContractSaveCommand(
+            targetScope: const ScopedPricingContractScope(
+              operatorId: 'op-1',
+              scopeType: ScopedPricingContractScopeType.location,
+              orgUnitId: 'ou-east',
+              locationId: 'loc-1',
+            ),
+            value: const ScopedPricingContractValue(
+              tierKey: 'enterprise',
+              monthlyUsd: 500,
+              firstNSeats: 20,
+              firstSeatUsd: 12,
+              additionalSeatUsd: 8,
+              onboardingMinUsd: 1500,
+              onboardingMaxUsd: 3000,
+              advisorCapMonthlyUsd: 300,
+              billingOwnerOrgUnitId: 'ou-finance',
+              contractLabel: 'Yorkville local terms',
+              internalNote: 'Signed in May.',
+            ),
+            adminReason: 'Signed local enterprise amendment.',
+            idempotencyKey: 'idem-contract-save',
+          ),
+        );
+
+        expect(
+          saved.overrideStatus,
+          equals(ScopedPricingContractOverrideStatus.setHere),
+        );
+        expect(saved.inheritedSource.overrideId, equals('contract-location'));
+        expect(
+          saved.mutationTarget.existingOverrideId,
+          equals('contract-location'),
+        );
+        expect(saved.mutationTarget.canDelete, isTrue);
+        expect(saved.effectiveValue.updatedBy, equals('admin-1'));
+        expect(
+          saved.effectiveValue.billingOwnerOrgUnitId,
+          equals('ou-finance'),
+        );
+
+        final fetched = await gateway.fetchEffectiveScopedContract(
+          const ScopedPricingContractScope(
+            operatorId: 'op-1',
+            scopeType: ScopedPricingContractScopeType.location,
+            orgUnitId: 'ou-east',
+            locationId: 'loc-1',
+          ),
+        );
+        expect(fetched.effectiveValue.monthlyUsd, equals(500));
+      },
+    );
+
+    test(
+      'deleteScopedContract clears to inherited value and replays safely',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(
+          seed: <PricingOperatorBundle>[bundle(tier: 'enterprise')],
+          scopedContractsSeed: <ScopedPricingContractOverride>[
+            const ScopedPricingContractOverride(
+              id: 'contract-business',
+              scope: ScopedPricingContractScope(
+                operatorId: 'op-1',
+                scopeType: ScopedPricingContractScopeType.business,
+              ),
+              value: ScopedPricingContractValue(
+                tierKey: 'enterprise',
+                monthlyUsd: 2500,
+              ),
+            ),
+            const ScopedPricingContractOverride(
+              id: 'contract-location',
+              scope: ScopedPricingContractScope(
+                operatorId: 'op-1',
+                scopeType: ScopedPricingContractScopeType.location,
+                orgUnitId: 'ou-east',
+                locationId: 'loc-1',
+              ),
+              value: ScopedPricingContractValue(
+                tierKey: 'enterprise',
+                monthlyUsd: 500,
+              ),
+            ),
+          ],
+        );
+        const command = ScopedPricingContractDeleteCommand(
+          contractOverrideId: 'contract-location',
+          selectedScope: ScopedPricingContractScope(
+            operatorId: 'op-1',
+            scopeType: ScopedPricingContractScopeType.location,
+            orgUnitId: 'ou-east',
+            locationId: 'loc-1',
+          ),
+          adminReason: 'Clear location override.',
+          idempotencyKey: 'idem-contract-delete',
+        );
+
+        final first = await gateway.deleteScopedContract(command);
+        final second = await gateway.deleteScopedContract(command);
+
+        expect(second.overrideStatus, equals(first.overrideStatus));
+        expect(
+          second.overrideStatus,
+          equals(ScopedPricingContractOverrideStatus.inherited),
+        );
+        expect(second.inheritedSource.overrideId, equals('contract-business'));
+        expect(second.effectiveValue.monthlyUsd, equals(2500));
+        expect(second.mutationTarget.canDelete, isFalse);
+      },
+    );
+
+    test('scoped contract writes reject an empty admin_reason', () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[bundle(tier: 'enterprise')],
+      );
       Object? thrown;
       try {
-        await gateway.updateEntitlement(
-          const FeatureEntitlementUpdateCommand(
-            tierKey: 'premium',
-            featureSlug: 'teleportation',
-            enabled: true,
-            idempotencyKey: 'k-ent-bad-feature',
+        await gateway.saveScopedContract(
+          const ScopedPricingContractSaveCommand(
+            targetScope: ScopedPricingContractScope(
+              operatorId: 'op-1',
+              scopeType: ScopedPricingContractScopeType.business,
+            ),
+            value: ScopedPricingContractValue(tierKey: 'enterprise'),
+            adminReason: '',
+            idempotencyKey: 'idem-missing-reason',
           ),
         );
       } catch (e) {
         thrown = e;
       }
-      expect(thrown, isA<PricingTierAdminGatewayError>());
-      final error = thrown! as PricingTierAdminGatewayError;
-      expect(error.errorCode, equals('unknown_feature'));
-      expect(error.statusCode, equals(404));
-    });
 
-    test('replayed updateEntitlement under the same key returns cached row',
-        () async {
-      final gateway = InMemoryPricingTierAdminGateway();
-      const command = FeatureEntitlementUpdateCommand(
-        tierKey: 'starter',
-        featureSlug: 'lms',
-        enabled: true,
-        idempotencyKey: 'k-ent-replay',
+      expect(thrown, isA<PricingTierAdminGatewayError>());
+      expect(
+        (thrown! as PricingTierAdminGatewayError).errorCode,
+        equals('missing_admin_reason'),
       );
-      final first = await gateway.updateEntitlement(command);
-      // Replay with a DIFFERENT value under the same key — cached wins.
-      final second = await gateway.updateEntitlement(
-        const FeatureEntitlementUpdateCommand(
-          tierKey: 'starter',
-          featureSlug: 'lms',
-          enabled: false,
-          idempotencyKey: 'k-ent-replay',
-        ),
-      );
-      expect(second.enabled, equals(first.enabled));
-      expect(second.enabled, isTrue);
     });
   });
 
@@ -807,42 +1011,39 @@ void main() {
       },
     );
 
-    test(
-      'second upsertUsageCap with same key returns cached row '
-      '(no second mutation)',
-      () async {
-        final gateway = InMemoryPricingTierAdminGateway(
-          seed: <PricingOperatorBundle>[bundle()],
-          actorUserId: 'actor-x',
-        );
-        final first = await gateway.upsertUsageCap(
-          const UsageCapUpsertCommand(
-            operatorId: 'op-1',
-            locationId: 'loc-1',
-            usageClass: 'advisor_qa',
-            monthlyCapUsd: 50.0,
-            perInvocationCapUsd: 0.10,
-            idempotencyKey: 'idem-cap',
-          ),
-        );
-        // Replay with a DIFFERENT cap value under the same key — the
-        // cached result wins (matches the proxy's
-        // `idempotency_payload_mismatch` envelope by ignoring the
-        // mutation).
-        final second = await gateway.upsertUsageCap(
-          const UsageCapUpsertCommand(
-            operatorId: 'op-1',
-            locationId: 'loc-1',
-            usageClass: 'advisor_qa',
-            monthlyCapUsd: 999.0,
-            perInvocationCapUsd: 0.99,
-            idempotencyKey: 'idem-cap',
-          ),
-        );
-        expect(second.monthlyCapUsd, equals(first.monthlyCapUsd));
-        expect(second.monthlyCapUsd, equals(50.0));
-      },
-    );
+    test('second upsertUsageCap with same key returns cached row '
+        '(no second mutation)', () async {
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[bundle()],
+        actorUserId: 'actor-x',
+      );
+      final first = await gateway.upsertUsageCap(
+        const UsageCapUpsertCommand(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 50.0,
+          perInvocationCapUsd: 0.10,
+          idempotencyKey: 'idem-cap',
+        ),
+      );
+      // Replay with a DIFFERENT cap value under the same key — the
+      // cached result wins (matches the proxy's
+      // `idempotency_payload_mismatch` envelope by ignoring the
+      // mutation).
+      final second = await gateway.upsertUsageCap(
+        const UsageCapUpsertCommand(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 999.0,
+          perInvocationCapUsd: 0.99,
+          idempotencyKey: 'idem-cap',
+        ),
+      );
+      expect(second.monthlyCapUsd, equals(first.monthlyCapUsd));
+      expect(second.monthlyCapUsd, equals(50.0));
+    });
 
     test(
       'second applyTierTemplate with same key returns cached bundle',
@@ -866,141 +1067,132 @@ void main() {
   // HARD-H — Http variant attaches the Idempotency-Key header on
   // mutating commands.
   group('HttpPricingTierAdminGateway — Idempotency-Key wiring', () {
-    test(
-      'upsertUsageCap PUTs with Idempotency-Key header and JSON body '
-      'WITHOUT the key inside',
-      () async {
-        final captured = <_CapturedAdminRequest>[];
-        final client = _SingleResponseClient(
-          captured: captured,
-          response: _HttpFixture(
-            statusCode: 200,
-            body: <String, Object?>{
-              'cap': <String, Object?>{
-                'cap_id': 'cap-x',
-                'operator_id': 'op-1',
-                'location_id': 'loc-1',
-                'usage_class': 'advisor_qa',
-                'monthly_cap_usd': 50.0,
-                'per_invocation_cap_usd': 0.10,
-                'staff_id': null,
-                'workflow_id': null,
-                'created_by': null,
-                'updated_by': null,
-                'created_at': '2026-05-02T12:00:00.000Z',
-                'updated_at': '2026-05-02T12:00:00.000Z',
-              },
+    test('upsertUsageCap PUTs with Idempotency-Key header and JSON body '
+        'WITHOUT the key inside', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: <String, Object?>{
+            'cap': <String, Object?>{
+              'cap_id': 'cap-x',
+              'operator_id': 'op-1',
+              'location_id': 'loc-1',
+              'usage_class': 'advisor_qa',
+              'monthly_cap_usd': 50.0,
+              'per_invocation_cap_usd': 0.10,
+              'staff_id': null,
+              'workflow_id': null,
+              'created_by': null,
+              'updated_by': null,
+              'created_at': '2026-05-02T12:00:00.000Z',
+              'updated_at': '2026-05-02T12:00:00.000Z',
             },
-          ),
-        );
-        final gateway = HttpPricingTierAdminGateway(
-          baseUri: Uri.parse('https://proxy.example.com'),
-          bearerTokenProvider: () async => 'fake.token',
-          httpClient: client,
-        );
-        await gateway.upsertUsageCap(
-          const UsageCapUpsertCommand(
-            operatorId: 'op-1',
-            locationId: 'loc-1',
-            usageClass: 'advisor_qa',
-            monthlyCapUsd: 50.0,
-            perInvocationCapUsd: 0.10,
-            idempotencyKey: 'idem-http-cap',
-          ),
-        );
-        final req = captured.single;
-        expect(req.method, equals('PUT'));
-        expect(req.uri.path, equals('/v1/admin/pricing/usage-caps'));
-        expect(
-          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
-          equals('idem-http-cap'),
-        );
-        expect(req.body.containsKey('idempotency_key'), isFalse);
-      },
-    );
+          },
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+      await gateway.upsertUsageCap(
+        const UsageCapUpsertCommand(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 50.0,
+          perInvocationCapUsd: 0.10,
+          idempotencyKey: 'idem-http-cap',
+        ),
+      );
+      final req = captured.single;
+      expect(req.method, equals('PUT'));
+      expect(req.uri.path, equals('/v1/admin/pricing/usage-caps'));
+      expect(
+        req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+        equals('idem-http-cap'),
+      );
+      expect(req.body.containsKey('idempotency_key'), isFalse);
+    });
 
-    test(
-      'applyTierTemplate POSTs with Idempotency-Key header',
-      () async {
-        final captured = <_CapturedAdminRequest>[];
-        final client = _SingleResponseClient(
-          captured: captured,
-          response: _HttpFixture(
-            statusCode: 200,
-            body: <String, Object?>{
-              'operator': <String, Object?>{
-                'operator_id': 'op-1',
-                'business_name': 'Cafe',
-                'subscription_tier': 'premium',
-                'preferred_currency': 'USD',
-                'primary_location_id': 'loc-1',
-              },
-              'caps': <Map<String, Object?>>[],
+    test('applyTierTemplate POSTs with Idempotency-Key header', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: <String, Object?>{
+            'operator': <String, Object?>{
+              'operator_id': 'op-1',
+              'business_name': 'Cafe',
+              'subscription_tier': 'premium',
+              'preferred_currency': 'USD',
+              'primary_location_id': 'loc-1',
             },
-          ),
-        );
-        final gateway = HttpPricingTierAdminGateway(
-          baseUri: Uri.parse('https://proxy.example.com'),
-          bearerTokenProvider: () async => 'fake.token',
-          httpClient: client,
-        );
-        await gateway.applyTierTemplate(
-          const ApplyTierTemplateCommand(
-            operatorId: 'op-1',
-            tierKey: 'premium',
-            idempotencyKey: 'idem-http-apply',
-          ),
-        );
-        final req = captured.single;
-        expect(req.method, equals('POST'));
-        expect(
-          req.uri.path,
-          equals('/v1/admin/pricing/operators/op-1/apply-template'),
-        );
-        expect(
-          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
-          equals('idem-http-apply'),
-        );
-      },
-    );
+            'caps': <Map<String, Object?>>[],
+          },
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+      await gateway.applyTierTemplate(
+        const ApplyTierTemplateCommand(
+          operatorId: 'op-1',
+          tierKey: 'premium',
+          idempotencyKey: 'idem-http-apply',
+        ),
+      );
+      final req = captured.single;
+      expect(req.method, equals('POST'));
+      expect(
+        req.uri.path,
+        equals('/v1/admin/pricing/operators/op-1/apply-template'),
+      );
+      expect(
+        req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+        equals('idem-http-apply'),
+      );
+    });
 
-    test(
-      'deleteUsageCap DELETEs with Idempotency-Key header and logical-key '
-      'body',
-      () async {
-        final captured = <_CapturedAdminRequest>[];
-        final client = _SingleResponseClient(
-          captured: captured,
-          response: _HttpFixture(
-            statusCode: 200,
-            body: <String, Object?>{'deleted': true},
-          ),
-        );
-        final gateway = HttpPricingTierAdminGateway(
-          baseUri: Uri.parse('https://proxy.example.com'),
-          bearerTokenProvider: () async => 'fake.token',
-          httpClient: client,
-        );
-        await gateway.deleteUsageCap(
-          const UsageCapDeleteCommand(
-            operatorId: 'op-1',
-            locationId: 'loc-1',
-            usageClass: 'advisor_qa',
-            idempotencyKey: 'idem-http-del',
-          ),
-        );
-        final req = captured.single;
-        expect(req.method, equals('DELETE'));
-        expect(req.uri.path, equals('/v1/admin/pricing/usage-caps'));
-        expect(
-          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
-          equals('idem-http-del'),
-        );
-        expect(req.body['operator_id'], equals('op-1'));
-        expect(req.body['usage_class'], equals('advisor_qa'));
-        expect(req.body.containsKey('idempotency_key'), isFalse);
-      },
-    );
+    test('deleteUsageCap DELETEs with Idempotency-Key header and logical-key '
+        'body', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: <String, Object?>{'deleted': true},
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+      await gateway.deleteUsageCap(
+        const UsageCapDeleteCommand(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          usageClass: 'advisor_qa',
+          idempotencyKey: 'idem-http-del',
+        ),
+      );
+      final req = captured.single;
+      expect(req.method, equals('DELETE'));
+      expect(req.uri.path, equals('/v1/admin/pricing/usage-caps'));
+      expect(
+        req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+        equals('idem-http-del'),
+      );
+      expect(req.body['operator_id'], equals('op-1'));
+      expect(req.body['usage_class'], equals('advisor_qa'));
+      expect(req.body.containsKey('idempotency_key'), isFalse);
+    });
 
     test(
       'fetchSpendSummary GETs the spend-summary path and parses the rows',
@@ -1039,116 +1231,110 @@ void main() {
       },
     );
 
-    test(
-      'listPlanCatalog GETs /plans and parses the rows (Phase 3)',
-      () async {
-        final captured = <_CapturedAdminRequest>[];
-        final client = _SingleResponseClient(
-          captured: captured,
-          response: _HttpFixture(
-            statusCode: 200,
-            body: <String, Object?>{
-              'plans': <Map<String, Object?>>[
-                <String, Object?>{
-                  'tier_key': 'elite',
-                  'monthly_usd': 250.0,
-                  'first_n_seats': 20,
-                  'first_seat_usd': 10.0,
-                  'additional_seat_usd': 5.0,
-                  'onboarding_min_usd': 1500.0,
-                  'onboarding_max_usd': 3500.0,
-                  'updated_at': '2026-05-02T12:00:00.000Z',
-                  'updated_by': 'user_admin',
-                },
-                <String, Object?>{
-                  'tier_key': 'enterprise',
-                  'monthly_usd': null,
-                  'first_n_seats': null,
-                  'first_seat_usd': null,
-                  'additional_seat_usd': null,
-                  'onboarding_min_usd': null,
-                  'onboarding_max_usd': null,
-                  'updated_at': null,
-                  'updated_by': null,
-                },
-              ],
-            },
-          ),
-        );
-        final gateway = HttpPricingTierAdminGateway(
-          baseUri: Uri.parse('https://proxy.example.com'),
-          bearerTokenProvider: () async => 'fake.token',
-          httpClient: client,
-        );
-        final plans = await gateway.listPlanCatalog();
-        final req = captured.single;
-        expect(req.method, equals('GET'));
-        expect(req.uri.path, equals('/v1/admin/pricing/plans'));
-        expect(plans, hasLength(2));
-        expect(plans.first.tierKey, equals('elite'));
-        expect(plans.first.firstSeatUsd, equals(10.0));
-        // Enterprise null fields parse as null, not phantom 0.
-        expect(plans.last.monthlyUsd, isNull);
-        expect(plans.last.onboardingMinUsd, isNull);
-      },
-    );
-
-    test(
-      'updatePlanPricing PATCHes /plans/{tier_key} with Idempotency-Key '
-      'header and money body WITHOUT the key inside (Phase 3)',
-      () async {
-        final captured = <_CapturedAdminRequest>[];
-        final client = _SingleResponseClient(
-          captured: captured,
-          response: _HttpFixture(
-            statusCode: 200,
-            body: <String, Object?>{
-              'plan': <String, Object?>{
-                'tier_key': 'premium',
-                'monthly_usd': 300.0,
-                'first_n_seats': 25,
-                'first_seat_usd': 6.0,
-                'additional_seat_usd': 4.0,
-                'onboarding_min_usd': 800.0,
-                'onboarding_max_usd': 2200.0,
+    test('listPlanCatalog GETs /plans and parses the rows (Phase 3)', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: <String, Object?>{
+            'plans': <Map<String, Object?>>[
+              <String, Object?>{
+                'tier_key': 'elite',
+                'monthly_usd': 250.0,
+                'first_n_seats': 20,
+                'first_seat_usd': 10.0,
+                'additional_seat_usd': 5.0,
+                'onboarding_min_usd': 1500.0,
+                'onboarding_max_usd': 3500.0,
                 'updated_at': '2026-05-02T12:00:00.000Z',
                 'updated_by': 'user_admin',
               },
+              <String, Object?>{
+                'tier_key': 'enterprise',
+                'monthly_usd': null,
+                'first_n_seats': null,
+                'first_seat_usd': null,
+                'additional_seat_usd': null,
+                'onboarding_min_usd': null,
+                'onboarding_max_usd': null,
+                'updated_at': null,
+                'updated_by': null,
+              },
+            ],
+          },
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+      final plans = await gateway.listPlanCatalog();
+      final req = captured.single;
+      expect(req.method, equals('GET'));
+      expect(req.uri.path, equals('/v1/admin/pricing/plans'));
+      expect(plans, hasLength(2));
+      expect(plans.first.tierKey, equals('elite'));
+      expect(plans.first.firstSeatUsd, equals(10.0));
+      // Enterprise null fields parse as null, not phantom 0.
+      expect(plans.last.monthlyUsd, isNull);
+      expect(plans.last.onboardingMinUsd, isNull);
+    });
+
+    test('updatePlanPricing PATCHes /plans/{tier_key} with Idempotency-Key '
+        'header and money body WITHOUT the key inside (Phase 3)', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: <String, Object?>{
+            'plan': <String, Object?>{
+              'tier_key': 'premium',
+              'monthly_usd': 300.0,
+              'first_n_seats': 25,
+              'first_seat_usd': 6.0,
+              'additional_seat_usd': 4.0,
+              'onboarding_min_usd': 800.0,
+              'onboarding_max_usd': 2200.0,
+              'updated_at': '2026-05-02T12:00:00.000Z',
+              'updated_by': 'user_admin',
             },
-          ),
-        );
-        final gateway = HttpPricingTierAdminGateway(
-          baseUri: Uri.parse('https://proxy.example.com'),
-          bearerTokenProvider: () async => 'fake.token',
-          httpClient: client,
-        );
-        final updated = await gateway.updatePlanPricing(
-          const PricingPlanPricingUpdateCommand(
-            tierKey: 'premium',
-            monthlyUsd: 300,
-            firstNSeats: 25,
-            firstSeatUsd: 6,
-            additionalSeatUsd: 4,
-            onboardingMinUsd: 800,
-            onboardingMaxUsd: 2200,
-            idempotencyKey: 'idem-http-plan',
-          ),
-        );
-        expect(updated.monthlyUsd, equals(300.0));
-        final req = captured.single;
-        expect(req.method, equals('PATCH'));
-        expect(req.uri.path, equals('/v1/admin/pricing/plans/premium'));
-        expect(
-          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
-          equals('idem-http-plan'),
-        );
-        expect(req.body['monthly_usd'], equals(300));
-        expect(req.body['first_n_seats'], equals(25));
-        expect(req.body.containsKey('idempotency_key'), isFalse);
-        // tier_key travels in the path, not the body.
-        expect(req.body.containsKey('tier_key'), isFalse);
-      },
-    );
+          },
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+      final updated = await gateway.updatePlanPricing(
+        const PricingPlanPricingUpdateCommand(
+          tierKey: 'premium',
+          monthlyUsd: 300,
+          firstNSeats: 25,
+          firstSeatUsd: 6,
+          additionalSeatUsd: 4,
+          onboardingMinUsd: 800,
+          onboardingMaxUsd: 2200,
+          idempotencyKey: 'idem-http-plan',
+        ),
+      );
+      expect(updated.monthlyUsd, equals(300.0));
+      final req = captured.single;
+      expect(req.method, equals('PATCH'));
+      expect(req.uri.path, equals('/v1/admin/pricing/plans/premium'));
+      expect(
+        req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+        equals('idem-http-plan'),
+      );
+      expect(req.body['monthly_usd'], equals(300));
+      expect(req.body['first_n_seats'], equals(25));
+      expect(req.body.containsKey('idempotency_key'), isFalse);
+      // tier_key travels in the path, not the body.
+      expect(req.body.containsKey('tier_key'), isFalse);
+    });
 
     test(
       'listEntitlements GETs /entitlements and parses the rows (Phase 5a)',
@@ -1196,62 +1382,311 @@ void main() {
       },
     );
 
-    test(
-      'updateEntitlement PATCHes /entitlements/{tier}/{slug} with '
-      'Idempotency-Key header and enabled body WITHOUT the key inside '
-      '(Phase 5a)',
-      () async {
-        final captured = <_CapturedAdminRequest>[];
-        final client = _SingleResponseClient(
-          captured: captured,
-          response: _HttpFixture(
-            statusCode: 200,
-            body: <String, Object?>{
-              'entitlement': <String, Object?>{
-                'tier_key': 'starter',
-                'feature_slug': 'lms',
-                'enabled': true,
-                'updated_at': '2026-05-02T12:00:00.000Z',
-                'updated_by': 'user_admin',
-              },
+    test('updateEntitlement PATCHes /entitlements/{tier}/{slug} with '
+        'Idempotency-Key header and enabled body WITHOUT the key inside '
+        '(Phase 5a)', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: <String, Object?>{
+            'entitlement': <String, Object?>{
+              'tier_key': 'starter',
+              'feature_slug': 'lms',
+              'enabled': true,
+              'updated_at': '2026-05-02T12:00:00.000Z',
+              'updated_by': 'user_admin',
             },
+          },
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+      final updated = await gateway.updateEntitlement(
+        const FeatureEntitlementUpdateCommand(
+          tierKey: 'starter',
+          featureSlug: 'lms',
+          enabled: true,
+          idempotencyKey: 'idem-http-ent',
+        ),
+      );
+      expect(updated.enabled, isTrue);
+      final req = captured.single;
+      expect(req.method, equals('PATCH'));
+      expect(
+        req.uri.path,
+        equals('/v1/admin/pricing/entitlements/starter/lms'),
+      );
+      expect(
+        req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+        equals('idem-http-ent'),
+      );
+      expect(req.body['enabled'], equals(true));
+      expect(req.body.containsKey('idempotency_key'), isFalse);
+      // tier_key + feature_slug travel in the path, not the body.
+      expect(req.body.containsKey('tier_key'), isFalse);
+      expect(req.body.containsKey('feature_slug'), isFalse);
+    });
+
+    test('fetchEffectiveScopedContract GETs scoped-contracts/effective with '
+        'query params and parses the resolver response', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: _scopedEffectiveEnvelope(
+            overrideStatus: 'inherited',
+            sourceOverrideId: 'contract-business',
+            sourceScopeType: 'business',
+            effectiveMonthlyUsd: 2500,
+            existingOverrideId: null,
+            canDelete: false,
           ),
-        );
-        final gateway = HttpPricingTierAdminGateway(
-          baseUri: Uri.parse('https://proxy.example.com'),
-          bearerTokenProvider: () async => 'fake.token',
-          httpClient: client,
-        );
-        final updated = await gateway.updateEntitlement(
-          const FeatureEntitlementUpdateCommand(
-            tierKey: 'starter',
-            featureSlug: 'lms',
-            enabled: true,
-            idempotencyKey: 'idem-http-ent',
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+
+      final effective = await gateway.fetchEffectiveScopedContract(
+        const ScopedPricingContractScope(
+          operatorId: 'op-1',
+          scopeType: ScopedPricingContractScopeType.location,
+          orgUnitId: 'ou-east',
+          locationId: 'loc-1',
+        ),
+      );
+
+      final req = captured.single;
+      expect(req.method, equals('GET'));
+      expect(
+        req.uri.path,
+        equals('/v1/admin/pricing/scoped-contracts/effective'),
+      );
+      expect(req.uri.queryParameters['operator_id'], equals('op-1'));
+      expect(req.uri.queryParameters['scope_type'], equals('location'));
+      expect(req.uri.queryParameters['org_unit_id'], equals('ou-east'));
+      expect(req.uri.queryParameters['location_id'], equals('loc-1'));
+      expect(
+        effective.overrideStatus,
+        equals(ScopedPricingContractOverrideStatus.inherited),
+      );
+      expect(effective.inheritedSource.overrideId, equals('contract-business'));
+      expect(effective.effectiveValue.monthlyUsd, equals(2500));
+    });
+
+    test('saveScopedContract PUTs with Idempotency-Key header, admin_reason '
+        'body, and no idempotency key in JSON', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: _scopedEffectiveEnvelope(
+            overrideStatus: 'set_here',
+            sourceOverrideId: 'contract-location',
+            sourceScopeType: 'location',
+            effectiveMonthlyUsd: 500,
+            existingOverrideId: 'contract-location',
+            canDelete: true,
           ),
-        );
-        expect(updated.enabled, isTrue);
-        final req = captured.single;
-        expect(req.method, equals('PATCH'));
-        expect(
-          req.uri.path,
-          equals('/v1/admin/pricing/entitlements/starter/lms'),
-        );
-        expect(
-          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
-          equals('idem-http-ent'),
-        );
-        expect(req.body['enabled'], equals(true));
-        expect(req.body.containsKey('idempotency_key'), isFalse);
-        // tier_key + feature_slug travel in the path, not the body.
-        expect(req.body.containsKey('tier_key'), isFalse);
-        expect(req.body.containsKey('feature_slug'), isFalse);
-      },
-    );
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+
+      final saved = await gateway.saveScopedContract(
+        ScopedPricingContractSaveCommand(
+          targetScope: const ScopedPricingContractScope(
+            operatorId: 'op-1',
+            scopeType: ScopedPricingContractScopeType.location,
+            orgUnitId: 'ou-east',
+            locationId: 'loc-1',
+            displayName: 'Do not send labels',
+          ),
+          value: ScopedPricingContractValue(
+            tierKey: 'enterprise',
+            monthlyUsd: 500,
+            firstNSeats: 20,
+            firstSeatUsd: 12,
+            additionalSeatUsd: 8,
+            onboardingMinUsd: 1500,
+            onboardingMaxUsd: 3000,
+            advisorCapMonthlyUsd: 300,
+            billingOwnerOrgUnitId: 'ou-finance',
+            effectiveFrom: DateTime.utc(2026, 6, 1),
+            effectiveUntil: DateTime.utc(2027, 6, 1),
+            contractLabel: 'Yorkville local terms',
+            internalNote: 'Signed in May.',
+          ),
+          adminReason: 'Signed local enterprise amendment.',
+          idempotencyKey: 'idem-http-contract-save',
+        ),
+      );
+
+      expect(
+        saved.overrideStatus,
+        equals(ScopedPricingContractOverrideStatus.setHere),
+      );
+      final req = captured.single;
+      expect(req.method, equals('PUT'));
+      expect(req.uri.path, equals('/v1/admin/pricing/scoped-contracts'));
+      expect(
+        req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+        equals('idem-http-contract-save'),
+      );
+      expect(req.body['operator_id'], equals('op-1'));
+      expect(req.body['scope_type'], equals('location'));
+      expect(req.body['location_id'], equals('loc-1'));
+      expect(req.body['monthly_usd'], equals(500));
+      expect(req.body['advisor_cap_monthly_usd'], equals(300));
+      expect(req.body['billing_owner_org_unit_id'], equals('ou-finance'));
+      expect(
+        req.body['admin_reason'],
+        equals('Signed local enterprise amendment.'),
+      );
+      expect(req.body.containsKey('idempotency_key'), isFalse);
+      expect(req.body.containsKey('display_name'), isFalse);
+    });
+
+    test('deleteScopedContract DELETEs scoped-contracts/{id} with '
+        'Idempotency-Key header and admin_reason body', () async {
+      final captured = <_CapturedAdminRequest>[];
+      final client = _SingleResponseClient(
+        captured: captured,
+        response: _HttpFixture(
+          statusCode: 200,
+          body: _scopedEffectiveEnvelope(
+            overrideStatus: 'catalog_default',
+            sourceOverrideId: null,
+            sourceScopeType: null,
+            effectiveMonthlyUsd: null,
+            existingOverrideId: null,
+            canDelete: false,
+          ),
+        ),
+      );
+      final gateway = HttpPricingTierAdminGateway(
+        baseUri: Uri.parse('https://proxy.example.com'),
+        bearerTokenProvider: () async => 'fake.token',
+        httpClient: client,
+      );
+
+      final effective = await gateway.deleteScopedContract(
+        const ScopedPricingContractDeleteCommand(
+          contractOverrideId: 'contract/location 1',
+          selectedScope: ScopedPricingContractScope(
+            operatorId: 'op-1',
+            scopeType: ScopedPricingContractScopeType.location,
+            orgUnitId: 'ou-east',
+            locationId: 'loc-1',
+          ),
+          adminReason: 'Clear location override.',
+          idempotencyKey: 'idem-http-contract-delete',
+        ),
+      );
+
+      expect(
+        effective.overrideStatus,
+        equals(ScopedPricingContractOverrideStatus.catalogDefault),
+      );
+      final req = captured.single;
+      expect(req.method, equals('DELETE'));
+      expect(
+        req.uri.path,
+        equals('/v1/admin/pricing/scoped-contracts/contract%2Flocation%201'),
+      );
+      expect(
+        req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+        equals('idem-http-contract-delete'),
+      );
+      expect(req.body['operator_id'], equals('op-1'));
+      expect(req.body['scope_type'], equals('location'));
+      expect(req.body['location_id'], equals('loc-1'));
+      expect(req.body['admin_reason'], equals('Clear location override.'));
+      expect(req.body.containsKey('idempotency_key'), isFalse);
+      expect(req.body.containsKey('id'), isFalse);
+    });
   });
 }
 
 // ─── Test helpers ─────────────────────────────────────────────────
+
+Map<String, Object?> _scopedEffectiveEnvelope({
+  required String overrideStatus,
+  required String? sourceOverrideId,
+  required String? sourceScopeType,
+  required double? effectiveMonthlyUsd,
+  required String? existingOverrideId,
+  required bool canDelete,
+}) {
+  Map<String, Object?> scopeFor(String scopeType) => <String, Object?>{
+    'operator_id': 'op-1',
+    'scope_type': scopeType,
+    if (scopeType == 'org_unit' || scopeType == 'location')
+      'org_unit_id': 'ou-east',
+    if (scopeType == 'location') 'location_id': 'loc-1',
+    'display_name': scopeType == 'business'
+        ? 'Cafe op-1'
+        : (scopeType == 'org_unit' ? 'East Region' : 'Toronto Yorkville'),
+  };
+
+  final inheritedSource = sourceScopeType == null
+      ? <String, Object?>{
+          'source_type': 'catalog_default',
+          'display_name': 'Global plan catalog',
+          'tier_key': 'enterprise',
+        }
+      : <String, Object?>{
+          'source_type': 'scoped_override',
+          'override_id': sourceOverrideId,
+          'scope': scopeFor(sourceScopeType),
+          'display_name': sourceScopeType == 'business'
+              ? 'Cafe op-1'
+              : 'Toronto Yorkville',
+          'tier_key': 'enterprise',
+        };
+  return <String, Object?>{
+    'effective_contract': <String, Object?>{
+      'selected_scope': scopeFor('location'),
+      'override_status': overrideStatus,
+      'inherited_source': inheritedSource,
+      'effective_value': <String, Object?>{
+        'tier_key': 'enterprise',
+        'monthly_usd': effectiveMonthlyUsd,
+        'first_n_seats': 20,
+        'first_seat_usd': 12,
+        'additional_seat_usd': 8,
+        'onboarding_min_usd': 1500,
+        'onboarding_max_usd': 3000,
+        'advisor_cap_monthly_usd': 300,
+        'billing_owner_org_unit_id': 'ou-finance',
+        'effective_from': '2026-06-01T00:00:00.000Z',
+        'effective_until': '2027-06-01T00:00:00.000Z',
+        'contract_label': 'Yorkville local terms',
+        'internal_note': 'Signed in May.',
+        'updated_at': '2026-05-25T12:00:00.000Z',
+        'updated_by': 'user_admin',
+      },
+      'mutation_target': <String, Object?>{
+        'scope': scopeFor('location'),
+        'existing_override_id': existingOverrideId,
+        'can_save': true,
+        'can_delete': canDelete,
+      },
+    },
+  };
+}
 
 class _CapturedAdminRequest {
   _CapturedAdminRequest({

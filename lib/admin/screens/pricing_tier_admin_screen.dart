@@ -167,6 +167,11 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
           '${entry.tierKey}::${entry.featureSlug}': entry,
       };
 
+  ScopedPricingContractEffectiveResponse? _scopedContract;
+  bool _scopedContractLoading = false;
+  String? _scopedContractError;
+  String? _scopedContractScopeKey;
+
   /// Mints a fresh idempotency key per user action so a retried PATCH,
   /// PUT, or POST at the proxy collapses to one ledger row + one audit
   /// row in `admin_request_idempotency`.
@@ -182,6 +187,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   void initState() {
     super.initState();
     _refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant PricingTierAdminScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hierarchyScope?.cacheKey != widget.hierarchyScope?.cacheKey) {
+      unawaited(_refresh());
+    }
   }
 
   Future<void> _refresh() async {
@@ -235,6 +248,9 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         } else {
           _selectedOperatorId = null;
         }
+        _scopedContract = null;
+        _scopedContractError = null;
+        _scopedContractScopeKey = widget.hierarchyScope?.cacheKey;
       });
       // Best-effort live spend for the operator now in focus. A failure
       // here is swallowed so the bars fall back to the observability
@@ -242,6 +258,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       final focused = _selectedOperatorId;
       if (focused != null) {
         unawaited(_fetchSpendSummaryFor(focused));
+        unawaited(_fetchScopedContractForCurrentScope());
       }
     } on PricingTierAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -361,6 +378,72 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     } catch (_) {
       // Endpoint not deployed yet or transient failure: keep the
       // observability fallback. No user-facing error for a read.
+    }
+  }
+
+  Future<void> _fetchScopedContractForCurrentScope() async {
+    final selected = _selected;
+    final requestScope = selected == null ? null : _contractScopeFor(selected);
+    final scopeKey = widget.hierarchyScope?.cacheKey;
+    if (requestScope == null || scopeKey == null) return;
+    setState(() {
+      _scopedContractLoading = true;
+      _scopedContractError = null;
+      _scopedContractScopeKey = scopeKey;
+    });
+    try {
+      final result = await widget.gateway.fetchEffectiveScopedContract(
+        requestScope,
+      );
+      if (!mounted || widget.hierarchyScope?.cacheKey != scopeKey) return;
+      setState(() {
+        _scopedContract = result;
+        _scopedContractLoading = false;
+      });
+    } on PricingTierAdminGatewayError catch (error) {
+      if (!mounted || widget.hierarchyScope?.cacheKey != scopeKey) return;
+      setState(() {
+        _scopedContractError = error.message;
+        _scopedContractLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || widget.hierarchyScope?.cacheKey != scopeKey) return;
+      setState(() {
+        _scopedContractError = 'Could not load custom contract terms.';
+        _scopedContractLoading = false;
+      });
+    }
+  }
+
+  ScopedPricingContractScope? _contractScopeFor(PricingOperatorBundle bundle) {
+    final scope = widget.hierarchyScope;
+    if (scope == null) return null;
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return ScopedPricingContractScope(
+          operatorId: bundle.operatorId,
+          scopeType: ScopedPricingContractScopeType.business,
+          displayName: scope.displayLabel,
+        );
+      case AdminHierarchyScopeType.orgUnit:
+        final orgUnitId = scope.orgUnitId;
+        if (orgUnitId == null || orgUnitId.isEmpty) return null;
+        return ScopedPricingContractScope(
+          operatorId: bundle.operatorId,
+          scopeType: ScopedPricingContractScopeType.orgUnit,
+          orgUnitId: orgUnitId,
+          displayName: scope.displayLabel,
+        );
+      case AdminHierarchyScopeType.location:
+        final locationId = scope.locationId;
+        if (locationId == null || locationId.isEmpty) return null;
+        return ScopedPricingContractScope(
+          operatorId: bundle.operatorId,
+          scopeType: ScopedPricingContractScopeType.location,
+          orgUnitId: scope.orgUnitId,
+          locationId: locationId,
+          displayName: scope.displayLabel,
+        );
     }
   }
 
@@ -541,7 +624,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       bundle: selected,
       observability: _observability,
       spendSummary: _spendSummaries[selected.operatorId],
+      scopedContract: _scopedContractScopeKey == widget.hierarchyScope?.cacheKey
+          ? _scopedContract
+          : null,
+      scopedContractLoading: _scopedContractLoading,
+      scopedContractError: _scopedContractError,
       editingEnabled: widget.editingEnabled,
+      onEditScopedContract: _onEditScopedContract,
+      onClearScopedContract: _onClearScopedContract,
       onApplyTemplate: _onApplyTemplate,
       onEditCap: _onEditCap,
       onAddCap: _onAddCap,
@@ -607,6 +697,55 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _onEditScopedContract(
+    PricingOperatorBundle bundle,
+    ScopedPricingContractEffectiveResponse? current,
+  ) async {
+    final targetScope =
+        current?.mutationTarget.scope ?? _contractScopeFor(bundle);
+    if (targetScope == null) return;
+    final command = await showDialog<ScopedPricingContractSaveCommand>(
+      context: context,
+      builder: (_) => _ScopedContractDialog(
+        scope: targetScope,
+        current: current?.effectiveValue,
+        existingOverrideId: current?.mutationTarget.existingOverrideId,
+        idempotencyKey: _nextIdempotencyKey(),
+      ),
+    );
+    if (command == null) return;
+    await _runAndRefresh(() async {
+      await widget.gateway.saveScopedContract(command);
+    }, successHint: 'Custom contract updated.');
+  }
+
+  Future<void> _onClearScopedContract(
+    ScopedPricingContractEffectiveResponse contract,
+  ) async {
+    final overrideId = contract.mutationTarget.existingOverrideId;
+    if (overrideId == null || overrideId.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _ConfirmDialog(
+        title: 'Clear this custom contract?',
+        message:
+            'This scope will inherit pricing from the next parent scope or the global plan catalog.',
+        confirmLabel: 'Clear contract',
+      ),
+    );
+    if (confirmed != true) return;
+    await _runAndRefresh(() async {
+      await widget.gateway.deleteScopedContract(
+        ScopedPricingContractDeleteCommand(
+          contractOverrideId: overrideId,
+          selectedScope: contract.selectedScope,
+          adminReason: 'Clear scoped custom contract.',
+          idempotencyKey: _nextIdempotencyKey(),
+        ),
+      );
+    }, successHint: 'Custom contract cleared.');
   }
 
   Future<void> _onApplyTemplate(
@@ -1516,7 +1655,12 @@ class _OperatorPricingDetail extends StatelessWidget {
     required this.bundle,
     required this.observability,
     required this.spendSummary,
+    required this.scopedContract,
+    required this.scopedContractLoading,
+    required this.scopedContractError,
     required this.editingEnabled,
+    required this.onEditScopedContract,
+    required this.onClearScopedContract,
     required this.onApplyTemplate,
     required this.onEditCap,
     required this.onAddCap,
@@ -1526,7 +1670,17 @@ class _OperatorPricingDetail extends StatelessWidget {
   final PricingOperatorBundle bundle;
   final ObservabilityEnvelope? observability;
   final OperatorSpendSummary? spendSummary;
+  final ScopedPricingContractEffectiveResponse? scopedContract;
+  final bool scopedContractLoading;
+  final String? scopedContractError;
   final bool editingEnabled;
+  final void Function(
+    PricingOperatorBundle,
+    ScopedPricingContractEffectiveResponse?,
+  )
+  onEditScopedContract;
+  final void Function(ScopedPricingContractEffectiveResponse)
+  onClearScopedContract;
   final void Function(PricingOperatorBundle, PricingTierTemplate)
   onApplyTemplate;
   final void Function(PricingOperatorBundle, UsageCapRow) onEditCap;
@@ -1543,6 +1697,16 @@ class _OperatorPricingDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _ScopedContractCard(
+            bundle: bundle,
+            contract: scopedContract,
+            loading: scopedContractLoading,
+            error: scopedContractError,
+            editingEnabled: editingEnabled,
+            onEdit: onEditScopedContract,
+            onClear: onClearScopedContract,
+          ),
+          const SizedBox(height: 16),
           _PlanMarginCard(bundle: bundle, spend: spend),
           const SizedBox(height: 16),
           if (hits.isNotEmpty) ...<Widget>[
@@ -1563,6 +1727,134 @@ class _OperatorPricingDetail extends StatelessWidget {
             onDelete: onDeleteCap,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ScopedContractCard extends StatelessWidget {
+  const _ScopedContractCard({
+    required this.bundle,
+    required this.contract,
+    required this.loading,
+    required this.error,
+    required this.editingEnabled,
+    required this.onEdit,
+    required this.onClear,
+  });
+
+  final PricingOperatorBundle bundle;
+  final ScopedPricingContractEffectiveResponse? contract;
+  final bool loading;
+  final String? error;
+  final bool editingEnabled;
+  final void Function(
+    PricingOperatorBundle,
+    ScopedPricingContractEffectiveResponse?,
+  )
+  onEdit;
+  final void Function(ScopedPricingContractEffectiveResponse) onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = contract?.effectiveValue;
+    return OperatorWebPanel(
+      title: 'Custom contract',
+      trailing: editingEnabled
+          ? Wrap(
+              spacing: 8,
+              children: <Widget>[
+                if (contract?.mutationTarget.canDelete == true)
+                  AdminActionButton(
+                    key: const Key('admin_pricing_clear_contract_button'),
+                    label: 'Clear',
+                    icon: Icons.close,
+                    onPressed: () => onClear(contract!),
+                  ),
+                AdminActionButton(
+                  key: const Key('admin_pricing_edit_contract_button'),
+                  label: 'Edit',
+                  icon: Icons.edit_outlined,
+                  onPressed: () => onEdit(bundle, contract),
+                ),
+              ],
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (loading)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                'Loading contract terms...',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            )
+          else if (error != null)
+            Text(error!, style: AppTextStyles.body13(color: AppColors.negative))
+          else ...<Widget>[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                _StatusPill(label: _contractStatusLabel(contract)),
+                Text(
+                  _contractSourceLabel(contract),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            AdminDetailRow(
+              label: 'Selected scope',
+              value: contract?.selectedScope.displayName ?? bundle.businessName,
+            ),
+            AdminDetailRow(
+              label: 'Effective plan',
+              value: _tierDisplayName(
+                value?.tierKey ?? bundle.subscriptionTier,
+              ),
+            ),
+            AdminDetailRow(
+              label: 'Monthly terms',
+              value: _money(value?.monthlyUsd),
+            ),
+            AdminDetailRow(
+              label: 'Advisor cap',
+              value: value?.advisorCapMonthlyUsd == null
+                  ? 'Custom'
+                  : '${_money(value!.advisorCapMonthlyUsd)}/mo',
+            ),
+            if (value?.contractLabel != null &&
+                value!.contractLabel!.isNotEmpty)
+              AdminDetailRow(label: 'Contract', value: value.contractLabel!),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono11(
+          color: AppColors.peacockDark,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -1938,6 +2230,32 @@ String _tierDisplayName(String tier) {
       .join(' ');
 }
 
+String _contractStatusLabel(ScopedPricingContractEffectiveResponse? contract) {
+  switch (contract?.overrideStatus) {
+    case ScopedPricingContractOverrideStatus.setHere:
+      return 'Set here';
+    case ScopedPricingContractOverrideStatus.inherited:
+      return 'Inherited';
+    case ScopedPricingContractOverrideStatus.catalogDefault:
+      return 'Catalog default';
+    case null:
+      return 'Not loaded';
+  }
+}
+
+String _contractSourceLabel(ScopedPricingContractEffectiveResponse? contract) {
+  if (contract == null) return 'Effective terms load from the pricing catalog.';
+  final source = contract.inheritedSource;
+  if (contract.overrideStatus == ScopedPricingContractOverrideStatus.setHere) {
+    return 'This scope owns these terms.';
+  }
+  if (contract.overrideStatus ==
+      ScopedPricingContractOverrideStatus.catalogDefault) {
+    return source.displayName ?? 'Inherited from global plan catalog.';
+  }
+  return 'Inherited from ${source.displayName ?? source.scope?.displayName ?? 'parent scope'}.';
+}
+
 /// Inheritance source label: DISPLAY ONLY. A cap whose `location_id`
 /// matches the operator's primary location is treated as "Set here";
 /// any other scope is shown as "Inherited". No inheritance backend is
@@ -2203,6 +2521,189 @@ class _SpendVsCapBar extends StatelessWidget {
 /// Enterprise has no monthly price, no-seat plans have null seat fees),
 /// matching the nullable proxy body fields. Returns a
 /// [PricingPlanPricingUpdateCommand] on save, null on cancel.
+class _ScopedContractDialog extends StatefulWidget {
+  const _ScopedContractDialog({
+    required this.scope,
+    required this.current,
+    required this.idempotencyKey,
+    this.existingOverrideId,
+  });
+
+  final ScopedPricingContractScope scope;
+  final ScopedPricingContractValue? current;
+  final String? existingOverrideId;
+  final String idempotencyKey;
+
+  @override
+  State<_ScopedContractDialog> createState() => _ScopedContractDialogState();
+}
+
+class _ScopedContractDialogState extends State<_ScopedContractDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _monthly;
+  late final TextEditingController _advisorCap;
+  late final TextEditingController _label;
+  late final TextEditingController _note;
+
+  @override
+  void initState() {
+    super.initState();
+    final current = widget.current;
+    _monthly = TextEditingController(text: _numText(current?.monthlyUsd));
+    _advisorCap = TextEditingController(
+      text: _numText(current?.advisorCapMonthlyUsd),
+    );
+    _label = TextEditingController(text: current?.contractLabel ?? '');
+    _note = TextEditingController(text: current?.internalNote ?? '');
+  }
+
+  @override
+  void dispose() {
+    _monthly.dispose();
+    _advisorCap.dispose();
+    _label.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OperatorWebDialog(
+      key: const Key('admin_pricing_scoped_contract_dialog'),
+      title: 'Edit custom contract',
+      icon: Icons.assignment_outlined,
+      actions: <Widget>[
+        AdminActionButton(
+          key: const Key('admin_pricing_contract_cancel_button'),
+          label: 'Cancel',
+          onPressed: () => Navigator.of(context).pop(),
+          role: AdminActionRole.quiet,
+        ),
+        AdminActionButton(
+          key: const Key('admin_pricing_contract_submit_button'),
+          label: 'Save',
+          onPressed: _onSubmit,
+          role: AdminActionRole.primary,
+        ),
+      ],
+      child: Flexible(
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                AdminDetailRow(
+                  label: 'Scope',
+                  value: widget.scope.displayName ?? 'Selected scope',
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: _LabelledField(
+                        label: 'Monthly terms (USD)',
+                        controller: _monthly,
+                        fieldKey: const Key('admin_pricing_contract_monthly'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^[0-9]*\.?[0-9]*'),
+                          ),
+                        ],
+                        validator: _optionalDecimalValidator,
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: _LabelledField(
+                        label: 'Advisor cap (USD)',
+                        controller: _advisorCap,
+                        fieldKey: const Key(
+                          'admin_pricing_contract_advisor_cap',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^[0-9]*\.?[0-9]*'),
+                          ),
+                        ],
+                        validator: _optionalDecimalValidator,
+                      ),
+                    ),
+                  ],
+                ),
+                _LabelledField(
+                  label: 'Contract label',
+                  controller: _label,
+                  fieldKey: const Key('admin_pricing_contract_label'),
+                ),
+                _LabelledField(
+                  label: 'Internal note',
+                  controller: _note,
+                  fieldKey: const Key('admin_pricing_contract_note'),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _onSubmit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final current = widget.current;
+    Navigator.of(context).pop(
+      ScopedPricingContractSaveCommand(
+        targetScope: widget.scope,
+        contractOverrideId: widget.existingOverrideId,
+        value: ScopedPricingContractValue(
+          tierKey: 'enterprise',
+          monthlyUsd: _parseNullableDouble(_monthly.text),
+          firstNSeats: current?.firstNSeats,
+          firstSeatUsd: current?.firstSeatUsd,
+          additionalSeatUsd: current?.additionalSeatUsd,
+          onboardingMinUsd: current?.onboardingMinUsd,
+          onboardingMaxUsd: current?.onboardingMaxUsd,
+          advisorCapMonthlyUsd: _parseNullableDouble(_advisorCap.text),
+          billingOwnerOrgUnitId: current?.billingOwnerOrgUnitId,
+          effectiveFrom: current?.effectiveFrom,
+          effectiveUntil: current?.effectiveUntil,
+          contractLabel: _blankToNull(_label.text),
+          internalNote: _blankToNull(_note.text),
+        ),
+        adminReason: 'Set scoped custom contract.',
+        idempotencyKey: widget.idempotencyKey,
+      ),
+    );
+  }
+
+  static String _numText(double? value) {
+    if (value == null) return '';
+    if (value == value.roundToDouble()) return value.round().toString();
+    return value.toStringAsFixed(2);
+  }
+
+  static double? _parseNullableDouble(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return double.tryParse(trimmed);
+  }
+
+  static String? _blankToNull(String raw) {
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+}
+
 class _PlanPricingDialog extends StatefulWidget {
   const _PlanPricingDialog({required this.entry, required this.idempotencyKey});
 
@@ -2721,6 +3222,7 @@ class _LabelledField extends StatelessWidget {
     this.inputFormatters,
     this.hintText,
     this.enabled = true,
+    this.maxLines = 1,
   });
 
   final String label;
@@ -2731,6 +3233,7 @@ class _LabelledField extends StatelessWidget {
   final List<TextInputFormatter>? inputFormatters;
   final String? hintText;
   final bool enabled;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -2742,6 +3245,7 @@ class _LabelledField extends StatelessWidget {
         keyboardType: keyboardType,
         inputFormatters: inputFormatters,
         enabled: enabled,
+        maxLines: maxLines,
         validator: validator,
         decoration: InputDecoration(
           labelText: label,

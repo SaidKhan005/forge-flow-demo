@@ -1,6 +1,8 @@
 // Shared admin copy helpers for translating backend grouping IDs into
 // readable labels while keeping the exact IDs visible for filtering.
 
+import '../domain/models/forge_flow_polling_tier_assignment.dart'
+    show PollingTierKey;
 import 'models/debug_console_admin_models.dart' show RequestLogStatus;
 
 const List<String> _adminMonthNames = <String>[
@@ -141,6 +143,17 @@ String adminRequestResultWording(RequestLogStatus status) {
       return 'Timed out';
     case RequestLogStatus.unknown:
       return 'Not recorded';
+  }
+}
+
+String adminPollingTierLabel(PollingTierKey tier) {
+  switch (tier) {
+    case PollingTierKey.standard:
+      return 'Regular';
+    case PollingTierKey.premium:
+      return 'Premium';
+    case PollingTierKey.custom:
+      return 'Custom';
   }
 }
 

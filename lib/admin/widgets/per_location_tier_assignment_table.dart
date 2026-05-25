@@ -289,10 +289,10 @@ class _PerLocationTierAssignmentTableState
         '${row.operatorRef.operatorId}_'
         '${row.operatorRef.locationId}',
       ),
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 900;
+          final compact = constraints.maxWidth < 760;
           final identity = _AssignmentIdentity(row: row);
           final factWrap = _AssignmentFactWrap(facts: facts);
           final notesBlock = _NotesBlock(notesLabel: notesLabel);
@@ -303,7 +303,7 @@ class _PerLocationTierAssignmentTableState
                 identity,
                 const SizedBox(height: 10),
                 factWrap,
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 notesBlock,
                 const SizedBox(height: 10),
                 Align(alignment: Alignment.centerRight, child: action),
@@ -314,11 +314,11 @@ class _PerLocationTierAssignmentTableState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(flex: 3, child: identity),
-              const SizedBox(width: 14),
+              const SizedBox(width: 18),
               Expanded(flex: 7, child: factWrap),
-              const SizedBox(width: 14),
+              const SizedBox(width: 18),
               Expanded(flex: 2, child: notesBlock),
-              const SizedBox(width: 14),
+              const SizedBox(width: 16),
               action,
             ],
           );
@@ -350,14 +350,7 @@ class _PerLocationTierAssignmentTableState
 }
 
 String _tierLabel(PollingTierKey tier) {
-  switch (tier) {
-    case PollingTierKey.standard:
-      return 'Regular';
-    case PollingTierKey.premium:
-      return 'Premium';
-    case PollingTierKey.custom:
-      return 'Custom';
-  }
+  return adminPollingTierLabel(tier);
 }
 
 class _AssignmentToolbar extends StatelessWidget {
@@ -489,8 +482,8 @@ class _AssignmentFactWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 18,
+      runSpacing: 10,
       children: [for (final fact in facts) _AssignmentFactPill(fact: fact)],
     );
   }
@@ -503,14 +496,8 @@ class _AssignmentFactPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pill = Container(
-      constraints: const BoxConstraints(minWidth: 110, maxWidth: 172),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundMid.withValues(alpha: 0.8),
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
+    final pill = ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 126, maxWidth: 172),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -593,149 +580,193 @@ class _FilterBar extends StatelessWidget {
         locationCountFilter != null ||
         vendorFilter != null ||
         operatorNameController.text.trim().isNotEmpty;
-    return Wrap(
-      spacing: 12,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        SizedBox(
-          width: 220,
-          child: DropdownButtonFormField<PollingTierKey?>(
-            key: const Key('admin_tier_filter_dropdown'),
-            initialValue: tierFilter,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Tier',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            items: <DropdownMenuItem<PollingTierKey?>>[
-              const DropdownMenuItem<PollingTierKey?>(
-                value: null,
-                child: Text('All tiers'),
-              ),
-              for (final tier in PollingTierKey.values)
-                DropdownMenuItem<PollingTierKey?>(
-                  value: tier,
-                  child: Text(_tierLabel(tier)),
-                ),
-            ],
-            onChanged: onTierChanged,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final available = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 900.0;
+        final columns = available >= 980
+            ? 4
+            : available >= 640
+            ? 2
+            : 1;
+        final fieldWidth = columns == 1
+            ? available
+            : (available - (12 * (columns - 1))) / columns;
+        final clearButton = AdminActionButton(
+          key: const Key('admin_tier_assignment_clear_filters'),
+          label: 'Clear filters',
+          onPressed: () {
+            operatorNameController.clear();
+            onTierChanged?.call(null);
+            onMarginChanged?.call(null);
+            onLocationCountChanged?.call(null);
+            onVendorChanged?.call(null);
+            onOperatorNameChanged?.call('');
+          },
+          icon: Icons.filter_alt_off_outlined,
+          minWidth: 120,
+        );
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundMid.withValues(alpha: 0.48),
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(6),
           ),
-        ),
-        SizedBox(
-          width: 220,
-          child: DropdownButtonFormField<String?>(
-            key: const Key('admin_margin_band_dropdown'),
-            initialValue: marginBandFilter,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Margin band',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            items: const <DropdownMenuItem<String?>>[
-              DropdownMenuItem<String?>(value: null, child: Text('All')),
-              DropdownMenuItem<String?>(
-                value: 'positive',
-                child: Text('Positive'),
-              ),
-              DropdownMenuItem<String?>(
-                value: 'break_even',
-                child: Text('Break-even'),
-              ),
-              DropdownMenuItem<String?>(
-                value: 'negative',
-                child: Text('Negative'),
-              ),
-            ],
-            onChanged: onMarginChanged,
-          ),
-        ),
-        SizedBox(
-          width: 230,
-          child: DropdownButtonFormField<String?>(
-            key: const Key('admin_polling_vendor_filter_dropdown'),
-            initialValue: vendorFilter,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Polling vendor',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            items: <DropdownMenuItem<String?>>[
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('All polling vendors'),
-              ),
-              for (final vendorId in kPollOnlyVendorIds)
-                DropdownMenuItem<String?>(
-                  value: vendorId,
-                  child: Text(
-                    kPollOnlyVendorDisplayNames[vendorId] ?? vendorId,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      'Filters',
+                      style: AppTextStyles.uiLabel(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ),
-                ),
+                  if (hasActiveFilters) clearButton,
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                children: [
+                  SizedBox(
+                    width: fieldWidth,
+                    child: TextField(
+                      key: const Key('admin_operator_name_field'),
+                      controller: operatorNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Operator name',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: onOperatorNameChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<PollingTierKey?>(
+                      key: const Key('admin_tier_filter_dropdown'),
+                      initialValue: tierFilter,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Tier',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: <DropdownMenuItem<PollingTierKey?>>[
+                        const DropdownMenuItem<PollingTierKey?>(
+                          value: null,
+                          child: Text('All tiers'),
+                        ),
+                        for (final tier in PollingTierKey.values)
+                          DropdownMenuItem<PollingTierKey?>(
+                            value: tier,
+                            child: Text(_tierLabel(tier)),
+                          ),
+                      ],
+                      onChanged: onTierChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<String?>(
+                      key: const Key('admin_polling_vendor_filter_dropdown'),
+                      initialValue: vendorFilter,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Polling vendor',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: <DropdownMenuItem<String?>>[
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('All polling vendors'),
+                        ),
+                        for (final vendorId in kPollOnlyVendorIds)
+                          DropdownMenuItem<String?>(
+                            value: vendorId,
+                            child: Text(
+                              kPollOnlyVendorDisplayNames[vendorId] ?? vendorId,
+                            ),
+                          ),
+                      ],
+                      onChanged: onVendorChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<String?>(
+                      key: const Key('admin_margin_band_dropdown'),
+                      initialValue: marginBandFilter,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Margin band',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const <DropdownMenuItem<String?>>[
+                        DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('All'),
+                        ),
+                        DropdownMenuItem<String?>(
+                          value: 'positive',
+                          child: Text('Positive'),
+                        ),
+                        DropdownMenuItem<String?>(
+                          value: 'break_even',
+                          child: Text('Break-even'),
+                        ),
+                        DropdownMenuItem<String?>(
+                          value: 'negative',
+                          child: Text('Negative'),
+                        ),
+                      ],
+                      onChanged: onMarginChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<LocationCountFilter?>(
+                      key: const Key('admin_location_count_dropdown'),
+                      initialValue: locationCountFilter,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Operator location count',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const <DropdownMenuItem<LocationCountFilter?>>[
+                        DropdownMenuItem<LocationCountFilter?>(
+                          value: null,
+                          child: Text('All location counts'),
+                        ),
+                        DropdownMenuItem<LocationCountFilter?>(
+                          value: 'single',
+                          child: Text('Single-location operators'),
+                        ),
+                        DropdownMenuItem<LocationCountFilter?>(
+                          value: 'multi',
+                          child: Text('Multi-location operators'),
+                        ),
+                      ],
+                      onChanged: onLocationCountChanged,
+                    ),
+                  ),
+                ],
+              ),
             ],
-            onChanged: onVendorChanged,
           ),
-        ),
-        SizedBox(
-          width: 280,
-          child: DropdownButtonFormField<LocationCountFilter?>(
-            key: const Key('admin_location_count_dropdown'),
-            initialValue: locationCountFilter,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Operator location count',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            items: const <DropdownMenuItem<LocationCountFilter?>>[
-              DropdownMenuItem<LocationCountFilter?>(
-                value: null,
-                child: Text('All location counts'),
-              ),
-              DropdownMenuItem<LocationCountFilter?>(
-                value: 'single',
-                child: Text('Single-location operators'),
-              ),
-              DropdownMenuItem<LocationCountFilter?>(
-                value: 'multi',
-                child: Text('Multi-location operators'),
-              ),
-            ],
-            onChanged: onLocationCountChanged,
-          ),
-        ),
-        SizedBox(
-          width: 240,
-          child: TextField(
-            key: const Key('admin_operator_name_field'),
-            controller: operatorNameController,
-            decoration: const InputDecoration(
-              labelText: 'Operator name',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onChanged: onOperatorNameChanged,
-          ),
-        ),
-        if (hasActiveFilters)
-          AdminActionButton(
-            key: const Key('admin_tier_assignment_clear_filters'),
-            label: 'Clear filters',
-            onPressed: () {
-              operatorNameController.clear();
-              onTierChanged?.call(null);
-              onMarginChanged?.call(null);
-              onLocationCountChanged?.call(null);
-              onVendorChanged?.call(null);
-              onOperatorNameChanged?.call('');
-            },
-            icon: Icons.filter_alt_off_outlined,
-            minWidth: 120,
-          ),
-      ],
+        );
+      },
     );
   }
 }

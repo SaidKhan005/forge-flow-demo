@@ -93,7 +93,9 @@ void main() {
           ('POST', '/v1/admin/auth/roles/abc/permissions'),
           ('POST', '/v1/auth/team/role-grants'),
           ('PATCH', '/v1/admin/pricing/operators/op-1'),
-          ('PATCH', '/v1/admin/pricing/usage-caps'),
+          ('PUT', '/v1/admin/pricing/usage-caps'),
+          ('PATCH', '/v1/admin/pricing/plans/premium'),
+          ('PUT', '/v1/admin/pricing/scoped-contracts'),
           ('POST', '/v1/admin/vendor-applicability/wage'),
         ];
         for (final probe in probes) {
