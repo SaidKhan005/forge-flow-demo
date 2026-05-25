@@ -495,6 +495,18 @@ abstract class ProxySecretNames {
   static const String mobilePushTokenEnvelopeKey =
       'MOBILE_PUSH_TOKEN_ENVELOPE_KEY';
 
+  /// Slice A4-ENC — server-side AES-256 data key (base64-encoded
+  /// 32 bytes) used to encrypt advisor conversation turns IN-PROCESS
+  /// before they are persisted, so the database never sees plaintext
+  /// (Hard Promise #7). OPTIONAL at boot: the proxy keeps starting
+  /// without it. Gated-inert until the advisor answer endpoint (A4.2)
+  /// constructs the `AdvisorConversationEnvelope` encryptor; that
+  /// endpoint fails closed (no key → no answer) when this secret is
+  /// absent. Resolved through
+  /// [ProxyAdvisorConversationCmkResolver.tryCreate] to the stable
+  /// `kv://forge-flow/cmk/v1` content_key_ref.
+  static const String advisorConversationCmk = 'ADVISOR_CONVERSATION_CMK';
+
   /// Phase 8 framework — pgcrypto symmetric envelope key used by
   /// `pgp_sym_encrypt` / `pgp_sym_decrypt` calls in the
   /// `vendor_credentials` table and the inbound webhook gateway. The
@@ -625,6 +637,7 @@ abstract class ProxySecretNames {
   static const List<String> optional = <String>[
     geminiApiKey,
     mobilePushTokenEnvelopeKey,
+    advisorConversationCmk,
     alohaNcrVoyixClientId,
     alohaNcrVoyixClientSecret,
     alohaNcrVoyixApplicationKey,
