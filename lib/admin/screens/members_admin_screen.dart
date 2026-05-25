@@ -31,6 +31,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../theme/app_theme.dart';
@@ -42,7 +44,8 @@ import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import 'invite_member_admin_dialog.dart';
 import 'operator_picker_screen.dart';
-import 'roles_hierarchy_sessions_admin_screen.dart';
+
+const int _kMembersPageSize = 50;
 
 class MembersAdminScreen extends StatefulWidget {
   const MembersAdminScreen({
@@ -112,6 +115,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   // Wave 2 W-2 — Cancel pending invite. Per-invite busy set so a
   // retried Cancel during an in-flight DELETE does not double-dispatch.
   final Set<String> _busyInviteIds = <String>{};
+  final Set<String> _busyUserIds = <String>{};
   Timer? _searchDebounce;
   int _refreshGeneration = 0;
 
@@ -121,6 +125,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   String? _locationFilter;
   bool? _mfaEnrolledFilter;
   String _searchQuery = '';
+  int _pageIndex = 0;
 
   int _idempotencyCounter = 0;
 
@@ -200,6 +205,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       );
       if (!mounted) return;
       setState(() {
+        _clampPageIndex(visibleMembers.length);
         _members = visibleMembers;
         _invites = visibleInvites;
         _roles = roles;
@@ -243,8 +249,40 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       _locationFilter = null;
       _mfaEnrolledFilter = null;
       _searchQuery = '';
+      _pageIndex = 0;
     });
     _refresh();
+  }
+
+  void _resetPageAndRefresh() {
+    setState(() => _pageIndex = 0);
+    _refresh();
+  }
+
+  List<MemberAdminRow> get _pagedMembers {
+    final pageStart = _pageIndex * _kMembersPageSize;
+    if (pageStart >= _members.length) return const <MemberAdminRow>[];
+    final pageEnd = (pageStart + _kMembersPageSize).clamp(
+      0,
+      _members.length,
+    );
+    return _members.sublist(pageStart, pageEnd);
+  }
+
+  void _previousPage() {
+    if (_pageIndex == 0) return;
+    setState(() => _pageIndex -= 1);
+  }
+
+  void _nextPage() {
+    final nextStart = (_pageIndex + 1) * _kMembersPageSize;
+    if (nextStart >= _members.length) return;
+    setState(() => _pageIndex += 1);
+  }
+
+  void _clampPageIndex(int totalRows) {
+    final maxPage = totalRows == 0 ? 0 : (totalRows - 1) ~/ _kMembersPageSize;
+    if (_pageIndex > maxPage) _pageIndex = maxPage;
   }
 
   List<MemberAdminRow> _applyLocalFilters(
@@ -255,7 +293,7 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     final roleFilter = _roleFilter;
     final locationFilter = _locationFilter;
     final scopeLocationIds = _locationIdsForHierarchyScope(hierarchyLocations);
-    return rows
+    final filtered = rows
         .where((row) {
           if (!_memberMatchesHierarchyScope(row, scopeLocationIds)) {
             return false;
@@ -283,6 +321,13 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
           return true;
         })
         .toList(growable: false);
+    final sorted = filtered.toList();
+    sorted.sort((a, b) {
+      final cmp = b.lastActiveAt.compareTo(a.lastActiveAt);
+      if (cmp != 0) return cmp;
+      return a.email.toLowerCase().compareTo(b.email.toLowerCase());
+    });
+    return List<MemberAdminRow>.unmodifiable(sorted);
   }
 
   List<MemberInviteRow> _applyInviteScope(
@@ -354,10 +399,6 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     final haystack = <String>[
       row.email,
       row.displayName,
-      row.roleKey,
-      memberRoleLabel(row.roleKey),
-      row.primaryLocationName,
-      row.status.wire,
     ].join(' ').toLowerCase();
     return haystack.contains(query);
   }
@@ -395,6 +436,19 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     }
   }
 
+  Future<void> _runUserAction(
+    MemberAdminRow row,
+    Future<void> Function() action, {
+    String? successHint,
+  }) async {
+    setState(() => _busyUserIds.add(row.userId));
+    try {
+      await _runAndRefresh(action, successHint: successHint);
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(row.userId));
+    }
+  }
+
   Future<String?> _promptAdminReason(String title) async {
     return showDialog<String>(
       context: context,
@@ -405,7 +459,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   Future<void> _onSuspend(MemberAdminRow row) async {
     final reason = await _promptAdminReason('Suspend ${row.displayName}');
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.suspendMember(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -421,7 +476,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   Future<void> _onReactivate(MemberAdminRow row) async {
     final reason = await _promptAdminReason('Reactivate ${row.displayName}');
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.reactivateMember(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -437,7 +493,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   Future<void> _onSoftDelete(MemberAdminRow row) async {
     final reason = await _promptAdminReason('Soft delete ${row.displayName}');
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.softDeleteMember(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -455,7 +512,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       'Reset password for ${row.displayName}',
     );
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.resetPassword(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -473,7 +531,8 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       'Reset two-factor sign-in for ${row.displayName}',
     );
     if (reason == null) return;
-    await _runAndRefresh(
+    await _runUserAction(
+      row,
       () => widget.gateway.resetMfa(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
@@ -512,7 +571,12 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     // fans out to Firebase Identity Platform + Postgres + audit log.
     final result = await showDialog<_DisplayNameEditResult>(
       context: context,
-      builder: (_) => _DisplayNameEditDialog(row: row),
+      builder: (_) => _DisplayNameEditDialog(
+        row: row,
+        roles: _roles,
+        accessScopes: _availableAccessScopes,
+        initialScope: _initialGrantScope(row),
+      ),
     );
     if (result == null) return;
     final emailChanged =
@@ -520,20 +584,49 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         result.email!.trim().toLowerCase() != row.email.toLowerCase();
     final displayNameChanged =
         result.displayName.trim() != row.displayName.trim();
-    if (!emailChanged && !displayNameChanged) return;
-    await _runAndRefresh(
-      () => widget.gateway.updateMember(
-        operatorId: widget.pickedOperator.operatorId,
-        userId: row.userId,
-        idempotencyKey: _nextIdempotencyKey('member-edit'),
-        actorUserId: widget.actorUserId,
-        actorIsForgeAdmin: widget.editingEnabled,
-        adminReason: result.adminReason,
-        email: emailChanged ? result.email : null,
-        displayName: displayNameChanged ? result.displayName : null,
-      ),
+    final roleChanged = result.roleKey != row.roleKey;
+    final scopeChanged = _scopeChanged(row, result.scope);
+    if (!emailChanged && !displayNameChanged && !roleChanged && !scopeChanged) {
+      return;
+    }
+    await _runUserAction(
+      row,
+      () async {
+        if (emailChanged || displayNameChanged) {
+          await widget.gateway.updateMember(
+            operatorId: widget.pickedOperator.operatorId,
+            userId: row.userId,
+            idempotencyKey: _nextIdempotencyKey('member-edit'),
+            actorUserId: widget.actorUserId,
+            actorIsForgeAdmin: widget.editingEnabled,
+            adminReason: result.adminReason,
+            email: emailChanged ? result.email : null,
+            displayName: displayNameChanged ? result.displayName : null,
+          );
+        }
+        if (roleChanged || scopeChanged) {
+          await widget.gateway.overrideRoleGrant(
+            operatorId: widget.pickedOperator.operatorId,
+            userId: row.userId,
+            roleId: result.roleId,
+            roleKey: result.roleKey,
+            idempotencyKey: _nextIdempotencyKey('member-override-role'),
+            actorUserId: widget.actorUserId,
+            actorIsForgeAdmin: widget.editingEnabled,
+            adminReason: result.adminReason,
+            scopeType: result.scope.scopeType,
+            primaryLocationId: result.scope.locationId,
+            orgUnitId: result.scope.orgUnitId,
+          );
+        }
+      },
       successHint: 'Updated ${row.email}.',
     );
+  }
+
+  bool _scopeChanged(MemberAdminRow row, MemberAccessScopeRef scope) {
+    final initial = _initialGrantScope(row);
+    return initial?.id != scope.id;
   }
 
   Future<void> _onRestoreSoftDeleted(MemberAdminRow row) async {
@@ -868,6 +961,25 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
     return byId.values.toList(growable: false);
   }
 
+  List<_RoleFilterOption> get _roleFilterOptions {
+    if (_roles.isNotEmpty) {
+      return <_RoleFilterOption>[
+        for (final role in _roles)
+          _RoleFilterOption(
+            roleKey: role.roleKey,
+            label: roleAdminDisplayLabel(role),
+          ),
+      ];
+    }
+    return <_RoleFilterOption>[
+      for (final roleKey in kSeededRoleKeysForAdmin)
+        _RoleFilterOption(
+          roleKey: roleKey,
+          label: memberRoleLabel(roleKey),
+        ),
+    ];
+  }
+
   List<MemberAccessScopeRef> get _availableAccessScopes {
     final scopes = <MemberAccessScopeRef>[
       MemberAccessScopeRef(
@@ -927,24 +1039,28 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
             mfaEnrolledFilter: _mfaEnrolledFilter,
             searchQuery: _searchQuery,
             locations: _availableLocations,
+            roles: _roleFilterOptions,
             onStatusChanged: (v) {
               setState(() => _statusFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onRoleChanged: (v) {
               setState(() => _roleFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onLocationChanged: (v) {
               setState(() => _locationFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onMfaEnrolledChanged: (v) {
               setState(() => _mfaEnrolledFilter = v);
-              _refresh();
+              _resetPageAndRefresh();
             },
             onSearchChanged: (v) {
-              setState(() => _searchQuery = v);
+              setState(() {
+                _searchQuery = v;
+                _pageIndex = 0;
+              });
               _refreshAfterSearchPause();
             },
             onClearFilters: _clearFilters,
@@ -976,25 +1092,24 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
         ),
       );
     }
-    if (widget.onOpenAccess != null) {
-      children.add(
-        OutlinedButton.icon(
-          key: const Key('admin_members_open_access'),
-          onPressed: widget.onOpenAccess,
-          style: AdminButtonStyles.secondary(),
-          icon: const Icon(Icons.shield_outlined, size: 16),
-          label: const Text('Role policy'),
-        ),
-      );
-    }
     if (widget.editingEnabled) {
       children.add(
-        FilledButton.icon(
-          key: const Key('admin_members_invite_button'),
-          onPressed: _onInvite,
-          style: AdminButtonStyles.primary,
-          icon: const Icon(Icons.person_add_alt_1, size: 16),
-          label: const Text('Invite member'),
+        SizedBox(
+          height: 48,
+          child: FilledButton.icon(
+            key: const Key('admin_members_invite_button'),
+            onPressed: _onInvite,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.sunset,
+              foregroundColor: AppColors.backgroundSurface,
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              textStyle: AppTextStyles.display16(
+                color: AppColors.backgroundSurface,
+              ),
+            ),
+            icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
+            label: const Text('Invite member'),
+          ),
         ),
       );
     }
@@ -1028,42 +1143,43 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         _MembersTable(
-          rows: _members,
+          rows: _pagedMembers,
           editingEnabled: widget.editingEnabled,
+          busyUserIds: _busyUserIds,
           onSuspend: _onSuspend,
           onReactivate: _onReactivate,
           onSoftDelete: _onSoftDelete,
           onResetPassword: _onResetPassword,
           onResetMfa: _onResetMfa,
-          onForceLogout: _onForceLogout,
           onEditDisplayName: _onEditDisplayName,
-          onRestoreSoftDeleted: _onRestoreSoftDeleted,
-          onOverrideRoleGrant: _onOverrideRoleGrant,
         ),
-        const SizedBox(height: 16),
-        _InvitesPanel(
-          invites: _invites,
-          editingEnabled: widget.editingEnabled,
-          busyInviteIds: _busyInviteIds,
-          onCancel: _onCancelInvite,
+        const SizedBox(height: 12),
+        _MembersPaginationBar(
+          pageIndex: _pageIndex,
+          pageSize: _kMembersPageSize,
+          totalRows: _members.length,
+          onPrevious: _previousPage,
+          onNext: _nextPage,
         ),
-        if (widget.rolesGateway != null) ...<Widget>[
-          const SizedBox(height: 16),
-          RolePolicyAdminPanel(
-            roles: _roles,
+        if (_invites.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 24),
+          _InvitesPanel(
+            invites: _invites,
             editingEnabled: widget.editingEnabled,
-            canEditSeededRoles: widget.canEditSeededRoles,
-            onEditSeeded: _onEditSeededRole,
-            onCreateCustom: _onCreateCustomRole,
-            onDeleteCustom: _onDeleteCustomRole,
-            showSummaryStrip: false,
-            showPermissionExplainer: false,
-            rolePreviewLimit: 3,
+            busyInviteIds: _busyInviteIds,
+            onCancel: _onCancelInvite,
           ),
         ],
       ],
     );
   }
+}
+
+class _RoleFilterOption {
+  const _RoleFilterOption({required this.roleKey, required this.label});
+
+  final String roleKey;
+  final String label;
 }
 
 /// Filter bar is Stateful so the search field's [TextEditingController]
@@ -1081,6 +1197,7 @@ class _MembersFilterBar extends StatefulWidget {
     required this.mfaEnrolledFilter,
     required this.searchQuery,
     required this.locations,
+    required this.roles,
     required this.onStatusChanged,
     required this.onRoleChanged,
     required this.onLocationChanged,
@@ -1095,6 +1212,7 @@ class _MembersFilterBar extends StatefulWidget {
   final bool? mfaEnrolledFilter;
   final String searchQuery;
   final List<MemberLocationRef> locations;
+  final List<_RoleFilterOption> roles;
   final ValueChanged<MemberStatus?> onStatusChanged;
   final ValueChanged<String?> onRoleChanged;
   final ValueChanged<String?> onLocationChanged;
@@ -1142,10 +1260,6 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
       if (widget.mfaEnrolledFilter != null) 'MFA',
       if (widget.searchQuery.trim().isNotEmpty) 'Search',
     ];
-    // Web parity (members_screen.dart `_MembersFilterRail`): filters
-    // render in a plain bordered surface with NO panel title, and the
-    // admin-only "Clear filters" affordance sits inline as the last
-    // child of the same Wrap.
     return Container(
       key: const Key('admin_members_filter_card'),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -1154,134 +1268,127 @@ class _MembersFilterBarState extends State<_MembersFilterBar> {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: <Widget>[
-              SizedBox(
-                width: 200,
-                child: DropdownButtonFormField<MemberStatus?>(
-                  key: const Key('admin_members_filter_status'),
-                  initialValue: widget.statusFilter,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Status',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: <DropdownMenuItem<MemberStatus?>>[
-                    const DropdownMenuItem<MemberStatus?>(
-                      value: null,
-                      child: Text('Any status'),
-                    ),
-                    for (final s in MemberStatus.values)
-                      DropdownMenuItem<MemberStatus?>(
-                        value: s,
-                        child: Text(memberStatusLabel(s)),
-                      ),
-                  ],
-                  onChanged: widget.onStatusChanged,
-                ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: <Widget>[
+          SizedBox(
+            width: 260,
+            child: TextField(
+              key: const Key('admin_members_filter_search'),
+              decoration: const InputDecoration(
+                labelText: 'Search by name or email',
+                prefixIcon: Icon(Icons.search, size: 18),
+                isDense: true,
+                border: OutlineInputBorder(),
               ),
-              SizedBox(
-                width: 200,
-                child: DropdownButtonFormField<String?>(
-                  key: const Key('admin_members_filter_role'),
-                  initialValue: widget.roleFilter,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: <DropdownMenuItem<String?>>[
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Any role'),
-                    ),
-                    for (final role in kSeededRoleKeysForAdmin)
-                      DropdownMenuItem<String?>(
-                        value: role,
-                        child: Text(memberRoleLabel(role)),
-                      ),
-                  ],
-                  onChanged: widget.onRoleChanged,
-                ),
-              ),
-              SizedBox(
-                width: 220,
-                child: DropdownButtonFormField<String?>(
-                  key: const Key('admin_members_filter_location'),
-                  initialValue: widget.locationFilter,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Location',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: <DropdownMenuItem<String?>>[
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Any location'),
-                    ),
-                    for (final loc in widget.locations)
-                      DropdownMenuItem<String?>(
-                        value: loc.locationId,
-                        child: Text(loc.name),
-                      ),
-                  ],
-                  onChanged: widget.onLocationChanged,
-                ),
-              ),
-              SizedBox(
-                width: 180,
-                child: DropdownButtonFormField<bool?>(
-                  key: const Key('admin_members_filter_mfa'),
-                  initialValue: widget.mfaEnrolledFilter,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Two-factor sign-in',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const <DropdownMenuItem<bool?>>[
-                    DropdownMenuItem<bool?>(value: null, child: Text('Any')),
-                    DropdownMenuItem<bool?>(value: true, child: Text('On')),
-                    DropdownMenuItem<bool?>(value: false, child: Text('Off')),
-                  ],
-                  onChanged: widget.onMfaEnrolledChanged,
-                ),
-              ),
-              SizedBox(
-                width: 240,
-                child: TextField(
-                  key: const Key('admin_members_filter_search'),
-                  decoration: const InputDecoration(
-                    labelText: 'Search by name or email',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: widget.onSearchChanged,
-                  controller: _searchController,
-                ),
-              ),
-              if (activeFilters.isNotEmpty)
-                OutlinedButton.icon(
-                  key: const Key('admin_members_clear_filters'),
-                  onPressed: widget.onClearFilters,
-                  style: AdminButtonStyles.secondary(
-                    minWidth: 120,
-                    minHeight: 40,
-                  ),
-                  icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
-                  label: const Text('Clear filters'),
-                ),
-            ],
+              onChanged: widget.onSearchChanged,
+              controller: _searchController,
+            ),
           ),
+          SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<MemberStatus?>(
+              key: const Key('admin_members_filter_status'),
+              initialValue: widget.statusFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Status',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              items: <DropdownMenuItem<MemberStatus?>>[
+                const DropdownMenuItem<MemberStatus?>(
+                  value: null,
+                  child: Text('Any status'),
+                ),
+                for (final s in MemberStatus.values)
+                  DropdownMenuItem<MemberStatus?>(
+                    value: s,
+                    child: Text(memberStatusLabel(s)),
+                  ),
+              ],
+              onChanged: widget.onStatusChanged,
+            ),
+          ),
+          SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<String?>(
+              key: const Key('admin_members_filter_role'),
+              initialValue: widget.roleFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Role',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              items: <DropdownMenuItem<String?>>[
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Any role'),
+                ),
+                for (final role in widget.roles)
+                  DropdownMenuItem<String?>(
+                    value: role.roleKey,
+                    child: Text(role.label),
+                  ),
+              ],
+              onChanged: widget.onRoleChanged,
+            ),
+          ),
+          SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<String?>(
+              key: const Key('admin_members_filter_location'),
+              initialValue: widget.locationFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Location',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              items: <DropdownMenuItem<String?>>[
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Any location'),
+                ),
+                for (final loc in widget.locations)
+                  DropdownMenuItem<String?>(
+                    value: loc.locationId,
+                    child: Text(loc.name),
+                  ),
+              ],
+              onChanged: widget.onLocationChanged,
+            ),
+          ),
+          SizedBox(
+            width: 220,
+            child: DropdownButtonFormField<bool?>(
+              key: const Key('admin_members_filter_mfa'),
+              initialValue: widget.mfaEnrolledFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Two-factor sign-in',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              items: const <DropdownMenuItem<bool?>>[
+                DropdownMenuItem<bool?>(value: null, child: Text('Any')),
+                DropdownMenuItem<bool?>(value: true, child: Text('On')),
+                DropdownMenuItem<bool?>(value: false, child: Text('Off')),
+              ],
+              onChanged: widget.onMfaEnrolledChanged,
+            ),
+          ),
+          if (activeFilters.isNotEmpty)
+            TextButton.icon(
+              key: const Key('admin_members_clear_filters'),
+              onPressed: widget.onClearFilters,
+              style: TextButton.styleFrom(foregroundColor: AppColors.sunsetDark),
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('Clear filters'),
+            ),
         ],
       ),
     );
