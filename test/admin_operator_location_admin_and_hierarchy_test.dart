@@ -38,6 +38,7 @@ import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/admin/widgets/admin_action_controls.dart';
 import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -76,6 +77,58 @@ void main() {
     await pumpEventually(tester);
     await tester.tap(row);
     await pumpEventually(tester);
+  }
+
+  Future<void> openOrgUnitOverflow(
+    WidgetTester tester,
+    String orgUnitId,
+  ) async {
+    final menu = find.byKey(Key('admin_hierarchy_org_unit_more_$orgUnitId'));
+    await tester.ensureVisible(menu);
+    await pumpEventually(tester);
+    await tester.tap(menu);
+    await pumpEventually(tester);
+  }
+
+  Future<void> openLocationOverflow(
+    WidgetTester tester,
+    String locationId,
+  ) async {
+    final menu = find.byKey(Key('admin_location_more_$locationId'));
+    await tester.ensureVisible(menu);
+    await pumpEventually(tester);
+    await tester.tap(menu);
+    await pumpEventually(tester);
+  }
+
+  Future<void> tapOrgUnitOverflowAction(
+    WidgetTester tester,
+    String orgUnitId,
+    Key actionKey,
+  ) async {
+    await openOrgUnitOverflow(tester, orgUnitId);
+    await tester.tap(find.byKey(actionKey));
+    await pumpEventually(tester);
+  }
+
+  Future<void> tapLocationOverflowAction(
+    WidgetTester tester,
+    String locationId,
+    Key actionKey,
+  ) async {
+    await openLocationOverflow(tester, locationId);
+    await tester.tap(find.byKey(actionKey));
+    await pumpEventually(tester);
+  }
+
+  Future<void> dismissOverflow(WidgetTester tester) async {
+    await tester.tapAt(const Offset(8, 8));
+    await pumpEventually(tester);
+  }
+
+  bool popupMenuItemEnabled(WidgetTester tester, Key key) {
+    final item = tester.widget<PopupMenuItem<Object?>>(find.byKey(key));
+    return item.enabled;
   }
 
   // Canonical scope-entity icons: every business / org-unit / location row
@@ -195,146 +248,146 @@ void main() {
     },
   );
 
-  testWidgets(
-    'business detail centers the profile and hierarchy on wide panes',
-    (tester) async {
-      tester.view.physicalSize = const Size(1920, 1100);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('business detail centers the profile and hierarchy on wide panes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      final gateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[seedBundle()],
-      );
-      final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
-        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
-          'op-seed-1': const <OrgUnitAdminNode>[
-            OrgUnitAdminNode(
-              orgUnitId: 'org-root',
-              name: 'Demo Diner Co.',
-              operatorId: 'op-seed-1',
-            ),
-            OrgUnitAdminNode(
-              orgUnitId: 'org-east',
-              name: 'East region',
-              operatorId: 'op-seed-1',
-              parentOrgUnitId: 'org-root',
-              unitType: 'region',
-            ),
-            OrgUnitAdminNode(
-              orgUnitId: 'org-west',
-              name: 'West region',
-              operatorId: 'op-seed-1',
-              parentOrgUnitId: 'org-root',
-              unitType: 'region',
-            ),
-          ],
-        },
-        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
-          'op-seed-1': const <HierarchyLocationLeaf>[
-            HierarchyLocationLeaf(
-              locationId: 'loc-seed-1',
-              name: 'Toronto Yorkville',
-              operatorId: 'op-seed-1',
-              orgUnitId: 'org-east',
-            ),
-          ],
-        },
-      );
-      await tester.pumpWidget(
-        wrap(
-          OperatorLocationAdminScreen(
-            gateway: gateway,
-            hierarchyGateway: hierarchyGateway,
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    final hierarchyGateway = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+        'op-seed-1': const <OrgUnitAdminNode>[
+          OrgUnitAdminNode(
+            orgUnitId: 'org-root',
+            name: 'Demo Diner Co.',
+            operatorId: 'op-seed-1',
           ),
+          OrgUnitAdminNode(
+            orgUnitId: 'org-east',
+            name: 'East region',
+            operatorId: 'op-seed-1',
+            parentOrgUnitId: 'org-root',
+            unitType: 'region',
+          ),
+          OrgUnitAdminNode(
+            orgUnitId: 'org-west',
+            name: 'West region',
+            operatorId: 'op-seed-1',
+            parentOrgUnitId: 'org-root',
+            unitType: 'region',
+          ),
+        ],
+      },
+      locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+        'op-seed-1': const <HierarchyLocationLeaf>[
+          HierarchyLocationLeaf(
+            locationId: 'loc-seed-1',
+            name: 'Toronto Yorkville',
+            operatorId: 'op-seed-1',
+            orgUnitId: 'org-east',
+          ),
+        ],
+      },
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          hierarchyGateway: hierarchyGateway,
         ),
-      );
-      await pumpEventually(tester);
+      ),
+    );
+    await pumpEventually(tester);
 
-      await selectBusinessScope(tester, 'op-seed-1');
-      await selectHierarchyRow(
-        tester,
-        const Key('admin_hierarchy_location_loc-seed-1'),
-      );
+    await selectBusinessScope(tester, 'op-seed-1');
+    await selectHierarchyRow(
+      tester,
+      const Key('admin_hierarchy_location_loc-seed-1'),
+    );
 
-      final detailRect = tester.getRect(
-        find.byKey(const Key('admin_operators_detail_pane')),
-      );
-      final surfaceRect = tester.getRect(
-        find.byKey(const Key('admin_business_account_detail_surface')),
-      );
-      final profileRect = tester.getRect(
-        find.byKey(const Key('admin_operator_profile_card')),
-      );
-      final hierarchyRect = tester.getRect(
-        find.byKey(const Key('admin_business_hierarchy_panel')),
-      );
-      final editButtonRect = tester.getRect(
-        find.byKey(const Key('admin_operator_edit_button')),
-      );
-      final suspendButtonRect = tester.getRect(
-        find.byKey(const Key('admin_operator_suspend_button')),
-      );
-      final firstActionRect = tester.getRect(
-        find.byKey(const Key('admin_location_move_loc-seed-1')),
-      );
-      final lastActionRect = tester.getRect(
-        find.byKey(const Key('admin_location_remove_loc-seed-1')),
-      );
+    final detailRect = tester.getRect(
+      find.byKey(const Key('admin_operators_detail_pane')),
+    );
+    final surfaceRect = tester.getRect(
+      find.byKey(const Key('admin_business_account_detail_surface')),
+    );
+    final profileRect = tester.getRect(
+      find.byKey(const Key('admin_operator_profile_card')),
+    );
+    final hierarchyRect = tester.getRect(
+      find.byKey(const Key('admin_business_hierarchy_panel')),
+    );
+    final editButtonRect = tester.getRect(
+      find.byKey(const Key('admin_operator_edit_button')),
+    );
+    final suspendButtonRect = tester.getRect(
+      find.byKey(const Key('admin_operator_suspend_button')),
+    );
+    final firstActionRect = tester.getRect(
+      find.byKey(const Key('admin_location_edit_loc-seed-1')),
+    );
+    final lastActionRect = tester.getRect(
+      find.byKey(const Key('admin_location_more_loc-seed-1')),
+    );
 
-      expect(
-        profileRect.width,
-        closeTo(hierarchyRect.width, 1),
-        reason: 'profile and hierarchy should share one premium surface',
-      );
-      expect(
-        surfaceRect.width,
-        greaterThan(1280),
-        reason: 'the account surface should match the wide reference render',
-      );
-      expect(
-        surfaceRect.width,
-        lessThan(1400),
-        reason: 'the account surface should still be centered and contained',
-      );
-      expect(
-        hierarchyRect.width,
-        lessThan(detailRect.width - 100),
-        reason:
-            'wide screens should not stretch the account surface edge to edge',
-      );
-      expect(
-        surfaceRect.center.dx,
-        closeTo(detailRect.center.dx, 2),
-        reason: 'the account surface should be centered inside the right pane',
-      );
-      expect(
-        editButtonRect.top,
-        closeTo(suspendButtonRect.top, 1),
-        reason: 'top account actions should align as one button row',
-      );
-      expect(
-        surfaceRect.right - suspendButtonRect.right,
-        closeTo(40, 2),
-        reason: 'top account actions should sit on the profile right edge',
-      );
-      expect(
-        find.byKey(const Key('admin_hierarchy_connector_depth_1')),
-        findsWidgets,
-        reason: 'child rows should expose visible dotted hierarchy links',
-      );
-      expect(
-        find.byKey(const Key('admin_hierarchy_connector_depth_2')),
-        findsWidgets,
-        reason: 'grandchild rows should expose visible dotted hierarchy links',
-      );
-      expect(
-        lastActionRect.right - firstActionRect.left,
-        lessThan(680),
-        reason: 'selected hierarchy actions should stay compact inside the row',
-      );
-    },
-  );
+    expect(
+      profileRect.width,
+      closeTo(hierarchyRect.width, 1),
+      reason: 'profile and hierarchy should share one premium surface',
+    );
+    expect(
+      surfaceRect.width,
+      greaterThan(880),
+      reason:
+          'the account surface should stay substantial after row actions collapse into overflow',
+    );
+    expect(
+      surfaceRect.width,
+      lessThan(1040),
+      reason: 'the account surface should still be centered and contained',
+    );
+    expect(
+      detailRect.width - surfaceRect.width,
+      greaterThan(40),
+      reason:
+          'wide screens should not stretch the account surface edge to edge',
+    );
+    expect(
+      surfaceRect.center.dx,
+      closeTo(detailRect.center.dx, 2),
+      reason: 'the account surface should be centered inside the right pane',
+    );
+    expect(
+      editButtonRect.top,
+      closeTo(suspendButtonRect.top, 1),
+      reason: 'top account actions should align as one button row',
+    );
+    expect(
+      surfaceRect.right - suspendButtonRect.right,
+      closeTo(40, 2),
+      reason: 'top account actions should sit on the profile right edge',
+    );
+    expect(
+      find.byKey(const Key('admin_hierarchy_connector_depth_1')),
+      findsWidgets,
+      reason: 'child rows should expose visible dotted hierarchy links',
+    );
+    expect(
+      find.byKey(const Key('admin_hierarchy_connector_depth_2')),
+      findsWidgets,
+      reason: 'grandchild rows should expose visible dotted hierarchy links',
+    );
+    expect(
+      lastActionRect.right - firstActionRect.left,
+      lessThan(680),
+      reason: 'selected hierarchy actions should stay compact inside the row',
+    );
+  });
 
   testWidgets('operator AI plan selection is read-only while coming soon', (
     tester,
@@ -511,7 +564,7 @@ void main() {
 
     await selectBusinessScope(tester, 'op-seed-1');
 
-    final addButton = tester.widget<OutlinedButton>(
+    final addButton = tester.widget<AdminActionButton>(
       find.byKey(const Key('admin_operator_add_location_button')),
     );
     expect(addButton.onPressed, isNull);
@@ -617,6 +670,11 @@ void main() {
         findsOneWidget,
       );
       expect(
+        find.byKey(const Key('admin_location_more_loc-west')),
+        findsOneWidget,
+      );
+      await openLocationOverflow(tester, 'loc-west');
+      expect(
         find.byKey(const Key('admin_location_make_primary_loc-west')),
         findsOneWidget,
       );
@@ -624,6 +682,7 @@ void main() {
         find.byKey(const Key('admin_location_remove_loc-west')),
         findsOneWidget,
       );
+      await dismissOverflow(tester);
 
       // The drill-in per-location buttons were removed (sidebar owns them).
       for (final removed in <String>[
@@ -781,11 +840,11 @@ void main() {
       const Key('admin_hierarchy_location_loc-seed-1'),
     );
 
-    final moveButton = find.byKey(const Key('admin_location_move_loc-seed-1'));
-    await tester.ensureVisible(moveButton);
-    await pumpEventually(tester);
-    await tester.tap(moveButton);
-    await pumpEventually(tester);
+    await tapLocationOverflowAction(
+      tester,
+      'loc-seed-1',
+      const Key('admin_location_move_loc-seed-1'),
+    );
 
     expect(
       find.byKey(const Key('admin_hierarchy_move_location_dialog')),
@@ -876,22 +935,25 @@ void main() {
       const Key('admin_hierarchy_org_unit_org-root'),
     );
 
-    final rootMoveButton = tester.widget<OutlinedButton>(
-      find.byKey(const Key('admin_hierarchy_org_unit_move_org-root')),
+    await openOrgUnitOverflow(tester, 'org-root');
+    expect(
+      popupMenuItemEnabled(
+        tester,
+        const Key('admin_hierarchy_org_unit_move_org-root'),
+      ),
+      isFalse,
     );
-    expect(rootMoveButton.onPressed, isNull);
+    await dismissOverflow(tester);
 
-    final moveButton = find.byKey(
-      const Key('admin_hierarchy_org_unit_move_org-east'),
-    );
     await selectHierarchyRow(
       tester,
       const Key('admin_hierarchy_org_unit_org-east'),
     );
-    await tester.ensureVisible(moveButton);
-    await pumpEventually(tester);
-    await tester.tap(moveButton);
-    await pumpEventually(tester);
+    await tapOrgUnitOverflowAction(
+      tester,
+      'org-east',
+      const Key('admin_hierarchy_org_unit_move_org-east'),
+    );
 
     expect(
       find.byKey(const Key('admin_hierarchy_move_org_unit_dialog')),
@@ -977,22 +1039,25 @@ void main() {
         const Key('admin_hierarchy_org_unit_org-root'),
       );
 
-      final rootSuspend = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_hierarchy_org_unit_suspend_org-root')),
+      await openOrgUnitOverflow(tester, 'org-root');
+      expect(
+        popupMenuItemEnabled(
+          tester,
+          const Key('admin_hierarchy_org_unit_suspend_org-root'),
+        ),
+        isFalse,
       );
-      expect(rootSuspend.onPressed, isNull);
+      await dismissOverflow(tester);
 
-      final suspendButton = find.byKey(
-        const Key('admin_hierarchy_org_unit_suspend_org-east'),
-      );
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_org_unit_org-east'),
       );
-      await tester.ensureVisible(suspendButton);
-      await pumpEventually(tester);
-      await tester.tap(suspendButton);
-      await pumpEventually(tester);
+      await tapOrgUnitOverflowAction(
+        tester,
+        'org-east',
+        const Key('admin_hierarchy_org_unit_suspend_org-east'),
+      );
       expect(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_dialog')),
         findsOneWidget,
@@ -1020,13 +1085,11 @@ void main() {
         equals('district temporarily paused by admin'),
       );
 
-      final reactivateButton = find.byKey(
+      await tapOrgUnitOverflowAction(
+        tester,
+        'org-east',
         const Key('admin_hierarchy_org_unit_reactivate_org-east'),
       );
-      await tester.ensureVisible(reactivateButton);
-      await pumpEventually(tester);
-      await tester.tap(reactivateButton);
-      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_hierarchy_org_unit_reactivate_reason')),
         'district ready for use again',
@@ -1045,17 +1108,15 @@ void main() {
         equals('team.org_unit.reactivate'),
       );
 
-      final deleteButton = find.byKey(
-        const Key('admin_hierarchy_org_unit_delete_org-empty'),
-      );
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_org_unit_org-empty'),
       );
-      await tester.ensureVisible(deleteButton);
-      await pumpEventually(tester);
-      await tester.tap(deleteButton);
-      await pumpEventually(tester);
+      await tapOrgUnitOverflowAction(
+        tester,
+        'org-empty',
+        const Key('admin_hierarchy_org_unit_delete_org-empty'),
+      );
       expect(
         find.byKey(const Key('admin_hierarchy_org_unit_delete_dialog')),
         findsOneWidget,
@@ -1180,22 +1241,25 @@ void main() {
         const Key('admin_hierarchy_location_loc-primary'),
       );
 
-      final primaryDelete = tester.widget<OutlinedButton>(
-        find.byKey(const Key('admin_location_remove_loc-primary')),
+      await openLocationOverflow(tester, 'loc-primary');
+      expect(
+        popupMenuItemEnabled(
+          tester,
+          const Key('admin_location_remove_loc-primary'),
+        ),
+        isFalse,
       );
-      expect(primaryDelete.onPressed, isNull);
+      await dismissOverflow(tester);
 
-      final suspendButton = find.byKey(
-        const Key('admin_location_suspend_loc-west'),
-      );
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_location_loc-west'),
       );
-      await tester.ensureVisible(suspendButton);
-      await pumpEventually(tester);
-      await tester.tap(suspendButton);
-      await pumpEventually(tester);
+      await tapLocationOverflowAction(
+        tester,
+        'loc-west',
+        const Key('admin_location_suspend_loc-west'),
+      );
       expect(
         find.byKey(const Key('admin_hierarchy_location_suspend_dialog')),
         findsOneWidget,
@@ -1223,13 +1287,11 @@ void main() {
         equals('seasonal closure requested'),
       );
 
-      final reactivateButton = find.byKey(
+      await tapLocationOverflowAction(
+        tester,
+        'loc-west',
         const Key('admin_location_reactivate_loc-west'),
       );
-      await tester.ensureVisible(reactivateButton);
-      await pumpEventually(tester);
-      await tester.tap(reactivateButton);
-      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_hierarchy_location_reactivate_reason')),
         'location reopened',
@@ -1248,17 +1310,15 @@ void main() {
         equals('team.location.reactivate'),
       );
 
-      final deleteButton = find.byKey(
-        const Key('admin_location_remove_loc-west'),
-      );
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_location_loc-west'),
       );
-      await tester.ensureVisible(deleteButton);
-      await pumpEventually(tester);
-      await tester.tap(deleteButton);
-      await pumpEventually(tester);
+      await tapLocationOverflowAction(
+        tester,
+        'loc-west',
+        const Key('admin_location_remove_loc-west'),
+      );
       expect(
         find.byKey(const Key('admin_hierarchy_location_delete_dialog')),
         findsOneWidget,
@@ -1566,26 +1626,29 @@ void main() {
         findsNothing,
         reason: 'unselected rows should not show action buttons',
       );
+      expect(
+        find.byKey(const Key('admin_hierarchy_org_unit_more_org-east')),
+        findsNothing,
+        reason: 'unselected rows should not show overflow actions',
+      );
 
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_org_unit_org-east'),
       );
 
-      // The selected org-unit row keeps labeled buttons, with tooltips for
-      // exact action meaning where the same label appears on multiple types.
-      for (final label in <String>[
-        'Add org unit',
-        'Move',
-        'Suspend',
-        'Delete',
-      ]) {
+      // The selected org-unit row keeps the common action visible and
+      // moves rarer actions into a labeled overflow menu.
+      expect(find.text('Add org unit'), findsWidgets);
+      await openOrgUnitOverflow(tester, 'org-east');
+      for (final label in <String>['Move', 'Suspend', 'Delete']) {
         expect(
           find.text(label),
           findsWidgets,
-          reason: 'tree action "$label" must render as visible text',
+          reason: 'tree overflow action "$label" must render as text',
         );
       }
+      await dismissOverflow(tester);
 
       for (final label in <String>['Org unit', 'Primary location']) {
         expect(
@@ -1595,11 +1658,7 @@ void main() {
         );
       }
 
-      void expectLabeledButton(Key key, String label) {
-        expect(
-          tester.widget<OutlinedButton>(find.byKey(key)),
-          isA<OutlinedButton>(),
-        );
+      void expectActionLabel(Key key, String label) {
         expect(
           find.descendant(of: find.byKey(key), matching: find.text(label)),
           findsOneWidget,
@@ -1607,33 +1666,42 @@ void main() {
         );
       }
 
-      expectLabeledButton(
+      expectActionLabel(
         const Key('admin_hierarchy_org_unit_add_child_org-east'),
         'Add org unit',
       );
-      expectLabeledButton(
+      await openOrgUnitOverflow(tester, 'org-east');
+      expectActionLabel(
         const Key('admin_hierarchy_org_unit_move_org-east'),
         'Move',
       );
-      expectLabeledButton(
+      expectActionLabel(
         const Key('admin_hierarchy_org_unit_suspend_org-east'),
         'Suspend',
       );
+      await dismissOverflow(tester);
 
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_location_loc-seed-1'),
       );
-      expectLabeledButton(const Key('admin_location_edit_loc-seed-1'), 'Edit');
-      expectLabeledButton(
+      expectActionLabel(const Key('admin_location_edit_loc-seed-1'), 'Edit');
+      await openLocationOverflow(tester, 'loc-seed-1');
+      expectActionLabel(
         const Key('admin_location_make_primary_loc-seed-1'),
         'Make primary',
       );
+      await dismissOverflow(tester);
 
       // Destructive actions use the danger (negative) secondary style.
-      Color? foregroundOf(Key key) {
-        final button = tester.widget<OutlinedButton>(find.byKey(key));
-        return button.style?.foregroundColor?.resolve(<WidgetState>{});
+      Color? menuIconColor(Key key) {
+        final icon = tester.widget<Icon>(
+          find.descendant(
+            of: find.byKey(key),
+            matching: find.byIcon(Icons.delete_outline),
+          ),
+        );
+        return icon.color;
       }
 
       expect(
@@ -1645,49 +1713,63 @@ void main() {
         tester,
         const Key('admin_hierarchy_org_unit_org-east'),
       );
+      await openOrgUnitOverflow(tester, 'org-east');
       expect(
-        foregroundOf(const Key('admin_hierarchy_org_unit_delete_org-east')),
+        menuIconColor(const Key('admin_hierarchy_org_unit_delete_org-east')),
         equals(AppColors.negative),
         reason: 'Delete org unit must use the danger style',
       );
+      await dismissOverflow(tester);
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_location_loc-seed-1'),
       );
+      await openLocationOverflow(tester, 'loc-seed-1');
       expect(
-        foregroundOf(const Key('admin_location_remove_loc-seed-1')),
+        menuIconColor(const Key('admin_location_remove_loc-seed-1')),
         equals(AppColors.negative),
         reason: 'Delete location must use the danger style',
       );
+      await dismissOverflow(tester);
 
       // Existing widget keys still resolve on the selected org-unit row.
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_org_unit_org-east'),
       );
+      expect(
+        find.byKey(const Key('admin_hierarchy_org_unit_add_child_org-east')),
+        findsOneWidget,
+      );
+      await openOrgUnitOverflow(tester, 'org-east');
       for (final key in <Key>[
-        const Key('admin_hierarchy_org_unit_add_child_org-east'),
         const Key('admin_hierarchy_org_unit_move_org-east'),
         const Key('admin_hierarchy_org_unit_suspend_org-east'),
         const Key('admin_hierarchy_org_unit_delete_org-east'),
       ]) {
         expect(find.byKey(key), findsOneWidget, reason: '$key must resolve');
       }
+      await dismissOverflow(tester);
 
       // Existing widget keys still resolve on the selected location row.
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_location_loc-seed-1'),
       );
+      expect(
+        find.byKey(const Key('admin_location_edit_loc-seed-1')),
+        findsOneWidget,
+      );
+      await openLocationOverflow(tester, 'loc-seed-1');
       for (final key in <Key>[
         const Key('admin_location_move_loc-seed-1'),
         const Key('admin_location_suspend_loc-seed-1'),
-        const Key('admin_location_edit_loc-seed-1'),
         const Key('admin_location_make_primary_loc-seed-1'),
         const Key('admin_location_remove_loc-seed-1'),
       ]) {
         expect(find.byKey(key), findsOneWidget, reason: '$key must resolve');
       }
+      await dismissOverflow(tester);
 
       // No regressions: the tree rows did not overflow at the wide width.
       expect(tester.takeException(), isNull);
@@ -1781,7 +1863,7 @@ void main() {
     await tester.ensureVisible(addButton);
     await pumpEventually(tester);
     expect(
-      tester.widget<OutlinedButton>(addButton).onPressed,
+      tester.widget<AdminActionButton>(addButton).onPressed,
       isNotNull,
       reason: 'selecting an org unit must enable Add location',
     );
@@ -1921,17 +2003,15 @@ void main() {
         find.byKey(const Key('admin_hierarchy_location_loc-del-west')),
         findsOneWidget,
       );
-      final deleteButton = find.byKey(
-        const Key('admin_location_remove_loc-del-west'),
-      );
       await selectHierarchyRow(
         tester,
         const Key('admin_hierarchy_location_loc-del-west'),
       );
-      await tester.ensureVisible(deleteButton);
-      await pumpEventually(tester);
-      await tester.tap(deleteButton);
-      await pumpEventually(tester);
+      await tapLocationOverflowAction(
+        tester,
+        'loc-del-west',
+        const Key('admin_location_remove_loc-del-west'),
+      );
       await tester.enterText(
         find.byKey(const Key('admin_hierarchy_location_delete_reason')),
         'duplicate location record',
@@ -2302,10 +2382,11 @@ void main() {
         // Delete it from the tree. Before the fix this raised
         // "Could not delete location: ...404/unknown_location...".
         await selectHierarchyRow(tester, rowKey);
-        await tester.tap(
-          find.byKey(Key('admin_location_remove_${added.locationId}')),
+        await tapLocationOverflowAction(
+          tester,
+          added.locationId,
+          Key('admin_location_remove_${added.locationId}'),
         );
-        await pumpEventually(tester);
         await tester.enterText(
           find.byKey(const Key('admin_hierarchy_location_delete_reason')),
           'closed location',

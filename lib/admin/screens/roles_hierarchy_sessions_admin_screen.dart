@@ -30,10 +30,10 @@ import '../../services/auth/custom_role_validator.dart';
 import '../../services/auth/role_key_generator.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/role_permission_picker.dart';
-import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
+import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
 import '../widgets/admin_role_warning_panel.dart';
 import 'operator_picker_screen.dart';
@@ -251,19 +251,17 @@ class _RolesHierarchySessionsAdminScreenState
         style: AppTextStyles.body13(color: AppColors.textPrimary),
       ),
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_rhs_delete_role_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_rhs_delete_role_confirm'),
+          label: 'Delete',
           onPressed: () => Navigator.of(context).pop(true),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.negative,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
-          child: const Text('Delete'),
+          role: AdminActionRole.danger,
         ),
       ],
     );
@@ -324,20 +322,12 @@ class _RolesHierarchySessionsAdminScreenState
 
   List<Widget> _buildHeaderActions() {
     final children = <Widget>[
-      SizedBox(
-        height: 38,
-        child: FilledButton.icon(
-          key: const Key('admin_rhs_roles_new_role'),
-          onPressed: widget.editingEnabled ? _onCreateCustomRole : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-            disabledBackgroundColor: AppColors.borderSubtle,
-            disabledForegroundColor: AppColors.textMuted,
-          ),
-          icon: const Icon(Icons.add, size: 16),
-          label: const Text('New role'),
-        ),
+      AdminActionButton(
+        key: const Key('admin_rhs_roles_new_role'),
+        label: 'New role',
+        onPressed: widget.editingEnabled ? _onCreateCustomRole : null,
+        icon: Icons.add,
+        role: AdminActionRole.primary,
       ),
       if (widget.onBackToBusinessAccounts != null)
         AdminBusinessAccountsBackButton(
@@ -346,12 +336,11 @@ class _RolesHierarchySessionsAdminScreenState
     ];
     if (widget.onChangeOperator != null) {
       children.add(
-        OutlinedButton.icon(
+        AdminActionButton(
           key: const Key('admin_rhs_change_operator'),
+          label: 'Change operator',
           onPressed: widget.onChangeOperator,
-          style: AdminButtonStyles.secondary(),
-          icon: const Icon(Icons.swap_horiz, size: 16),
-          label: const Text('Change operator'),
+          icon: Icons.swap_horiz,
         ),
       );
     }
@@ -630,17 +619,22 @@ class _RoleRowTile extends StatelessWidget {
               ),
             ),
           if (mutable) ...<Widget>[
-            TextButton(
+            AdminActionButton(
               key: Key('admin_rhs_role_edit_${row.roleId}'),
+              label: 'Edit',
               onPressed: busy ? null : () => onEditCustom(row),
-              child: const Text('Edit'),
+              role: AdminActionRole.quiet,
+              compact: true,
+              minWidth: 60,
             ),
             const SizedBox(width: 4),
-            TextButton(
+            AdminActionButton(
               key: Key('admin_rhs_role_delete_${row.roleId}'),
+              label: 'Delete',
               onPressed: busy ? null : () => onDelete(row),
-              style: TextButton.styleFrom(foregroundColor: AppColors.negative),
-              child: const Text('Delete'),
+              role: AdminActionRole.dangerSecondary,
+              compact: true,
+              minWidth: 76,
             ),
           ],
         ],
@@ -695,15 +689,12 @@ class _EmptyCustomRolesPanel extends StatelessWidget {
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
+              child: AdminActionButton(
                 key: const Key('admin_rhs_roles_empty_create'),
+                label: 'New custom role',
                 onPressed: onCreateRole,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('New custom role'),
+                icon: Icons.add,
+                role: AdminActionRole.primary,
               ),
             ),
           ],
@@ -1063,11 +1054,10 @@ class _SessionRowTile extends StatelessWidget {
             ),
             if (editingEnabled) ...<Widget>[
               const SizedBox(height: 10),
-              OutlinedButton(
+              AdminActionButton(
                 key: Key('admin_rhs_session_force_logout_${row.sessionId}'),
+                label: 'Sign out device',
                 onPressed: isOwn ? null : () => onForceLogout(row),
-                style: AdminButtonStyles.secondary(),
-                child: const Text('Sign out device'),
               ),
             ],
           ],
@@ -1217,16 +1207,17 @@ class _AdminReasonDialogState extends State<_AdminReasonDialog> {
       icon: Icons.edit_note_outlined,
       maxWidth: 520,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
           key: const Key('admin_rhs_reason_cancel'),
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_rhs_reason_submit'),
-          style: AdminButtonStyles.primary,
+          label: 'Confirm',
           onPressed: _onSubmit,
-          child: const Text('Confirm'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: SizedBox(
@@ -1402,15 +1393,16 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
       icon: Icons.person_add_alt_outlined,
       maxWidth: 780,
       actions: <Widget>[
-        TextButton(
+        AdminActionButton(
+          label: 'Cancel',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          role: AdminActionRole.quiet,
         ),
-        FilledButton(
+        AdminActionButton(
           key: const Key('admin_rhs_create_custom_role_submit'),
-          style: AdminButtonStyles.primary,
+          label: _isCreate ? 'Create role' : 'Save changes',
           onPressed: _canSubmit ? _onSubmit : null,
-          child: Text(_isCreate ? 'Create role' : 'Save changes'),
+          role: AdminActionRole.primary,
         ),
       ],
       child: SizedBox(

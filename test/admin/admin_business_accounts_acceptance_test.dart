@@ -44,6 +44,7 @@ import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart'
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
+import 'package:forge_and_flow/admin/widgets/admin_action_controls.dart';
 import 'package:forge_and_flow/admin/widgets/admin_business_accounts_back_button.dart';
 import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
 
@@ -212,6 +213,15 @@ void main() {
     await pumpEventually(tester);
     await tester.tap(finder);
     await pumpEventually(tester);
+  }
+
+  Future<void> tapLocationOverflowAction(
+    WidgetTester tester,
+    String locationId,
+    Key actionKey,
+  ) async {
+    await tapKey(tester, Key('admin_location_more_$locationId'));
+    await tapKey(tester, actionKey);
   }
 
   /// Asserts the single canonical glyph for [scopeRowKey], routed through
@@ -404,7 +414,7 @@ void main() {
       await tapKey(tester, Key('admin_hierarchy_org_unit_$dinerOrgUnitEast'));
 
       // With an org unit selected the add-location button is enabled.
-      final addButton = tester.widget<OutlinedButton>(
+      final addButton = tester.widget<AdminActionButton>(
         find.byKey(const Key('admin_operator_add_location_button')),
       );
       expect(
@@ -464,8 +474,9 @@ void main() {
       // gateway, so the hierarchy delete resolves instead of 404ing).
       // ---------------------------------------------------------------
       await tapKey(tester, addedRowKey);
-      await tapKey(
+      await tapLocationOverflowAction(
         tester,
+        addedLocation.locationId,
         Key('admin_location_remove_${addedLocation.locationId}'),
       );
 
