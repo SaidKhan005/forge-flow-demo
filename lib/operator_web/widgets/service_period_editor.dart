@@ -719,79 +719,76 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
           LayoutBuilder(
             builder: (context, constraints) {
               final compact = constraints.maxWidth < 560;
-              final fields = <Widget>[
-                SizedBox(
-                  width: compact ? double.infinity : 130,
-                  child: TextField(
-                    key: ValueKey(
-                      'service_period_editor_start_${widget.index}',
-                    ),
-                    controller: _start,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
-                      LengthLimitingTextInputFormatter(5),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Starts (HH:MM)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) {
-                      _normalizeTimeController(_start, value);
-                      widget.onChanged(
-                        widget.period.copyWith(startLocal: _start.text),
-                      );
-                    },
-                    onEditingComplete: () => _commitTimeController(
-                      _start,
-                      (value) => widget.onChanged(
-                        widget.period.copyWith(startLocal: value),
-                      ),
-                    ),
+              final startField = TextField(
+                key: ValueKey('service_period_editor_start_${widget.index}'),
+                controller: _start,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                  LengthLimitingTextInputFormatter(5),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Starts (HH:MM)',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) {
+                  _normalizeTimeController(_start, value);
+                  widget.onChanged(
+                    widget.period.copyWith(startLocal: _start.text),
+                  );
+                },
+                onEditingComplete: () => _commitTimeController(
+                  _start,
+                  (value) => widget.onChanged(
+                    widget.period.copyWith(startLocal: value),
                   ),
                 ),
-                SizedBox(width: compact ? 0 : 10, height: compact ? 10 : 0),
-                SizedBox(
-                  width: compact ? double.infinity : 130,
-                  child: TextField(
-                    key: ValueKey('service_period_editor_end_${widget.index}'),
-                    controller: _end,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
-                      LengthLimitingTextInputFormatter(5),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Ends (HH:MM)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) {
-                      _normalizeTimeController(_end, value);
-                      widget.onChanged(
-                        widget.period.copyWith(endLocal: _end.text),
-                      );
-                    },
-                    onEditingComplete: () => _commitTimeController(
-                      _end,
-                      (value) => widget.onChanged(
-                        widget.period.copyWith(endLocal: value),
-                      ),
-                    ),
-                  ),
+              );
+              final endField = TextField(
+                key: ValueKey('service_period_editor_end_${widget.index}'),
+                controller: _end,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                  LengthLimitingTextInputFormatter(5),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Ends (HH:MM)',
+                  border: OutlineInputBorder(),
                 ),
-                if (!compact) const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '15-minute times only: 00, 15, 30, or 45.',
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
-                  ),
+                onChanged: (value) {
+                  _normalizeTimeController(_end, value);
+                  widget.onChanged(widget.period.copyWith(endLocal: _end.text));
+                },
+                onEditingComplete: () => _commitTimeController(
+                  _end,
+                  (value) =>
+                      widget.onChanged(widget.period.copyWith(endLocal: value)),
                 ),
-              ];
+              );
+              final helper = Text(
+                '15-minute times only: 00, 15, 30, or 45.',
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              );
               if (compact) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: fields,
+                  children: [
+                    startField,
+                    const SizedBox(height: 10),
+                    endField,
+                    const SizedBox(height: 8),
+                    helper,
+                  ],
                 );
               }
-              return Row(children: fields);
+              return Row(
+                children: [
+                  SizedBox(width: 130, child: startField),
+                  const SizedBox(width: 10),
+                  SizedBox(width: 130, child: endField),
+                  const SizedBox(width: 12),
+                  Expanded(child: helper),
+                ],
+              );
             },
           ),
           const SizedBox(height: 14),
@@ -809,65 +806,66 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
           LayoutBuilder(
             builder: (context, constraints) {
               final compact = constraints.maxWidth < 560;
-              final fields = <Widget>[
-                SizedBox(
-                  width: compact ? double.infinity : 170,
-                  child: TextField(
-                    key: ValueKey(
-                      'service_period_editor_short_label_${widget.index}',
-                    ),
-                    controller: _shortLabel,
-                    decoration: const InputDecoration(
-                      labelText: 'Short label',
-                      border: OutlineInputBorder(),
-                      helperText: 'Optional.',
-                    ),
-                    onChanged: (value) => widget.onChanged(
-                      widget.period.copyWith(shortLabel: value),
-                    ),
-                  ),
+              final shortLabelField = TextField(
+                key: ValueKey(
+                  'service_period_editor_short_label_${widget.index}',
                 ),
-                SizedBox(width: compact ? 0 : 10, height: compact ? 10 : 0),
-                SizedBox(
-                  width: compact ? double.infinity : 130,
-                  child: TextField(
-                    key: ValueKey(
-                      'service_period_editor_sort_order_${widget.index}',
-                    ),
-                    controller: _sortOrder,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(1),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Sort order',
-                      border: OutlineInputBorder(),
-                      helperText: '1 to 4.',
-                    ),
-                    onChanged: (value) {
-                      final parsed = int.tryParse(value.trim());
-                      widget.onChanged(
-                        widget.period.copyWith(sortOrder: parsed ?? 0),
-                      );
-                    },
-                  ),
+                controller: _shortLabel,
+                decoration: const InputDecoration(
+                  labelText: 'Short label',
+                  border: OutlineInputBorder(),
+                  helperText: 'Optional.',
                 ),
-                if (!compact) const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Blank short label uses the full label.',
-                    style: AppTextStyles.body12(color: AppColors.textMuted),
-                  ),
+                onChanged: (value) =>
+                    widget.onChanged(widget.period.copyWith(shortLabel: value)),
+              );
+              final sortOrderField = TextField(
+                key: ValueKey(
+                  'service_period_editor_sort_order_${widget.index}',
                 ),
-              ];
+                controller: _sortOrder,
+                keyboardType: TextInputType.number,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(1),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Sort order',
+                  border: OutlineInputBorder(),
+                  helperText: '1 to 4.',
+                ),
+                onChanged: (value) {
+                  final parsed = int.tryParse(value.trim());
+                  widget.onChanged(
+                    widget.period.copyWith(sortOrder: parsed ?? 0),
+                  );
+                },
+              );
+              final helper = Text(
+                'Blank short label uses the full label.',
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              );
               if (compact) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: fields,
+                  children: [
+                    shortLabelField,
+                    const SizedBox(height: 10),
+                    sortOrderField,
+                    const SizedBox(height: 8),
+                    helper,
+                  ],
                 );
               }
-              return Row(children: fields);
+              return Row(
+                children: [
+                  SizedBox(width: 170, child: shortLabelField),
+                  const SizedBox(width: 10),
+                  SizedBox(width: 130, child: sortOrderField),
+                  const SizedBox(width: 12),
+                  Expanded(child: helper),
+                ],
+              );
             },
           ),
           if (widget.errors.isNotEmpty) ...[

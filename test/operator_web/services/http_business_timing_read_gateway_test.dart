@@ -35,37 +35,40 @@ void main() {
       gateway = HttpBusinessTimingReadGateway(gateway: live);
     });
 
-    test('emits an empty bundle (writes-available) when no candidates',
-        () async {
-      live.result = _resolution(candidates: const <Map<String, Object?>>[]);
-      final bundle = await gateway.loadTiming(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-        operatorName: 'Acme Eats',
-        locationName: 'Yonge & Bloor',
-      );
-      expect(bundle.writesAvailable, isTrue);
-      expect(bundle.servicePeriods, isEmpty);
-      expect(bundle.effectiveDateLabel, equals('No timing profile yet'));
-      expect(bundle.hasLocationOverride, isFalse);
-      expect(gateway.lastProfiles, isEmpty);
-    });
-
     test(
-        'operator-default-only chain: every effective field reads as '
+      'emits an empty bundle (writes-available) when no candidates',
+      () async {
+        live.result = _resolution(candidates: const <Map<String, Object?>>[]);
+        final bundle = await gateway.loadTiming(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          operatorName: 'Acme Eats',
+          locationName: 'Yonge & Bloor',
+        );
+        expect(bundle.writesAvailable, isTrue);
+        expect(bundle.servicePeriods, isEmpty);
+        expect(bundle.effectiveDateLabel, equals('No timing profile yet'));
+        expect(bundle.hasLocationOverride, isFalse);
+        expect(gateway.lastProfiles, isEmpty);
+      },
+    );
+
+    test('operator-default-only chain: every effective field reads as '
         'inherited from operator default', () async {
-      live.result = _resolution(candidates: <Map<String, Object?>>[
-        _candidate(
-          profileId: 'op-default',
-          scopeType: 'operator',
-          scopeId: 'op-1',
-          scopeLabel: 'Acme Eats',
-          rank: 0,
-          tz: 'America/Toronto',
-          dayStart: '04:00',
-          weekStart: 'monday',
-        ),
-      ]);
+      live.result = _resolution(
+        candidates: <Map<String, Object?>>[
+          _candidate(
+            profileId: 'op-default',
+            scopeType: 'operator',
+            scopeId: 'op-1',
+            scopeLabel: 'Acme Eats',
+            rank: 0,
+            tz: 'America/Toronto',
+            dayStart: '04:00',
+            weekStart: 'monday',
+          ),
+        ],
+      );
       final bundle = await gateway.loadTiming(
         operatorId: 'op-1',
         locationId: 'loc-1',
@@ -82,8 +85,11 @@ void main() {
       for (final field in bundle.effectiveFields.where(
         (field) => field.label != 'Timezone',
       )) {
-        expect(field.inherited, isTrue,
-            reason: '${field.label} should inherit from operator default');
+        expect(
+          field.inherited,
+          isTrue,
+          reason: '${field.label} should inherit from operator default',
+        );
         expect(field.sourceLabel, equals('Operator default'));
       }
       // Real rung is rendered, current scope is the location even
@@ -94,32 +100,31 @@ void main() {
       );
     });
 
-    test(
-        'timezone source stays tied to the location while timing fields use '
+    test('timezone source stays tied to the location while timing fields use '
         'profile provenance', () async {
       live.result = _resolution(
         topTimezone: 'America/Vancouver',
         candidates: <Map<String, Object?>>[
-        _candidate(
-          profileId: 'op-default',
-          scopeType: 'operator',
-          scopeId: 'op-1',
-          scopeLabel: 'Acme Eats',
-          rank: 0,
-          tz: 'America/Toronto',
-          dayStart: '04:00',
-          weekStart: 'monday',
-        ),
-        _candidate(
-          profileId: 'loc-override',
-          scopeType: 'location',
-          scopeId: 'loc-1',
-          scopeLabel: 'Yonge & Bloor',
-          rank: 1,
-          tz: 'America/Vancouver',
-          dayStart: '04:00',
-          weekStart: 'monday',
-        ),
+          _candidate(
+            profileId: 'op-default',
+            scopeType: 'operator',
+            scopeId: 'op-1',
+            scopeLabel: 'Acme Eats',
+            rank: 0,
+            tz: 'America/Toronto',
+            dayStart: '04:00',
+            weekStart: 'monday',
+          ),
+          _candidate(
+            profileId: 'loc-override',
+            scopeType: 'location',
+            scopeId: 'loc-1',
+            scopeLabel: 'Yonge & Bloor',
+            rank: 1,
+            tz: 'America/Vancouver',
+            dayStart: '04:00',
+            weekStart: 'monday',
+          ),
         ],
       );
       final bundle = await gateway.loadTiming(
@@ -145,25 +150,26 @@ void main() {
       expect(dayField.value, equals('04:00'));
     });
 
-    test(
-        'selectProfileForLocation returns the location candidate when '
-        'present, else the operator default', () async {
-      live.result = _resolution(candidates: <Map<String, Object?>>[
-        _candidate(
-          profileId: 'op-default',
-          scopeType: 'operator',
-          scopeId: 'op-1',
-          scopeLabel: 'Acme Eats',
-          rank: 0,
-        ),
-        _candidate(
-          profileId: 'loc-override',
-          scopeType: 'location',
-          scopeId: 'loc-1',
-          scopeLabel: 'Yonge & Bloor',
-          rank: 1,
-        ),
-      ]);
+    test('selectProfileForLocation returns location when present, else deepest '
+        'inherited ancestor', () async {
+      live.result = _resolution(
+        candidates: <Map<String, Object?>>[
+          _candidate(
+            profileId: 'op-default',
+            scopeType: 'operator',
+            scopeId: 'op-1',
+            scopeLabel: 'Acme Eats',
+            rank: 0,
+          ),
+          _candidate(
+            profileId: 'loc-override',
+            scopeType: 'location',
+            scopeId: 'loc-1',
+            scopeLabel: 'Yonge & Bloor',
+            rank: 1,
+          ),
+        ],
+      );
       await gateway.loadTiming(operatorId: 'op-1', locationId: 'loc-1');
       expect(
         gateway.selectProfileForLocation('loc-1')?.profileId,
@@ -173,6 +179,30 @@ void main() {
         gateway.selectProfileForLocation('loc-other')?.profileId,
         equals('op-default'),
       );
+
+      live.result = _resolution(
+        candidates: <Map<String, Object?>>[
+          _candidate(
+            profileId: 'op-default',
+            scopeType: 'operator',
+            scopeId: 'op-1',
+            scopeLabel: 'Acme Eats',
+            rank: 0,
+          ),
+          _candidate(
+            profileId: 'ou-east',
+            scopeType: 'org_unit',
+            scopeId: 'ou-1',
+            scopeLabel: 'East Region',
+            rank: 1,
+          ),
+        ],
+      );
+      await gateway.loadTiming(operatorId: 'op-1', locationId: 'loc-1');
+      expect(
+        gateway.selectProfileForLocation('loc-1')?.profileId,
+        equals('ou-east'),
+      );
     });
 
     test('selectProfileForLocation returns null before any load', () {
@@ -180,10 +210,8 @@ void main() {
     });
 
     // ---- Mandatory parity test (spec §4 / D7/G51 lesson) ----
-    test(
-        'PARITY: same candidate chain through the blessed projector '
-        'mapping and the S3 client projection resolves identically',
-        () async {
+    test('PARITY: same candidate chain through the blessed projector '
+        'mapping and the S3 client projection resolves identically', () async {
       // The canonical reference: the blessed
       // `sink_business_date_projector._toBusinessTimingProfile` row->
       // profile shape (byte-identical to the open-shift projector),
@@ -231,8 +259,9 @@ void main() {
           seedCloseAuthority: false,
         ),
       ];
-      final canonical =
-          BusinessTimingProfileResolver.resolve(canonicalCandidates);
+      final canonical = BusinessTimingProfileResolver.resolve(
+        canonicalCandidates,
+      );
 
       // The S3 client path: the SAME chain serialized to the
       // documented S1 wire shape, parsed by the gateway, projected
@@ -251,8 +280,14 @@ void main() {
             dayStart: '04:00',
             weekStart: 'monday',
             periods: <Map<String, Object?>>[
-              _period('lunch', 'Lunch', '11:00', '15:00',
-                  shortLabel: 'L', sortOrder: 1),
+              _period(
+                'lunch',
+                'Lunch',
+                '11:00',
+                '15:00',
+                shortLabel: 'L',
+                sortOrder: 1,
+              ),
             ],
           ),
           _candidate(
@@ -265,8 +300,14 @@ void main() {
             dayStart: '05:00',
             weekStart: 'monday',
             periods: <Map<String, Object?>>[
-              _period('lunch', 'Lunch', '11:00', '15:00',
-                  shortLabel: 'L', sortOrder: 1),
+              _period(
+                'lunch',
+                'Lunch',
+                '11:00',
+                '15:00',
+                shortLabel: 'L',
+                sortOrder: 1,
+              ),
             ],
           ),
           _candidate(
@@ -279,8 +320,14 @@ void main() {
             dayStart: '05:00',
             weekStart: 'monday',
             periods: <Map<String, Object?>>[
-              _period('lunch', 'Lunch', '11:00', '15:00',
-                  shortLabel: 'L', sortOrder: 1),
+              _period(
+                'lunch',
+                'Lunch',
+                '11:00',
+                '15:00',
+                shortLabel: 'L',
+                sortOrder: 1,
+              ),
             ],
           ),
         ],
@@ -290,14 +337,18 @@ void main() {
       // the canonical resolver to get the S3-side effective profile.
       final s3Candidates = <BusinessTimingProfile>[
         for (final p in gateway.lastProfiles)
-          _profileFromWriteResult(p,
-              seedCloseAuthority: p.scopeKind == 'operator'),
+          _profileFromWriteResult(
+            p,
+            seedCloseAuthority: p.scopeKind == 'operator',
+          ),
       ];
       final s3 = BusinessTimingProfileResolver.resolve(s3Candidates);
 
       expect(s3.businessTimezone, equals(canonical.businessTimezone));
-      expect(s3.businessDayStartLocalTime,
-          equals(canonical.businessDayStartLocalTime));
+      expect(
+        s3.businessDayStartLocalTime,
+        equals(canonical.businessDayStartLocalTime),
+      );
       expect(s3.weekStartDay, equals(canonical.weekStartDay));
       expect(s3.resolvedScope, equals(canonical.resolvedScope));
       expect(s3.resolvedScopeId, equals(canonical.resolvedScopeId));
@@ -318,47 +369,48 @@ void main() {
     });
 
     // ---- Provenance: 3-level fixture + deliberate same-value override
-    test(
-        'PROVENANCE: a same-value override on a deeper org-unit rung is '
+    test('PROVENANCE: a same-value override on a deeper org-unit rung is '
         'labeled an override, not "inherited"', () async {
       // operator weekStart=monday -> org-unit weekStart=monday
       // (DELIBERATE same value) -> location (no weekStart). The
       // deleted `:56` local heuristic compared values and called the
       // org-unit rung "inherited from operator". The resolver-chain
       // walk must report the org-unit rung as the contributor.
-      live.result = _resolution(candidates: <Map<String, Object?>>[
-        _candidate(
-          profileId: 'op-default',
-          scopeType: 'operator',
-          scopeId: 'op-1',
-          scopeLabel: 'Acme Eats',
-          rank: 0,
-          tz: 'America/Toronto',
-          dayStart: '04:00',
-          weekStart: 'monday',
-        ),
-        _candidate(
-          profileId: 'ou-region',
-          scopeType: 'org_unit',
-          scopeId: 'ou-east',
-          scopeLabel: 'East Region',
-          rank: 1,
-          tz: 'America/Toronto',
-          dayStart: '04:00',
-          // Deliberate SAME value as the operator default.
-          weekStart: 'monday',
-        ),
-        _candidate(
-          profileId: 'loc-1-profile',
-          scopeType: 'location',
-          scopeId: 'loc-1',
-          scopeLabel: 'Yonge & Bloor',
-          rank: 2,
-          tz: 'America/Toronto',
-          dayStart: '04:00',
-          weekStart: 'monday',
-        ),
-      ]);
+      live.result = _resolution(
+        candidates: <Map<String, Object?>>[
+          _candidate(
+            profileId: 'op-default',
+            scopeType: 'operator',
+            scopeId: 'op-1',
+            scopeLabel: 'Acme Eats',
+            rank: 0,
+            tz: 'America/Toronto',
+            dayStart: '04:00',
+            weekStart: 'monday',
+          ),
+          _candidate(
+            profileId: 'ou-region',
+            scopeType: 'org_unit',
+            scopeId: 'ou-east',
+            scopeLabel: 'East Region',
+            rank: 1,
+            tz: 'America/Toronto',
+            dayStart: '04:00',
+            // Deliberate SAME value as the operator default.
+            weekStart: 'monday',
+          ),
+          _candidate(
+            profileId: 'loc-1-profile',
+            scopeType: 'location',
+            scopeId: 'loc-1',
+            scopeLabel: 'Yonge & Bloor',
+            rank: 2,
+            tz: 'America/Toronto',
+            dayStart: '04:00',
+            weekStart: 'monday',
+          ),
+        ],
+      );
       final bundle = await gateway.loadTiming(
         operatorId: 'op-1',
         locationId: 'loc-1',
@@ -371,8 +423,11 @@ void main() {
       // candidate (every wire candidate carries the field). It is the
       // deepest rung => it is an override, NOT inherited. The old
       // heuristic would have said "Operator default / inherited".
-      expect(weekField.inherited, isFalse,
-          reason: 'same-value deeper override must NOT read as inherited');
+      expect(
+        weekField.inherited,
+        isFalse,
+        reason: 'same-value deeper override must NOT read as inherited',
+      );
       expect(weekField.sourceLabel, equals('Location override'));
       // The intermediate org-unit rung is a REAL rung in the chain.
       expect(
@@ -382,29 +437,30 @@ void main() {
     });
 
     // ---- G45 round-trip: day-restricted period survives ----
-    test(
-        'G45: a day-restricted service period round-trips with '
+    test('G45: a day-restricted service period round-trips with '
         'applicableDays / shortLabel / sortOrder intact', () async {
-      live.result = _resolution(candidates: <Map<String, Object?>>[
-        _candidate(
-          profileId: 'op-default',
-          scopeType: 'operator',
-          scopeId: 'op-1',
-          scopeLabel: 'Acme Eats',
-          rank: 0,
-          periods: <Map<String, Object?>>[
-            _period(
-              'weekend_brunch',
-              'Weekend Brunch',
-              '09:00',
-              '14:00',
-              shortLabel: 'WB',
-              sortOrder: 3,
-              applicableDays: <int>[6, 7],
-            ),
-          ],
-        ),
-      ]);
+      live.result = _resolution(
+        candidates: <Map<String, Object?>>[
+          _candidate(
+            profileId: 'op-default',
+            scopeType: 'operator',
+            scopeId: 'op-1',
+            scopeLabel: 'Acme Eats',
+            rank: 0,
+            periods: <Map<String, Object?>>[
+              _period(
+                'weekend_brunch',
+                'Weekend Brunch',
+                '09:00',
+                '14:00',
+                shortLabel: 'WB',
+                sortOrder: 3,
+                applicableDays: <int>[6, 7],
+              ),
+            ],
+          ),
+        ],
+      );
       final bundle = await gateway.loadTiming(
         operatorId: 'op-1',
         locationId: 'loc-1',
@@ -474,10 +530,9 @@ Map<String, Object?> _candidate({
     'effectiveAtBusinessDate': '2026-05-01',
     'weekStartDay': weekStart,
     'businessDayStartLocal': dayStart,
-    'servicePeriods': periods ??
-        <Map<String, Object?>>[
-          _period('lunch', 'Lunch', '11:00', '15:00'),
-        ],
+    'servicePeriods':
+        periods ??
+        <Map<String, Object?>>[_period('lunch', 'Lunch', '11:00', '15:00')],
     'createdAt': DateTime.utc(2026, 5, 1).toIso8601String(),
     'updatedAt': DateTime.utc(2026, 5, 1).toIso8601String(),
   };
@@ -518,8 +573,9 @@ BusinessTimingProfile _blessedProfile({
     businessDayStartLocalTime: dayStart,
     weekStartDay: weekStart,
     servicePeriodDefinitions: periods,
-    shiftCloseAuthority:
-        seedCloseAuthority ? ShiftCloseAuthority.vendorFinalization : null,
+    shiftCloseAuthority: seedCloseAuthority
+        ? ShiftCloseAuthority.vendorFinalization
+        : null,
   );
 }
 
@@ -572,8 +628,9 @@ BusinessTimingProfile _profileFromWriteResult(
                 applicableDays: sp.applicableDays,
               ),
           ],
-    shiftCloseAuthority:
-        seedCloseAuthority ? ShiftCloseAuthority.vendorFinalization : null,
+    shiftCloseAuthority: seedCloseAuthority
+        ? ShiftCloseAuthority.vendorFinalization
+        : null,
   );
 }
 

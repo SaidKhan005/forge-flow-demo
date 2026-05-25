@@ -186,11 +186,10 @@ class InMemoryAuditedSupportActionsAdminGateway
         );
       }
     }
-    if (filters.actorUserIds.isNotEmpty) {
-      final wanted = filters.actorUserIds.toSet();
+    final actorUserIds = filters.effectiveActorUserIds;
+    if (actorUserIds.isNotEmpty) {
+      final wanted = actorUserIds.toSet();
       filtered = filtered.where((r) => wanted.contains(r.actorUserId));
-    } else if (filters.actorUserId != null) {
-      filtered = filtered.where((r) => r.actorUserId == filters.actorUserId);
     }
     if (filters.actions.isNotEmpty) {
       final wanted = filters.actions.toSet();
@@ -200,14 +199,14 @@ class InMemoryAuditedSupportActionsAdminGateway
       final wanted = filters.targetKind!.trim().toLowerCase();
       if (wanted.isNotEmpty) {
         filtered = filtered.where(
-          (r) => r.targetKind.toLowerCase().contains(wanted),
+          (r) => (r.targetKind ?? '').toLowerCase().contains(wanted),
         );
       }
     }
     if (filters.targetId != null && filters.targetId!.trim().isNotEmpty) {
       final wanted = filters.targetId!.trim().toLowerCase();
       filtered = filtered.where(
-        (r) => r.targetId.toLowerCase().contains(wanted),
+        (r) => (r.targetId ?? '').toLowerCase().contains(wanted),
       );
     }
     if (filters.actorKinds.isNotEmpty) {
@@ -287,8 +286,8 @@ class InMemoryAuditedSupportActionsAdminGateway
           _csv(row.actorDisplayName),
           _csv(row.actorEmail),
           _csv(row.actorKind.wire),
-          _csv(row.targetKind),
-          _csv(row.targetId),
+          _csv(row.targetKind ?? ''),
+          _csv(row.targetId ?? ''),
           _csv(row.adminReason ?? ''),
           _csv(row.payload.isEmpty ? '' : jsonEncode(row.payload)),
         ].join(','),

@@ -10,6 +10,20 @@ import '../domain/models/metric_provenance.dart';
 import '../domain/models/open_shift_snapshot.dart';
 import '../services/labor_model.dart';
 
+typedef _MetricCardInputs = ({
+  int actualCovers,
+  double actualPPA,
+  double actualCPLH,
+  double actualSPLH,
+  double blendedWage,
+  int forecastCovers,
+  ActiveTargetProfile profile,
+  String leverId,
+  String opzStatus,
+  String opzLabel,
+  int? inTheBooksCovers,
+});
+
 class ShiftDashboardReadModel {
   // ── Header context ──────────────────────────────────────────────────────
   final String daypart;
@@ -484,25 +498,19 @@ class ShiftDashboardReadModel {
     final opzSubLabel = _computeOpzSubLabel(opzStatus, splhState);
 
     // Metric cards
-    final cards = _buildMetricCards(
+    final cards = _buildMetricCards((
       actualCovers: totalCovers,
-      actualSales: totalSales,
       actualPPA: avgPPA,
       actualCPLH: avgCPLH,
       actualSPLH: avgSPLH,
       blendedWage: avgBlendedWage,
-      scheduledFohHours: totalFoh,
-      scheduledBohHours: totalBoh,
       forecastCovers: forecastCovers,
-      forecastSales: forecastSales,
-      planFohHours: planFohHours,
-      planBohHours: planBohHours,
       profile: profile,
       leverId: leverId,
       opzStatus: opzStatus,
       opzLabel: opzLabel,
       inTheBooksCovers: inTheBooksCovers,
-    );
+    ));
 
     return ShiftDashboardReadModel(
       daypart: snapshots.length > 1 ? '' : _daypartLabel(openSnap.daypart),
@@ -715,131 +723,128 @@ class ShiftDashboardReadModel {
     return 'COVERS';
   }
 
-  static List<InputMetric> _buildMetricCards({
-    required int actualCovers,
-    required double actualSales,
-    required double actualPPA,
-    required double actualCPLH,
-    required double actualSPLH,
-    required double blendedWage,
-    required int scheduledFohHours,
-    required int scheduledBohHours,
-    required int forecastCovers,
-    required double forecastSales,
-    required int planFohHours,
-    required int planBohHours,
-    required ActiveTargetProfile profile,
-    required String leverId,
-    required String opzStatus,
-    required String opzLabel,
-    int? inTheBooksCovers,
-  }) {
-    final heroName = _heroMetricNameForLever(leverId);
+  static List<InputMetric> _buildMetricCards(_MetricCardInputs input) {
+    final heroName = _heroMetricNameForLever(input.leverId);
+    return [
+      _coversMetric(input, heroName),
+      _ppaMetric(input, heroName),
+      _cplhMetric(input, heroName),
+      _splhMetric(input, heroName),
+      _blendedWageMetric(input, heroName),
+    ];
+  }
 
-    final coversDelta = actualCovers - forecastCovers;
-    final coversUnfavorable = actualCovers < forecastCovers;
-    final coversStatus = coversUnfavorable
+  static InputMetric _coversMetric(_MetricCardInputs input, String heroName) {
+    final delta = input.actualCovers - input.forecastCovers;
+    final unfavorable = input.actualCovers < input.forecastCovers;
+    final status = unfavorable
         ? 'Light'
-        : (actualCovers > forecastCovers ? 'Heavy' : 'On pace');
+        : (input.actualCovers > input.forecastCovers ? 'Heavy' : 'On pace');
 
-    final ppaDelta = actualPPA - profile.targetPPA;
-    final ppaUnfavorable = actualPPA < profile.targetPPA;
-    final ppaStatus = ppaUnfavorable
+    return InputMetric(
+      name: 'COVERS',
+      currentFormatted: '${input.actualCovers}',
+      targetFormatted: 'Forecast ${input.forecastCovers}',
+      targetSupportFormatted: input.inTheBooksCovers != null
+          ? 'In the books ${input.inTheBooksCovers}'
+          : null,
+      deltaFormatted: '${delta >= 0 ? '+' : ''}$delta',
+      deltaUnfavorable: unfavorable,
+      isHero: heroName == 'COVERS',
+      statusLine: status,
+    );
+  }
+
+  static InputMetric _ppaMetric(_MetricCardInputs input, String heroName) {
+    final target = input.profile.targetPPA;
+    final delta = input.actualPPA - target;
+    final unfavorable = input.actualPPA < target;
+    final status = unfavorable
         ? 'Watch'
-        : (actualPPA > profile.targetPPA ? 'Ahead' : 'On target');
+        : (input.actualPPA > target ? 'Ahead' : 'On target');
 
-    final cplhDelta = actualCPLH - profile.targetCPLH;
-    final cplhUnfavorable = actualCPLH < profile.targetCPLH;
-    String cplhStatus;
+    return InputMetric(
+      name: 'PPA',
+      currentFormatted: '\$${input.actualPPA.toStringAsFixed(2)}',
+      targetFormatted: 'Target \$${target.toStringAsFixed(2)}',
+      deltaFormatted: delta >= 0
+          ? '+\$${delta.toStringAsFixed(2)}'
+          : '-\$${delta.abs().toStringAsFixed(2)}',
+      deltaUnfavorable: unfavorable,
+      isHero: heroName == 'PPA',
+      statusLine: status,
+    );
+  }
+
+  static InputMetric _cplhMetric(_MetricCardInputs input, String heroName) {
+    final target = input.profile.targetCPLH;
+    final delta = input.actualCPLH - target;
+
+    return InputMetric(
+      name: 'CPLH',
+      currentFormatted: input.actualCPLH.toStringAsFixed(2),
+      targetFormatted: 'Target ${target.toStringAsFixed(2)}',
+      deltaFormatted: '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(2)}',
+      deltaUnfavorable: input.actualCPLH < target,
+      statusFavorable: input.opzStatus == 'in',
+      isHero: heroName == 'CPLH',
+      statusLine: _cplhStatusLine(input.opzLabel),
+    );
+  }
+
+  static String _cplhStatusLine(String opzLabel) {
     switch (opzLabel) {
       case 'BELOW OPZ':
-        cplhStatus = 'Below OPZ';
-        break;
+        return 'Below OPZ';
       case 'IN OPZ':
-        cplhStatus = 'In OPZ';
-        break;
+        return 'In OPZ';
       case 'ABOVE OPZ':
-        cplhStatus = 'Above OPZ';
-        break;
+        return 'Above OPZ';
       default:
-        cplhStatus = 'In OPZ';
+        return 'In OPZ';
     }
-    final cplhStatusFavorable = opzStatus == 'in';
+  }
 
-    final splhDelta = actualSPLH - profile.targetSPLH;
-    final splhUnfavorable = actualSPLH < profile.targetSPLH;
-    final splhStatus = splhUnfavorable
+  static InputMetric _splhMetric(_MetricCardInputs input, String heroName) {
+    final target = input.profile.targetSPLH;
+    final delta = input.actualSPLH - target;
+    final unfavorable = input.actualSPLH < target;
+    final status = unfavorable
         ? 'Below target'
-        : (actualSPLH > profile.targetSPLH ? 'Above target' : 'On target');
+        : (input.actualSPLH > target ? 'Above target' : 'On target');
 
-    // Target blended wage now sources from the shared benchmark seam
-    // benchmark seam (profile.targetBlendedWage) — the same value
-    // Benchmark and Variance show. The old planned-package-style
-    // derivation (`(planFohHours × fohWage + planBohHours × bohWage) /
-    // (planFohHours + planBohHours)`) is gone.
-    final targetBlendedWage = profile.targetBlendedWage;
-    final wageDelta = blendedWage - targetBlendedWage;
-    final wageUnfavorable = blendedWage > targetBlendedWage;
-    final wageStatus = wageUnfavorable ? 'Watch for Overtime' : 'No Overtime';
+    return InputMetric(
+      name: 'SPLH',
+      currentFormatted: '\$${input.actualSPLH.toStringAsFixed(0)}',
+      targetFormatted: 'Target \$${target.toStringAsFixed(0)}',
+      deltaFormatted: delta >= 0
+          ? '+\$${delta.toStringAsFixed(0)}'
+          : '-\$${delta.abs().toStringAsFixed(0)}',
+      deltaUnfavorable: unfavorable,
+      isHero: heroName == 'SPLH',
+      statusLine: status,
+    );
+  }
 
-    return [
-      InputMetric(
-        name: 'COVERS',
-        currentFormatted: '$actualCovers',
-        targetFormatted: 'Forecast $forecastCovers',
-        targetSupportFormatted: inTheBooksCovers != null
-            ? 'In the books $inTheBooksCovers'
-            : null,
-        deltaFormatted: '${coversDelta >= 0 ? '+' : ''}$coversDelta',
-        deltaUnfavorable: coversUnfavorable,
-        isHero: heroName == 'COVERS',
-        statusLine: coversStatus,
-      ),
-      InputMetric(
-        name: 'PPA',
-        currentFormatted: '\$${actualPPA.toStringAsFixed(2)}',
-        targetFormatted: 'Target \$${profile.targetPPA.toStringAsFixed(2)}',
-        deltaFormatted: ppaDelta >= 0
-            ? '+\$${ppaDelta.toStringAsFixed(2)}'
-            : '-\$${ppaDelta.abs().toStringAsFixed(2)}',
-        deltaUnfavorable: ppaUnfavorable,
-        isHero: heroName == 'PPA',
-        statusLine: ppaStatus,
-      ),
-      InputMetric(
-        name: 'CPLH',
-        currentFormatted: actualCPLH.toStringAsFixed(2),
-        targetFormatted: 'Target ${profile.targetCPLH.toStringAsFixed(2)}',
-        deltaFormatted:
-            '${cplhDelta >= 0 ? '+' : ''}${cplhDelta.toStringAsFixed(2)}',
-        deltaUnfavorable: cplhUnfavorable,
-        statusFavorable: cplhStatusFavorable,
-        isHero: heroName == 'CPLH',
-        statusLine: cplhStatus,
-      ),
-      InputMetric(
-        name: 'SPLH',
-        currentFormatted: '\$${actualSPLH.toStringAsFixed(0)}',
-        targetFormatted: 'Target \$${profile.targetSPLH.toStringAsFixed(0)}',
-        deltaFormatted: splhDelta >= 0
-            ? '+\$${splhDelta.toStringAsFixed(0)}'
-            : '-\$${splhDelta.abs().toStringAsFixed(0)}',
-        deltaUnfavorable: splhUnfavorable,
-        isHero: heroName == 'SPLH',
-        statusLine: splhStatus,
-      ),
-      InputMetric(
-        name: 'BLENDED WAGE',
-        currentFormatted: '\$${blendedWage.toStringAsFixed(2)}',
-        targetFormatted: 'Target \$${targetBlendedWage.toStringAsFixed(2)}',
-        deltaFormatted: wageDelta >= 0
-            ? '+\$${wageDelta.toStringAsFixed(2)}'
-            : '-\$${wageDelta.abs().toStringAsFixed(2)}',
-        deltaUnfavorable: wageUnfavorable,
-        isHero: heroName == 'BLENDED WAGE',
-        statusLine: wageStatus,
-        fullWidth: true,
-      ),
-    ];
+  static InputMetric _blendedWageMetric(
+    _MetricCardInputs input,
+    String heroName,
+  ) {
+    final target = input.profile.targetBlendedWage;
+    final delta = input.blendedWage - target;
+    final unfavorable = input.blendedWage > target;
+
+    return InputMetric(
+      name: 'BLENDED WAGE',
+      currentFormatted: '\$${input.blendedWage.toStringAsFixed(2)}',
+      targetFormatted: 'Target \$${target.toStringAsFixed(2)}',
+      deltaFormatted: delta >= 0
+          ? '+\$${delta.toStringAsFixed(2)}'
+          : '-\$${delta.abs().toStringAsFixed(2)}',
+      deltaUnfavorable: unfavorable,
+      isHero: heroName == 'BLENDED WAGE',
+      statusLine: unfavorable ? 'Watch for Overtime' : 'No Overtime',
+      fullWidth: true,
+    );
   }
 }

@@ -34,15 +34,12 @@ void main() {
         findsOneWidget,
       );
       // Operator-web vocabulary: the wage guide talks about "labor dollars".
-      expect(
-        find.textContaining('work out labor dollars'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('work out labor dollars'), findsOneWidget);
       // Friendly vendor display name (not the slug).
       expect(find.text('Toast'), findsOneWidget);
-      // Allowed pill + applies-to chip render.
+      // Allowed pill + compact scope text render.
       expect(find.text('Allowed'), findsWidgets);
-      expect(find.textContaining('Applies to: All operators'), findsOneWidget);
+      expect(find.text('All operators'), findsOneWidget);
       expect(gateway.listFilters.single.settingKind, 'wage');
       expect(gateway.listFilters.single.currentOnly, isFalse);
     });
@@ -92,9 +89,14 @@ void main() {
       await tester.pumpAndSettle();
 
       // Friendly wage authority -> generates authority_basis.
-      // The friendly form scrolls inside the height-capped dialog, so the
-      // optional-field controls can sit below the fold; scroll them into
-      // view before tapping (a real admin scrolls too).
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_details_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_details_toggle')),
+      );
+      await tester.pumpAndSettle();
       await tester.ensureVisible(
         find.byKey(const Key('admin_vendor_applicability_wage_authority')),
       );
@@ -116,6 +118,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+      );
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('admin_vendor_applicability_reason')),
         'Ticket VA-200 launch wage source',
@@ -170,11 +176,23 @@ void main() {
 
       // Choose "One operator and one location".
       await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_scope_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_scope_location')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
         find.byKey(const Key('admin_vendor_applicability_scope_location')),
       );
       await tester.pumpAndSettle();
 
       // Operator dropdown -> business name.
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_operator_dropdown')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('admin_vendor_applicability_operator_dropdown')),
       );
@@ -183,6 +201,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Location dropdown -> location name.
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_location_dropdown')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('admin_vendor_applicability_location_dropdown')),
       );
@@ -190,6 +212,10 @@ void main() {
       await tester.tap(find.text('North Loop').last);
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+      );
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('admin_vendor_applicability_reason')),
         'Ticket VA-210 per-location wage source',
@@ -237,7 +263,19 @@ void main() {
 
         // Pick location scope but never choose an operator.
         await tester.tap(
+          find.byKey(const Key('admin_vendor_applicability_scope_toggle')),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(
           find.byKey(const Key('admin_vendor_applicability_scope_location')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('admin_vendor_applicability_scope_location')),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_vendor_applicability_reason')),
         );
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -284,8 +322,14 @@ void main() {
       await tester.pumpAndSettle();
 
       // "Which guests count?" -> cover_filter.
-      // Scroll the control into view first: the friendly form scrolls inside
-      // the height-capped dialog and this field can sit below the fold.
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_details_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_details_toggle')),
+      );
+      await tester.pumpAndSettle();
       await tester.ensureVisible(
         find.byKey(const Key('admin_vendor_applicability_cover_filter')),
       );
@@ -331,6 +375,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+      );
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('admin_vendor_applicability_reason')),
         'Ticket VA-201 covers custom periods',
@@ -366,8 +414,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(const Key('admin_vendor_applicability_end_row-wage-toast')),
+        find.byKey(
+          const Key('admin_vendor_applicability_actions_row-wage-toast'),
+        ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stop using this rule'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('admin_vendor_applicability_reason_note')),
@@ -413,7 +465,9 @@ void main() {
       );
       // Collapsed by default: the ended row is not shown yet.
       expect(
-        find.byKey(const Key('vendor_applicability_history_row-wage-square-old')),
+        find.byKey(
+          const Key('vendor_applicability_history_row-wage-square-old'),
+        ),
         findsNothing,
       );
       await tester.tap(
@@ -421,7 +475,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const Key('vendor_applicability_history_row-wage-square-old')),
+        find.byKey(
+          const Key('vendor_applicability_history_row-wage-square-old'),
+        ),
         findsOneWidget,
       );
     });
@@ -453,11 +509,9 @@ void main() {
       expect(addButton.onPressed, isNull);
       // Edit / End icon buttons are not rendered in read-only mode.
       expect(
-        find.byKey(const Key('admin_vendor_applicability_edit_row-wage-toast')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_vendor_applicability_end_row-wage-toast')),
+        find.byKey(
+          const Key('admin_vendor_applicability_actions_row-wage-toast'),
+        ),
         findsNothing,
       );
     });
