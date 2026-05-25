@@ -12,6 +12,7 @@ import 'package:forge_and_flow/infrastructure/cloud_run/cloud_run_admin_client.d
 import 'package:forge_and_flow/infrastructure/kms/kms_provider.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_entitlements_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
@@ -669,6 +670,7 @@ void main() {
         usageCapsRepository: _StubUsageCapsRepository(),
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        entitlementsRepository: _StubFeatureEntitlementsRepository(),
         auditRepository: auditRepository,
       );
 
@@ -701,6 +703,7 @@ void main() {
         usageCapsRepository: _StubUsageCapsRepository(),
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        entitlementsRepository: _StubFeatureEntitlementsRepository(),
         auditRepository: auditRepository,
       );
 
@@ -735,6 +738,7 @@ void main() {
         usageCapsRepository: _StubUsageCapsRepository(),
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        entitlementsRepository: _StubFeatureEntitlementsRepository(),
         auditRepository: auditRepository,
       );
 
@@ -767,6 +771,7 @@ void main() {
         usageCapsRepository: _StubUsageCapsRepository(),
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        entitlementsRepository: _StubFeatureEntitlementsRepository(),
         auditRepository: auditRepository,
       );
 
@@ -803,6 +808,7 @@ void main() {
         usageCapsRepository: _StubUsageCapsRepository(),
         orgUnitsRepository: _StubOrgUnitsRepository(),
         planCatalogRepository: _StubPricingPlanCatalogRepository(),
+        entitlementsRepository: _StubFeatureEntitlementsRepository(),
         auditRepository: auditRepository,
       );
 
@@ -1387,6 +1393,34 @@ class _StubPricingPlanCatalogRepository extends PricingPlanCatalogRepository {
     String reason = 'admin.pricing.plans_list',
   }) async {
     return const <PricingPlanCatalogRow>[];
+  }
+}
+
+class _StubFeatureEntitlementsRepository extends FeatureEntitlementsRepository {
+  _StubFeatureEntitlementsRepository() : super(_dummyTenantWrapper());
+
+  @override
+  Future<List<FeatureEntitlementRow>> listEntitlements({
+    String reason = 'admin.pricing.entitlements_list',
+  }) async {
+    return const <FeatureEntitlementRow>[];
+  }
+
+  @override
+  Future<FeatureEntitlementRow> setEntitlement({
+    required String tierKey,
+    required String featureSlug,
+    required bool enabled,
+    required String updatedByUserId,
+    String reason = 'admin.pricing.set_entitlement',
+  }) async {
+    return FeatureEntitlementRow(
+      tierKey: tierKey,
+      featureSlug: featureSlug,
+      enabled: enabled,
+      updatedAt: null,
+      updatedBy: updatedByUserId,
+    );
   }
 }
 
