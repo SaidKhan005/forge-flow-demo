@@ -25,6 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/admin_timing_setup_screen.dart';
 import 'package:forge_and_flow/admin/services/admin_business_timing_profiles_gateway.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -33,6 +34,8 @@ import '../../_test_helpers/widget_pump_helpers.dart';
 void main() {
   const operatorId = '00000000-0000-4000-8000-000000000001';
   const orgUnitId = '00000000-0000-4000-8000-0000000000aa';
+  const parentOrgUnitId = '00000000-0000-4000-8000-000000000099';
+  const locationId = '00000000-0000-4000-8000-0000000000bb';
 
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -59,6 +62,8 @@ void main() {
     required InMemoryAdminBusinessTimingProfilesGateway profilesGateway,
     bool editingEnabled = true,
     AdminHierarchyScopeIntent? scope,
+    Set<String> scopeLocationIds = const <String>{},
+    AdminBusinessTimingResolutionGateway? resolutionGateway,
   }) {
     return AdminTimingSetupScreen(
       operatorGateway: emptyOperatorGateway(),
@@ -68,9 +73,10 @@ void main() {
             operatorId: operatorId,
             operatorName: 'Demo Diner Co.',
           ),
-      scopeLocationIds: const <String>{},
+      scopeLocationIds: scopeLocationIds,
       editingEnabled: editingEnabled,
       timingProfilesGateway: profilesGateway,
+      timingResolutionGateway: resolutionGateway,
       // Deterministic idempotency key keeps the test free of clock noise.
       idempotencyKeyFactory: () => 'idem-test',
     );
@@ -261,6 +267,195 @@ void main() {
         expect(create.scopeId, orgUnitId);
       },
     );
+
+    testWidgets(
+      'location scope CREATEs with scopeKind location + scopeId = locationId',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = InMemoryAdminBusinessTimingProfilesGateway();
+        await tester.pumpWidget(
+          wrap(
+            buildScreen(
+              profilesGateway: gateway,
+              scope: const AdminHierarchyScopeIntent.location(
+                operatorId: operatorId,
+                orgUnitId: orgUnitId,
+                locationId: locationId,
+                operatorName: 'Demo Diner Co.',
+                orgUnitName: 'North Region',
+                locationName: 'Harbourfront',
+              ),
+            ),
+          ),
+        );
+        await pumpEventually(tester);
+
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_timing_editor_save')),
+        );
+        await tester.tap(find.byKey(const Key('admin_timing_editor_save')));
+        await pumpEventually(tester);
+        await tester.enterText(
+          find.byKey(const Key('admin_timing_reason_field')),
+          'location timing',
+        );
+        await tester.tap(find.byKey(const Key('admin_timing_reason_submit')));
+        await pumpEventually(tester);
+
+        expect(gateway.capturedCreates, hasLength(1));
+        final create = gateway.capturedCreates.single;
+        expect(create.scopeKind, 'location');
+        expect(create.scopeId, locationId);
+      },
+    );
+
+    testWidgets(
+      'location scope CREATE seeds from inherited org-unit service periods',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = InMemoryAdminBusinessTimingProfilesGateway();
+        final resolutionGateway = _FakeAdminTimingResolutionGateway(
+          _resolution(
+            locationId: locationId,
+            candidates: <AdminResolutionCandidate>[
+              _candidate(
+                profileId: 'op-default',
+                scopeType: 'operator',
+                scopeId: operatorId,
+                scopeLabel: 'Demo Diner Co.',
+                rank: 0,
+                periodKey: 'lunch',
+                periodLabel: 'Lunch',
+              ),
+              _candidate(
+                profileId: 'ou-east',
+                scopeType: 'org_unit',
+                scopeId: orgUnitId,
+                scopeLabel: 'North Region',
+                rank: 1,
+                dayStart: '05:00',
+                weekStart: 'tuesday',
+                periodKey: 'brunch',
+                periodLabel: 'Weekend Brunch',
+                applicableDays: const <int>[6, 7],
+              ),
+            ],
+          ),
+        );
+        await tester.pumpWidget(
+          wrap(
+            buildScreen(
+              profilesGateway: gateway,
+              resolutionGateway: resolutionGateway,
+              scope: const AdminHierarchyScopeIntent.location(
+                operatorId: operatorId,
+                orgUnitId: orgUnitId,
+                locationId: locationId,
+                operatorName: 'Demo Diner Co.',
+                orgUnitName: 'North Region',
+                locationName: 'Harbourfront',
+              ),
+            ),
+          ),
+        );
+        await pumpEventually(tester);
+
+        expect(find.text('Reset to inherited'), findsOneWidget);
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_timing_editor_save')),
+        );
+        await tester.tap(find.byKey(const Key('admin_timing_editor_save')));
+        await pumpEventually(tester);
+        await tester.enterText(
+          find.byKey(const Key('admin_timing_reason_field')),
+          'location inherited timing',
+        );
+        await tester.tap(find.byKey(const Key('admin_timing_reason_submit')));
+        await pumpEventually(tester);
+
+        expect(gateway.capturedCreates, hasLength(1));
+        final create = gateway.capturedCreates.single;
+        expect(create.scopeKind, 'location');
+        expect(create.scopeId, locationId);
+        expect(create.businessDayStartLocal, '05:00');
+        expect(create.weekStartDay, 'tuesday');
+        expect(create.servicePeriods.single.key, 'brunch');
+        expect(create.servicePeriods.single.applicableDays, <int>[6, 7]);
+      },
+    );
+
+    testWidgets(
+      'org_unit scope CREATE seeds from the nearest upper org-unit profile',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = InMemoryAdminBusinessTimingProfilesGateway();
+        final resolutionGateway = _FakeAdminTimingResolutionGateway(
+          _resolution(
+            locationId: locationId,
+            candidates: <AdminResolutionCandidate>[
+              _candidate(
+                profileId: 'op-default',
+                scopeType: 'operator',
+                scopeId: operatorId,
+                scopeLabel: 'Demo Diner Co.',
+                rank: 0,
+                periodKey: 'lunch',
+                periodLabel: 'Lunch',
+              ),
+              _candidate(
+                profileId: 'ou-parent',
+                scopeType: 'org_unit',
+                scopeId: parentOrgUnitId,
+                scopeLabel: 'Canada',
+                rank: 1,
+                dayStart: '06:00',
+                weekStart: 'wednesday',
+                periodKey: 'breakfast',
+                periodLabel: 'Breakfast',
+              ),
+            ],
+          ),
+        );
+        await tester.pumpWidget(
+          wrap(
+            buildScreen(
+              profilesGateway: gateway,
+              resolutionGateway: resolutionGateway,
+              scopeLocationIds: const <String>{locationId},
+              scope: const AdminHierarchyScopeIntent.orgUnit(
+                operatorId: operatorId,
+                orgUnitId: orgUnitId,
+                operatorName: 'Demo Diner Co.',
+                orgUnitName: 'North Region',
+                hierarchyPath: <String>['Canada'],
+              ),
+            ),
+          ),
+        );
+        await pumpEventually(tester);
+
+        expect(find.text('Reset to inherited'), findsOneWidget);
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_timing_editor_save')),
+        );
+        await tester.tap(find.byKey(const Key('admin_timing_editor_save')));
+        await pumpEventually(tester);
+        await tester.enterText(
+          find.byKey(const Key('admin_timing_reason_field')),
+          'org inherited timing',
+        );
+        await tester.tap(find.byKey(const Key('admin_timing_reason_submit')));
+        await pumpEventually(tester);
+
+        expect(gateway.capturedCreates, hasLength(1));
+        final create = gateway.capturedCreates.single;
+        expect(create.scopeKind, 'org_unit');
+        expect(create.scopeId, orgUnitId);
+        expect(create.businessDayStartLocal, '06:00');
+        expect(create.weekStartDay, 'wednesday');
+        expect(create.servicePeriods.single.key, 'breakfast');
+      },
+    );
   });
 
   group('ff_support read-only posture', () {
@@ -356,4 +551,70 @@ void main() {
       }
     });
   });
+}
+
+class _FakeAdminTimingResolutionGateway
+    implements AdminBusinessTimingResolutionGateway {
+  _FakeAdminTimingResolutionGateway(this.resolution);
+
+  final AdminBusinessTimingResolution resolution;
+
+  @override
+  Future<AdminBusinessTimingResolution> resolve({
+    required String operatorId,
+    required String locationId,
+    String? businessDate,
+  }) async {
+    return resolution;
+  }
+}
+
+AdminBusinessTimingResolution _resolution({
+  required String locationId,
+  required List<AdminResolutionCandidate> candidates,
+}) {
+  return AdminBusinessTimingResolution(
+    operatorId: '00000000-0000-4000-8000-000000000001',
+    locationId: locationId,
+    businessDate: '2026-05-24',
+    ianaTimezone: 'America/Toronto',
+    candidates: candidates,
+  );
+}
+
+AdminResolutionCandidate _candidate({
+  required String profileId,
+  required String scopeType,
+  required String scopeId,
+  required String scopeLabel,
+  required int rank,
+  String dayStart = '04:00',
+  String weekStart = 'monday',
+  String periodKey = 'lunch',
+  String periodLabel = 'Lunch',
+  List<int> applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
+}) {
+  return AdminResolutionCandidate(
+    profileId: profileId,
+    scopeType: scopeType,
+    scopeId: scopeId,
+    scopeLabel: scopeLabel,
+    scopeDepthRank: rank,
+    ianaTimezone: 'America/Toronto',
+    effectiveAtBusinessDate: '2026-05-24',
+    weekStartDay: weekStart,
+    businessDayStartLocal: dayStart,
+    servicePeriods: <AdminResolutionServicePeriod>[
+      AdminResolutionServicePeriod(
+        key: periodKey,
+        label: periodLabel,
+        startLocal: '10:00',
+        endLocal: '14:00',
+        rollsPastMidnight: false,
+        shortLabel: periodLabel.substring(0, 1),
+        sortOrder: 1,
+        applicableDays: applicableDays,
+      ),
+    ],
+  );
 }
