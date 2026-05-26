@@ -109,10 +109,8 @@ class PollingTierStatusCard extends StatelessWidget {
       cardKey: const Key('data_accuracy_polling_tier_status_card'),
       title: 'Data freshness tier',
       headerExplainer:
-          'This applies only to vendors that do not push live updates. '
-          'Forge & Flow asks those vendors for new data on the schedule '
-          'set by this location\'s tier. Webhook vendors update when they '
-          'send data, so this tier does not change them.',
+          'Applies only to vendors that do not push live updates. Forge & '
+          'Flow checks them on the schedule set by this location\'s tier.',
       child: !appliesToConnectedVendors
           ? _FreshnessDoesNotApplyBlock(
               bundle: bundle,

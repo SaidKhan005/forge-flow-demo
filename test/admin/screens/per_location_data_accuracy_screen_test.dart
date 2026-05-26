@@ -58,6 +58,20 @@ void main() {
     });
   }
 
+  // The mounted operator Data Accuracy screen now shows one area at a
+  // time behind a segmented tab bar. Labor is the default; Covers and
+  // Data-freshness controls live on their own tabs. These helpers move
+  // to the relevant tab before the admin test exercises a control.
+  Future<void> openCoversTab(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('data_accuracy_tab_covers')));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openFreshnessTab(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('data_accuracy_tab_freshness')));
+    await tester.pumpAndSettle();
+  }
+
   InMemoryDataAccuracyAdminGateway buildGateway() =>
       InMemoryDataAccuracyAdminGateway(operatorLocations: refs);
 
@@ -161,10 +175,8 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('Data accuracy'), findsOneWidget);
-        expect(
-          find.byKey(const Key('data_accuracy_covers_source_card')),
-          findsOneWidget,
-        );
+        // Wage card + embedded wage authority sit on the default (Labor)
+        // tab.
         expect(
           find.byKey(const Key('data_accuracy_wage_source_card')),
           findsOneWidget,
@@ -173,6 +185,12 @@ void main() {
           find.byKey(
             const Key('operator_web_data_accuracy_wage_authority_section'),
           ),
+          findsOneWidget,
+        );
+        // The covers card lives on the Covers tab.
+        await openCoversTab(tester);
+        expect(
+          find.byKey(const Key('data_accuracy_covers_source_card')),
           findsOneWidget,
         );
 
@@ -201,6 +219,7 @@ void main() {
         wrap(buildScreen(gateway: gateway, scope: locationScope)),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       expect(settingsSaveEvents(gateway), isEmpty);
 
@@ -291,6 +310,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFreshnessTab(tester);
 
       expect(find.text('Open Polling Setup'), findsOneWidget);
       expect(find.text('Request faster data freshness'), findsNothing);
@@ -343,12 +363,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final texts = tester.widgetList<Text>(find.byType(Text));
-    for (final text in texts) {
-      final data = text.data;
-      if (data == null) continue;
-      expect(data.contains('\u2014'), isFalse, reason: data);
+    // The mounted screen shows one area at a time; sweep all three tabs
+    // so the em-dash check covers covers + data-freshness copy too.
+    void sweepForEmDash() {
+      final texts = tester.widgetList<Text>(find.byType(Text));
+      for (final text in texts) {
+        final data = text.data;
+        if (data == null) continue;
+        expect(data.contains('\u2014'), isFalse, reason: data);
+      }
     }
+
+    sweepForEmDash();
+    await openCoversTab(tester);
+    sweepForEmDash();
+    await openFreshnessTab(tester);
+    sweepForEmDash();
   });
 }
 

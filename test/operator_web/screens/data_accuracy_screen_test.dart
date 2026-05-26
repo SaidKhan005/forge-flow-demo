@@ -62,6 +62,22 @@ void main() {
     home: Scaffold(body: child),
   );
 
+  // The screen now shows one area at a time behind a segmented tab bar
+  // (Labor / Covers / Data freshness). Labor is the default tab; the
+  // Covers and Data-freshness controls live on their own tabs. These
+  // helpers move to the tab a control lives on before the test
+  // interacts with it. They do NOT change what any test verifies — only
+  // the navigation needed to reach the control.
+  Future<void> openCoversTab(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('data_accuracy_tab_covers')));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openFreshnessTab(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('data_accuracy_tab_freshness')));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -190,24 +206,37 @@ void main() {
           find.byKey(const Key('operator_web_data_accuracy_screen')),
           findsOneWidget,
         );
+        // The three area tabs render; the wage card sits on the default
+        // (Labor) tab. The redesign removed the top explainer card from
+        // the screen (it now lives behind each card's info button).
+        expect(
+          find.byKey(const Key('data_accuracy_tab_labor')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('data_accuracy_tab_covers')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('data_accuracy_tab_freshness')),
+          findsOneWidget,
+        );
         expect(
           find.byKey(const Key('data_accuracy_wage_source_card')),
           findsOneWidget,
         );
         expect(
+          find.byKey(const Key('data_accuracy_explainer_card')),
+          findsNothing,
+        );
+
+        // Covers card lives on the Covers tab; conditional fallback
+        // cards stay off in the default fixture (Toast exposes covers).
+        await openCoversTab(tester);
+        expect(
           find.byKey(const Key('data_accuracy_covers_source_card')),
           findsOneWidget,
         );
-        expect(
-          find.byKey(const Key('data_accuracy_polling_tier_status_card')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('data_accuracy_explainer_card')),
-          findsOneWidget,
-        );
-
-        // Conditional cards stay off in the default fixture.
         expect(
           find.byKey(const Key('data_accuracy_walk_in_handling_card')),
           findsNothing,
@@ -220,6 +249,15 @@ void main() {
           find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
           findsNothing,
         );
+
+        // Polling card lives on the Data freshness tab; with no
+        // poll-only vendor it shows the not-applicable notice and a
+        // disabled request button.
+        await openFreshnessTab(tester);
+        expect(
+          find.byKey(const Key('data_accuracy_polling_tier_status_card')),
+          findsOneWidget,
+        );
         expect(
           find.byKey(const Key('polling_tier_not_applicable_notice')),
           findsOneWidget,
@@ -231,7 +269,9 @@ void main() {
       },
     );
 
-    testWidgets('map names primary location', (tester) async {
+    testWidgets('header shows the lean subtitle with no pinned key', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 800));
 
       await tester.pumpWidget(
@@ -248,16 +288,23 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // The redesign replaced the top explainer card with a one-line
+      // header subtitle. The subtitle text must render, but with NO key
+      // (tests assert the `operator_web_data_accuracy_subtitle` key is
+      // absent).
       expect(
         find.byKey(const Key('operator_web_data_accuracy_subtitle')),
         findsNothing,
       );
-      await tester.tap(find.byTooltip('How Forge & Flow reads this location'));
-      await tester.pumpAndSettle();
       expect(
-        find.textContaining('Brio - Chicago Loop'),
+        find.text("Where this location's numbers come from."),
         findsOneWidget,
-        reason: 'The map help should name the primary location explicitly.',
+      );
+      // The old top explainer card (and its tooltip) are gone from the
+      // screen.
+      expect(
+        find.byKey(const Key('data_accuracy_explainer_card')),
+        findsNothing,
       );
     });
   });
@@ -333,6 +380,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         expect(
           find.byKey(const Key('data_accuracy_walk_in_handling_card')),
@@ -374,6 +422,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         expect(
           find.byKey(const Key('data_accuracy_walk_in_handling_card')),
@@ -424,6 +473,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       final addedRadio = find.byKey(const Key('walk_in_handling_radio_added'));
       await tester.ensureVisible(addedRadio);
@@ -484,6 +534,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       expect(
         find.byKey(const Key('data_accuracy_covers_historical_seed_card')),
@@ -524,6 +575,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         expect(
           find.byKey(const Key('covers_source_disabled_reason_dinner')),
@@ -560,6 +612,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       await tester.ensureVisible(
         find.byKey(const Key('covers_source_chip_dinner_manual')),
@@ -617,6 +670,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       final dinnerField = find.byKey(
         const Key('covers_manual_entry_field_dinner'),
@@ -690,6 +744,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       final dinnerField = find.byKey(
         const Key('covers_manual_entry_field_dinner'),
@@ -832,6 +887,14 @@ void main() {
           find.byKey(const Key('operator_web_data_accuracy_scope_summary')),
           findsNothing,
         );
+        // Wage source label lives on the default (Labor) tab.
+        expect(
+          _textByKey(tester, const Key('wage_source_source_label')),
+          'Source: Business',
+        );
+
+        // Covers + walk-in source labels live on the Covers tab.
+        await openCoversTab(tester);
         expect(
           find.byKey(const Key('covers_source_source_breakfast')),
           findsNothing,
@@ -847,10 +910,6 @@ void main() {
         expect(
           _textByKey(tester, const Key('covers_source_source_late_service')),
           'Source: Org unit',
-        );
-        expect(
-          _textByKey(tester, const Key('wage_source_source_label')),
-          'Source: Business',
         );
         expect(
           _textByKey(tester, const Key('walk_in_handling_source_label')),
@@ -910,8 +969,18 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFreshnessTab(tester);
 
-      expect(find.text('Premium'), findsOneWidget);
+      // "Premium" now appears twice: once in the tab pill and once in
+      // the polling card. Scope the tier-name check to the card so it
+      // still verifies the loaded tier rendered there.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('data_accuracy_polling_tier_status_card')),
+          matching: find.text('Premium'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('\$29.00/month'), findsOneWidget);
       expect(find.textContaining('2 minutes'), findsOneWidget);
     });
@@ -947,6 +1016,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFreshnessTab(tester);
 
       expect(
         find.byKey(const Key('polling_tier_not_applicable_notice')),
@@ -1003,8 +1073,17 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFreshnessTab(tester);
 
-      expect(find.text('Premium'), findsOneWidget);
+      // The tier name now renders in both the tab pill and the polling
+      // card; scope these checks to the card so the tier-refresh
+      // behavior is what they verify.
+      Finder tierTextInCard(String text) => find.descendant(
+        of: find.byKey(const Key('data_accuracy_polling_tier_status_card')),
+        matching: find.text(text),
+      );
+
+      expect(tierTextInCard('Premium'), findsOneWidget);
 
       await tester.pumpWidget(
         wrap(
@@ -1018,9 +1097,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // The active tab persists across the location change; re-tap to
+      // be explicit about which area these assertions read from.
+      await openFreshnessTab(tester);
 
-      expect(find.text('Premium'), findsNothing);
-      expect(find.text('Custom'), findsOneWidget);
+      expect(tierTextInCard('Premium'), findsNothing);
+      expect(tierTextInCard('Custom'), findsOneWidget);
       expect(find.text('\$99.00/month'), findsOneWidget);
     });
 
@@ -1038,6 +1120,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFreshnessTab(tester);
 
       await tester.ensureVisible(
         find.byKey(const Key('polling_tier_request_change_button')),
@@ -1076,6 +1159,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openFreshnessTab(tester);
 
         await tester.ensureVisible(
           find.byKey(const Key('polling_tier_request_change_button')),
@@ -1141,6 +1225,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openFreshnessTab(tester);
 
         await tester.ensureVisible(
           find.byKey(const Key('polling_tier_request_change_button')),
@@ -1189,6 +1274,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFreshnessTab(tester);
 
       await tester.ensureVisible(
         find.byKey(const Key('polling_tier_request_change_button')),
@@ -1273,6 +1359,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openFreshnessTab(tester);
 
         expect(applicabilityGateway.calls, contains('polling'));
         // Turned-off vendor is gone; the still-polled vendor remains.
@@ -1324,6 +1411,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openFreshnessTab(tester);
 
         expect(applicabilityGateway.calls, contains('polling'));
         expect(
@@ -1361,6 +1449,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openFreshnessTab(tester);
 
       expect(
         find.byKey(
@@ -1417,21 +1506,33 @@ void main() {
       );
 
       // Sweep every Text in the rendered tree and assert no banned
-      // substring slips through the rest of the surface either.
-      final textElements = find.byType(Text).evaluate();
-      for (final element in textElements) {
-        final widget = element.widget as Text;
-        final data = widget.data;
-        if (data == null || data.isEmpty) continue;
-        final lower = data.toLowerCase();
-        for (final banned in bannedSubstrings) {
-          expect(
-            lower.contains(banned.toLowerCase()),
-            isFalse,
-            reason: 'Rendered Text leaked banned substring "$banned": "$data"',
-          );
+      // substring slips through. The screen now shows one area at a
+      // time, so the sweep visits all three tabs to keep coverage of
+      // the covers + data-freshness copy the old single page rendered
+      // at once.
+      void sweepRenderedText() {
+        final textElements = find.byType(Text).evaluate();
+        for (final element in textElements) {
+          final widget = element.widget as Text;
+          final data = widget.data;
+          if (data == null || data.isEmpty) continue;
+          final lower = data.toLowerCase();
+          for (final banned in bannedSubstrings) {
+            expect(
+              lower.contains(banned.toLowerCase()),
+              isFalse,
+              reason:
+                  'Rendered Text leaked banned substring "$banned": "$data"',
+            );
+          }
         }
       }
+
+      sweepRenderedText();
+      await openCoversTab(tester);
+      sweepRenderedText();
+      await openFreshnessTab(tester);
+      sweepRenderedText();
     });
   });
 
@@ -1468,25 +1569,23 @@ void main() {
           findsOneWidget,
         );
 
-        // Step 3 — the 5 default cards are present.
+        // Step 3 — the three area tabs render and each area's primary
+        // card is reachable on its tab. The redesign removed the top
+        // explainer card from the screen.
+        expect(
+          find.byKey(const Key('data_accuracy_tab_labor')),
+          findsOneWidget,
+        );
         expect(
           find.byKey(const Key('data_accuracy_wage_source_card')),
           findsOneWidget,
         );
         expect(
-          find.byKey(const Key('data_accuracy_covers_source_card')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('data_accuracy_polling_tier_status_card')),
-          findsOneWidget,
-        );
-        expect(
           find.byKey(const Key('data_accuracy_explainer_card')),
-          findsOneWidget,
+          findsNothing,
         );
 
-        // Step — flip the wage source toggle to manual mix.
+        // Step — flip the wage source toggle to manual mix (Labor tab).
         await tester.ensureVisible(
           find.byKey(const Key('wage_source_radio_manual_mix')),
         );
@@ -1498,8 +1597,13 @@ void main() {
           findsOneWidget,
         );
 
-        // Step — switch dinner covers source to manual; manual entry
-        // sub-card appears.
+        // Step — move to the Covers tab; switch dinner covers source to
+        // manual; manual entry sub-card appears.
+        await openCoversTab(tester);
+        expect(
+          find.byKey(const Key('data_accuracy_covers_source_card')),
+          findsOneWidget,
+        );
         await tester.ensureVisible(
           find.byKey(const Key('covers_source_chip_dinner_manual')),
         );
@@ -1525,8 +1629,13 @@ void main() {
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
 
-        // Step — scroll polling card into view and tap "Request tier
+        // Step — move to the Data freshness tab; tap "Request tier
         // change" → the change-request dialog appears.
+        await openFreshnessTab(tester);
+        expect(
+          find.byKey(const Key('data_accuracy_polling_tier_status_card')),
+          findsOneWidget,
+        );
         await tester.ensureVisible(
           find.byKey(const Key('polling_tier_request_change_button')),
         );
@@ -1876,6 +1985,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         expect(
           applicabilityGateway.calls,
@@ -1947,6 +2057,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       final vendorChip = find.byKey(
         const Key('covers_source_chip_dinner_vendor'),
@@ -2005,6 +2116,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         final reservationChip = find.byKey(
           const Key('covers_source_chip_dinner_reservation_plus_walkin'),
@@ -2065,6 +2177,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         final reservationChip = find.byKey(
           const Key('covers_source_chip_dinner_reservation_plus_walkin'),
@@ -2109,6 +2222,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       final vendorChip = find.byKey(
         const Key('covers_source_chip_dinner_vendor'),
@@ -2151,6 +2265,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       expect(
         find.byKey(
@@ -2202,6 +2317,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       expect(loadCalls, equals(1));
       expect(find.text('Breakfast'), findsWidgets);
@@ -2223,6 +2339,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       expect(loadCalls, equals(2));
       expect(find.text('Supper'), findsWidgets);
@@ -2271,6 +2388,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         expect(find.byKey(kKeyedServicePeriodAccuracyCardKey), findsOneWidget);
         expect(
@@ -2320,6 +2438,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         // Open the add-or-edit dialog.
         final addButton = find.byKey(kKeyedServicePeriodAccuracyAddButtonKey);
@@ -2406,6 +2525,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         expect(
           find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
@@ -2471,6 +2591,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openCoversTab(tester);
 
       final resetButton = find.byKey(
         const Key('${kKeyedServicePeriodAccuracyResetButtonPrefix}_breakfast'),
@@ -2511,6 +2632,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         final addButton = find.byKey(kKeyedServicePeriodAccuracyAddButtonKey);
         await tester.ensureVisible(addButton);
