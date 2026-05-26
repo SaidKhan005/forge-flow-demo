@@ -2799,79 +2799,73 @@ class _ScopedContractDialogState extends State<_ScopedContractDialog> {
           role: AdminActionRole.primary,
         ),
       ],
-      child: Flexible(
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                _DialogSection(
-                  title: 'Scope',
-                  child: AdminDetailRow(
-                    label: 'Selected scope',
-                    value: widget.scope.displayName ?? 'Selected scope',
-                  ),
-                ),
-                _DialogSection(
-                  title: 'Terms',
-                  child: _DialogFieldGrid(
-                    children: <Widget>[
-                      _LabelledField(
-                        label: 'Monthly terms',
-                        controller: _monthly,
-                        fieldKey: const Key('admin_pricing_contract_monthly'),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^[0-9]*\.?[0-9]*'),
-                          ),
-                        ],
-                        validator: _optionalDecimalValidator,
-                      ),
-                      _LabelledField(
-                        label: 'Advisor cap',
-                        controller: _advisorCap,
-                        fieldKey: const Key(
-                          'admin_pricing_contract_advisor_cap',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^[0-9]*\.?[0-9]*'),
-                          ),
-                        ],
-                        validator: _optionalDecimalValidator,
-                      ),
-                    ],
-                  ),
-                ),
-                _DialogSection(
-                  title: 'Notes',
-                  child: Column(
-                    children: <Widget>[
-                      _LabelledField(
-                        label: 'Contract label',
-                        controller: _label,
-                        fieldKey: const Key('admin_pricing_contract_label'),
-                      ),
-                      _LabelledField(
-                        label: 'Internal note',
-                        controller: _note,
-                        fieldKey: const Key('admin_pricing_contract_note'),
-                        maxLines: 3,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _DialogSection(
+              title: 'Scope',
+              child: AdminDetailRow(
+                label: 'Selected scope',
+                value: widget.scope.displayName ?? 'Selected scope',
+              ),
             ),
-          ),
+            _DialogSection(
+              title: 'Terms',
+              child: _DialogFieldGrid(
+                children: <Widget>[
+                  _LabelledField(
+                    label: 'Monthly terms',
+                    controller: _monthly,
+                    fieldKey: const Key('admin_pricing_contract_monthly'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^[0-9]*\.?[0-9]*'),
+                      ),
+                    ],
+                    validator: _optionalDecimalValidator,
+                  ),
+                  _LabelledField(
+                    label: 'Advisor cap',
+                    controller: _advisorCap,
+                    fieldKey: const Key('admin_pricing_contract_advisor_cap'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^[0-9]*\.?[0-9]*'),
+                      ),
+                    ],
+                    validator: _optionalDecimalValidator,
+                  ),
+                ],
+              ),
+            ),
+            _DialogSection(
+              title: 'Notes',
+              child: Column(
+                children: <Widget>[
+                  _LabelledField(
+                    label: 'Contract label',
+                    controller: _label,
+                    fieldKey: const Key('admin_pricing_contract_label'),
+                  ),
+                  _LabelledField(
+                    label: 'Internal note',
+                    controller: _note,
+                    fieldKey: const Key('admin_pricing_contract_note'),
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -3005,20 +2999,47 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
           role: AdminActionRole.primary,
         ),
       ],
-      child: Flexible(
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                _DialogSection(
-                  title: 'Price',
-                  child: _LabelledField(
-                    label: 'Monthly fee',
-                    controller: _monthly,
-                    fieldKey: const Key('admin_pricing_plan_monthly'),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _DialogSection(
+              title: 'Price',
+              child: _LabelledField(
+                label: 'Monthly fee',
+                controller: _monthly,
+                fieldKey: const Key('admin_pricing_plan_monthly'),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.allow(
+                    RegExp(r'^[0-9]*\.?[0-9]*'),
+                  ),
+                ],
+                validator: _optionalDecimalValidator,
+              ),
+            ),
+            _DialogSection(
+              title: 'Seats',
+              child: _DialogFieldGrid(
+                children: <Widget>[
+                  _LabelledField(
+                    label: 'First seats',
+                    controller: _firstNSeats,
+                    fieldKey: const Key('admin_pricing_plan_first_n_seats'),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    validator: _optionalIntValidator,
+                  ),
+                  _LabelledField(
+                    label: 'First seat',
+                    controller: _firstSeat,
+                    fieldKey: const Key('admin_pricing_plan_first_seat'),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -3029,96 +3050,59 @@ class _PlanPricingDialogState extends State<_PlanPricingDialog> {
                     ],
                     validator: _optionalDecimalValidator,
                   ),
-                ),
-                _DialogSection(
-                  title: 'Seats',
-                  child: _DialogFieldGrid(
-                    children: <Widget>[
-                      _LabelledField(
-                        label: 'First seats',
-                        controller: _firstNSeats,
-                        fieldKey: const Key('admin_pricing_plan_first_n_seats'),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        validator: _optionalIntValidator,
-                      ),
-                      _LabelledField(
-                        label: 'First seat',
-                        controller: _firstSeat,
-                        fieldKey: const Key('admin_pricing_plan_first_seat'),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^[0-9]*\.?[0-9]*'),
-                          ),
-                        ],
-                        validator: _optionalDecimalValidator,
-                      ),
-                      _LabelledField(
-                        label: 'Added seat',
-                        controller: _additionalSeat,
-                        fieldKey: const Key(
-                          'admin_pricing_plan_additional_seat',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^[0-9]*\.?[0-9]*'),
-                          ),
-                        ],
-                        validator: _optionalDecimalValidator,
+                  _LabelledField(
+                    label: 'Added seat',
+                    controller: _additionalSeat,
+                    fieldKey: const Key('admin_pricing_plan_additional_seat'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^[0-9]*\.?[0-9]*'),
                       ),
                     ],
+                    validator: _optionalDecimalValidator,
                   ),
-                ),
-                _DialogSection(
-                  title: 'Onboarding',
-                  child: _DialogFieldGrid(
-                    children: <Widget>[
-                      _LabelledField(
-                        label: 'Minimum',
-                        controller: _onboardingMin,
-                        fieldKey: const Key(
-                          'admin_pricing_plan_onboarding_min',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^[0-9]*\.?[0-9]*'),
-                          ),
-                        ],
-                        validator: _optionalDecimalValidator,
-                      ),
-                      _LabelledField(
-                        label: 'Maximum',
-                        controller: _onboardingMax,
-                        fieldKey: const Key(
-                          'admin_pricing_plan_onboarding_max',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^[0-9]*\.?[0-9]*'),
-                          ),
-                        ],
-                        validator: _optionalDecimalValidator,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+            _DialogSection(
+              title: 'Onboarding',
+              child: _DialogFieldGrid(
+                children: <Widget>[
+                  _LabelledField(
+                    label: 'Minimum',
+                    controller: _onboardingMin,
+                    fieldKey: const Key('admin_pricing_plan_onboarding_min'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^[0-9]*\.?[0-9]*'),
+                      ),
+                    ],
+                    validator: _optionalDecimalValidator,
+                  ),
+                  _LabelledField(
+                    label: 'Maximum',
+                    controller: _onboardingMax,
+                    fieldKey: const Key('admin_pricing_plan_onboarding_max'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^[0-9]*\.?[0-9]*'),
+                      ),
+                    ],
+                    validator: _optionalDecimalValidator,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -3241,95 +3225,91 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
           role: AdminActionRole.primary,
         ),
       ],
-      child: Flexible(
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (widget.primaryLocationId == null && !editing)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      'This operator needs a primary location before you can add usage limits.',
-                      style: AppTextStyles.mono11(color: AppColors.negative),
-                    ),
-                  ),
-                _DialogSection(
-                  title: 'Use case',
-                  child: _UseCaseField(
-                    fieldKey: const Key('admin_pricing_cap_usage_class'),
-                    value: _usageClass,
-                    options: _knownClasses,
-                    classIsKnown: classIsKnown,
-                    // Use case is the upsert logical key, so it is fixed
-                    // when editing an existing row (same rule as before).
-                    enabled: !editing,
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => _usageClass = value);
-                    },
-                  ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.primaryLocationId == null && !editing)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'This operator needs a primary location before you can add usage limits.',
+                  style: AppTextStyles.mono11(color: AppColors.negative),
                 ),
-                _DialogSection(
-                  title: 'Limits',
-                  child: _DialogFieldGrid(
-                    children: <Widget>[
-                      _LabelledField(
-                        label: 'Monthly limit',
-                        controller: _monthly,
-                        fieldKey: const Key('admin_pricing_cap_monthly'),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^[0-9]*\.?[0-9]*'),
-                          ),
-                        ],
-                        validator: _decimalValidator,
-                      ),
-                      _LabelledField(
-                        label: 'Per request limit',
-                        controller: _perInvocation,
-                        fieldKey: const Key('admin_pricing_cap_per_invocation'),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^[0-9]*\.?[0-9]*'),
-                          ),
-                        ],
-                        validator: _decimalValidator,
-                      ),
-                    ],
-                  ),
-                ),
-                _DialogSection(
-                  title: 'Scope',
-                  child: _DialogFieldGrid(
-                    children: <Widget>[
-                      _LabelledField(
-                        label: 'Staff member',
-                        controller: _staffId,
-                        fieldKey: const Key('admin_pricing_cap_staff_id'),
-                        enabled: !editing,
-                      ),
-                      _LabelledField(
-                        label: 'Workflow',
-                        controller: _workflowId,
-                        fieldKey: const Key('admin_pricing_cap_workflow_id'),
-                        enabled: !editing,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
+            _DialogSection(
+              title: 'Use case',
+              child: _UseCaseField(
+                fieldKey: const Key('admin_pricing_cap_usage_class'),
+                value: _usageClass,
+                options: _knownClasses,
+                classIsKnown: classIsKnown,
+                // Use case is the upsert logical key, so it is fixed
+                // when editing an existing row (same rule as before).
+                enabled: !editing,
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _usageClass = value);
+                },
+              ),
             ),
-          ),
+            _DialogSection(
+              title: 'Limits',
+              child: _DialogFieldGrid(
+                children: <Widget>[
+                  _LabelledField(
+                    label: 'Monthly limit',
+                    controller: _monthly,
+                    fieldKey: const Key('admin_pricing_cap_monthly'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^[0-9]*\.?[0-9]*'),
+                      ),
+                    ],
+                    validator: _decimalValidator,
+                  ),
+                  _LabelledField(
+                    label: 'Per request limit',
+                    controller: _perInvocation,
+                    fieldKey: const Key('admin_pricing_cap_per_invocation'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^[0-9]*\.?[0-9]*'),
+                      ),
+                    ],
+                    validator: _decimalValidator,
+                  ),
+                ],
+              ),
+            ),
+            _DialogSection(
+              title: 'Scope',
+              child: _DialogFieldGrid(
+                children: <Widget>[
+                  _LabelledField(
+                    label: 'Staff member',
+                    controller: _staffId,
+                    fieldKey: const Key('admin_pricing_cap_staff_id'),
+                    enabled: !editing,
+                  ),
+                  _LabelledField(
+                    label: 'Workflow',
+                    controller: _workflowId,
+                    fieldKey: const Key('admin_pricing_cap_workflow_id'),
+                    enabled: !editing,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -3709,32 +3689,28 @@ class _PresetPreviewDialog extends StatelessWidget {
           role: AdminActionRole.primary,
         ),
       ],
-      child: Flexible(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              if (isCustomContract)
-                Text(
-                  '${template.displayName} is a custom contract. It sets the '
-                  'plan but adds no preset limits. You build the limits by '
-                  'hand.',
-                  key: const Key('admin_pricing_preset_custom_note'),
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                )
-              else ...<Widget>[
-                Text(
-                  'Sets the plan and these limits. Limits for the same use '
-                  'case are replaced; others are kept.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 12),
-                for (final row in diff) _PresetDiffRow(diff: row),
-              ],
-            ],
-          ),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (isCustomContract)
+            Text(
+              '${template.displayName} is a custom contract. It sets the '
+              'plan but adds no preset limits. You build the limits by '
+              'hand.',
+              key: const Key('admin_pricing_preset_custom_note'),
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            )
+          else ...<Widget>[
+            Text(
+              'Sets the plan and these limits. Limits for the same use '
+              'case are replaced; others are kept.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            for (final row in diff) _PresetDiffRow(diff: row),
+          ],
+        ],
       ),
     );
   }
