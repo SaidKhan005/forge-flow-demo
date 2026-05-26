@@ -243,6 +243,61 @@ void main() {
       expect(gateway.upserts, isEmpty);
     });
 
+    testWidgets('reset defaults replaces current tab rules', (tester) async {
+      await _size(tester);
+      final wageDefaults = recommendedVendorApplicabilityDefaultsFor('wage');
+      final firstDefault = wageDefaults.first;
+      final gateway = _FakeVendorApplicabilityAdminGateway()
+        ..seed(<VendorApplicabilityAdminRow>[
+          _rowFromRecommended(
+            firstDefault,
+            metadata: const <String, Object?>{
+              'authority_basis': 'manual_mapping',
+            },
+          ),
+          _row(
+            settingKind: 'wage',
+            vendorSlug: 'libro',
+            metadata: const <String, Object?>{
+              'authority_basis': 'manual_mapping',
+            },
+          ),
+        ]);
+
+      await tester.pumpWidget(
+        wrap(VendorApplicabilityAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_applicability_reset_defaults')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_reset_defaults')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Reset defaults?'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_reason_note')),
+        'Reset wage defaults',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.ends, hasLength(1));
+      expect(gateway.ends.single.vendorSlug, 'libro');
+      expect(gateway.ends.single.adminReason, 'Reset wage defaults');
+      expect(gateway.upserts, hasLength(wageDefaults.length));
+      final resetFirst = gateway.upserts.firstWhere(
+        (command) => command.vendorSlug == firstDefault.vendorSlug,
+      );
+      expect(resetFirst.enabled, firstDefault.enabled);
+      expect(resetFirst.metadata, firstDefault.metadata);
+      expect(resetFirst.adminReason, 'Reset wage defaults');
+      expect(resetFirst.idempotencyKey, contains('reset-defaults'));
+    });
+
     testWidgets(
       'selected location scope threads operator + location into upsert',
       (tester) async {
