@@ -1351,26 +1351,19 @@ class _PlanCardDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          SizedBox(
-            width: 78,
-            child: Text(
-              label,
-              style: AppTextStyles.body11(color: AppColors.textMuted),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body11(
-                color: AppColors.textPrimary,
-              ).copyWith(fontWeight: FontWeight.w600),
-            ),
+          Text(label, style: AppTextStyles.body11(color: AppColors.textMuted)),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.body12(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
           ),
         ],
       ),
