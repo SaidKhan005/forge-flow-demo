@@ -54,10 +54,7 @@ import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/audit_log_screen.dart';
-// Per-Daypart Targets V1 / Slice 2 (Gap 35): the operator-web
-// Benchmarks override surface was cut entirely. Mobile Baseline
-// Manager star-shift selection is the only override path. No
-// `benchmarks_screen.dart` import remains.
+// Benchmarks cut (Per-Daypart Targets V1 / Slice 2, Gap 35).
 import '../screens/business_setup_screen.dart';
 import '../screens/business_timing_editor_screen.dart';
 import '../screens/my_account_screen.dart';
@@ -66,8 +63,6 @@ import '../screens/data_accuracy_screen.dart';
 import '../screens/hierarchy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/permission_explainer_screen.dart';
-import '../../services/advisor/advisor_answer_gateway.dart'
-    show AdvisorAnswerGatewayDemo;
 import '../screens/advisor_chat_nav.dart';
 import '../screens/plan_nav.dart';
 import '../screens/roles_screen.dart';
@@ -1505,7 +1500,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.calendar_today_outlined,
         group: 'Operations',
       ),
-      kOperatorWebAdvisorNavItem, // Advisor chat — Slice D2.
+      kOperatorWebAdvisorNavItem, // D2 advisor chat.
       const OperatorWebNavItem(
         id: kOperatorWebNavAccount,
         title: 'Business account',
@@ -2004,14 +1999,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           );
         }
         break;
-      case kOperatorWebNavAdvisor: // Advisor chat — Slice D2; body in advisor_chat_nav.dart.
-        body = operatorWebAdvisorChatBody(
-          session: session,
-          source: widget.source,
-          routerOwnedDemoGateway: _routerOwnedDemoAdvisorGateway ??=
-              AdvisorAnswerGatewayDemo(),
-        );
-        break;
+      case kOperatorWebNavAdvisor: body = operatorWebAdvisorChatBody(session: session, source: widget.source); break; // D2.
       case kOperatorWebNavPlan: // Plans & limits 5b — wiring in plan_nav.dart.
         body = operatorWebPlanScreenBody(
           session: session,
@@ -2366,12 +2354,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   OperatorWebDemoScheduleGateway? _routerOwnedDemoScheduleGateway;
-
-  /// Advisor chat — Slice D2 demo gateway (live sources mix in
-  /// [AdvisorAnswerGatewayProvider]; demo / unmixed sources get this
-  /// in-memory canned-answer gateway so the demo walkthrough works
-  /// without a live proxy).
-  AdvisorAnswerGatewayDemo? _routerOwnedDemoAdvisorGateway;
 
   String? get _currentSessionId {
     final source = widget.source;

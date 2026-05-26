@@ -28,30 +28,30 @@ const OperatorWebNavItem kOperatorWebAdvisorNavItem = OperatorWebNavItem(
   group: 'Operations',
 );
 
+// Module-level demo gateway cache: created once per nav file load, shared
+// across builds so the conversation state persists within a session even
+// when the router rebuilds (same lifetime as the router's own fields).
+AdvisorAnswerGatewayDemo? _demoGateway;
+
 /// Builds the Advisor chat route body. Resolves the gateway from the auth
 /// source when it mixes in [AdvisorAnswerGatewayProvider]; otherwise falls
-/// back to [AdvisorAnswerGatewayDemo] (demo walkthrough and any
-/// live source that has not yet wired the mixin). The screen does not
-/// know or care which implementation is used (HP #2 demo parity).
+/// back to the module-level [AdvisorAnswerGatewayDemo] so the demo
+/// walkthrough and any unmixed live source work without a live proxy.
+/// HP #2: the screen does not know or care which implementation is used.
 Widget operatorWebAdvisorChatBody({
   required OperatorWebSession session,
   required OperatorWebAuthSource source,
-  AdvisorAnswerGateway? routerOwnedDemoGateway,
 }) {
-  final gateway = _resolveGateway(source, routerOwnedDemoGateway);
+  final AdvisorAnswerGateway gateway;
+  if (source is AdvisorAnswerGatewayProvider) {
+    gateway =
+        (source as AdvisorAnswerGatewayProvider).advisorAnswerGateway;
+  } else {
+    gateway = _demoGateway ??= AdvisorAnswerGatewayDemo();
+  }
   return AdvisorChatScreen(
     key: const Key('operator_web_advisor_chat_screen'),
     session: session,
     gateway: gateway,
   );
-}
-
-AdvisorAnswerGateway _resolveGateway(
-  OperatorWebAuthSource source,
-  AdvisorAnswerGateway? routerOwned,
-) {
-  if (source is AdvisorAnswerGatewayProvider) {
-    return (source as AdvisorAnswerGatewayProvider).advisorAnswerGateway;
-  }
-  return routerOwned ?? AdvisorAnswerGatewayDemo();
 }
