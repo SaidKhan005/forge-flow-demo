@@ -1027,34 +1027,32 @@ class _ChunkPreviewTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Topic header row: kind icon · name + kind line · kind pill.
+          // Topic header row: kind icon tile · name + kind line · kind
+          // pill. Mockup `.topic`: 38px rounded icon tile, name 15.5
+          // semibold, kind sub-label muted 13px, a right kind pill. Sans
+          // throughout (no tiny monospace).
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               TopicKindIcon(kind: kind),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
                       _chunkTitle(chunk),
-                      style: AppTextStyles.mono14(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w600,
-                      ),
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       kind.description,
-                      style: AppTextStyles.mono11(
-                        color: AppColors.textSecondary,
-                      ),
+                      style: AppTextStyles.body12(color: AppColors.textMuted),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               TopicKindPill(kind: kind),
             ],
           ),
@@ -1064,7 +1062,7 @@ class _ChunkPreviewTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               chunk.headingPath.join(' › '),
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ],
           const SizedBox(height: 6),

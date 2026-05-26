@@ -286,17 +286,14 @@ class _ChangePreview extends StatelessWidget {
         children: <Widget>[
           Text(
             AdminKnowledgeBaseCopy.addChangeTitle,
-            style: AppTextStyles.mono14(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
+            style: AppTextStyles.body14(color: AppColors.textPrimary),
           ),
           if (fileName != null) ...<Widget>[
             const SizedBox(height: 4),
             Text(
               fileName!,
               key: const Key('admin_corpus_change_filename'),
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ],
           const SizedBox(height: 12),
@@ -392,15 +389,12 @@ class _ChangeRow extends StatelessWidget {
               children: <Widget>[
                 Text(
                   name,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
-                  ),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   line,
-                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
               ],
             ),
@@ -545,10 +539,7 @@ class _HistoryRow extends StatelessWidget {
                     Flexible(
                       child: Text(
                         title,
-                        style: AppTextStyles.mono14(
-                          color: AppColors.textPrimary,
-                          weight: FontWeight.w600,
-                        ),
+                        style: AppTextStyles.body14(color: AppColors.textPrimary),
                       ),
                     ),
                     if (isCurrent) ...<Widget>[
@@ -564,18 +555,18 @@ class _HistoryRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   byline,
-                  style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   AdminKnowledgeBaseCopy.historyPieceCount(version.chunkCount),
-                  style: AppTextStyles.mono8(color: AppColors.textMuted),
+                  style: AppTextStyles.body11(color: AppColors.textMuted),
                 ),
                 if (version.rollbackOf != null) ...<Widget>[
                   const SizedBox(height: 2),
                   Text(
                     AdminKnowledgeBaseCopy.historyRestoredNote,
-                    style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    style: AppTextStyles.body11(color: AppColors.textMuted),
                   ),
                 ],
                 if (editingEnabled && !isCurrent) ...<Widget>[

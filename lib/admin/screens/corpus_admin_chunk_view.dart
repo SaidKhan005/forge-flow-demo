@@ -27,7 +27,7 @@ IconData corpusTopicKindIcon(AdminCorpusTopicKind kind) {
     case AdminCorpusTopicKind.document:
       return Icons.menu_book_outlined;
     case AdminCorpusTopicKind.sop:
-      return Icons.checklist_outlined;
+      return Icons.fact_check_outlined;
     case AdminCorpusTopicKind.policy:
       return Icons.shield_outlined;
     case AdminCorpusTopicKind.concept:
@@ -54,16 +54,19 @@ class TopicKindIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Mockup `.tic`: 38px rounded square (radius 10), bg-mid fill,
+    // peacock-dark glyph.
     return Container(
-      width: 34,
-      height: 34,
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: AppColors.backgroundMid,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Icon(
         corpusTopicKindIcon(kind),
-        size: 18,
+        size: 20,
         color: AppColors.peacockDark,
       ),
     );
@@ -384,7 +387,7 @@ class _TopicToolbar extends StatelessWidget {
           Text(
             AdminKnowledgeBaseCopy.topicsShowing(shown, total),
             key: const Key('admin_corpus_topics_count'),
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
+            style: AppTextStyles.body12(color: AppColors.textMuted),
           ),
         ],
       ),
@@ -495,35 +498,35 @@ class _DocGroup extends StatelessWidget {
               ),
               child: Row(
                 children: [
+                  // Mockup doc-group summary leads with a book icon + the
+                  // document name (sans bold) + a rounded count pill +
+                  // chevron, on a bg-mid header.
                   const Icon(
-                    Icons.description_outlined,
-                    size: 16,
+                    Icons.menu_book_outlined,
+                    size: 18,
                     color: AppColors.peacockDark,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       docName,
-                      style: AppTextStyles.mono14(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w700,
-                      ),
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
                     ),
                   ),
-                  // Section count chip.
+                  // Section count pill.
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
+                      horizontal: 10,
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.peacock.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                     ),
                     child: Text(
                       '${sections.length} '
                       'section${sections.length == 1 ? '' : 's'}',
-                      style: AppTextStyles.mono8(color: AppColors.peacockDark),
+                      style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
                     ),
                   ),
                   const SizedBox(width: 8),
