@@ -270,11 +270,64 @@ void main() {
       },
     );
 
+    testWidgets('stopping an inherited rule adds a local block override', (
+      tester,
+    ) async {
+      await _size(tester);
+      final gateway = _FakeVendorApplicabilityAdminGateway()
+        ..seed(<VendorApplicabilityAdminRow>[
+          _row(settingKind: 'wage', vendorSlug: 'toast'),
+        ]);
+      final operatorGateway = InMemoryOperatorLocationAdminGateway(
+        seed: <OperatorAdminBundle>[_operatorBundle()],
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          VendorApplicabilityAdminScreen(
+            gateway: gateway,
+            operatorLocationGateway: operatorGateway,
+            hierarchyScope: const AdminHierarchyScopeIntent.location(
+              operatorId: _kOperatorId,
+              operatorName: 'Barrio Legado',
+              locationId: _kLocationId,
+              locationName: 'North Loop',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_end_row-wage-toast')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Block Toast here?'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_reason_note')),
+        'Block Toast only at North Loop',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.ends, isEmpty);
+      expect(gateway.upserts, hasLength(1));
+      final command = gateway.upserts.single;
+      expect(command.vendorSlug, 'toast');
+      expect(command.enabled, isFalse);
+      expect(command.operatorId, _kOperatorId);
+      expect(command.locationId, _kLocationId);
+      expect(command.reasonNote, 'Block Toast only at North Loop');
+    });
+
     testWidgets(
       'org-unit scope disables adding because backend stores business/location rules',
       (tester) async {
         await _size(tester);
-        final gateway = _FakeVendorApplicabilityAdminGateway();
+        final gateway = _FakeVendorApplicabilityAdminGateway()
+          ..seed(<VendorApplicabilityAdminRow>[
+            _row(settingKind: 'wage', vendorSlug: 'toast'),
+          ]);
 
         await tester.pumpWidget(
           wrap(
@@ -300,9 +353,163 @@ void main() {
           find.byKey(const Key('admin_vendor_applicability_add')),
         );
         expect(addButton.onPressed, isNull);
+        expect(
+          find.byKey(
+            const Key('admin_vendor_applicability_edit_row-wage-toast'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(
+            const Key('admin_vendor_applicability_end_row-wage-toast'),
+          ),
+          findsNothing,
+        );
         expect(gateway.upserts, isEmpty);
       },
     );
+
+    testWidgets('special handling info opens the plain-English help', (
+      tester,
+    ) async {
+      await _size(tester);
+      final gateway = _FakeVendorApplicabilityAdminGateway();
+
+      await tester.pumpWidget(
+        wrap(VendorApplicabilityAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_vendor_applicability_add')));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_details_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_details_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_special_info')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_applicability_special_help')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Use these only when allow/block is not enough.'),
+        findsOneWidget,
+      );
+      expect(find.text('By role'), findsOneWidget);
+    });
+
+    testWidgets('advanced JSON validates and can reset to friendly fields', (
+      tester,
+    ) async {
+      await _size(tester);
+      final gateway = _FakeVendorApplicabilityAdminGateway();
+
+      await tester.pumpWidget(
+        wrap(VendorApplicabilityAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_vendor_applicability_add')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_vendor_dropdown')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('7shifts').last);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_details_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_details_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_wage_authority')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('By role (job code)').last);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_advanced_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_advanced_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_metadata')),
+        '[]',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+        'Ticket VA-230 advanced reset',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Advanced JSON is invalid'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_reset_json')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('admin_vendor_applicability_metadata')),
+            )
+            .controller!
+            .text,
+        contains('authority_basis'),
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.upserts, hasLength(1));
+      expect(gateway.upserts.single.metadata['authority_basis'], 'job_code');
+    });
+
+    testWidgets('short dialog viewport can scroll to the reason field', (
+      tester,
+    ) async {
+      await _size(tester, const Size(900, 520));
+      final gateway = _FakeVendorApplicabilityAdminGateway();
+
+      await tester.pumpWidget(
+        wrap(VendorApplicabilityAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_vendor_applicability_add')));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+        findsOneWidget,
+      );
+    });
 
     testWidgets('covers custom service-period chips feed metadata', (
       tester,
@@ -524,8 +731,11 @@ void main() {
   });
 }
 
-Future<void> _size(WidgetTester tester) async {
-  tester.view.physicalSize = const Size(1400, 1200);
+Future<void> _size(
+  WidgetTester tester, [
+  Size size = const Size(1400, 1200),
+]) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(() {
     tester.view.resetPhysicalSize();

@@ -38,6 +38,7 @@ void main() {
       expect(captured.headers['authorization'], 'Bearer operator-token');
       expect(rows.single.settingKind, 'wage');
       expect(rows.single.vendorSlug, 'toast');
+      expect(rows.single.locationId, '55555555-5555-4555-8555-555555555555');
     });
 
     test('rejects calls when no bearer token is available', () async {
@@ -66,6 +67,7 @@ void main() {
 Map<String, Object?> _row() => const <String, Object?>{
   'id': '44444444-4444-4444-8444-444444444444',
   'operator_id': null,
+  'location_id': '55555555-5555-4555-8555-555555555555',
   'setting_kind': 'wage',
   'setting_key': 'tip_credit',
   'vendor_slug': 'toast',

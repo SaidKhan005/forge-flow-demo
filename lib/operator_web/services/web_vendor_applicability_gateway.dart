@@ -37,12 +37,14 @@ class WebVendorApplicabilityRow {
     required this.effectiveFrom,
     required this.effectiveUntil,
     required this.operatorId,
+    required this.locationId,
     required this.createdAt,
     required this.createdBy,
   });
 
   final String id;
   final String? operatorId;
+  final String? locationId;
   final String settingKind;
   final String settingKey;
   final String vendorSlug;
@@ -64,6 +66,7 @@ class WebVendorApplicabilityRow {
     return WebVendorApplicabilityRow(
       id: _requireString(json, 'id'),
       operatorId: json['operator_id'] as String?,
+      locationId: json['location_id'] as String?,
       settingKind: _requireString(json, 'setting_kind'),
       settingKey: _requireString(json, 'setting_key'),
       vendorSlug: _requireString(json, 'vendor_slug'),

@@ -69,9 +69,8 @@ void main() {
         _RouteProbe('PUT', '/v1/admin/pricing/usage-caps'),
         _RouteProbe('PATCH', '/v1/admin/pricing/plans/premium'),
         _RouteProbe('PUT', '/v1/admin/pricing/scoped-contracts'),
-        _RouteProbe('POST', '/v1/admin/vendor-applicability/wage'),
-        _RouteProbe('PATCH', '/v1/admin/vendor-applicability/covers'),
-        _RouteProbe('DELETE', '/v1/admin/vendor-applicability/polling'),
+        _RouteProbe('POST', '/v1/admin/vendor-applicability'),
+        _RouteProbe('PATCH', '/v1/admin/vendor-applicability'),
       ];
 
       for (final probe in probes) {

@@ -306,6 +306,10 @@ class _VendorApplicabilityAdminScreenState
 
   Future<void> _endRow(VendorApplicabilityAdminRow row) async {
     if (!widget.editingEnabled || _saving || row.effectiveUntil != null) return;
+    if (_rowIsInheritedIntoSelectedScope(row)) {
+      await _blockInheritedRowAtSelectedScope(row);
+      return;
+    }
     final reason = await _askReason(
       title: 'Stop using ${_vendorLabel(row.vendorSlug)}?',
       helper:
@@ -334,6 +338,45 @@ class _VendorApplicabilityAdminScreenState
     } catch (error) {
       if (!mounted) return;
       setState(() => _actionError = 'Could not end this rule: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _blockInheritedRowAtSelectedScope(
+    VendorApplicabilityAdminRow row,
+  ) async {
+    if (!_canWriteSelectedScope) return;
+    final reason = await _askReason(
+      title: 'Block ${_vendorLabel(row.vendorSlug)} here?',
+      helper:
+          'This adds a rule for $_selectedScopeLabel and leaves the wider '
+          'rule unchanged.',
+    );
+    if (reason == null) return;
+    setState(() {
+      _saving = true;
+      _actionError = null;
+    });
+    try {
+      await widget.gateway.upsert(
+        VendorApplicabilityUpsertCommand(
+          operatorId: _selectedScopeOperatorId,
+          locationId: _selectedScopeLocationId,
+          settingKind: row.settingKind,
+          settingKey: row.settingKey,
+          vendorSlug: row.vendorSlug,
+          enabled: false,
+          metadata: row.metadata,
+          adminReason: 'admin.vendor_applicability.upsert',
+          reasonNote: reason,
+          idempotencyKey: _newIdempotencyKey('override'),
+        ),
+      );
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Could not block this vendor here: $error');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -629,7 +672,7 @@ class _VendorApplicabilityAdminScreenState
                 appliesTo: _appliesToLabel(row),
                 appliesToSubtitle: _scopeSubtitleForRow(row),
                 vendorLabel: _vendorLabel(row.vendorSlug),
-                editingEnabled: widget.editingEnabled,
+                editingEnabled: widget.editingEnabled && _canWriteSelectedScope,
                 saving: _saving,
                 onEdit: () => _openEditDialog(row),
                 onEnd: () => _endRow(row),

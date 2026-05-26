@@ -279,9 +279,11 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   int _wageApplicabilityLoadGeneration = 0;
   List<WebVendorApplicabilityRow> _coversApplicabilityRows =
       const <WebVendorApplicabilityRow>[];
+  String? _coversApplicabilityError;
   int _coversApplicabilityLoadGeneration = 0;
   List<WebVendorApplicabilityRow> _pollingApplicabilityRows =
       const <WebVendorApplicabilityRow>[];
+  String? _pollingApplicabilityError;
   int _pollingApplicabilityLoadGeneration = 0;
 
   // Keyed `data_accuracy_service_period_settings` rows (server-owned;
@@ -473,7 +475,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _wageApplicabilityLoading = widget.vendorApplicabilityGateway != null;
         _wageApplicabilityError = null;
         _wageApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _coversApplicabilityError = null;
         _coversApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _pollingApplicabilityError = null;
         _pollingApplicabilityRows = const <WebVendorApplicabilityRow>[];
         _servicePeriodsLoading = widget.dataAccuracyGateway != null;
         _servicePeriodLoadError = null;
@@ -598,11 +602,14 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       if (!mounted || generation != _coversApplicabilityLoadGeneration) return;
       setState(() {
         _coversApplicabilityRows = currentEnabled;
+        _coversApplicabilityError = null;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || generation != _coversApplicabilityLoadGeneration) return;
       setState(() {
         _coversApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _coversApplicabilityError =
+            'Could not load vendor approval for covers: $error';
       });
     }
   }
@@ -632,11 +639,14 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       if (!mounted || generation != _pollingApplicabilityLoadGeneration) return;
       setState(() {
         _pollingApplicabilityRows = current;
+        _pollingApplicabilityError = null;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || generation != _pollingApplicabilityLoadGeneration) return;
       setState(() {
         _pollingApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _pollingApplicabilityError =
+            'Could not load data freshness vendor approval: $error';
       });
     }
   }
@@ -1326,6 +1336,15 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           const SizedBox(height: 30),
           const _DataAccuracySectionHeading(title: 'Covers'),
           const SizedBox(height: 14),
+          if (_coversApplicabilityError != null) ...[
+            _ApplicabilityWarningBanner(
+              key: const Key(
+                'operator_web_data_accuracy_covers_applicability_error',
+              ),
+              message: _coversApplicabilityError!,
+            ),
+            const SizedBox(height: 14),
+          ],
           CoversSourceToggle(
             settings: settings,
             servicePeriods: _servicePeriods,
@@ -1403,6 +1422,15 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           const SizedBox(height: 30),
           const _DataAccuracySectionHeading(title: 'Data Freshness'),
           const SizedBox(height: 14),
+          if (_pollingApplicabilityError != null) ...[
+            _ApplicabilityWarningBanner(
+              key: const Key(
+                'operator_web_data_accuracy_polling_applicability_error',
+              ),
+              message: _pollingApplicabilityError!,
+            ),
+            const SizedBox(height: 14),
+          ],
           PollingTierStatusCard(
             status: tier,
             bundle: _bundle,
@@ -1499,6 +1527,42 @@ class _SaveStatusBanner extends StatelessWidget {
               style: AppTextStyles.body12(
                 color: isError ? AppColors.warning : AppColors.textPrimary,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ApplicabilityWarningBanner extends StatelessWidget {
+  const _ApplicabilityWarningBanner({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.warningBadgeBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.warning),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: AppColors.warning,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body12(color: AppColors.warning),
             ),
           ),
         ],

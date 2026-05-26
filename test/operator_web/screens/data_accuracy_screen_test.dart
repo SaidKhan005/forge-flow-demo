@@ -1277,9 +1277,7 @@ void main() {
         expect(applicabilityGateway.calls, contains('polling'));
         // Turned-off vendor is gone; the still-polled vendor remains.
         expect(
-          find.byKey(
-            const Key('polling_tier_vendor_row_quickbooks_time'),
-          ),
+          find.byKey(const Key('polling_tier_vendor_row_quickbooks_time')),
           findsNothing,
         );
         expect(
@@ -1333,9 +1331,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.byKey(
-            const Key('polling_tier_vendor_row_quickbooks_time'),
-          ),
+          find.byKey(const Key('polling_tier_vendor_row_quickbooks_time')),
           findsNothing,
         );
         // Request-change button is disabled in the not-applicable state.
@@ -1345,6 +1341,38 @@ void main() {
         expect(button.onPressed, isNull);
       },
     );
+
+    testWidgets('polling applicability load error is shown to support users', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+        ..throwForSettingKinds = const <String>{'polling'};
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: pollOnlyGateway(ownerSession),
+            vendorApplicabilityGateway: applicabilityGateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('operator_web_data_accuracy_polling_applicability_error'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Could not load data freshness vendor approval'),
+        findsOneWidget,
+      );
+    });
   });
 
   // ─── Acceptance item I — UX writing audit ────────────────────────
@@ -2092,6 +2120,49 @@ void main() {
         isTrue,
       );
     });
+
+    testWidgets('covers applicability load error is shown to support users', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+        ..throwForSettingKinds = const <String>{'covers'};
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: gatewayWithBundle(
+              ownerSession,
+              bundleFor(
+                session: ownerSession,
+                pos: row(
+                  vendorId: 'toast',
+                  displayName: 'Toast',
+                  category: VendorCategory.pos,
+                ),
+              ),
+            ),
+            vendorApplicabilityGateway: applicabilityGateway,
+            servicePeriodsLoader: () async => coversPeriods,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('operator_web_data_accuracy_covers_applicability_error'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Could not load vendor approval for covers'),
+        findsOneWidget,
+      );
+    });
   });
 
   // Doc 1 keyed-data-accuracy-write — operator-web screen wires the
@@ -2815,6 +2886,7 @@ WebVendorApplicabilityRow _vendorApplicabilityRow({
     effectiveFrom: now,
     effectiveUntil: effectiveUntil,
     operatorId: 'brio-operator',
+    locationId: 'brio-location',
     createdAt: now,
     createdBy: 'admin-user',
   );
@@ -2825,6 +2897,7 @@ class _FakeWebVendorApplicabilityGateway
   List<WebVendorApplicabilityRow> rows = const <WebVendorApplicabilityRow>[];
   final List<String> calls = <String>[];
   bool throwsOnList = false;
+  Set<String> throwForSettingKinds = const <String>{};
 
   @override
   Future<List<WebVendorApplicabilityRow>> list({
@@ -2832,7 +2905,7 @@ class _FakeWebVendorApplicabilityGateway
     String? settingKey,
   }) async {
     calls.add(settingKind);
-    if (throwsOnList) {
+    if (throwsOnList || throwForSettingKinds.contains(settingKind)) {
       throw const WebVendorApplicabilityGatewayError(
         code: 'simulated_failure',
         message: 'fake failure',

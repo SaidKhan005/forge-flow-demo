@@ -77,6 +77,37 @@ void main() {
       expect(spec, isNull);
     });
 
+    test('vendor applicability step-up matches only real write routes', () {
+      expect(
+        lookupStepUpRoute(
+          method: 'POST',
+          path: '/v1/admin/vendor-applicability',
+        ),
+        isNotNull,
+      );
+      expect(
+        lookupStepUpRoute(
+          method: 'PATCH',
+          path: '/v1/admin/vendor-applicability',
+        ),
+        isNotNull,
+      );
+      expect(
+        lookupStepUpRoute(
+          method: 'POST',
+          path: '/v1/admin/vendor-applicability/wage',
+        ),
+        isNull,
+      );
+      expect(
+        lookupStepUpRoute(
+          method: 'DELETE',
+          path: '/v1/admin/vendor-applicability',
+        ),
+        isNull,
+      );
+    });
+
     test(
       'matches every distinct sensitive surface listed in the slice doc',
       () {
@@ -96,7 +127,7 @@ void main() {
           ('PUT', '/v1/admin/pricing/usage-caps'),
           ('PATCH', '/v1/admin/pricing/plans/premium'),
           ('PUT', '/v1/admin/pricing/scoped-contracts'),
-          ('POST', '/v1/admin/vendor-applicability/wage'),
+          ('POST', '/v1/admin/vendor-applicability'),
         ];
         for (final probe in probes) {
           final spec = lookupStepUpRoute(method: probe.$1, path: probe.$2);

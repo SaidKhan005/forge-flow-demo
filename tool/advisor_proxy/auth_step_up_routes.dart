@@ -420,13 +420,10 @@ const List<StepUpRouteSpec> kStepUpSensitiveRoutes = <StepUpRouteSpec>[
   ),
 
   // ─── vendor applicability edits (B10) ───────────────────────────
-  // The B10 admin route lands in a sibling slice; the prefix here
-  // future-proofs the registry so when B10's routes commit they
-  // automatically receive step-up coverage.
   StepUpRouteSpec(
     method: 'POST',
     path: '/v1/admin/vendor-applicability',
-    isPrefix: true,
+    isPrefix: false,
     acr: kStepUpDefaultAcr,
     maxAge: kStepUpDefaultFreshness,
     challengeTtl: kStepUpDefaultChallengeTtl,
@@ -435,16 +432,7 @@ const List<StepUpRouteSpec> kStepUpSensitiveRoutes = <StepUpRouteSpec>[
   StepUpRouteSpec(
     method: 'PATCH',
     path: '/v1/admin/vendor-applicability',
-    isPrefix: true,
-    acr: kStepUpDefaultAcr,
-    maxAge: kStepUpDefaultFreshness,
-    challengeTtl: kStepUpDefaultChallengeTtl,
-    label: 'Editing vendor applicability requires a fresh sign-in.',
-  ),
-  StepUpRouteSpec(
-    method: 'DELETE',
-    path: '/v1/admin/vendor-applicability',
-    isPrefix: true,
+    isPrefix: false,
     acr: kStepUpDefaultAcr,
     maxAge: kStepUpDefaultFreshness,
     challengeTtl: kStepUpDefaultChallengeTtl,
