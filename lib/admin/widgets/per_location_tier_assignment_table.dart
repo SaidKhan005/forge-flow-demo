@@ -6,16 +6,6 @@ import '../services/data_accuracy_admin_gateway.dart';
 import 'admin_action_controls.dart';
 import 'admin_responsive_layout.dart';
 
-enum _SortColumn {
-  operator,
-  location,
-  tier,
-  activeSince,
-  priceOverride,
-  costOverride,
-  netMargin,
-}
-
 /// Filter options for the contract's "by location count" filter on
 /// the tier-assignment table. Maps to:
 ///   * `single`   → operators with exactly one location in the
@@ -31,14 +21,13 @@ class PerLocationTierAssignmentTable extends StatefulWidget {
     required this.tierDefinitions,
     required this.editingEnabled,
     required this.onAssign,
+    this.onAssignShown,
+    this.assignShownLocationCount,
+    this.scopeLabel,
     this.tierFilter,
-    this.marginBandFilter,
-    this.locationCountFilter,
     this.operatorNameFilter,
     this.vendorFilter,
     this.onTierFilterChanged,
-    this.onMarginBandFilterChanged,
-    this.onLocationCountFilterChanged,
     this.onOperatorNameFilterChanged,
     this.onVendorFilterChanged,
   });
@@ -47,14 +36,13 @@ class PerLocationTierAssignmentTable extends StatefulWidget {
   final List<TierDefinition> tierDefinitions;
   final bool editingEnabled;
   final void Function(TierAssignmentAdminRow row) onAssign;
+  final VoidCallback? onAssignShown;
+  final int? assignShownLocationCount;
+  final String? scopeLabel;
   final PollingTierKey? tierFilter;
-  final String? marginBandFilter;
-  final LocationCountFilter? locationCountFilter;
   final String? operatorNameFilter;
   final String? vendorFilter;
   final ValueChanged<PollingTierKey?>? onTierFilterChanged;
-  final ValueChanged<String?>? onMarginBandFilterChanged;
-  final ValueChanged<LocationCountFilter?>? onLocationCountFilterChanged;
   final ValueChanged<String>? onOperatorNameFilterChanged;
   final ValueChanged<String?>? onVendorFilterChanged;
 
@@ -65,8 +53,6 @@ class PerLocationTierAssignmentTable extends StatefulWidget {
 
 class _PerLocationTierAssignmentTableState
     extends State<PerLocationTierAssignmentTable> {
-  _SortColumn _sortColumn = _SortColumn.operator;
-  bool _ascending = true;
   late final TextEditingController _opNameController;
 
   @override
@@ -94,103 +80,87 @@ class _PerLocationTierAssignmentTableState
   }
 
   int _compare(TierAssignmentAdminRow a, TierAssignmentAdminRow b) {
-    int cmp;
-    switch (_sortColumn) {
-      case _SortColumn.operator:
-        cmp = a.operatorRef.businessName.compareTo(b.operatorRef.businessName);
-        break;
-      case _SortColumn.location:
-        cmp = a.operatorRef.locationName.compareTo(b.operatorRef.locationName);
-        break;
-      case _SortColumn.tier:
-        // Unassigned rows sort last in ascending order, first in
-        // descending - null is "no tier" and is the empty value.
-        final aTier = a.assignment?.tierKey.wire ?? '~unassigned';
-        final bTier = b.assignment?.tierKey.wire ?? '~unassigned';
-        cmp = aTier.compareTo(bTier);
-        break;
-      case _SortColumn.activeSince:
-        final aAt = a.assignment?.effectiveAt;
-        final bAt = b.assignment?.effectiveAt;
-        if (aAt == null && bAt == null) {
-          cmp = 0;
-        } else if (aAt == null) {
-          cmp = 1;
-        } else if (bAt == null) {
-          cmp = -1;
-        } else {
-          cmp = aAt.compareTo(bAt);
-        }
-        break;
-      case _SortColumn.priceOverride:
-        cmp = (a.assignment?.monthlyPriceCents ?? 0).compareTo(
-          b.assignment?.monthlyPriceCents ?? 0,
-        );
-        break;
-      case _SortColumn.costOverride:
-        cmp = (a.assignment?.vendorApiCostEstimateCentsMonthly ?? 0).compareTo(
-          b.assignment?.vendorApiCostEstimateCentsMonthly ?? 0,
-        );
-        break;
-      case _SortColumn.netMargin:
-        cmp = (a.assignment?.netMarginCents ?? 0).compareTo(
-          b.assignment?.netMarginCents ?? 0,
-        );
-        break;
-    }
-    return _ascending ? cmp : -cmp;
+    final location = a.operatorRef.locationName.compareTo(
+      b.operatorRef.locationName,
+    );
+    if (location != 0) return location;
+    return a.operatorRef.businessName.compareTo(b.operatorRef.businessName);
   }
 
   @override
   Widget build(BuildContext context) {
     final sorted = <TierAssignmentAdminRow>[...widget.rows]..sort(_compare);
+    final assignShownCount = widget.assignShownLocationCount ?? sorted.length;
+    final scopeLabel = widget.scopeLabel?.trim();
 
     return Container(
       key: const Key('admin_tier_assignment_table'),
       child: AdminCard(
+        padding: EdgeInsets.zero,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Tier assignments',
-              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Assignments',
+                          style: AppTextStyles.sectionTitle(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          scopeLabel == null || scopeLabel.isEmpty
+                              ? _locationCountLabel(sorted.length)
+                              : '${_locationCountLabel(assignShownCount)} in $scopeLabel',
+                          style: AppTextStyles.body13(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.onAssignShown != null) ...[
+                    const SizedBox(width: 16),
+                    AdminActionButton(
+                      key: const Key('admin_polling_setup_scope_assign'),
+                      label: assignShownCount == 1
+                          ? 'Assign shown location'
+                          : 'Assign shown locations',
+                      onPressed: widget.onAssignShown,
+                      icon: Icons.payments_outlined,
+                      role: AdminActionRole.primary,
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Use filters to narrow operator locations. Each row keeps tier, cadence, pricing, margin, and notes together.',
-              style: AppTextStyles.body12(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 12),
+            const Divider(height: 1, color: AppColors.borderSubtle),
             _FilterBar(
               tierFilter: widget.tierFilter,
-              marginBandFilter: widget.marginBandFilter,
-              locationCountFilter: widget.locationCountFilter,
               vendorFilter: widget.vendorFilter,
               operatorNameController: _opNameController,
               onTierChanged: widget.onTierFilterChanged,
-              onMarginChanged: widget.onMarginBandFilterChanged,
-              onLocationCountChanged: widget.onLocationCountFilterChanged,
               onOperatorNameChanged: widget.onOperatorNameFilterChanged,
               onVendorChanged: widget.onVendorFilterChanged,
             ),
-            const SizedBox(height: 12),
-            _AssignmentToolbar(
-              count: sorted.length,
-              sortColumn: _sortColumn,
-              ascending: _ascending,
-              onSortChanged: (column) => setState(() {
-                _sortColumn = column;
-                _ascending = true;
-              }),
-              onDirectionPressed: () =>
-                  setState(() => _ascending = !_ascending),
-            ),
-            const SizedBox(height: 10),
+            const Divider(height: 1, color: AppColors.borderSubtle),
+            const _AssignmentHeaderRow(),
             if (sorted.isEmpty)
-              Text(
-                'No tier assignments match this view.',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Text(
+                  'No assignments match this view.',
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                ),
               )
             else
               Column(
@@ -198,14 +168,26 @@ class _PerLocationTierAssignmentTableState
                   for (var i = 0; i < sorted.length; i++) ...[
                     _buildRow(sorted[i]),
                     if (i != sorted.length - 1)
-                      const Divider(color: AppColors.borderSubtle, height: 14),
+                      const Divider(height: 1, color: AppColors.borderSubtle),
                   ],
                 ],
               ),
+            const Divider(height: 1, color: AppColors.borderSubtle),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+              child: Text(
+                'Showing ${_locationCountLabel(sorted.length)}',
+                style: AppTextStyles.body12(color: AppColors.textSecondary),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  String _locationCountLabel(int count) {
+    return '$count ${count == 1 ? 'location' : 'locations'}';
   }
 
   Widget _buildRow(TierAssignmentAdminRow row) {
@@ -214,58 +196,29 @@ class _PerLocationTierAssignmentTableState
         ? null
         : _definitionFor(assignment.tierKey);
     final margin = assignment?.netMarginCents;
-    final Color marginColor;
-    if (margin == null || margin == 0) {
-      marginColor = AppColors.textMuted;
-    } else if (margin > 0) {
-      marginColor = AppColors.positive;
-    } else {
-      marginColor = AppColors.negative;
-    }
     final priceLabel = assignment?.monthlyPriceCents == null
-        ? _tierDefaultMoneyLabel(definition?.defaultMonthlyPriceCents)
+        ? 'Default'
         : formatCents(assignment!.monthlyPriceCents!);
     final costLabel = assignment?.vendorApiCostEstimateCentsMonthly == null
-        ? _tierDefaultMoneyLabel(definition?.vendorApiCostEstimateCentsMonthly)
+        ? 'Default'
         : formatCents(assignment!.vendorApiCostEstimateCentsMonthly!);
-    final marginLabel = margin == null ? 'Not calculated' : formatCents(margin);
+    final marginLabel = margin == null ? '—' : formatCents(margin);
+    final marginColor = _marginColor(margin);
     final cadences = assignment?.pollingCadencePerVendorSeconds;
     final cadenceLabel = (cadences == null || cadences.isEmpty)
-        ? _tierDefaultCadenceLabel(definition?.pollingCadencePerVendorSeconds)
-        : '${cadences.length} vendor(s) set';
+        ? _cadenceSummary(definition?.pollingCadencePerVendorSeconds)
+        : _cadenceSummary(cadences);
     final notes = row.adminNotes ?? '';
     final notesLabel = notes.length > 30
         ? '${notes.substring(0, 30)}...'
         : notes;
-    final tierLabel = assignment?.tierKey == null
+    final setupLabel = assignment?.tierKey == null
         ? 'Not assigned'
         : _tierLabel(assignment!.tierKey);
     final activeSinceLabel = assignment == null
-        ? 'Not assigned yet'
+        ? null
         : adminHumanDateTime(assignment.effectiveAt);
-    // Contract Card 2 action label: "Assign / Update" - render as
-    // "Assign" for never-assigned rows, "Update" for rows already
-    // carrying a current assignment. The button key stays stable so
-    // tests can target either state with the same finder.
     final actionLabel = assignment == null ? 'Assign' : 'Update';
-    final cadenceTooltip = cadences == null || cadences.isEmpty
-        ? 'Using the tier default cadence'
-        : cadences.entries
-              .map(
-                (entry) =>
-                    '${kPollOnlyVendorDisplayNames[entry.key] ?? entry.key}: '
-                    '${entry.value}s',
-              )
-              .join(', ');
-
-    final facts = <_AssignmentFact>[
-      _AssignmentFact('Tier', tierLabel),
-      _AssignmentFact('Active since', activeSinceLabel),
-      _AssignmentFact('Cadence', cadenceLabel, tooltip: cadenceTooltip),
-      _AssignmentFact('Price', priceLabel),
-      _AssignmentFact('Cost basis', costLabel),
-      _AssignmentFact('Net margin', marginLabel, valueColor: marginColor),
-    ];
     final action = widget.editingEnabled
         ? AdminActionButton(
             key: Key(
@@ -278,10 +231,7 @@ class _PerLocationTierAssignmentTableState
             compact: true,
             minWidth: 96,
           )
-        : Text(
-            'Read-only',
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          );
+        : const SizedBox.shrink();
 
     return Container(
       key: ValueKey<String>(
@@ -289,37 +239,56 @@ class _PerLocationTierAssignmentTableState
         '${row.operatorRef.operatorId}_'
         '${row.operatorRef.locationId}',
       ),
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 760;
+          final compact = constraints.maxWidth < 820;
           final identity = _AssignmentIdentity(row: row);
-          final factWrap = _AssignmentFactWrap(facts: facts);
-          final notesBlock = _NotesBlock(notesLabel: notesLabel);
+          final setup = _SetupCell(
+            setupLabel: setupLabel,
+            activeSinceLabel: activeSinceLabel,
+            isUnassigned: assignment == null,
+          );
+          final cadence = _TextCell(value: cadenceLabel);
+          final commercials = _CommercialsCell(
+            priceLabel: priceLabel,
+            costLabel: costLabel,
+            marginLabel: marginLabel,
+            marginColor: marginColor,
+          );
+          final notesBlock = _TextCell(value: notesLabel.isEmpty ? '—' : notesLabel);
           if (compact) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 identity,
                 const SizedBox(height: 10),
-                factWrap,
+                setup,
+                const SizedBox(height: 10),
+                cadence,
+                const SizedBox(height: 10),
+                commercials,
                 const SizedBox(height: 10),
                 notesBlock,
-                const SizedBox(height: 10),
-                Align(alignment: Alignment.centerRight, child: action),
+                if (widget.editingEnabled) ...[
+                  const SizedBox(height: 10),
+                  Align(alignment: Alignment.centerRight, child: action),
+                ],
               ],
             );
           }
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 3, child: identity),
-              const SizedBox(width: 18),
-              Expanded(flex: 7, child: factWrap),
-              const SizedBox(width: 18),
-              Expanded(flex: 2, child: notesBlock),
-              const SizedBox(width: 16),
-              action,
+              Expanded(flex: 24, child: identity),
+              Expanded(flex: 17, child: setup),
+              Expanded(flex: 18, child: cadence),
+              Expanded(flex: 25, child: commercials),
+              Expanded(flex: 8, child: notesBlock),
+              Expanded(
+                flex: 8,
+                child: Align(alignment: Alignment.topRight, child: action),
+              ),
             ],
           );
         },
@@ -334,104 +303,33 @@ class _PerLocationTierAssignmentTableState
     return null;
   }
 
-  String _tierDefaultMoneyLabel(int? cents) {
-    if (cents == null) return 'Tier default';
-    return 'Tier default: ${formatCents(cents)}';
+  Color _marginColor(int? margin) {
+    if (margin == null || margin == 0) return AppColors.textMuted;
+    return margin > 0 ? AppColors.positive : AppColors.negative;
   }
 
-  String _tierDefaultCadenceLabel(Map<String, int>? cadences) {
-    if (cadences == null || cadences.isEmpty) return 'Tier default';
+  String _cadenceSummary(Map<String, int>? cadences) {
+    if (cadences == null || cadences.isEmpty) return 'Default';
+    if (cadences.length == 1) {
+      final entry = cadences.entries.first;
+      final vendor = kPollOnlyVendorDisplayNames[entry.key] ?? entry.key;
+      return '$vendor: ${_formatCadence(entry.value)}';
+    }
     final uniqueCadences = cadences.values.toSet();
     if (uniqueCadences.length == 1) {
-      return 'Tier default: ${uniqueCadences.single}s';
+      return '${cadences.length} vendors: ${_formatCadence(uniqueCadences.single)}';
     }
-    return 'Tier default: ${cadences.length} vendors';
+    return '${cadences.length} vendors';
+  }
+
+  String _formatCadence(int seconds) {
+    if (seconds % 60 == 0) return '${seconds ~/ 60} min';
+    return '${seconds}s';
   }
 }
 
 String _tierLabel(PollingTierKey tier) {
   return adminPollingTierLabel(tier);
-}
-
-class _AssignmentToolbar extends StatelessWidget {
-  const _AssignmentToolbar({
-    required this.count,
-    required this.sortColumn,
-    required this.ascending,
-    required this.onSortChanged,
-    required this.onDirectionPressed,
-  });
-
-  final int count;
-  final _SortColumn sortColumn;
-  final bool ascending;
-  final ValueChanged<_SortColumn> onSortChanged;
-  final VoidCallback onDirectionPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(
-          '$count ${count == 1 ? 'location' : 'locations'}',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-        SizedBox(
-          width: 220,
-          child: DropdownButtonFormField<_SortColumn>(
-            key: const Key('admin_tier_assignment_sort_dropdown'),
-            initialValue: sortColumn,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Sort by',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            items: <DropdownMenuItem<_SortColumn>>[
-              for (final column in _SortColumn.values)
-                DropdownMenuItem<_SortColumn>(
-                  value: column,
-                  child: Text(_sortColumnLabel(column)),
-                ),
-            ],
-            onChanged: (value) {
-              if (value != null) onSortChanged(value);
-            },
-          ),
-        ),
-        AdminIconAction(
-          key: const Key('admin_tier_assignment_sort_direction'),
-          tooltip: ascending ? 'Sort descending' : 'Sort ascending',
-          onPressed: onDirectionPressed,
-          icon: ascending
-              ? Icons.arrow_upward_outlined
-              : Icons.arrow_downward_outlined,
-        ),
-      ],
-    );
-  }
-
-  static String _sortColumnLabel(_SortColumn column) {
-    switch (column) {
-      case _SortColumn.operator:
-        return 'Operator';
-      case _SortColumn.location:
-        return 'Location';
-      case _SortColumn.tier:
-        return 'Tier';
-      case _SortColumn.activeSince:
-        return 'Active since';
-      case _SortColumn.priceOverride:
-        return 'Price';
-      case _SortColumn.costOverride:
-        return 'Cost basis';
-      case _SortColumn.netMargin:
-        return 'Net margin';
-    }
-  }
 }
 
 class _AssignmentIdentity extends StatelessWidget {
@@ -460,88 +358,173 @@ class _AssignmentIdentity extends StatelessWidget {
   }
 }
 
-class _AssignmentFact {
-  const _AssignmentFact(
-    this.label,
-    this.value, {
-    this.valueColor,
-    this.tooltip,
-  });
-
-  final String label;
-  final String value;
-  final Color? valueColor;
-  final String? tooltip;
-}
-
-class _AssignmentFactWrap extends StatelessWidget {
-  const _AssignmentFactWrap({required this.facts});
-
-  final List<_AssignmentFact> facts;
+class _AssignmentHeaderRow extends StatelessWidget {
+  const _AssignmentHeaderRow();
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 18,
-      runSpacing: 10,
-      children: [for (final fact in facts) _AssignmentFactPill(fact: fact)],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 11, 18, 9),
+      child: Row(
+        children: const <Widget>[
+          Expanded(flex: 24, child: _HeaderCell('Location')),
+          Expanded(flex: 17, child: _HeaderCell('Setup')),
+          Expanded(flex: 18, child: _HeaderCell('Cadence')),
+          Expanded(flex: 25, child: _HeaderCell('Commercials')),
+          Expanded(flex: 8, child: _HeaderCell('Notes')),
+          Expanded(flex: 8, child: SizedBox.shrink()),
+        ],
+      ),
     );
   }
 }
 
-class _AssignmentFactPill extends StatelessWidget {
-  const _AssignmentFactPill({required this.fact});
+class _HeaderCell extends StatelessWidget {
+  const _HeaderCell(this.label);
 
-  final _AssignmentFact fact;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    final pill = ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 126, maxWidth: 172),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Text(
+      label,
+      style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+class _SetupCell extends StatelessWidget {
+  const _SetupCell({
+    required this.setupLabel,
+    required this.activeSinceLabel,
+    required this.isUnassigned,
+  });
+
+  final String setupLabel;
+  final String? activeSinceLabel;
+  final bool isUnassigned;
+
+  @override
+  Widget build(BuildContext context) {
+    return _StackedCell(
+      primary: setupLabel,
+      secondary: activeSinceLabel,
+      primaryColor: isUnassigned ? AppColors.sunsetDark : AppColors.textPrimary,
+      primaryWeight: FontWeight.w700,
+    );
+  }
+}
+
+class _TextCell extends StatelessWidget {
+  const _TextCell({required this.value, this.color});
+
+  final String value;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      value,
+      style: AppTextStyles.body13(color: color ?? AppColors.textPrimary),
+      overflow: TextOverflow.ellipsis,
+      maxLines: 2,
+    );
+  }
+}
+
+class _CommercialsCell extends StatelessWidget {
+  const _CommercialsCell({
+    required this.priceLabel,
+    required this.costLabel,
+    required this.marginLabel,
+    required this.marginColor,
+  });
+
+  final String priceLabel;
+  final String costLabel;
+  final String marginLabel;
+  final Color marginColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: <Widget>[
+        _MiniFact(label: 'Price', value: priceLabel),
+        _MiniFact(label: 'Cost', value: costLabel),
+        _MiniFact(label: 'Margin', value: marginLabel, valueColor: marginColor),
+      ],
+    );
+  }
+}
+
+class _MiniFact extends StatelessWidget {
+  const _MiniFact({required this.label, required this.value, this.valueColor});
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 56),
+      child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: <Widget>[
           Text(
-            fact.label,
+            label,
             style: AppTextStyles.uiLabel(color: AppColors.textMuted),
-            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 2),
+          const SizedBox(width: 6),
           Text(
-            fact.value,
+            value,
             style: AppTextStyles.body13(
-              color: fact.valueColor ?? AppColors.textPrimary,
+              color: valueColor ?? AppColors.textPrimary,
             ),
             overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
-    final tooltip = fact.tooltip;
-    if (tooltip == null || tooltip.isEmpty) return pill;
-    return Tooltip(message: tooltip, child: pill);
   }
 }
 
-class _NotesBlock extends StatelessWidget {
-  const _NotesBlock({required this.notesLabel});
+class _StackedCell extends StatelessWidget {
+  const _StackedCell({
+    required this.primary,
+    this.secondary,
+    this.primaryColor = AppColors.textPrimary,
+    this.primaryWeight = FontWeight.w400,
+  });
 
-  final String notesLabel;
+  final String primary;
+  final String? secondary;
+  final Color primaryColor;
+  final FontWeight primaryWeight;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Notes', style: AppTextStyles.uiLabel(color: AppColors.textMuted)),
-        const SizedBox(height: 2),
+      children: <Widget>[
         Text(
-          notesLabel.isEmpty ? 'No notes' : notesLabel,
-          maxLines: 3,
+          primary,
+          style: AppTextStyles.body13(color: primaryColor).copyWith(
+            fontWeight: primaryWeight,
+          ),
           overflow: TextOverflow.ellipsis,
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
+        if (secondary != null && secondary!.isNotEmpty) ...[
+          const SizedBox(height: 5),
+          Text(
+            secondary!,
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ],
     );
   }
@@ -550,223 +533,118 @@ class _NotesBlock extends StatelessWidget {
 class _FilterBar extends StatelessWidget {
   const _FilterBar({
     required this.tierFilter,
-    required this.marginBandFilter,
-    required this.locationCountFilter,
     required this.vendorFilter,
     required this.operatorNameController,
     required this.onTierChanged,
-    required this.onMarginChanged,
-    required this.onLocationCountChanged,
     required this.onOperatorNameChanged,
     required this.onVendorChanged,
   });
 
   final PollingTierKey? tierFilter;
-  final String? marginBandFilter;
-  final LocationCountFilter? locationCountFilter;
   final String? vendorFilter;
   final TextEditingController operatorNameController;
   final ValueChanged<PollingTierKey?>? onTierChanged;
-  final ValueChanged<String?>? onMarginChanged;
-  final ValueChanged<LocationCountFilter?>? onLocationCountChanged;
   final ValueChanged<String>? onOperatorNameChanged;
   final ValueChanged<String?>? onVendorChanged;
 
   @override
   Widget build(BuildContext context) {
-    final hasActiveFilters =
-        tierFilter != null ||
-        marginBandFilter != null ||
-        locationCountFilter != null ||
-        vendorFilter != null ||
-        operatorNameController.text.trim().isNotEmpty;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final available = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : 900.0;
-        final columns = available >= 980
-            ? 4
-            : available >= 640
-            ? 2
-            : 1;
-        final fieldWidth = columns == 1
-            ? available
-            : (available - (12 * (columns - 1))) / columns;
-        final clearButton = AdminActionButton(
-          key: const Key('admin_tier_assignment_clear_filters'),
-          label: 'Clear filters',
-          onPressed: () {
-            operatorNameController.clear();
-            onTierChanged?.call(null);
-            onMarginChanged?.call(null);
-            onLocationCountChanged?.call(null);
-            onVendorChanged?.call(null);
-            onOperatorNameChanged?.call('');
-          },
-          icon: Icons.filter_alt_off_outlined,
-          minWidth: 120,
-        );
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundMid.withValues(alpha: 0.48),
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(6),
+    return Container(
+      color: AppColors.backgroundMid.withValues(alpha: 0.24),
+      padding: const EdgeInsets.fromLTRB(18, 13, 18, 13),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: <Widget>[
+          SizedBox(
+            width: 270,
+            child: TextField(
+              key: const Key('admin_operator_name_field'),
+              controller: operatorNameController,
+              decoration: const InputDecoration(
+                labelText: 'Location name',
+                prefixIcon: Icon(Icons.search, size: 18),
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              onChanged: onOperatorNameChanged,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      'Filters',
-                      style: AppTextStyles.uiLabel(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                  if (hasActiveFilters) clearButton,
-                ],
+          _FilterMenu<PollingTierKey?>(
+            key: const Key('admin_tier_filter_dropdown'),
+            value: tierFilter,
+            label: 'Tier',
+            items: <DropdownMenuItem<PollingTierKey?>>[
+              const DropdownMenuItem<PollingTierKey?>(
+                value: null,
+                child: Text('Tier'),
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 12,
-                runSpacing: 10,
-                children: [
-                  SizedBox(
-                    width: fieldWidth,
-                    child: TextField(
-                      key: const Key('admin_operator_name_field'),
-                      controller: operatorNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Operator name',
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: onOperatorNameChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: DropdownButtonFormField<PollingTierKey?>(
-                      key: const Key('admin_tier_filter_dropdown'),
-                      initialValue: tierFilter,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Tier',
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      items: <DropdownMenuItem<PollingTierKey?>>[
-                        const DropdownMenuItem<PollingTierKey?>(
-                          value: null,
-                          child: Text('All tiers'),
-                        ),
-                        for (final tier in PollingTierKey.values)
-                          DropdownMenuItem<PollingTierKey?>(
-                            value: tier,
-                            child: Text(_tierLabel(tier)),
-                          ),
-                      ],
-                      onChanged: onTierChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: DropdownButtonFormField<String?>(
-                      key: const Key('admin_polling_vendor_filter_dropdown'),
-                      initialValue: vendorFilter,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Polling vendor',
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      items: <DropdownMenuItem<String?>>[
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('All polling vendors'),
-                        ),
-                        for (final vendorId in kPollOnlyVendorIds)
-                          DropdownMenuItem<String?>(
-                            value: vendorId,
-                            child: Text(
-                              kPollOnlyVendorDisplayNames[vendorId] ?? vendorId,
-                            ),
-                          ),
-                      ],
-                      onChanged: onVendorChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: DropdownButtonFormField<String?>(
-                      key: const Key('admin_margin_band_dropdown'),
-                      initialValue: marginBandFilter,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Margin band',
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const <DropdownMenuItem<String?>>[
-                        DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('All'),
-                        ),
-                        DropdownMenuItem<String?>(
-                          value: 'positive',
-                          child: Text('Positive'),
-                        ),
-                        DropdownMenuItem<String?>(
-                          value: 'break_even',
-                          child: Text('Break-even'),
-                        ),
-                        DropdownMenuItem<String?>(
-                          value: 'negative',
-                          child: Text('Negative'),
-                        ),
-                      ],
-                      onChanged: onMarginChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: DropdownButtonFormField<LocationCountFilter?>(
-                      key: const Key('admin_location_count_dropdown'),
-                      initialValue: locationCountFilter,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Operator location count',
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const <DropdownMenuItem<LocationCountFilter?>>[
-                        DropdownMenuItem<LocationCountFilter?>(
-                          value: null,
-                          child: Text('All location counts'),
-                        ),
-                        DropdownMenuItem<LocationCountFilter?>(
-                          value: 'single',
-                          child: Text('Single-location operators'),
-                        ),
-                        DropdownMenuItem<LocationCountFilter?>(
-                          value: 'multi',
-                          child: Text('Multi-location operators'),
-                        ),
-                      ],
-                      onChanged: onLocationCountChanged,
-                    ),
-                  ),
-                ],
-              ),
+              for (final tier in PollingTierKey.values)
+                DropdownMenuItem<PollingTierKey?>(
+                  value: tier,
+                  child: Text(_tierLabel(tier)),
+                ),
             ],
+            onChanged: onTierChanged,
           ),
-        );
-      },
+          _FilterMenu<String?>(
+            key: const Key('admin_polling_vendor_filter_dropdown'),
+            value: vendorFilter,
+            label: 'Vendor',
+            items: <DropdownMenuItem<String?>>[
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Vendor'),
+              ),
+              for (final vendorId in kPollOnlyVendorIds)
+                DropdownMenuItem<String?>(
+                  value: vendorId,
+                  child: Text(kPollOnlyVendorDisplayNames[vendorId] ?? vendorId),
+                ),
+            ],
+            onChanged: onVendorChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterMenu<T> extends StatelessWidget {
+  const _FilterMenu({
+    super.key,
+    required this.value,
+    required this.label,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final T? value;
+  final String label;
+  final List<DropdownMenuItem<T>> items;
+  final ValueChanged<T?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: value,
+          hint: Text(label),
+          isDense: true,
+          borderRadius: BorderRadius.circular(8),
+          items: items,
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 }

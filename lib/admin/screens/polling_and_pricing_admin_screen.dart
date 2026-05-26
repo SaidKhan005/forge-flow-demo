@@ -649,6 +649,15 @@ class _PollingAndPricingAdminScreenState
         message: _loadError!,
       );
     }
+    final visibleAssignments = _filteredAssignments;
+    final assignShownAction = _scopeMutationEnabled
+        ? _onAssignSelectedScope
+        : _locationMutationEnabled && visibleAssignments.length == 1
+        ? () => _onAssignTier(visibleAssignments.single)
+        : null;
+    final assignShownCount = _scopeMutationEnabled
+        ? _selectedScopeLocationCount
+        : visibleAssignments.length;
     return OperatorWebScreenBody(
       maxContentWidth: 1120,
       // Top inset is owned by the pinned header block above when the page
@@ -714,29 +723,19 @@ class _PollingAndPricingAdminScreenState
                 ),
               ),
             ),
-          if (_scopeMutationEnabled) ...[
-            const SizedBox(height: 16),
-            _ScopedPollingActionCard(
-              locationCount: _selectedScopeLocationCount,
-              onPressed: _onAssignSelectedScope,
-            ),
-          ],
           const SizedBox(height: 16),
           PerLocationTierAssignmentTable(
-            rows: _filteredAssignments,
+            rows: visibleAssignments,
             tierDefinitions: _definitions,
             editingEnabled: _locationMutationEnabled,
             onAssign: _onAssignTier,
+            onAssignShown: assignShownAction,
+            assignShownLocationCount: assignShownCount,
+            scopeLabel: _scope?.displayLabel,
             tierFilter: _tierFilter,
-            marginBandFilter: _marginBandFilter,
-            locationCountFilter: _locationCountFilter,
             operatorNameFilter: _operatorNameFilter,
             vendorFilter: _vendorFilter,
             onTierFilterChanged: (v) => setState(() => _tierFilter = v),
-            onMarginBandFilterChanged: (v) =>
-                setState(() => _marginBandFilter = v),
-            onLocationCountFilterChanged: (v) =>
-                setState(() => _locationCountFilter = v),
             onOperatorNameFilterChanged: (v) =>
                 setState(() => _operatorNameFilter = v),
             onVendorFilterChanged: (v) => setState(() => _vendorFilter = v),
