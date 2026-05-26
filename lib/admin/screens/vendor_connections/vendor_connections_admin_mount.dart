@@ -160,7 +160,7 @@ class _VendorConnectionsAdminMountState
     );
     final Widget content;
     if (location == null) {
-      content = _embeddedLocationRequiredPanel(scope);
+      content = _embeddedLocationRequiredPanel();
     } else if (widget.gateway == null) {
       content = _embeddedNotWiredPanel(location.locationName);
     } else {
@@ -230,24 +230,44 @@ class _VendorConnectionsAdminMountState
     );
   }
 
-  Widget _embeddedLocationRequiredPanel(AdminHierarchyScopeIntent? scope) {
-    return OperatorWebPanel(
+  Widget _embeddedLocationRequiredPanel() {
+    // Mirrors the Data accuracy empty state (a single calm card: a location
+    // pin, a bold line, and one plain sentence) rather than a panel of
+    // status rows, so "pick a location first" reads the same on both screens.
+    return Container(
       key: const Key('admin_vendor_connections_location_required'),
-      title: 'No location selected',
-      subtitle:
-          'Vendor integrations are configured per location, so this screen '
-          'needs to know which location you are setting up. Pick a location '
-          'from the side nav, then open Vendor integrations again.',
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const AdminDetailRow(
-            label: 'Edit controls',
-            value: 'Location required',
+          const Icon(
+            Icons.place_outlined,
+            size: 22,
+            color: AppColors.sunsetDark,
           ),
-          const AdminDetailRow(
-            label: 'Global services',
-            value: 'Connected services remains separate',
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Select a location to edit vendor integrations',
+                  style: AppTextStyles.body15Bold(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Vendor integrations are set per location because each '
+                  'location connects, tests, and disconnects its own services.',
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                ),
+              ],
+            ),
           ),
         ],
       ),
