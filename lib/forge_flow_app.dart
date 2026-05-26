@@ -45,6 +45,7 @@ import 'state/week_data_notifier.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_week_record_repository.dart';
+import 'screens/advisor/advisor_mobile_chat_nav.dart';
 import 'screens/baseline_tracker.dart';
 import 'screens/auth/auth_permission_context_bridge.dart';
 import 'screens/auth/auth_gate.dart';
@@ -1376,6 +1377,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         key: ValueKey('baseline-$revision'),
         child: const BaselineTracker(),
       ),
+      // Index 4: Advisor chat tab (Slice D2 mobile). Gateway is resolved
+      // via the provider seam in resolveAdvisorMobileGateway; no kDemoMode
+      // branch here (HP #2). A stable Key preserves conversation state
+      // across tab switches in the IndexedStack.
+      kAdvisorMobileNavIndex => buildAdvisorMobileChatTab(
+        gateway: resolveAdvisorMobileGateway(null),
+      ),
       _ => const SizedBox.shrink(),
     };
   }
@@ -1631,7 +1639,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 child: IndexedStack(
                   index: _selectedIndex,
                   children: List<Widget>.generate(
-                    4,
+                    // 5 tabs: Shift, Variance, Plan, Benchmark, Advisor
+                    5,
                     (index) => _buildTab(index, revision),
                   ),
                 ),
@@ -1732,6 +1741,10 @@ class _AppBottomNav extends StatelessWidget {
             icon: Icon(Icons.history, size: 22),
             label: 'Benchmark',
           ),
+          // Advisor tab (Slice D2 mobile -- D2 nav entry).
+          // HP #6: label does not imply commands ("Ask" is the verb on
+          // the screen itself; the nav says "Advisor").
+          kAdvisorMobileNavItem,
         ],
       ),
     );
