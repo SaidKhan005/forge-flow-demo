@@ -315,6 +315,16 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildIntegrations,
   ),
   AdminRoute(
+    id: kAdminVendorApplicabilityRouteId,
+    title: 'Vendor applicability',
+    path: '/vendor-applicability',
+    icon: Icons.fact_check_outlined,
+    section: AdminRouteSection.serviceSetup,
+    subtitle:
+        'Choose which vendors can power wage, covers, and data freshness.',
+    builder: _buildVendorApplicability,
+  ),
+  AdminRoute(
     id: kAdminHealthRouteId,
     title: 'System health',
     path: '/health',
@@ -375,16 +385,6 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildDataAccuracy,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
-  ),
-  AdminRoute(
-    id: kAdminVendorApplicabilityRouteId,
-    title: 'Vendor Applicability',
-    path: '/vendor-applicability',
-    icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,
-    subtitle:
-        'This surface is for F&F admins only - choose which vendors can power wage, covers, and polling settings.',
-    builder: _buildVendorApplicability,
   ),
   AdminRoute(
     id: kAdminPollingPricingRouteId,
@@ -1336,7 +1336,7 @@ Widget _buildVendorApplicability(BuildContext context) {
   return _buildScopedAdminWorkspace(
     context: context,
     routeId: kAdminVendorApplicabilityRouteId,
-    functionTitle: 'Vendor Applicability',
+    functionTitle: 'Vendor applicability',
     description:
         'Choose which vendors are allowed to power wage, covers, and data '
         'freshness settings.',
