@@ -593,15 +593,18 @@ void main() {
       expect(find.text('Setup'), findsOneWidget);
       expect(find.text('Cadence'), findsOneWidget);
       expect(find.text('Commercials'), findsOneWidget);
-      expect(find.text('Notes'), findsOneWidget);
-      expect(find.text('Not assigned'), findsOneWidget);
-      expect(find.text('Default'), findsWidgets);
+      expect(find.text('Notes'), findsNothing);
+      expect(find.text('Needs setup'), findsOneWidget);
+      expect(find.text('After setup'), findsOneWidget);
+      expect(find.text('Assign tier to price'), findsOneWidget);
+      expect(find.text('Cost and margin after setup'), findsOneWidget);
       expect(find.text('Operator location count'), findsNothing);
       expect(find.text('All location counts'), findsNothing);
       expect(find.text('Location count'), findsNothing);
       expect(find.text('All operators'), findsNothing);
       expect(find.text('Margin band'), findsNothing);
       expect(find.text('Sort by'), findsNothing);
+      expect(find.text('Not assigned'), findsNothing);
       expect(find.text('Not assigned yet'), findsNothing);
       expect(find.text('Tier default'), findsNothing);
       expect(find.text('Not calculated'), findsNothing);
@@ -715,10 +718,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Price'), findsOneWidget);
-      expect(find.text('Cost'), findsOneWidget);
-      expect(find.text('Margin'), findsOneWidget);
-      expect(find.text('Default'), findsWidgets);
+      expect(find.text('Price'), findsNothing);
+      expect(find.text('Cost'), findsNothing);
+      expect(find.text('Margin'), findsNothing);
+      expect(find.text('\$99.00 / month'), findsOneWidget);
+      expect(find.text('Cost \$12.00, Margin \$87.00'), findsOneWidget);
       expect(find.text('5 vendors: 5 min'), findsOneWidget);
       expect(find.textContaining('Tier default'), findsNothing);
     });
