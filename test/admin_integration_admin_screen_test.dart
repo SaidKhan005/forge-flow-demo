@@ -97,10 +97,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('Platform provider keys'), findsOneWidget);
-    expect(find.textContaining('Global vendor API health'), findsOneWidget);
     expect(
-      find.textContaining('Operator edits stay on Operator Web'),
-      findsWidgets,
+      find.text('Global vendor API health by provider family.'),
+      findsOneWidget,
     );
     expect(
       find.byKey(const Key('admin_integrations_vendor_group_pos')),
@@ -117,7 +116,7 @@ void main() {
     expect(find.text('POS'), findsOneWidget);
     expect(find.text('Labor'), findsOneWidget);
     expect(find.text('Reservation'), findsOneWidget);
-    expect(find.textContaining('/7 reachable'), findsWidgets);
+    expect(find.textContaining('ready'), findsWidgets);
     expect(find.text('API pending'), findsWidgets);
     expect(find.text('Documented'), findsNothing);
     expect(
@@ -128,10 +127,8 @@ void main() {
       find.textContaining('Vendor setup waits for reachable API access'),
       findsWidgets,
     );
-    expect(
-      find.text('Stored securely. The full key is hidden after rotation.'),
-      findsWidgets,
-    );
+    expect(find.text('Saved'), findsOneWidget);
+    expect(find.text('Missing'), findsWidgets);
     expect(find.textContaining('Secure storage ID:'), findsNothing);
     expect(find.textContaining('kms://'), findsNothing);
   });

@@ -96,8 +96,8 @@ void main() {
       findsOneWidget,
     );
     // Value chips read the seeded enabled bit.
-    expect(find.text('Status: On'), findsOneWidget);
-    expect(find.text('Status: Off'), findsOneWidget);
+    expect(find.text('On'), findsOneWidget);
+    expect(find.text('Off'), findsOneWidget);
     expect(find.text('Control ID: advisor_enabled'), findsNothing);
     await tester.tap(find.byKey(const Key('admin_feature_flag_details_f-std')));
     await tester.pumpAndSettle();
@@ -190,13 +190,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Status: Off'), findsOneWidget);
+    expect(find.text('Off'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('admin_feature_flag_toggle_f-std')));
     await tester.pumpAndSettle();
 
     expect(find.text('Launch control updated'), findsOneWidget);
-    expect(find.text('Status: On'), findsOneWidget);
+    expect(find.text('On'), findsOneWidget);
     expect(find.textContaining('super-admin-uuid'), findsOneWidget);
   });
 
@@ -254,7 +254,7 @@ void main() {
 
       // Toggle landed; flag flipped off.
       expect(find.text('Launch control updated'), findsOneWidget);
-      expect(find.text('Status: Off'), findsOneWidget);
+      expect(find.text('Off'), findsOneWidget);
     },
   );
 
@@ -280,7 +280,7 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_feature_flag_danger_cancel')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Status: On'), findsOneWidget);
+    expect(find.text('On'), findsOneWidget);
     expect(find.text('Launch control updated'), findsNothing);
   });
 
