@@ -28,10 +28,12 @@ import '../../theme/app_theme.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
+import 'corpus_admin_chunk_view.dart' show corpusTopicKindIcon;
 import 'corpus_admin_connections_view.dart'
     show
         CorpusConnectionClarity,
         corpusConnectionClarity,
+        corpusConnectionNodeKind,
         corpusConnectionNodeName,
         corpusRelationshipVerb;
 
@@ -58,15 +60,32 @@ Color corpusMapClarityColor(CorpusConnectionClarity clarity) {
 class CorpusMapEdge {
   const CorpusMapEdge({
     required this.otherName,
+    required this.otherKind,
     required this.verb,
     required this.clarity,
     required this.outbound,
   });
 
   final String otherName;
+
+  /// Kind of the connected (non-focused) topic, so the map node can lead
+  /// with the same per-kind icon the topic list + connection flow use.
+  final AdminCorpusTopicKind otherKind;
   final String verb;
   final CorpusConnectionClarity clarity;
   final bool outbound;
+
+  @override
+  bool operator ==(Object other) =>
+      other is CorpusMapEdge &&
+      other.otherName == otherName &&
+      other.otherKind == otherKind &&
+      other.verb == verb &&
+      other.clarity == clarity &&
+      other.outbound == outbound;
+
+  @override
+  int get hashCode => Object.hash(otherName, otherKind, verb, clarity, outbound);
 }
 
 /// Pure model of the focused map: the centred topic, the distinct list of
@@ -79,6 +98,7 @@ class CorpusMapModel {
   const CorpusMapModel({
     required this.topics,
     required this.focus,
+    required this.focusKind,
     required this.edges,
     required this.totalEdges,
   });
@@ -89,6 +109,11 @@ class CorpusMapModel {
 
   /// The currently-centred topic, or null when there are no topics.
   final String? focus;
+
+  /// Kind of the focused topic, so the centre node leads with the same
+  /// per-kind icon the rest of the screen uses. Defaults to Document when
+  /// the producer recorded no type for it.
+  final AdminCorpusTopicKind focusKind;
 
   /// The edges directly connected to [focus] (deduped by other-topic +
   /// verb so a repeated pair does not draw twice).
@@ -113,20 +138,39 @@ class CorpusMapModel {
       ...diff.ambiguous,
     ].where((c) => c.kind == GraphCandidateKind.edge).toList(growable: false);
 
-    // Distinct topic names across both endpoints.
+    // Distinct topic names across both endpoints, plus a best-effort kind
+    // per topic read from the producer's recorded node types (the same
+    // signal the connection flow uses). A topic with no recorded type
+    // reads as a Document; nothing is fabricated.
     final topicSet = <String>{};
+    final topicKinds = <String, AdminCorpusTopicKind>{};
+    void note(String name, String? rawType) {
+      if (name == 'this topic') return;
+      topicSet.add(name);
+      if (!topicKinds.containsKey(name) && rawType != null) {
+        topicKinds[name] = corpusConnectionNodeKind(rawType);
+      }
+    }
+
     for (final c in allEdges) {
-      final from = corpusConnectionNodeName(c.fromNodeKey);
-      final to = corpusConnectionNodeName(c.toNodeKey);
-      if (from != 'this topic') topicSet.add(from);
-      if (to != 'this topic') topicSet.add(to);
+      note(
+        corpusConnectionNodeName(c.fromNodeKey),
+        c.payload['from_node_type'] as String?,
+      );
+      note(
+        corpusConnectionNodeName(c.toNodeKey),
+        c.payload['to_node_type'] as String?,
+      );
     }
     final topics = topicSet.toList()..sort();
+    AdminCorpusTopicKind kindOf(String name) =>
+        topicKinds[name] ?? AdminCorpusTopicKind.document;
 
     if (topics.isEmpty) {
       return const CorpusMapModel(
         topics: <String>[],
         focus: null,
+        focusKind: AdminCorpusTopicKind.document,
         edges: <CorpusMapEdge>[],
         totalEdges: 0,
       );
@@ -156,6 +200,7 @@ class CorpusMapModel {
       edges.add(
         CorpusMapEdge(
           otherName: other,
+          otherKind: kindOf(other),
           verb: verb,
           clarity: clarity,
           outbound: outbound,
@@ -166,6 +211,7 @@ class CorpusMapModel {
     return CorpusMapModel(
       topics: topics,
       focus: focus,
+      focusKind: kindOf(focus),
       edges: edges,
       totalEdges: allEdges.length,
     );
