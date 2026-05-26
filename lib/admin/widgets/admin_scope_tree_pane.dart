@@ -11,6 +11,8 @@
 // pre-extraction `_ScopePane` / `_BusinessTreeCard` / `_ScopeRow` so
 // every existing `admin_setup_scope_*` test selector keeps matching.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
@@ -21,7 +23,7 @@ import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'admin_responsive_layout.dart';
 
-const Duration _kScopeAttentionPulseDuration = Duration(milliseconds: 5200);
+const Duration _kScopeAttentionPulseDuration = Duration(milliseconds: 6200);
 
 /// Resolved set of location ids for a selected hierarchy scope.
 ///
@@ -94,29 +96,55 @@ class AdminScopeTreePane extends StatelessWidget {
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
       key: ValueKey<int>(attentionPulseToken),
-      tween: Tween<double>(begin: attentionPulseToken > 0 ? 1 : 0, end: 0),
+      tween: Tween<double>(begin: 0, end: attentionPulseToken > 0 ? 1 : 0),
       duration: _kScopeAttentionPulseDuration,
-      curve: Curves.easeInCubic,
-      builder: (context, pulse, child) {
+      curve: Curves.linear,
+      builder: (context, progress, child) {
+        final active = attentionPulseToken > 0 && progress < 1;
+        final intensity = attentionPulseToken > 0
+            ? Curves.easeOut.transform(1 - progress)
+            : 0.0;
+        final flash = active
+            ? 0.55 + (0.45 * math.sin(progress * math.pi * 16).abs())
+            : 0.0;
+        final borderAlpha = (0.22 + 0.48 * flash) * intensity;
         return Container(
           key: const Key('admin_setup_workspace_scope_pane'),
           decoration: BoxDecoration(
             color: AppColors.backgroundMid.withValues(alpha: 0.5),
             border: Border.all(
-              color: AppColors.sunsetDark.withValues(alpha: 0.44 * pulse),
-              width: 2,
+              color: AppColors.sunsetDark.withValues(alpha: borderAlpha),
+              width: 3,
             ),
-            boxShadow: pulse <= 0
+            boxShadow: intensity <= 0
                 ? const <BoxShadow>[]
                 : <BoxShadow>[
                     BoxShadow(
-                      color: AppColors.sunset.withValues(alpha: 0.22 * pulse),
-                      blurRadius: 20,
-                      spreadRadius: 1,
+                      color: AppColors.sunset.withValues(
+                        alpha: (0.18 + 0.18 * flash) * intensity,
+                      ),
+                      blurRadius: 24,
+                      spreadRadius: 2,
                     ),
                   ],
           ),
-          child: child,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              child!,
+              if (active)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _ScopeAttentionSweepPainter(
+                        progress: progress,
+                        intensity: intensity,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         );
       },
       child: Padding(
@@ -185,6 +213,47 @@ class AdminScopeTreePane extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ScopeAttentionSweepPainter extends CustomPainter {
+  const _ScopeAttentionSweepPainter({
+    required this.progress,
+    required this.intensity,
+  });
+
+  final double progress;
+  final double intensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0 || size.isEmpty) return;
+    final rect = Offset.zero & size;
+    final insetRect = rect.deflate(4);
+    if (insetRect.isEmpty) return;
+
+    final sweepPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 5
+      ..color = AppColors.sunset.withValues(alpha: 0.88 * intensity);
+    final glowPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 11
+      ..color = AppColors.sunset.withValues(alpha: 0.24 * intensity)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+
+    final startAngle = (progress * math.pi * 2 * 2.2) - math.pi / 2;
+    const sweepAngle = math.pi / 2.7;
+    canvas.drawArc(insetRect, startAngle, sweepAngle, false, glowPaint);
+    canvas.drawArc(insetRect, startAngle, sweepAngle, false, sweepPaint);
+  }
+
+  @override
+  bool shouldRepaint(_ScopeAttentionSweepPainter oldDelegate) {
+    return progress != oldDelegate.progress ||
+        intensity != oldDelegate.intensity;
   }
 }
 
