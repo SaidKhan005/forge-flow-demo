@@ -1980,7 +1980,8 @@ class _VersionDetail extends StatelessWidget {
             const SizedBox(height: 16),
           ],
           OperatorWebPanel(
-            title: 'Content in this version',
+            title: AdminKnowledgeBaseCopy.topicsTitle,
+            subtitle: AdminKnowledgeBaseCopy.topicsLead,
             child: ChunkGroupedView(
               key: Key('admin_corpus_grouped_view_${version.versionId}'),
               chunks: chunks,
@@ -2163,6 +2164,12 @@ class _ChunkPreviewTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // B-r2: each content piece reads as a "topic" in the preview shape:
+    // a tinted kind icon, the topic name + a plain-English kind line,
+    // then a kind pill. The kind is DERIVED from the text the chunk
+    // already carries (rich kinds land in slice C3); when nothing is
+    // clear it reads "Document". Nothing here fabricates data.
+    final kind = corpusTopicKindForChunk(chunk);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -2177,20 +2184,47 @@ class _ChunkPreviewTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _chunkTitle(chunk),
-            style: AppTextStyles.mono14(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w600,
-            ),
+          // Topic header row: kind icon · name + kind line · kind pill.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              _TopicKindIcon(kind: kind),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      _chunkTitle(chunk),
+                      style: AppTextStyles.mono14(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      kind.description,
+                      style: AppTextStyles.mono11(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _TopicKindPill(kind: kind),
+            ],
           ),
-          const SizedBox(height: 2),
-          if (chunk.headingPath.isNotEmpty)
+          // Full heading breadcrumb (kept for sections nested under an
+          // H1) below the header so it does not crowd the topic name.
+          if (chunk.headingPath.length > 1) ...[
+            const SizedBox(height: 4),
             Text(
               chunk.headingPath.join(' › '),
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
-          const SizedBox(height: 4),
+          ],
+          const SizedBox(height: 6),
           Text(
             chunk.snippet,
             style: AppTextStyles.body13(color: AppColors.textPrimary),
@@ -2219,6 +2253,54 @@ class _ChunkPreviewTile extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// B-r2: the tinted square holding a topic's kind icon. Mirrors the
+/// preview's `.tic` chip (rounded square, muted fill, peacock glyph).
+class _TopicKindIcon extends StatelessWidget {
+  const _TopicKindIcon({required this.kind});
+
+  final AdminCorpusTopicKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        corpusTopicKindIcon(kind),
+        size: 18,
+        color: AppColors.peacockDark,
+      ),
+    );
+  }
+}
+
+/// B-r2: the kind pill (Document / SOP / Policy / ...). Mirrors the
+/// preview's `.kind-pill`: muted fill, fully rounded, secondary text.
+class _TopicKindPill extends StatelessWidget {
+  const _TopicKindPill({required this.kind});
+
+  final AdminCorpusTopicKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        kind.pill,
+        style: AppTextStyles.chipLabel(color: AppColors.textSecondary),
       ),
     );
   }
