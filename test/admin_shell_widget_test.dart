@@ -89,9 +89,7 @@ void main() {
 
     expect(find.byKey(const Key('admin_side_nav')), findsOneWidget);
     expect(
-      tester
-          .getTopLeft(find.byKey(const Key('admin_nav_section_operations')))
-          .dy,
+      tester.getTopLeft(find.byKey(const Key('admin_nav_item_operators'))).dy,
       lessThan(
         tester.getTopLeft(find.byKey(const Key('admin_nav_section_ai'))).dy,
       ),
@@ -132,11 +130,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Service setup'), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_nav_section_operations')),
-      findsOneWidget,
-    );
-    expect(find.text('Operations'), findsOneWidget);
+    expect(find.byKey(const Key('admin_nav_section_operations')), findsNothing);
+    expect(find.text('Operations'), findsNothing);
 
     expect(
       kAdminRoutes
@@ -160,8 +155,9 @@ void main() {
           .map((route) => route.id),
       <String>[
         kAdminIntegrationsRouteId,
+        kAdminVendorApplicabilityRouteId,
         kAdminFeatureFlagsRouteId,
-        // Lane B B2.2 — Default Role catalog admin editor added to
+        // Lane B B2.2 - Default Role catalog admin editor added to
         // the Service setup section as a F&F-admin-only surface.
         kAdminDefaultRoleCatalogRouteId,
       ],
@@ -171,11 +167,7 @@ void main() {
           .where((route) => route.section == AdminRouteSection.operations)
           .where((route) => route.visibleInNav)
           .map((route) => route.id),
-      // Re-pinned 2026-05-20: the operations section now surfaces both
-      // `operators` (lib/admin/admin_routes.dart:311) and
-      // `vendor-applicability` (lib/admin/admin_routes.dart:435) as
-      // visible primary nav rows; the latter was added post-test.
-      <String>[kAdminOperatorsRouteId, kAdminVendorApplicabilityRouteId],
+      <String>[kAdminOperatorsRouteId],
     );
 
     final hiddenSetupRoutes = <String>{
@@ -1070,9 +1062,7 @@ void main() {
       pinnedTop,
       lessThan(
         tester
-            .getTopLeft(
-              find.byKey(const Key('admin_nav_section_panel_operations')),
-            )
+            .getTopLeft(find.byKey(const Key('admin_nav_section_panel_ai')))
             .dy,
       ),
     );
