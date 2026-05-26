@@ -149,6 +149,11 @@ Do not re-open stale findings unless the repo regresses:
   all-time target uniqueness with non-overlapping effective-date windows so a
   future contract can be scheduled without overwriting the current active
   contract (schema + RLS + proxy-writing surface; gated on operator approval).
+  Phase 12 / G2 C3 typed graph vocabulary then advances the cutoff to
+  `202605261200_phase_12_c3_typed_graph_vocabulary.sql`: adds global
+  `public.graph_node_kinds` + `public.graph_edge_types` lookup tables with
+  the C3-sealed node kinds and edge types plus C4 validation views
+  (additive only; OP-GATED on operator approval).
   The Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron

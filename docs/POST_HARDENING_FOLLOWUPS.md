@@ -31,9 +31,9 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**75 migrations pending Production1 apply** (chronological). The queue now
+**76 migrations pending Production1 apply** (chronological). The queue now
 runs through
-`202605251020_plans_and_limits_scoped_contract_windows.sql`;
+`202605261200_phase_12_c3_typed_graph_vocabulary.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -117,8 +117,9 @@ Production1 apply.
 
 | `202605251000_plans_and_limits_scoped_contract_overrides.sql` | Plans & Limits V1 scoped custom contract foundation. Creates operator-scoped `public.pricing_contract_overrides` for Enterprise/custom commercial terms at business, org-unit, or location scope. Lower scopes override higher scopes; missing lower scopes inherit from the nearest ancestor or the global pricing catalog. Stores monthly, seat-ramp, onboarding, advisor-cap, label, note, billing-owner, and effective-date fields. RLS-enabled with `app_current_operator()` tenant policy, operator-leading indexes, service/forge admin grants, and an updated-at trigger. Schema + RLS + proxy-writing surface; gated on operator approval. | code-ready |
 | `202605251020_plans_and_limits_scoped_contract_windows.sql` | Plans & Limits V1 scoped custom contract windows. Replaces all-time target uniqueness with non-overlapping effective-date windows so a future-dated custom contract can be scheduled without overwriting the current active contract. Adds the target-window index plus overlap trigger. Schema + RLS-adjacent follow-up; gated on operator approval. | code-ready |
+| `202605261200_phase_12_c3_typed_graph_vocabulary.sql` | Phase 12 / G2 C3 typed graph vocabulary. Adds `public.graph_node_kinds` + `public.graph_edge_types` global lookup tables seeding the C3-approved node kinds (Concept, SOP, Policy, Metric, Formula, Risk, Word_To_Know, Coaching_Move, Role, Workflow, Document, Chunk, Procedure) and edge types (CONTAINS, CAUSES, INFORMS, RELATES_TO, DEPENDS_ON, GOVERNS, MITIGATES, TEACHES, DEFINES, MEASURES, CALCULATES, REDUCES_RISK_OF, REQUIRES, PART_OF, NEAR). Also adds `graph_nodes_unknown_kinds` + `graph_edges_unknown_types` validation views for C4 FK preparation. Global (no operator_id / RLS); GRANT SELECT to authenticated, full DML to service_role + forge_admin. **OP-GATED — hold for explicit operator approval before apply.** | code-ready |
 
-**Action:** apply all 75 in next Production1 event per
+**Action:** apply all 76 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

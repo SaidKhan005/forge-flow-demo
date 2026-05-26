@@ -7,6 +7,13 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605261200_phase_12_c3_typed_graph_vocabulary.sql`
+(Phase 12 / G2 C3 typed graph vocabulary: adds `public.graph_node_kinds` +
+`public.graph_edge_types` global lookup tables with the C3-approved node kinds
+and edge types, plus `graph_nodes_unknown_kinds` / `graph_edges_unknown_types`
+validation views for C4 FK preparation; global — no operator_id / RLS;
+OP-GATED on operator approval before apply; see the migration list below),
+preceded by
 `202605251020_plans_and_limits_scoped_contract_windows.sql`
 (Plans & Limits V1 scoped contract windows: replaces all-time target
 uniqueness with non-overlapping effective-date windows so future custom
@@ -417,6 +424,14 @@ Current known post-cutoff staging additions:
   current active contract. Adds a target-window index and overlap trigger.
   Schema + RLS-adjacent follow-up; build-only, gated on explicit operator
   approval before any apply.
+- `db/migrations/202605261200_phase_12_c3_typed_graph_vocabulary.sql`
+  adds `public.graph_node_kinds` and `public.graph_edge_types` global lookup
+  tables seeding the C3-approved vocabulary (13 node kinds, 15 edge types) and
+  two validation views (`graph_nodes_unknown_kinds`, `graph_edges_unknown_types`)
+  for C4 FK preparation. Global — no `operator_id` / RLS. GRANT SELECT to
+  `authenticated`, full DML to `service_role` + `forge_admin`. Additive only;
+  does not touch `graph_nodes` or `graph_edges`. **OP-GATED — hold for explicit
+  operator approval before any apply.**
 
 Migration drift automation:
 
