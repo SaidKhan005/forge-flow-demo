@@ -72,6 +72,7 @@ class _AdminShellState extends State<AdminShell> {
   AdminSupportLogFilterIntent? _supportLogFilter;
   AdminOperatorLocationScopeIntent? _operatorLocationScope;
   AdminHierarchyScopeIntent? _hierarchyScope;
+  AdminRouteIntent? _previousAdminRouteIntent;
   String? _pendingBusinessRouteId;
   int _businessSelectionAttentionToken = 0;
 
@@ -153,14 +154,47 @@ class _AdminShellState extends State<AdminShell> {
     )) {
       return;
     }
+    final nextPreviousAdminRouteIntent = nextRouteId == _selectedRouteId
+        ? _previousAdminRouteIntent
+        : _currentAdminRouteIntent();
     setState(() {
       _selectedRouteId = nextRouteId;
       _supportLogFilter = nextSupportLogFilter;
       _operatorLocationScope = nextOperatorLocationScope;
       _hierarchyScope = nextHierarchyScope;
+      _previousAdminRouteIntent = nextPreviousAdminRouteIntent;
       _businessScopeChosen = nextBusinessScopeChosen;
       _pendingBusinessRouteId = nextPendingBusinessRouteId;
     });
+  }
+
+  AdminRouteIntent _currentAdminRouteIntent() {
+    final hierarchyScope = _hierarchyScope;
+    if (hierarchyScope != null) {
+      return AdminRouteIntent(
+        routeId: _selectedRouteId,
+        supportLogFilter: _supportLogFilter,
+        hierarchyScope: hierarchyScope,
+      );
+    }
+    final operatorLocationScope = _operatorLocationScope;
+    if (operatorLocationScope != null) {
+      return AdminRouteIntent(
+        routeId: _selectedRouteId,
+        supportLogFilter: _supportLogFilter,
+        operatorLocationScope: operatorLocationScope,
+      );
+    }
+    return AdminRouteIntent(
+      routeId: _selectedRouteId,
+      supportLogFilter: _supportLogFilter,
+    );
+  }
+
+  void _backToPreviousAdminRoute() {
+    final intent = _previousAdminRouteIntent;
+    if (intent == null) return;
+    _selectIntent(intent);
   }
 
   /// True when a recomputed selection matches the current shell state, so
@@ -200,6 +234,10 @@ class _AdminShellState extends State<AdminShell> {
       supportLogFilter: _supportLogFilter,
       operatorLocationScope: _operatorLocationScope,
       hierarchyScope: _hierarchyScope,
+      previousAdminRouteIntent: _previousAdminRouteIntent,
+      onBackToPreviousAdminRoute: _previousAdminRouteIntent == null
+          ? null
+          : _backToPreviousAdminRoute,
       businessSelectionAttentionToken: _businessSelectionAttentionToken,
       onSelectRoute: _selectIntent,
       child: _AdminBody(
