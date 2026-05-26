@@ -235,6 +235,137 @@ class AdminKnowledgeBaseCopy {
   /// em dash (the colon-free phrasing reads as a sentence fragment).
   static String topicsShowing(int shown, int total) =>
       'Showing $shown of $total';
+
+  // ── B-r3: "Add knowledge" card ──
+  //
+  // The operator drops in a document; the advisor learns from it. After a
+  // file is staged the proxy returns a plain-English "what this update
+  // changes" diff. None of this fabricates data: the added/modified lines
+  // describe the chunks the proxy actually returned.
+
+  /// Card title.
+  static const String addTitle = 'Add knowledge';
+
+  /// One-line orientation copy under the title.
+  static const String addLead =
+      'Drop in a document and the advisor learns from it. No special '
+      'formatting needed.';
+
+  /// Primary prompt inside the dropzone.
+  static const String addDropPrompt = 'Choose a file or drag it here';
+
+  /// Secondary line inside the dropzone: accepted kinds + the size cap.
+  static const String addDropHint =
+      'A Word, text, or markdown document, up to 1 MB';
+
+  /// Label on the click-to-pick button.
+  static const String addChooseFile = 'Choose a file';
+
+  /// Label on the demo-only "use a sample file" button (kDemoMode only).
+  static const String addUseSample = 'Use a sample file';
+
+  /// Shown while the proxy stages the upload and computes the diff.
+  static const String addChecking = 'Reading the document...';
+
+  /// Heading on the "what this update changes" preview.
+  static const String addChangeTitle = 'What this update changes';
+
+  /// Reassurance line under the change preview when there is nothing to
+  /// change (the uploaded document matches what the advisor already knows).
+  static const String addNoChanges =
+      'This document matches what the advisor already knows. There is '
+      'nothing new to save.';
+
+  /// Primary commit button on the change preview.
+  static const String addSaveUpdate = 'Save this update';
+
+  /// Cancel button on the change preview: discards the staged upload.
+  static const String addCancel = 'Cancel';
+
+  /// Snackbar shown after a successful save.
+  static const String addSavedToast = 'Saved. The advisor is learning from it.';
+
+  /// Plain-English line for one ADDED piece, keyed by its derived kind.
+  /// "New metric the advisor will learn", "New SOP the advisor will
+  /// learn", and so on. Mirrors the approved preview's added-row copy.
+  static String addAddedLine(AdminCorpusTopicKind kind) =>
+      'New ${_kindNoun(kind)} the advisor will learn';
+
+  /// Plain-English line for one MODIFIED piece. The preview reads
+  /// "Reworded, a bit clearer than before"; we keep that voice.
+  static const String addModifiedLine = 'Reworded, a bit clearer than before';
+
+  /// Lowercase noun for a kind, used inside the added-row sentence.
+  static String _kindNoun(AdminCorpusTopicKind kind) {
+    switch (kind) {
+      case AdminCorpusTopicKind.document:
+        return 'document section';
+      case AdminCorpusTopicKind.sop:
+        return 'SOP';
+      case AdminCorpusTopicKind.policy:
+        return 'policy';
+      case AdminCorpusTopicKind.concept:
+        return 'concept';
+      case AdminCorpusTopicKind.metric:
+        return 'metric';
+      case AdminCorpusTopicKind.formula:
+        return 'formula';
+      case AdminCorpusTopicKind.risk:
+        return 'risk to watch for';
+      case AdminCorpusTopicKind.role:
+        return 'role';
+    }
+  }
+
+  // ── B-r3: "Update history" card ──
+  //
+  // A timeline of every saved version, current-first. Rollback writes a
+  // NEW version (the ledger is append-only) and never deletes history, so
+  // the copy says that honestly.
+
+  /// Card title.
+  static const String historyTitle = 'Update history';
+
+  /// One-line orientation copy under the title.
+  static const String historyLead =
+      'Every change is saved. You can always go back to an earlier version.';
+
+  /// Badge on the current version row.
+  static const String historyInUseNow = 'In use now';
+
+  /// Attribution line. The corpus is staff-managed, so every version
+  /// reads "by F and F staff" unless a specific author is recorded.
+  static const String historyByStaff = 'by F and F staff';
+
+  /// Note shown on a row that was itself created by a rollback.
+  static const String historyRestoredNote = 'Went back to an earlier version';
+
+  /// Button on a prior version: makes it current again.
+  static const String historyGoBack = 'Go back to this version';
+
+  /// Honest empty state when only the current version exists.
+  static const String historyNoPrior = 'No earlier versions yet.';
+
+  /// Confirm-dialog title for "go back to this version".
+  static const String historyGoBackTitle = 'Go back to this version?';
+
+  /// Confirm-dialog body. States plainly that this writes a NEW version
+  /// and deletes nothing, so past advisor recommendations stay traceable.
+  static const String historyGoBackBody =
+      'This saves a new version that matches the one you picked. Nothing is '
+      'deleted: the current version stays in history, so past advisor '
+      'recommendations can still be traced.';
+
+  /// Confirm-dialog primary button.
+  static const String historyGoBackConfirm = 'Go back to it';
+
+  /// Snackbar after a successful rollback.
+  static const String historyWentBackToast =
+      'Done. A new version now matches the one you picked.';
+
+  /// "N pieces of knowledge" summary line for a version row.
+  static String historyPieceCount(int count) =>
+      '$count piece${count == 1 ? '' : 's'} of knowledge';
 }
 
 /// B-r2: the plain-English content "kind" the Topics card shows for each
