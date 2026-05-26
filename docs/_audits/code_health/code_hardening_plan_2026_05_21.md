@@ -32,7 +32,7 @@ duplicate their inventory work:
 - [c_email_notification_scenario_inventory.md](docs/_audits/code_health/c_email_notification_scenario_inventory.md) — email + notification scenario inventory.
 - [integration_pressure_audit_2026_05_20.md](docs/_audits/code_health/integration_pressure_audit_2026_05_20.md) — three pressure findings (A: `actor_kind` drift; B: OPZ widget family; C: password-reset idempotency).
 - [end_to_end_pressure_audit_2026_05_19.md](docs/_audits/code_health/end_to_end_pressure_audit_2026_05_19.md) — 7 findings, all closed per `POST_HARDENING_FOLLOWUPS.md`.
-- [test_suite_tightening_audit_2026_05_20.md](docs/_audits/test_suite_tightening_audit_2026_05_20.md) — test-file decomposition + helper extraction (15 PRs landed).
+- [test_suite_tightening_audit_2026_05_20.md](docs/archive/_audits/test_suite_tightening_audit_2026_05_20.md) — test-file decomposition + helper extraction (15 PRs landed).
 
 This plan adds the **architectural** and **standards-bar** dimensions
 those audits leave untouched, plus a Hard Promises scorecard and a ranked
