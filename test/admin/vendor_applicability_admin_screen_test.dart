@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/vendor_applicability_admin_screen.dart';
+import 'package:forge_and_flow/admin/screens/vendor_applicability_recommended_defaults.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/vendor_applicability_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -146,6 +147,65 @@ void main() {
       expect(command.reasonNote, 'Ticket VA-200 launch wage source');
       expect(command.idempotencyKey, startsWith('admin-vendor-applicability-'));
     });
+
+    testWidgets(
+      'recommended defaults add missing rules without changing existing rules',
+      (tester) async {
+        await _size(tester);
+        final wageDefaults = recommendedVendorApplicabilityDefaultsFor('wage');
+        final gateway = _FakeVendorApplicabilityAdminGateway()
+          ..seed(<VendorApplicabilityAdminRow>[
+            for (final recommended in wageDefaults)
+              if (recommended.vendorSlug != 'toast')
+                _rowFromRecommended(
+                  recommended,
+                  metadata: recommended.vendorSlug == 'square'
+                      ? const <String, Object?>{'authority_basis': 'job_code'}
+                      : recommended.metadata,
+                ),
+          ]);
+
+        await tester.pumpWidget(
+          wrap(VendorApplicabilityAdminScreen(gateway: gateway)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('admin_vendor_applicability_recommended_defaults'),
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.byKey(
+            const Key('admin_vendor_applicability_recommended_defaults'),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Use recommended defaults?'), findsOneWidget);
+        expect(find.text('Add 1 missing wage rule.'), findsOneWidget);
+        expect(find.text('Toast'), findsOneWidget);
+        expect(
+          find.text('1 existing rule differs. Review separately.'),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_vendor_applicability_recommended_apply')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(gateway.upserts, hasLength(1));
+        final command = gateway.upserts.single;
+        expect(command.vendorSlug, 'toast');
+        expect(command.settingKind, 'wage');
+        expect(command.settingKey, 'default');
+        expect(command.enabled, isTrue);
+        expect(command.metadata['authority_basis'], 'vendor_pay_rate');
+        expect(command.metadata['vendor_field'], 'gross_wages');
+        expect(command.reasonNote, 'Apply recommended wage defaults');
+      },
+    );
 
     testWidgets(
       'selected location scope threads operator + location into upsert',
@@ -796,6 +856,29 @@ VendorApplicabilityAdminRow _row({
     metadata: const <String, Object?>{'authority_basis': 'job_code'},
     effectiveFrom: now,
     effectiveUntil: effectiveUntil,
+    createdAt: now,
+    createdBy: 'admin-user',
+  );
+}
+
+VendorApplicabilityAdminRow _rowFromRecommended(
+  VendorApplicabilityRecommendedDefault recommended, {
+  Map<String, Object?>? metadata,
+}) {
+  final now = DateTime.utc(2026, 5, 13, 15);
+  return VendorApplicabilityAdminRow(
+    id:
+        'row-${recommended.settingKind}-${recommended.settingKey}-'
+        '${recommended.vendorSlug}',
+    operatorId: null,
+    locationId: null,
+    settingKind: recommended.settingKind,
+    settingKey: recommended.settingKey,
+    vendorSlug: recommended.vendorSlug,
+    enabled: recommended.enabled,
+    metadata: metadata ?? recommended.metadata,
+    effectiveFrom: now,
+    effectiveUntil: null,
     createdAt: now,
     createdBy: 'admin-user',
   );
