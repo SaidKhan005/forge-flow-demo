@@ -471,61 +471,86 @@ class _EventRow extends StatelessWidget {
     // Match the operator-web row: title + state badge + an info "i"
     // button whose popover carries the description and the state
     // detail. No inline description / subcopy text.
-    return Row(
-      key: Key('admin_notification_preferences_event_${event.eventKey}'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final titleBlock = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(
-                  event.title,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _StateBadge(eventKey: event.eventKey, state: state),
-              const SizedBox(width: 4),
-              OperatorWebInfoButton(
-                key: Key(
-                  'admin_notification_preferences_state_info_${event.eventKey}',
-                ),
-                title: _kStateLabel[state] ?? 'Notification status',
-                tooltip: 'Notification status',
-                body: Text(
-                  _infoBodyFor(event, state),
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        for (final channel in kNotificationChannelOrder)
-          Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: ConsoleChannelToggle(
-              switchKey: Key(
-                'admin_notification_preferences_toggle_'
-                '${event.eventKey}_$channel',
-              ),
-              label: kNotificationChannelLabels[channel] ?? channel,
-              value: resolveEnabled(event, channel),
-              onChanged: isAvailable && onToggle != null
-                  ? (_) => onToggle!(
-                      event: event,
-                      channel: channel,
-                      currentlyEnabled: resolveEnabled(event, channel),
-                    )
-                  : null,
+        Flexible(
+          child: Text(
+            event.title,
+            style: AppTextStyles.mono14(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w600,
             ),
           ),
+        ),
+        const SizedBox(width: 8),
+        _StateBadge(eventKey: event.eventKey, state: state),
+        const SizedBox(width: 4),
+        OperatorWebInfoButton(
+          key: Key(
+            'admin_notification_preferences_state_info_${event.eventKey}',
+          ),
+          title: _kStateLabel[state] ?? 'Notification status',
+          tooltip: 'Notification status',
+          body: Text(
+            _infoBodyFor(event, state),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ),
       ],
+    );
+    final channelToggles = <Widget>[
+      for (final channel in kNotificationChannelOrder)
+        ConsoleChannelToggle(
+          switchKey: Key(
+            'admin_notification_preferences_toggle_'
+            '${event.eventKey}_$channel',
+          ),
+          label: kNotificationChannelLabels[channel] ?? channel,
+          value: resolveEnabled(event, channel),
+          onChanged: isAvailable && onToggle != null
+              ? (_) => onToggle!(
+                  event: event,
+                  channel: channel,
+                  currentlyEnabled: resolveEnabled(event, channel),
+                )
+              : null,
+        ),
+    ];
+    // B-r2: on wide rows the title and the three channel toggles share one
+    // line. In the admin console's narrow scoped panes (especially under the
+    // 1.12 text-scaling floor) that no longer fits, so stack the toggles
+    // beneath the title and let them wrap instead of overflowing the row.
+    return LayoutBuilder(
+      key: Key('admin_notification_preferences_event_${event.eventKey}'),
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 640) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              titleBlock,
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 24,
+                runSpacing: 12,
+                children: channelToggles,
+              ),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: titleBlock),
+            const SizedBox(width: 12),
+            for (final toggle in channelToggles)
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: toggle,
+              ),
+          ],
+        );
+      },
     );
   }
 }

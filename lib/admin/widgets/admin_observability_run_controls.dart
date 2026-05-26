@@ -84,22 +84,29 @@ class AdminObservabilityMonthSelector extends StatelessWidget {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
+      // B-r2: each segment is Flexible so the two-segment toggle can shrink
+      // (and its label ellipsize) instead of overflowing the narrow
+      // scoped-workspace function pane under the 1.12 text-scaling floor.
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          _MonthSegment(
-            keyName: 'admin_observability_month_current',
-            label: 'This month',
-            selected: month == ObservabilityMonth.current,
-            enabled: enabled,
-            onTap: () => onSelectMonth(ObservabilityMonth.current),
+          Flexible(
+            child: _MonthSegment(
+              keyName: 'admin_observability_month_current',
+              label: 'This month',
+              selected: month == ObservabilityMonth.current,
+              enabled: enabled,
+              onTap: () => onSelectMonth(ObservabilityMonth.current),
+            ),
           ),
-          _MonthSegment(
-            keyName: 'admin_observability_month_previous',
-            label: 'Last month',
-            selected: month == ObservabilityMonth.previous,
-            enabled: enabled,
-            onTap: () => onSelectMonth(ObservabilityMonth.previous),
+          Flexible(
+            child: _MonthSegment(
+              keyName: 'admin_observability_month_previous',
+              label: 'Last month',
+              selected: month == ObservabilityMonth.previous,
+              enabled: enabled,
+              onTap: () => onSelectMonth(ObservabilityMonth.previous),
+            ),
           ),
         ],
       ),
@@ -136,6 +143,9 @@ class _MonthSegment extends StatelessWidget {
         ),
         child: Text(
           label,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
           style: AppTextStyles.body12(
             color: selected
                 ? AppColors.backgroundSurface

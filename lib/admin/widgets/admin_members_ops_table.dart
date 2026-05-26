@@ -574,12 +574,24 @@ class _MemberMetaChip extends StatelessWidget {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(4),
       ),
+      // B-r2: a long role/location label must ellipsize rather than push the
+      // chip past its Wrap line width under the 1.12 text-scaling floor in the
+      // admin console's narrow scoped panes. Flexible is safe here: the chip
+      // always lays out inside the bounded meta-chip Wrap.
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Icon(icon, size: 13, color: color),
           const SizedBox(width: 4),
-          Text(label, style: AppTextStyles.mono10(color: color)),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.mono10(color: color),
+            ),
+          ),
         ],
       ),
     );
