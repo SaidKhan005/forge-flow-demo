@@ -125,7 +125,7 @@ class _PerLocationTierAssignmentTableState
                               ? 'Assign shown location'
                               : 'Assign shown locations',
                           onPressed: widget.onAssignShown,
-                          icon: Icons.payments_outlined,
+                          icon: Icons.assignment_outlined,
                           role: AdminActionRole.primary,
                         );
                   // Stack the action below the heading when the row is too
@@ -169,7 +169,7 @@ class _PerLocationTierAssignmentTableState
               onVendorChanged: widget.onVendorFilterChanged,
             ),
             const Divider(height: 1, color: AppColors.borderSubtle),
-            const _AssignmentHeaderRow(),
+            _AssignmentHeaderRow(showActions: widget.editingEnabled),
             if (sorted.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(18),
@@ -180,6 +180,7 @@ class _PerLocationTierAssignmentTableState
               )
             else
               Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (var i = 0; i < sorted.length; i++) ...[
                     _buildRow(sorted[i]),
@@ -247,10 +248,11 @@ class _PerLocationTierAssignmentTableState
         '${row.operatorRef.operatorId}_'
         '${row.operatorRef.locationId}',
       ),
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 820;
+          final compact = constraints.maxWidth < 620;
           final identity = _AssignmentIdentity(row: row);
           final setup = _SetupCell(
             setupLabel: setupLabel,
@@ -268,38 +270,45 @@ class _PerLocationTierAssignmentTableState
             value: notesLabel.isEmpty ? '—' : notesLabel,
           );
           if (compact) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                identity,
-                const SizedBox(height: 10),
-                setup,
-                const SizedBox(height: 10),
-                cadence,
-                const SizedBox(height: 10),
-                commercials,
-                const SizedBox(height: 10),
-                notesBlock,
-                if (widget.editingEnabled) ...[
+            return SizedBox(
+              width: constraints.maxWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  identity,
                   const SizedBox(height: 10),
-                  Align(alignment: Alignment.centerRight, child: action),
+                  setup,
+                  const SizedBox(height: 10),
+                  cadence,
+                  const SizedBox(height: 10),
+                  commercials,
+                  const SizedBox(height: 10),
+                  notesBlock,
+                  if (widget.editingEnabled) ...[
+                    const SizedBox(height: 10),
+                    Align(alignment: Alignment.centerRight, child: action),
+                  ],
                 ],
-              ],
+              ),
             );
           }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 24, child: identity),
-              Expanded(flex: 17, child: setup),
-              Expanded(flex: 18, child: cadence),
-              Expanded(flex: 25, child: commercials),
-              Expanded(flex: 8, child: notesBlock),
-              Expanded(
-                flex: 8,
-                child: Align(alignment: Alignment.topRight, child: action),
-              ),
-            ],
+          return SizedBox(
+            width: constraints.maxWidth,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 24, child: identity),
+                Expanded(flex: 17, child: setup),
+                Expanded(flex: 18, child: cadence),
+                Expanded(flex: 25, child: commercials),
+                Expanded(flex: 8, child: notesBlock),
+                if (widget.editingEnabled)
+                  Expanded(
+                    flex: 8,
+                    child: Align(alignment: Alignment.topRight, child: action),
+                  ),
+              ],
+            ),
           );
         },
       ),
@@ -371,20 +380,22 @@ class _AssignmentIdentity extends StatelessWidget {
 }
 
 class _AssignmentHeaderRow extends StatelessWidget {
-  const _AssignmentHeaderRow();
+  const _AssignmentHeaderRow({required this.showActions});
+
+  final bool showActions;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 11, 18, 9),
       child: Row(
-        children: const <Widget>[
-          Expanded(flex: 24, child: _HeaderCell('Location')),
-          Expanded(flex: 17, child: _HeaderCell('Setup')),
-          Expanded(flex: 18, child: _HeaderCell('Cadence')),
-          Expanded(flex: 25, child: _HeaderCell('Commercials')),
-          Expanded(flex: 8, child: _HeaderCell('Notes')),
-          Expanded(flex: 8, child: SizedBox.shrink()),
+        children: <Widget>[
+          const Expanded(flex: 24, child: _HeaderCell('Location')),
+          const Expanded(flex: 17, child: _HeaderCell('Setup')),
+          const Expanded(flex: 18, child: _HeaderCell('Cadence')),
+          const Expanded(flex: 25, child: _HeaderCell('Commercials')),
+          const Expanded(flex: 8, child: _HeaderCell('Notes')),
+          if (showActions) const Expanded(flex: 8, child: SizedBox.shrink()),
         ],
       ),
     );
@@ -481,20 +492,27 @@ class _MiniFact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 56),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(label, style: AppTextStyles.uiLabel(color: AppColors.textMuted)),
-          const SizedBox(width: 6),
-          Text(
-            value,
-            style: AppTextStyles.body13(
-              color: valueColor ?? AppColors.textPrimary,
+      constraints: const BoxConstraints(minWidth: 56, maxWidth: 92),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              label,
+              style: AppTextStyles.uiLabel(color: AppColors.textMuted),
             ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+            const SizedBox(width: 6),
+            Text(
+              value,
+              style: AppTextStyles.body13(
+                color: valueColor ?? AppColors.textPrimary,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
