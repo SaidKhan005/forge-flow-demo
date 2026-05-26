@@ -73,6 +73,7 @@ class _AdminShellState extends State<AdminShell> {
   AdminOperatorLocationScopeIntent? _operatorLocationScope;
   AdminHierarchyScopeIntent? _hierarchyScope;
   String? _pendingBusinessRouteId;
+  int _businessSelectionAttentionToken = 0;
 
   /// UX-parity Slice C — whether the operator has DELIBERATELY chosen a
   /// business to manage (top-bar scope picker, a Business-accounts
@@ -188,6 +189,7 @@ class _AdminShellState extends State<AdminShell> {
   void _selectBusinessForRoute(String routeId) {
     setState(() {
       _pendingBusinessRouteId = _routeIdOrFallback(routeId);
+      _businessSelectionAttentionToken += 1;
     });
     _select(kAdminOperatorsRouteId);
   }
@@ -198,6 +200,7 @@ class _AdminShellState extends State<AdminShell> {
       supportLogFilter: _supportLogFilter,
       operatorLocationScope: _operatorLocationScope,
       hierarchyScope: _hierarchyScope,
+      businessSelectionAttentionToken: _businessSelectionAttentionToken,
       onSelectRoute: _selectIntent,
       child: _AdminBody(
         key: ValueKey(
@@ -807,7 +810,8 @@ class _AdminSideNav extends StatelessWidget {
     BuildContext context,
     List<AdminRoute> clusterRoutes,
   ) {
-    void goToBusinessAccounts() => onSelect(kAdminOperatorsRouteId);
+    void goToBusinessAccounts() =>
+        onSelectBusinessForRoute(kAdminOperatorsRouteId);
     return <Widget>[
       _clusterShell(
         key: const Key('admin_nav_per_business_cluster_inactive'),

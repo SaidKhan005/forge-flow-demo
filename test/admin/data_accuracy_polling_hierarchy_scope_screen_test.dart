@@ -300,10 +300,7 @@ void main() {
       );
       expect(find.text('Effective: Org unit scope'), findsOneWidget);
       expect(find.text('Assign'), findsWidgets);
-      expect(
-        find.textContaining('saves one polling setup override'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Apply one polling setup'), findsOneWidget);
       expect(find.text('Toronto Yorkville'), findsOneWidget);
       expect(find.text('Vancouver Robson'), findsOneWidget);
       expect(
@@ -352,7 +349,7 @@ void main() {
     expect(find.text('Toronto Yorkville'), findsOneWidget);
     expect(find.text('Vancouver Robson'), findsNothing);
     expect(find.text('1 location'), findsOneWidget);
-    expect(find.textContaining('covered 2 locations inherit'), findsOneWidget);
+    expect(find.textContaining('covered 2 locations'), findsOneWidget);
   });
 
   testWidgets(
@@ -383,10 +380,20 @@ void main() {
         const Key('admin_polling_setup_scope_assign'),
       );
       expect(scopeButton, findsOneWidget);
+      expect(find.textContaining('Apply one polling setup'), findsOneWidget);
+      expect(find.textContaining('Selected scope:'), findsNothing);
       await tester.ensureVisible(scopeButton);
       await tester.tap(scopeButton);
       await tester.pumpAndSettle();
 
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('admin_tier_assignment_dialog')),
+          matching: find.text('Assign polling setup'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Assign polling setup to North Region'), findsNothing);
       await tester.tap(
         find.byKey(const Key('admin_tier_assignment_dialog_tier')),
       );
@@ -402,6 +409,8 @@ void main() {
         '0.02',
       );
       await tester.pump();
+      expect(find.text(r'Estimate: $60.00 per location.'), findsOneWidget);
+      expect(find.textContaining('for 2 locations'), findsNothing);
       await tester.tap(
         find.byKey(const Key('admin_polling_calculator_use_estimate')),
       );

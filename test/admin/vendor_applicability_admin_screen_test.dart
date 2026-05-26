@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/vendor_applicability_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
@@ -146,89 +147,8 @@ void main() {
       expect(command.idempotencyKey, startsWith('admin-vendor-applicability-'));
     });
 
-    testWidgets('per-location scope threads operator + location into upsert', (
-      tester,
-    ) async {
-      await _size(tester);
-      final gateway = _FakeVendorApplicabilityAdminGateway();
-      final operatorGateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[_operatorBundle()],
-      );
-
-      await tester.pumpWidget(
-        wrap(
-          VendorApplicabilityAdminScreen(
-            gateway: gateway,
-            operatorLocationGateway: operatorGateway,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('admin_vendor_applicability_add')));
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.byKey(const Key('admin_vendor_applicability_vendor_dropdown')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('7shifts').last);
-      await tester.pumpAndSettle();
-
-      // Scope opens by default so location-scoped rules take fewer clicks.
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_vendor_applicability_scope_location')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('admin_vendor_applicability_scope_location')),
-      );
-      await tester.pumpAndSettle();
-
-      // Operator dropdown -> business name.
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_vendor_applicability_operator_dropdown')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('admin_vendor_applicability_operator_dropdown')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Barrio Legado').last);
-      await tester.pumpAndSettle();
-
-      // Location dropdown -> location name.
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_vendor_applicability_location_dropdown')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('admin_vendor_applicability_location_dropdown')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('North Loop').last);
-      await tester.pumpAndSettle();
-
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_vendor_applicability_reason')),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const Key('admin_vendor_applicability_reason')),
-        'Ticket VA-210 per-location wage source',
-      );
-      await tester.tap(
-        find.byKey(const Key('admin_vendor_applicability_submit')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(gateway.upserts, hasLength(1));
-      final command = gateway.upserts.single;
-      expect(command.operatorId, _kOperatorId);
-      expect(command.locationId, _kLocationId);
-    });
-
     testWidgets(
-      'location scope without an operator blocks submit (UI mirror of CHECK)',
+      'selected location scope threads operator + location into upsert',
       (tester) async {
         await _size(tester);
         final gateway = _FakeVendorApplicabilityAdminGateway();
@@ -241,6 +161,12 @@ void main() {
             VendorApplicabilityAdminScreen(
               gateway: gateway,
               operatorLocationGateway: operatorGateway,
+              hierarchyScope: const AdminHierarchyScopeIntent.location(
+                operatorId: _kOperatorId,
+                operatorName: 'Barrio Legado',
+                locationId: _kLocationId,
+                locationName: 'North Loop',
+              ),
             ),
           ),
         );
@@ -257,34 +183,124 @@ void main() {
         await tester.tap(find.text('7shifts').last);
         await tester.pumpAndSettle();
 
-        // Scope opens by default; pick location without choosing an operator.
-        await tester.ensureVisible(
-          find.byKey(const Key('admin_vendor_applicability_scope_location')),
+        expect(
+          find.byKey(const Key('admin_vendor_applicability_scope_summary')),
+          findsOneWidget,
         );
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const Key('admin_vendor_applicability_scope_location')),
-        );
-        await tester.pumpAndSettle();
+        expect(find.text('Barrio Legado / North Loop'), findsOneWidget);
+
         await tester.ensureVisible(
           find.byKey(const Key('admin_vendor_applicability_reason')),
         );
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const Key('admin_vendor_applicability_reason')),
-          'Ticket VA-211 missing operator',
+          'Ticket VA-210 per-location wage source',
         );
         await tester.tap(
           find.byKey(const Key('admin_vendor_applicability_submit')),
         );
         await tester.pumpAndSettle();
 
-        // No write happened; the dialog is still open with an error banner.
-        expect(gateway.upserts, isEmpty);
+        expect(gateway.upserts, hasLength(1));
+        final command = gateway.upserts.single;
+        expect(command.operatorId, _kOperatorId);
+        expect(command.locationId, _kLocationId);
+      },
+    );
+
+    testWidgets(
+      'editing an inherited rule saves an override at the selected location',
+      (tester) async {
+        await _size(tester);
+        final gateway = _FakeVendorApplicabilityAdminGateway()
+          ..seed(<VendorApplicabilityAdminRow>[
+            _row(settingKind: 'wage', vendorSlug: 'toast'),
+          ]);
+        final operatorGateway = InMemoryOperatorLocationAdminGateway(
+          seed: <OperatorAdminBundle>[_operatorBundle()],
+        );
+
+        await tester.pumpWidget(
+          wrap(
+            VendorApplicabilityAdminScreen(
+              gateway: gateway,
+              operatorLocationGateway: operatorGateway,
+              hierarchyScope: const AdminHierarchyScopeIntent.location(
+                operatorId: _kOperatorId,
+                operatorName: 'Barrio Legado',
+                locationId: _kLocationId,
+                locationName: 'North Loop',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Inherited'), findsOneWidget);
+        await tester.tap(
+          find.byKey(
+            const Key('admin_vendor_applicability_edit_row-wage-toast'),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Add override'), findsOneWidget);
+        expect(find.text('Barrio Legado / North Loop'), findsOneWidget);
+
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_vendor_applicability_reason')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('admin_vendor_applicability_reason')),
+          'Ticket VA-211 local Toast override',
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_vendor_applicability_submit')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(gateway.upserts, hasLength(1));
+        final command = gateway.upserts.single;
+        expect(command.vendorSlug, 'toast');
+        expect(command.operatorId, _kOperatorId);
+        expect(command.locationId, _kLocationId);
+        expect(command.reasonNote, 'Ticket VA-211 local Toast override');
+      },
+    );
+
+    testWidgets(
+      'org-unit scope disables adding because backend stores business/location rules',
+      (tester) async {
+        await _size(tester);
+        final gateway = _FakeVendorApplicabilityAdminGateway();
+
+        await tester.pumpWidget(
+          wrap(
+            VendorApplicabilityAdminScreen(
+              gateway: gateway,
+              hierarchyScope: const AdminHierarchyScopeIntent.orgUnit(
+                operatorId: _kOperatorId,
+                operatorName: 'Barrio Legado',
+                orgUnitId: 'ou-east',
+                orgUnitName: 'East region',
+              ),
+              scopeLocationIds: const <String>{_kLocationId},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
         expect(
-          find.byKey(const Key('admin_vendor_applicability_dialog_error')),
+          find.byKey(const Key('admin_vendor_applicability_org_unit_notice')),
           findsOneWidget,
         );
+        final addButton = tester.widget<FilledButton>(
+          find.byKey(const Key('admin_vendor_applicability_add')),
+        );
+        expect(addButton.onPressed, isNull);
+        expect(gateway.upserts, isEmpty);
       },
     );
 

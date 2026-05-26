@@ -678,6 +678,8 @@ Widget _buildOperators(BuildContext context) {
                 ),
               );
             },
+      businessSelectionAttentionToken:
+          handoff?.businessSelectionAttentionToken ?? 0,
     );
   }
 
@@ -712,11 +714,15 @@ class _ScopedAdminWorkspaceOptions {
   const _ScopedAdminWorkspaceOptions({
     this.showWorkspaceHeader = true,
     this.allowAllBusinessesScope = false,
+    this.initialAllBusinessesSelected = false,
+    this.splitBreakpoint = 920,
     this.allBusinessesBuilder,
   });
 
   final bool showWorkspaceHeader;
   final bool allowAllBusinessesScope;
+  final bool initialAllBusinessesSelected;
+  final double splitBreakpoint;
   final WidgetBuilder? allBusinessesBuilder;
 }
 
@@ -747,8 +753,13 @@ Widget _buildScopedAdminWorkspace({
         : (scope) => handoff.onSelectRoute(
             AdminRouteIntent(routeId: routeId, hierarchyScope: scope),
           ),
+    onAllBusinessesSelected: handoff == null
+        ? null
+        : () => handoff.onSelectRoute(AdminRouteIntent(routeId: routeId)),
     functionBuilder: functionBuilder,
     allowAllBusinessesScope: options.allowAllBusinessesScope,
+    initialAllBusinessesSelected: options.initialAllBusinessesSelected,
+    splitBreakpoint: options.splitBreakpoint,
     allBusinessesBuilder: options.allBusinessesBuilder,
   );
 }
@@ -1290,23 +1301,56 @@ Widget _buildVendorApplicability(BuildContext context) {
     context,
   );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  if (source == null) {
-    return VendorApplicabilityAdminScreen(
-      gateway: gateway,
-      operatorLocationGateway: operatorGateway,
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final state = snapshot.data;
-      final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = _isAdminSuperAdmin(session);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+
+  Widget buildScopedScreen({
+    required AdminHierarchyScopeIntent? scope,
+    Set<String> locationIds = const <String>{},
+  }) {
+    Widget buildScreen({required bool canEdit}) {
       return VendorApplicabilityAdminScreen(
+        key: ValueKey<String>(
+          'vendor-applicability-${scope?.cacheKey ?? 'all-businesses'}',
+        ),
         gateway: gateway,
         operatorLocationGateway: operatorGateway,
         editingEnabled: canEdit,
+        hierarchyScope: scope,
+        scopeLocationIds: locationIds,
+        showPageHeader: false,
+      );
+    }
+
+    if (source == null) return buildScreen(canEdit: true);
+    return StreamBuilder<AdminAuthState>(
+      stream: source.stream,
+      initialData: source.current,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final session = state is AdminAuthAuthenticated ? state.session : null;
+        return buildScreen(canEdit: _isAdminSuperAdmin(session));
+      },
+    );
+  }
+
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminVendorApplicabilityRouteId,
+    functionTitle: 'Vendor Applicability',
+    description:
+        'Choose which vendors are allowed to power wage, covers, and data '
+        'freshness settings.',
+    options: _ScopedAdminWorkspaceOptions(
+      showWorkspaceHeader: false,
+      allowAllBusinessesScope: true,
+      initialAllBusinessesSelected: handoff?.effectiveHierarchyScope == null,
+      splitBreakpoint: 1100,
+      allBusinessesBuilder: (context) => buildScopedScreen(scope: null),
+    ),
+    functionBuilder: (context, selectedScope, selection) {
+      return buildScopedScreen(
+        scope: selectedScope,
+        locationIds: selection.locationIds,
       );
     },
   );

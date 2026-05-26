@@ -316,26 +316,13 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
     String? idempotencyKey,
     Map<String, String>? queryParameters,
   }) async {
-    final token = await bearerTokenProvider();
-    final resolved = baseUri.resolve(path);
-    final uri = queryParameters == null || queryParameters.isEmpty
-        ? resolved
-        : resolved.replace(
-            queryParameters: <String, String>{
-              ...resolved.queryParameters,
-              ...queryParameters,
-            },
-          );
-    final request = http.Request(method, uri)
-      ..headers['authorization'] = 'Bearer $token'
-      ..headers['accept'] = 'application/json';
-    if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
-      request.headers['Idempotency-Key'] = idempotencyKey;
-    }
-    if (jsonBody != null) {
-      request.headers['content-type'] = 'application/json';
-      request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
-    }
+    final request = http.Request(method, _resolveUri(path, queryParameters));
+    _prepareRequest(
+      request,
+      token: await bearerTokenProvider(),
+      idempotencyKey: idempotencyKey,
+      jsonBody: jsonBody,
+    );
     late final http.Response response;
     try {
       response = await sendAdminHttpRequest(
@@ -350,14 +337,7 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
         message: 'admin pricing proxy timed out after ${_timeout.inSeconds}s',
       );
     }
-    final raw = utf8.decode(response.bodyBytes);
-    Map<String, Object?> parsed = const <String, Object?>{};
-    if (raw.isNotEmpty) {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) {
-        parsed = decoded.cast<String, Object?>();
-      }
-    }
+    final parsed = _decodeResponse(response);
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return parsed;
     }
@@ -368,6 +348,41 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
           (parsed['message'] as String?) ??
           'admin pricing proxy returned an error',
     );
+  }
+
+  Uri _resolveUri(String path, Map<String, String>? queryParameters) {
+    final resolved = baseUri.resolve(path);
+    if (queryParameters == null || queryParameters.isEmpty) return resolved;
+    return resolved.replace(
+      queryParameters: <String, String>{
+        ...resolved.queryParameters,
+        ...queryParameters,
+      },
+    );
+  }
+
+  void _prepareRequest(
+    http.Request request, {
+    required String token,
+    required String? idempotencyKey,
+    required Map<String, Object?>? jsonBody,
+  }) {
+    request.headers['authorization'] = 'Bearer $token';
+    request.headers['accept'] = 'application/json';
+    if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
+      request.headers['Idempotency-Key'] = idempotencyKey;
+    }
+    if (jsonBody == null) return;
+    request.headers['content-type'] = 'application/json';
+    request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
+  }
+
+  Map<String, Object?> _decodeResponse(http.Response response) {
+    final raw = utf8.decode(response.bodyBytes);
+    if (raw.isEmpty) return const <String, Object?>{};
+    final decoded = jsonDecode(raw);
+    if (decoded is Map) return decoded.cast<String, Object?>();
+    return const <String, Object?>{};
   }
 }
 
@@ -707,7 +722,7 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     _bundleOrThrow(command.targetScope.operatorId);
     final prior = _findExactScopedOverride(command.targetScope);
     final id = command.contractOverrideId ?? prior?.id ?? _idGenerator();
-    final value = command.value.copyWith(
+    final value = command.value.withAuditStamp(
       updatedAt: _now().toUtc(),
       updatedBy: _actorUserId,
     );
