@@ -1,7 +1,7 @@
 -- P1a' — public.proxy_request_stats: stats-only per-AI-request telemetry
 -- with 30-day retention (Support logs redesign storage).
 --
--- Plan: docs/_execution/admin_support_logs_redesign/
+-- Plan: docs/archive/_execution/admin_support_logs_redesign/
 --       01_lens_audit_and_implementation_plan.md (§12). This migration
 --       SUPERSEDES the earlier B1 write-path idea (telemetry columns on
 --       proxy_requests) and the content-bearing advisor_conversation_log

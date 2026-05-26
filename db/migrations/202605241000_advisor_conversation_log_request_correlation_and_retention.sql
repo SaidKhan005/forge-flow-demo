@@ -1,7 +1,7 @@
 -- P1a — advisor_conversation_log: proxy_requests correlation key +
 -- real 30-day retention (Support logs telemetry groundwork).
 --
--- Plan: docs/_execution/admin_support_logs_redesign/
+-- Plan: docs/archive/_execution/admin_support_logs_redesign/
 --       01_lens_audit_and_implementation_plan.md (phase P1a).
 --
 -- Origin table: 202604280007_phase_9_0sigma_h_advisor_conversation_log.sql

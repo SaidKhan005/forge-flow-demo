@@ -533,7 +533,7 @@ gating (super_admin + opt-in). Not entangled with the stats table.
   completion — measured latency, actor uid, model/tokens/cost, `request_id` correlation;
   folded into the completion transaction (no extra round-trip); idempotent (replay never
   reaches the write); one shared path covers advisor_qa/coach_qa/wf_pl/wf_schedule. Writes
-  `result_status='success'` only (see P1b.2). Audit: `docs/_audits/admin_support_logs_redesign/pr_1291_p1b_proxy_stats_writer.md`.
+  `result_status='success'` only (see P1b.2). Audit: `docs/archive/_audits/admin_support_logs_redesign/pr_1291_p1b_proxy_stats_writer.md`.
 - **P1b.2 — QUEUED follow-up (gated proxy): failure/timeout telemetry.** Record a
   `proxy_request_stats` row with `result_status='error'`/`'timeout'` on the provider-failure
   and timeout bail paths (the 503/504 early-returns before `completeRequest`). Operator
@@ -544,5 +544,5 @@ gating (super_admin + opt-in). Not entangled with the stats table.
   by `(operator_id, location_id, request_id)`; returns model/tokens/cost/actor-uid + real
   `latency_ms`/`result_status` via `coalesce(real, derived)`; honest nulls (never phantom 0)
   for non-LLM / failed / pre-P1b rows; `actor_user_id` uuid only (name/role resolved in P3).
-  Audit: `docs/_audits/admin_support_logs_redesign/pr_1301_p2_read_projection.md`.
+  Audit: `docs/archive/_audits/admin_support_logs_redesign/pr_1301_p2_read_projection.md`.
 - P3 (UX), P4 (demo+QA): unchanged.

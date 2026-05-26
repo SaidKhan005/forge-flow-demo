@@ -3,7 +3,7 @@
 > **Created:** 2026-05-13, immediately after Wave 1 closed + debug.md
 > audit completed (PR #646). Operator-locked decisions: roles are
 > hierarchy-scoped, keep all 29 audit slices + 4 bug fixes, dual-Claude
-> execution. **Status:** OPEN.
+> execution. **Status:** CLOSED 2026-05-15 (operator-web + admin lanes closed 2026-05-14; mobile lane transitioned to Per-Daypart Targets V1).
 > **Owner:** main orchestrator (single writer; both executors read).
 
 Single-source-of-truth tracker for every slice across Wave 2. Both
