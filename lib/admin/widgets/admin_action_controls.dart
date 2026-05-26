@@ -72,7 +72,7 @@ class AdminActionButton extends StatelessWidget {
     return _buttonForRole(
       style: style,
       child: child,
-      icon: Icon(icon, size: 18),
+      icon: Icon(icon, size: 20),
     );
   }
 
@@ -152,8 +152,8 @@ class AdminActionButton extends StatelessWidget {
       minimumSize: WidgetStatePropertyAll(Size(width, height)),
       padding: WidgetStatePropertyAll(
         EdgeInsets.symmetric(
-          horizontal: compact ? 12 : 16,
-          vertical: compact ? 10 : 12,
+          horizontal: compact ? 14 : 18,
+          vertical: compact ? 11 : 13,
         ),
       ),
     );
@@ -189,7 +189,7 @@ class AdminIconAction extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       style: style,
-      icon: Icon(icon, size: 20),
+      icon: Icon(icon, size: 22),
     );
   }
 }

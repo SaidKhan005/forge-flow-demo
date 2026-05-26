@@ -16,7 +16,7 @@ class OperatorWebPanel extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.tone = OperatorWebPanelTone.surface,
-    this.padding = const EdgeInsets.all(18),
+    this.padding = const EdgeInsets.all(20),
   });
 
   final String title;
@@ -37,13 +37,13 @@ class OperatorWebPanel extends StatelessWidget {
           children: <Widget>[
             OperatorWebSectionHeading(title: title, trailing: trailing),
             if (subtitle != null) ...<Widget>[
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Text(
                 subtitle!,
                 style: AppTextStyles.body12(color: AppColors.textSecondary),
               ),
             ],
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             child,
           ],
         ),
@@ -88,12 +88,12 @@ class OperatorWebBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Icon(icon ?? colors.icon, size: 18, color: colors.foreground),
-            const SizedBox(width: 10),
+            Icon(icon ?? colors.icon, size: 20, color: colors.foreground),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,7 +103,7 @@ class OperatorWebBanner extends StatelessWidget {
                       title!,
                       style: AppTextStyles.body14(color: AppColors.textPrimary),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                   ],
                   Text(
                     message,
@@ -116,7 +116,7 @@ class OperatorWebBanner extends StatelessWidget {
                 ],
               ),
             ),
-            if (action != null) ...<Widget>[const SizedBox(width: 12), action!],
+            if (action != null) ...<Widget>[const SizedBox(width: 14), action!],
           ],
         ),
       ),
@@ -168,7 +168,7 @@ class OperatorWebDialog extends StatelessWidget {
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+            padding: const EdgeInsets.fromLTRB(26, 24, 26, 22),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -176,8 +176,8 @@ class OperatorWebDialog extends StatelessWidget {
                 Row(
                   children: <Widget>[
                     if (icon != null) ...<Widget>[
-                      Icon(icon, size: 20, color: AppColors.sunsetDark),
-                      const SizedBox(width: 10),
+                      Icon(icon, size: 22, color: AppColors.sunsetDark),
+                      const SizedBox(width: 12),
                     ],
                     Expanded(
                       child: Text(
@@ -196,7 +196,7 @@ class OperatorWebDialog extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 Flexible(
                   fit: FlexFit.loose,
                   child: SingleChildScrollView(
@@ -208,7 +208,7 @@ class OperatorWebDialog extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
                 AdminDialogActionBar(children: actions),
               ],
             ),

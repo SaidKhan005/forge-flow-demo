@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
+import '../admin_visual_system.dart';
 import 'admin_action_controls.dart';
 import 'admin_responsive_layout.dart';
 
@@ -41,17 +42,17 @@ class AdminRunCheckButton extends StatelessWidget {
       onPressed: loading ? null : onPressed,
       style: AdminButtonStyles.secondary(
         minWidth: 172,
-        minHeight: 40,
+        minHeight: AdminButtonStyles.controlHeight,
         emphasized: true,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       ),
       icon: loading
           ? const SizedBox(
-              width: 16,
-              height: 16,
+              width: 18,
+              height: 18,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : Icon(icon, size: 16),
+          : Icon(icon, size: 18),
       label: Text(loading ? loadingLabel : label),
     );
   }
@@ -94,12 +95,12 @@ class AdminRefreshHeaderActions extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           if (badges.isNotEmpty) ...<Widget>[
-            AdminActionBar(spacing: 8, runSpacing: 6, children: badges),
-            const SizedBox(height: 6),
+            AdminActionBar(spacing: 10, runSpacing: 8, children: badges),
+            const SizedBox(height: 8),
           ],
           AdminActionBar(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 10,
+            runSpacing: 10,
             children: <Widget>[
               ...leading,
               AdminRunCheckButton(
@@ -112,7 +113,7 @@ class AdminRefreshHeaderActions extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             statusText,
             key: statusKey,
@@ -187,27 +188,24 @@ class AdminRunCheckLaunchPanel extends StatelessWidget {
         final children = wide
             ? <Widget>[
                 visual,
-                const SizedBox(width: 24),
+                const SizedBox(width: 28),
                 Expanded(child: copy),
-                const SizedBox(width: 24),
+                const SizedBox(width: 28),
                 actions,
               ]
             : <Widget>[
                 Center(child: visual),
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
                 copy,
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
                 actions,
               ];
 
         return Container(
           width: double.infinity,
           constraints: const BoxConstraints(minHeight: 220),
-          padding: const EdgeInsets.all(26),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSurface,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(8),
+          padding: const EdgeInsets.all(28),
+          decoration: AdminVisualSystem.surfaceDecoration().copyWith(
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color: AppColors.textPrimary.withValues(alpha: 0.04),
@@ -245,7 +243,7 @@ class _LaunchPanelIcon extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.sunset.withValues(alpha: 0.10),
         border: Border.all(color: AppColors.sunset.withValues(alpha: 0.32)),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
       ),
       child: Center(
         child: Container(
@@ -254,7 +252,9 @@ class _LaunchPanelIcon extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.backgroundSurface,
             border: Border.all(color: AppColors.sunset.withValues(alpha: 0.45)),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(
+              AdminVisualSystem.surfaceRadius,
+            ),
           ),
           child: Icon(icon, size: 28, color: AppColors.sunsetDark),
         ),
@@ -284,7 +284,7 @@ class _LaunchPanelCopy extends StatelessWidget {
           title,
           style: AppTextStyles.display28(color: AppColors.textPrimary),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Text(
           description,
           maxLines: 2,
@@ -292,7 +292,7 @@ class _LaunchPanelCopy extends StatelessWidget {
           style: AppTextStyles.body15(color: AppColors.textSecondary),
         ),
         if (cues.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -314,7 +314,7 @@ class _LaunchPanelCue extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.backgroundMid.withValues(alpha: 0.55),
         border: Border.all(color: AppColors.borderSubtle, width: 1),
@@ -323,8 +323,8 @@ class _LaunchPanelCue extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(cue.icon, size: 15, color: AppColors.sunsetDark),
-          const SizedBox(width: 6),
+          Icon(cue.icon, size: 16, color: AppColors.sunsetDark),
+          const SizedBox(width: 8),
           Text(
             cue.label,
             style: AppTextStyles.chipLabel(color: AppColors.textSecondary),
@@ -347,7 +347,7 @@ class _LaunchPanelActions extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (control != null) ...<Widget>[control!, const SizedBox(height: 12)],
+        if (control != null) ...<Widget>[control!, const SizedBox(height: 14)],
         button,
       ],
     );
@@ -426,7 +426,7 @@ class _PromptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminCard(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,7 +435,7 @@ class _PromptCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _RunCheckIconBadge(icon: icon),
-              const SizedBox(width: 14),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,7 +446,7 @@ class _PromptCard extends StatelessWidget {
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Text(
                       description,
                       style: AppTextStyles.body13(
@@ -458,9 +458,9 @@ class _PromptCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
           _RunCheckFactPanel(facts: facts),
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
           AdminRunCheckButton(
             label: buttonLabel,
             loadingLabel: 'Running...',
@@ -526,7 +526,7 @@ class AdminRunCheckConfirmDialog extends StatelessWidget {
               description,
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _RunCheckFactPanel(facts: facts),
           ],
         ),
@@ -542,16 +542,16 @@ class _RunCheckIconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const size = 44.0;
+    const size = 48.0;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: AppColors.sunset.withValues(alpha: 0.12),
         border: Border.all(color: AppColors.sunset.withValues(alpha: 0.45)),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
       ),
-      child: Icon(icon, size: 20, color: AppColors.sunsetDark),
+      child: Icon(icon, size: 22, color: AppColors.sunsetDark),
     );
   }
 }
@@ -565,18 +565,18 @@ class _RunCheckFactPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.backgroundMid.withValues(alpha: 0.55),
         border: Border.all(color: AppColors.borderSubtle),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var index = 0; index < facts.length; index++) ...[
             _RunCheckFactRow(fact: facts[index]),
-            if (index < facts.length - 1) const SizedBox(height: 10),
+            if (index < facts.length - 1) const SizedBox(height: 12),
           ],
         ],
       ),
@@ -594,8 +594,8 @@ class _RunCheckFactRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(fact.icon, size: 16, color: AppColors.sunsetDark),
-        const SizedBox(width: 10),
+        Icon(fact.icon, size: 18, color: AppColors.sunsetDark),
+        const SizedBox(width: 12),
         Expanded(
           child: RichText(
             text: TextSpan(

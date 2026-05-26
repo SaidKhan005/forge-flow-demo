@@ -16,6 +16,7 @@ import '../../theme/scope_icons.dart';
 import '../../widgets/console/console_screen_body.dart';
 import '../../widgets/console/console_screen_header.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
+import '../admin_visual_system.dart';
 import '../services/members_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_action_controls.dart';
@@ -69,7 +70,7 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
         color: AppColors.backgroundDeep,
         child: OperatorWebScreenFrame(
           maxContentWidth: 1320,
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          padding: AdminVisualSystem.screenPadding,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -91,15 +92,15 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               _statStrip(),
               if (!editingEnabled) ...<Widget>[
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 const _SupportReadOnlyBanner(),
               ],
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _tabs(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Expanded(child: _tabViews()),
             ],
           ),
@@ -144,24 +145,46 @@ class SupportOperatorViewAdminScreen extends StatelessWidget {
   Widget _tabs() {
     return Container(
       key: const Key('admin_support_operator_view_tabs'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const TabBar(
+      decoration: AdminVisualSystem.tabStripDecoration(),
+      child: TabBar(
         isScrollable: true,
         labelColor: AppColors.textPrimary,
         unselectedLabelColor: AppColors.textSecondary,
         indicatorColor: AppColors.sunsetDark,
+        labelStyle: AppTextStyles.body15Bold(color: AppColors.textPrimary),
+        unselectedLabelStyle: AppTextStyles.body14(
+          color: AppColors.textSecondary,
+        ),
+        labelPadding: AdminVisualSystem.tabPadding,
         tabs: <Widget>[
-          Tab(icon: Icon(Icons.people_alt_outlined, size: 18), text: 'People'),
           Tab(
-            icon: Icon(Icons.account_tree_outlined, size: 18),
+            icon: Icon(
+              Icons.people_alt_outlined,
+              size: AdminVisualSystem.tabIconSize,
+            ),
+            text: 'People',
+          ),
+          Tab(
+            icon: Icon(
+              Icons.account_tree_outlined,
+              size: AdminVisualSystem.tabIconSize,
+            ),
             text: 'Access',
           ),
-          Tab(icon: Icon(Icons.security_outlined, size: 18), text: 'Audit log'),
-          Tab(icon: Icon(Icons.link_outlined, size: 18), text: 'Vendors'),
+          Tab(
+            icon: Icon(
+              Icons.security_outlined,
+              size: AdminVisualSystem.tabIconSize,
+            ),
+            text: 'Audit log',
+          ),
+          Tab(
+            icon: Icon(
+              Icons.link_outlined,
+              size: AdminVisualSystem.tabIconSize,
+            ),
+            text: 'Vendors',
+          ),
         ],
       ),
     );

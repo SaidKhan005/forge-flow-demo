@@ -25,6 +25,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_route_handoff.dart';
+import '../admin_visual_system.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import 'admin_action_controls.dart';
@@ -156,10 +157,12 @@ class _AdminScopeTrigger extends StatelessWidget {
         return Material(
           key: const Key('admin_scope_picker_trigger'),
           color: AppColors.backgroundSurface.withValues(alpha: 0.88),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(
+              AdminVisualSystem.surfaceRadius,
+            ),
             child: Container(
               // Fill the width the header allots (operator-web sizes its
               // picker with a fixed-width SizedBox), so the admin "Managing"
@@ -173,22 +176,24 @@ class _AdminScopeTrigger extends StatelessWidget {
               ),
               decoration: BoxDecoration(
                 border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(
+                  AdminVisualSystem.surfaceRadius,
+                ),
               ),
               child: Row(
                 children: <Widget>[
                   Icon(
                     _adminScopeTriggerIcon(scope),
-                    size: 20,
+                    size: 22,
                     color: AppColors.sunsetDark,
                   ),
                   if (showLabel) ...<Widget>[
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(child: _AdminScopeTriggerLabel(scope: scope)),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     const Icon(
                       Icons.arrow_drop_down,
-                      size: 18,
+                      size: 20,
                       color: AppColors.textSecondary,
                     ),
                   ],
@@ -225,7 +230,7 @@ class _AdminScopeTriggerLabel extends StatelessWidget {
           softWrap: false,
           style: AppTextStyles.mono8(color: AppColors.textMuted),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
           primary,
           key: const Key('admin_scope_picker_trigger_label'),
@@ -405,14 +410,14 @@ class _AdminScopePickerOverlayBodyState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           _AdminScopeSearchField(onChanged: _onQueryChanged),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           // TODO(ux-parity): search is client-side over the full
           // listOperators() result. For large operator counts the
           // production follow-up is a server-side search endpoint
           // (and an org-unit drill-in once the admin gateway surfaces
           // org-unit names alongside locations).
           ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 360),
+            constraints: const BoxConstraints(maxHeight: 392),
             child: _AdminScopeResults(
               loading: _loading,
               loadError: _loadError,
@@ -451,17 +456,17 @@ class _AdminScopeSearchField extends StatelessWidget {
         isDense: true,
         prefixIcon: const Icon(
           Icons.search,
-          size: 18,
+          size: 20,
           color: AppColors.textMuted,
         ),
         hintText: 'Search businesses',
         hintStyle: AppTextStyles.body14(color: AppColors.textMuted),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
           borderSide: const BorderSide(color: AppColors.borderSubtle),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
           borderSide: const BorderSide(color: AppColors.borderSubtle),
         ),
       ),
@@ -558,7 +563,7 @@ class _AdminScopeResults extends StatelessWidget {
         if (overflow > 0)
           Padding(
             key: const Key('admin_scope_picker_overflow'),
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
             child: Text(
               '+$overflow more. Keep typing to narrow.',
               style: AppTextStyles.body12(color: AppColors.peacockDark),
@@ -578,7 +583,7 @@ class _AdminScopeSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 5),
       child: Text(
         label,
         style: AppTextStyles.uiLabel(color: AppColors.textMuted),
@@ -714,21 +719,21 @@ class _AdminScopeRow extends StatelessWidget {
       color: selected
           ? AppColors.sunset.withValues(alpha: 0.10)
           : Colors.transparent,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(indent ? 30 : 8, 9, 8, 9),
+          padding: EdgeInsets.fromLTRB(indent ? 34 : 10, 11, 10, 11),
           child: Row(
             children: <Widget>[
               if (leading != null) ...<Widget>[
                 leading!,
-                const SizedBox(width: 4),
+                const SizedBox(width: 6),
               ],
               Icon(
                 icon,
-                size: 17,
+                size: 19,
                 color: selected ? AppColors.sunsetDark : AppColors.textMuted,
               ),
               const SizedBox(width: 10),
@@ -757,7 +762,7 @@ class _AdminScopeRow extends StatelessWidget {
                 ),
               ),
               if (selected)
-                const Icon(Icons.check, size: 16, color: AppColors.sunsetDark),
+                const Icon(Icons.check, size: 18, color: AppColors.sunsetDark),
             ],
           ),
         ),
@@ -781,12 +786,12 @@ class _AdminScopeExpander extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
       child: Padding(
-        padding: const EdgeInsets.all(2),
+        padding: const EdgeInsets.all(4),
         child: Icon(
           expanded ? Icons.expand_more : Icons.chevron_right,
-          size: 18,
+          size: 20,
           color: AppColors.textMuted,
         ),
       ),
@@ -808,7 +813,7 @@ class _AdminScopeEmptyState extends StatelessWidget {
         : 'No businesses match "$trimmed".';
     return Padding(
       key: const Key('admin_scope_picker_empty'),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       child: Text(
         message,
         textAlign: TextAlign.center,
@@ -829,7 +834,7 @@ class _AdminScopeErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: const Key('admin_scope_picker_error'),
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(10),
       child: OperatorWebBanner(
         message: message,
         tone: OperatorWebBannerTone.error,

@@ -14,7 +14,7 @@ import 'console_header_visibility.dart';
 /// the single source of truth for that block so every screen's
 /// identity header looks and behaves the same:
 ///
-///   * Leading [icon] at 22px in [AppColors.sunsetDark].
+///   * Leading [icon] at 24px in [AppColors.sunsetDark].
 ///   * [title] in `display20`, allowed to wrap to two lines then
 ///     ellipsize, so long location names never overflow.
 ///   * Optional [subtitle] in `body13` / [AppColors.textSecondary] for
@@ -75,8 +75,8 @@ class OperatorWebScreenHeader extends StatelessWidget {
     final titleBlock = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Icon(icon, size: 22, color: AppColors.sunsetDark),
-        const SizedBox(width: 10),
+        Icon(icon, size: 24, color: AppColors.sunsetDark),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,7 +89,7 @@ class OperatorWebScreenHeader extends StatelessWidget {
                 style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
               if (subtitle != null) ...<Widget>[
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   subtitle!,
                   key: subtitleKey,
@@ -111,7 +111,7 @@ class OperatorWebScreenHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               titleBlock,
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               actionBar,
             ],
           );
@@ -120,7 +120,7 @@ class OperatorWebScreenHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Expanded(child: titleBlock),
-            const SizedBox(width: 16),
+            const SizedBox(width: 18),
             actionBar,
           ],
         );

@@ -37,6 +37,7 @@ import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
+import '../admin_visual_system.dart';
 import '../models/feature_flags_admin_models.dart';
 import '../services/feature_flags_admin_gateway.dart';
 import '../widgets/admin_action_controls.dart';
@@ -192,7 +193,7 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
       key: const Key('admin_feature_flags_screen'),
       color: AppColors.backgroundDeep,
       child: OperatorWebScreenFrame(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        padding: AdminVisualSystem.screenPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

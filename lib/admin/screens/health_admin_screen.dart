@@ -44,6 +44,7 @@ import '../../widgets/console/console_surface.dart';
 import '../../widgets/console/console_switch_row.dart';
 
 import '../admin_human_labels.dart';
+import '../admin_visual_system.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
 import '../widgets/admin_run_check_controls.dart';
@@ -315,7 +316,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
       color: AppColors.backgroundDeep,
       type: MaterialType.canvas,
       child: OperatorWebScreenFrame(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        padding: AdminVisualSystem.screenPadding,
         child: Builder(
           builder: (context) {
             final showManualPrompt =
@@ -416,6 +417,11 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             labelColor: AppColors.textPrimary,
             unselectedLabelColor: AppColors.textSecondary,
             indicatorColor: AppColors.sunset,
+            labelStyle: AppTextStyles.body15Bold(color: AppColors.textPrimary),
+            unselectedLabelStyle: AppTextStyles.body14(
+              color: AppColors.textSecondary,
+            ),
+            labelPadding: AdminVisualSystem.tabPadding,
             tabs: <Widget>[
               for (var i = 0; i < _kTabs.length; i++)
                 Tab(

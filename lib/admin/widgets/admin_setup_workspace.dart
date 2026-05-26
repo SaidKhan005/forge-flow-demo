@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:forge_and_flow/widgets/console/console_header_visibility.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_visual_system.dart';
 import '../admin_route_handoff.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -24,7 +25,7 @@ typedef AdminSetupWorkspaceBuilder =
 /// (e.g. `admin_routes.dart`) keep using `AdminSetupWorkspaceSelection`.
 typedef AdminSetupWorkspaceSelection = AdminScopeSelection;
 
-const double _kWideShellSideNavWidth = 304;
+const double _kWideShellSideNavWidth = 320;
 const double _kWideShellBreakpoint = 720;
 const double _kDefaultWorkspaceSplitBreakpoint = 920;
 
@@ -272,6 +273,12 @@ class _AdminSetupWorkspaceState extends State<AdminSetupWorkspace> {
                                 labelColor: AppColors.textPrimary,
                                 unselectedLabelColor: AppColors.textMuted,
                                 indicatorColor: AppColors.sunsetDark,
+                                labelStyle: AppTextStyles.body15Bold(
+                                  color: AppColors.textPrimary,
+                                ),
+                                unselectedLabelStyle: AppTextStyles.body14(
+                                  color: AppColors.textMuted,
+                                ),
                                 tabs: [
                                   const Tab(text: 'Scope'),
                                   Tab(text: widget.functionTitle),
@@ -325,7 +332,7 @@ class _FunctionPane extends StatelessWidget {
       child: child == null
           ? Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
+                constraints: const BoxConstraints(maxWidth: 560),
                 child: _PickBusinessFirstState(
                   title: title,
                   onBackToBusinessAccounts: onBackToBusinessAccounts,
@@ -350,6 +357,7 @@ class _PickBusinessFirstState extends StatelessWidget {
   Widget build(BuildContext context) {
     return AdminCard(
       key: const Key('admin_setup_workspace_pick_business_first_state'),
+      padding: AdminVisualSystem.panelPadding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,20 +366,22 @@ class _PickBusinessFirstState extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 40,
+                height: 40,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppColors.sunset.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(
+                    AdminVisualSystem.surfaceRadius,
+                  ),
                 ),
                 child: const Icon(
                   Icons.apartment_outlined,
-                  size: 20,
+                  size: 22,
                   color: AppColors.sunsetDark,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,13 +404,13 @@ class _PickBusinessFirstState extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Text(
             'Open Business accounts, choose the business, then this tab will load with that business selected.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           if (onBackToBusinessAccounts != null) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
             Align(
               alignment: Alignment.centerLeft,
               child: AdminActionButton(

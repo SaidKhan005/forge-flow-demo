@@ -18,6 +18,7 @@ import '../widgets/console/console_surface.dart';
 import 'admin_auth_gate.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
+import 'admin_visual_system.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'widgets/admin_demo_banner.dart';
 import 'widgets/admin_action_controls.dart';
@@ -28,7 +29,7 @@ const double _kCompactShellBreakpoint = 720;
 /// Fixed width of the wide-layout left side nav. Sized so the admin
 /// rail can use the more open operator-web rhythm without truncating
 /// "Roles & permissions" or the longer route badges.
-const double _kSideNavWidth = 304;
+const double _kSideNavWidth = 320;
 
 /// UX-parity Slice C — the six per-business screens, in the order the
 /// approved mock renders them (`docs/_mockups/admin_unified_scope_sample.html`,
@@ -341,7 +342,7 @@ class _AdminCompactNav extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: const Key('admin_compact_nav'),
-      height: 74,
+      height: 84,
       decoration: BoxDecoration(
         color: AppColors.backgroundMid,
         border: Border(
@@ -353,7 +354,7 @@ class _AdminCompactNav extends StatelessWidget {
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
           children: [
             for (final route in routes.where(
@@ -365,7 +366,7 @@ class _AdminCompactNav extends StatelessWidget {
                 selected: route.id == selectedRouteId,
                 onTap: () => onSelect(route.id),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
             ],
           ],
         ),
@@ -402,9 +403,9 @@ class _CompactNavItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Container(
-            width: 154,
-            height: 52,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            width: 172,
+            height: 58,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               border: Border.all(
                 color: selected
@@ -418,23 +419,23 @@ class _CompactNavItem extends StatelessWidget {
               children: [
                 Icon(
                   route.icon,
-                  size: 18,
+                  size: 20,
                   color: selected ? AppColors.sunsetDark : AppColors.textMuted,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     route.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.body13(color: foreground),
+                    style: AppTextStyles.body14(color: foreground),
                   ),
                 ),
                 if (route.placeholder) ...[
                   const SizedBox(width: 6),
                   Icon(
                     Icons.schedule_outlined,
-                    size: 14,
+                    size: 16,
                     color: AppColors.textMuted,
                   ),
                 ],
@@ -506,7 +507,7 @@ class _AdminHeaderBar extends StatelessWidget {
           key: const Key('admin_header_bar'),
           // UX-parity Slice B (V3): grown 64 to 96 to match operator-web
           // proportions and give the top-bar scope picker room.
-          height: 96,
+          height: 104,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -523,7 +524,7 @@ class _AdminHeaderBar extends StatelessWidget {
               ),
             ),
           ),
-          padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 20),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 16 : 24),
           child: Row(
             children: <Widget>[
               // LEFT zone: brand mark + wordmark, left-aligned. Equal flex
@@ -535,13 +536,13 @@ class _AdminHeaderBar extends StatelessWidget {
                     ClipOval(
                       child: Image.asset(
                         'assets/images/forge_flow_splash_icon.png',
-                        width: 40,
-                        height: 40,
+                        width: 44,
+                        height: 44,
                         fit: BoxFit.cover,
                       ),
                     ),
                     if (!compact) ...<Widget>[
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 14),
                       Flexible(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -736,7 +737,7 @@ class _AdminSideNav extends StatelessWidget {
           ),
         ),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -769,7 +770,7 @@ class _AdminSideNav extends StatelessWidget {
     return <Widget>[
       Padding(
         key: const Key('admin_nav_business_accounts_pinned'),
-        padding: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.only(bottom: 16),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.sunset.withValues(alpha: 0.055),
@@ -777,10 +778,12 @@ class _AdminSideNav extends StatelessWidget {
               color: AppColors.sunset.withValues(alpha: 0.18),
               width: 1,
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(
+              AdminVisualSystem.surfaceRadius,
+            ),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: _NavItem(
               key: Key('admin_nav_item_${route.id}'),
               route: route,
@@ -827,7 +830,7 @@ class _AdminSideNav extends StatelessWidget {
         key: const Key('admin_nav_per_business_cluster'),
         children: <Widget>[
           _PerBusinessClusterHeader(businessName: businessName),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           for (final route in clusterRoutes)
             _NavItem(
               key: Key('admin_nav_cluster_item_${route.id}'),
@@ -855,7 +858,7 @@ class _AdminSideNav extends StatelessWidget {
         key: const Key('admin_nav_per_business_cluster_inactive'),
         children: <Widget>[
           _PerBusinessClusterInactiveHint(onTap: goToBusinessAccounts),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           for (final route in clusterRoutes)
             _NavItem(
               key: Key('admin_nav_cluster_item_${route.id}'),
@@ -914,7 +917,7 @@ class _AdminSideNav extends StatelessWidget {
   /// The sunset-tinted container both cluster states share.
   Widget _clusterShell({required Key key, required List<Widget> children}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 16),
       child: DecoratedBox(
         key: key,
         decoration: BoxDecoration(
@@ -923,10 +926,10 @@ class _AdminSideNav extends StatelessWidget {
             color: AppColors.sunset.withValues(alpha: 0.18),
             width: 1,
           ),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: children,
@@ -958,7 +961,7 @@ class _AdminSideNav extends StatelessWidget {
     if (sectionRoutes.isEmpty) return const <Widget>[];
     return <Widget>[
       Padding(
-        padding: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.only(bottom: 16),
         child: DecoratedBox(
           key: Key('admin_nav_section_panel_${section.section.name}'),
           decoration: BoxDecoration(
@@ -967,17 +970,19 @@ class _AdminSideNav extends StatelessWidget {
               color: section.accentColor.withValues(alpha: 0.18),
               width: 1,
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(
+              AdminVisualSystem.surfaceRadius,
+            ),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _NavSectionHeader(section: section),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 _NavSectionDivider(section: section),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 for (final route in sectionRoutes)
                   _NavItem(
                     key: Key('admin_nav_item_${route.id}'),
@@ -1010,20 +1015,20 @@ class _PerBusinessClusterHeader extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 30,
-            height: 30,
+            width: 34,
+            height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppColors.sunset.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
             ),
             child: Icon(
               scopeIcon(kind: ScopeEntityKind.business),
-              size: 18,
+              size: 20,
               color: AppColors.sunsetDark,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               businessName,
@@ -1055,30 +1060,32 @@ class _PerBusinessClusterInactiveHint extends StatelessWidget {
       label: 'Pick a business first',
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
         child: InkWell(
           key: const Key('admin_nav_per_business_cluster_inactive_hint'),
           onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
+            padding: const EdgeInsets.fromLTRB(2, 4, 2, 4),
             child: Row(
               children: [
                 Container(
-                  width: 30,
-                  height: 30,
+                  width: 34,
+                  height: 34,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppColors.sunset.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(
+                      AdminVisualSystem.tabRadius,
+                    ),
                   ),
                   child: Icon(
                     scopeIcon(kind: ScopeEntityKind.business),
-                    size: 18,
+                    size: 20,
                     color: AppColors.textMuted,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'Pick a business first',
@@ -1089,7 +1096,7 @@ class _PerBusinessClusterInactiveHint extends StatelessWidget {
                 ),
                 const Icon(
                   Icons.chevron_right,
-                  size: 18,
+                  size: 20,
                   color: AppColors.textMuted,
                 ),
               ],
@@ -1112,14 +1119,14 @@ class _NavSectionDivider extends StatelessWidget {
       key: Key('admin_nav_section_divider_${section.section.name}'),
       children: [
         Container(
-          width: 34,
+          width: 40,
           height: 2,
           decoration: BoxDecoration(
             color: section.accentColor.withValues(alpha: 0.52),
             borderRadius: BorderRadius.circular(999),
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
         Expanded(
           child: Container(
             height: 1,
@@ -1167,23 +1174,25 @@ class _NavSectionHeader extends StatelessWidget {
             children: [
               Container(
                 key: Key('admin_nav_section_icon_${section.section.name}'),
-                width: 30,
-                height: 30,
+                width: 34,
+                height: 34,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: section.accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(
+                    AdminVisualSystem.tabRadius,
+                  ),
                 ),
                 child: Icon(
                   section.icon,
-                  size: 18,
+                  size: 20,
                   color: Color.alphaBlend(
                     section.accentColor.withValues(alpha: 0.88),
                     AppColors.textPrimary,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   section.label,
@@ -1195,13 +1204,16 @@ class _NavSectionHeader extends StatelessWidget {
             ],
           ),
           if (section.badge != null) ...[
-            const SizedBox(height: 7),
+            const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,
               child: Container(
                 key: Key('admin_nav_section_badge_${section.section.name}'),
                 constraints: const BoxConstraints(maxWidth: 180),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.peacock.withValues(alpha: 0.10),
                   border: Border.all(
@@ -1253,19 +1265,19 @@ class _NavItem extends StatelessWidget {
         ? AppColors.textMuted
         : (selected ? AppColors.textPrimary : AppColors.textSecondary);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Material(
         color: highlighted
             ? AppColors.sunset.withValues(alpha: 0.10)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
               border: Border.all(
                 color: highlighted
                     ? AppColors.sunset.withValues(alpha: 0.55)
@@ -1275,8 +1287,8 @@ class _NavItem extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(route.icon, size: 20, color: iconColor),
-                const SizedBox(width: 12),
+                Icon(route.icon, size: 21, color: iconColor),
+                const SizedBox(width: 13),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1289,7 +1301,7 @@ class _NavItem extends StatelessWidget {
                         style: AppTextStyles.body15Bold(color: titleColor),
                       ),
                       if (enabled && route.badge != null) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 5),
                         _NavRouteBadge(routeId: route.id, label: route.badge!),
                       ],
                     ],
@@ -1319,7 +1331,7 @@ class _NavRouteBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: Key('admin_nav_item_badge_$routeId'),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.peacock.withValues(alpha: 0.10),
         border: Border.all(
@@ -1362,17 +1374,17 @@ class _PlaceholderBody extends StatelessWidget {
     return Center(
       key: Key('admin_placeholder_${route.id}'),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
+        constraints: const BoxConstraints(maxWidth: 520),
         child: Padding(
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(route.icon, size: 22, color: AppColors.sunsetDark),
-                  const SizedBox(width: 10),
+                  Icon(route.icon, size: 24, color: AppColors.sunsetDark),
+                  const SizedBox(width: 12),
                   Text(
                     route.title,
                     style: AppTextStyles.display20(
@@ -1381,7 +1393,7 @@ class _PlaceholderBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Text(
                 route.subtitle ?? 'This page is not ready yet.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),

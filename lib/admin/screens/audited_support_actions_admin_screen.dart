@@ -33,6 +33,7 @@ import '../../operator_web/widgets/audit_log_row.dart'
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
+import '../admin_visual_system.dart';
 import '../services/admin_audit_chain_anchors_gateway.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -623,7 +624,7 @@ class _AuditedSupportActionsAdminScreenState
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_audited_support_actions_screen'),
       maxContentWidth: 1120,
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      padding: AdminVisualSystem.screenPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

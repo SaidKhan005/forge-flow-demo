@@ -28,6 +28,7 @@ import '../../services/settings/applicability_metadata_schemas.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
+import '../admin_visual_system.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/vendor_applicability_admin_gateway.dart';
@@ -56,7 +57,7 @@ ButtonStyle _adminSegmentedButtonStyle() {
 
 const double _kVendorApplicabilityMaxWidth = 1180;
 const double _kVendorApplicabilityCenterBreakpoint = 1280;
-const double _kAdminShellSideNavWidth = 304;
+const double _kAdminShellSideNavWidth = 320;
 const double _kAdminWorkspaceScopePaneWidth = 361;
 const double _kAdminWorkspaceSplitBreakpoint = 920;
 const double _kAdminWorkspaceShellBreakpoint = 720;
@@ -749,7 +750,7 @@ class _VendorApplicabilityAdminScreenState
                     maxWidth: _kVendorApplicabilityMaxWidth,
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                    padding: AdminVisualSystem.screenPadding,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -794,19 +795,19 @@ class _VendorApplicabilityAdminScreenState
                                 'location scope today.',
                           ),
                         Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.backgroundSurface,
-                            border: Border.all(
-                              color: AppColors.borderSubtle,
-                              width: 1,
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                          decoration: AdminVisualSystem.tabStripDecoration(),
                           child: TabBar(
                             controller: _tabController,
                             labelColor: AppColors.textPrimary,
                             unselectedLabelColor: AppColors.textMuted,
                             indicatorColor: AppColors.sunsetDark,
+                            labelStyle: AppTextStyles.body15Bold(
+                              color: AppColors.textPrimary,
+                            ),
+                            unselectedLabelStyle: AppTextStyles.body14(
+                              color: AppColors.textMuted,
+                            ),
+                            labelPadding: AdminVisualSystem.tabPadding,
                             tabs: [
                               for (final tab in _tabs) Tab(text: tab.label),
                             ],
@@ -834,14 +835,7 @@ class _VendorApplicabilityAdminScreenState
                               'admin_vendor_applicability_body_surface',
                             ),
                             clipBehavior: Clip.antiAlias,
-                            decoration: BoxDecoration(
-                              color: AppColors.backgroundSurface,
-                              border: Border.all(
-                                color: AppColors.borderSubtle,
-                                width: 1,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                            decoration: AdminVisualSystem.surfaceDecoration(),
                             child: _buildBody(),
                           ),
                         ),

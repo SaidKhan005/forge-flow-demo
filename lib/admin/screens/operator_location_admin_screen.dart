@@ -25,6 +25,7 @@ import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
 import '../admin_route_handoff.dart';
+import '../admin_visual_system.dart';
 import '../models/email_conflict_details.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/admin_business_timing_resolution_gateway.dart';
@@ -366,7 +367,7 @@ class _OperatorLocationAdminScreenState
       color: AppColors.backgroundDeep,
       child: OperatorWebScreenFrame(
         maxContentWidth: _kBusinessAccountDetailMaxWidth,
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        padding: AdminVisualSystem.screenPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -473,11 +474,18 @@ class _OperatorLocationAdminScreenState
                   children: [
                     Material(
                       color: AppColors.backgroundMid,
-                      child: const TabBar(
+                      child: TabBar(
                         labelColor: AppColors.textPrimary,
                         unselectedLabelColor: AppColors.textMuted,
                         indicatorColor: AppColors.sunsetDark,
-                        tabs: [
+                        labelStyle: AppTextStyles.body15Bold(
+                          color: AppColors.textPrimary,
+                        ),
+                        unselectedLabelStyle: AppTextStyles.body14(
+                          color: AppColors.textMuted,
+                        ),
+                        labelPadding: AdminVisualSystem.tabPadding,
+                        tabs: const [
                           Tab(text: 'Scope'),
                           Tab(text: 'Business'),
                         ],
