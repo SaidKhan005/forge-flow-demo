@@ -79,6 +79,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:forge_and_flow/widgets/console/console_screen_body.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../auth/permission_key_metadata.dart';
@@ -616,72 +617,74 @@ class _DraftEditorPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OperatorWebPanel(
+    final statusPill = !draftEqualsCurrent
+        ? _Pill(
+            key: const Key('admin_default_role_catalog_draft_dirty_pill'),
+            label: 'Unsaved changes',
+            background: AppColors.warning.withValues(alpha: 0.15),
+            foreground: AppColors.warning,
+          )
+        : _Pill(
+            key: const Key('admin_default_role_catalog_draft_clean_pill'),
+            label: 'Matches current',
+            background: AppColors.backgroundDeep,
+            foreground: AppColors.textMuted,
+          );
+
+    return Column(
       key: const Key('admin_default_role_catalog_draft_panel'),
-      title: 'Role list',
-      subtitle:
-          'Review the platform-only roles and the business starter roles '
-          'that seed every new account.',
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      trailing: !draftEqualsCurrent
-          ? _Pill(
-              key: const Key('admin_default_role_catalog_draft_dirty_pill'),
-              label: 'Unsaved changes',
-              background: AppColors.warning.withValues(alpha: 0.15),
-              foreground: AppColors.warning,
-            )
-          : _Pill(
-              key: const Key('admin_default_role_catalog_draft_clean_pill'),
-              label: 'Matches current',
-              background: AppColors.backgroundDeep,
-              foreground: AppColors.textMuted,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (draft.isEmpty)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSurface,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(8),
             ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (draft.isEmpty)
-            Padding(
+            child: Padding(
               key: const Key('admin_default_role_catalog_draft_empty'),
-              padding: const EdgeInsets.symmetric(vertical: 18),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
               child: Text(
                 'Add at least one default role to publish.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
-            )
-          else
-            _CompactRoleList(
-              draft: draft,
-              canEdit: canEdit,
-              onOpenRole: onOpenRole,
             ),
-          const SizedBox(height: 16),
-          AdminActionBar(
-            alignment: WrapAlignment.end,
-            children: <Widget>[
-              if (canEdit)
-                AdminActionButton(
-                  key: const Key('admin_default_role_catalog_add_role'),
-                  label: 'Add role',
-                  onPressed: onAddRole,
-                  icon: Icons.add,
-                ),
-              if (canEdit && !draftEqualsCurrent)
-                AdminActionButton(
-                  key: const Key('admin_default_role_catalog_discard_draft'),
-                  label: 'Discard changes',
-                  onPressed: onDiscardDraft,
-                  role: AdminActionRole.quiet,
-                ),
-              AdminActionButton(
-                key: const Key('admin_default_role_catalog_publish_button'),
-                label: 'Publish',
-                onPressed: canPublish ? onPublish : null,
-                role: AdminActionRole.primary,
-              ),
-            ],
+          )
+        else
+          _CompactRoleList(
+            draft: draft,
+            canEdit: canEdit,
+            onOpenRole: onOpenRole,
           ),
-        ],
-      ),
+        const SizedBox(height: 18),
+        AdminActionBar(
+          alignment: WrapAlignment.end,
+          children: <Widget>[
+            statusPill,
+            if (canEdit)
+              AdminActionButton(
+                key: const Key('admin_default_role_catalog_add_role'),
+                label: 'Add role',
+                onPressed: onAddRole,
+                icon: Icons.add,
+              ),
+            if (canEdit && !draftEqualsCurrent)
+              AdminActionButton(
+                key: const Key('admin_default_role_catalog_discard_draft'),
+                label: 'Discard changes',
+                onPressed: onDiscardDraft,
+                role: AdminActionRole.quiet,
+              ),
+            AdminActionButton(
+              key: const Key('admin_default_role_catalog_publish_button'),
+              label: 'Publish',
+              onPressed: canPublish ? onPublish : null,
+              role: AdminActionRole.primary,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -769,18 +772,16 @@ class _CompactRoleList extends StatelessWidget {
         if (platform.isNotEmpty) ...<Widget>[
           _CatalogRoleGroup(
             key: const Key('admin_default_role_catalog_platform_group'),
-            title: 'Forge & Flow internal (${platform.length})',
-            subtitle: 'Platform staff access before a business is selected.',
+            title: 'Forge & Flow internal',
             roles: platform,
             canEdit: canEdit,
             onOpenRole: onOpenRole,
           ),
-          const _CatalogRoleGroupBreak(),
+          const SizedBox(height: 22),
         ],
         _CatalogRoleGroup(
           key: const Key('admin_default_role_catalog_business_group'),
-          title: 'Business defaults (${business.length})',
-          subtitle: 'Starter roles copied into every new business account.',
+          title: 'Business defaults',
           roles: business,
           canEdit: canEdit,
           onOpenRole: onOpenRole,
@@ -790,61 +791,16 @@ class _CompactRoleList extends StatelessWidget {
   }
 }
 
-class _CatalogRoleGroupBreak extends StatelessWidget {
-  const _CatalogRoleGroupBreak();
-
-  @override
-  Widget build(BuildContext context) {
-    final ruleColor = AppColors.borderSubtle.withValues(alpha: 0.95);
-    final accentColor = AppColors.borderStrong.withValues(alpha: 0.38);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 24, 2, 24),
-      child: Row(
-        children: <Widget>[
-          Expanded(child: _CatalogRoleGroupRule(color: ruleColor)),
-          const SizedBox(width: 16),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: accentColor,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: const SizedBox(width: 72, height: 4),
-          ),
-          const SizedBox(width: 16),
-          Expanded(child: _CatalogRoleGroupRule(color: ruleColor)),
-        ],
-      ),
-    );
-  }
-}
-
-class _CatalogRoleGroupRule extends StatelessWidget {
-  const _CatalogRoleGroupRule({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(color: color),
-      child: const SizedBox(height: 1),
-    );
-  }
-}
-
 class _CatalogRoleGroup extends StatelessWidget {
   const _CatalogRoleGroup({
     super.key,
     required this.title,
-    required this.subtitle,
     required this.roles,
     required this.canEdit,
     required this.onOpenRole,
   });
 
   final String title;
-  final String subtitle;
   final List<_IndexedCatalogRole> roles;
   final bool canEdit;
   final Future<void> Function(int index) onOpenRole;
@@ -856,17 +812,20 @@ class _CatalogRoleGroup extends StatelessWidget {
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: AppColors.textPrimary.withValues(alpha: 0.035),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            _CatalogRoleGroupHeader(
-              title: title,
-              subtitle: subtitle,
-              count: roles.length,
-            ),
+            _CatalogRoleGroupHeader(title: title, count: roles.length),
             if (roles.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -895,59 +854,27 @@ class _CatalogRoleGroup extends StatelessWidget {
 }
 
 class _CatalogRoleGroupHeader extends StatelessWidget {
-  const _CatalogRoleGroupHeader({
-    required this.title,
-    required this.subtitle,
-    required this.count,
-  });
+  const _CatalogRoleGroupHeader({required this.title, required this.count});
 
   final String title;
-  final String subtitle;
   final int count;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.cardGlow,
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.borderSubtle.withValues(alpha: 0.85),
-            width: 1,
-          ),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 15, 18, 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    title,
-                    style: AppTextStyles.sectionTitle(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    style: AppTextStyles.body12(color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            _Pill(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          OperatorWebSectionHeading(
+            title: title,
+            trailing: _Pill(
               label: '$count ${count == 1 ? 'role' : 'roles'}',
-              background: AppColors.backgroundSurface,
+              background: AppColors.cardGlow,
               foreground: AppColors.textSecondary,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
