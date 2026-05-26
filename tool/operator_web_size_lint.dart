@@ -68,9 +68,21 @@ const Map<String, int> kOperatorWebSizeCeilings = <String, int>{
   // ALL extracted into `lib/operator_web/screens/plan_nav.dart` +
   // `plan_screen.dart` (the size lint's prescribed "decompose, don't
   // inflate" fix), leaving only the lines that MUST live in the router
-  // to dispatch the route. PENDING operator approval per CLAUDE.md
-  // "Ceiling-raise rule R-2"; the ratchet resumes tightening from here.
-  'lib/operator_web/router/operator_web_router.dart': 2950,
+  // to dispatch the route.
+  // +21 (2971) over 2950: the same irreducible route-dispatch wiring for
+  // the Advisor D2-web operator-facing "Ask the advisor" chat surface —
+  // the gateway import, the `_navIdFromRaw` deep-link mapping arm, the
+  // `navItems` reference, the `case kOperatorWebNavAdvisorChat` switch
+  // arm, and the gateway getter + router-owned demo fallback field
+  // (mirrors `_scheduleGateway` / `_notificationPreferencesGateway`).
+  // The screen, its nav item, its nav constant, and its body builder
+  // were ALL extracted into `lib/operator_web/screens/advisor_chat_nav
+  // .dart` + `advisor_chat_screen.dart` (the same "decompose, don't
+  // inflate" fix `plan_nav.dart` used), leaving only the lines that MUST
+  // live in the router to dispatch the route and inject the gateway.
+  // PENDING operator approval per CLAUDE.md "Ceiling-raise rule R-2";
+  // the ratchet resumes tightening from here.
+  'lib/operator_web/router/operator_web_router.dart': 2971,
   // +1 (2108) over the prior 2107 ceiling: the single `import
   // '../widgets/operator_web_screen_body.dart';` line added when this
   // screen's main body scroll view was routed through the shared
