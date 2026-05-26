@@ -512,6 +512,94 @@ class _VendorApplicabilityAdminScreenState
     }
   }
 
+  Future<void> _resetRecommendedDefaults() async {
+    if (!_canWriteSelectedScope) {
+      setState(
+        () => _actionError =
+            'Vendor applicability can view org-unit scope, but rules are '
+            'stored at business or location scope today.',
+      );
+      return;
+    }
+    final defaults = recommendedVendorApplicabilityDefaultsFor(_selectedKind);
+    if (defaults.isEmpty) {
+      setState(() => _actionError = 'No recommended defaults are available.');
+      return;
+    }
+    final reason = await _askReason(
+      title: 'Reset defaults?',
+      helper:
+          'This replaces the current $_recommendedDefaultsSettingLabel rules '
+          'for $_selectedScopeLabel with the recommended defaults.',
+    );
+    if (reason == null) return;
+
+    final defaultKeys = defaults
+        .map(
+          (row) => _ruleKey(
+            settingKind: row.settingKind,
+            settingKey: row.settingKey,
+            vendorSlug: row.vendorSlug,
+          ),
+        )
+        .toSet();
+    final extraRows = _currentRows
+        .where(_rowIsAtSelectedWriteScope)
+        .where(
+          (row) => !defaultKeys.contains(
+            _ruleKey(
+              settingKind: row.settingKind,
+              settingKey: row.settingKey,
+              vendorSlug: row.vendorSlug,
+            ),
+          ),
+        )
+        .toList(growable: false);
+
+    setState(() {
+      _saving = true;
+      _actionError = null;
+    });
+    try {
+      for (final row in extraRows) {
+        await widget.gateway.end(
+          VendorApplicabilityEndCommand(
+            operatorId: row.operatorId,
+            locationId: row.locationId,
+            settingKind: row.settingKind,
+            settingKey: row.settingKey,
+            vendorSlug: row.vendorSlug,
+            adminReason: reason,
+            reasonNote: reason,
+            idempotencyKey: _newIdempotencyKey('reset-end'),
+          ),
+        );
+      }
+      for (final recommended in defaults) {
+        await widget.gateway.upsert(
+          VendorApplicabilityUpsertCommand(
+            operatorId: _selectedScopeOperatorId,
+            locationId: _selectedScopeLocationId,
+            settingKind: recommended.settingKind,
+            settingKey: recommended.settingKey,
+            vendorSlug: recommended.vendorSlug,
+            enabled: recommended.enabled,
+            metadata: recommended.metadata,
+            adminReason: reason,
+            reasonNote: reason,
+            idempotencyKey: _newIdempotencyKey('reset-defaults'),
+          ),
+        );
+      }
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = 'Could not reset defaults: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<String?> _askReason({required String title, required String helper}) {
     return showDialog<String>(
       context: context,
@@ -553,6 +641,27 @@ class _VendorApplicabilityAdminScreenState
     if (row.operatorId != scope.operatorId) return false;
     if (scope.isBusinessScope) return false;
     return row.locationId != scope.locationId;
+  }
+
+  bool _rowIsAtSelectedWriteScope(VendorApplicabilityAdminRow row) {
+    final scope = widget.hierarchyScope;
+    if (scope == null) return row.operatorId == null && row.locationId == null;
+    if (scope.isBusinessScope) {
+      return row.operatorId == scope.operatorId && row.locationId == null;
+    }
+    if (scope.isLocationScope) {
+      return row.operatorId == scope.operatorId &&
+          row.locationId == scope.locationId;
+    }
+    return false;
+  }
+
+  String _ruleKey({
+    required String settingKind,
+    required String settingKey,
+    required String vendorSlug,
+  }) {
+    return '$settingKind:$settingKey:$vendorSlug';
   }
 
   bool get _canWriteSelectedScope {
@@ -627,6 +736,7 @@ class _VendorApplicabilityAdminScreenState
       child: LayoutBuilder(
         builder: (context, constraints) {
           final visiblePaneWidth = _contentWidthFor(context, constraints);
+          final compactHeight = constraints.maxHeight < 620;
           return Align(
             alignment: Alignment.topLeft,
             child: SizedBox(
@@ -642,7 +752,7 @@ class _VendorApplicabilityAdminScreenState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (widget.showPageHeader) ...[
+                        if (widget.showPageHeader && !compactHeight) ...[
                           const OperatorWebScreenHeader(
                             icon: Icons.rule_outlined,
                             title: 'Vendor Applicability',
@@ -709,9 +819,11 @@ class _VendorApplicabilityAdminScreenState
                           blockedCount: blockedCount,
                           saving: _saving,
                           editingEnabled: widget.editingEnabled,
+                          compact: compactHeight,
                           canAdd: _canWriteSelectedScope,
                           onAdd: _openAddDialog,
                           onRecommendedDefaults: _openRecommendedDefaultsDialog,
+                          onResetDefaults: _resetRecommendedDefaults,
                           onRefresh: _refresh,
                         ),
                         const SizedBox(height: 12),
@@ -1031,9 +1143,11 @@ class _Toolbar extends StatelessWidget {
     required this.blockedCount,
     required this.saving,
     required this.editingEnabled,
+    required this.compact,
     required this.canAdd,
     required this.onAdd,
     required this.onRecommendedDefaults,
+    required this.onResetDefaults,
     required this.onRefresh,
   });
 
@@ -1043,9 +1157,11 @@ class _Toolbar extends StatelessWidget {
   final int blockedCount;
   final bool saving;
   final bool editingEnabled;
+  final bool compact;
   final bool canAdd;
   final VoidCallback onAdd;
   final VoidCallback onRecommendedDefaults;
+  final VoidCallback onResetDefaults;
   final VoidCallback onRefresh;
 
   @override
@@ -1076,6 +1192,16 @@ class _Toolbar extends StatelessWidget {
               minWidth: 96,
             ),
             AdminActionButton(
+              key: const Key('admin_vendor_applicability_reset_defaults'),
+              label: 'Reset defaults',
+              onPressed: editingEnabled && canAdd && !saving
+                  ? onResetDefaults
+                  : null,
+              role: AdminActionRole.secondary,
+              compact: true,
+              minWidth: 112,
+            ),
+            AdminActionButton(
               key: const Key('admin_vendor_applicability_add'),
               label: saving ? 'Saving...' : 'Add rule',
               onPressed: editingEnabled && canAdd && !saving ? onAdd : null,
@@ -1087,15 +1213,19 @@ class _Toolbar extends StatelessWidget {
         final summary = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              guide,
-              key: const Key('admin_vendor_applicability_guide'),
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 4),
+            if (!compact) ...[
+              Text(
+                guide,
+                key: const Key('admin_vendor_applicability_guide'),
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 4),
+            ],
             Text(
               '$allowedCount allowed, $blockedCount blocked. '
               'Viewing: $scopeLabel',
+              maxLines: compact ? 1 : null,
+              overflow: compact ? TextOverflow.ellipsis : null,
               style: AppTextStyles.mono11(color: AppColors.textMuted),
             ),
           ],
