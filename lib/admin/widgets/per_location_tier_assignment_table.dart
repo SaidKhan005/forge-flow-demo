@@ -257,7 +257,7 @@ class _PerLocationTierAssignmentTableState
             isUnassigned: assignment == null,
           );
           final cadence = _TextCell(value: cadenceLabel);
-          final commercials = _CommercialsCell(summary: commercialSummary);
+          final priceMargins = _PriceMarginsCell(summary: commercialSummary);
           final notesBlock = notesLabel.isEmpty
               ? null
               : _NotesLine(value: notesLabel);
@@ -273,7 +273,7 @@ class _PerLocationTierAssignmentTableState
                   const SizedBox(height: 10),
                   cadence,
                   const SizedBox(height: 10),
-                  commercials,
+                  priceMargins,
                   if (notesBlock != null) ...[
                     const SizedBox(height: 10),
                     notesBlock,
@@ -297,7 +297,7 @@ class _PerLocationTierAssignmentTableState
                     Expanded(flex: 26, child: identity),
                     Expanded(flex: 17, child: setup),
                     Expanded(flex: 18, child: cadence),
-                    Expanded(flex: 31, child: commercials),
+                    Expanded(flex: 31, child: priceMargins),
                     if (widget.editingEnabled)
                       Expanded(
                         flex: 8,
@@ -392,8 +392,8 @@ class _AssignmentHeaderRow extends StatelessWidget {
         children: <Widget>[
           const Expanded(flex: 26, child: _HeaderCell('Location')),
           const Expanded(flex: 17, child: _HeaderCell('Setup')),
-          const Expanded(flex: 18, child: _HeaderCell('Cadence')),
-          const Expanded(flex: 31, child: _HeaderCell('Commercials')),
+          const Expanded(flex: 18, child: _HeaderCell('Polling frequency')),
+          const Expanded(flex: 31, child: _HeaderCell('Price/margins')),
           if (showActions) const Expanded(flex: 8, child: SizedBox.shrink()),
         ],
       ),
@@ -463,8 +463,8 @@ class _TextCell extends StatelessWidget {
   }
 }
 
-class _CommercialsCell extends StatelessWidget {
-  const _CommercialsCell({required this.summary});
+class _PriceMarginsCell extends StatelessWidget {
+  const _PriceMarginsCell({required this.summary});
 
   final _CommercialSummary summary;
 
@@ -490,8 +490,7 @@ class _CommercialSummary {
   }) {
     if (assignment == null) {
       return const _CommercialSummary(
-        primary: 'Assign tier to price',
-        secondary: 'Cost and margin after setup',
+        primary: 'Assign tier to set price/margins',
       );
     }
 
