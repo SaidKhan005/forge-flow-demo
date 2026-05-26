@@ -316,7 +316,7 @@ bool _matchesScope(
 /// gateway is mounted. Mirrors the demo operators from the rest of
 /// the admin shell so the click path is consistent across tabs:
 ///
-///   * `Demo Diner Co.` (launch tier) - active operator with a
+///   * `Demo Diner Co.` (Pro tier) - active operator with a
 ///     non-trivial cost row, healthy margin, and a recent cap event.
 ///   * `Sunset Cafe Group` (pilot tier) - dormant 32+ days so the
 ///     30-day flag trips, modest cost, underwater margin row.
@@ -475,7 +475,7 @@ const Map<String, Object?> kObservabilityAdminDemoEnvelope = <String, Object?>{
       'operator_id': '00000000-0000-4000-8000-000000000001',
       'business_name': 'Demo Diner Co.',
       'last_active_at': '2026-05-03T08:00:00.000Z',
-      'subscription_tier': 'launch',
+      'subscription_tier': 'pro',
     },
     <String, Object?>{
       'operator_id': '00000000-0000-4000-8000-000000000002',
@@ -488,7 +488,7 @@ const Map<String, Object?> kObservabilityAdminDemoEnvelope = <String, Object?>{
     <String, Object?>{
       'operator_id': '00000000-0000-4000-8000-000000000001',
       'business_name': 'Demo Diner Co.',
-      'subscription_tier': 'launch',
+      'subscription_tier': 'pro',
       'revenue_usd': 199.0,
       'cost_usd': 29.51,
     },
