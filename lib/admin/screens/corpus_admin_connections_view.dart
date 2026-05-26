@@ -240,8 +240,6 @@ class CorpusConnectionsView extends StatefulWidget {
     required this.onStartOver,
     this.busy = false,
     this.canSave = true,
-    this.scopeLabel,
-    this.onChangeScope,
   });
 
   /// The connections to review. The view re-buckets every candidate by
@@ -287,21 +285,12 @@ class CorpusConnectionsView extends StatefulWidget {
   /// A commit / load is in flight: disable every action.
   final bool busy;
 
-  /// Whether saving is allowed (the screen sets this false when no commit
-  /// target operator/location is configured, so a decision cannot be
-  /// written against the wrong tenant). Defaults true for the demo/test
-  /// path which always supplies a target.
+  /// Whether saving is allowed. The screen sets this false when no commit
+  /// target operator/location is configured (the live path before the
+  /// standard scope picker has a business + location), so a decision
+  /// cannot be written against the wrong tenant (HP #4). Defaults true for
+  /// the demo/test path which always supplies a target.
   final bool canSave;
-
-  /// Friendly "Business : Location" label of the active commit target,
-  /// or null when none is chosen yet. Drives the in-tab scope control
-  /// that names exactly where approvals will land (the Knowledge tab has
-  /// no scope control because its documents are global).
-  final String? scopeLabel;
-
-  /// Opens the business + location picker from the scope control. Null
-  /// hides the change affordance (the control still shows the target).
-  final VoidCallback? onChangeScope;
 
   @override
   State<CorpusConnectionsView> createState() => _CorpusConnectionsViewState();

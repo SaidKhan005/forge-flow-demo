@@ -382,6 +382,14 @@ class AdminKnowledgeBaseCopy {
   static const String connectionsReadOnlyBanner =
       'You are viewing only. Approving connections needs full admin access.';
 
+  /// Short, plain-English banner near the top of the Connections tab. The
+  /// business + location scope on this screen only changes where approved
+  /// connections are saved; the Knowledge tab is global and is unaffected.
+  /// No em dash (UX no-em-dash law): clauses join with a full stop.
+  static const String connectionsScopeBanner =
+      'The business and location you pick set where approved connections '
+      'are saved. They do not change the Knowledge tab.';
+
   /// "N connections found" headline on the summary card.
   static String connectionsFound(int count) =>
       '$count connection${count == 1 ? '' : 's'} found';
@@ -463,32 +471,11 @@ class AdminKnowledgeBaseCopy {
   static const String connectionsStartOver = 'Start over';
 
   /// Honest hint shown by the disabled "Save my choices" button when no
-  /// commit target is configured. Points the operator at the in-tab
-  /// scope control at the top of this tab, so a decision is never
-  /// written against the wrong business or location.
+  /// commit target is configured. The business + location scope is chosen
+  /// in the picker on the left of this screen, so a decision is never
+  /// written against the wrong business or location (HP #4).
   static const String connectionsNoTargetHint =
-      'Choose a business and location at the top of this tab to apply '
-      'your decisions.';
-
-  // ── Connections tab scope control ──
-  //
-  // The knowledge documents are global Forge & Flow content, so the
-  // Knowledge tab carries no scope picker. Only approving a connection
-  // writes to a specific business + location, so the scope control lives
-  // here, on the Connections tab, naming exactly where decisions land.
-
-  /// Label above the picked target on the scope control: reads
-  /// "Approving connections for:" then the business and location.
-  static const String connectionsScopeLabel = 'Approving connections for:';
-
-  /// Shown on the scope control before any target is chosen.
-  static const String connectionsScopeNone =
-      'No business chosen yet. Choose where your approvals should land.';
-
-  /// Button that opens the business + location picker. Reads "Choose
-  /// business" before a pick, "Change" after one is set.
-  static const String connectionsScopeChoose = 'Choose business';
-  static const String connectionsScopeChange = 'Change';
+      'Pick a business and location on the left to apply your decisions.';
 
   /// Snackbar after a successful save: "N approved, M removed".
   static String connectionsSavedToast(int approved, int rejected) =>
