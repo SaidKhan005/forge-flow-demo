@@ -718,6 +718,7 @@ class _ScopedAdminWorkspaceOptions {
     this.initialAllBusinessesSelected = false,
     this.splitBreakpoint = 920,
     this.allBusinessesBuilder,
+    this.initialScopeOverride,
   });
 
   final bool showWorkspaceHeader;
@@ -725,6 +726,14 @@ class _ScopedAdminWorkspaceOptions {
   final bool initialAllBusinessesSelected;
   final double splitBreakpoint;
   final WidgetBuilder? allBusinessesBuilder;
+
+  /// Optional pre-selected scope used only when the route has no remembered
+  /// handoff scope yet. The demo / share-preview Knowledge base passes the
+  /// seeded demo business + location here so the Connections "Save my
+  /// choices" walkthrough opens already scoped (the live path leaves this
+  /// null, so the standard picker drives the commit target and Save stays
+  /// disabled until the F&F admin picks one: HP #4).
+  final AdminHierarchyScopeIntent? initialScopeOverride;
 }
 
 Widget _buildScopedAdminWorkspace({
@@ -746,7 +755,7 @@ Widget _buildScopedAdminWorkspace({
     description: description,
     operatorGateway: operatorGateway,
     hierarchyGateway: hierarchyGateway,
-    initialScope: handoff?.effectiveHierarchyScope,
+    initialScope: handoff?.effectiveHierarchyScope ?? options.initialScopeOverride,
     onBackToBusinessAccounts: _backToBusinessAccounts(context),
     showWorkspaceHeader: options.showWorkspaceHeader,
     onScopeChanged: handoff == null
@@ -1090,74 +1099,78 @@ const String kCorpusAdminDemoTargetOperatorId =
 const String kCorpusAdminDemoTargetLocationId =
     '00000000-0000-4000-8000-0000000000a1';
 
-/// Demo commit target for the Knowledge base Connections tab. The
-/// knowledge documents are global Forge & Flow content, so the screen no
-/// longer sits behind the shared business-scope workspace (that left
-/// scope pane was redundant on the Knowledge tab). Only approving a
-/// connection writes to a specific business + location, so the demo path
-/// pre-selects the seeded demo operator/location and the Connections tab
-/// carries its own compact scope control. The live path leaves the
-/// target null until the F&F admin picks one through that control, so a
-/// decision can never land against the wrong tenant (HP #4).
-const String _kDemoCorpusTargetOperatorId =
-    '00000000-0000-4000-8000-000000000001';
-const String _kDemoCorpusTargetLocationId =
-    '00000000-0000-4000-8000-0000000000a1';
+/// Demo / share-preview pre-selected scope for the Knowledge base. The
+/// Knowledge base uses the SAME shared business-scope workspace every
+/// other per-business admin screen uses (the standard left hierarchy
+/// picker). The knowledge documents themselves are global Forge & Flow
+/// content; the scope only sets where approved connections are saved
+/// (the Connections tab), which the in-screen banner states plainly.
+///
+/// Demo pre-selects the seeded demo business + location so the
+/// Connections "Save my choices" walkthrough opens already scoped. The
+/// live path leaves the scope unset until the F&F admin picks one in the
+/// standard picker, and Save stays disabled until then so a decision can
+/// never land against the wrong tenant (HP #4). The names mirror the demo
+/// scope tree seed (Demo Diner Co. / Toronto Yorkville).
+const AdminHierarchyScopeIntent _kDemoCorpusScope =
+    AdminHierarchyScopeIntent.location(
+      operatorId: kCorpusAdminDemoTargetOperatorId,
+      locationId: kCorpusAdminDemoTargetLocationId,
+      operatorName: 'Demo Diner Co.',
+      locationName: 'Toronto Yorkville',
+    );
 
 Widget _buildCorpus(BuildContext context) {
   final gateway = AdminConsoleServicesScope.corpusAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
-    context,
-  );
   // B1 — wire the real file-picker dialog as the upload picker.
   // Production (source != null) and demo (source == null) both use
   // [showCorpusUploadDialog]; the dialog internally renders a
   // "Use sample file" affordance when `kDemoMode` is true so the demo
   // walkthrough click-path runs without a real file on disk.
   const CorpusUploadPicker uploadPicker = showCorpusUploadDialog;
-
-  // The Connections tab's compact scope control opens the shared
-  // operator + location picker. It is the single place a commit target
-  // is chosen now that the left scope pane is gone for this route. The
-  // picker caches the last pick per-admin so a re-open pre-selects it.
-  OperatorPickerOpener pickerOpenerFor(String? adminUid) {
-    return (pickerContext) {
-      return Navigator.of(pickerContext).push<OperatorPickerResult?>(
-        MaterialPageRoute<OperatorPickerResult?>(
-          settings: const RouteSettings(name: '/admin/corpus/operator-picker'),
-          builder: (_) =>
-              OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
-        ),
-      );
-    };
-  }
-
-  if (source == null) {
-    // Demo / share-preview: pre-select the seeded demo target so the
-    // Connections "Save my choices" button works in the walkthrough,
-    // while the in-tab scope control still lets the admin re-point it.
-    return CorpusAdminScreen(
-      gateway: gateway,
-      uploadPicker: uploadPicker,
-      targetOperatorId: _kDemoCorpusTargetOperatorId,
-      targetLocationId: _kDemoCorpusTargetLocationId,
-      operatorPickerOpener: pickerOpenerFor('demo-super-admin'),
-    );
-  }
-  return StreamBuilder<AdminAuthState>(
-    stream: source.stream,
-    initialData: source.current,
-    builder: (context, snapshot) {
-      final session = adminSessionOf(snapshot.data);
-      final canEdit = _isAdminSuperAdmin(session);
-      return CorpusAdminScreen(
-        gateway: gateway,
-        editingEnabled: canEdit,
-        uploadPicker: uploadPicker,
-        // Live: no commit target until the admin picks one in the
-        // Connections tab. Save stays disabled until then (HP #4).
-        operatorPickerOpener: pickerOpenerFor(session?.uid),
+  return _buildScopedAdminWorkspace(
+    context: context,
+    routeId: kAdminCorpusRouteId,
+    functionTitle: 'Knowledge base',
+    description: 'Review knowledge content and relationship review.',
+    options: _ScopedAdminWorkspaceOptions(
+      showWorkspaceHeader: false,
+      // Demo pre-selects the seeded business + location so the Connections
+      // Save walkthrough opens scoped; the live path leaves it unset until
+      // the admin picks one through the standard picker (HP #4).
+      initialScopeOverride: source == null ? _kDemoCorpusScope : null,
+    ),
+    functionBuilder: (context, selectedScope, selection) {
+      // The standard hierarchy picker feeds the commit target. The
+      // knowledge documents are global, so the scope only sets where
+      // approved connections land (see the in-screen banner). The screen
+      // gates Save until both IDs are set, so a decision cannot write
+      // against the wrong tenant (HP #4).
+      final targetOperatorId = selectedScope.operatorId;
+      final targetLocationId = selectedScope.locationId;
+      if (source == null) {
+        return CorpusAdminScreen(
+          gateway: gateway,
+          uploadPicker: uploadPicker,
+          targetOperatorId: targetOperatorId,
+          targetLocationId: targetLocationId,
+        );
+      }
+      return StreamBuilder<AdminAuthState>(
+        stream: source.stream,
+        initialData: source.current,
+        builder: (context, snapshot) {
+          final session = adminSessionOf(snapshot.data);
+          final canEdit = _isAdminSuperAdmin(session);
+          return CorpusAdminScreen(
+            gateway: gateway,
+            editingEnabled: canEdit,
+            uploadPicker: uploadPicker,
+            targetOperatorId: targetOperatorId,
+            targetLocationId: targetLocationId,
+          );
+        },
       );
     },
   );

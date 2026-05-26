@@ -37,7 +37,7 @@ import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
 import '../widgets/admin_action_controls.dart';
-import 'corpus_admin_chunk_view.dart' show TopicKindIcon;
+import 'corpus_admin_chunk_view.dart' show corpusTopicKindIcon;
 import 'corpus_admin_connections_map.dart' show CorpusConnectionsMap;
 
 /// C2: a connection's plain-English clarity, DERIVED from its confidence
@@ -240,8 +240,6 @@ class CorpusConnectionsView extends StatefulWidget {
     required this.onStartOver,
     this.busy = false,
     this.canSave = true,
-    this.scopeLabel,
-    this.onChangeScope,
   });
 
   /// The connections to review. The view re-buckets every candidate by
@@ -287,21 +285,12 @@ class CorpusConnectionsView extends StatefulWidget {
   /// A commit / load is in flight: disable every action.
   final bool busy;
 
-  /// Whether saving is allowed (the screen sets this false when no commit
-  /// target operator/location is configured, so a decision cannot be
-  /// written against the wrong tenant). Defaults true for the demo/test
-  /// path which always supplies a target.
+  /// Whether saving is allowed. The screen sets this false when no commit
+  /// target operator/location is configured (the live path before the
+  /// standard scope picker has a business + location), so a decision
+  /// cannot be written against the wrong tenant (HP #4). Defaults true for
+  /// the demo/test path which always supplies a target.
   final bool canSave;
-
-  /// Friendly "Business : Location" label of the active commit target,
-  /// or null when none is chosen yet. Drives the in-tab scope control
-  /// that names exactly where approvals will land (the Knowledge tab has
-  /// no scope control because its documents are global).
-  final String? scopeLabel;
-
-  /// Opens the business + location picker from the scope control. Null
-  /// hides the change affordance (the control still shows the target).
-  final VoidCallback? onChangeScope;
 
   @override
   State<CorpusConnectionsView> createState() => _CorpusConnectionsViewState();
@@ -415,17 +404,20 @@ class _CorpusConnectionsViewState extends State<CorpusConnectionsView> {
               ),
             ),
 
-          // Scope control: names exactly where approvals land. Edit-only
-          // (read-only ff_support cannot approve, so it never needs to
-          // pick a target). The knowledge documents are global, so this
-          // control lives ONLY on the Connections tab.
+          // Connections-only scope banner. The business + location scope
+          // (the standard left picker, restored on this route) only sets
+          // where approved connections are saved; the Knowledge tab is
+          // global content and is unaffected. Edit-only: read-only
+          // ff_support never approves, so it does not need the explainer.
           if (widget.editingEnabled) ...<Widget>[
-            _ConnectionsScopeControl(
-              hasTarget: widget.canSave,
-              scopeLabel: widget.scopeLabel,
-              onChangeScope: widget.busy ? null : widget.onChangeScope,
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: OperatorWebBanner(
+                key: Key('admin_corpus_connections_scope_banner'),
+                icon: Icons.place_outlined,
+                message: AdminKnowledgeBaseCopy.connectionsScopeBanner,
+              ),
             ),
-            const SizedBox(height: 16),
           ],
 
           // Empty corpus: nothing to review.
@@ -615,104 +607,6 @@ class _CorpusConnectionsViewState extends State<CorpusConnectionsView> {
                 ),
             ],
           ],
-        ],
-      ),
-    );
-  }
-}
-
-/// The compact scope control at the top of the Connections tab. Names
-/// exactly where approvals land ("Approving connections for: Business :
-/// Location") with a change affordance, or an honest empty state before
-/// a target is chosen. This is the ONLY scope control on the screen: the
-/// Knowledge tab has none because its documents are global Forge & Flow
-/// content. Replaces the redundant shell-level left scope pane for this
-/// route.
-class _ConnectionsScopeControl extends StatelessWidget {
-  const _ConnectionsScopeControl({
-    required this.hasTarget,
-    required this.scopeLabel,
-    required this.onChangeScope,
-  });
-
-  /// Whether a commit target (operator + location) is configured. Drives
-  /// the "target set" vs "choose a business" state independently of
-  /// whether a friendly label happens to be known.
-  final bool hasTarget;
-  final String? scopeLabel;
-  final VoidCallback? onChangeScope;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = scopeLabel?.trim();
-    // Honest fallback: a target can be set without a friendly label
-    // (e.g. a host-supplied default with only IDs). Never claim "no
-    // business chosen" when one actually is.
-    final displayLabel = (label != null && label.isNotEmpty)
-        ? label
-        : 'the selected business and location';
-    // Soft, calm surface (peacock-tinted fill, no hard border) so it
-    // reads as a quiet context strip rather than another boxed card.
-    return Container(
-      key: const Key('admin_corpus_connections_scope_control'),
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.peacock.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: <Widget>[
-          Icon(
-            hasTarget ? Icons.place_outlined : Icons.help_outline,
-            size: 18,
-            color: AppColors.peacockDark,
-          ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: hasTarget
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(
-                        AdminKnowledgeBaseCopy.connectionsScopeLabel,
-                        style: AppTextStyles.body12(color: AppColors.textMuted),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        displayLabel,
-                        key: const Key(
-                          'admin_corpus_connections_scope_value',
-                        ),
-                        style: AppTextStyles.body14(
-                          color: AppColors.textPrimary,
-                        ).copyWith(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  )
-                : Text(
-                    AdminKnowledgeBaseCopy.connectionsScopeNone,
-                    key: const Key('admin_corpus_connections_scope_none'),
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-          ),
-          if (onChangeScope != null)
-            AdminActionButton(
-              key: const Key('admin_corpus_connections_scope_change'),
-              label: hasTarget
-                  ? AdminKnowledgeBaseCopy.connectionsScopeChange
-                  : AdminKnowledgeBaseCopy.connectionsScopeChoose,
-              onPressed: onChangeScope,
-              icon: Icons.account_tree_outlined,
-              role: hasTarget
-                  ? AdminActionRole.secondary
-                  : AdminActionRole.primary,
-              compact: true,
-            ),
         ],
       ),
     );
@@ -997,27 +891,30 @@ class _ConnectionsGroup extends StatelessWidget {
         key: groupKey,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // Group heading row: dot + label + count pill (+ bulk action).
+          // Group heading row: coloured dot + serif heading + count pill
+          // (+ optional bulk action). Mockup `.group-h`: serif ~17px with
+          // a clarity-coloured dot and a count pill; roomy top spacing so
+          // each clarity group reads as its own block.
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.fromLTRB(0, 18, 0, 12),
             child: Row(
               children: <Widget>[
                 Container(
-                  width: 9,
-                  height: 9,
+                  width: 11,
+                  height: 11,
                   decoration: BoxDecoration(
                     color: color,
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  heading,
-                  style: AppTextStyles.body14(
-                    color: AppColors.textPrimary,
-                  ).copyWith(fontWeight: FontWeight.w700),
+                const SizedBox(width: 9),
+                Flexible(
+                  child: Text(
+                    heading,
+                    style: AppTextStyles.display16(color: AppColors.textPrimary),
+                  ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 9),
                 _CountPill(count: candidates.length),
                 const Spacer(),
                 if (bulkAction != null) bulkAction!,
@@ -1064,15 +961,16 @@ class _CountPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Mockup `.count-pill`: bg-mid fill, fully rounded, secondary bold.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 2),
       decoration: BoxDecoration(
         color: AppColors.backgroundMid,
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
         '$count',
-        style: AppTextStyles.mono8(color: AppColors.textSecondary),
+        style: AppTextStyles.chipLabel(color: AppColors.textSecondary),
       ),
     );
   }
@@ -1110,41 +1008,42 @@ class _ConnectionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final queued = stagedDecision != null;
     final approvable = _canApprove(candidate);
+    // Mockup .conn: white surface, 1px border var(--border), radius 14,
+    // padding 16x18, 14px internal gaps. Selected (queued) reads with the
+    // sunset border + tint.
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         color: queued
             ? AppColors.sunset.withValues(alpha: 0.10)
             : AppColors.backgroundSurface,
         border: Border.all(
-          color: queued
-              ? AppColors.sunset
-              : AppColors.borderSubtle.withValues(alpha: 0.6),
+          color: queued ? AppColors.sunset : AppColors.borderSubtle,
           width: 1,
         ),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppRadius.card + 4),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _ConnectionFlow(candidate: candidate, clarity: clarity),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           Text(
             corpusConnectionSentence(candidate),
             style: AppTextStyles.body13(color: AppColors.textPrimary),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           _ClarityChip(clarity: clarity),
           if (queued) ...<Widget>[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             _StagedChip(
               key: Key('admin_corpus_connection_staged_${candidate.candidateId}'),
               kind: stagedDecision!,
             ),
           ],
           if (editingEnabled) ...<Widget>[
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 6,
@@ -1281,7 +1180,10 @@ class _ConnectionFlow extends StatelessWidget {
   }
 }
 
-/// C2: one node in a connection flow: kind icon + name + kind label.
+/// C2: one node in a connection flow chip. Mockup `.node`: bg-mid fill,
+/// 1px border, radius 12, padding 10x14, a leading per-kind icon, the
+/// topic name (15.5 bold primary, sans) and the kind label (11.5 muted,
+/// sans). Sans throughout per the fidelity pass (no tiny monospace).
 class _FlowNode extends StatelessWidget {
   const _FlowNode({required this.kind, required this.name});
 
@@ -1291,39 +1193,53 @@ class _FlowNode extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 200),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          TopicKindIcon(kind: kind),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  name,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  kind.pill,
-                  style: AppTextStyles.mono8(color: AppColors.textSecondary),
-                ),
-              ],
+      constraints: const BoxConstraints(maxWidth: 230),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundMid,
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+          borderRadius: BorderRadius.circular(AppRadius.card + 2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              corpusTopicKindIcon(kind),
+              size: 18,
+              color: AppColors.peacockDark,
             ),
-          ),
-        ],
+            const SizedBox(width: 9),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    name,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.body14(color: AppColors.textPrimary),
+                  ),
+                  Text(
+                    kind.pill,
+                    style: AppTextStyles.body11(color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// C2: the verb connector between two flow nodes.
+/// C2: the verb connector between two flow nodes. Mockup `.link`: the
+/// verb reads as a sunset pill (`.verb`: sunset-bg fill, sunset-dark text,
+/// radius 999, bold) above a short clarity-coloured connector line ending
+/// in an arrowhead. The pill is always the sunset accent; the connector
+/// line + arrow take the clarity colour (clear = positive, worth-checking
+/// = warning, not sure = muted) so the flow still reads its clarity.
 class _FlowConnector extends StatelessWidget {
   const _FlowConnector({required this.verb, required this.color});
 
@@ -1332,15 +1248,30 @@ class _FlowConnector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text(
-          verb,
-          style: AppTextStyles.mono11(color: color),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+          decoration: BoxDecoration(
+            color: AppColors.sunset.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+          ),
+          child: Text(
+            verb,
+            style: AppTextStyles.body12(
+              color: AppColors.sunsetDark,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
         ),
-        const SizedBox(width: 6),
-        Icon(Icons.arrow_forward, size: 14, color: color),
+        const SizedBox(height: 5),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(width: 26, height: 2, color: color),
+            Icon(Icons.arrow_right_alt_outlined, size: 16, color: color),
+          ],
+        ),
       ],
     );
   }
@@ -1355,8 +1286,9 @@ class _ClarityChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _clarityColor(clarity);
+    // Mockup `.clarity`: a coloured dot + a sans, semibold pill label.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -1365,14 +1297,14 @@ class _ClarityChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Container(
-            width: 7,
-            height: 7,
+            width: 9,
+            height: 9,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 7),
           Text(
             _clarityChipLabel(clarity),
-            style: AppTextStyles.mono8(color: color),
+            style: AppTextStyles.chipLabel(color: color),
           ),
         ],
       ),
@@ -1409,14 +1341,14 @@ class _StagedChip extends StatelessWidget {
         break;
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
         'Your choice: $label',
-        style: AppTextStyles.mono8(color: fg),
+        style: AppTextStyles.chipLabel(color: fg),
       ),
     );
   }
