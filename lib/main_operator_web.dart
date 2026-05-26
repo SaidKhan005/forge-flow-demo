@@ -93,6 +93,24 @@ const String _kOperatorWebProxyBaseUri = String.fromEnvironment(
   'OPERATOR_WEB_PROXY_BASE_URI',
 );
 
+/// Release/profile fail-closed copy for an accidental demo-auth build.
+@visibleForTesting
+const String kOperatorWebDemoAuthBlockedMessage =
+    'Operator Web demo auth is blocked in a non-debug build. '
+    'OPERATOR_WEB_DEMO_AUTH was set, but demo auth bypasses Firebase '
+    'and must never ship on a public endpoint. Drop the demo flag and '
+    'ship live Firebase auth.';
+
+/// Pure decision for the real runtime guard in [main].
+@visibleForTesting
+bool operatorWebDemoAuthBlockedInRelease({
+  required bool isDebugMode,
+  required bool operatorWebDemoAuth,
+}) {
+  if (isDebugMode) return false;
+  return operatorWebDemoAuth;
+}
+
 /// Firebase web options for the operator web project.
 ///
 /// Defaults mirror `web/firebase-config.js` (staging); production deploys
@@ -129,8 +147,9 @@ const FirebaseOptions kOperatorWebFirebaseOptions = FirebaseOptions(
 );
 
 Future<void> main() async {
-  // B1.A5 — Release-build demo-auth assertion. Mirrors the guard in
-  // `lib/main_admin.dart`. See that file for full rationale.
+  // B1.A5 — Debug-time assertion for local smoke, kept as a belt-and-
+  // suspenders signal. The real release/profile guard below is runtime
+  // code because asserts are stripped from release artifacts.
   assert(() {
     if (!kDebugMode && _kOperatorWebDemoAuth) {
       throw StateError(
@@ -141,6 +160,24 @@ Future<void> main() async {
     return true;
   }());
   WidgetsFlutterBinding.ensureInitialized();
+  if (operatorWebDemoAuthBlockedInRelease(
+    isDebugMode: kDebugMode,
+    operatorWebDemoAuth: _kOperatorWebDemoAuth,
+  )) {
+    final error = StateError(kOperatorWebDemoAuthBlockedMessage);
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: StackTrace.current,
+        library: 'operator_web',
+        context: ErrorDescription('during operator-web startup'),
+      ),
+    );
+    runApp(
+      OperatorWebInitFailedApp(error: error, stack: StackTrace.current),
+    );
+    return;
+  }
   try {
     final source = await _resolveAuthSource();
     runApp(OperatorWebApp(authSource: source));

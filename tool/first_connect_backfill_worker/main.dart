@@ -905,21 +905,19 @@ class WorkerCanonicalSink implements CanonicalSink {
       // `flipped_by_connection_id` are preserved on conflict so a
       // disconnect-and-reconnect pair never resets the demo line.
       await exec.execute(
-        'insert into public.demo_mode_states ('
-        'operator_id, location_id, category, mode, '
+        'insert into public.demo_mode_state ('
+        'operator_id, location_id, category, is_demo, '
         'flipped_to_live_at, flipped_by_connection_id'
         ') values ('
         '@operator_id::uuid, @location_id::uuid, @category, '
-        "'live', @flipped_at::timestamptz, @connection_id::uuid"
+        'false, @flipped_at::timestamptz, @connection_id::uuid'
         ') on conflict (operator_id, location_id, category) do update set '
-        "mode = case when public.demo_mode_states.mode = 'live' "
-        '  then public.demo_mode_states.mode '
-        "  else 'live' end, "
+        'is_demo = false, '
         'flipped_to_live_at = coalesce('
-        '  public.demo_mode_states.flipped_to_live_at, '
+        '  public.demo_mode_state.flipped_to_live_at, '
         '  excluded.flipped_to_live_at), '
         'flipped_by_connection_id = coalesce('
-        '  public.demo_mode_states.flipped_by_connection_id, '
+        '  public.demo_mode_state.flipped_by_connection_id, '
         '  excluded.flipped_by_connection_id), '
         'updated_at = now()',
         parameters: <String, Object?>{
