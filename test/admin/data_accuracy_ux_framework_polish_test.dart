@@ -559,7 +559,7 @@ void main() {
       expect(find.text('95 Water Street'), findsNothing);
     });
 
-    testWidgets('tier assignment filters use operator-safe wording', (
+    testWidgets('tier assignment table uses the clean assignment layout', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -583,20 +583,34 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Operator location count'), findsOneWidget);
-      expect(find.text('All location counts'), findsOneWidget);
+      expect(find.text('Assignments'), findsOneWidget);
+      expect(find.text('1 location'), findsWidgets);
+      expect(find.text('Location name'), findsOneWidget);
+      expect(find.text('Tier'), findsOneWidget);
+      expect(find.text('Vendor'), findsOneWidget);
+      expect(find.text('Location'), findsOneWidget);
+      expect(find.text('Setup'), findsOneWidget);
+      expect(find.text('Cadence'), findsOneWidget);
+      expect(find.text('Commercials'), findsOneWidget);
+      expect(find.text('Notes'), findsOneWidget);
+      expect(find.text('Not assigned'), findsOneWidget);
+      expect(find.text('Default'), findsWidgets);
+      expect(find.text('Operator location count'), findsNothing);
+      expect(find.text('All location counts'), findsNothing);
       expect(find.text('Location count'), findsNothing);
       expect(find.text('All operators'), findsNothing);
-      expect(find.text('Not assigned'), findsOneWidget);
-      expect(find.text('Not assigned yet'), findsOneWidget);
-      expect(find.text('Tier default'), findsWidgets);
-      expect(find.text('Not calculated'), findsOneWidget);
-      expect(find.text('No notes'), findsOneWidget);
+      expect(find.text('Margin band'), findsNothing);
+      expect(find.text('Sort by'), findsNothing);
+      expect(find.text('Not assigned yet'), findsNothing);
+      expect(find.text('Tier default'), findsNothing);
+      expect(find.text('Not calculated'), findsNothing);
+      expect(find.text('No notes'), findsNothing);
+      expect(find.text('Read-only'), findsNothing);
       expect(
         find.text(
           'Use filters to narrow operator locations. Each row keeps tier, cadence, pricing, margin, and notes together.',
         ),
-        findsOneWidget,
+        findsNothing,
       );
     });
 
@@ -636,19 +650,21 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Tier default: \$99.00'), findsOneWidget);
-      expect(find.text('Tier default: \$12.00'), findsOneWidget);
-      expect(find.text('Tier default: 300s'), findsOneWidget);
+      expect(find.text('Price'), findsOneWidget);
+      expect(find.text('Cost'), findsOneWidget);
+      expect(find.text('Margin'), findsOneWidget);
+      expect(find.text('Default'), findsWidgets);
+      expect(find.text('5 vendors: 5 min'), findsOneWidget);
+      expect(find.textContaining('Tier default'), findsNothing);
     });
 
-    testWidgets('tier assignment filters can be cleared in one action', (
+    testWidgets('tier assignment filters stay lean without a clear action', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       PollingTierKey? tierFilter = PollingTierKey.standard;
-      var cleared = false;
 
       await tester.pumpWidget(
         wrap(
@@ -668,7 +684,6 @@ void main() {
                 tierFilter: tierFilter,
                 onTierFilterChanged: (value) => setState(() {
                   tierFilter = value;
-                  cleared = value == null;
                 }),
               );
             },
@@ -679,18 +694,15 @@ void main() {
 
       expect(
         find.byKey(const Key('admin_tier_assignment_clear_filters')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_tier_filter_dropdown')),
         findsOneWidget,
       );
-
-      await tester.tap(
-        find.byKey(const Key('admin_tier_assignment_clear_filters')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(cleared, isTrue);
       expect(
-        find.byKey(const Key('admin_tier_assignment_clear_filters')),
-        findsNothing,
+        find.byKey(const Key('admin_polling_vendor_filter_dropdown')),
+        findsOneWidget,
       );
     });
 
@@ -842,12 +854,12 @@ void main() {
         ),
         findsNothing,
       );
-      expect(
-        find.text(
-          'Assign polling tiers and review cost and margin by location.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Assignments'), findsOneWidget);
+      expect(find.text('1 location'), findsWidgets);
+      expect(find.text('Location name'), findsOneWidget);
+      expect(find.text('Operator location count'), findsNothing);
+      expect(find.text('Margin band'), findsNothing);
+      expect(find.text('Sort by'), findsNothing);
       expect(
         find.byKey(const Key('admin_polling_setup_info_button')),
         findsOneWidget,
@@ -907,13 +919,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(
-        find.byKey(const Key('admin_tier_assignment_assign_op-1_loc-1')),
+      final assignButton = find.byKey(
+        const Key('admin_polling_setup_scope_assign'),
       );
+      await tester.ensureVisible(assignButton);
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('admin_tier_assignment_assign_op-1_loc-1')),
-      );
+      await tester.tap(assignButton);
       await tester.pumpAndSettle();
 
       expect(find.text('Regular'), findsWidgets);
