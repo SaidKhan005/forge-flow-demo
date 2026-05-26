@@ -104,7 +104,7 @@ void main() {
       );
       expect(
         routeById(kAdminVendorApplicabilityRouteId).subtitle,
-        contains('choose which vendors can power wage, covers, and polling'),
+        contains('which vendors can power wage, covers, and data freshness'),
       );
       expect(routeById(kAdminVendorIntegrationsRouteId).badge, isNull);
       expect(
@@ -168,16 +168,16 @@ void main() {
       final route = routeById(kAdminVendorApplicabilityRouteId);
 
       expect(route.visibleInNav, isTrue);
-      expect(route.section, AdminRouteSection.operations);
+      expect(route.section, AdminRouteSection.serviceSetup);
 
       await tester.pumpWidget(wrap(Builder(builder: route.builder)));
       await pumpEventually(tester);
 
-      await tester.tap(find.widgetWithText(Tab, 'Vendor Applicability'));
+      await tester.tap(find.widgetWithText(Tab, 'Vendor applicability'));
       await pumpEventually(tester);
 
       expect(find.byType(VendorApplicabilityAdminScreen), findsOneWidget);
-      expect(find.text('Vendor Applicability'), findsWidgets);
+      expect(find.text('Vendor applicability'), findsWidgets);
     });
 
     testWidgets('data accuracy read-only mode keeps the Operator Web surface', (
