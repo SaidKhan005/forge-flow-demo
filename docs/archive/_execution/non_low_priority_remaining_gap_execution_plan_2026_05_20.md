@@ -45,7 +45,7 @@ Worktree: `.codex_worktrees/deeper-parity-audit-wave`
 
 - Docs:
   - `docs/_execution/timing_period_metadata_scope_plan.md`
-  - `docs/_execution/legacy_wire_alias_and_deeper_parity_plan_2026_05_20.md`
+  - `docs/archive/_execution/legacy_wire_alias_and_deeper_parity_plan_2026_05_20.md`
   - this execution plan
 - Learn:
   - `lib/services/learn_teaching_analyzer.dart`
