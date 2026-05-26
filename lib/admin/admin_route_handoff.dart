@@ -412,6 +412,8 @@ class AdminRouteHandoff extends InheritedWidget {
     this.supportLogFilter,
     this.operatorLocationScope,
     this.hierarchyScope,
+    this.previousAdminRouteIntent,
+    this.onBackToPreviousAdminRoute,
     this.businessSelectionAttentionToken = 0,
   });
 
@@ -419,6 +421,8 @@ class AdminRouteHandoff extends InheritedWidget {
   final AdminSupportLogFilterIntent? supportLogFilter;
   final AdminOperatorLocationScopeIntent? operatorLocationScope;
   final AdminHierarchyScopeIntent? hierarchyScope;
+  final AdminRouteIntent? previousAdminRouteIntent;
+  final VoidCallback? onBackToPreviousAdminRoute;
   final ValueChanged<AdminRouteIntent> onSelectRoute;
   final int businessSelectionAttentionToken;
 
@@ -436,6 +440,7 @@ class AdminRouteHandoff extends InheritedWidget {
         supportLogFilter != oldWidget.supportLogFilter ||
         operatorLocationScope != oldWidget.operatorLocationScope ||
         hierarchyScope != oldWidget.hierarchyScope ||
+        previousAdminRouteIntent != oldWidget.previousAdminRouteIntent ||
         businessSelectionAttentionToken !=
             oldWidget.businessSelectionAttentionToken;
   }

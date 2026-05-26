@@ -45,6 +45,7 @@ import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/admin_business_accounts_back_button.dart';
+import 'package:forge_and_flow/admin/widgets/admin_previous_screen_back_button.dart';
 import 'package:forge_and_flow/admin/widgets/admin_scope_tree_pane.dart';
 
 import '../_test_helpers/widget_pump_helpers.dart';
@@ -589,7 +590,19 @@ void main() {
         find.byKey(const Key('admin_polling_pricing_screen')),
         findsOneWidget,
       );
+      expect(find.byKey(kAdminPreviousScreenBackButtonKey), findsOneWidget);
       expect(find.text('Data accuracy needs Business Timing'), findsNothing);
+
+      await tapKey(tester, kAdminPreviousScreenBackButtonKey);
+      expect(
+        find.byKey(const Key('admin_data_accuracy_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
+        findsOneWidget,
+      );
+      expect(find.text('Open Polling Setup'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

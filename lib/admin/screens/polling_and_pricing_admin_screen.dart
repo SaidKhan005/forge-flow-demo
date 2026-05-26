@@ -24,6 +24,7 @@ import '../models/admin_hierarchy_settings_scope_policy.dart';
 import '../services/data_accuracy_admin_gateway.dart';
 import '../widgets/admin_action_controls.dart';
 import '../widgets/admin_business_accounts_back_button.dart';
+import '../widgets/admin_previous_screen_back_button.dart';
 import '../widgets/admin_scope_notice_adapter.dart';
 import 'package:forge_and_flow/operator_web/widgets/hierarchy_scope_notice.dart';
 import '../widgets/admin_hierarchy_scope_prompt.dart';
@@ -45,6 +46,7 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
     this.initialScope,
     this.initialHierarchyScope,
     this.scopeLocationIds,
+    this.onBackToPreviousScreen,
     this.onBackToBusinessAccounts,
     this.showPageHeader = true,
     this.showScopeControls = false,
@@ -56,6 +58,7 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
   final AdminOperatorLocationScopeIntent? initialScope;
   final AdminHierarchyScopeIntent? initialHierarchyScope;
   final Set<String>? scopeLocationIds;
+  final VoidCallback? onBackToPreviousScreen;
   final VoidCallback? onBackToBusinessAccounts;
   final bool showPageHeader;
   final bool showScopeControls;
@@ -579,7 +582,16 @@ class _PollingAndPricingAdminScreenState
                       title: 'Polling Setup',
                       subtitle:
                           'Assign polling tiers and review cost and margin by location.',
+                      collapseBelowWidth: 680,
                       actions: <Widget>[
+                        if (widget.onBackToPreviousScreen != null)
+                          AdminPreviousScreenBackButton(
+                            onPressed: widget.onBackToPreviousScreen,
+                          )
+                        else if (widget.onBackToBusinessAccounts != null)
+                          AdminBusinessAccountsBackButton(
+                            onPressed: widget.onBackToBusinessAccounts,
+                          ),
                         const OperatorWebInfoButton(
                           key: Key('admin_polling_setup_info_button'),
                           title: 'About this surface',
@@ -587,10 +599,6 @@ class _PollingAndPricingAdminScreenState
                           width: 460,
                           body: PlainEnglishExplainerBody(),
                         ),
-                        if (widget.onBackToBusinessAccounts != null)
-                          AdminBusinessAccountsBackButton(
-                            onPressed: widget.onBackToBusinessAccounts,
-                          ),
                       ],
                     ),
                     const SizedBox(height: 14),

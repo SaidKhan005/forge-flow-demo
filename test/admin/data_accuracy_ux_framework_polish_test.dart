@@ -6,6 +6,7 @@ import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/admin_shell.dart';
 import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
+import 'package:forge_and_flow/admin/widgets/admin_previous_screen_back_button.dart';
 import 'package:forge_and_flow/admin/widgets/data_accuracy_audit_history_panel.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_data_accuracy_table.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_tier_assignment_table.dart';
@@ -889,6 +890,46 @@ void main() {
           .dy;
       expect(headerY, lessThan(assignmentsY));
     });
+
+    testWidgets(
+      'polling setup back action calls the previous screen callback',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        var backPressed = 0;
+        final gateway = InMemoryDataAccuracyAdminGateway(
+          operatorLocations: const <OperatorLocationRef>[ref],
+          initialTierDefinitions: <PollingTierKey, TierDefinition>{
+            PollingTierKey.standard: kDemoStandardTierDefinition(),
+            PollingTierKey.premium: kDemoPremiumTierDefinition(),
+            PollingTierKey.custom: kDemoCustomTierDefinition(),
+          },
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.themeData,
+            home: Scaffold(
+              body: PollingAndPricingAdminScreen(
+                gateway: gateway,
+                actorUserId: 'demo-super-admin',
+                onBackToPreviousScreen: () => backPressed += 1,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final backButton = find.byKey(kAdminPreviousScreenBackButtonKey);
+        expect(backButton, findsOneWidget);
+        await tester.tap(backButton);
+        await tester.pump();
+
+        expect(backPressed, 1);
+      },
+    );
 
     testWidgets('tier assignment dialog uses human tier labels', (
       tester,
