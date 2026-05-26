@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'admin_visual_system.dart';
 
 class AdminButtonStyles {
   const AdminButtonStyles._();
 
-  static const double radius = 8;
-  static const double controlHeight = 44;
-  static const double denseControlHeight = 40;
-  static const double iconHitTarget = 48;
-  static const double defaultMinWidth = 96;
+  static const double radius = AdminVisualSystem.surfaceRadius;
+  static const double controlHeight = 48;
+  static const double denseControlHeight = 44;
+  static const double iconHitTarget = 50;
+  static const double defaultMinWidth = 104;
   static const Size defaultMinimumSize = Size(defaultMinWidth, controlHeight);
   static const EdgeInsets defaultPadding = EdgeInsets.symmetric(
-    horizontal: 18,
-    vertical: 12,
+    horizontal: 20,
+    vertical: 13,
   );
 
   // Operator-web is the typography gold standard: its dialog titles render
@@ -29,10 +30,10 @@ class AdminButtonStyles {
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.backgroundSurface,
         surfaceTintColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
         titleTextStyle: dialogTitleStyle,
         contentTextStyle: AppTextStyles.body13(color: AppColors.textSecondary),
-        actionsPadding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: const BorderSide(color: AppColors.borderSubtle, width: 1),
@@ -90,7 +91,7 @@ class AdminButtonStyles {
     return OutlinedButton.styleFrom(
       minimumSize: Size(minWidth, minHeight),
       padding:
-          padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding ?? const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       foregroundColor: foregroundColor,
       disabledForegroundColor: AppColors.textMuted.withValues(alpha: 0.55),
       side: BorderSide(
@@ -209,7 +210,7 @@ class AdminButtonStyles {
       filled: true,
       fillColor: AppColors.backgroundSurface,
       isDense: false,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       border: border,
       enabledBorder: border,
       focusedBorder: OutlineInputBorder(
@@ -235,11 +236,11 @@ class AdminButtonStyles {
   static DataTableThemeData get _dataTableTheme => DataTableThemeData(
     headingTextStyle: AppTextStyles.body15Bold(color: AppColors.textPrimary),
     dataTextStyle: AppTextStyles.body13(color: AppColors.textPrimary),
-    headingRowHeight: 52,
-    dataRowMinHeight: 52,
-    dataRowMaxHeight: 76,
-    horizontalMargin: 18,
-    columnSpacing: 28,
+    headingRowHeight: 56,
+    dataRowMinHeight: 56,
+    dataRowMaxHeight: 84,
+    horizontalMargin: 20,
+    columnSpacing: 30,
     dividerThickness: 1,
     decoration: BoxDecoration(
       color: AppColors.backgroundSurface,
@@ -252,15 +253,16 @@ class AdminButtonStyles {
     labelColor: AppColors.textPrimary,
     unselectedLabelColor: AppColors.textMuted,
     labelStyle: AppTextStyles.body15Bold(color: AppColors.textPrimary),
-    unselectedLabelStyle: AppTextStyles.body13(color: AppColors.textMuted),
+    unselectedLabelStyle: AppTextStyles.body14(color: AppColors.textMuted),
+    labelPadding: AdminVisualSystem.tabPadding,
     indicatorColor: AppColors.sunsetDark,
     indicatorSize: TabBarIndicatorSize.label,
     dividerColor: AppColors.borderSubtle,
   );
 
   static ListTileThemeData get _listTileTheme => ListTileThemeData(
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-    minVerticalPadding: 10,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+    minVerticalPadding: 12,
     titleTextStyle: AppTextStyles.body14(color: AppColors.textPrimary),
     subtitleTextStyle: AppTextStyles.body13(color: AppColors.textSecondary),
     leadingAndTrailingTextStyle: AppTextStyles.body13(
@@ -272,7 +274,7 @@ class AdminButtonStyles {
   static ChipThemeData _chipTheme(ChipThemeData base) => base.copyWith(
     labelStyle: AppTextStyles.chipLabel(color: AppColors.textPrimary),
     secondaryLabelStyle: AppTextStyles.chipLabel(color: AppColors.textPrimary),
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
     side: const BorderSide(color: AppColors.borderSubtle, width: 1),
   );
 
@@ -320,7 +322,7 @@ class AdminButtonStyles {
           ),
           minimumSize: const WidgetStatePropertyAll(Size(44, 40)),
           padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
         ),
       );

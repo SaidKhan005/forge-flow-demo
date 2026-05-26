@@ -19,6 +19,7 @@ import '../../../widgets/console/console_screen_body.dart';
 import '../../../widgets/console/console_screen_header.dart';
 import '../../../widgets/console/console_surface.dart';
 import '../../admin_route_handoff.dart';
+import '../../admin_visual_system.dart';
 import '../../widgets/admin_business_accounts_back_button.dart';
 import '../../widgets/admin_responsive_layout.dart';
 
@@ -176,7 +177,7 @@ class _VendorConnectionsAdminMountState
         : 'Manage the services connected to ${location.locationName}.';
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_vendor_connections_screen_body'),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      padding: AdminVisualSystem.screenPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -381,7 +382,7 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_vendor_connections_location_required_scroll'),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      padding: AdminVisualSystem.screenPadding,
       maxContentWidth: 760,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -468,7 +469,7 @@ class _VendorLifecycleUnavailablePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return OperatorWebScreenBody(
       scrollKey: const Key('admin_vendor_connections_not_wired_scroll'),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      padding: AdminVisualSystem.screenPadding,
       maxContentWidth: 760,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

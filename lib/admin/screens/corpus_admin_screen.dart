@@ -35,6 +35,7 @@ import '../../widgets/console/console_surface.dart';
 
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
+import '../admin_visual_system.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
 import '../widgets/admin_action_controls.dart';
@@ -347,18 +348,18 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
           key: const Key('admin_corpus_screen'),
           color: AppColors.backgroundDeep,
           child: OperatorWebScreenFrame(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+            padding: AdminVisualSystem.screenPadding,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _Header(),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 _TechDetailsToggle(
                   value: _showTechDetails,
                   onChanged: (value) =>
                       setState(() => _showTechDetails = value),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 if (!widget.editingEnabled)
                   const _ReadOnlyBanner(
                     key: Key('admin_corpus_readonly_banner'),
@@ -368,13 +369,20 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                     key: const Key('admin_corpus_action_error'),
                     message: _actionError!,
                   ),
-                const TabBar(
-                  key: Key('admin_corpus_tab_bar'),
+                TabBar(
+                  key: const Key('admin_corpus_tab_bar'),
                   isScrollable: true,
                   indicatorColor: AppColors.sunset,
                   labelColor: AppColors.textPrimary,
                   unselectedLabelColor: AppColors.textSecondary,
-                  tabs: <Widget>[
+                  labelStyle: AppTextStyles.body15Bold(
+                    color: AppColors.textPrimary,
+                  ),
+                  unselectedLabelStyle: AppTextStyles.body14(
+                    color: AppColors.textSecondary,
+                  ),
+                  labelPadding: AdminVisualSystem.tabPadding,
+                  tabs: const <Widget>[
                     Tab(
                       key: Key('admin_corpus_versions_tab'),
                       text: 'Knowledge',
@@ -385,7 +393,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 Expanded(
                   child: TabBarView(
                     children: <Widget>[
@@ -494,36 +502,40 @@ class _VersionsTab extends StatelessWidget {
       );
     }
     if (versions.isEmpty) {
-      return Center(
+      return SingleChildScrollView(
         key: const Key('admin_corpus_empty'),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'No advisor content yet',
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Upload a document to create the first set of knowledge the advisor can use.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                if (editingEnabled) ...[
-                  const SizedBox(height: 16),
-                  AdminActionButton(
-                    key: const Key('admin_corpus_first_upload_button'),
-                    label: 'Upload a document',
-                    onPressed: busy ? null : onUploadPressed,
-                    icon: Icons.upload_file_outlined,
-                    role: AdminActionRole.primary,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No advisor content yet',
+                    style: AppTextStyles.display20(
+                      color: AppColors.textPrimary,
+                    ),
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Upload a document to create the first set of knowledge the advisor can use.',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
+                  if (editingEnabled) ...[
+                    const SizedBox(height: 16),
+                    AdminActionButton(
+                      key: const Key('admin_corpus_first_upload_button'),
+                      label: 'Upload a document',
+                      onPressed: busy ? null : onUploadPressed,
+                      icon: Icons.upload_file_outlined,
+                      role: AdminActionRole.primary,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -1787,12 +1799,14 @@ class _VersionList extends StatelessWidget {
                 onPressed: busy ? null : onUploadPressed,
                 icon: Icons.upload_file_outlined,
                 role: AdminActionRole.primary,
+                compact: true,
               ),
             ),
           const Divider(height: 1, color: AppColors.borderSubtle),
           Expanded(
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.only(bottom: 4),
+              cacheExtent: 800,
               itemCount: versions.length,
               separatorBuilder: (_, __) => Container(
                 height: 1,

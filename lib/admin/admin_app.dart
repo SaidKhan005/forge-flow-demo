@@ -14,6 +14,7 @@ import 'admin_auth_gate.dart';
 import 'admin_button_styles.dart';
 import 'admin_routes.dart';
 import 'admin_shell.dart';
+import 'admin_visual_system.dart';
 import 'services/admin_http_timeout.dart';
 
 class AdminConsoleApp extends StatefulWidget {
@@ -72,8 +73,8 @@ class _AdminConsoleAppState extends State<AdminConsoleApp> {
       builder: (context, child) {
         final media = MediaQuery.of(context);
         final readableTextScaler = media.textScaler.clamp(
-          minScaleFactor: 1.12,
-          maxScaleFactor: 1.3,
+          minScaleFactor: AdminVisualSystem.minTextScale,
+          maxScaleFactor: AdminVisualSystem.maxTextScale,
         );
         return MediaQuery(
           data: media.copyWith(textScaler: readableTextScaler),

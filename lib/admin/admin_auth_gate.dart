@@ -43,6 +43,7 @@ import '../services/auth/firebase_auth_client.dart';
 import '../services/auth/firebase_auth_client_sdk.dart';
 import '../theme/app_theme.dart';
 import 'admin_button_styles.dart';
+import 'admin_visual_system.dart';
 import 'services/admin_permission_snapshot_loader.dart';
 import 'services/admin_sessions_gateway.dart';
 import 'widgets/admin_action_controls.dart';
@@ -1014,21 +1015,21 @@ class _AdminSignInScreenState extends State<_AdminSignInScreen> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 400),
+                constraints: const BoxConstraints(maxWidth: 440),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const _AdminBrandMark(subtitle: 'Admin Console'),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 32),
                     if (widget.infoMessage != null) ...[
                       _AdminInfoBanner(
                         key: const Key('admin_signin_info_banner'),
                         message: widget.infoMessage!,
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
                     ],
                     _AdminSignInCard(
                       key: const Key('admin_signin_card'),
@@ -1038,7 +1039,7 @@ class _AdminSignInScreenState extends State<_AdminSignInScreen> {
                       errorMessage: error,
                       onSubmit: _submit,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                     Text(
                       'F&F internal access only.',
                       textAlign: TextAlign.center,
@@ -1065,8 +1066,8 @@ class _AdminBrandMark extends StatelessWidget {
     return Column(
       children: [
         Container(
-          width: 84,
-          height: 84,
+          width: 92,
+          height: 92,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             boxShadow: [
@@ -1085,13 +1086,13 @@ class _AdminBrandMark extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         Text(
           'Forge & Flow',
           textAlign: TextAlign.center,
           style: AppTextStyles.display28(color: AppColors.textPrimary),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           subtitle,
           textAlign: TextAlign.center,
@@ -1121,7 +1122,7 @@ class _AdminSignInCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
       child: Container(
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -1139,7 +1140,7 @@ class _AdminSignInCard extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1151,7 +1152,7 @@ class _AdminSignInCard extends StatelessWidget {
                   weight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Container(
                 height: 2,
                 width: 28,
@@ -1161,10 +1162,10 @@ class _AdminSignInCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 20),
               if (errorMessage != null) ...[
                 _ErrorBanner(message: errorMessage!),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
               ],
               _BrandedField(
                 fieldKey: const Key('admin_email_field'),
@@ -1175,7 +1176,7 @@ class _AdminSignInCard extends StatelessWidget {
                 keyboardType: TextInputType.emailAddress,
                 autofillHints: const <String>[AutofillHints.username],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               _BrandedField(
                 fieldKey: const Key('admin_password_field'),
                 controller: passwordController,
@@ -1185,7 +1186,7 @@ class _AdminSignInCard extends StatelessWidget {
                 autofillHints: const <String>[AutofillHints.password],
                 onSubmitted: (_) => onSubmit(),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               _SignInButton(
                 submitting: submitting,
                 onPressed: submitting ? null : onSubmit,
@@ -1222,7 +1223,7 @@ class _BrandedField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
       borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
     );
     return TextField(
@@ -1242,17 +1243,17 @@ class _BrandedField extends StatelessWidget {
         filled: true,
         fillColor: AppColors.backgroundSurface,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
+          horizontal: 16,
+          vertical: 16,
         ),
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
           borderSide: const BorderSide(color: AppColors.sunset, width: 1.6),
         ),
         disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
           borderSide: BorderSide(
             color: AppColors.borderSubtle.withValues(alpha: 0.6),
             width: 1,
@@ -1301,20 +1302,20 @@ class _ErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: const Key('admin_signin_error_banner'),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: AppColors.negative.withValues(alpha: 0.08),
         border: Border.all(
           color: AppColors.negative.withValues(alpha: 0.45),
           width: 1,
         ),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
-          const SizedBox(width: 8),
+          const Icon(Icons.error_outline, size: 18, color: AppColors.negative),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
@@ -1339,20 +1340,20 @@ class _AdminInfoBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: AppColors.sunset.withValues(alpha: 0.08),
         border: Border.all(
           color: AppColors.sunset.withValues(alpha: 0.45),
           width: 1,
         ),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline, size: 16, color: AppColors.sunsetDark),
-          const SizedBox(width: 8),
+          const Icon(Icons.info_outline, size: 18, color: AppColors.sunsetDark),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
@@ -1378,18 +1379,20 @@ class _AdminForbiddenScreen extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
+            constraints: const BoxConstraints(maxWidth: 460),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(
+                  AdminVisualSystem.surfaceRadius,
+                ),
                 child: Container(
                   key: const Key('admin_forbidden_card'),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSurface,
                     border: Border.all(color: AppColors.borderSubtle, width: 1),
                   ),
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                  padding: const EdgeInsets.fromLTRB(26, 26, 26, 24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1398,10 +1401,10 @@ class _AdminForbiddenScreen extends StatelessWidget {
                         children: [
                           const Icon(
                             Icons.lock_outline,
-                            size: 18,
+                            size: 20,
                             color: AppColors.negative,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               'Admin access required',
@@ -1413,7 +1416,7 @@ class _AdminForbiddenScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
                       Text(
                         'Signed in as ${session.email.isEmpty ? session.uid : session.email}, '
                         'but your account does not carry an admin role claim '
@@ -1423,7 +1426,7 @@ class _AdminForbiddenScreen extends StatelessWidget {
                           color: AppColors.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 20),
                       AdminActionButton(
                         key: const Key('admin_forbidden_signout'),
                         label: 'Sign out',
