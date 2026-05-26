@@ -330,7 +330,7 @@ class _VendorApplicabilityAdminScreenState
           settingKind: row.settingKind,
           settingKey: row.settingKey,
           vendorSlug: row.vendorSlug,
-          adminReason: 'admin.vendor_applicability.end',
+          adminReason: reason,
           reasonNote: reason,
           idempotencyKey: _newIdempotencyKey('end'),
         ),
@@ -369,7 +369,7 @@ class _VendorApplicabilityAdminScreenState
           vendorSlug: row.vendorSlug,
           enabled: false,
           metadata: row.metadata,
-          adminReason: 'admin.vendor_applicability.upsert',
+          adminReason: reason,
           reasonNote: reason,
           idempotencyKey: _newIdempotencyKey('override'),
         ),
@@ -398,7 +398,7 @@ class _VendorApplicabilityAdminScreenState
           vendorSlug: draft.vendorSlug,
           enabled: draft.enabled,
           metadata: draft.metadata,
-          adminReason: 'admin.vendor_applicability.upsert',
+          adminReason: draft.reasonNote,
           reasonNote: draft.reasonNote,
           idempotencyKey: _newIdempotencyKey('upsert'),
         ),
@@ -495,7 +495,7 @@ class _VendorApplicabilityAdminScreenState
             vendorSlug: recommended.vendorSlug,
             enabled: recommended.enabled,
             metadata: recommended.metadata,
-            adminReason: 'admin.vendor_applicability.upsert',
+            adminReason: reason,
             reasonNote: reason,
             idempotencyKey: _newIdempotencyKey('recommended'),
           ),
@@ -853,6 +853,7 @@ class _RecommendedDefaultsDialogState
   late final TextEditingController _reason = TextEditingController(
     text: 'Apply recommended ${widget.settingLabel} defaults',
   );
+  String? _error;
 
   @override
   void dispose() {
@@ -866,9 +867,11 @@ class _RecommendedDefaultsDialogState
       return;
     }
     final reason = _reason.text.trim();
-    Navigator.of(
-      context,
-    ).pop(reason.isEmpty ? 'Apply recommended defaults' : reason);
+    if (reason.isEmpty) {
+      setState(() => _error = 'Add a reason before saving.');
+      return;
+    }
+    Navigator.of(context).pop(reason);
   }
 
   @override
@@ -960,6 +963,14 @@ class _RecommendedDefaultsDialogState
                 border: OutlineInputBorder(),
               ),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                key: const Key('admin_vendor_applicability_recommended_error'),
+                style: AppTextStyles.body12(color: AppColors.negative),
+              ),
+            ],
           ],
         ],
       ),
@@ -1545,6 +1556,7 @@ class _VendorApplicabilityEditDialog extends StatefulWidget {
 class _VendorApplicabilityEditDialogState
     extends State<_VendorApplicabilityEditDialog> {
   static final RegExp _slugPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+  static final RegExp _settingKeyPattern = RegExp(r'^[a-z][a-z0-9_:.+-]{0,127}$');
 
   // Vendor + allow/block.
   String? _vendorSlug;
@@ -1569,6 +1581,7 @@ class _VendorApplicabilityEditDialogState
   bool _specialHelpExpanded = false;
   late final TextEditingController _settingKey;
   late final TextEditingController _metadataJson;
+  late final Map<String, Object?> _metadataBase;
   bool _userEditedJson = false;
 
   final TextEditingController _reason = TextEditingController();
@@ -1594,6 +1607,8 @@ class _VendorApplicabilityEditDialogState
     }
 
     final metadata = initial?.metadata ?? const <String, Object?>{};
+    _metadataBase = Map<String, Object?>.from(metadata)
+      ..removeWhere((key, _) => _friendlyMetadataKeys.contains(key));
     _seedFriendlyFieldsFromMetadata(metadata);
     _detailsExpanded = _buildMetadata().isNotEmpty;
     _metadataJson.text = _prettyJson(_buildMetadata());
@@ -1643,7 +1658,7 @@ class _VendorApplicabilityEditDialogState
   // empty) fields are simply absent, which the schema treats as
   // "optional / not set".
   Map<String, Object?> _buildMetadata() {
-    final out = <String, Object?>{};
+    final out = <String, Object?>{..._metadataBase};
     switch (widget.settingKind) {
       case VendorApplicabilitySettingKind.wage:
         if (_authorityBasis != null) out['authority_basis'] = _authorityBasis;
@@ -1667,6 +1682,25 @@ class _VendorApplicabilityEditDialogState
         break;
     }
     return out;
+  }
+
+  Set<String> get _friendlyMetadataKeys {
+    switch (widget.settingKind) {
+      case VendorApplicabilitySettingKind.wage:
+        return const <String>{'authority_basis', 'requires_job_code'};
+      case VendorApplicabilitySettingKind.covers:
+        return const <String>{
+          'cover_filter',
+          'service_periods',
+          'exclude_voids',
+        };
+      case VendorApplicabilitySettingKind.polling:
+        return const <String>{
+          'polling_seconds_override',
+          'tier_key',
+        };
+    }
+    return const <String>{};
   }
 
   List<AdminVendorOption> _filteredVendors() {
@@ -1703,9 +1737,9 @@ class _VendorApplicabilityEditDialogState
       setState(() => _error = 'Choose a vendor.');
       return;
     }
-    if (!_slugPattern.hasMatch(settingKey)) {
+    if (!_settingKeyPattern.hasMatch(settingKey)) {
       setState(
-        () => _error = 'Setting key must be a lowercase key (default is fine).',
+        () => _error = 'Setting key must be a lowercase key.',
       );
       return;
     }

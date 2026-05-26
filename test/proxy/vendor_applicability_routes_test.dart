@@ -11,7 +11,7 @@ const String _locationId = '33333333-3333-4333-8333-333333333333';
 
 void main() {
   group('vendor applicability proxy routes', () {
-    test('admin GET is super_admin-only and returns gateway rows', () async {
+    test('admin GET returns gateway rows for super_admin callers', () async {
       final gateway = _FakeVendorApplicabilityGateway();
       final ctx = await _serve(
         claims: const ProxyJwtClaims(
@@ -38,7 +38,7 @@ void main() {
       expect(gateway.listAdminCalls.single.currentOnly, isFalse);
     });
 
-    test('ff_support cannot read the launch admin route', () async {
+    test('ff_support can read the admin route without write access', () async {
       final gateway = _FakeVendorApplicabilityGateway();
       final ctx = await _serve(
         claims: const ProxyJwtClaims(
@@ -55,8 +55,8 @@ void main() {
         ctx.uri('/v1/admin/vendor-applicability'),
       );
 
-      expect(response.statusCode, 403);
-      expect(gateway.listAdminCalls, isEmpty);
+      expect(response.statusCode, 200);
+      expect(gateway.listAdminCalls, hasLength(1));
     });
 
     test(

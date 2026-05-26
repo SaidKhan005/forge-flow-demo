@@ -143,7 +143,7 @@ void main() {
       expect(command.locationId, isNull);
       expect(command.metadata['authority_basis'], 'job_code');
       expect(command.metadata['requires_job_code'], isTrue);
-      expect(command.adminReason, 'admin.vendor_applicability.upsert');
+      expect(command.adminReason, 'Ticket VA-200 launch wage source');
       expect(command.reasonNote, 'Ticket VA-200 launch wage source');
       expect(command.idempotencyKey, startsWith('admin-vendor-applicability-'));
     });
@@ -206,6 +206,42 @@ void main() {
         expect(command.reasonNote, 'Apply recommended wage defaults');
       },
     );
+
+    testWidgets('recommended defaults require a reason', (tester) async {
+      await _size(tester);
+      final wageDefaults = recommendedVendorApplicabilityDefaultsFor('wage');
+      final gateway = _FakeVendorApplicabilityAdminGateway()
+        ..seed(<VendorApplicabilityAdminRow>[
+          for (final recommended in wageDefaults)
+            if (recommended.vendorSlug != 'toast')
+              _rowFromRecommended(recommended),
+        ]);
+
+      await tester.pumpWidget(
+        wrap(VendorApplicabilityAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const Key('admin_vendor_applicability_recommended_defaults'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_recommended_reason')),
+        '',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_recommended_apply')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_vendor_applicability_recommended_error')),
+        findsOneWidget,
+      );
+      expect(gateway.upserts, isEmpty);
+    });
 
     testWidgets(
       'selected location scope threads operator + location into upsert',
@@ -548,6 +584,99 @@ void main() {
       expect(gateway.upserts.single.metadata['authority_basis'], 'job_code');
     });
 
+    testWidgets('editing preserves advanced metadata fields', (tester) async {
+      await _size(tester);
+      final gateway = _FakeVendorApplicabilityAdminGateway()
+        ..seed(<VendorApplicabilityAdminRow>[
+          _row(
+            settingKind: 'wage',
+            vendorSlug: 'seven_shifts',
+            metadata: const <String, Object?>{
+              'authority_basis': 'job_code',
+              'requires_job_code': true,
+              'vendor_field': 'gross_wages',
+              'notes': 'Keep advanced note.',
+            },
+          ),
+        ]);
+
+      await tester.pumpWidget(
+        wrap(VendorApplicabilityAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const Key('admin_vendor_applicability_edit_row-wage-seven_shifts'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+        'Ticket VA-240 metadata retention',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.upserts, hasLength(1));
+      expect(gateway.upserts.single.metadata['authority_basis'], 'job_code');
+      expect(gateway.upserts.single.metadata['requires_job_code'], isTrue);
+      expect(gateway.upserts.single.metadata['vendor_field'], 'gross_wages');
+      expect(gateway.upserts.single.metadata['notes'], 'Keep advanced note.');
+    });
+
+    testWidgets('advanced setting key matches backend validation', (
+      tester,
+    ) async {
+      await _size(tester);
+      final gateway = _FakeVendorApplicabilityAdminGateway();
+
+      await tester.pumpWidget(
+        wrap(VendorApplicabilityAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_vendor_applicability_add')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_vendor_dropdown')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('7shifts').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_advanced_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_advanced_toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_setting_key')),
+        'pay.rate+v2',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+        'Ticket VA-241 named key',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.upserts, hasLength(1));
+      expect(gateway.upserts.single.settingKey, 'pay.rate+v2');
+    });
+
     testWidgets('short dialog viewport can scroll to the reason field', (
       tester,
     ) async {
@@ -843,6 +972,7 @@ VendorApplicabilityAdminRow _row({
   String? operatorId,
   String? locationId,
   DateTime? effectiveUntil,
+  Map<String, Object?>? metadata,
 }) {
   final now = DateTime.utc(2026, 5, 13, 15);
   return VendorApplicabilityAdminRow(
@@ -853,7 +983,7 @@ VendorApplicabilityAdminRow _row({
     settingKey: 'default',
     vendorSlug: vendorSlug,
     enabled: enabled,
-    metadata: const <String, Object?>{'authority_basis': 'job_code'},
+    metadata: metadata ?? const <String, Object?>{'authority_basis': 'job_code'},
     effectiveFrom: now,
     effectiveUntil: effectiveUntil,
     createdAt: now,

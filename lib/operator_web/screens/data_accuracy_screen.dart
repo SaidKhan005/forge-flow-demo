@@ -278,6 +278,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   int _wageApplicabilityLoadGeneration = 0;
   List<WebVendorApplicabilityRow> _coversApplicabilityRows =
       const <WebVendorApplicabilityRow>[];
+  bool _coversApplicabilityLoading = false;
   String? _coversApplicabilityError;
   int _coversApplicabilityLoadGeneration = 0;
   List<WebVendorApplicabilityRow> _pollingApplicabilityRows =
@@ -367,6 +368,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _applySettingsSeed(widget.initialSettings);
     _settingsLoading = widget.dataAccuracyGateway != null;
     _wageApplicabilityLoading = widget.vendorApplicabilityGateway != null;
+    _coversApplicabilityLoading = widget.vendorApplicabilityGateway != null;
     _servicePeriodsLoading = widget.dataAccuracyGateway != null;
     _tierLoading = widget.dataAccuracyGateway != null;
     _loadBundle();
@@ -488,6 +490,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _wageApplicabilityLoading = widget.vendorApplicabilityGateway != null;
         _wageApplicabilityError = null;
         _wageApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _coversApplicabilityLoading =
+            widget.vendorApplicabilityGateway != null;
         _coversApplicabilityError = null;
         _coversApplicabilityRows = const <WebVendorApplicabilityRow>[];
         _pollingApplicabilityError = null;
@@ -598,7 +602,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   // covers options stay restricted rather than silently re-opening.
   Future<void> _loadCoversApplicability() async {
     final gateway = widget.vendorApplicabilityGateway;
-    if (gateway == null) return;
+    if (gateway == null) {
+      _coversApplicabilityLoading = false;
+      return;
+    }
     final generation = ++_coversApplicabilityLoadGeneration;
     try {
       final rows = await gateway.list(settingKind: 'covers');
@@ -615,12 +622,16 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       if (!mounted || generation != _coversApplicabilityLoadGeneration) return;
       setState(() {
         _coversApplicabilityRows = currentEnabled;
+        _coversApplicabilityLoading = false;
+        _normalizeWorkingSources();
         _coversApplicabilityError = null;
       });
     } catch (error) {
       if (!mounted || generation != _coversApplicabilityLoadGeneration) return;
       setState(() {
         _coversApplicabilityRows = const <WebVendorApplicabilityRow>[];
+        _coversApplicabilityLoading = false;
+        _normalizeWorkingSources();
         _coversApplicabilityError =
             'Could not load vendor approval for covers: $error';
       });
@@ -703,9 +714,13 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _coversSourcePerPeriod = <String, CoversSource>{
       ..._coversSourcePerPeriod,
       for (final period in _servicePeriods)
-        period.id: effectiveCoversSource(
-          _coversSourcePerPeriod[period.id] ?? kDefaultCoversSource,
-          bundle,
+        period.id: effectiveCoversSourceHonoringApplicability(
+          configured:
+              _coversSourcePerPeriod[period.id] ?? kDefaultCoversSource,
+          bundle: bundle,
+          vendorApplicabilityBound:
+              _vendorApplicabilityBound && !_coversApplicabilityLoading,
+          applicableCoversVendorSlugs: _applicableCoversVendorSlugs,
         ),
     };
   }
@@ -1416,14 +1431,16 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         ),
         const SizedBox(height: 14),
       ],
-      CoversSourceToggle(
-        settings: settings,
-        servicePeriods: _servicePeriods,
-        onChanged: _handleCoversSourceChanged,
-        bundle: _bundle,
-        vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
-        applicableCoversVendorSlugs: _applicableCoversVendorSlugs,
-      ),
+          CoversSourceToggle(
+            settings: settings,
+            servicePeriods: _servicePeriods,
+            onChanged: _handleCoversSourceChanged,
+            bundle: _bundle,
+            vendorApplicabilityBound:
+                widget.vendorApplicabilityGateway != null &&
+                !_coversApplicabilityLoading,
+            applicableCoversVendorSlugs: _applicableCoversVendorSlugs,
+          ),
       if (_showAnyFallbackCard) ...[
         const SizedBox(height: 18),
         const _DataAccuracyGroupLabel(
