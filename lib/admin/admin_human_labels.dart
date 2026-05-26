@@ -3,6 +3,7 @@
 
 import '../domain/models/forge_flow_polling_tier_assignment.dart'
     show PollingTierKey;
+import 'models/corpus_admin_models.dart' show ChunkPreview;
 import 'models/debug_console_admin_models.dart' show RequestLogStatus;
 
 const List<String> _adminMonthNames = <String>[
@@ -202,6 +203,169 @@ class AdminKnowledgeBaseCopy {
   /// change anything; full admin access is required to edit.
   static const String readOnlyBanner =
       'You are viewing only. Making changes needs full admin access.';
+
+  // ── B-r2: "Topics the advisor knows" card ──
+  //
+  // The card lists the content pieces grouped by the document they came
+  // from. Each piece carries a plain-English "kind" (Document, SOP,
+  // Policy, ...). Rich kinds are extracted in a later slice (C3); until
+  // then the kind is derived from the heading/source text and falls back
+  // to "Document" when nothing better is known. None of this fabricates
+  // data: it reads what the chunk already carries.
+
+  /// Card title.
+  static const String topicsTitle = 'Topics the advisor knows';
+
+  /// One-line orientation copy under the title.
+  static const String topicsLead =
+      'As the knowledge grows, search or filter to find anything fast. '
+      'Topics are grouped by the document they came from.';
+
+  /// Placeholder for the topic search box.
+  static const String topicSearchHint =
+      'Search topics, e.g. FIFO, harassment, CPLH';
+
+  /// Accessibility label for the kind filter dropdown.
+  static const String kindFilterLabel = 'Filter by kind';
+
+  /// Shown when a search or filter hides every topic.
+  static const String topicsEmpty = 'No topics match your search.';
+
+  /// "Showing X of Y" count above the topic list. Plain English, no
+  /// em dash (the colon-free phrasing reads as a sentence fragment).
+  static String topicsShowing(int shown, int total) =>
+      'Showing $shown of $total';
+}
+
+/// B-r2: the plain-English content "kind" the Topics card shows for each
+/// piece. Mirrors the approved preview's kinds (Document, SOP, Policy,
+/// Concept, Metric, Formula, Risk, Role). Rich kinds are extracted by a
+/// later slice (C3); [corpusTopicKindForChunk] derives a best-effort
+/// kind from the text the chunk already carries and defaults to
+/// [document] when nothing better is known. No kind is ever fabricated.
+enum AdminCorpusTopicKind {
+  /// The fallback. A plain document section with no clearer signal.
+  document('all', 'Document', 'A document'),
+  sop('sop', 'SOP', 'A step-by-step SOP'),
+  policy('policy', 'Policy', 'A policy'),
+  concept('concept', 'Concept', 'A concept'),
+  metric('metric', 'Metric', 'A metric you track'),
+  formula('formula', 'Formula', 'A formula'),
+  risk('risk', 'Risk', 'A risk to watch for'),
+  role('role', 'Role', 'A role');
+
+  const AdminCorpusTopicKind(this.filterValue, this.pill, this.description);
+
+  /// Stable value used by the kind-filter dropdown. [document] uses
+  /// 'all' only as a sentinel for the enum's first entry; the dropdown
+  /// builds its own "All kinds" option separately. Each non-document
+  /// kind maps to one filter value.
+  final String filterValue;
+
+  /// Short pill label (Title Case noun): 'SOP', 'Policy', ...
+  final String pill;
+
+  /// One-line plain-English description shown under the topic name.
+  final String description;
+}
+
+/// Plain-English label for the kind filter dropdown options. 'All kinds'
+/// is the unfiltered default; each other entry pluralizes the kind.
+String adminCorpusKindFilterOptionLabel(AdminCorpusTopicKind? kind) {
+  if (kind == null) return 'All kinds';
+  switch (kind) {
+    case AdminCorpusTopicKind.document:
+      return 'Documents';
+    case AdminCorpusTopicKind.sop:
+      return 'SOPs';
+    case AdminCorpusTopicKind.policy:
+      return 'Policies';
+    case AdminCorpusTopicKind.concept:
+      return 'Concepts';
+    case AdminCorpusTopicKind.metric:
+      return 'Metrics';
+    case AdminCorpusTopicKind.formula:
+      return 'Formulas';
+    case AdminCorpusTopicKind.risk:
+      return 'Risks';
+    case AdminCorpusTopicKind.role:
+      return 'Roles';
+  }
+}
+
+/// B-r2: derives a best-effort [AdminCorpusTopicKind] for a content
+/// piece from the signals it already carries. The launch corpus does
+/// NOT yet tag chunks with a rich kind (that extraction is slice C3), so
+/// this reads the chunk's heading text + source-file name for a small
+/// set of unambiguous keywords and otherwise returns
+/// [AdminCorpusTopicKind.document]. It never invents a kind: when the
+/// text gives no clear signal the piece reads as a plain "Document".
+///
+/// Kept pure (no I/O, no BuildContext) so it is trivially unit-testable
+/// and reusable. Matching is case-insensitive and word-boundary aware so
+/// "policy" matches "Harassment Policy" but not "policyholder"-style
+/// substrings inside unrelated words.
+AdminCorpusTopicKind corpusTopicKindForChunk(ChunkPreview chunk) {
+  final haystack = <String>[
+    if (chunk.headingPath.isNotEmpty) chunk.headingPath.last,
+    chunk.sourcePath,
+  ].join(' ').toLowerCase();
+
+  bool hasWord(String word) =>
+      RegExp('\\b${RegExp.escape(word)}\\b').hasMatch(haystack);
+
+  // Order matters: the most specific signals win. A heading that names a
+  // risk ("danger zone") should read as a Risk even if the document is a
+  // manual. Each branch keys off vocabulary that is unambiguous in the
+  // restaurant-operations domain this corpus covers.
+  if (hasWord('sop') ||
+      hasWord('procedure') ||
+      hasWord('fifo') ||
+      hasWord('haccp') ||
+      hasWord('checklist')) {
+    return AdminCorpusTopicKind.sop;
+  }
+  if (hasWord('policy') ||
+      hasWord('policies') ||
+      hasWord('whmis') ||
+      hasWord('compliance') ||
+      hasWord('rules')) {
+    return AdminCorpusTopicKind.policy;
+  }
+  if (hasWord('risk') ||
+      hasWord('danger') ||
+      hasWord('hazard') ||
+      hasWord('contamination')) {
+    return AdminCorpusTopicKind.risk;
+  }
+  if (hasWord('formula') ||
+      hasWord('equation') ||
+      hasWord('calculation')) {
+    return AdminCorpusTopicKind.formula;
+  }
+  if (hasWord('metric') ||
+      hasWord('cplh') ||
+      hasWord('splh') ||
+      hasWord('ppa') ||
+      hasWord('agc') ||
+      hasWord('nps') ||
+      hasWord('kpi')) {
+    return AdminCorpusTopicKind.metric;
+  }
+  if (hasWord('role') ||
+      hasWord('expo') ||
+      hasWord('runner') ||
+      hasWord('server') ||
+      hasWord('manager')) {
+    return AdminCorpusTopicKind.role;
+  }
+  if (hasWord('concept') ||
+      hasWord('principle') ||
+      hasWord('philosophy') ||
+      hasWord('culture')) {
+    return AdminCorpusTopicKind.concept;
+  }
+  return AdminCorpusTopicKind.document;
 }
 
 String adminHumanDateTime(DateTime when) {
