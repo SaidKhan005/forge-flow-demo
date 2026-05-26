@@ -23,10 +23,11 @@
 // verb is a readable mapping of the relationship type, falling back to
 // "is related to" when the type is unknown.
 //
-// Out of scope for this slice (deferred to C2-map): the focusable
-// node-link Map visualization (preview lines 360-399). This view renders
-// a clean "Map" placeholder card with an honest "coming soon" note in its
-// place; it does NOT build the SVG diagram.
+// C2-map: the focusable node-link Map (preview lines 360-399) now ships
+// in a sibling library, [CorpusConnectionsMap] in
+// `corpus_admin_connections_map.dart`. This view imports it and feeds it
+// the same [GraphCandidateDiff] the clarity lists use; the map adds no
+// new gateway/proxy/data.
 
 import 'package:flutter/material.dart';
 
@@ -37,6 +38,7 @@ import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
 import '../widgets/admin_action_controls.dart';
 import 'corpus_admin_chunk_view.dart' show TopicKindIcon;
+import 'corpus_admin_connections_map.dart' show CorpusConnectionsMap;
 
 /// C2: a connection's plain-English clarity, DERIVED from its confidence
 /// score. This is the honest bucketing the three Connections lists group
@@ -424,8 +426,9 @@ class _CorpusConnectionsViewState extends State<CorpusConnectionsView> {
             ),
             const SizedBox(height: 18),
 
-            // Focus Map is deferred to C2-map. Honest placeholder only.
-            const _ConnectionsMapPlaceholder(),
+            // C2-map: the focusable node-link Map, reading the SAME diff
+            // the lists below render. No new gateway/proxy/data.
+            CorpusConnectionsMap(diff: widget.diff),
             const SizedBox(height: 18),
 
             if (!anyVisible)
@@ -555,6 +558,36 @@ class _CorpusConnectionsViewState extends State<CorpusConnectionsView> {
                   ),
                 ],
               ),
+              // Honest hint when saving is disabled because no commit
+              // target is configured. Lightweight guidance only: it points
+              // the operator at the Scope pane (the redesign deliberately
+              // dropped the old in-tab operator-picker button). The
+              // demo/test path always supplies a target, so it stays hidden
+              // there.
+              if (!widget.canSave)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Row(
+                    key: const Key('admin_corpus_connections_no_target_hint'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: AppColors.textMuted,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          AdminKnowledgeBaseCopy.connectionsNoTargetHint,
+                          style: AppTextStyles.body12(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ],
         ],
@@ -781,38 +814,6 @@ class _ShowDropdown extends StatelessWidget {
           ],
           onChanged: onChanged,
         ),
-      ),
-    );
-  }
-}
-
-/// C2: the deferred focus-Map placeholder. The focusable node-link diagram
-/// (preview lines 360-399) ships in C2-map; this card states that plainly
-/// so the surface is honest about what is and is not built yet.
-class _ConnectionsMapPlaceholder extends StatelessWidget {
-  const _ConnectionsMapPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebPanel(
-      key: const Key('admin_corpus_connections_map_placeholder'),
-      title: AdminKnowledgeBaseCopy.connectionsMapTitle,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Icon(
-            Icons.hub_outlined,
-            size: 18,
-            color: AppColors.textMuted,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              AdminKnowledgeBaseCopy.connectionsMapComingSoon,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
       ),
     );
   }
