@@ -356,6 +356,70 @@ void main() {
     expect(find.textContaining('covered 2 locations'), findsNothing);
   });
 
+  testWidgets('Polling Setup tier filter narrows assignment rows', (
+    tester,
+  ) async {
+    useWideViewport(tester);
+    final now = DateTime.utc(2026, 5, 26, 12);
+    final adminGateway = InMemoryDataAccuracyAdminGateway(
+      operatorLocations: refs,
+      initialTierDefinitions: <PollingTierKey, TierDefinition>{
+        PollingTierKey.standard: kDemoStandardTierDefinition(),
+        PollingTierKey.premium: kDemoPremiumTierDefinition(),
+        PollingTierKey.custom: kDemoCustomTierDefinition(),
+      },
+      initialAssignments: <String, ForgeFlowPollingTierAssignment>{
+        'op-1/loc-1a': ForgeFlowPollingTierAssignment(
+          assignmentId: 'assignment-standard',
+          operatorId: 'op-1',
+          locationId: 'loc-1a',
+          tierKey: PollingTierKey.standard,
+          pollingCadencePerVendorSeconds: const <String, int>{
+            'quickbooks_time': 300,
+          },
+          effectiveAt: now,
+          createdAt: now,
+        ),
+        'op-1/loc-1b': ForgeFlowPollingTierAssignment(
+          assignmentId: 'assignment-premium',
+          operatorId: 'op-1',
+          locationId: 'loc-1b',
+          tierKey: PollingTierKey.premium,
+          pollingCadencePerVendorSeconds: const <String, int>{'humanity': 60},
+          effectiveAt: now,
+          createdAt: now,
+        ),
+      },
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        PollingAndPricingAdminScreen(
+          gateway: adminGateway,
+          actorUserId: 'demo-super-admin',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Toronto Yorkville'), findsOneWidget);
+    expect(find.text('Vancouver Robson'), findsOneWidget);
+    expect(find.text('Brooklyn Williamsburg'), findsOneWidget);
+
+    final tierDropdown = find.byKey(const Key('admin_tier_filter_dropdown'));
+    await tester.ensureVisible(tierDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(tierDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Premium').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Toronto Yorkville'), findsNothing);
+    expect(find.text('Vancouver Robson'), findsOneWidget);
+    expect(find.text('Brooklyn Williamsburg'), findsNothing);
+    expect(find.text('1 location'), findsWidgets);
+  });
+
   testWidgets(
     'Polling Setup scope assignment writes selected hierarchy scope',
     (tester) async {

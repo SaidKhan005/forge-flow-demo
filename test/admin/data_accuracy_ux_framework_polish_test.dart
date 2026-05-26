@@ -615,6 +615,38 @@ void main() {
       );
     });
 
+    testWidgets('tier assignment table keeps columns in the scoped workspace', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(760, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: 700,
+            child: PerLocationTierAssignmentTable(
+              rows: const <TierAssignmentAdminRow>[
+                TierAssignmentAdminRow(operatorRef: ref, assignment: null),
+              ],
+              tierDefinitions: <TierDefinition>[
+                kDemoStandardTierDefinition(),
+                kDemoPremiumTierDefinition(),
+                kDemoCustomTierDefinition(),
+              ],
+              editingEnabled: false,
+              onAssign: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final locationHeaderX = tester.getTopLeft(find.text('Location')).dx;
+      final locationValueX = tester.getTopLeft(find.text('95 Water Street')).dx;
+      expect((locationHeaderX - locationValueX).abs(), lessThan(32));
+    });
+
     testWidgets('tier assignment rows show effective tier defaults', (
       tester,
     ) async {
@@ -858,6 +890,7 @@ void main() {
       expect(find.text('Assignments'), findsOneWidget);
       expect(find.text('1 location'), findsWidgets);
       expect(find.text('Location name'), findsOneWidget);
+      expect(find.byKey(kAdminPreviousScreenBackButtonKey), findsNothing);
       expect(find.text('Operator location count'), findsNothing);
       expect(find.text('Margin band'), findsNothing);
       expect(find.text('Sort by'), findsNothing);

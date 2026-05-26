@@ -1469,8 +1469,7 @@ Widget _buildPollingPricing(BuildContext context) {
       AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
   final initialScope = handoff?.effectiveHierarchyScope;
   final onBackToBusinessAccounts = _backToBusinessAccounts(context);
-  final onBackToPreviousScreen =
-      handoff?.onBackToPreviousAdminRoute ?? onBackToBusinessAccounts;
+  final onBackToPreviousScreen = handoff?.onBackToPreviousAdminRoute;
 
   Widget buildFunction(
     BuildContext context,
