@@ -6,8 +6,8 @@
 // without a backend or real proxy. Coverage:
 //
 //   * Initial render is manual-only and does not fetch.
-//   * Confirmed manual fetch shows the four tabs, hero cards, and the
-//     as-of strip.
+//   * Confirmed manual fetch shows the four tabs, hero cards, and one
+//     header freshness status.
 //   * Scope AND month (current / previous) pass through to the gateway
 //     request; switching month re-fetches with the new bucket.
 //   * Each tab renders its key panels:
@@ -160,8 +160,8 @@ void main() {
     expect(gateway.requests.single.month, equals(ObservabilityMonth.current));
   });
 
-  testWidgets('confirmed manual fetch renders four tabs, hero cards, as-of '
-      'strip', (tester) async {
+  testWidgets('confirmed manual fetch renders four tabs, hero cards, and one '
+      'freshness status', (tester) async {
     setLargeViewport(tester);
     final gateway = InMemoryObservabilityAdminGateway(
       envelope: kObservabilityAdminDemoEnvelope,
@@ -208,8 +208,9 @@ void main() {
     }
     expect(
       find.byKey(const Key('admin_observability_as_of_strip')),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(find.textContaining('This month · updated'), findsNothing);
   });
 
   testWidgets('switching to Last month re-fetches with the previous bucket', (
