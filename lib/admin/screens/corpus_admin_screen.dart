@@ -432,10 +432,10 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
 /// The Knowledge tab body. B-r3 redesigns it into the approved preview's
 /// vertical card stack:
 ///
-///   1. [CorpusAddKnowledgeCard] â€” dropzone + "What this update changes".
-///   2. "Topics the advisor knows" â€” B-r2's grouped [ChunkGroupedView]
+///   1. [CorpusAddKnowledgeCard] — dropzone + "What this update changes".
+///   2. "Topics the advisor knows" — B-r2's grouped [ChunkGroupedView]
 ///      over the current version's content.
-///   3. [CorpusUpdateHistoryCard] â€” current-first version timeline with
+///   3. [CorpusUpdateHistoryCard] — current-first version timeline with
 ///      rollback.
 ///
 /// The screen owns all async work + idempotency keys; this widget only
@@ -601,7 +601,7 @@ class _LazyGraphCandidatesTabState extends State<_LazyGraphCandidatesTab> {
   }
 }
 
-// â”€â”€â”€ Phase 11A.3b - Graphify candidate review tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Phase 11A.3b - Graphify candidate review tab ────────────────────
 
 class _GraphCandidatesTab extends StatefulWidget {
   const _GraphCandidatesTab({
@@ -1082,7 +1082,7 @@ class _ChunkPreviewTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Topic header row: kind icon Â· name + kind line Â· kind pill.
+          // Topic header row: kind icon · name + kind line · kind pill.
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
@@ -1118,7 +1118,7 @@ class _ChunkPreviewTile extends StatelessWidget {
           if (chunk.headingPath.length > 1) ...[
             const SizedBox(height: 4),
             Text(
-              chunk.headingPath.join(' â€º '),
+              chunk.headingPath.join(' › '),
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ],
