@@ -292,111 +292,397 @@ final PricingTierAdminGateway _defaultPricingDemoGateway =
       ],
     );
 
-/// 11A.3a fallback corpus admin gateway. Seeded with two demo
-/// versions so the walkthrough has both a "current" and a "prior"
-/// row to render. Demo chunks live entirely in memory; the seed
-/// summary text doubles as the 11A.3a click-path script.
+/// 11A.3a fallback corpus admin gateway. Seeded so the walkthrough has
+/// a prior version, a current version, AND a content set that spans the
+/// plain-English kinds the Knowledge tab can show (Manual, SOP, Policy,
+/// Concept, Metric, Formula, Risk, Role) — mirroring the approved
+/// preview. Demo chunks live entirely in memory; no `demo_*` tables, no
+/// reader fork (HP #2). Each section's heading is the only kind signal:
+/// [corpusTopicKindForChunk] derives the kind from that text, so nothing
+/// here fabricates a kind. The graph-candidate seed below populates the
+/// Connections tab with a realistic, multi-bucket set so the summary,
+/// lists, and map all read as a real review queue.
 final CorpusAdminGateway _defaultCorpusDemoGateway = InMemoryCorpusAdminGateway(
+  graphCandidateSeed: _demoKnowledgeGraphCandidates(),
   seed: <CorpusBundle>[
+    // Prior version: the original methodology seed, before the broader
+    // manuals + handbook + playbook landed. Kept so the Update history
+    // timeline has a real "go back" target.
     CorpusBundle(
       version: CorpusVersionRef(
         versionId: '00000000-0000-4000-9000-000000000001',
         createdBy: 'demo-super-admin',
         createdAt: DateTime.utc(2026, 1, 14, 9, 0),
-        summary: 'Initial methodology seed',
+        summary: 'Added the Forge & Flow methodology',
         rollbackOf: null,
         supersededAt: DateTime.utc(2026, 3, 1, 10, 0),
         chunkCount: 2,
       ),
       chunks: <ChunkPreview>[
-        ChunkPreview(
-          chunkId: 'methodology_seed.md#000',
-          docId: 'methodology_seed.md',
-          sourcePath: 'methodology_seed.md',
-          headingPath: <String>['Forge & Flow Methodology'],
+        _demoChunk(
+          source: 'forge_and_flow_methodology.md',
+          heading: 'The Core Labor Equation',
           snippet:
-              'Forge & Flow advisor methodology. Source-truth, '
-              'derived metrics, teaching summaries.',
-          estimatedTokens: 64,
-          riskLevel: 'standard',
-          contentSha256: 'a' * 64,
-          versionId: '00000000-0000-4000-9000-000000000001',
+              'The Core Labor Equation turns sales and hours into the '
+              'metrics the advisor coaches on.',
+          version: '00000000-0000-4000-9000-000000000001',
+          tokens: 64,
           active: false,
+          hashSeed: 'a',
         ),
-        ChunkPreview(
-          chunkId: 'methodology_seed.md#001',
-          docId: 'methodology_seed.md',
-          sourcePath: 'methodology_seed.md',
-          headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
+        _demoChunk(
+          source: 'forge_and_flow_methodology.md',
+          heading: 'Cost per Labor Hour (CPLH)',
           snippet:
-              'Sixty-day target cycles lock standards. Weekly plan '
-              'snapshots compare actuals against the locked target.',
-          estimatedTokens: 80,
-          riskLevel: 'standard',
-          contentSha256: 'b' * 64,
-          versionId: '00000000-0000-4000-9000-000000000001',
+              'Cost per Labor Hour is a core metric you track each shift, '
+              'compared against the locked target.',
+          version: '00000000-0000-4000-9000-000000000001',
+          tokens: 80,
           active: false,
+          hashSeed: 'b',
         ),
       ],
     ),
+    // Current version: the full launch content set, grouped by the
+    // document it came from, spanning every kind the Topics card shows.
     CorpusBundle(
       version: CorpusVersionRef(
         versionId: '00000000-0000-4000-9000-000000000002',
         createdBy: 'demo-super-admin',
         createdAt: DateTime.utc(2026, 3, 1, 10, 0),
-        summary: 'Added daypart guidance',
+        summary: 'Added the Food Safety Manual and the company handbook',
         rollbackOf: null,
         supersededAt: null,
-        chunkCount: 3,
+        chunkCount: 12,
       ),
       chunks: <ChunkPreview>[
-        ChunkPreview(
-          chunkId: 'methodology_seed.md#000',
-          docId: 'methodology_seed.md',
-          sourcePath: 'methodology_seed.md',
-          headingPath: <String>['Forge & Flow Methodology'],
+        // Food Safety Manual: a manual that contains SOPs, a concept,
+        // and a risk.
+        _demoChunk(
+          source: 'food_safety_manual.md',
+          heading: 'Food Safety Manual',
           snippet:
-              'Forge & Flow advisor methodology. Source-truth, '
-              'derived metrics, teaching summaries.',
-          estimatedTokens: 64,
-          riskLevel: 'standard',
-          contentSha256: 'a' * 64,
-          versionId: '00000000-0000-4000-9000-000000000002',
-          active: true,
+              'The Food Safety Manual collects the kitchen safety steps, '
+              'rules, and the risks they guard against.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 96,
+          hashSeed: 'c',
         ),
-        ChunkPreview(
-          chunkId: 'methodology_seed.md#001',
-          docId: 'methodology_seed.md',
-          sourcePath: 'methodology_seed.md',
-          headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
+        _demoChunk(
+          source: 'food_safety_manual.md',
+          heading: 'FIFO (First In, First Out)',
           snippet:
-              'Sixty-day target cycles lock standards. Weekly plan '
-              'snapshots compare actuals against the locked target.',
-          estimatedTokens: 80,
-          riskLevel: 'standard',
-          contentSha256: 'b' * 64,
-          versionId: '00000000-0000-4000-9000-000000000002',
-          active: true,
+              'FIFO is the step-by-step stock-rotation procedure: the '
+              'oldest product is always used first.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 72,
+          hashSeed: 'd',
         ),
-        ChunkPreview(
-          chunkId: 'methodology_seed.md#002',
-          docId: 'methodology_seed.md',
-          sourcePath: 'methodology_seed.md',
-          headingPath: <String>['Forge & Flow Methodology', 'Daypart'],
+        _demoChunk(
+          source: 'food_safety_manual.md',
+          heading: 'HACCP plan',
           snippet:
-              'Daypart guidance lives alongside whole-day truth, '
-              'never replacing it. 10.5 introduces the daypart split.',
-          estimatedTokens: 72,
-          riskLevel: 'standard',
-          contentSha256: 'c' * 64,
-          versionId: '00000000-0000-4000-9000-000000000002',
-          active: true,
+              'HACCP is the procedure for finding and controlling the '
+              'points where food safety can fail.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 70,
+          hashSeed: 'e',
+        ),
+        _demoChunk(
+          source: 'food_safety_manual.md',
+          heading: "The 4 C's",
+          snippet:
+              "The 4 C's are the core food-safety concept: cleaning, "
+              'cooking, chilling, and cross-contamination.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 66,
+          hashSeed: 'f',
+        ),
+        _demoChunk(
+          source: 'food_safety_manual.md',
+          heading: 'Temperature Danger Zone',
+          snippet:
+              'The Temperature Danger Zone is the risk window between 4 '
+              'and 60 degrees where bacteria multiply fastest.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 68,
+          hashSeed: 'g',
+        ),
+        // Company handbook: policies + a role.
+        _demoChunk(
+          source: 'company_handbook.md',
+          heading: 'Workplace Harassment Policy',
+          snippet:
+              'The Workplace Harassment Policy is the rule everyone must '
+              'follow, with clear reporting steps.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 74,
+          hashSeed: 'h',
+        ),
+        _demoChunk(
+          source: 'company_handbook.md',
+          heading: 'WHMIS labelling',
+          snippet:
+              'WHMIS is the policy for labelling and handling hazardous '
+              'workplace materials safely.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 64,
+          hashSeed: 'i',
+        ),
+        _demoChunk(
+          source: 'company_handbook.md',
+          heading: 'Expo (role)',
+          snippet:
+              'The Expo is the role that plates, checks, and calls each '
+              'order at the pass.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 58,
+          hashSeed: 'j',
+        ),
+        // BOLD by Design playbook: a metric, a formula, and concepts.
+        _demoChunk(
+          source: 'bold_by_design.md',
+          heading: 'Cost per Labor Hour (CPLH)',
+          snippet:
+              'Cost per Labor Hour is the metric you track each shift to '
+              'see if labor spend matches the plan.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 78,
+          hashSeed: 'k',
+        ),
+        _demoChunk(
+          source: 'bold_by_design.md',
+          heading: 'The Core Labor Equation',
+          snippet:
+              'The Core Labor Equation is the formula behind CPLH, SPLH, '
+              'and PPA: sales and hours become coaching metrics.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 82,
+          hashSeed: 'l',
+        ),
+        _demoChunk(
+          source: 'bold_by_design.md',
+          heading: 'Optimal Productivity Zone',
+          snippet:
+              'The Optimal Productivity Zone is the concept of the staffing '
+              'band where service and labor cost both stay healthy.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 80,
+          hashSeed: 'm',
+        ),
+        _demoChunk(
+          source: 'bold_by_design.md',
+          heading: 'Hospitality culture',
+          snippet:
+              'Hospitality culture is the principle that guest experience '
+              'and team care drive every decision.',
+          version: '00000000-0000-4000-9000-000000000002',
+          tokens: 60,
+          hashSeed: 'n',
         ),
       ],
     ),
   ],
   actorUserId: 'demo-super-admin',
 );
+
+/// Builds one demo [ChunkPreview]. The [heading] is the only kind signal
+/// the Topics card reads, so giving each section a plainly-named heading
+/// is what lets [corpusTopicKindForChunk] show varied kinds without any
+/// backend. [hashSeed] just keeps content hashes distinct; it never
+/// appears in the everyday view (it sits behind "Show technical
+/// details").
+ChunkPreview _demoChunk({
+  required String source,
+  required String heading,
+  required String snippet,
+  required String version,
+  required int tokens,
+  required String hashSeed,
+  bool active = true,
+}) {
+  return ChunkPreview(
+    chunkId: '$source#${heading.hashCode.toRadixString(16)}',
+    docId: source,
+    sourcePath: source,
+    headingPath: <String>[heading],
+    snippet: snippet,
+    estimatedTokens: tokens,
+    riskLevel: 'standard',
+    contentSha256: hashSeed * 64,
+    versionId: version,
+    active: active,
+  );
+}
+
+/// Deterministic, realistic graph-candidate seed for the demo
+/// Connections tab. Mirrors the kind of edges the importer would emit
+/// from the seeded corpus above, spanning all three clarity buckets so
+/// the summary, the clarity-grouped lists, and the focusable map all
+/// read as a real review queue (not a thin one-edge stub). Confidence
+/// scores drive the honest clarity bucketing; nothing here is fabricated
+/// beyond being demo data. `from_node_type` / `to_node_type` let each
+/// flow row show the right kind icon per node.
+GraphCandidateDiff _demoKnowledgeGraphCandidates() {
+  GraphCandidate edge({
+    required String id,
+    required String from,
+    required String to,
+    required String type,
+    required GraphCandidateLabel label,
+    required double score,
+    required String fromType,
+    required String toType,
+    required String sentence,
+  }) {
+    return GraphCandidate(
+      candidateId: id,
+      kind: GraphCandidateKind.edge,
+      candidateKey: 'graphify:$id',
+      candidateType: type,
+      label: label,
+      confidenceScore: score,
+      sourceFile: 'food_safety_manual.md',
+      sourceRef: null,
+      fromNodeKey: 'graphify:$from',
+      toNodeKey: 'graphify:$to',
+      payload: <String, Object?>{
+        'graphify_relation': type,
+        'label': sentence,
+        'from_node_type': fromType,
+        'to_node_type': toType,
+      },
+    );
+  }
+
+  return GraphCandidateDiff(
+    graphScope: 'methodology',
+    graphVersion: '1',
+    graphifyVersion: 'v5',
+    graphifySourceCommit: 'demo-seed',
+    // Clear, high-confidence "includes" edges: the manual contains its
+    // SOPs and concepts.
+    extracted: <GraphCandidate>[
+      edge(
+        id: 'edge:manual:fifo:contains',
+        from: 'food_safety_manual',
+        to: 'fifo',
+        type: 'CONTAINS',
+        label: GraphCandidateLabel.extracted,
+        score: 0.96,
+        fromType: 'MANUAL',
+        toType: 'SOP',
+        sentence: 'manual contains fifo',
+      ),
+      edge(
+        id: 'edge:manual:haccp:contains',
+        from: 'food_safety_manual',
+        to: 'haccp',
+        type: 'CONTAINS',
+        label: GraphCandidateLabel.extracted,
+        score: 0.94,
+        fromType: 'MANUAL',
+        toType: 'SOP',
+        sentence: 'manual contains haccp',
+      ),
+      edge(
+        id: 'edge:manual:fourcs:contains',
+        from: 'food_safety_manual',
+        to: 'the_four_cs',
+        type: 'CONTAINS',
+        label: GraphCandidateLabel.extracted,
+        score: 0.90,
+        fromType: 'MANUAL',
+        toType: 'CONCEPT',
+        sentence: 'manual contains the four cs',
+      ),
+      edge(
+        id: 'edge:handbook:harassment:contains',
+        from: 'company_handbook',
+        to: 'workplace_harassment_policy',
+        type: 'CONTAINS',
+        label: GraphCandidateLabel.extracted,
+        score: 0.93,
+        fromType: 'DOCUMENT',
+        toType: 'POLICY',
+        sentence: 'handbook contains harassment policy',
+      ),
+      edge(
+        id: 'edge:equation:cplh:calculates',
+        from: 'the_core_labor_equation',
+        to: 'cost_per_labor_hour',
+        type: 'CALCULATES',
+        label: GraphCandidateLabel.extracted,
+        score: 0.91,
+        fromType: 'FORMULA',
+        toType: 'METRIC',
+        sentence: 'the core labor equation calculates cplh',
+      ),
+    ],
+    // Worth-checking, mid-confidence edges: plausible but not obvious.
+    inferred: <GraphCandidate>[
+      edge(
+        id: 'edge:fourcs:contamination:reduces',
+        from: 'the_four_cs',
+        to: 'cross_contamination',
+        type: 'REDUCES_RISK_OF',
+        label: GraphCandidateLabel.inferred,
+        score: 0.80,
+        fromType: 'CONCEPT',
+        toType: 'RISK',
+        sentence: 'the four cs reduce the risk of cross contamination',
+      ),
+      edge(
+        id: 'edge:fifo:danger_zone:reduces',
+        from: 'fifo',
+        to: 'temperature_danger_zone',
+        type: 'REDUCES_RISK_OF',
+        label: GraphCandidateLabel.inferred,
+        score: 0.74,
+        fromType: 'SOP',
+        toType: 'RISK',
+        sentence: 'fifo reduces the risk of the temperature danger zone',
+      ),
+      edge(
+        id: 'edge:opz:cplh:informs',
+        from: 'optimal_productivity_zone',
+        to: 'cost_per_labor_hour',
+        type: 'INFORMS',
+        label: GraphCandidateLabel.inferred,
+        score: 0.77,
+        fromType: 'CONCEPT',
+        toType: 'METRIC',
+        sentence: 'the optimal productivity zone informs cplh',
+      ),
+    ],
+    // Not-sure: the producer could not pin the relationship. These read
+    // "Not sure" and must be edited before they can be approved.
+    ambiguous: <GraphCandidate>[
+      edge(
+        id: 'edge:whmis:danger_zone:relates',
+        from: 'whmis_labelling',
+        to: 'temperature_danger_zone',
+        type: 'RELATES_TO',
+        label: GraphCandidateLabel.ambiguous,
+        score: 0.42,
+        fromType: 'POLICY',
+        toType: 'RISK',
+        sentence: 'whmis labelling near the temperature danger zone',
+      ),
+      edge(
+        id: 'edge:expo:fourcs:relates',
+        from: 'expo_role',
+        to: 'the_four_cs',
+        type: 'RELATES_TO',
+        label: GraphCandidateLabel.ambiguous,
+        score: 0.38,
+        fromType: 'ROLE',
+        toType: 'CONCEPT',
+        sentence: 'expo role near the four cs',
+      ),
+    ],
+  );
+}
 
 /// 11A.4 fallback integration gateway. Seeds Anthropic + Voyage with
 /// pre-rotated masked rows; Azure DB starts empty so the walkthrough

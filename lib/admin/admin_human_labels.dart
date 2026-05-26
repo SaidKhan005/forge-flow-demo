@@ -184,7 +184,7 @@ class AdminKnowledgeBaseCopy {
   /// One-line orientation copy under the title.
   static const String subtitle =
       'Add knowledge, see how topics connect, and keep a history you '
-      'can roll back. Only F and F staff can see this.';
+      'can roll back. Only Forge & Flow staff can see this.';
 
   /// Trailing header badge. The whole screen is internal-only.
   static const String staffOnlyBadge = 'Staff only';
@@ -334,8 +334,8 @@ class AdminKnowledgeBaseCopy {
   static const String historyInUseNow = 'In use now';
 
   /// Attribution line. The corpus is staff-managed, so every version
-  /// reads "by F and F staff" unless a specific author is recorded.
-  static const String historyByStaff = 'by F and F staff';
+  /// reads "by Forge & Flow staff" unless a specific author is recorded.
+  static const String historyByStaff = 'by Forge & Flow staff';
 
   /// Note shown on a row that was itself created by a rollback.
   static const String historyRestoredNote = 'Went back to an earlier version';
@@ -463,12 +463,32 @@ class AdminKnowledgeBaseCopy {
   static const String connectionsStartOver = 'Start over';
 
   /// Honest hint shown by the disabled "Save my choices" button when no
-  /// commit target is configured. Points the operator at the Scope pane
-  /// (the redesign dropped the in-tab operator picker), so a decision is
-  /// never written against the wrong business or location.
+  /// commit target is configured. Points the operator at the in-tab
+  /// scope control at the top of this tab, so a decision is never
+  /// written against the wrong business or location.
   static const String connectionsNoTargetHint =
-      'Select a business and location in the Scope pane to apply your '
-      'decisions.';
+      'Choose a business and location at the top of this tab to apply '
+      'your decisions.';
+
+  // ── Connections tab scope control ──
+  //
+  // The knowledge documents are global Forge & Flow content, so the
+  // Knowledge tab carries no scope picker. Only approving a connection
+  // writes to a specific business + location, so the scope control lives
+  // here, on the Connections tab, naming exactly where decisions land.
+
+  /// Label above the picked target on the scope control: reads
+  /// "Approving connections for:" then the business and location.
+  static const String connectionsScopeLabel = 'Approving connections for:';
+
+  /// Shown on the scope control before any target is chosen.
+  static const String connectionsScopeNone =
+      'No business chosen yet. Choose where your approvals should land.';
+
+  /// Button that opens the business + location picker. Reads "Choose
+  /// business" before a pick, "Change" after one is set.
+  static const String connectionsScopeChoose = 'Choose business';
+  static const String connectionsScopeChange = 'Change';
 
   /// Snackbar after a successful save: "N approved, M removed".
   static String connectionsSavedToast(int approved, int rejected) =>
@@ -650,7 +670,19 @@ AdminCorpusTopicKind corpusTopicKindForChunk(ChunkPreview chunk) {
   if (hasWord('concept') ||
       hasWord('principle') ||
       hasWord('philosophy') ||
-      hasWord('culture')) {
+      hasWord('culture') ||
+      // A named "... Zone" framework (e.g. the Optimal Productivity
+      // Zone) reads as a concept. The Temperature Danger Zone is a
+      // risk, but the risk branch above already claims it via "danger",
+      // so this never mislabels it.
+      hasWord('zone') ||
+      // The well-known "4 C's" / "four Cs" food-safety framework. The
+      // apostrophe in "C's" breaks word-boundary matching, so match the
+      // recognizable phrase directly.
+      haystack.contains("4 c's") ||
+      haystack.contains('4 cs') ||
+      haystack.contains('four cs') ||
+      haystack.contains("four c's")) {
     return AdminCorpusTopicKind.concept;
   }
   return AdminCorpusTopicKind.document;
