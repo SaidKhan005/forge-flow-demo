@@ -41,7 +41,6 @@ import '../services/operator_web_tier_email_gateway.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
 import '../services/web_vendor_applicability_gateway.dart';
 import '../widgets/covers_historical_seed_card.dart';
-import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_applicability.dart';
 import '../widgets/hierarchy_map_picker.dart';
@@ -1181,15 +1180,6 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   bool get _showHistoricalSeedCard => !_posExposesCovers;
 
-  bool get _anyDaypartManual => _servicePeriods.any(
-    (p) =>
-        (_coversSourcePerPeriod[p.id] ?? kDefaultCoversSource) ==
-        CoversSource.manual,
-  );
-
-  bool get _showAnyFallbackCard =>
-      _anyDaypartManual || _showWalkInCard || _showHistoricalSeedCard;
-
   // True only when at least one CONNECTED poll-only vendor is still
   // polled (i.e. NOT turned off by the admin). Honors the polling
   // applicability DENY model when the gateway is bound; falls back to
@@ -1438,8 +1428,16 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             widget.vendorApplicabilityGateway != null &&
             !_coversApplicabilityLoading,
         applicableCoversVendorSlugs: _applicableCoversVendorSlugs,
+        // Manual entry now renders inline, directly under each period's
+        // chip row (mockup `.manualrow`). The handlers are the same
+        // narrow manual-covers save/clear/copy-yesterday flow the
+        // standalone card used, so behavior is unchanged.
+        businessDateIso: widget.businessDateIso,
+        yesterdayBusinessDateIso: _yesterdayIso(widget.businessDateIso),
+        onEnterManualCovers: _handleManualEntry,
+        onCopyYesterday: _handleCopyYesterday,
       ),
-      if (_showAnyFallbackCard) ...[
+      if (_showWalkInCard || _showHistoricalSeedCard) ...[
         const SizedBox(height: 18),
         const _DataAccuracyGroupLabel(
           title: 'Fallback entries',
@@ -1447,18 +1445,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         ),
         const SizedBox(height: 12),
       ],
-      if (_anyDaypartManual) ...[
-        CoversManualEntryCard(
-          businessDateIso: widget.businessDateIso,
-          yesterdayBusinessDateIso: _yesterdayIso(widget.businessDateIso),
-          settings: settings,
-          servicePeriods: _servicePeriods,
-          onEnterCovers: _handleManualEntry,
-          onCopyYesterday: _handleCopyYesterday,
-        ),
-      ],
       if (_showWalkInCard) ...[
-        const SizedBox(height: 18),
         WalkInHandlingCard(
           mode: _walkInMode,
           onModeChanged: _handleWalkInModeChanged,
@@ -1717,41 +1704,54 @@ class _DataAccuracyTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundMid,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: <Widget>[
-          _DataAccuracyTab(
-            tabKey: const Key('data_accuracy_tab_labor'),
-            icon: Icons.payments_outlined,
-            label: 'Labor',
-            value: laborValue,
-            selected: activeTab == _DataAccuracyScreenState._kTabLabor,
-            onTap: () => onTabSelected(_DataAccuracyScreenState._kTabLabor),
+    // Match the "Plans and limits" pill tab strip: a single rounded
+    // surface container with a 1px subtle border holding the tabs, and
+    // each selected tab a soft sunset-tinted Material chip. Horizontally
+    // scrollable so the three pills never overflow on a narrow width.
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(999),
           ),
-          _DataAccuracyTab(
-            tabKey: const Key('data_accuracy_tab_covers'),
-            icon: Icons.groups_2_outlined,
-            label: 'Covers',
-            value: coversValue,
-            selected: activeTab == _DataAccuracyScreenState._kTabCovers,
-            onTap: () => onTabSelected(_DataAccuracyScreenState._kTabCovers),
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              _DataAccuracyTab(
+                tabKey: const Key('data_accuracy_tab_labor'),
+                icon: Icons.payments_outlined,
+                label: 'Labor',
+                value: laborValue,
+                selected: activeTab == _DataAccuracyScreenState._kTabLabor,
+                onTap: () => onTabSelected(_DataAccuracyScreenState._kTabLabor),
+              ),
+              const SizedBox(width: 4),
+              _DataAccuracyTab(
+                tabKey: const Key('data_accuracy_tab_covers'),
+                icon: Icons.groups_2_outlined,
+                label: 'Covers',
+                value: coversValue,
+                selected: activeTab == _DataAccuracyScreenState._kTabCovers,
+                onTap: () => onTabSelected(_DataAccuracyScreenState._kTabCovers),
+              ),
+              const SizedBox(width: 4),
+              _DataAccuracyTab(
+                tabKey: const Key('data_accuracy_tab_freshness'),
+                icon: Icons.sync_outlined,
+                label: 'Data freshness',
+                value: freshnessValue,
+                selected: activeTab == _DataAccuracyScreenState._kTabFreshness,
+                onTap: () =>
+                    onTabSelected(_DataAccuracyScreenState._kTabFreshness),
+              ),
+            ],
           ),
-          _DataAccuracyTab(
-            tabKey: const Key('data_accuracy_tab_freshness'),
-            icon: Icons.sync_outlined,
-            label: 'Data freshness',
-            value: freshnessValue,
-            selected: activeTab == _DataAccuracyScreenState._kTabFreshness,
-            onTap: () => onTabSelected(_DataAccuracyScreenState._kTabFreshness),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1776,63 +1776,57 @@ class _DataAccuracyTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      key: tabKey,
-      onTap: onTap,
+    return Material(
+      color: selected
+          ? AppColors.sunset.withValues(alpha: 0.13)
+          : Colors.transparent,
       borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.backgroundSurface : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: selected
-              ? <BoxShadow>[
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : const <BoxShadow>[],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(
-              icon,
-              size: 16,
-              color: selected ? AppColors.sunsetDark : AppColors.textSecondary,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: AppTextStyles.body14(
-                color: selected
-                    ? AppColors.textPrimary
-                    : AppColors.textSecondary,
-              ).copyWith(fontWeight: FontWeight.w600),
-            ),
-            if (value.isNotEmpty) ...<Widget>[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 1),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? AppColors.sunset.withValues(alpha: 0.12)
-                      : AppColors.backgroundSurface,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  value,
-                  style: AppTextStyles.body12(
-                    color: selected
-                        ? AppColors.sunsetDark
-                        : AppColors.textMuted,
-                  ).copyWith(fontWeight: FontWeight.w600),
-                ),
+      child: InkWell(
+        key: tabKey,
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                icon,
+                size: 16,
+                color: selected ? AppColors.sunsetDark : AppColors.textMuted,
               ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: AppTextStyles.body13(
+                  color: selected ? AppColors.sunsetDark : AppColors.textMuted,
+                ).copyWith(fontWeight: FontWeight.w600),
+              ),
+              if (value.isNotEmpty) ...<Widget>[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppColors.sunset.withValues(alpha: 0.16)
+                        : AppColors.backgroundMid,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    value,
+                    style: AppTextStyles.body12(
+                      color: selected
+                          ? AppColors.sunsetDark
+                          : AppColors.textMuted,
+                    ).copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

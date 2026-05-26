@@ -88,7 +88,7 @@ void main() {
         WageSourceToggle(
           value: WageSource.vendor,
           onChanged: (_) {},
-          bundle: noVendorBundle(),
+          bundle: bundleWithLabor('humanity', 'Humanity'),
         ),
       ),
     );
@@ -103,9 +103,19 @@ void main() {
       find.byKey(const Key('wage_source_radio_manual_mix')),
       findsOneWidget,
     );
+    // The standalone "Vendor fit" box was merged into the Vendor wages
+    // option: its dynamic vendor-fit copy now renders inside that option
+    // description instead of a separate keyed box.
     expect(
       find.byKey(const Key('vendor_relativity_label_wage')),
-      findsOneWidget,
+      findsNothing,
+    );
+    expect(
+      anyTextContains(
+        'Humanity reports role rates. Forge & Flow calculates labor '
+        'dollars from rates and hours.',
+      ),
+      isTrue,
     );
   });
 

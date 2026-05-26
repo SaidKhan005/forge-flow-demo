@@ -591,9 +591,9 @@ void main() {
           find.byKey(const Key('wage_authority_empty_foh')),
           findsOneWidget,
         );
-        // New copy advertises scope-aware inheritance language.
+        // Leaner copy still advertises scope-aware inheritance language.
         expect(
-          find.textContaining('No wage rates set at this scope yet'),
+          find.textContaining('lower scopes inherit it'),
           findsWidgets,
         );
       },

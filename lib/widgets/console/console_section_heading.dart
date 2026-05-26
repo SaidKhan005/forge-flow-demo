@@ -85,3 +85,47 @@ class OperatorWebSectionHeading extends StatelessWidget {
     );
   }
 }
+
+/// A clean card header for the Data accuracy surfaces: a bold title plus
+/// an optional trailing action (typically an info "i" button), with NO
+/// accent rail and NO accent underline. Matches the approved Data
+/// accuracy redesign mockup, where each card reads as a plain bold title
+/// and the detail lives behind the small "i".
+///
+/// This is intentionally separate from [OperatorWebSectionHeading] (the
+/// railed/underlined grammar other console screens depend on) so the
+/// shared widget stays untouched.
+class OperatorWebPlainSectionHeading extends StatelessWidget {
+  const OperatorWebPlainSectionHeading({
+    super.key,
+    required this.title,
+    this.trailing,
+  });
+
+  final String title;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              title,
+              style: AppTextStyles.mono16(
+                color: AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          if (trailing != null) ...<Widget>[
+            const SizedBox(width: 12),
+            trailing!,
+          ],
+        ],
+      ),
+    );
+  }
+}

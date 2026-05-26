@@ -25,6 +25,7 @@ import '../../theme/app_theme.dart';
 import 'data_accuracy_applicability.dart';
 import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_section_heading.dart';
+import 'polling_tier_status_card.dart' show friendlyVendorDisplayName;
 import 'vendor_relativity_label.dart';
 
 class WageSourceToggle extends StatelessWidget {
@@ -96,24 +97,23 @@ class WageSourceToggle extends StatelessWidget {
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ],
-          const SizedBox(height: 14),
           if (vendorApplicabilityBound) ...[
+            const SizedBox(height: 14),
             _VendorApplicabilityStatus(
               loading: vendorApplicabilityLoading,
               error: vendorApplicabilityError,
               slugs: applicableWageVendorSlugs,
             ),
-            const SizedBox(height: 14),
           ],
-          VendorRelativityLabel(
-            setting: VendorRelativitySetting.wage,
-            bundle: bundle,
-          ),
         ],
       ),
     );
   }
 
+  // The Vendor wages option description carries the live vendor-fit copy
+  // (e.g. "Humanity reports role rates. Forge & Flow calculates labor
+  // dollars from rates and hours.") so the operator reads what the vendor
+  // option does in-line, instead of a separate "Vendor fit" box.
   String _vendorCopy(bool vendorSelectable) {
     if (!wageVendorOptionApplies(bundle)) {
       return 'Connect a labor vendor before using vendor-reported wages.';
@@ -121,7 +121,10 @@ class WageSourceToggle extends StatelessWidget {
     if (vendorApplicabilityBound && !vendorSelectable) {
       return 'No current wage vendor is enabled for this location yet.';
     }
-    return 'Use the labor vendor\'s wages when it sends them.';
+    return composeVendorRelativityLines(
+      VendorRelativitySetting.wage,
+      bundle,
+    ).join(' ');
   }
 }
 
@@ -159,7 +162,7 @@ class _DataAccuracyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OperatorWebSectionHeading(
+          OperatorWebPlainSectionHeading(
             title: title,
             trailing: OperatorWebInfoButton(
               title: title,
@@ -204,9 +207,9 @@ class _RadioRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         decoration: BoxDecoration(
-          color: selected
-              ? AppColors.sunset.withValues(alpha: 0.10)
-              : AppColors.backgroundSurface,
+          // Selected state keeps only the orange border + filled radio
+          // dot (matches the mockup); no orange fill behind the row.
+          color: AppColors.backgroundSurface,
           border: Border.all(
             color: selected
                 ? AppColors.sunset.withValues(alpha: 0.55)
@@ -234,31 +237,22 @@ class _RadioRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          label,
-                          style: AppTextStyles.body14(
-                            color: enabled
-                                ? AppColors.textPrimary
-                                : AppColors.textMuted,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OperatorWebInfoButton(
-                        title: label,
-                        tooltip: label,
-                        body: Text(
-                          body,
-                          style: AppTextStyles.body13(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
+                  // Bold option label (mockup `.ol`).
+                  Text(
+                    label,
+                    style: AppTextStyles.body14(
+                      color: enabled
+                          ? AppColors.textPrimary
+                          : AppColors.textMuted,
+                    ).copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  // Inline option description (mockup `.od`). For the
+                  // Vendor wages option this carries the live vendor-fit
+                  // copy.
+                  Text(
+                    body,
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
                   ),
                 ],
               ),
@@ -334,8 +328,12 @@ class _VendorApplicabilityStatus extends StatelessWidget {
   }
 }
 
+// Render enabled wage vendors with their operator-facing display names
+// (e.g. "QuickBooks Time", "7shifts") instead of raw slugs. Ordered by
+// slug so the list stays stable, then mapped through the shared friendly
+// name helper.
 String _slugList(List<String> slugs) {
   final unique = slugs.toSet().toList()..sort();
   if (unique.isEmpty) return 'none';
-  return unique.join(', ');
+  return unique.map(friendlyVendorDisplayName).join(', ');
 }

@@ -1794,7 +1794,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.textContaining('Enabled wage vendors: quickbooks_time'),
+          find.textContaining('Enabled wage vendors: QuickBooks Time'),
           findsOneWidget,
         );
 

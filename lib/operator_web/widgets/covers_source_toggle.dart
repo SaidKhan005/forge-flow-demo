@@ -23,6 +23,7 @@
 // relativity label.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/service_period_definition.dart';
@@ -43,6 +44,10 @@ class CoversSourceToggle extends StatelessWidget {
     required this.bundle,
     this.applicableCoversVendorSlugs = const <String>[],
     this.vendorApplicabilityBound = false,
+    this.businessDateIso,
+    this.yesterdayBusinessDateIso,
+    this.onEnterManualCovers,
+    this.onCopyYesterday,
   });
 
   final DataAccuracySettings settings;
@@ -68,8 +73,45 @@ class CoversSourceToggle extends StatelessWidget {
   /// wage card's `vendorApplicabilityBound`.
   final bool vendorApplicabilityBound;
 
+  /// Today's business date (`YYYY-MM-DD`, restaurant-local) for the
+  /// inline manual-entry rows. When null the inline manual entry is not
+  /// rendered (the widget falls back to the picker-only layout for tests
+  /// that do not exercise manual entry).
+  final String? businessDateIso;
+
+  /// Prior business date (`YYYY-MM-DD`), drives the inline "Copy
+  /// yesterday" shortcut.
+  final String? yesterdayBusinessDateIso;
+
+  /// Called when the operator commits an inline manual covers value for
+  /// a period. `null` means clear. Wired by the screen to the same
+  /// manual-covers save/clear handler the standalone card used.
+  final void Function(String servicePeriodId, int? covers)? onEnterManualCovers;
+
+  /// Called when the operator taps the inline "Copy yesterday" shortcut.
+  final void Function(String servicePeriodId)? onCopyYesterday;
+
+  bool get _inlineManualEnabled =>
+      businessDateIso != null && onEnterManualCovers != null;
+
   @override
   Widget build(BuildContext context) {
+    // The inline manual-entry container carries the
+    // `data_accuracy_covers_manual_entry_card` key (relocated from the
+    // old separate "Type today's covers" card). It is attached to the
+    // FIRST manual period only, so the screen tests' single-card
+    // findsOneWidget / findsNothing expectations hold regardless of how
+    // many periods are manual.
+    String? firstManualPeriodId;
+    if (_inlineManualEnabled) {
+      for (final period in servicePeriods) {
+        if (effectiveCoversSource(settings.coversSourceFor(period.id), bundle) ==
+            CoversSource.manual) {
+          firstManualPeriodId = period.id;
+          break;
+        }
+      }
+    }
     return Container(
       key: const Key('data_accuracy_covers_source_card'),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -81,7 +123,7 @@ class CoversSourceToggle extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OperatorWebSectionHeading(
+          OperatorWebPlainSectionHeading(
             title: 'Where covers come from',
             trailing: OperatorWebInfoButton(
               title: 'Where covers come from',
@@ -112,6 +154,30 @@ class CoversSourceToggle extends StatelessWidget {
                 applicableCoversVendorSlugs: applicableCoversVendorSlugs,
                 vendorApplicabilityBound: vendorApplicabilityBound,
                 onChanged: (source) => onChanged(period.id, source),
+                // Inline manual entry, rendered directly under this
+                // period's chip row when the period is manual.
+                manualEntry: _inlineManualEnabled
+                    ? _PeriodManualEntry(
+                        manualCardKey: period.id == firstManualPeriodId
+                            ? const Key('data_accuracy_covers_manual_entry_card')
+                            : null,
+                        todayValue: settings.manualCoversFor(
+                          businessDateIso!,
+                          period.id,
+                        ),
+                        yesterdayValue: yesterdayBusinessDateIso == null
+                            ? null
+                            : settings.manualCoversFor(
+                                yesterdayBusinessDateIso!,
+                                period.id,
+                              ),
+                        onCommit: (value) =>
+                            onEnterManualCovers!(period.id, value),
+                        onCopyYesterday: onCopyYesterday == null
+                            ? null
+                            : () => onCopyYesterday!(period.id),
+                      )
+                    : null,
               ),
               if (period != servicePeriods.last) const SizedBox(height: 10),
             ],
@@ -126,6 +192,27 @@ class CoversSourceToggle extends StatelessWidget {
   }
 }
 
+/// Inline manual-entry payload for a single period's row. Built by
+/// [CoversSourceToggle] and rendered by [_PeriodRow] under the chip row
+/// only when the period's effective source is manual.
+class _PeriodManualEntry {
+  const _PeriodManualEntry({
+    required this.manualCardKey,
+    required this.todayValue,
+    required this.yesterdayValue,
+    required this.onCommit,
+    required this.onCopyYesterday,
+  });
+
+  /// Non-null only for the first manual period, so the relocated
+  /// `data_accuracy_covers_manual_entry_card` key appears exactly once.
+  final Key? manualCardKey;
+  final int? todayValue;
+  final int? yesterdayValue;
+  final void Function(int? covers) onCommit;
+  final VoidCallback? onCopyYesterday;
+}
+
 class _PeriodRow extends StatelessWidget {
   const _PeriodRow({
     required this.period,
@@ -135,6 +222,7 @@ class _PeriodRow extends StatelessWidget {
     required this.applicableCoversVendorSlugs,
     required this.vendorApplicabilityBound,
     required this.onChanged,
+    this.manualEntry,
   });
 
   final ServicePeriodDefinition period;
@@ -144,6 +232,11 @@ class _PeriodRow extends StatelessWidget {
   final Iterable<String> applicableCoversVendorSlugs;
   final bool vendorApplicabilityBound;
   final ValueChanged<CoversSource> onChanged;
+
+  /// Inline manual entry shown directly under this period's chip row
+  /// when its effective source is manual. Null when manual entry is not
+  /// wired (picker-only layout).
+  final _PeriodManualEntry? manualEntry;
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +324,17 @@ class _PeriodRow extends StatelessWidget {
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ],
+          if (manualEntry != null && source == CoversSource.manual) ...[
+            const SizedBox(height: 12),
+            _InlineManualRow(
+              servicePeriodId: period.id,
+              cardKey: manualEntry!.manualCardKey,
+              todayValue: manualEntry!.todayValue,
+              yesterdayValue: manualEntry!.yesterdayValue,
+              onCommit: manualEntry!.onCommit,
+              onCopyYesterday: manualEntry!.onCopyYesterday,
+            ),
+          ],
         ],
       ),
     );
@@ -303,5 +407,164 @@ class _ChoiceChip extends StatelessWidget {
     );
     if (enabled || disabledReason == null) return chip;
     return Tooltip(message: disabledReason!, child: chip);
+  }
+}
+
+/// Inline manual-entry row rendered directly under a period's chip row
+/// when that period is manual (matches the mockup's `.manualrow`). Owns
+/// the `covers_manual_entry_field_<period>` text field key and the
+/// `covers_manual_entry_copy_yesterday_<period>` copy-shortcut key, so
+/// the screen + widget tests that drive manual covers through these keys
+/// keep working with the value flowing to the same save/clear handler.
+class _InlineManualRow extends StatefulWidget {
+  const _InlineManualRow({
+    required this.servicePeriodId,
+    required this.cardKey,
+    required this.todayValue,
+    required this.yesterdayValue,
+    required this.onCommit,
+    required this.onCopyYesterday,
+  });
+
+  final String servicePeriodId;
+  final Key? cardKey;
+  final int? todayValue;
+  final int? yesterdayValue;
+  final void Function(int? covers) onCommit;
+  final VoidCallback? onCopyYesterday;
+
+  @override
+  State<_InlineManualRow> createState() => _InlineManualRowState();
+}
+
+class _InlineManualRowState extends State<_InlineManualRow> {
+  late final TextEditingController _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.todayValue?.toString() ?? '',
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineManualRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.todayValue?.toString() ?? '';
+    if (_controller.text != next && next.isNotEmpty) {
+      _controller.text = next;
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: _controller.text.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _commit(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      setState(() => _error = null);
+      widget.onCommit(null);
+      return;
+    }
+    final parsed = int.tryParse(trimmed);
+    if (parsed == null || parsed < 0) {
+      setState(() => _error = 'Type a whole number, 0 or greater.');
+      return;
+    }
+    setState(() => _error = null);
+    widget.onCommit(parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canCopy = widget.yesterdayValue != null && widget.onCopyYesterday != null;
+    return Container(
+      key: widget.cardKey,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.edit_outlined,
+                size: 16,
+                color: AppColors.sunsetDark,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                "Today's guest count",
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 110,
+                child: TextField(
+                  key: Key(
+                    'covers_manual_entry_field_${widget.servicePeriodId}',
+                  ),
+                  controller: _controller,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: false,
+                    signed: false,
+                  ),
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  onSubmitted: _commit,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'e.g. 84',
+                    border: OutlineInputBorder(),
+                  ),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Tooltip(
+                message: canCopy
+                    ? "Copy yesterday's value"
+                    : "You haven't entered a number for yesterday yet.",
+                child: TextButton.icon(
+                  key: Key(
+                    'covers_manual_entry_copy_yesterday_'
+                    '${widget.servicePeriodId}',
+                  ),
+                  onPressed: canCopy ? widget.onCopyYesterday : null,
+                  icon: const Icon(Icons.content_copy_outlined, size: 16),
+                  label: Text(
+                    "Copy yesterday's value",
+                    style: AppTextStyles.body13(
+                      color: canCopy
+                          ? AppColors.sunsetDark
+                          : AppColors.textMuted,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _error!,
+              style: AppTextStyles.body13(color: AppColors.negative),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
