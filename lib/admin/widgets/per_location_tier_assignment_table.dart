@@ -95,44 +95,67 @@ class _PerLocationTierAssignmentTableState
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final titleColumn = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Assignments',
+                        style: AppTextStyles.sectionTitle(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        scopeLabel == null || scopeLabel.isEmpty
+                            ? _locationCountLabel(sorted.length)
+                            : '${_locationCountLabel(assignShownCount)} in $scopeLabel',
+                        style: AppTextStyles.body13(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  );
+                  final assignButton = widget.onAssignShown == null
+                      ? null
+                      : AdminActionButton(
+                          key: const Key('admin_polling_setup_scope_assign'),
+                          label: assignShownCount == 1
+                              ? 'Assign shown location'
+                              : 'Assign shown locations',
+                          onPressed: widget.onAssignShown,
+                          icon: Icons.payments_outlined,
+                          role: AdminActionRole.primary,
+                        );
+                  // Stack the action below the heading when the row is too
+                  // narrow to hold both (the admin console's 1.12 text-scaling
+                  // floor in the compact scoped-workspace pane), instead of
+                  // overflowing the fixed-width button past the edge.
+                  if (assignButton != null && constraints.maxWidth < 520) {
+                    return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text(
-                          'Assignments',
-                          style: AppTextStyles.sectionTitle(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          scopeLabel == null || scopeLabel.isEmpty
-                              ? _locationCountLabel(sorted.length)
-                              : '${_locationCountLabel(assignShownCount)} in $scopeLabel',
-                          style: AppTextStyles.body13(
-                            color: AppColors.textSecondary,
-                          ),
+                        titleColumn,
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: assignButton,
                         ),
                       ],
-                    ),
-                  ),
-                  if (widget.onAssignShown != null) ...[
-                    const SizedBox(width: 16),
-                    AdminActionButton(
-                      key: const Key('admin_polling_setup_scope_assign'),
-                      label: assignShownCount == 1
-                          ? 'Assign shown location'
-                          : 'Assign shown locations',
-                      onPressed: widget.onAssignShown,
-                      icon: Icons.payments_outlined,
-                      role: AdminActionRole.primary,
-                    ),
-                  ],
-                ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(child: titleColumn),
+                      if (assignButton != null) ...<Widget>[
+                        const SizedBox(width: 16),
+                        assignButton,
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
             const Divider(height: 1, color: AppColors.borderSubtle),
@@ -627,8 +650,12 @@ class _FilterMenu<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Bounded width + isExpanded so a long menu item (e.g. a vendor name)
+    // ellipsizes within the chip instead of overflowing the filter bar at
+    // the admin console's 1.12 text-scaling floor in narrow scoped panes.
     return Container(
       height: 36,
+      width: 170,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
@@ -638,8 +665,9 @@ class _FilterMenu<T> extends StatelessWidget {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
           value: value,
-          hint: Text(label),
+          hint: Text(label, overflow: TextOverflow.ellipsis),
           isDense: true,
+          isExpanded: true,
           borderRadius: BorderRadius.circular(8),
           items: items,
           onChanged: onChanged,
