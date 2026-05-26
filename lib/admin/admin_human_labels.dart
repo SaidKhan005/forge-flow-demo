@@ -366,6 +366,143 @@ class AdminKnowledgeBaseCopy {
   /// "N pieces of knowledge" summary line for a version row.
   static String historyPieceCount(int count) =>
       '$count piece${count == 1 ? '' : 's'} of knowledge';
+
+  // ── C2: "Connections" tab ──
+  //
+  // The advisor's knowledge is connected: documents include SOPs, concepts
+  // reduce risks, and so on. This tab lets F and F staff confirm those
+  // connections in plain English. Clarity (clear / worth checking / not
+  // sure) is DERIVED honestly from each connection's confidence score
+  // (see CorpusConnectionsView's bucketing helper); nothing here is
+  // fabricated. The verb in each sentence is a plain-English reading of
+  // the relationship type, falling back to "is related to" when unknown.
+
+  /// Read-only (ff_support) banner on the Connections tab. Support staff
+  /// can look but not approve; full admin access is required to decide.
+  static const String connectionsReadOnlyBanner =
+      'You are viewing only. Approving connections needs full admin access.';
+
+  /// "N connections found" headline on the summary card.
+  static String connectionsFound(int count) =>
+      '$count connection${count == 1 ? '' : 's'} found';
+
+  /// Clarity chip on the summary card: "N clear".
+  static String connectionsClearChip(int count) => '$count clear';
+
+  /// Clarity chip on the summary card: "N worth checking".
+  static String connectionsCheckChip(int count) => '$count worth checking';
+
+  /// Clarity chip on the summary card: "N not sure".
+  static String connectionsUnsureChip(int count) => '$count not sure';
+
+  /// Placeholder for the connection search box.
+  static const String connectionsSearchHint = 'Search connections by topic';
+
+  /// Accessibility label for the "Show" dropdown.
+  static const String connectionsShowLabel = 'Show';
+
+  /// "Show" dropdown option: only the connections that still need a
+  /// decision (worth checking + not sure).
+  static String connectionsShowAttention(int count) =>
+      'Needs my attention ($count)';
+
+  /// "Show" dropdown option: every connection.
+  static String connectionsShowEverything(int count) => 'Everything ($count)';
+
+  /// "Show" dropdown option: clear connections only.
+  static String connectionsShowClearOnly(int count) => 'Clear only ($count)';
+
+  /// Clear-group heading.
+  static const String connectionsGroupClear = 'Looks clear to me';
+
+  /// Worth-checking-group heading.
+  static const String connectionsGroupCheck = 'Please double-check';
+
+  /// Not-sure-group heading.
+  static const String connectionsGroupUnsure = "I'm not sure about these";
+
+  /// Per-row clarity chip: clear.
+  static const String connectionsClarityClear = 'Clear match';
+
+  /// Per-row clarity chip: worth checking.
+  static const String connectionsClarityCheck = 'Worth checking';
+
+  /// Per-row clarity chip: not sure.
+  static const String connectionsClarityUnsure = 'Not sure';
+
+  /// Approve action on a connection row.
+  static const String connectionsLooksRight = 'Looks right';
+
+  /// Reject action on a connection row.
+  static const String connectionsNotRight = 'Not right';
+
+  /// Edit action on a clear / worth-checking connection row.
+  static const String connectionsChange = 'Change';
+
+  /// Primary edit action on a not-sure row (the connection is unclear, so
+  /// the operator sets how the two topics connect rather than approving).
+  static const String connectionsSetHow = 'Set how they connect';
+
+  /// "Mark all N correct" bulk action on the clear group.
+  static String connectionsMarkAllCorrect(int count) =>
+      'Mark all $count correct';
+
+  /// "Show N more ..." pager label per group.
+  static String connectionsShowMoreClear(int count) =>
+      'Show $count more clear connection${count == 1 ? '' : 's'}';
+  static String connectionsShowMoreCheck(int count) =>
+      'Show $count more to check';
+  static String connectionsShowMoreUnsure(int count) =>
+      'Show $count more unclear one${count == 1 ? '' : 's'}';
+
+  /// "Save my choices (N)" footer button.
+  static String connectionsSaveChoices(int count) =>
+      'Save my choices ($count)';
+
+  /// "Start over" footer button: clears every pending choice.
+  static const String connectionsStartOver = 'Start over';
+
+  /// Snackbar after a successful save: "N approved, M removed".
+  static String connectionsSavedToast(int approved, int rejected) =>
+      '$approved approved, $rejected removed';
+
+  /// Honest empty state when there are no connections to review.
+  static const String connectionsEmpty = 'No connections to review yet.';
+
+  /// Shown when the search or filter hides every connection.
+  static const String connectionsFilteredEmpty =
+      'No connections match your search.';
+
+  /// Per-row technical-details disclosure title.
+  static const String connectionsTechTitle = 'Technical details';
+
+  /// Change modal: title.
+  static const String connectionsChangeTitle = 'How are these connected?';
+
+  /// Change modal: sub-line prompting the operator to pick a sentence.
+  static const String connectionsChangeSub = 'Pick the sentence that is true.';
+
+  /// Change modal: optional-note field label.
+  static const String connectionsChangeNoteLabel = 'Add a note (optional)';
+
+  /// Change modal: optional-note field hint.
+  static const String connectionsChangeNoteHint =
+      'Anything you want to remember about this change.';
+
+  /// Change modal: cancel button.
+  static const String connectionsChangeCancel = 'Cancel';
+
+  /// Change modal: save button.
+  static const String connectionsChangeSave = 'Save this connection';
+
+  /// The placeholder Map card title (the focusable graph view ships in a
+  /// dedicated follow-up slice; this card states that honestly).
+  static const String connectionsMapTitle = 'Map';
+
+  /// Honest "not built yet" note inside the Map placeholder card.
+  static const String connectionsMapComingSoon =
+      'A visual map of how topics connect is coming soon. For now, review '
+      'the connections in the lists below.';
 }
 
 /// B-r2: the plain-English content "kind" the Topics card shows for each
