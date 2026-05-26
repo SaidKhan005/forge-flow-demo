@@ -330,115 +330,119 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
           role: AdminActionRole.primary,
         ),
       ],
-      child: Flexible(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              // Operator-web parity (invite_member_dialog.dart): the intro
-              // line is copied verbatim so the admin invite dialog opens with
-              // the same plain-English framing as the operator self-service
-              // dialog.
-              Text(
-                'Send an email invite. The new teammate will set their own '
-                'password and turn on two-factor sign-in before they get to '
-                'your dashboard.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 14),
-              if (_violation != null) ...[
-                _ValidationBanner(
-                  message: _violation!,
-                  usage: _violationUsage,
-                  onReview:
-                      _violationUsage == null ||
-                          widget.onReviewExistingEmail == null
-                      ? null
-                      : () {
-                          widget.onReviewExistingEmail?.call(_violationUsage!);
-                          Navigator.of(context).pop();
-                        },
-                ),
-                const SizedBox(height: 12),
-              ],
-              TextField(
-                key: const Key('admin_members_invite_email'),
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email address',
-                  hintText: 'jordan.lee@example.com',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const <String>[AutofillHints.email],
+      // `OperatorWebDialog` already wraps `child` in a Flexible +
+      // SingleChildScrollView (console_surface.dart), so the body is just
+      // the scrollable column, matching the operator-web sibling
+      // (invite_member_dialog.dart). An extra Flexible here would land
+      // directly inside the dialog's scroll viewport and throw a
+      // ParentDataWidget assertion (a Flexible needs a Flex parent).
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            // Operator-web parity (invite_member_dialog.dart): the intro
+            // line is copied verbatim so the admin invite dialog opens with
+            // the same plain-English framing as the operator self-service
+            // dialog.
+            Text(
+              'Send an email invite. The new teammate will set their own '
+              'password and turn on two-factor sign-in before they get to '
+              'your dashboard.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            if (_violation != null) ...[
+              _ValidationBanner(
+                message: _violation!,
+                usage: _violationUsage,
+                onReview:
+                    _violationUsage == null ||
+                        widget.onReviewExistingEmail == null
+                    ? null
+                    : () {
+                        widget.onReviewExistingEmail?.call(_violationUsage!);
+                        Navigator.of(context).pop();
+                      },
               ),
               const SizedBox(height: 12),
-              TextField(
-                key: const Key('admin_members_invite_display_name'),
-                controller: _displayNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Display name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                key: const Key('admin_members_invite_role'),
-                initialValue: _roleKey,
-                isExpanded: true,
-                hint: const Text('Choose role'),
-                decoration: const InputDecoration(
-                  labelText: 'Role',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<String>>[
-                  for (final role in _roleOptions)
-                    DropdownMenuItem<String>(
-                      key: Key('admin_members_invite_role_${role.roleKey}'),
-                      value: role.roleKey,
-                      child: Text(role.label),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _roleKey = v),
-              ),
-              const SizedBox(height: 12),
-              HierarchyTreePicker(
-                key: const Key('admin_members_invite_location'),
-                keyPrefix: 'admin_members_invite_scope',
-                nodes: _hierarchyNodes(),
-                selectedId: _scopeId,
-                onSelected: (node) => setState(() => _scopeId = node.id),
-                label: 'Choose where this person will work',
-                helper:
-                    'Pick the location, region, or whole business. Higher '
-                    'levels include everything beneath.',
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('admin_members_invite_welcome_note'),
-                controller: _welcomeNoteController,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Welcome note (optional)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('admin_members_invite_admin_reason'),
-                controller: _adminReasonController,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Admin reason (required)',
-                  hintText: 'Why is F&F support inviting this member?',
-                  border: OutlineInputBorder(),
-                ),
-              ),
             ],
-          ),
+            TextField(
+              key: const Key('admin_members_invite_email'),
+              controller: _emailController,
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                hintText: 'jordan.lee@example.com',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const <String>[AutofillHints.email],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_members_invite_display_name'),
+              controller: _displayNameController,
+              decoration: const InputDecoration(
+                labelText: 'Display name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('admin_members_invite_role'),
+              initialValue: _roleKey,
+              isExpanded: true,
+              hint: const Text('Choose role'),
+              decoration: const InputDecoration(
+                labelText: 'Role',
+                border: OutlineInputBorder(),
+              ),
+              items: <DropdownMenuItem<String>>[
+                for (final role in _roleOptions)
+                  DropdownMenuItem<String>(
+                    key: Key('admin_members_invite_role_${role.roleKey}'),
+                    value: role.roleKey,
+                    child: Text(role.label),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _roleKey = v),
+            ),
+            const SizedBox(height: 12),
+            HierarchyTreePicker(
+              key: const Key('admin_members_invite_location'),
+              keyPrefix: 'admin_members_invite_scope',
+              nodes: _hierarchyNodes(),
+              selectedId: _scopeId,
+              onSelected: (node) => setState(() => _scopeId = node.id),
+              label: 'Choose where this person will work',
+              helper:
+                  'Pick the location, region, or whole business. Higher '
+                  'levels include everything beneath.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_members_invite_welcome_note'),
+              controller: _welcomeNoteController,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Welcome note (optional)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_members_invite_admin_reason'),
+              controller: _adminReasonController,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Admin reason (required)',
+                hintText: 'Why is F&F support inviting this member?',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
         ),
       ),
     );
