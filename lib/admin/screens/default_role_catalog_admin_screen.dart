@@ -775,7 +775,7 @@ class _CompactRoleList extends StatelessWidget {
             canEdit: canEdit,
             onOpenRole: onOpenRole,
           ),
-          const SizedBox(height: 16),
+          const _CatalogRoleGroupBreak(),
         ],
         _CatalogRoleGroup(
           key: const Key('admin_default_role_catalog_business_group'),
@@ -786,6 +786,49 @@ class _CompactRoleList extends StatelessWidget {
           onOpenRole: onOpenRole,
         ),
       ],
+    );
+  }
+}
+
+class _CatalogRoleGroupBreak extends StatelessWidget {
+  const _CatalogRoleGroupBreak();
+
+  @override
+  Widget build(BuildContext context) {
+    final ruleColor = AppColors.borderSubtle.withValues(alpha: 0.95);
+    final accentColor = AppColors.borderStrong.withValues(alpha: 0.38);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 24, 2, 24),
+      child: Row(
+        children: <Widget>[
+          Expanded(child: _CatalogRoleGroupRule(color: ruleColor)),
+          const SizedBox(width: 16),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: accentColor,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const SizedBox(width: 72, height: 4),
+          ),
+          const SizedBox(width: 16),
+          Expanded(child: _CatalogRoleGroupRule(color: ruleColor)),
+        ],
+      ),
+    );
+  }
+}
+
+class _CatalogRoleGroupRule extends StatelessWidget {
+  const _CatalogRoleGroupRule({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(color: color),
+      child: const SizedBox(height: 1),
     );
   }
 }
