@@ -43,6 +43,56 @@ IconData corpusTopicKindIcon(AdminCorpusTopicKind kind) {
   }
 }
 
+/// B-r2: the tinted square holding a topic's kind icon. Mirrors the
+/// preview's `.tic` chip (rounded square, muted fill, peacock glyph).
+/// Public so the parent screen's content tile can render it without
+/// regrowing past its frozen size ceiling.
+class TopicKindIcon extends StatelessWidget {
+  const TopicKindIcon({super.key, required this.kind});
+
+  final AdminCorpusTopicKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        corpusTopicKindIcon(kind),
+        size: 18,
+        color: AppColors.peacockDark,
+      ),
+    );
+  }
+}
+
+/// B-r2: the kind pill (Document / SOP / Policy / ...). Mirrors the
+/// preview's `.kind-pill`: muted fill, fully rounded, secondary text.
+class TopicKindPill extends StatelessWidget {
+  const TopicKindPill({super.key, required this.kind});
+
+  final AdminCorpusTopicKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        kind.pill,
+        style: AppTextStyles.chipLabel(color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
 /// Groups [chunks] by their [ChunkPreview.sourcePath] and renders each
 /// group as a collapsible document section. A search box + a kind filter
 /// above narrow the list client-side; a "Showing X of Y" count keeps the

@@ -2188,7 +2188,7 @@ class _ChunkPreviewTile extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
-              _TopicKindIcon(kind: kind),
+              TopicKindIcon(kind: kind),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -2212,7 +2212,7 @@ class _ChunkPreviewTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _TopicKindPill(kind: kind),
+              TopicKindPill(kind: kind),
             ],
           ),
           // Full heading breadcrumb (kept for sections nested under an
@@ -2253,54 +2253,6 @@ class _ChunkPreviewTile extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// B-r2: the tinted square holding a topic's kind icon. Mirrors the
-/// preview's `.tic` chip (rounded square, muted fill, peacock glyph).
-class _TopicKindIcon extends StatelessWidget {
-  const _TopicKindIcon({required this.kind});
-
-  final AdminCorpusTopicKind kind;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        color: AppColors.backgroundMid,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Icon(
-        corpusTopicKindIcon(kind),
-        size: 18,
-        color: AppColors.peacockDark,
-      ),
-    );
-  }
-}
-
-/// B-r2: the kind pill (Document / SOP / Policy / ...). Mirrors the
-/// preview's `.kind-pill`: muted fill, fully rounded, secondary text.
-class _TopicKindPill extends StatelessWidget {
-  const _TopicKindPill({required this.kind});
-
-  final AdminCorpusTopicKind kind;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundMid,
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-      ),
-      child: Text(
-        kind.pill,
-        style: AppTextStyles.chipLabel(color: AppColors.textSecondary),
       ),
     );
   }
