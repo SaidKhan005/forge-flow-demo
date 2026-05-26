@@ -1089,48 +1089,74 @@ const String kCorpusAdminDemoTargetOperatorId =
 const String kCorpusAdminDemoTargetLocationId =
     '00000000-0000-4000-8000-0000000000a1';
 
+/// Demo commit target for the Knowledge base Connections tab. The
+/// knowledge documents are global Forge & Flow content, so the screen no
+/// longer sits behind the shared business-scope workspace (that left
+/// scope pane was redundant on the Knowledge tab). Only approving a
+/// connection writes to a specific business + location, so the demo path
+/// pre-selects the seeded demo operator/location and the Connections tab
+/// carries its own compact scope control. The live path leaves the
+/// target null until the F&F admin picks one through that control, so a
+/// decision can never land against the wrong tenant (HP #4).
+const String _kDemoCorpusTargetOperatorId =
+    '00000000-0000-4000-8000-000000000001';
+const String _kDemoCorpusTargetLocationId =
+    '00000000-0000-4000-8000-0000000000a1';
+
 Widget _buildCorpus(BuildContext context) {
   final gateway = AdminConsoleServicesScope.corpusAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
-  return _buildScopedAdminWorkspace(
-    context: context,
-    routeId: kAdminCorpusRouteId,
-    functionTitle: 'Knowledge Base',
-    description: 'Review knowledge content and relationship review.',
-    options: const _ScopedAdminWorkspaceOptions(showWorkspaceHeader: false),
-    functionBuilder: (context, selectedScope, selection) {
-      final targetOperatorId = selectedScope.operatorId;
-      final targetLocationId = selectedScope.locationId;
-      // B1 — wire the real file-picker dialog as the upload picker.
-      // Production (source != null) and demo (source == null) both use
-      // [showCorpusUploadDialog]; the dialog internally renders a
-      // "Use sample file" affordance when `kDemoMode` is true so the
-      // demo walkthrough click-path runs without a real file on disk.
-      // The old paste-markdown `_defaultDemoPicker` in the screen remains
-      // as a fallback but is no longer reached from this wiring.
-      final CorpusUploadPicker uploadPicker = showCorpusUploadDialog;
-      if (source == null) {
-        return CorpusAdminScreen(
-          gateway: gateway,
-          uploadPicker: uploadPicker,
-          targetOperatorId: targetOperatorId,
-          targetLocationId: targetLocationId,
-        );
-      }
-      return StreamBuilder<AdminAuthState>(
-        stream: source.stream,
-        initialData: source.current,
-        builder: (context, snapshot) {
-          final session = adminSessionOf(snapshot.data);
-          final canEdit = _isAdminSuperAdmin(session);
-          return CorpusAdminScreen(
-            gateway: gateway,
-            editingEnabled: canEdit,
-            uploadPicker: uploadPicker,
-            targetOperatorId: targetOperatorId,
-            targetLocationId: targetLocationId,
-          );
-        },
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  // B1 — wire the real file-picker dialog as the upload picker.
+  // Production (source != null) and demo (source == null) both use
+  // [showCorpusUploadDialog]; the dialog internally renders a
+  // "Use sample file" affordance when `kDemoMode` is true so the demo
+  // walkthrough click-path runs without a real file on disk.
+  const CorpusUploadPicker uploadPicker = showCorpusUploadDialog;
+
+  // The Connections tab's compact scope control opens the shared
+  // operator + location picker. It is the single place a commit target
+  // is chosen now that the left scope pane is gone for this route. The
+  // picker caches the last pick per-admin so a re-open pre-selects it.
+  OperatorPickerOpener pickerOpenerFor(String? adminUid) {
+    return (pickerContext) {
+      return Navigator.of(pickerContext).push<OperatorPickerResult?>(
+        MaterialPageRoute<OperatorPickerResult?>(
+          settings: const RouteSettings(name: '/admin/corpus/operator-picker'),
+          builder: (_) =>
+              OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
+        ),
+      );
+    };
+  }
+
+  if (source == null) {
+    // Demo / share-preview: pre-select the seeded demo target so the
+    // Connections "Save my choices" button works in the walkthrough,
+    // while the in-tab scope control still lets the admin re-point it.
+    return CorpusAdminScreen(
+      gateway: gateway,
+      uploadPicker: uploadPicker,
+      targetOperatorId: _kDemoCorpusTargetOperatorId,
+      targetLocationId: _kDemoCorpusTargetLocationId,
+      operatorPickerOpener: pickerOpenerFor('demo-super-admin'),
+    );
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final session = adminSessionOf(snapshot.data);
+      final canEdit = _isAdminSuperAdmin(session);
+      return CorpusAdminScreen(
+        gateway: gateway,
+        editingEnabled: canEdit,
+        uploadPicker: uploadPicker,
+        // Live: no commit target until the admin picks one in the
+        // Connections tab. Save stays disabled until then (HP #4).
+        operatorPickerOpener: pickerOpenerFor(session?.uid),
       );
     },
   );

@@ -240,6 +240,8 @@ class CorpusConnectionsView extends StatefulWidget {
     required this.onStartOver,
     this.busy = false,
     this.canSave = true,
+    this.scopeLabel,
+    this.onChangeScope,
   });
 
   /// The connections to review. The view re-buckets every candidate by
@@ -290,6 +292,16 @@ class CorpusConnectionsView extends StatefulWidget {
   /// written against the wrong tenant). Defaults true for the demo/test
   /// path which always supplies a target.
   final bool canSave;
+
+  /// Friendly "Business : Location" label of the active commit target,
+  /// or null when none is chosen yet. Drives the in-tab scope control
+  /// that names exactly where approvals will land (the Knowledge tab has
+  /// no scope control because its documents are global).
+  final String? scopeLabel;
+
+  /// Opens the business + location picker from the scope control. Null
+  /// hides the change affordance (the control still shows the target).
+  final VoidCallback? onChangeScope;
 
   @override
   State<CorpusConnectionsView> createState() => _CorpusConnectionsViewState();
@@ -402,6 +414,19 @@ class _CorpusConnectionsViewState extends State<CorpusConnectionsView> {
                 message: AdminKnowledgeBaseCopy.connectionsReadOnlyBanner,
               ),
             ),
+
+          // Scope control: names exactly where approvals land. Edit-only
+          // (read-only ff_support cannot approve, so it never needs to
+          // pick a target). The knowledge documents are global, so this
+          // control lives ONLY on the Connections tab.
+          if (widget.editingEnabled) ...<Widget>[
+            _ConnectionsScopeControl(
+              hasTarget: widget.canSave,
+              scopeLabel: widget.scopeLabel,
+              onChangeScope: widget.busy ? null : widget.onChangeScope,
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // Empty corpus: nothing to review.
           if (total == 0)
@@ -596,6 +621,104 @@ class _CorpusConnectionsViewState extends State<CorpusConnectionsView> {
   }
 }
 
+/// The compact scope control at the top of the Connections tab. Names
+/// exactly where approvals land ("Approving connections for: Business :
+/// Location") with a change affordance, or an honest empty state before
+/// a target is chosen. This is the ONLY scope control on the screen: the
+/// Knowledge tab has none because its documents are global Forge & Flow
+/// content. Replaces the redundant shell-level left scope pane for this
+/// route.
+class _ConnectionsScopeControl extends StatelessWidget {
+  const _ConnectionsScopeControl({
+    required this.hasTarget,
+    required this.scopeLabel,
+    required this.onChangeScope,
+  });
+
+  /// Whether a commit target (operator + location) is configured. Drives
+  /// the "target set" vs "choose a business" state independently of
+  /// whether a friendly label happens to be known.
+  final bool hasTarget;
+  final String? scopeLabel;
+  final VoidCallback? onChangeScope;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = scopeLabel?.trim();
+    // Honest fallback: a target can be set without a friendly label
+    // (e.g. a host-supplied default with only IDs). Never claim "no
+    // business chosen" when one actually is.
+    final displayLabel = (label != null && label.isNotEmpty)
+        ? label
+        : 'the selected business and location';
+    // Soft, calm surface (peacock-tinted fill, no hard border) so it
+    // reads as a quiet context strip rather than another boxed card.
+    return Container(
+      key: const Key('admin_corpus_connections_scope_control'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: <Widget>[
+          Icon(
+            hasTarget ? Icons.place_outlined : Icons.help_outline,
+            size: 18,
+            color: AppColors.peacockDark,
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: hasTarget
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        AdminKnowledgeBaseCopy.connectionsScopeLabel,
+                        style: AppTextStyles.body12(color: AppColors.textMuted),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        displayLabel,
+                        key: const Key(
+                          'admin_corpus_connections_scope_value',
+                        ),
+                        style: AppTextStyles.body14(
+                          color: AppColors.textPrimary,
+                        ).copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  )
+                : Text(
+                    AdminKnowledgeBaseCopy.connectionsScopeNone,
+                    key: const Key('admin_corpus_connections_scope_none'),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
+          ),
+          if (onChangeScope != null)
+            AdminActionButton(
+              key: const Key('admin_corpus_connections_scope_change'),
+              label: hasTarget
+                  ? AdminKnowledgeBaseCopy.connectionsScopeChange
+                  : AdminKnowledgeBaseCopy.connectionsScopeChoose,
+              onPressed: onChangeScope,
+              icon: Icons.account_tree_outlined,
+              role: hasTarget
+                  ? AdminActionRole.secondary
+                  : AdminActionRole.primary,
+              compact: true,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// C2: summary card. Headline count + three clarity chips + search box +
 /// "Show" dropdown. Mirrors the preview's `.summary` + `.toolbar`.
 class _ConnectionsSummaryCard extends StatelessWidget {
@@ -636,20 +759,26 @@ class _ConnectionsSummaryCard extends StatelessWidget {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              _ClarityCountChip(
-                clarity: CorpusConnectionClarity.clear,
-                label: AdminKnowledgeBaseCopy.connectionsClearChip(clearCount),
-              ),
-              _ClarityCountChip(
-                clarity: CorpusConnectionClarity.check,
-                label: AdminKnowledgeBaseCopy.connectionsCheckChip(checkCount),
-              ),
-              _ClarityCountChip(
-                clarity: CorpusConnectionClarity.unsure,
-                label: AdminKnowledgeBaseCopy.connectionsUnsureChip(
-                  unsureCount,
+              // De-clutter: only show a clarity chip when that bucket has
+              // connections. A prominent "0 worth checking" chip is noise,
+              // not signal, so empty buckets drop out entirely.
+              if (clearCount > 0)
+                _ClarityCountChip(
+                  clarity: CorpusConnectionClarity.clear,
+                  label: AdminKnowledgeBaseCopy.connectionsClearChip(clearCount),
                 ),
-              ),
+              if (checkCount > 0)
+                _ClarityCountChip(
+                  clarity: CorpusConnectionClarity.check,
+                  label: AdminKnowledgeBaseCopy.connectionsCheckChip(checkCount),
+                ),
+              if (unsureCount > 0)
+                _ClarityCountChip(
+                  clarity: CorpusConnectionClarity.unsure,
+                  label: AdminKnowledgeBaseCopy.connectionsUnsureChip(
+                    unsureCount,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 16),
