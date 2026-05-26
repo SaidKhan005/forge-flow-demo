@@ -204,29 +204,26 @@ class _PerLocationTierAssignmentTableState
     final definition = assignment == null
         ? null
         : _definitionFor(assignment.tierKey);
-    final margin = assignment?.netMarginCents;
-    final priceLabel = assignment?.monthlyPriceCents == null
-        ? 'Default'
-        : formatCents(assignment!.monthlyPriceCents!);
-    final costLabel = assignment?.vendorApiCostEstimateCentsMonthly == null
-        ? 'Default'
-        : formatCents(assignment!.vendorApiCostEstimateCentsMonthly!);
-    final marginLabel = margin == null ? '—' : formatCents(margin);
-    final marginColor = _marginColor(margin);
     final cadences = assignment?.pollingCadencePerVendorSeconds;
-    final cadenceLabel = (cadences == null || cadences.isEmpty)
-        ? _cadenceSummary(definition?.pollingCadencePerVendorSeconds)
-        : _cadenceSummary(cadences);
-    final notes = row.adminNotes ?? '';
+    final cadenceLabel = assignment == null
+        ? 'After setup'
+        : ((cadences == null || cadences.isEmpty)
+              ? _cadenceSummary(definition?.pollingCadencePerVendorSeconds)
+              : _cadenceSummary(cadences));
+    final notes = row.adminNotes?.trim() ?? '';
     final notesLabel = notes.length > 30
         ? '${notes.substring(0, 30)}...'
         : notes;
     final setupLabel = assignment?.tierKey == null
-        ? 'Not assigned'
+        ? 'Needs setup'
         : _tierLabel(assignment!.tierKey);
     final activeSinceLabel = assignment == null
         ? null
         : adminHumanDateTime(assignment.effectiveAt);
+    final commercialSummary = _CommercialSummary.fromAssignment(
+      assignment: assignment,
+      definition: definition,
+    );
     final actionLabel = assignment == null ? 'Assign' : 'Update';
     final action = widget.editingEnabled
         ? AdminActionButton(
@@ -260,15 +257,10 @@ class _PerLocationTierAssignmentTableState
             isUnassigned: assignment == null,
           );
           final cadence = _TextCell(value: cadenceLabel);
-          final commercials = _CommercialsCell(
-            priceLabel: priceLabel,
-            costLabel: costLabel,
-            marginLabel: marginLabel,
-            marginColor: marginColor,
-          );
-          final notesBlock = _TextCell(
-            value: notesLabel.isEmpty ? '—' : notesLabel,
-          );
+          final commercials = _CommercialsCell(summary: commercialSummary);
+          final notesBlock = notesLabel.isEmpty
+              ? null
+              : _NotesLine(value: notesLabel);
           if (compact) {
             return SizedBox(
               width: constraints.maxWidth,
@@ -282,8 +274,10 @@ class _PerLocationTierAssignmentTableState
                   cadence,
                   const SizedBox(height: 10),
                   commercials,
-                  const SizedBox(height: 10),
-                  notesBlock,
+                  if (notesBlock != null) ...[
+                    const SizedBox(height: 10),
+                    notesBlock,
+                  ],
                   if (widget.editingEnabled) ...[
                     const SizedBox(height: 10),
                     Align(alignment: Alignment.centerRight, child: action),
@@ -294,19 +288,30 @@ class _PerLocationTierAssignmentTableState
           }
           return SizedBox(
             width: constraints.maxWidth,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(flex: 24, child: identity),
-                Expanded(flex: 17, child: setup),
-                Expanded(flex: 18, child: cadence),
-                Expanded(flex: 25, child: commercials),
-                Expanded(flex: 8, child: notesBlock),
-                if (widget.editingEnabled)
-                  Expanded(
-                    flex: 8,
-                    child: Align(alignment: Alignment.topRight, child: action),
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 26, child: identity),
+                    Expanded(flex: 17, child: setup),
+                    Expanded(flex: 18, child: cadence),
+                    Expanded(flex: 31, child: commercials),
+                    if (widget.editingEnabled)
+                      Expanded(
+                        flex: 8,
+                        child: Align(
+                          alignment: Alignment.topRight,
+                          child: action,
+                        ),
+                      ),
+                  ],
+                ),
+                if (notesBlock != null) ...[
+                  const SizedBox(height: 10),
+                  notesBlock,
+                ],
               ],
             ),
           );
@@ -320,11 +325,6 @@ class _PerLocationTierAssignmentTableState
       if (definition.tierKey == tierKey) return definition;
     }
     return null;
-  }
-
-  Color _marginColor(int? margin) {
-    if (margin == null || margin == 0) return AppColors.textMuted;
-    return margin > 0 ? AppColors.positive : AppColors.negative;
   }
 
   String _cadenceSummary(Map<String, int>? cadences) {
@@ -390,11 +390,10 @@ class _AssignmentHeaderRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 11, 18, 9),
       child: Row(
         children: <Widget>[
-          const Expanded(flex: 24, child: _HeaderCell('Location')),
+          const Expanded(flex: 26, child: _HeaderCell('Location')),
           const Expanded(flex: 17, child: _HeaderCell('Setup')),
           const Expanded(flex: 18, child: _HeaderCell('Cadence')),
-          const Expanded(flex: 25, child: _HeaderCell('Commercials')),
-          const Expanded(flex: 8, child: _HeaderCell('Notes')),
+          const Expanded(flex: 31, child: _HeaderCell('Commercials')),
           if (showActions) const Expanded(flex: 8, child: SizedBox.shrink()),
         ],
       ),
@@ -430,11 +429,20 @@ class _SetupCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _StackedCell(
-      primary: setupLabel,
-      secondary: activeSinceLabel,
-      primaryColor: isUnassigned ? AppColors.sunsetDark : AppColors.textPrimary,
-      primaryWeight: FontWeight.w700,
+    final chipColor = isUnassigned ? AppColors.warning : AppColors.peacockDark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _StatusChip(label: setupLabel, color: chipColor),
+        if (activeSinceLabel != null && activeSinceLabel!.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            activeSinceLabel!,
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ],
     );
   }
 }
@@ -456,64 +464,98 @@ class _TextCell extends StatelessWidget {
 }
 
 class _CommercialsCell extends StatelessWidget {
-  const _CommercialsCell({
-    required this.priceLabel,
-    required this.costLabel,
-    required this.marginLabel,
-    required this.marginColor,
-  });
+  const _CommercialsCell({required this.summary});
 
-  final String priceLabel;
-  final String costLabel;
-  final String marginLabel;
-  final Color marginColor;
+  final _CommercialSummary summary;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 4,
-      children: <Widget>[
-        _MiniFact(label: 'Price', value: priceLabel),
-        _MiniFact(label: 'Cost', value: costLabel),
-        _MiniFact(label: 'Margin', value: marginLabel, valueColor: marginColor),
-      ],
+    return _StackedCell(
+      primary: summary.primary,
+      secondary: summary.secondary,
+      primaryWeight: FontWeight.w600,
     );
   }
 }
 
-class _MiniFact extends StatelessWidget {
-  const _MiniFact({required this.label, required this.value, this.valueColor});
+class _CommercialSummary {
+  const _CommercialSummary({required this.primary, this.secondary});
+
+  final String primary;
+  final String? secondary;
+
+  factory _CommercialSummary.fromAssignment({
+    required ForgeFlowPollingTierAssignment? assignment,
+    required TierDefinition? definition,
+  }) {
+    if (assignment == null) {
+      return const _CommercialSummary(
+        primary: 'Assign tier to price',
+        secondary: 'Cost and margin after setup',
+      );
+    }
+
+    final price =
+        assignment.monthlyPriceCents ?? definition?.defaultMonthlyPriceCents;
+    final cost =
+        assignment.vendorApiCostEstimateCentsMonthly ??
+        definition?.vendorApiCostEstimateCentsMonthly;
+    final margin = assignment.netMarginCents ?? _margin(price, cost);
+    final primary = price == null
+        ? 'Price pending'
+        : '${formatCents(price)} / month';
+    return _CommercialSummary(
+      primary: primary,
+      secondary: <String>[
+        cost == null ? 'Cost pending' : 'Cost ${formatCents(cost)}',
+        margin == null ? 'Margin pending' : 'Margin ${formatCents(margin)}',
+      ].join(', '),
+    );
+  }
+
+  static int? _margin(int? price, int? cost) {
+    if (price == null || cost == null) return null;
+    return price - cost;
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label, required this.color});
 
   final String label;
-  final String value;
-  final Color? valueColor;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 56, maxWidth: 92),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              label,
-              style: AppTextStyles.uiLabel(color: AppColors.textMuted),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              value,
-              style: AppTextStyles.body13(
-                color: valueColor ?? AppColors.textPrimary,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.11),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
+        borderRadius: BorderRadius.circular(999),
       ),
+      child: Text(
+        label,
+        style: AppTextStyles.uiLabel(
+          color: color,
+        ).copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _NotesLine extends StatelessWidget {
+  const _NotesLine({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Notes: $value',
+      style: AppTextStyles.body12(color: AppColors.textSecondary),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }
@@ -522,13 +564,11 @@ class _StackedCell extends StatelessWidget {
   const _StackedCell({
     required this.primary,
     this.secondary,
-    this.primaryColor = AppColors.textPrimary,
     this.primaryWeight = FontWeight.w400,
   });
 
   final String primary;
   final String? secondary;
-  final Color primaryColor;
   final FontWeight primaryWeight;
 
   @override
@@ -539,7 +579,7 @@ class _StackedCell extends StatelessWidget {
         Text(
           primary,
           style: AppTextStyles.body13(
-            color: primaryColor,
+            color: AppColors.textPrimary,
           ).copyWith(fontWeight: primaryWeight),
           overflow: TextOverflow.ellipsis,
         ),
