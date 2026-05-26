@@ -12,6 +12,7 @@
 // fixtures so the kDemoMode walkthrough click path runs without
 // the Cloud Run admin proxy.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_session.dart';
@@ -3233,33 +3234,33 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.adminSecurityGateway ?? _defaultAdminSecurityDemoGateway;
   }
 
+  List<Object?> get _notifySlots => <Object?>[
+    operatorLocationGateway,
+    pricingTierGateway,
+    corpusAdminGateway,
+    integrationGateway,
+    vendorConnectionsGateway,
+    healthGateway,
+    observabilityGateway,
+    featureFlagsGateway,
+    defaultRoleCatalogAdminGateway,
+    debugConsoleGateway,
+    dataAccuracyAdminGateway,
+    vendorApplicabilityGateway,
+    membersAdminGateway,
+    rolesHierarchySessionsAdminGateway,
+    auditedSupportActionsAdminGateway,
+    auditChainAnchorsGateway,
+    adminAccountGateway,
+    adminNotificationPreferencesGateway,
+    adminSessionsGateway,
+    adminSecurityGateway,
+    timingResolutionGateway,
+    timingProfilesGateway,
+    adminAuthSource,
+  ];
+
   @override
   bool updateShouldNotify(AdminConsoleServicesScope oldWidget) =>
-      operatorLocationGateway != oldWidget.operatorLocationGateway ||
-      pricingTierGateway != oldWidget.pricingTierGateway ||
-      corpusAdminGateway != oldWidget.corpusAdminGateway ||
-      integrationGateway != oldWidget.integrationGateway ||
-      vendorConnectionsGateway != oldWidget.vendorConnectionsGateway ||
-      healthGateway != oldWidget.healthGateway ||
-      observabilityGateway != oldWidget.observabilityGateway ||
-      featureFlagsGateway != oldWidget.featureFlagsGateway ||
-      defaultRoleCatalogAdminGateway !=
-          oldWidget.defaultRoleCatalogAdminGateway ||
-      debugConsoleGateway != oldWidget.debugConsoleGateway ||
-      dataAccuracyAdminGateway != oldWidget.dataAccuracyAdminGateway ||
-      vendorApplicabilityGateway != oldWidget.vendorApplicabilityGateway ||
-      membersAdminGateway != oldWidget.membersAdminGateway ||
-      rolesHierarchySessionsAdminGateway !=
-          oldWidget.rolesHierarchySessionsAdminGateway ||
-      auditedSupportActionsAdminGateway !=
-          oldWidget.auditedSupportActionsAdminGateway ||
-      auditChainAnchorsGateway != oldWidget.auditChainAnchorsGateway ||
-      adminAccountGateway != oldWidget.adminAccountGateway ||
-      adminNotificationPreferencesGateway !=
-          oldWidget.adminNotificationPreferencesGateway ||
-      adminSessionsGateway != oldWidget.adminSessionsGateway ||
-      adminSecurityGateway != oldWidget.adminSecurityGateway ||
-      timingResolutionGateway != oldWidget.timingResolutionGateway ||
-      timingProfilesGateway != oldWidget.timingProfilesGateway ||
-      adminAuthSource != oldWidget.adminAuthSource;
+      !listEquals<Object?>(_notifySlots, oldWidget._notifySlots);
 }
