@@ -8,6 +8,23 @@
 // preview at `docs/_mockups/knowledge_base_redesign_preview.html`
 // lines 338-495.
 //
+// Fidelity pass (kb-connections-polish): verified every mockup
+// requirement is met:
+//   1. Plain-English sentences — raw relationship codes never shown as the
+//      primary label; corpusConnectionSentence() produces human copy.
+//   2. Numeric confidence hidden behind showTechDetails (OFF by default)
+//      in _ConnectionTechDetails; clarity communicated by bucket + chip.
+//   3. Mockup copy — connectionsGroupClear / Check / Unsure, clarity chips
+//      "Clear match" / "Worth checking" / "Not sure", action buttons
+//      "Looks right" / "Not right" / "Change" / "Set how they connect",
+//      bulk "Mark all N correct", footer "Save my choices (N)".
+//   4. Focus map shown for real candidates via CorpusConnectionsMap.
+//   5. Knowledge-tab "About N words of context" hidden behind same toggle
+//      (see _AdvancedDetails in corpus_admin_screen.dart).
+//
+// No write-path, gateway, proxy, DB/migration, RLS, or auth changes.
+// HP#4 save-gating (canSave) is unchanged.
+//
 // Extracted into its own import-based library (sibling to
 // `corpus_admin_chunk_view.dart`) so the parent screen stays under the
 // operator_web_size_lint frozen ceiling and so this view never reaches
