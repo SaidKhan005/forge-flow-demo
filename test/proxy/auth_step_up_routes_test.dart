@@ -127,6 +127,7 @@ void main() {
           ('PUT', '/v1/admin/pricing/usage-caps'),
           ('PATCH', '/v1/admin/pricing/plans/premium'),
           ('PUT', '/v1/admin/pricing/scoped-contracts'),
+          ('DELETE', '/v1/admin/pricing/scoped-contracts/contract-1'),
           ('POST', '/v1/admin/vendor-applicability'),
         ];
         for (final probe in probes) {

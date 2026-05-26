@@ -164,18 +164,40 @@ void main() {
       expect(row.terms.internalNote, equals('Signed MSA'));
 
       final tx = pool.transactions.single;
-      final upsertSql = tx.executedSql.firstWhere(
+      final updateSameStartSql = tx.executedSql.firstWhere(
+        (sql) =>
+            sql.startsWith('update public.pricing_contract_overrides') &&
+            sql.contains('effective_from = @effective_from::date') &&
+            sql.contains('returning'),
+      );
+      final closePriorSql = tx.executedSql.firstWhere(
+        (sql) =>
+            sql.startsWith('update public.pricing_contract_overrides') &&
+            sql.contains('effective_from < @effective_from::date'),
+      );
+      final insertSql = tx.executedSql.firstWhere(
         (sql) => sql.contains('insert into public.pricing_contract_overrides'),
       );
       expect(
-        upsertSql,
-        contains(
-          'on conflict on constraint pricing_contract_overrides_target_uq',
-        ),
+        updateSameStartSql,
+        contains('effective_from = @effective_from::date'),
       );
-      expect(upsertSql, contains('advisor_cap_monthly_usd'));
-      expect(upsertSql, contains('effective_from = excluded.effective_from'));
-      expect(upsertSql, isNot(contains('created_at = excluded.created_at')));
+      expect(
+        closePriorSql,
+        contains('effective_until = @effective_from::date'),
+      );
+      expect(closePriorSql, contains('effective_from < @effective_from::date'));
+      expect(closePriorSql, contains('effective_until is null'));
+      expect(
+        insertSql,
+        contains('insert into public.pricing_contract_overrides'),
+      );
+      expect(
+        insertSql,
+        isNot(contains('pricing_contract_overrides_target_uq')),
+      );
+      expect(insertSql, contains('advisor_cap_monthly_usd'));
+      expect(insertSql, isNot(contains('created_at = excluded.created_at')));
 
       final params = tx.parameters.firstWhere(
         (p) => p['scope_type'] == 'location',

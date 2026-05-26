@@ -141,13 +141,15 @@ Do not re-open stale findings unless the repo regresses:
   cumulative-ladder seed; records which features each plan includes,
   foundation only and does not gate the app (schema; gated on operator
   approval). Plans & Limits V1 scoped custom contracts then advance the cutoff
-  to `202605251000_plans_and_limits_scoped_contract_overrides.sql`, which
-  creates operator-scoped `public.pricing_contract_overrides` for
-  Enterprise/custom terms at business, org-unit, or location scope; lower
-  scopes override higher scopes, missing lower scopes inherit from the nearest
-  ancestor or the global pricing catalog, and the table carries wrapper-based
-  RLS plus operator-leading indexes (schema + RLS + proxy-writing surface;
-  gated on operator approval). The Hardening Wave B3 audit-anchor
+  to `202605251020_plans_and_limits_scoped_contract_windows.sql`: first
+  `202605251000_plans_and_limits_scoped_contract_overrides.sql` creates
+  operator-scoped `public.pricing_contract_overrides` for Enterprise/custom
+  terms at business, org-unit, or location scope; then
+  `202605251020_plans_and_limits_scoped_contract_windows.sql` replaces
+  all-time target uniqueness with non-overlapping effective-date windows so a
+  future contract can be scheduled without overwriting the current active
+  contract (schema + RLS + proxy-writing surface; gated on operator approval).
+  The Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
   schedule registration for `forge_audit_anchor_daily` at `0 2 * * *` UTC; the

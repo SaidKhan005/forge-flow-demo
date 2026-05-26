@@ -69,6 +69,7 @@ void main() {
         _RouteProbe('PUT', '/v1/admin/pricing/usage-caps'),
         _RouteProbe('PATCH', '/v1/admin/pricing/plans/premium'),
         _RouteProbe('PUT', '/v1/admin/pricing/scoped-contracts'),
+        _RouteProbe('DELETE', '/v1/admin/pricing/scoped-contracts/contract-1'),
         _RouteProbe('POST', '/v1/admin/vendor-applicability'),
         _RouteProbe('PATCH', '/v1/admin/vendor-applicability'),
       ];

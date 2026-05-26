@@ -1770,7 +1770,7 @@ class _ScopedContractCard extends StatelessWidget {
     return OperatorWebPanel(
       title: 'Custom contract',
       padding: const EdgeInsets.all(16),
-      trailing: editingEnabled
+      trailing: editingEnabled && !loading && error == null && contract != null
           ? Wrap(
               spacing: 8,
               children: <Widget>[

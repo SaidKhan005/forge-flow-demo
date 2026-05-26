@@ -7,6 +7,16 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605251020_plans_and_limits_scoped_contract_windows.sql`
+(Plans & Limits V1 scoped contract windows: replaces all-time target
+uniqueness with non-overlapping effective-date windows so future custom
+contracts can be scheduled without overwriting the current active contract;
+see the migration list below), preceded by
+`202605251000_plans_and_limits_scoped_contract_overrides.sql`
+(Plans & Limits V1 scoped custom contract foundation: creates operator-scoped
+`public.pricing_contract_overrides` for Enterprise/custom commercial terms at
+business, org-unit, or location scope; lower scopes override higher scopes;
+schema + RLS + proxy-writing surface), preceded by
 `202605241700_plans_and_limits_phase5a_feature_entitlements.sql`
 (Plans & Limits V1 Phase 5a feature-entitlements foundation: creates the
 GLOBAL `public.feature_entitlements` plan/feature matrix — no operator_id /
@@ -143,7 +153,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (66 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (67 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -400,6 +410,13 @@ Current known post-cutoff staging additions:
   policy, operator-leading indexes, service/forge admin grants, and an
   updated-at trigger. Schema + RLS + proxy-writing surface; build-only, gated
   on explicit operator approval before any apply.
+- `db/migrations/202605251020_plans_and_limits_scoped_contract_windows.sql`
+  replaces the scoped-contract table's all-time target uniqueness with
+  non-overlapping effective-date windows. This lets admins schedule a future
+  custom contract for a business, org unit, or location without overwriting the
+  current active contract. Adds a target-window index and overlap trigger.
+  Schema + RLS-adjacent follow-up; build-only, gated on explicit operator
+  approval before any apply.
 
 Migration drift automation:
 

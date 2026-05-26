@@ -31,9 +31,9 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**74 migrations pending Production1 apply** (chronological). The queue now
+**75 migrations pending Production1 apply** (chronological). The queue now
 runs through
-`202605251000_plans_and_limits_scoped_contract_overrides.sql`;
+`202605251020_plans_and_limits_scoped_contract_windows.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -116,8 +116,9 @@ Production1 apply.
 | `202605241700_plans_and_limits_phase5a_feature_entitlements.sql` | Plans & Limits V1 Phase 5a feature-entitlements foundation. Creates GLOBAL `public.feature_entitlements` (composite PK `(tier_key, feature_slug)`, CHECK pinning `tier_key` to the six tiers, `enabled boolean default false`, `updated_at` TIMESTAMPTZ, `updated_by`). No `operator_id` / RLS (admin-pool BYPASSRLS posture, exactly like `pricing_plan_catalog`); REVOKE public + GRANT SELECT service_role + full DML forge_admin. Records WHICH FEATURES EACH PLAN INCLUDES (slugs: advisor / lms / scoreboard / staff_coach / sops / workflows). Idempotent seed of the cumulative ladder (advisor on for pilot + every paid tier; lms+scoreboard premium and up; staff_coach+sops elite and up; workflows pro and up; enterprise all on) via `on conflict do nothing`. FOUNDATION ONLY: records the matrix, does not gate the app yet (deferred Phase 5d). Schema; gated on operator approval. | code-ready |
 
 | `202605251000_plans_and_limits_scoped_contract_overrides.sql` | Plans & Limits V1 scoped custom contract foundation. Creates operator-scoped `public.pricing_contract_overrides` for Enterprise/custom commercial terms at business, org-unit, or location scope. Lower scopes override higher scopes; missing lower scopes inherit from the nearest ancestor or the global pricing catalog. Stores monthly, seat-ramp, onboarding, advisor-cap, label, note, billing-owner, and effective-date fields. RLS-enabled with `app_current_operator()` tenant policy, operator-leading indexes, service/forge admin grants, and an updated-at trigger. Schema + RLS + proxy-writing surface; gated on operator approval. | code-ready |
+| `202605251020_plans_and_limits_scoped_contract_windows.sql` | Plans & Limits V1 scoped custom contract windows. Replaces all-time target uniqueness with non-overlapping effective-date windows so a future-dated custom contract can be scheduled without overwriting the current active contract. Adds the target-window index plus overlap trigger. Schema + RLS-adjacent follow-up; gated on operator approval. | code-ready |
 
-**Action:** apply all 74 in next Production1 event per
+**Action:** apply all 75 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
