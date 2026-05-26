@@ -12160,6 +12160,18 @@ Future<void> routeRequest(
             });
             return;
           }
+          final isScopedContractWrite =
+              (pricingMethod == 'PUT' &&
+                  path == adminPricingScopedContractsPath) ||
+              (pricingMethod == 'DELETE' &&
+                  path.startsWith(adminPricingScopedContractsPrefix));
+          if (isScopedContractWrite && pricingIdempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_missing',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
           try {
             await _routePricingAdmin(
               request: request,

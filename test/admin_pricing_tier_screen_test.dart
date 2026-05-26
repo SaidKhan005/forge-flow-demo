@@ -223,6 +223,41 @@ void main() {
   );
 
   testWidgets(
+    'Custom contract edit is hidden when scoped contract load fails',
+    (tester) async {
+      final gateway = _ThrowingScopedContractGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(operatorId: 'op-contract', businessName: 'Contract Cafe'),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(
+          PricingTierAdminScreen(
+            gateway: gateway,
+            observabilityGateway: observabilityFor('op-contract'),
+            hierarchyScope: businessScope('op-contract'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await openBusinessesTab(tester);
+
+      expect(
+        find.text('custom contract endpoint is not available'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_edit_contract_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_clear_contract_button')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
     'Businesses tab shows the pick-a-business empty state when the scope '
     'resolves no operator',
     (tester) async {
@@ -235,9 +270,7 @@ void main() {
           seedBundle(operatorId: 'op-2', businessName: 'Beta Bistro'),
         ],
       );
-      await tester.pumpWidget(
-        wrap(PricingTierAdminScreen(gateway: gateway)),
-      );
+      await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
       await tester.pumpAndSettle();
       await openBusinessesTab(tester);
 
@@ -246,18 +279,14 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Choose a business in the scope panel to see its plan and limits.'),
+        find.text(
+          'Choose a business in the scope panel to see its plan and limits.',
+        ),
         findsOneWidget,
       );
       // No detail is shown and no business was auto-selected.
-      expect(
-        find.byKey(const Key('admin_pricing_detail_op-1')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_pricing_detail_op-2')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('admin_pricing_detail_op-1')), findsNothing);
+      expect(find.byKey(const Key('admin_pricing_detail_op-2')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -327,10 +356,7 @@ void main() {
       find.byKey(const Key('admin_pricing_template_premium_button')),
       findsNothing,
     );
-    expect(
-      find.byKey(const Key('admin_pricing_add_cap_button')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('admin_pricing_add_cap_button')), findsNothing);
   });
 
   testWidgets(
@@ -365,9 +391,7 @@ void main() {
         find.byKey(const Key('admin_pricing_plan_dialog')),
         findsOneWidget,
       );
-      final monthlyField = find.byKey(
-        const Key('admin_pricing_plan_monthly'),
-      );
+      final monthlyField = find.byKey(const Key('admin_pricing_plan_monthly'));
       expect(monthlyField, findsOneWidget);
       await tester.enterText(monthlyField, '275');
       await tester.tap(
@@ -392,9 +416,7 @@ void main() {
       seed: <PricingOperatorBundle>[seedBundle()],
     );
     await tester.pumpWidget(
-      wrap(
-        PricingTierAdminScreen(gateway: gateway, editingEnabled: false),
-      ),
+      wrap(PricingTierAdminScreen(gateway: gateway, editingEnabled: false)),
     );
     await tester.pumpAndSettle();
 
@@ -411,44 +433,43 @@ void main() {
   });
 
   // ── Phase 5a — Included features (entitlements) matrix tab. ───────
-  testWidgets(
-    'Phase 5a: Included features tab renders a matrix row per plan',
-    (tester) async {
-      final gateway = InMemoryPricingTierAdminGateway(
-        seed: <PricingOperatorBundle>[seedBundle()],
-      );
-      await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
-      await tester.pumpAndSettle();
+  testWidgets('Phase 5a: Included features tab renders a matrix row per plan', (
+    tester,
+  ) async {
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin_pricing_tab_features')));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_pricing_tab_features')));
+    await tester.pumpAndSettle();
 
+    expect(
+      find.byKey(const Key('admin_pricing_features_view')),
+      findsOneWidget,
+    );
+    // One row per plan, each with the advisor toggle present.
+    for (final key in const <String>[
+      'pilot',
+      'starter',
+      'premium',
+      'elite',
+      'pro',
+      'enterprise',
+    ]) {
       expect(
-        find.byKey(const Key('admin_pricing_features_view')),
+        find.byKey(Key('admin_pricing_entitlements_row_$key')),
         findsOneWidget,
+        reason: 'entitlements row for $key',
       );
-      // One row per plan, each with the advisor toggle present.
-      for (final key in const <String>[
-        'pilot',
-        'starter',
-        'premium',
-        'elite',
-        'pro',
-        'enterprise',
-      ]) {
-        expect(
-          find.byKey(Key('admin_pricing_entitlements_row_$key')),
-          findsOneWidget,
-          reason: 'entitlements row for $key',
-        );
-        expect(
-          find.byKey(Key('admin_pricing_entitlement_toggle_${key}_advisor')),
-          findsOneWidget,
-          reason: 'advisor toggle for $key',
-        );
-      }
-    },
-  );
+      expect(
+        find.byKey(Key('admin_pricing_entitlement_toggle_${key}_advisor')),
+        findsOneWidget,
+        reason: 'advisor toggle for $key',
+      );
+    }
+  });
 
   testWidgets(
     'Phase 5a: toggling a cell calls updateEntitlement and persists',
@@ -461,9 +482,7 @@ void main() {
       final before = await gateway.listEntitlements();
       expect(
         before
-            .firstWhere(
-              (e) => e.tierKey == 'starter' && e.featureSlug == 'lms',
-            )
+            .firstWhere((e) => e.tierKey == 'starter' && e.featureSlug == 'lms')
             .enabled,
         isFalse,
       );
@@ -492,9 +511,7 @@ void main() {
       final after = await gateway.listEntitlements();
       expect(
         after
-            .firstWhere(
-              (e) => e.tierKey == 'starter' && e.featureSlug == 'lms',
-            )
+            .firstWhere((e) => e.tierKey == 'starter' && e.featureSlug == 'lms')
             .enabled,
         isTrue,
       );
@@ -508,9 +525,7 @@ void main() {
         seed: <PricingOperatorBundle>[seedBundle()],
       );
       await tester.pumpWidget(
-        wrap(
-          PricingTierAdminScreen(gateway: gateway, editingEnabled: false),
-        ),
+        wrap(PricingTierAdminScreen(gateway: gateway, editingEnabled: false)),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('admin_pricing_tab_features')));
@@ -523,9 +538,7 @@ void main() {
       // The matrix still renders, but the toggle is disabled (onChanged
       // null) so a support user cannot mutate it.
       final toggle = tester.widget<Switch>(
-        find.byKey(
-          const Key('admin_pricing_entitlement_toggle_premium_lms'),
-        ),
+        find.byKey(const Key('admin_pricing_entitlement_toggle_premium_lms')),
       );
       expect(toggle.onChanged, isNull);
     },
@@ -544,10 +557,7 @@ void main() {
       await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('admin_pricing_plans_view')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('admin_pricing_plans_view')), findsOneWidget);
       for (final key in const <String>[
         'pilot',
         'starter',
@@ -654,10 +664,7 @@ void main() {
 
     // No master list at any width: just the scoped detail, rendered
     // single-pane without clipping on a narrow surface.
-    expect(
-      find.byKey(const Key('admin_pricing_operator_list')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('admin_pricing_operator_list')), findsNothing);
     expect(
       find.byKey(const Key('admin_pricing_detail_op-compact')),
       findsOneWidget,
@@ -1190,9 +1197,7 @@ void main() {
 
       final operators = await gateway.listOperators();
       expect(operators.single.subscriptionTier, equals('elite'));
-      final classes = operators.single.caps
-          .map((c) => c.usageClass)
-          .toSet();
+      final classes = operators.single.caps.map((c) => c.usageClass).toSet();
       expect(classes, containsAll(<String>['advisor_qa', 'coach_qa']));
       expect(
         operators.single.caps
@@ -1268,6 +1273,21 @@ class _ThrowingCatalogGateway extends InMemoryPricingTierAdminGateway {
       statusCode: 503,
       errorCode: 'plans_unavailable',
       message: 'plan catalog endpoint is not available',
+    );
+  }
+}
+
+class _ThrowingScopedContractGateway extends InMemoryPricingTierAdminGateway {
+  _ThrowingScopedContractGateway({super.seed});
+
+  @override
+  Future<ScopedPricingContractEffectiveResponse> fetchEffectiveScopedContract(
+    ScopedPricingContractScope scope,
+  ) async {
+    throw const PricingTierAdminGatewayError(
+      statusCode: 503,
+      errorCode: 'scoped_contract_unavailable',
+      message: 'custom contract endpoint is not available',
     );
   }
 }

@@ -4935,6 +4935,38 @@ void main() {
       });
     });
 
+    test('Scoped contracts PUT requires Idempotency-Key', () async {
+      await withRealHttp(() async {
+        final gateway = FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: superAdminClaims,
+        );
+        try {
+          final response = await httpJson(
+            ctx.client,
+            'PUT',
+            ctx.baseUri.resolve(adminPricingScopedContractsPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'scope_type': 'business',
+              'tier_key': 'enterprise',
+              'monthly_usd': 500.0,
+              'admin_reason': 'Signed enterprise amendment',
+            },
+          );
+          expect(response.statusCode, equals(400), reason: response.body);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('idempotency_key_missing'));
+          expect(gateway.lastScopedContractOperatorId, isNull);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('Scoped contracts DELETE clears one override by id', () async {
       await withRealHttp(() async {
         final gateway = FakePricingAdminGateway();

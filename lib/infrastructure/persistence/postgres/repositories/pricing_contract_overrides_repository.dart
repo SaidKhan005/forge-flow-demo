@@ -339,6 +339,65 @@ class PricingContractOverridesRepository extends OperatorScopedRepository {
     required String adminReason,
   }) {
     return withSystem<PricingContractOverrideRow>((exec) async {
+      final parameters = <String, Object?>{
+        'operator_id': override.operatorId,
+        'scope_type': override.target.scopeType.wireName,
+        'org_unit_id': override.target.orgUnitId,
+        'location_id': override.target.locationId,
+        'tier_key': override.tierKey,
+        'billing_owner_org_unit_id': override.billingOwnerOrgUnitId,
+        'monthly_usd': override.monthlyUsd,
+        'first_n_seats': override.firstNSeats,
+        'first_seat_usd': override.firstSeatUsd,
+        'additional_seat_usd': override.additionalSeatUsd,
+        'onboarding_min_usd': override.onboardingMinUsd,
+        'onboarding_max_usd': override.onboardingMaxUsd,
+        'advisor_cap_monthly_usd': override.advisorCapMonthlyUsd,
+        'effective_from': override.effectiveFromDate,
+        'effective_until': override.effectiveUntilDate,
+        'contract_label': override.contractLabel,
+        'internal_note': override.internalNote,
+        'updated_by': override.updatedBy,
+      };
+      final updated = await exec.query(
+        'update public.pricing_contract_overrides '
+        '   set tier_key = @tier_key, '
+        '       billing_owner_org_unit_id = @billing_owner_org_unit_id::uuid, '
+        '       monthly_usd = @monthly_usd, '
+        '       first_n_seats = @first_n_seats, '
+        '       first_seat_usd = @first_seat_usd, '
+        '       additional_seat_usd = @additional_seat_usd, '
+        '       onboarding_min_usd = @onboarding_min_usd, '
+        '       onboarding_max_usd = @onboarding_max_usd, '
+        '       advisor_cap_monthly_usd = @advisor_cap_monthly_usd, '
+        '       effective_until = @effective_until::date, '
+        '       contract_label = @contract_label, '
+        '       internal_note = @internal_note, '
+        '       updated_at = now(), '
+        '       updated_by = @updated_by '
+        ' where operator_id = @operator_id::uuid '
+        '   and scope_type = @scope_type '
+        '   and org_unit_id is not distinct from @org_unit_id::uuid '
+        '   and location_id is not distinct from @location_id::uuid '
+        '   and effective_from = @effective_from::date '
+        ' returning $_overrideSelectColumns',
+        parameters: parameters,
+      );
+      if (updated.isNotEmpty) return _overrideRowFromMap(updated.single);
+      await exec.execute(
+        'update public.pricing_contract_overrides '
+        '   set effective_until = @effective_from::date, '
+        '       updated_at = now(), '
+        '       updated_by = @updated_by '
+        ' where operator_id = @operator_id::uuid '
+        '   and scope_type = @scope_type '
+        '   and org_unit_id is not distinct from @org_unit_id::uuid '
+        '   and location_id is not distinct from @location_id::uuid '
+        '   and effective_from < @effective_from::date '
+        '   and (effective_until is null '
+        '        or effective_until > @effective_from::date)',
+        parameters: parameters,
+      );
       final rows = await exec.query(
         'insert into public.pricing_contract_overrides ('
         'operator_id, scope_type, org_unit_id, location_id, tier_key, '
@@ -354,44 +413,8 @@ class PricingContractOverridesRepository extends OperatorScopedRepository {
         '@advisor_cap_monthly_usd, @effective_from::date, '
         '@effective_until::date, @contract_label, @internal_note, '
         '@updated_by'
-        ') on conflict on constraint pricing_contract_overrides_target_uq '
-        'do update set '
-        'tier_key = excluded.tier_key, '
-        'billing_owner_org_unit_id = excluded.billing_owner_org_unit_id, '
-        'monthly_usd = excluded.monthly_usd, '
-        'first_n_seats = excluded.first_n_seats, '
-        'first_seat_usd = excluded.first_seat_usd, '
-        'additional_seat_usd = excluded.additional_seat_usd, '
-        'onboarding_min_usd = excluded.onboarding_min_usd, '
-        'onboarding_max_usd = excluded.onboarding_max_usd, '
-        'advisor_cap_monthly_usd = excluded.advisor_cap_monthly_usd, '
-        'effective_from = excluded.effective_from, '
-        'effective_until = excluded.effective_until, '
-        'contract_label = excluded.contract_label, '
-        'internal_note = excluded.internal_note, '
-        'updated_at = now(), '
-        'updated_by = excluded.updated_by '
-        'returning $_overrideSelectColumns',
-        parameters: <String, Object?>{
-          'operator_id': override.operatorId,
-          'scope_type': override.target.scopeType.wireName,
-          'org_unit_id': override.target.orgUnitId,
-          'location_id': override.target.locationId,
-          'tier_key': override.tierKey,
-          'billing_owner_org_unit_id': override.billingOwnerOrgUnitId,
-          'monthly_usd': override.monthlyUsd,
-          'first_n_seats': override.firstNSeats,
-          'first_seat_usd': override.firstSeatUsd,
-          'additional_seat_usd': override.additionalSeatUsd,
-          'onboarding_min_usd': override.onboardingMinUsd,
-          'onboarding_max_usd': override.onboardingMaxUsd,
-          'advisor_cap_monthly_usd': override.advisorCapMonthlyUsd,
-          'effective_from': override.effectiveFromDate,
-          'effective_until': override.effectiveUntilDate,
-          'contract_label': override.contractLabel,
-          'internal_note': override.internalNote,
-          'updated_by': override.updatedBy,
-        },
+        ') returning $_overrideSelectColumns',
+        parameters: parameters,
       );
       if (rows.isEmpty) {
         throw StateError('pricing_contract_overrides upsert returned no row');
