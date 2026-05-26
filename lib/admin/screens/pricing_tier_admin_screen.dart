@@ -220,46 +220,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       final entitlements = await _fetchEntitlements();
       if (!mounted) return;
       setState(() {
-        _bundles = bundles;
-        _observability = observability;
-        if (planCatalog != null && planCatalog.isNotEmpty) {
-          _planCatalog = <String, PricingPlanCatalogEntry>{
-            for (final entry in planCatalog) entry.tierKey: entry,
-          };
-        }
-        if (entitlements != null && entitlements.isNotEmpty) {
-          _entitlements = <String, FeatureEntitlementEntry>{
-            for (final entry in entitlements)
-              '${entry.tierKey}::${entry.featureSlug}': entry,
-          };
-        }
-        _loading = false;
-        // The left scope tree is the single business selector: the focused
-        // operator is the one the scope resolves, never an auto-picked
-        // first row. When the scope resolves no operator (nothing selected,
-        // or its operator is absent from the gateway result) the selection
-        // stays null and the Businesses tab shows the pick-a-business empty
-        // state instead of silently defaulting to a random business.
-        final visible = _visibleBundles;
-        final preferredOperatorId = widget.hierarchyScope?.operatorId;
-        if (preferredOperatorId != null &&
-            visible.any((b) => b.operatorId == preferredOperatorId)) {
-          _selectedOperatorId = preferredOperatorId;
-        } else {
-          _selectedOperatorId = null;
-        }
-        _scopedContract = null;
-        _scopedContractError = null;
-        _scopedContractScopeKey = widget.hierarchyScope?.cacheKey;
+        _applyRefreshResults(
+          bundles: bundles,
+          observability: observability,
+          planCatalog: planCatalog,
+          entitlements: entitlements,
+        );
       });
-      // Best-effort live spend for the operator now in focus. A failure
-      // here is swallowed so the bars fall back to the observability
-      // envelope (demo mode has no spend-summary endpoint).
-      final focused = _selectedOperatorId;
-      if (focused != null) {
-        unawaited(_fetchSpendSummaryFor(focused));
-        unawaited(_fetchScopedContractForCurrentScope());
-      }
+      _scheduleFocusedScopeFetches();
     } on PricingTierAdminGatewayError catch (error) {
       if (!mounted) return;
       setState(() {
@@ -273,6 +241,58 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         _loading = false;
       });
     }
+  }
+
+  void _applyRefreshResults({
+    required List<PricingOperatorBundle> bundles,
+    required ObservabilityEnvelope? observability,
+    required List<PricingPlanCatalogEntry>? planCatalog,
+    required List<FeatureEntitlementEntry>? entitlements,
+  }) {
+    _bundles = bundles;
+    _observability = observability;
+    _applyPlanCatalog(planCatalog);
+    _applyEntitlements(entitlements);
+    _loading = false;
+    _selectedOperatorId = _focusedOperatorIdForCurrentScope();
+    _scopedContract = null;
+    _scopedContractError = null;
+    _scopedContractScopeKey = widget.hierarchyScope?.cacheKey;
+  }
+
+  void _applyPlanCatalog(List<PricingPlanCatalogEntry>? planCatalog) {
+    if (planCatalog == null || planCatalog.isEmpty) return;
+    _planCatalog = <String, PricingPlanCatalogEntry>{
+      for (final entry in planCatalog) entry.tierKey: entry,
+    };
+  }
+
+  void _applyEntitlements(List<FeatureEntitlementEntry>? entitlements) {
+    if (entitlements == null || entitlements.isEmpty) return;
+    _entitlements = <String, FeatureEntitlementEntry>{
+      for (final entry in entitlements)
+        '${entry.tierKey}::${entry.featureSlug}': entry,
+    };
+  }
+
+  String? _focusedOperatorIdForCurrentScope() {
+    // The left scope tree is the single business selector: the focused
+    // operator is the one the scope resolves, never an auto-picked first row.
+    final preferredOperatorId = widget.hierarchyScope?.operatorId;
+    if (preferredOperatorId == null) return null;
+    return _visibleBundles.any((b) => b.operatorId == preferredOperatorId)
+        ? preferredOperatorId
+        : null;
+  }
+
+  void _scheduleFocusedScopeFetches() {
+    // Best-effort live spend for the operator now in focus. A failure
+    // here is swallowed so the bars fall back to the observability
+    // envelope (demo mode has no spend-summary endpoint).
+    final focused = _selectedOperatorId;
+    if (focused == null) return;
+    unawaited(_fetchSpendSummaryFor(focused));
+    unawaited(_fetchScopedContractForCurrentScope());
   }
 
   Future<ObservabilityEnvelope?> _fetchObservability() async {
@@ -1159,7 +1179,7 @@ class _PlansMapView extends StatelessWidget {
                   for (final template in kPricingTierTemplates)
                     SizedBox(
                       width: cardWidth,
-                      height: 400,
+                      height: 430,
                       child: _PlanCard(
                         template: template,
                         entry: catalog[template.tierKey],
@@ -1351,26 +1371,19 @@ class _PlanCardDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          SizedBox(
-            width: 78,
-            child: Text(
-              label,
-              style: AppTextStyles.body11(color: AppColors.textMuted),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body11(
-                color: AppColors.textPrimary,
-              ).copyWith(fontWeight: FontWeight.w600),
-            ),
+          Text(label, style: AppTextStyles.body11(color: AppColors.textMuted)),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.body12(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
           ),
         ],
       ),
