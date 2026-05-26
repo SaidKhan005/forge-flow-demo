@@ -155,11 +155,11 @@ void main() {
           .map((route) => route.id),
       <String>[
         kAdminIntegrationsRouteId,
-        kAdminVendorApplicabilityRouteId,
         kAdminFeatureFlagsRouteId,
         // Lane B B2.2 - Default Role catalog admin editor added to
         // the Service setup section as a F&F-admin-only surface.
         kAdminDefaultRoleCatalogRouteId,
+        kAdminVendorApplicabilityRouteId,
       ],
     );
     expect(
