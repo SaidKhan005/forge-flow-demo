@@ -324,13 +324,11 @@ class _AdminAccountField extends StatelessWidget {
   const _AdminAccountField({
     required this.label,
     required this.value,
-    this.helper,
     this.valueWidget,
   });
 
   final String label;
   final String value;
-  final String? helper;
 
   /// Optional rich-content slot. When non-null it replaces the plain
   /// text [value]; the [value] still seeds copy testing in widget tests
@@ -340,27 +338,19 @@ class _AdminAccountField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Field chrome matches the operator-web `_ProfileField`: a muted
-    // mono11 label over a body13 value. Inter-field spacing is managed
+    // sans label over a body13 value. Inter-field spacing is managed
     // by the parent card (no built-in padding) so the identity card can
     // stack or 2-column-wrap exactly like the ops Profile card.
-    final helperText = helper;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTextStyles.mono11(color: AppColors.textMuted)),
+        Text(label, style: AppTextStyles.uiLabel(color: AppColors.textMuted)),
         const SizedBox(height: 4),
         valueWidget ??
             Text(
               value,
               style: AppTextStyles.body13(color: AppColors.textPrimary),
             ),
-        if (helperText != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            helperText,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-        ],
       ],
     );
   }
@@ -851,9 +841,8 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
             actionKey: const Key('admin_my_account_mfa_enroll_button'),
             header: 'Set up your authenticator app',
             body:
-                'Add an authenticator app so every sign-in asks for a '
-                'one-time code in addition to your password. Some sensitive '
-                'admin actions stay locked until you do.',
+                'Adds a one-time code at every sign-in. Some admin actions '
+                'stay locked until you turn this on.',
             buttonLabel: 'Set up authenticator app',
             onPressed: _handleEnroll,
           ),
@@ -892,9 +881,8 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
         actionKey: const Key('admin_my_account_mfa_recovery_button'),
         header: 'Two-factor sign-in is on',
         body:
-            'An authenticator app is protecting your account. If you lose '
-            'access to it, start recovery and we will email the account '
-            'on file with the next step.',
+            'Your authenticator app is on. Lost access to it? Start recovery '
+            'and we will email the next step to the account on file.',
         buttonLabel: 'Lost your authenticator?',
         onPressed: _handleRecovery,
       ),
@@ -904,9 +892,8 @@ class _AdminTwoFactorCardState extends State<_AdminTwoFactorCard> {
           actionKey: const Key('admin_my_account_mfa_turn_off_button'),
           header: 'Turn off two-factor sign-in',
           body:
-              'We wait 24 hours before turning off two-factor sign-in so '
-              'that if someone got into your account, you have time to '
-              'stop them. You may be asked to sign in again first.',
+              'We wait 24 hours before turning it off, so you have time to '
+              'stop anyone who broke in. You may be asked to sign in again.',
           buttonLabel: 'Turn off two-factor sign-in',
           onPressed: () => _handleRequestRemoval(primaryFactor),
         )
@@ -1050,10 +1037,7 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
           _AdminActionRow(
             actionKey: const Key('admin_my_account_change_password_button'),
             header: 'Change password',
-            body:
-                'You will be asked for your current password, then your new '
-                'password twice. Use at least 12 characters with a number '
-                'and a symbol.',
+            body: 'Use at least 12 characters, with a number and a symbol.',
             buttonLabel: 'Change password',
             onPressed: hasGateway ? _handleChangePassword : null,
             tooltip: hasGateway
@@ -1128,7 +1112,7 @@ class _AdminActionRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(header, style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+        Text(header, style: AppTextStyles.uiLabel(color: AppColors.sunsetDark)),
         const SizedBox(height: 4),
         Text(body, style: AppTextStyles.body13(color: AppColors.textPrimary)),
         const SizedBox(height: 10),
@@ -1177,7 +1161,7 @@ class _AdminMfaRemovalPending extends StatelessWidget {
         children: [
           Text(
             'Turning off two-factor sign-in',
-            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
           ),
           const SizedBox(height: 4),
           Text(
@@ -1290,17 +1274,12 @@ class _AdminLoginHistorySection extends StatelessWidget {
       children: [
         Text(
           'Recent sign-in activity',
-          style: AppTextStyles.mono14(
-            color: AppColors.textPrimary,
-            weight: FontWeight.w700,
-          ),
+          style: AppTextStyles.body15Bold(color: AppColors.textPrimary),
         ),
         const SizedBox(height: 4),
         Text(
-          'Sign-ins, password changes, and authenticator events on your '
-          'admin account, capped at the last 90 days. If you see something '
-          'you do not recognise, change your password and review your '
-          'authenticators.',
+          'Sign-ins, password changes, and authenticator events from the '
+          'last 90 days. If anything looks unfamiliar, change your password.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 10),
@@ -1373,7 +1352,7 @@ class _AdminWindowChip extends StatelessWidget {
       key: Key(keyName),
       label: Text(label),
       selected: selected,
-      labelStyle: AppTextStyles.mono11(
+      labelStyle: AppTextStyles.uiLabel(
         color: selected ? AppColors.sunsetDark : AppColors.textSecondary,
       ),
       selectedColor: AppColors.sunset.withValues(alpha: 0.15),
@@ -1544,7 +1523,7 @@ class _AdminStatusBadge extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(label, style: AppTextStyles.mono8(color: color)),
+      child: Text(label, style: AppTextStyles.chipLabel(color: color)),
     );
   }
 }
@@ -2031,10 +2010,7 @@ class _AdminActiveSessionsDialogState
               children: [
                 Text(
                   'This admin console session',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
+                  style: AppTextStyles.body15Bold(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -2465,7 +2441,7 @@ class _AdminEditIdentityDialogState extends State<_AdminEditIdentityDialog> {
           const SizedBox(height: 16),
           Text(
             'Display name',
-            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
           ),
           const SizedBox(height: 4),
           TextField(
@@ -2480,7 +2456,7 @@ class _AdminEditIdentityDialogState extends State<_AdminEditIdentityDialog> {
           const SizedBox(height: 12),
           Text(
             'Email',
-            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
           ),
           const SizedBox(height: 4),
           TextField(
@@ -2677,7 +2653,7 @@ class _AdminEnrollMfaDialogState extends State<_AdminEnrollMfaDialog> {
             const SizedBox(height: 14),
             Text(
               'Setup link',
-              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+              style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
             ),
             const SizedBox(height: 4),
             SelectableText(
@@ -2688,7 +2664,7 @@ class _AdminEnrollMfaDialogState extends State<_AdminEnrollMfaDialog> {
             const SizedBox(height: 10),
             Text(
               'Secret',
-              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+              style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
             ),
             const SizedBox(height: 4),
             SelectableText(
@@ -2699,7 +2675,7 @@ class _AdminEnrollMfaDialogState extends State<_AdminEnrollMfaDialog> {
             const SizedBox(height: 16),
             Text(
               '6-digit code',
-              style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+              style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
             ),
             const SizedBox(height: 4),
             TextField(
@@ -3002,7 +2978,7 @@ class _AdminMfaRecoveryDialogState extends State<_AdminMfaRecoveryDialog> {
           const SizedBox(height: 16),
           Text(
             'Account email',
-            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
           ),
           const SizedBox(height: 4),
           TextField(
@@ -3110,7 +3086,7 @@ class _PasswordField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+        Text(label, style: AppTextStyles.uiLabel(color: AppColors.sunsetDark)),
         const SizedBox(height: 4),
         TextField(
           key: fieldKey,

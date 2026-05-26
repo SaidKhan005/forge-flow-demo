@@ -107,7 +107,7 @@ class PollingTierStatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_polling_tier_status_card'),
-      title: 'Your data freshness tier',
+      title: 'Data freshness tier',
       headerExplainer:
           'This applies only to vendors that do not push live updates. '
           'Forge & Flow asks those vendors for new data on the schedule '
@@ -236,49 +236,41 @@ class _TierStatusBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: AppColors.cardGlow,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            key: const Key('polling_tier_status_pill'),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppColors.peacock,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              status.tierDisplayLabel,
-              style: AppTextStyles.chipLabel(
-                color: AppColors.backgroundSurface,
+    // A clean header row (no tinted panel) so the tier reads as the card's
+    // headline status instead of one more nested box.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          key: const Key('polling_tier_status_pill'),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.peacock,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            status.tierDisplayLabel,
+            style: AppTextStyles.chipLabel(color: AppColors.backgroundSurface),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Current tier',
+                style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
               ),
-            ),
+              const SizedBox(height: 2),
+              Text(
+                status.monthlyPriceLabel,
+                style: AppTextStyles.body14(color: AppColors.textPrimary),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Your current tier',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  status.monthlyPriceLabel,
-                  style: AppTextStyles.body14(color: AppColors.textPrimary),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -294,8 +286,8 @@ class _PerVendorCadenceList extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
-          'Every vendor you have connected pushes updates to Forge & Flow '
-          'when they happen, so there is no polling schedule to edit here.',
+          'Every connected vendor pushes updates to Forge & Flow when they '
+          'happen, so there is no schedule to set here.',
           style: AppTextStyles.body13(color: AppColors.textMuted),
         ),
       );
@@ -306,14 +298,31 @@ class _PerVendorCadenceList extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Schedule for your poll-only vendors',
-          style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+          'How often we check each vendor',
+          style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
         ),
-        const SizedBox(height: 6),
-        for (final entry in entries) ...[
-          _VendorCadenceRow(vendorId: entry.key, cadenceSeconds: entry.value),
-          if (entry.key != entries.last.key) const SizedBox(height: 4),
-        ],
+        const SizedBox(height: 8),
+        // One light grouped list with hairline separators, instead of a
+        // separate bordered tile per vendor (less nesting on the card).
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < entries.length; i++) ...[
+                if (i > 0)
+                  const Divider(height: 1, color: AppColors.borderSubtle),
+                _VendorCadenceRow(
+                  vendorId: entries[i].key,
+                  cadenceSeconds: entries[i].value,
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -330,14 +339,9 @@ class _VendorCadenceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Padding(
       key: Key('polling_tier_vendor_row_$vendorId'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
           Expanded(

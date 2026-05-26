@@ -1284,6 +1284,9 @@ class _ModelMixBar extends StatelessWidget {
               child: SizedBox(
                 height: 14,
                 child: Row(
+                  // stretch makes each split fill the 14px track height; the
+                  // childless ColoredBox shares would otherwise collapse to 0.
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     Expanded(
                       flex: math.max(0, (entry.haikuShare * 1000).round()),
@@ -1416,6 +1419,10 @@ class _LabeledBar extends StatelessWidget {
                     FractionallySizedBox(
                       alignment: Alignment.centerLeft,
                       widthFactor: clamped == 0 ? 0.001 : clamped,
+                      // heightFactor pins the fill to the full track height;
+                      // a childless ColoredBox otherwise collapses to 0px tall
+                      // (loose height constraint) and the bar never shows.
+                      heightFactor: 1,
                       child: ColoredBox(color: barColor),
                     ),
                   ],
@@ -1650,6 +1657,9 @@ class _SpenderRow extends StatelessWidget {
                     FractionallySizedBox(
                       alignment: Alignment.centerLeft,
                       widthFactor: clamped == 0 ? 0.001 : clamped,
+                      // heightFactor pins the fill to the full track height
+                      // (a childless DecoratedBox otherwise collapses to 0px).
+                      heightFactor: 1,
                       child: const DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
