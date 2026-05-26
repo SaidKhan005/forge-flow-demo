@@ -348,7 +348,6 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
 
   List<Widget> _envelopeBody(ObservabilityEnvelope envelope) {
     return <Widget>[
-      _AsOfStrip(envelope: envelope, month: _month),
       _HeroCards(envelope: envelope, useCase: _useCase),
       const SizedBox(height: 18),
       _ObservabilityTabBar(controller: _tabs),
@@ -565,31 +564,6 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
           text: 'The page can take a few minutes to update.',
         ),
       ],
-    );
-  }
-}
-
-/// As-of strip: one line giving the data timestamp, the active month
-/// bucket, and the platform-wide reminder (mirrors the mockup's context
-/// line under the title).
-class _AsOfStrip extends StatelessWidget {
-  const _AsOfStrip({required this.envelope, required this.month});
-
-  final ObservabilityEnvelope envelope;
-  final ObservabilityMonth month;
-
-  @override
-  Widget build(BuildContext context) {
-    final monthLabel = month == ObservabilityMonth.current
-        ? 'This month'
-        : 'Last month';
-    return Padding(
-      key: const Key('admin_observability_as_of_strip'),
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Text(
-        '$monthLabel · updated ${adminHumanDateTime(envelope.asOf)}',
-        style: AppTextStyles.body12(color: AppColors.textMuted),
-      ),
     );
   }
 }
