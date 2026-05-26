@@ -303,13 +303,13 @@ class CanonicalFactToClosedShiftInputAggregator
         operatorId: operatorId,
         locationId: locationId,
       );
-      final blockedWageVendorSlugs = await _readExplicitlyBlockedVendorSlugs(
+      final wageApplicability = await _readVendorApplicabilityPolicy(
         exec,
         operatorId: operatorId,
         locationId: locationId,
         settingKind: 'wage',
       );
-      final blockedCoversVendorSlugs = await _readExplicitlyBlockedVendorSlugs(
+      final coversApplicability = await _readVendorApplicabilityPolicy(
         exec,
         operatorId: operatorId,
         locationId: locationId,
@@ -439,7 +439,7 @@ class CanonicalFactToClosedShiftInputAggregator
         periodDefinitions: periodDefinitions,
         distributionWeights: distributionWeights,
         walkInOverride: walkInOverride,
-        blockedCoversVendorSlugs: blockedCoversVendorSlugs,
+        coversApplicability: coversApplicability,
       );
       if (coversResolution == null) {
         // Stage 5: unavailable. Aggregator returns null per contract.
@@ -453,7 +453,7 @@ class CanonicalFactToClosedShiftInputAggregator
         fohHoursOverride: laborSplit.fohHoursInPeriod,
         bohHoursOverride: laborSplit.bohHoursInPeriod,
         perPunchHoursInPeriod: laborSplit.perPunchHoursInPeriod,
-        blockedWageVendorSlugs: blockedWageVendorSlugs,
+        wageApplicability: wageApplicability,
       );
 
       // ─── Sales (POS-derived; sums actual_sales across cover_facts) ─
@@ -554,7 +554,7 @@ class CanonicalFactToClosedShiftInputAggregator
     required List<ServicePeriodDefinition> periodDefinitions,
     required ScheduleDistributionWeights? distributionWeights,
     required ReservationWalkInOverride? walkInOverride,
-    required Set<String> blockedCoversVendorSlugs,
+    required _VendorApplicabilityPolicy coversApplicability,
   }) {
     final operatorPreference = _resolveOperatorCoversPreference(
       settings: settings,
@@ -594,7 +594,7 @@ class CanonicalFactToClosedShiftInputAggregator
     // coversFieldExposed=true AND vendor fact populated covers).
     if (operatorPreference == _OperatorCoversPreference.vendor &&
         posVendorId != null &&
-        !blockedCoversVendorSlugs.contains(posVendorId) &&
+        coversApplicability.allows(posVendorId) &&
         posVendorExposesCovers(posVendorId) == true) {
       var hasVendorCovers = false;
       final summed = coverFacts.fold<int>(0, (acc, row) {
@@ -626,7 +626,7 @@ class CanonicalFactToClosedShiftInputAggregator
           ? ''
           : reservationFacts.first['vendor_id'] as String? ?? '';
       if (reservationVendorId.isNotEmpty &&
-          blockedCoversVendorSlugs.contains(reservationVendorId)) {
+          !coversApplicability.allows(reservationVendorId)) {
         return _resolveForecastCovers(
           dayLabel: dayLabel,
           posVendorId: reservationVendorId,
@@ -691,7 +691,7 @@ class CanonicalFactToClosedShiftInputAggregator
     // disambiguate: stage 1 is the operator-elected manual path
     // (operator picked `CoversSource.manual` in Data Accuracy);
     // stage 3.5 is the automatic POS-capability fallback.
-    if (_posCannotSupplyCovers(posVendorId, blockedCoversVendorSlugs)) {
+    if (_posCannotSupplyCovers(posVendorId, coversApplicability)) {
       final manual = settings.manualCoversFor(isoBusinessDate, servicePeriodId);
       if (manual != null) {
         return _CoversResolution(
@@ -798,10 +798,10 @@ class CanonicalFactToClosedShiftInputAggregator
   /// fallback slot ahead of forecast substitution.
   static bool _posCannotSupplyCovers(
     String? posVendorId,
-    Set<String> blockedCoversVendorSlugs,
+    _VendorApplicabilityPolicy coversApplicability,
   ) {
     return posVendorExposesCovers(posVendorId) != true ||
-        (posVendorId != null && blockedCoversVendorSlugs.contains(posVendorId));
+        !coversApplicability.allows(posVendorId);
   }
 
   static ReservationWalkInOverride? _walkInOverrideFromSettings(
@@ -869,7 +869,7 @@ class CanonicalFactToClosedShiftInputAggregator
     int? fohHoursOverride,
     int? bohHoursOverride,
     Map<Map<String, Object?>, double>? perPunchHoursInPeriod,
-    required Set<String> blockedWageVendorSlugs,
+    required _VendorApplicabilityPolicy wageApplicability,
   }) {
     // Per-Daypart V1 Slice 1.5 (Gap 21): hours come from
     // `DaypartBucketer.bucketLaborPunch` per-period segments, not from
@@ -909,14 +909,17 @@ class CanonicalFactToClosedShiftInputAggregator
 
     final laborVendorId =
         laborPunches.first['vendor_id'] as String? ?? 'unknown';
-    if (blockedWageVendorSlugs.contains(laborVendorId)) {
+    if (!wageApplicability.allows(laborVendorId)) {
+      final qualifier = wageApplicability.isExplicitlyBlocked(laborVendorId)
+          ? 'blocked'
+          : 'not_cleared';
       return _LaborResolution(
         fohHours: fohHours,
         bohHours: bohHours,
         fohDollars: null,
         bohDollars: null,
         provenance:
-            'vendor_${laborVendorId}_wage_applicability_blocked_target_wage_substituted',
+            'vendor_${laborVendorId}_wage_applicability_${qualifier}_target_wage_substituted',
       );
     }
     final wageClass = laborWageSourceClassFor(laborVendorId);
@@ -1064,7 +1067,7 @@ class CanonicalFactToClosedShiftInputAggregator
     return source?.sourceKind == 'service_period_setting';
   }
 
-  Future<Set<String>> _readExplicitlyBlockedVendorSlugs(
+  Future<_VendorApplicabilityPolicy> _readVendorApplicabilityPolicy(
     PostgresExecutor exec, {
     required String operatorId,
     required String locationId,
@@ -1109,19 +1112,23 @@ class CanonicalFactToClosedShiftInputAggregator
       },
     );
 
-    final vendorsWithEnabledWinners = <String>{};
-    final vendorsWithDisabledWinners = <String>{};
+    final enabledVendorSlugs = <String>{};
+    final disabledVendorSlugs = <String>{};
     for (final row in rows) {
       final vendorSlug = row['vendor_slug'];
       final enabled = row['enabled'];
       if (vendorSlug is! String || enabled is! bool) continue;
       if (enabled) {
-        vendorsWithEnabledWinners.add(vendorSlug);
+        enabledVendorSlugs.add(vendorSlug);
       } else {
-        vendorsWithDisabledWinners.add(vendorSlug);
+        disabledVendorSlugs.add(vendorSlug);
       }
     }
-    return vendorsWithDisabledWinners.difference(vendorsWithEnabledWinners);
+    return _VendorApplicabilityPolicy(
+      hasConfiguredRows: rows.isNotEmpty,
+      enabledVendorSlugs: enabledVendorSlugs,
+      disabledVendorSlugs: disabledVendorSlugs.difference(enabledVendorSlugs),
+    );
   }
 
   // ─── DAS read (inline, same tenant transaction) ────────────────────
@@ -1827,6 +1834,28 @@ class _CoversResolution {
   final int covers;
   final String provenance;
   final String sourceSystem;
+}
+
+class _VendorApplicabilityPolicy {
+  const _VendorApplicabilityPolicy({
+    required this.hasConfiguredRows,
+    required this.enabledVendorSlugs,
+    required this.disabledVendorSlugs,
+  });
+
+  final bool hasConfiguredRows;
+  final Set<String> enabledVendorSlugs;
+  final Set<String> disabledVendorSlugs;
+
+  bool allows(String? vendorSlug) {
+    if (!hasConfiguredRows) return true;
+    if (vendorSlug == null || vendorSlug.isEmpty) return false;
+    return enabledVendorSlugs.contains(vendorSlug);
+  }
+
+  bool isExplicitlyBlocked(String vendorSlug) {
+    return disabledVendorSlugs.contains(vendorSlug);
+  }
 }
 
 class _LaborResolution {

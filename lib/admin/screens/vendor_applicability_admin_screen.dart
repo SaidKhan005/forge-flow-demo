@@ -21,6 +21,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forge_and_flow/widgets/console/console_screen_header.dart';
+import 'package:forge_and_flow/widgets/console/console_info_button.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 
 import '../../services/settings/applicability_metadata_schemas.dart';
@@ -1201,6 +1202,13 @@ class _Toolbar extends StatelessWidget {
               compact: true,
               minWidth: 112,
             ),
+            OperatorWebInfoButton(
+              key: const Key('admin_vendor_applicability_defaults_help'),
+              title: 'Defaults',
+              tooltip: 'Use defaults or reset defaults',
+              width: 280,
+              body: const _DefaultsHelpBody(),
+            ),
             AdminActionButton(
               key: const Key('admin_vendor_applicability_add'),
               label: saving ? 'Saving...' : 'Add rule',
@@ -1256,6 +1264,29 @@ class _Toolbar extends StatelessWidget {
           child: child,
         );
       },
+    );
+  }
+}
+
+class _DefaultsHelpBody extends StatelessWidget {
+  const _DefaultsHelpBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Use defaults: adds missing recommended rules only.',
+          style: AppTextStyles.body12(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Reset defaults: replaces this tab with the recommended rules.',
+          style: AppTextStyles.body12(color: AppColors.textSecondary),
+        ),
+      ],
     );
   }
 }

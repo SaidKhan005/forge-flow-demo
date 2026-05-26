@@ -474,6 +474,85 @@ void main() {
       },
     );
 
+    test('covers allow-list stops vendors that are not cleared', () async {
+      final pool = FakePool()..seedLocation(opA, locA);
+      pool.dataAccuracySettingsByTenant['$opA|$locA'] = <String, Object?>{
+        'setting_id': 'das_001',
+        'operator_id': opA,
+        'location_id': locA,
+        'covers_source_per_service_period': vendorCoversSourcePerServicePeriod,
+        'covers_manual_entries': const <String, Map<String, int>>{},
+        'wage_source': 'vendor',
+        'created_at': DateTime.utc(2026, 5, 1),
+        'updated_at': DateTime.utc(2026, 5, 4),
+        'updated_by': null,
+      };
+      pool.vendorApplicabilityRows.add(<String, Object?>{
+        'operator_id': null,
+        'location_id': null,
+        'setting_kind': 'covers',
+        'setting_key': 'default',
+        'vendor_slug': 'toast',
+        'enabled': true,
+        'effective_from': DateTime.utc(2026, 5, 1),
+        'effective_until': null,
+      });
+      pool.coverFactsByOperatorLocation['$opA|$locA|$businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'oracle_micros_simphony',
+          'vendor_entity_id': 'check_001',
+          'vendor_modified_at': dinnerInstantUtc,
+          'covers': 73,
+          'covers_source': 'direct',
+          'opened_at': dinnerInstantUtc,
+          'closed_at': dinnerInstantUtc,
+          'business_date': businessDateIso,
+          'actual_sales': 1184.50,
+        },
+      ];
+      final forecastContext = DemandForecastContext(
+        restaurantId: restaurantA,
+        anchorBusinessDate: businessDateIso,
+        baselineTotalCovers: 1500,
+        baselineWeeklyAvgCovers: 175,
+        baselineWeeksRepresented: 60 / 7,
+        recentThreeWeekTotalCovers: 525,
+        recentThreeWeekWeeklyAvgCovers: 175,
+        recentTrendDeltaCovers: 0,
+        resolvedWeeklyForecastCovers: 210,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: businessDateIso,
+      );
+
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          ).aggregate(
+            operatorId: opA,
+            locationId: locA,
+            restaurantId: restaurantA,
+            businessDate: businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            servicePeriodId: 'dinner',
+            periodDefinition: dinnerPeriod,
+            forecastContext: forecastContext,
+          );
+
+      expect(result, isNotNull);
+      expect(
+        result!.input.covers,
+        isNot(73),
+        reason:
+            'when a covers allow-list exists, vendors missing from it must '
+            'not power closed-shift covers',
+      );
+      expect(
+        result.provenance.coversProvenance,
+        'vendor_oracle_micros_simphony_covers_unavailable_app_forecast_substituted',
+      );
+    });
+
     test('forward-staged keyed row (effective_at AFTER the business_date) '
         'must NOT short-circuit the vendor default — the at-or-before '
         'lookup keeps a 2026-06-01 manual switch from gating a '

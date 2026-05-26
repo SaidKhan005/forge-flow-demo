@@ -42,6 +42,20 @@ void main() {
       // Allowed pill + compact scope text render.
       expect(find.text('Allowed'), findsWidgets);
       expect(find.text('All operators'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_defaults_help')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Use defaults: adds missing recommended rules only.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Reset defaults: replaces this tab with the recommended rules.',
+        ),
+        findsOneWidget,
+      );
       expect(gateway.listFilters.single.settingKind, 'wage');
       expect(gateway.listFilters.single.currentOnly, isFalse);
     });
