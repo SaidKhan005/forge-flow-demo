@@ -462,6 +462,14 @@ class AdminKnowledgeBaseCopy {
   /// "Start over" footer button: clears every pending choice.
   static const String connectionsStartOver = 'Start over';
 
+  /// Honest hint shown by the disabled "Save my choices" button when no
+  /// commit target is configured. Points the operator at the Scope pane
+  /// (the redesign dropped the in-tab operator picker), so a decision is
+  /// never written against the wrong business or location.
+  static const String connectionsNoTargetHint =
+      'Select a business and location in the Scope pane to apply your '
+      'decisions.';
+
   /// Snackbar after a successful save: "N approved, M removed".
   static String connectionsSavedToast(int approved, int rejected) =>
       '$approved approved, $rejected removed';
@@ -495,14 +503,26 @@ class AdminKnowledgeBaseCopy {
   /// Change modal: save button.
   static const String connectionsChangeSave = 'Save this connection';
 
-  /// The placeholder Map card title (the focusable graph view ships in a
-  /// dedicated follow-up slice; this card states that honestly).
+  /// The Map card title. The focusable node-link diagram (C2-map) draws
+  /// the real connection candidates centred on a chosen topic.
   static const String connectionsMapTitle = 'Map';
 
-  /// Honest "not built yet" note inside the Map placeholder card.
-  static const String connectionsMapComingSoon =
-      'A visual map of how topics connect is coming soon. For now, review '
-      'the connections in the lists below.';
+  /// "Focus on:" label beside the Map's topic dropdown.
+  static const String connectionsMapFocusLabel = 'Focus on:';
+
+  /// Honest empty state when there is no graph data to map at all (no
+  /// edge candidates in the diff). We never draw a fabricated diagram.
+  static const String connectionsMapEmpty = 'No connections to map yet.';
+
+  /// Caption under the Map: how many of the total connections the diagram
+  /// shows, and which topic it is centred on. Plain English, no em dash.
+  static String connectionsMapCaption(int shown, int total, String topic) =>
+      'Showing $shown of $total connection${total == 1 ? '' : 's'}, '
+      'centred on $topic. Pick another topic to explore its links.';
+
+  /// Honest note drawn beside a focused topic that has no links yet.
+  static String connectionsMapNoLinks(String topic) =>
+      '$topic has no connections to other topics yet.';
 }
 
 /// B-r2: the plain-English content "kind" the Topics card shows for each

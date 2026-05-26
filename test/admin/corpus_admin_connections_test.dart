@@ -26,6 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_human_labels.dart';
 import 'package:forge_and_flow/admin/models/corpus_admin_models.dart';
+import 'package:forge_and_flow/admin/screens/corpus_admin_connections_map.dart';
 import 'package:forge_and_flow/admin/screens/corpus_admin_connections_view.dart';
 import 'package:forge_and_flow/admin/screens/corpus_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/corpus_admin_gateway.dart';
@@ -773,6 +774,244 @@ void main() {
     );
   });
 
+  // ─── C2-map: focusable connection Map ────────────────────────────────
+
+  group('focus map model (pure, from the diff)', () {
+    test('topics list the distinct edge endpoints, sorted', () {
+      final model = CorpusMapModel.fromDiff(buildDiff());
+      expect(model.hasGraph, isTrue);
+      // Endpoint names are the human-readable (de-prefixed) topic names.
+      expect(
+        model.topics,
+        containsAll(<String>[
+          'cross contamination',
+          'cycles',
+          'daypart',
+          'fifo',
+          'food safety manual',
+          'haccp',
+          'the four cs',
+        ]),
+      );
+      // Sorted for a stable dropdown order.
+      final sorted = [...model.topics]..sort();
+      expect(model.topics, sorted);
+      // Honest total = every edge candidate in the diff (5 in the fixture).
+      expect(model.totalEdges, 5);
+    });
+
+    test('focusing on a topic returns only its directly-connected edges '
+        'with the plain-English verb + clarity', () {
+      final model = CorpusMapModel.fromDiff(
+        buildDiff(),
+        focusTopic: 'food safety manual',
+      );
+      expect(model.focus, 'food safety manual');
+      // The manual connects to FIFO + HACCP, both "includes", both clear.
+      expect(model.edges, hasLength(2));
+      expect(
+        model.edges.map((e) => e.otherName),
+        containsAll(<String>['fifo', 'haccp']),
+      );
+      for (final edge in model.edges) {
+        expect(edge.verb, 'includes');
+        expect(edge.clarity, CorpusConnectionClarity.clear);
+        expect(edge.outbound, isTrue);
+      }
+    });
+
+    test('a worth-checking edge keeps its warning clarity in the model', () {
+      final model = CorpusMapModel.fromDiff(
+        buildDiff(),
+        focusTopic: 'the four cs',
+      );
+      expect(model.focus, 'the four cs');
+      final edge = model.edges.singleWhere(
+        (e) => e.otherName == 'cross contamination',
+      );
+      expect(edge.verb, 'reduces the risk of');
+      expect(edge.clarity, CorpusConnectionClarity.check);
+    });
+
+    test('an invalid focus falls back to the first topic (never null when '
+        'there is a graph)', () {
+      final model = CorpusMapModel.fromDiff(
+        buildDiff(),
+        focusTopic: 'not a real topic',
+      );
+      expect(model.focus, isNotNull);
+      expect(model.topics, contains(model.focus));
+    });
+
+    test('no edge candidates => no graph (honest, never fabricated)', () {
+      const empty = GraphCandidateDiff(
+        graphScope: 'methodology',
+        graphVersion: '1',
+        graphifyVersion: 'v5',
+        graphifySourceCommit: null,
+        extracted: <GraphCandidate>[],
+        inferred: <GraphCandidate>[],
+        ambiguous: <GraphCandidate>[],
+      );
+      final model = CorpusMapModel.fromDiff(empty);
+      expect(model.hasGraph, isFalse);
+      expect(model.focus, isNull);
+      expect(model.edges, isEmpty);
+      expect(model.totalEdges, 0);
+    });
+
+    test('clarity colours reuse the C2 theme tokens', () {
+      expect(
+        corpusMapClarityColor(CorpusConnectionClarity.clear),
+        AppColors.positive,
+      );
+      expect(
+        corpusMapClarityColor(CorpusConnectionClarity.check),
+        AppColors.warning,
+      );
+      expect(
+        corpusMapClarityColor(CorpusConnectionClarity.unsure),
+        AppColors.textMuted,
+      );
+    });
+  });
+
+  testWidgets('the Map renders, centred on the first topic, with a caption + '
+      'legend', (tester) async {
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
+    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openConnectionsTab(tester);
+
+    final map = find.byKey(const Key('admin_corpus_connections_map'));
+    await tester.ensureVisible(map);
+    await tester.pumpAndSettle();
+    expect(map, findsOneWidget);
+    // The diagram (CustomPaint host) renders, not the old placeholder.
+    expect(
+      find.byKey(const Key('admin_corpus_connections_map_diagram')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_connections_map_placeholder')),
+      findsNothing,
+    );
+    // The caption + legend render.
+    expect(
+      find.byKey(const Key('admin_corpus_connections_map_caption')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_connections_map_legend')),
+      findsOneWidget,
+    );
+    // The first topic alphabetically is "cross contamination"; the caption
+    // is centred on it and reads the honest total (5).
+    expect(
+      find.text(
+        AdminKnowledgeBaseCopy.connectionsMapCaption(
+          // cross contamination only appears as the TO of one edge, so it
+          // has a single inbound link.
+          1,
+          5,
+          'cross contamination',
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the focus dropdown re-centres the diagram on the chosen topic '
+      '(edge with its verb + clarity colour)', (tester) async {
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
+    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openConnectionsTab(tester);
+
+    final focus = find.byKey(const Key('admin_corpus_connections_map_focus'));
+    await tester.ensureVisible(focus);
+    await tester.pumpAndSettle();
+    await tester.tap(focus);
+    await tester.pumpAndSettle();
+    // Pick the Food Safety Manual.
+    await tester.tap(find.text('food safety manual').last);
+    await tester.pumpAndSettle();
+
+    // The caption now reads "Showing 2 of 5 ... centred on food safety
+    // manual" (the manual's two CLEAR "includes" edges).
+    expect(
+      find.text(
+        AdminKnowledgeBaseCopy.connectionsMapCaption(2, 5, 'food safety manual'),
+      ),
+      findsOneWidget,
+    );
+
+    // The painter draws the real edges: prove the model the diagram is
+    // built from carries the plain-English verb + clear-clarity colour.
+    final model = CorpusMapModel.fromDiff(
+      buildDiff(),
+      focusTopic: 'food safety manual',
+    );
+    expect(model.edges, hasLength(2));
+    expect(model.edges.first.verb, 'includes');
+    expect(
+      corpusMapClarityColor(model.edges.first.clarity),
+      AppColors.positive,
+    );
+  });
+
+  testWidgets('honest empty-map state when there is no graph data', (
+    tester,
+  ) async {
+    final gateway = InMemoryCorpusAdminGateway(
+      // One single-NODE candidate only: there are nodes but NO edges, so
+      // there is nothing to map. The map must show its honest empty state,
+      // never a fabricated diagram. (The lists still render the node.)
+      graphCandidateSeed: GraphCandidateDiff(
+        graphScope: 'methodology',
+        graphVersion: '1',
+        graphifyVersion: 'v5',
+        graphifySourceCommit: null,
+        extracted: <GraphCandidate>[
+          GraphCandidate(
+            candidateId: 'node:lonely',
+            kind: GraphCandidateKind.node,
+            candidateKey: 'graphify:lonely_topic',
+            candidateType: 'CONCEPT',
+            label: GraphCandidateLabel.extracted,
+            confidenceScore: 0.95,
+            sourceFile: 'methodology_seed.md',
+            sourceRef: null,
+            payload: const <String, Object?>{'label': 'lonely topic'},
+          ),
+        ],
+        inferred: const <GraphCandidate>[],
+        ambiguous: const <GraphCandidate>[],
+      ),
+    );
+    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openConnectionsTab(tester);
+
+    final map = find.byKey(const Key('admin_corpus_connections_map'));
+    await tester.ensureVisible(map);
+    await tester.pumpAndSettle();
+    expect(map, findsOneWidget);
+    // Honest empty state, no fabricated diagram.
+    expect(
+      find.byKey(const Key('admin_corpus_connections_map_empty')),
+      findsOneWidget,
+    );
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsMapEmpty),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_connections_map_diagram')),
+      findsNothing,
+    );
+  });
+
   // ─── No commit target: save disabled (safety) ────────────────────────
 
   testWidgets('no target operator/location: save stays disabled even with a '
@@ -811,5 +1050,39 @@ void main() {
     );
     expect(gateway.debugApprovedEdges, isEmpty);
     expect(gateway.debugRejectedAudit, isEmpty);
+
+    // C2-map gap close: an honest hint near the disabled Save button tells
+    // the operator how to enable it (pick a scope), without re-adding the
+    // old in-tab operator picker.
+    final hint = find.byKey(
+      const Key('admin_corpus_connections_no_target_hint'),
+    );
+    await tester.ensureVisible(hint);
+    await tester.pumpAndSettle();
+    expect(hint, findsOneWidget);
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsNoTargetHint),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('with a commit target the no-target hint stays hidden', (
+    tester,
+  ) async {
+    // The demo/test path always supplies a target (canSave true), so the
+    // hint must not show.
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
+    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openConnectionsTab(tester);
+
+    expect(
+      find.byKey(const Key('admin_corpus_connections_no_target_hint')),
+      findsNothing,
+    );
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsNoTargetHint),
+      findsNothing,
+    );
   });
 }
