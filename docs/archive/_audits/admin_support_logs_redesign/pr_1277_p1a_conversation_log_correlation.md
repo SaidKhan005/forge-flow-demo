@@ -4,7 +4,7 @@ Date: 2026-05-24
 Auditor: orchestrator (independent audit per Pattern B)
 PR: #1277 · branch `claude/support-logs-p1a-conversation-log-correlation` · base `master`
 Slice: P1a (Support logs telemetry groundwork) — see
-`docs/_execution/admin_support_logs_redesign/01_lens_audit_and_implementation_plan.md`.
+`docs/archive/_execution/admin_support_logs_redesign/01_lens_audit_and_implementation_plan.md`.
 Category: **SCHEMA + RLS-touching → gated. Merge needs explicit operator approval.**
 
 ## Outcome: MERGED + VERIFIED LANDED (2026-05-24)
