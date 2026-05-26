@@ -22,9 +22,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_app.dart';
 import 'package:forge_and_flow/admin/admin_auth_gate.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
-import 'package:forge_and_flow/admin/admin_shell.dart';
 import 'package:forge_and_flow/admin/models/corpus_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/corpus_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/corpus_admin_gateway.dart';
@@ -425,34 +425,29 @@ void main() {
           ),
         ],
       );
-      const ffSupportSession = AdminAuthSession(
-        uid: 'demo-ff-support',
-        email: 'support@forgeflow.test',
-        displayName: 'Demo F&F Support',
-        roles: <String>['ff_support'],
-      );
       final source = DemoAdminAuthSource(
-        initial: const AdminAuthAuthenticated(ffSupportSession),
+        initial: const AdminAuthAuthenticated(
+          AdminAuthSession(
+            uid: 'demo-ff-support',
+            email: 'support@forgeflow.test',
+            displayName: 'Demo F&F Support',
+            roles: <String>['ff_support'],
+          ),
+        ),
       );
       addTearDown(source.dispose);
-      // Drive AdminShell directly — the pattern admin_shell_widget_test.dart
-      // uses for every scoped-workspace screen — rather than the full
-      // AdminConsoleApp. AdminConsoleApp's root MediaQuery clamps text
-      // scaling up to a 1.12 floor, which tips the Knowledge Base "Show
-      // technical details" toggle ~3px past OperatorWebScreenFrame's capped
-      // content width and trips a render overflow unrelated to this test's
-      // ff_support read-only contract. Scale-1.0 shell rendering keeps the
-      // test on its subject (the toggle-vs-OS-text-scaling quirk is tracked
-      // separately).
+      // Drive the full AdminConsoleApp so this also covers the admin
+      // console's text-scaling path: its root MediaQuery clamps OS text
+      // scaling up to a 1.12 floor. The Knowledge Base "Show technical
+      // details" toggle now lets its label shrink (see _TechDetailsToggle in
+      // corpus_admin_screen.dart), so the read-only screen renders inside the
+      // capped-width scoped-workspace function pane without a RenderFlex
+      // overflow. The takeException check at the end guards that regression.
       await tester.pumpWidget(
         AdminConsoleServicesScope(
           corpusAdminGateway: gateway,
           adminAuthSource: source,
-          child: MaterialApp(
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.themeData,
-            home: AdminShell(session: ffSupportSession, authSource: source),
-          ),
+          child: AdminConsoleApp(authSource: source),
         ),
       );
       // Bounded settling (pumpEventually) instead of pumpAndSettle: the
@@ -499,6 +494,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('admin_corpus_upload_button')), findsNothing);
+      // Regression guard: at the admin console's 1.12 text-scaling floor the
+      // read-only Knowledge Base renders in the capped-width function pane
+      // with no RenderFlex overflow (the _TechDetailsToggle label shrinks).
+      expect(tester.takeException(), isNull);
     },
   );
 
