@@ -202,6 +202,12 @@ class _RecordingAccountingStore implements ProxyAccountingStore {
     required DateTime now,
     ProxyRequestStats? stats,
   }) async {}
+
+  @override
+  Future<void> recordRequestStats({
+    required OperatorContext operator,
+    required ProxyRequestStats stats,
+  }) async {}
 }
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
