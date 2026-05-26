@@ -395,24 +395,28 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       final result = await widget.gateway.fetchEffectiveScopedContract(
         requestScope,
       );
-      if (!mounted || widget.hierarchyScope?.cacheKey != scopeKey) return;
+      if (!_isCurrentScopedContractRequest(scopeKey)) return;
       setState(() {
         _scopedContract = result;
         _scopedContractLoading = false;
       });
     } on PricingTierAdminGatewayError catch (error) {
-      if (!mounted || widget.hierarchyScope?.cacheKey != scopeKey) return;
+      if (!_isCurrentScopedContractRequest(scopeKey)) return;
       setState(() {
         _scopedContractError = error.message;
         _scopedContractLoading = false;
       });
     } catch (_) {
-      if (!mounted || widget.hierarchyScope?.cacheKey != scopeKey) return;
+      if (!_isCurrentScopedContractRequest(scopeKey)) return;
       setState(() {
         _scopedContractError = 'Could not load custom contract terms.';
         _scopedContractLoading = false;
       });
     }
+  }
+
+  bool _isCurrentScopedContractRequest(String scopeKey) {
+    return mounted && widget.hierarchyScope?.cacheKey == scopeKey;
   }
 
   ScopedPricingContractScope? _contractScopeFor(PricingOperatorBundle bundle) {
