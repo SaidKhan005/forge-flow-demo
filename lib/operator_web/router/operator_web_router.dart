@@ -66,6 +66,9 @@ import '../screens/data_accuracy_screen.dart';
 import '../screens/hierarchy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/permission_explainer_screen.dart';
+import '../../services/advisor/advisor_answer_gateway.dart'
+    show AdvisorAnswerGatewayDemo;
+import '../screens/advisor_chat_nav.dart';
 import '../screens/plan_nav.dart';
 import '../screens/roles_screen.dart';
 import '../screens/sessions_screen.dart';
@@ -283,6 +286,7 @@ String? _navIdFromRaw(String? raw) {
     // landing on the wage section without 404ing.
     'wage_authority' => kOperatorWebNavDataAccuracy,
     'schedule' => kOperatorWebNavSchedule,
+    'advisor' || 'advisor_chat' => kOperatorWebNavAdvisor,
     'plan' || 'your_plan' || 'plans' => kOperatorWebNavPlan,
     'security' || 'sign_in_security' => kOperatorWebNavMyAccount,
     _ => null,
@@ -1501,6 +1505,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.calendar_today_outlined,
         group: 'Operations',
       ),
+      kOperatorWebAdvisorNavItem, // Advisor chat — Slice D2.
       const OperatorWebNavItem(
         id: kOperatorWebNavAccount,
         title: 'Business account',
@@ -1999,6 +2004,14 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           );
         }
         break;
+      case kOperatorWebNavAdvisor: // Advisor chat — Slice D2; body in advisor_chat_nav.dart.
+        body = operatorWebAdvisorChatBody(
+          session: session,
+          source: widget.source,
+          routerOwnedDemoGateway: _routerOwnedDemoAdvisorGateway ??=
+              AdvisorAnswerGatewayDemo(),
+        );
+        break;
       case kOperatorWebNavPlan: // Plans & limits 5b — wiring in plan_nav.dart.
         body = operatorWebPlanScreenBody(
           session: session,
@@ -2353,6 +2366,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   OperatorWebDemoScheduleGateway? _routerOwnedDemoScheduleGateway;
+
+  /// Advisor chat — Slice D2 demo gateway (live sources mix in
+  /// [AdvisorAnswerGatewayProvider]; demo / unmixed sources get this
+  /// in-memory canned-answer gateway so the demo walkthrough works
+  /// without a live proxy).
+  AdvisorAnswerGatewayDemo? _routerOwnedDemoAdvisorGateway;
 
   String? get _currentSessionId {
     final source = widget.source;
