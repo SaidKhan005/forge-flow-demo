@@ -54,10 +54,7 @@ import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/audit_log_screen.dart';
-// Per-Daypart Targets V1 / Slice 2 (Gap 35): the operator-web
-// Benchmarks override surface was cut entirely. Mobile Baseline
-// Manager star-shift selection is the only override path. No
-// `benchmarks_screen.dart` import remains.
+// Benchmarks cut (Per-Daypart Targets V1 / Slice 2, Gap 35).
 import '../screens/business_setup_screen.dart';
 import '../screens/business_timing_editor_screen.dart';
 import '../screens/my_account_screen.dart';
@@ -66,6 +63,7 @@ import '../screens/data_accuracy_screen.dart';
 import '../screens/hierarchy_screen.dart';
 import '../screens/members_screen.dart';
 import '../screens/permission_explainer_screen.dart';
+import '../screens/advisor_chat_nav.dart';
 import '../screens/plan_nav.dart';
 import '../screens/roles_screen.dart';
 import '../screens/sessions_screen.dart';
@@ -283,6 +281,7 @@ String? _navIdFromRaw(String? raw) {
     // landing on the wage section without 404ing.
     'wage_authority' => kOperatorWebNavDataAccuracy,
     'schedule' => kOperatorWebNavSchedule,
+    'advisor' || 'advisor_chat' => kOperatorWebNavAdvisor,
     'plan' || 'your_plan' || 'plans' => kOperatorWebNavPlan,
     'security' || 'sign_in_security' => kOperatorWebNavMyAccount,
     _ => null,
@@ -1501,6 +1500,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.calendar_today_outlined,
         group: 'Operations',
       ),
+      kOperatorWebAdvisorNavItem, // D2 advisor chat.
       const OperatorWebNavItem(
         id: kOperatorWebNavAccount,
         title: 'Business account',
@@ -1999,6 +1999,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           );
         }
         break;
+      case kOperatorWebNavAdvisor: body = operatorWebAdvisorChatBody(session: session, source: widget.source); break; // D2.
       case kOperatorWebNavPlan: // Plans & limits 5b — wiring in plan_nav.dart.
         body = operatorWebPlanScreenBody(
           session: session,
