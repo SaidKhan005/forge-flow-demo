@@ -31,6 +31,7 @@ import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/vendor_applicability_admin_gateway.dart';
 import '../widgets/admin_action_controls.dart';
+import 'vendor_applicability_recommended_defaults.dart';
 import 'vendor_applicability_vendor_catalog.dart';
 
 ButtonStyle _adminSegmentedButtonStyle() {
@@ -411,6 +412,106 @@ class _VendorApplicabilityAdminScreenState
     }
   }
 
+  Future<void> _openRecommendedDefaultsDialog() async {
+    if (!_canWriteSelectedScope) {
+      setState(
+        () => _actionError =
+            'Vendor applicability can view org-unit scope, but rules are '
+            'stored at business or location scope today.',
+      );
+      return;
+    }
+    final proposal = _buildRecommendedDefaultsProposal();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => _RecommendedDefaultsDialog(
+        scopeLabel: _selectedScopeLabel,
+        settingLabel: _recommendedDefaultsSettingLabel,
+        proposal: proposal,
+      ),
+    );
+    if (reason == null || proposal.missing.isEmpty) return;
+    await _applyRecommendedDefaults(proposal.missing, reason);
+  }
+
+  _RecommendedDefaultsProposal _buildRecommendedDefaultsProposal() {
+    final defaults = recommendedVendorApplicabilityDefaultsFor(_selectedKind);
+    final currentRows = _currentRows;
+    final missing = <VendorApplicabilityRecommendedDefault>[];
+    final review = <VendorApplicabilityRecommendedDefault>[];
+    var matching = 0;
+
+    for (final recommended in defaults) {
+      final candidates = currentRows
+          .where(
+            (row) =>
+                row.settingKind == recommended.settingKind &&
+                row.settingKey == recommended.settingKey &&
+                row.vendorSlug == recommended.vendorSlug,
+          )
+          .toList(growable: false);
+      if (candidates.isEmpty) {
+        missing.add(recommended);
+        continue;
+      }
+      if (candidates.any((row) => _rowMatchesRecommended(row, recommended))) {
+        matching += 1;
+      } else {
+        review.add(recommended);
+      }
+    }
+
+    return _RecommendedDefaultsProposal(
+      missing: missing,
+      review: review,
+      matchingCount: matching,
+    );
+  }
+
+  bool _rowMatchesRecommended(
+    VendorApplicabilityAdminRow row,
+    VendorApplicabilityRecommendedDefault recommended,
+  ) {
+    return row.enabled == recommended.enabled &&
+        _jsonLikeEquals(row.metadata, recommended.metadata);
+  }
+
+  Future<void> _applyRecommendedDefaults(
+    List<VendorApplicabilityRecommendedDefault> defaults,
+    String reason,
+  ) async {
+    setState(() {
+      _saving = true;
+      _actionError = null;
+    });
+    try {
+      for (final recommended in defaults) {
+        await widget.gateway.upsert(
+          VendorApplicabilityUpsertCommand(
+            operatorId: _selectedScopeOperatorId,
+            locationId: _selectedScopeLocationId,
+            settingKind: recommended.settingKind,
+            settingKey: recommended.settingKey,
+            vendorSlug: recommended.vendorSlug,
+            enabled: recommended.enabled,
+            metadata: recommended.metadata,
+            adminReason: 'admin.vendor_applicability.upsert',
+            reasonNote: reason,
+            idempotencyKey: _newIdempotencyKey('recommended'),
+          ),
+        );
+      }
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _actionError = 'Could not apply recommended defaults: $error',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<String?> _askReason({required String title, required String helper}) {
     return showDialog<String>(
       context: context,
@@ -477,6 +578,19 @@ class _VendorApplicabilityAdminScreenState
     return scope.locationId;
   }
 
+  String get _recommendedDefaultsSettingLabel {
+    switch (_selectedKind) {
+      case VendorApplicabilitySettingKind.wage:
+        return 'wage';
+      case VendorApplicabilitySettingKind.covers:
+        return 'covers';
+      case VendorApplicabilitySettingKind.polling:
+        return 'data freshness';
+      default:
+        return 'vendor';
+    }
+  }
+
   double _contentWidthFor(BuildContext context, BoxConstraints constraints) {
     final boundedWidth = constraints.hasBoundedWidth
         ? constraints.maxWidth
@@ -507,6 +621,9 @@ class _VendorApplicabilityAdminScreenState
     final currentRows = _currentRows;
     final allowedCount = currentRows.where((row) => row.enabled).length;
     final blockedCount = currentRows.length - allowedCount;
+    final recommendedMissingCount = _buildRecommendedDefaultsProposal()
+        .missing
+        .length;
     return ColoredBox(
       key: const Key('admin_vendor_applicability_screen'),
       color: AppColors.backgroundDeep,
@@ -593,10 +710,13 @@ class _VendorApplicabilityAdminScreenState
                           scopeLabel: _selectedScopeLabel,
                           allowedCount: allowedCount,
                           blockedCount: blockedCount,
+                          recommendedMissingCount: recommendedMissingCount,
                           saving: _saving,
                           editingEnabled: widget.editingEnabled,
                           canAdd: _canWriteSelectedScope,
                           onAdd: _openAddDialog,
+                          onRecommendedDefaults:
+                              _openRecommendedDefaultsDialog,
                           onRefresh: _refresh,
                         ),
                         const SizedBox(height: 12),
@@ -705,16 +825,210 @@ class _SettingKindSpec {
   final String guide;
 }
 
+class _RecommendedDefaultsProposal {
+  const _RecommendedDefaultsProposal({
+    required this.missing,
+    required this.review,
+    required this.matchingCount,
+  });
+
+  final List<VendorApplicabilityRecommendedDefault> missing;
+  final List<VendorApplicabilityRecommendedDefault> review;
+  final int matchingCount;
+}
+
+class _RecommendedDefaultsDialog extends StatefulWidget {
+  const _RecommendedDefaultsDialog({
+    required this.scopeLabel,
+    required this.settingLabel,
+    required this.proposal,
+  });
+
+  final String scopeLabel;
+  final String settingLabel;
+  final _RecommendedDefaultsProposal proposal;
+
+  @override
+  State<_RecommendedDefaultsDialog> createState() =>
+      _RecommendedDefaultsDialogState();
+}
+
+class _RecommendedDefaultsDialogState
+    extends State<_RecommendedDefaultsDialog> {
+  late final TextEditingController _reason = TextEditingController(
+    text: 'Apply recommended ${widget.settingLabel} defaults',
+  );
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (widget.proposal.missing.isEmpty) {
+      Navigator.of(context).pop();
+      return;
+    }
+    Navigator.of(context).pop(_reason.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final missing = widget.proposal.missing;
+    final reviewCount = widget.proposal.review.length;
+    final visibleMissing = missing.take(3).toList(growable: false);
+    final hiddenMissingCount = missing.length - visibleMissing.length;
+    final title = missing.isEmpty
+        ? 'Recommended defaults are in place.'
+        : 'Add ${missing.length} missing ${widget.settingLabel} '
+              '${missing.length == 1 ? 'rule' : 'rules'}.';
+    return OperatorWebDialog(
+      key: const Key('admin_vendor_applicability_recommended_dialog'),
+      title: 'Use recommended defaults?',
+      icon: Icons.playlist_add_check_outlined,
+      maxWidth: 640,
+      actions: [
+        AdminActionButton(
+          label: missing.isEmpty ? 'Close' : 'Cancel',
+          onPressed: () => Navigator.of(context).pop(),
+          role: AdminActionRole.quiet,
+        ),
+        if (missing.isNotEmpty)
+          AdminActionButton(
+            key: const Key(
+              'admin_vendor_applicability_recommended_apply',
+            ),
+            label: 'Add ${missing.length} ${missing.length == 1 ? 'rule' : 'rules'}',
+            onPressed: _submit,
+            role: AdminActionRole.primary,
+          ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.scopeLabel, style: AppTextStyles.body13()),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: AppColors.cardGlow,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTextStyles.body15Bold(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Existing rules will not be changed.',
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          if (visibleMissing.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (final recommended in visibleMissing) ...[
+              _RecommendedDefaultRow(recommended: recommended),
+              const SizedBox(height: 8),
+            ],
+          ],
+          if (hiddenMissingCount > 0) ...[
+            const SizedBox(height: 2),
+            Text(
+              '$hiddenMissingCount more will be added.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ],
+          if (reviewCount > 0) ...[
+            const SizedBox(height: 10),
+            Text(
+              '$reviewCount existing ${reviewCount == 1 ? 'rule differs' : 'rules differ'}. Review separately.',
+              style: AppTextStyles.body12(color: AppColors.sunsetDark),
+            ),
+          ],
+          if (missing.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            TextField(
+              key: const Key('admin_vendor_applicability_recommended_reason'),
+              controller: _reason,
+              decoration: const InputDecoration(
+                labelText: 'Reason',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RecommendedDefaultRow extends StatelessWidget {
+  const _RecommendedDefaultRow({required this.recommended});
+
+  final VendorApplicabilityRecommendedDefault recommended;
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = friendlyMetadataChips(
+      settingKind: recommended.settingKind,
+      metadata: recommended.metadata,
+    );
+    final subtitle = chips.isEmpty
+        ? (recommended.enabled ? 'Allowed' : 'Blocked')
+        : chips.first;
+    return Container(
+      key: Key(
+        'admin_vendor_applicability_recommended_${recommended.settingKind}_'
+        '${recommended.settingKey}_${recommended.vendorSlug}',
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 84,
+            child: _EnabledPill(enabled: recommended.enabled),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _RuleTextBlock(
+              title: vendorDisplayName(recommended.vendorSlug),
+              subtitle: subtitle,
+              titleMaxLines: 2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.guide,
     required this.scopeLabel,
     required this.allowedCount,
     required this.blockedCount,
+    required this.recommendedMissingCount,
     required this.saving,
     required this.editingEnabled,
     required this.canAdd,
     required this.onAdd,
+    required this.onRecommendedDefaults,
     required this.onRefresh,
   });
 
@@ -722,10 +1036,12 @@ class _Toolbar extends StatelessWidget {
   final String scopeLabel;
   final int allowedCount;
   final int blockedCount;
+  final int recommendedMissingCount;
   final bool saving;
   final bool editingEnabled;
   final bool canAdd;
   final VoidCallback onAdd;
+  final VoidCallback onRecommendedDefaults;
   final VoidCallback onRefresh;
 
   @override
@@ -733,8 +1049,11 @@ class _Toolbar extends StatelessWidget {
     return LayoutBuilder(
       key: const Key('admin_vendor_applicability_toolbar'),
       builder: (context, constraints) {
-        final actions = Row(
-          mainAxisSize: MainAxisSize.min,
+        final actions = Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             AdminIconAction(
               key: const Key('admin_vendor_applicability_refresh'),
@@ -742,7 +1061,17 @@ class _Toolbar extends StatelessWidget {
               tooltip: 'Refresh',
               onPressed: saving ? null : onRefresh,
             ),
-            const SizedBox(width: 8),
+            AdminActionButton(
+              key: const Key(
+                'admin_vendor_applicability_recommended_defaults',
+              ),
+              label: 'Use recommended defaults',
+              onPressed: editingEnabled && canAdd && !saving
+                  ? onRecommendedDefaults
+                  : null,
+              icon: Icons.playlist_add_check_outlined,
+              role: AdminActionRole.secondary,
+            ),
             AdminActionButton(
               key: const Key('admin_vendor_applicability_add'),
               label: saving ? 'Saving...' : 'Add rule',
@@ -752,6 +1081,9 @@ class _Toolbar extends StatelessWidget {
             ),
           ],
         );
+        final missingCopy = recommendedMissingCount == 0
+            ? ''
+            : '$recommendedMissingCount recommended missing';
         final summary = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -762,9 +1094,17 @@ class _Toolbar extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '$allowedCount allowed, $blockedCount blocked  ·  Viewing: $scopeLabel',
+              '$allowedCount allowed, $blockedCount blocked. '
+              'Viewing: $scopeLabel',
               style: AppTextStyles.mono11(color: AppColors.textMuted),
             ),
+            if (missingCopy.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                missingCopy,
+                style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+              ),
+            ],
           ],
         );
         final child = constraints.maxWidth < 720
@@ -2384,6 +2724,26 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _jsonLikeEquals(Object? left, Object? right) {
+  if (identical(left, right)) return true;
+  if (left is Map && right is Map) {
+    if (left.length != right.length) return false;
+    for (final key in left.keys) {
+      if (!right.containsKey(key)) return false;
+      if (!_jsonLikeEquals(left[key], right[key])) return false;
+    }
+    return true;
+  }
+  if (left is List && right is List) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index += 1) {
+      if (!_jsonLikeEquals(left[index], right[index])) return false;
+    }
+    return true;
+  }
+  return left == right;
 }
 
 String _prettyJson(Map<String, Object?> value) {
