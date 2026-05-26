@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Data accuracy : cleaner redesign preview</title>
+<!-- System fonts + inline line icons only (no external fetch) so the
+     preview renders offline. Serif headings echo the app's Playfair
+     display titles; sans body matches the console. Copy is intentionally
+     lean: detail lives behind the small "i" on each card. -->
+<style>
+  :root{
+    --bg-deep:#F8EDE6; --bg-mid:#EFE8E0; --surface:#FFFFFF;
+    --sunset:#CC7A3E; --sunset-dark:#9A5C2A;
+    --text-primary:#2C2C2C; --text-secondary:#5A524A; --text-muted:#6b635a;
+    --positive:#256B29; --negative:#C62828; --warning:#997000;
+    --peacock:#0E8080; --peacock-dark:#0A6060; --border:#DDD6CC;
+    --positive-bg:rgba(37,107,41,0.12); --sunset-bg:rgba(204,122,62,0.12);
+    --peacock-bg:rgba(14,128,128,0.12); --warning-bg:rgba(153,112,0,0.16);
+    --radius-sm:8px; --radius-card:14px;
+    --serif:Georgia,'Times New Roman',serif;
+    --sans:'Segoe UI',Roboto,system-ui,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg-deep);font-family:var(--sans);color:var(--text-primary);-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;}
+  .ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:middle;}
+  .ic-sm{width:16px;height:16px;}
+
+  .preview-bar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 24px;background:#211c19;color:#f3ece4;font-size:13px;}
+  .preview-bar .tag{background:var(--sunset);color:#fff;padding:3px 9px;border-radius:6px;font-weight:700;letter-spacing:.3px;}
+  .preview-bar .spacer{flex:1;}
+  .seg{display:inline-flex;border:1px solid #4a423b;border-radius:6px;overflow:hidden;}
+  .seg button{background:transparent;color:#cfc6bd;border:0;padding:5px 11px;font-size:12.5px;cursor:pointer;font-family:var(--sans);}
+  .seg button.active{background:var(--sunset);color:#fff;}
+
+  .frame{max-width:900px;margin:0 auto;padding:26px 24px 70px;}
+  .breadcrumb{font-size:13px;color:var(--text-muted);margin-bottom:16px;}
+  .breadcrumb b{color:var(--text-secondary);font-weight:600;}
+
+  .screen-header{display:flex;align-items:center;gap:16px;margin-bottom:8px;}
+  .screen-header .hicon{width:48px;height:48px;border-radius:var(--radius-card);background:var(--sunset-bg);color:var(--sunset-dark);display:flex;align-items:center;justify-content:center;flex:none;}
+  .screen-header .hicon .ic{width:26px;height:26px;}
+  .screen-header h1{font-family:var(--serif);font-weight:700;font-size:30px;margin:0;line-height:1.15;}
+  .screen-header p{margin:4px 0 0;color:var(--text-muted);font-size:14.5px;}
+  .badge-loc{margin-left:auto;flex:none;font-size:12px;font-weight:700;color:var(--peacock-dark);background:var(--peacock-bg);border:1px solid rgba(14,128,128,.3);padding:4px 11px;border-radius:999px;}
+
+  .banner{border-radius:var(--radius-sm);padding:11px 14px;font-size:14px;margin:16px 0 0;display:flex;gap:10px;align-items:center;background:var(--bg-mid);color:var(--text-secondary);border:1px solid var(--border);}
+
+  .tabbar{display:flex;gap:8px;margin:22px 0;background:var(--bg-mid);padding:5px;border-radius:999px;width:fit-content;max-width:100%;flex-wrap:wrap;}
+  .tabbar button{display:flex;align-items:center;gap:8px;background:none;border:0;padding:9px 16px;cursor:pointer;font-size:15px;font-weight:600;color:var(--text-secondary);border-radius:999px;}
+  .tabbar button .tv{font-size:12px;font-weight:600;color:var(--text-muted);background:var(--surface);border-radius:999px;padding:1px 9px;}
+  .tabbar button.active{background:var(--surface);color:var(--text-primary);box-shadow:0 1px 4px rgba(0,0,0,.08);}
+  .tabbar button.active .tv{background:var(--sunset-bg);color:var(--sunset-dark);}
+  .panel{display:none;} .panel.active{display:block;animation:fade .18s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:22px;}
+  .card + .card{margin-top:18px;}
+  .cardtop{display:flex;align-items:center;gap:10px;}
+  .cardtop h2{font-family:var(--serif);font-weight:700;font-size:20px;margin:0;}
+  .infobtn{margin-left:auto;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:999px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none;}
+  .infobtn:hover,.infobtn.on{border-color:var(--sunset);color:var(--sunset-dark);}
+  .help{display:none;margin-top:12px;padding:11px 13px;background:var(--bg-mid);border-radius:var(--radius-sm);font-size:13.5px;color:var(--text-secondary);line-height:1.5;}
+  .help.show{display:block;}
+  .cardbody{margin-top:16px;}
+
+  /* Option rows (radio) */
+  .opt{display:flex;gap:13px;align-items:center;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:border-color .12s,background .12s;}
+  .opt:last-child{margin-bottom:0;}
+  .opt:hover{border-color:var(--sunset);}
+  .opt.sel{border-color:var(--sunset);background:var(--sunset-bg);}
+  .opt .radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--text-muted);flex:none;position:relative;}
+  .opt.sel .radio{border-color:var(--sunset);}
+  .opt.sel .radio::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--sunset);}
+  .opt .ol{font-size:15.5px;font-weight:700;}
+  .opt .od{font-size:13px;color:var(--text-muted);margin-top:2px;}
+  body.ro .opt{cursor:default;} body.ro .opt:hover{border-color:var(--border);} body.ro .opt.sel:hover{border-color:var(--sunset);}
+
+  /* Blended wage mix */
+  .locknote{display:none;align-items:center;gap:9px;background:var(--warning-bg);border:1px solid rgba(153,112,0,.3);border-radius:var(--radius-sm);padding:10px 13px;font-size:13.5px;color:var(--warning);margin-bottom:14px;}
+  body.wagevendor .locknote{display:flex;}
+  body.wagevendor .wagebody{opacity:.45;pointer-events:none;}
+  .wgrp{font-size:12px;letter-spacing:.4px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin:16px 0 2px;}
+  .wgrp:first-child{margin-top:0;}
+  .wrow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
+  .wrow .rn{flex:1;font-size:15px;font-weight:600;}
+  .wrow .rw{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;width:78px;text-align:right;}
+  .wrow .rs{font-size:13px;color:var(--text-muted);width:74px;text-align:right;}
+  .wsum{display:flex;align-items:center;justify-content:space-between;margin-top:15px;padding-top:14px;border-top:2px solid var(--border);}
+  .wsum .sl{font-size:14px;color:var(--text-secondary);font-weight:600;} .wsum .sv{font-family:var(--serif);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;}
+
+  /* Covers per-period */
+  .prow{padding:16px 0;border-bottom:1px solid var(--border);}
+  .prow:first-child{padding-top:0;} .prow:last-child{border-bottom:0;padding-bottom:0;}
+  .ptop{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;}
+  .pname{font-size:16px;font-weight:700;} .ptime{font-size:13px;color:var(--text-muted);}
+  .ptag{margin-left:auto;font-size:12.5px;color:var(--text-muted);}
+  .segs{display:flex;flex-wrap:wrap;gap:8px;}
+  .seg-c{cursor:pointer;border:1.5px solid var(--border);border-radius:999px;padding:8px 15px;font-size:14px;font-weight:600;color:var(--text-secondary);background:var(--surface);}
+  .seg-c:hover{border-color:var(--sunset);}
+  .seg-c.on{background:var(--sunset-bg);color:var(--sunset-dark);border-color:var(--sunset);}
+  body.ro .seg-c{cursor:default;} body.ro .seg-c:hover{border-color:var(--border);} body.ro .seg-c.on:hover{border-color:var(--sunset);}
+  .manualrow{display:none;align-items:center;gap:11px;margin-top:12px;padding:11px 14px;background:var(--bg-mid);border-radius:var(--radius-sm);font-size:14px;color:var(--text-secondary);}
+  .manualrow.show{display:flex;}
+  .manualrow input{width:96px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 11px;font-family:inherit;font-size:14px;}
+  .manualrow input:focus{outline:2px solid var(--sunset);border-color:var(--sunset);}
+  .manualrow .link{color:var(--sunset-dark);font-weight:600;cursor:pointer;}
+
+  /* Data freshness */
+  .tierline{display:flex;align-items:center;gap:13px;flex-wrap:wrap;}
+  .tpill{font-family:var(--serif);font-size:15px;font-weight:700;border-radius:999px;padding:6px 16px;background:var(--peacock);color:#fff;}
+  .tprice{font-size:14.5px;color:var(--text-muted);}
+  .cadlist{margin-top:15px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;}
+  .cadrow{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border-bottom:1px solid var(--border);font-size:15px;}
+  .cadrow:last-child{border-bottom:0;}
+  .cadrow .cv{font-weight:600;} .cadrow .cc{font-weight:700;font-variant-numeric:tabular-nums;color:var(--peacock-dark);}
+
+  .btn{font-family:var(--sans);font-size:14.5px;font-weight:600;border-radius:var(--radius-sm);padding:10px 17px;cursor:pointer;border:1.5px solid transparent;display:inline-flex;align-items:center;gap:8px;}
+  .btn-primary{background:var(--sunset);color:#fff;} .btn-primary:hover{background:var(--sunset-dark);}
+  .btn-outline{background:transparent;color:var(--text-primary);border-color:var(--border);} .btn-outline:hover{border-color:var(--sunset);}
+  .btn-sm{padding:7px 13px;font-size:13.5px;}
+  .actionrow{margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .actionrow .ah{font-size:13px;color:var(--text-muted);}
+
+  body.ro .editonly{display:none !important;}
+  .foot{margin-top:28px;color:var(--text-muted);font-size:12.5px;text-align:center;}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--text-primary);color:#fff;padding:11px 18px;border-radius:999px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:80;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="ic-data" viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="17" rx="2"/><path d="M8 9l1.3 1.3L12 7.6M8 15l1.3 1.3L12 13.6M15 9.5h2M15 15.5h2"/></symbol>
+  <symbol id="ic-labor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.5v9M14 9.8c0-1-1-1.6-2-1.6s-2 .5-2 1.5.9 1.3 2 1.6 2 .7 2 1.7-1 1.5-2 1.5-2-.6-2-1.6"/></symbol>
+  <symbol id="ic-covers" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.8 19.5c0-3.2 2.6-5.3 6.2-5.3"/><path d="M15.5 6.4a3 3 0 0 1 0 5.6M16.8 14.4c2.7.3 4.4 2.3 4.4 5.1"/></symbol>
+  <symbol id="ic-fresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-4L4 9"/><path d="M4 13a8 8 0 0 0 14 4l2-2"/><path d="M4 5v4h4M20 19v-4h-4"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="ic-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5"/><circle cx="12" cy="8" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ic-edit" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2 2 0 0 0-3-3L5 17z"/><path d="M14 7l3 3"/></symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+</defs></svg>
+
+<div class="preview-bar">
+  <span class="tag">PREVIEW</span>
+  <span>Data accuracy : leaner copy, one area at a time</span>
+  <span class="spacer"></span>
+  <span>View as:</span>
+  <span class="seg" id="modeSeg">
+    <button data-mode="admin" class="active">Admin</button>
+    <button data-mode="support">Support (view only)</button>
+  </span>
+</div>
+
+<div class="frame">
+  <div class="breadcrumb"><b>Demo Diner Co.</b> &rsaquo; Toronto Yorkville &rsaquo; Data accuracy</div>
+
+  <div class="screen-header">
+    <div class="hicon"><svg class="ic"><use href="#ic-data"/></svg></div>
+    <div>
+      <h1>Data accuracy</h1>
+      <p>Where this location's numbers come from.</p>
+    </div>
+    <span class="badge-loc">Per location</span>
+  </div>
+
+  <div id="roBanner" class="banner" style="display:none;"><svg class="ic ic-sm"><use href="#ic-lock"/></svg><span>View only. Editing needs ecosystem admin access.</span></div>
+
+  <div class="tabbar" id="tabbar">
+    <button class="active" data-tab="labor"><svg class="ic ic-sm"><use href="#ic-labor"/></svg>Labor<span class="tv" id="tvLabor"></span></button>
+    <button data-tab="covers"><svg class="ic ic-sm"><use href="#ic-covers"/></svg>Covers<span class="tv" id="tvCovers"></span></button>
+    <button data-tab="fresh"><svg class="ic ic-sm"><use href="#ic-fresh"/></svg>Data freshness<span class="tv">Standard</span></button>
+  </div>
+
+  <!-- LABOR -->
+  <div class="panel active" id="tab-labor">
+    <div class="card">
+      <div class="cardtop"><h2>Labor dollars</h2><button class="infobtn" data-info><svg class="ic ic-sm"><use href="#ic-info"/></svg></button></div>
+      <div class="help">Vendor: use Humanity's dollars, or work them out from its rates and hours. Manual: use the wage rows below. 8 wage vendors are enabled here.</div>
+      <div class="cardbody" id="wageOpts"></div>
+    </div>
+    <div class="card">
+      <div class="cardtop"><h2>Blended wage mix</h2><button class="infobtn" data-info><svg class="ic ic-sm"><use href="#ic-info"/></svg></button></div>
+      <div class="help">Your wage by role, blended by hours worked.</div>
+      <div class="cardbody">
+        <div class="locknote"><svg class="ic ic-sm"><use href="#ic-lock"/></svg>Locked while vendor wages are on.</div>
+        <div class="wagebody">
+          <div class="wgrp">Front of house</div>
+          <div class="wrow"><span class="rn">Server</span><span class="rw">$14.00</span><span class="rs">46%</span></div>
+          <div class="wrow"><span class="rn">Bartender</span><span class="rw">$15.50</span><span class="rs">19%</span></div>
+          <div class="wrow"><span class="rn">Host</span><span class="rw">$13.00</span><span class="rs">9%</span></div>
+          <div class="wgrp">Back of house</div>
+          <div class="wrow"><span class="rn">Line cook</span><span class="rw">$17.00</span><span class="rs">15%</span></div>
+          <div class="wrow"><span class="rn">Prep</span><span class="rw">$15.00</span><span class="rs">7%</span></div>
+          <div class="wrow"><span class="rn">Dishwasher</span><span class="rw">$14.50</span><span class="rs">4%</span></div>
+          <div class="wsum"><span class="sl">Blended wage</span><span class="sv">$14.86</span></div>
+          <div class="editonly" style="margin-top:15px;"><button class="btn btn-outline btn-sm" data-act="addrole"><svg class="ic ic-sm"><use href="#ic-plus"/></svg>Add a role</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COVERS -->
+  <div class="panel" id="tab-covers">
+    <div class="card">
+      <div class="cardtop"><h2>Covers source</h2><button class="infobtn" data-info><svg class="ic ic-sm"><use href="#ic-info"/></svg></button></div>
+      <div class="help">Vendor uses Toast's guest counts. Forecast, manual, and reservations plus walk-ins are fallbacks. Set per service period.</div>
+      <div class="cardbody" id="coversRows"></div>
+    </div>
+  </div>
+
+  <!-- DATA FRESHNESS -->
+  <div class="panel" id="tab-fresh">
+    <div class="card">
+      <div class="cardtop"><h2>Data freshness</h2><button class="infobtn" data-info><svg class="ic ic-sm"><use href="#ic-info"/></svg></button></div>
+      <div class="help">Applies to vendors that do not push live. Toast and OpenTable update live, so this does not change them.</div>
+      <div class="cardbody">
+        <div class="tierline"><span class="tpill">Standard</span><span class="tprice">Bundled. Set by Forge &amp; Flow.</span></div>
+        <div class="cadlist">
+          <div class="cadrow"><span class="cv">Humanity</span><span class="cc">every 5 minutes</span></div>
+        </div>
+        <div class="actionrow">
+          <button class="btn btn-primary editonly" data-act="freshness"><svg class="ic ic-sm"><use href="#ic-fresh"/></svg>Open Polling Setup</button>
+          <div class="ah">Change the tier in Polling Setup.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">Look-and-feel preview. Same settings and behaviour as today, only the layout changed.</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const COVERS_OPTS=[{k:'vendor',l:'Vendor'},{k:'forecast',l:'Forecast'},{k:'manual',l:'Manual'},{k:'resv',l:'Reservations + walk-ins'}];
+const COVERS_SHORT={vendor:'Vendor',forecast:'Forecast',manual:'Manual',resv:'Reservations + walk-ins'};
+const state={
+  wage:'manual',
+  periods:[
+    {id:'lunch',name:'Lunch',time:'11:00 to 15:00',src:'vendor',from:'Vendor default'},
+    {id:'dinner',name:'Dinner',time:'17:00 to 22:00',src:'vendor',from:'Vendor default'},
+    {id:'late',name:'Late night',time:'22:00 to 01:00',src:'forecast',from:'Location setting'},
+  ],
+};
+function wageLabel(){return state.wage==='manual'?'Manual wage mix':'Vendor wages';}
+function coversTabValue(){var s=new Set(state.periods.map(p=>p.src));return s.size===1?COVERS_SHORT[[...s][0]]:'Mixed';}
+function renderTabValues(){
+  document.getElementById('tvLabor').textContent=wageLabel();
+  document.getElementById('tvCovers').textContent=coversTabValue();
+}
+function renderWage(){
+  var opt=(k,l,d)=>'<div class="opt '+(state.wage===k?'sel':'')+'" data-wage="'+k+'"><span class="radio"></span><div><div class="ol">'+l+'</div><div class="od">'+d+'</div></div></div>';
+  document.getElementById('wageOpts').innerHTML=
+    opt('vendor','Vendor wages','Use Humanity\'s wages when it sends them.')+
+    opt('manual','Manual wage mix','Use the wage rows below.');
+  document.body.classList.toggle('wagevendor',state.wage==='vendor');
+}
+function renderCovers(){
+  document.getElementById('coversRows').innerHTML=state.periods.map(p=>{
+    var segs=COVERS_OPTS.map(o=>'<span class="seg-c '+(p.src===o.k?'on':'')+'" data-period="'+p.id+'" data-src="'+o.k+'">'+o.l+'</span>').join('');
+    var manual='<div class="manualrow '+(p.src==='manual'?'show':'')+'" id="m_'+p.id+'"><svg class="ic ic-sm" style="color:var(--sunset-dark)"><use href="#ic-edit"/></svg><span>Today\'s guest count</span><input placeholder="e.g. 120"><span class="link">Copy yesterday</span></div>';
+    return '<div class="prow"><div class="ptop"><span class="pname">'+p.name+'</span><span class="ptime">'+p.time+'</span><span class="ptag">'+p.from+'</span></div><div class="segs">'+segs+'</div>'+manual+'</div>';
+  }).join('');
+}
+function render(){ renderWage(); renderCovers(); renderTabValues(); wire(); }
+function wire(){
+  document.querySelectorAll('[data-wage]').forEach(el=>el.onclick=()=>{ if(document.body.classList.contains('ro'))return; state.wage=el.dataset.wage; render(); });
+  document.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{
+    if(document.body.classList.contains('ro'))return;
+    var p=state.periods.find(x=>x.id===el.dataset.period); if(!p)return; p.src=el.dataset.src; p.from='Set here, just now'; render();
+  });
+  document.querySelectorAll('[data-act]').forEach(el=>{
+    if(el.dataset.act==='freshness')el.onclick=()=>toast('Opens Polling Setup for this location (preview).');
+    if(el.dataset.act==='addrole')el.onclick=()=>toast('Opens the add wage role form (preview).');
+  });
+}
+function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2000);}
+
+document.querySelectorAll('[data-info]').forEach(b=>b.addEventListener('click',()=>{
+  var help=b.closest('.card').querySelector('.help');
+  var open=help.classList.toggle('show'); b.classList.toggle('on',open);
+}));
+document.querySelectorAll('#tabbar button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#tabbar button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+b.dataset.tab).classList.add('active');
+}));
+document.querySelectorAll('#modeSeg button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  var support=b.dataset.mode==='support';
+  document.body.classList.toggle('ro',support);
+  document.getElementById('roBanner').style.display=support?'flex':'none';
+}));
+
+render();
+</script>
+</body>
+</html>

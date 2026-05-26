@@ -44,7 +44,6 @@ import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_applicability.dart';
-import '../widgets/data_accuracy_explainer_card.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/keyed_service_period_accuracy_card.dart';
 import 'package:forge_and_flow/widgets/console/console_info_button.dart';
@@ -320,6 +319,16 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   late Map<String, int> _walkInEntries;
   late bool _pendingInitialWageAuthorityScroll;
 
+  // Active data-accuracy area. The screen shows one area at a time
+  // (0 = Labor, 1 = Covers, 2 = Data freshness) so the page stays lean
+  // and the operator reads about one source group at a time. Opening
+  // the page from Plan (scrollToWageAuthority) lands on the Labor tab,
+  // where the Wage authority section lives.
+  static const int _kTabLabor = 0;
+  static const int _kTabCovers = 1;
+  static const int _kTabFreshness = 2;
+  late int _activeDataTab;
+
   bool get _vendorApplicabilityBound =>
       widget.vendorApplicabilityGateway != null;
 
@@ -350,6 +359,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   void initState() {
     super.initState();
     _pendingInitialWageAuthorityScroll = widget.scrollToWageAuthority;
+    // Labor is the default landing tab, and it is also where the Wage
+    // authority section lives, so an open-from-Plan request
+    // (scrollToWageAuthority) lands on the same tab.
+    _activeDataTab = _kTabLabor;
     _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
     _applySettingsSeed(widget.initialSettings);
     _settingsLoading = widget.dataAccuracyGateway != null;
@@ -1195,6 +1208,46 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     );
   }
 
+  // ── Tab current-value pills ─────────────────────────────────────
+
+  // Labor tab pill: the current wage choice in plain English.
+  String get _laborTabValue =>
+      _wageSource == WageSource.manualMix ? 'Manual wage mix' : 'Vendor wages';
+
+  // Covers tab pill: the single source name when every configured
+  // service period agrees, otherwise "Mixed". Periods absent from the
+  // working map resolve to the default source, matching the per-period
+  // cards.
+  String get _coversTabValue {
+    if (_servicePeriods.isEmpty) {
+      return _coversSourceShortLabel(kDefaultCoversSource);
+    }
+    final sources = <CoversSource>{
+      for (final period in _servicePeriods)
+        _coversSourcePerPeriod[period.id] ?? kDefaultCoversSource,
+    };
+    if (sources.length == 1) return _coversSourceShortLabel(sources.first);
+    return 'Mixed';
+  }
+
+  static String _coversSourceShortLabel(CoversSource source) {
+    switch (source) {
+      case CoversSource.vendor:
+        return 'Vendor';
+      case CoversSource.forecast:
+        return 'Forecast';
+      case CoversSource.manual:
+        return 'Manual';
+      case CoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
+    }
+  }
+
+  // Data freshness tab pill: the current tier label (e.g. "Standard").
+  // Falls back to the canonical Standard label while the tier loads.
+  String get _freshnessTabValue =>
+      _displayTierStatus?.tierDisplayLabel ?? 'Standard';
+
   // ── Build ───────────────────────────────────────────────────────
 
   @override
@@ -1261,9 +1314,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         ),
       );
     }
-    final tier = _displayTierStatus;
     final settings = _materialize();
-    final locationLabel = _locationLabel();
     _scheduleWageAuthorityScrollIfNeeded();
     return OperatorWebScreenBody(
       scrollKey: const Key('operator_web_data_accuracy_screen'),
@@ -1274,15 +1325,17 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           const OperatorWebScreenHeader(
             icon: Icons.tune_outlined,
             title: 'Data accuracy',
+            subtitle: "Where this location's numbers come from.",
           ),
           const SizedBox(height: 22),
-          DataAccuracyExplainerCard(
-            locationLabel: locationLabel,
-            bundle: _bundle,
-            dataFreshnessApplies: _dataFreshnessApplies,
-            servicePeriods: _servicePeriods,
+          _DataAccuracyTabBar(
+            activeTab: _activeDataTab,
+            laborValue: _laborTabValue,
+            coversValue: _coversTabValue,
+            freshnessValue: _freshnessTabValue,
+            onTabSelected: (tab) => setState(() => _activeDataTab = tab),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 22),
           if (_savingSettings || _settingsSaveError != null) ...[
             _SaveStatusBanner(
               saving: _savingSettings,
@@ -1290,162 +1343,179 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
             const SizedBox(height: 18),
           ],
-          const _DataAccuracySectionHeading(title: 'Labor'),
-          const SizedBox(height: 14),
-          WageSourceToggle(
-            value: _wageSource,
-            onChanged: _handleWageSourceChanged,
-            bundle: _bundle,
-            source: settings.wageSourceSource,
-            vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
-            vendorApplicabilityLoading: _wageApplicabilityLoading,
-            vendorApplicabilityError: _wageApplicabilityError,
-            applicableWageVendorSlugs: _applicableWageVendorSlugs,
-          ),
-          const SizedBox(height: 18),
-          KeyedSubtree(
-            key: _wageAuthoritySectionKey,
-            child: Container(
-              key: const Key(
-                'operator_web_data_accuracy_wage_authority_section',
-              ),
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundSurface,
-                border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: WageAuthoritySection(
-                session: widget.session,
-                locationId: widget.locationId,
-                locationName: locationLabel,
-                gateway: widget.wageAuthorityGateway,
-                idempotencyKeyFactory:
-                    widget.wageAuthorityIdempotencyKeyFactory,
-                hierarchyNodes: widget.hierarchyNodes,
-                ancestorOrgUnitIdsNearestFirst:
-                    widget.ancestorOrgUnitIdsNearestFirst,
-                businessName: widget.businessName,
-                showHeader: false,
-                editingEnabled: _wageSource == WageSource.manualMix,
-                editingDisabledMessage:
-                    'Manual wage mix is locked while labor vendor wages are selected.',
-              ),
-            ),
-          ),
-          const SizedBox(height: 30),
-          const _DataAccuracySectionHeading(title: 'Covers'),
-          const SizedBox(height: 14),
-          if (_coversApplicabilityError != null) ...[
-            _ApplicabilityWarningBanner(
-              key: const Key(
-                'operator_web_data_accuracy_covers_applicability_error',
-              ),
-              message: _coversApplicabilityError!,
-            ),
-            const SizedBox(height: 14),
-          ],
-          CoversSourceToggle(
-            settings: settings,
-            servicePeriods: _servicePeriods,
-            onChanged: _handleCoversSourceChanged,
-            bundle: _bundle,
-            vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
-            applicableCoversVendorSlugs: _applicableCoversVendorSlugs,
-          ),
-          if (_showAnyFallbackCard) ...[
-            const SizedBox(height: 18),
-            const _DataAccuracyGroupLabel(
-              title: 'Fallback entries',
-              subtitle: 'Shown only for sources that need manual numbers.',
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (_anyDaypartManual) ...[
-            CoversManualEntryCard(
-              businessDateIso: widget.businessDateIso,
-              yesterdayBusinessDateIso: _yesterdayIso(widget.businessDateIso),
-              settings: settings,
-              servicePeriods: _servicePeriods,
-              onEnterCovers: _handleManualEntry,
-              onCopyYesterday: _handleCopyYesterday,
-            ),
-          ],
-          if (_showWalkInCard) ...[
-            const SizedBox(height: 18),
-            WalkInHandlingCard(
-              mode: _walkInMode,
-              onModeChanged: _handleWalkInModeChanged,
-              businessDateIso: widget.businessDateIso,
-              dailyWalkInCount: _walkInDailyCount,
-              servicePeriods: _servicePeriods,
-              perPeriodWalkInCounts: _walkInCountsByServicePeriod(),
-              source: settings.walkInHandlingModeSource,
-              onDailyWalkInCountChanged: _handleWalkInCountChanged,
-              onPerPeriodWalkInCountChanged:
-                  _handleWalkInServicePeriodCountChanged,
-            ),
-          ],
-          if (_showHistoricalSeedCard) ...[
-            const SizedBox(height: 18),
-            CoversHistoricalSeedCard(
-              endDateIso: _yesterdayIso(widget.businessDateIso),
-              dayCount: 60,
-              servicePeriods: _servicePeriods,
-              initialEntries: <String, Map<String, int>>{
-                for (final e in _manualEntries.entries)
-                  e.key: Map<String, int>.from(e.value),
-              },
-              onApplySeed: _handleApplySeed,
-            ),
-          ],
-          if (widget.dataAccuracyGateway != null) ...[
-            const SizedBox(height: 18),
-            const _DataAccuracyGroupLabel(
-              title: 'Service-period overrides',
-              subtitle: 'Add a covers override for a specific service period.',
-            ),
-            const SizedBox(height: 12),
-            KeyedServicePeriodAccuracyCard(
-              rows: _servicePeriodRows,
-              busy: _servicePeriodsLoading || _savingServicePeriod,
-              loadError: _servicePeriodLoadError,
-              saveError: _servicePeriodSaveError,
-              editingEnabled: widget._canEditDataAccuracy,
-              configuredServicePeriods: _servicePeriods,
-              defaultEffectiveAtBusinessDateIso: widget.businessDateIso,
-              onAddOrEdit: _saveKeyedServicePeriod,
-              onReset: _resetKeyedServicePeriod,
-              onRetry: _loadServicePeriodSettings,
-            ),
-          ],
-          const SizedBox(height: 30),
-          const _DataAccuracySectionHeading(title: 'Data Freshness'),
-          const SizedBox(height: 14),
-          if (_pollingApplicabilityError != null) ...[
-            _ApplicabilityWarningBanner(
-              key: const Key(
-                'operator_web_data_accuracy_polling_applicability_error',
-              ),
-              message: _pollingApplicabilityError!,
-            ),
-            const SizedBox(height: 14),
-          ],
-          PollingTierStatusCard(
-            status: tier,
-            bundle: _bundle,
-            appliesToConnectedVendors: _dataFreshnessApplies,
-            onRequestTierChange: _handleRequestTierChange,
-            actionLabel: widget.pollingTierActionLabel,
-            actionDescription: widget.pollingTierActionDescription,
-            actionIcon: widget.pollingTierActionIcon,
-            actionEnabled: widget.pollingTierActionEnabled,
-            actionAvailableWhenNotApplicable:
-                widget.pollingTierActionAvailableWhenNotApplicable,
-          ),
+          if (_activeDataTab == _kTabLabor)
+            ..._buildLaborPanel(settings)
+          else if (_activeDataTab == _kTabCovers)
+            ..._buildCoversPanel(settings)
+          else
+            ..._buildFreshnessPanel(),
         ],
       ),
     );
+  }
+
+  // ── Active-area panels ──────────────────────────────────────────
+  //
+  // Only the active tab's panel is built, so the page never stacks
+  // wasted height behind a hidden area. Each panel preserves the exact
+  // widget wiring, keys, and conditional-visibility rules the
+  // single-page layout used.
+
+  List<Widget> _buildLaborPanel(DataAccuracySettings settings) {
+    final locationLabel = _locationLabel();
+    return <Widget>[
+      WageSourceToggle(
+        value: _wageSource,
+        onChanged: _handleWageSourceChanged,
+        bundle: _bundle,
+        source: settings.wageSourceSource,
+        vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
+        vendorApplicabilityLoading: _wageApplicabilityLoading,
+        vendorApplicabilityError: _wageApplicabilityError,
+        applicableWageVendorSlugs: _applicableWageVendorSlugs,
+      ),
+      const SizedBox(height: 18),
+      KeyedSubtree(
+        key: _wageAuthoritySectionKey,
+        child: Container(
+          key: const Key('operator_web_data_accuracy_wage_authority_section'),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: WageAuthoritySection(
+            session: widget.session,
+            locationId: widget.locationId,
+            locationName: locationLabel,
+            gateway: widget.wageAuthorityGateway,
+            idempotencyKeyFactory: widget.wageAuthorityIdempotencyKeyFactory,
+            hierarchyNodes: widget.hierarchyNodes,
+            ancestorOrgUnitIdsNearestFirst:
+                widget.ancestorOrgUnitIdsNearestFirst,
+            businessName: widget.businessName,
+            showHeader: false,
+            editingEnabled: _wageSource == WageSource.manualMix,
+            editingDisabledMessage:
+                'Manual wage mix is locked while labor vendor wages are selected.',
+          ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildCoversPanel(DataAccuracySettings settings) {
+    return <Widget>[
+      if (_coversApplicabilityError != null) ...[
+        _ApplicabilityWarningBanner(
+          key: const Key(
+            'operator_web_data_accuracy_covers_applicability_error',
+          ),
+          message: _coversApplicabilityError!,
+        ),
+        const SizedBox(height: 14),
+      ],
+      CoversSourceToggle(
+        settings: settings,
+        servicePeriods: _servicePeriods,
+        onChanged: _handleCoversSourceChanged,
+        bundle: _bundle,
+        vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
+        applicableCoversVendorSlugs: _applicableCoversVendorSlugs,
+      ),
+      if (_showAnyFallbackCard) ...[
+        const SizedBox(height: 18),
+        const _DataAccuracyGroupLabel(
+          title: 'Fallback entries',
+          subtitle: 'Shown only for sources that need manual numbers.',
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (_anyDaypartManual) ...[
+        CoversManualEntryCard(
+          businessDateIso: widget.businessDateIso,
+          yesterdayBusinessDateIso: _yesterdayIso(widget.businessDateIso),
+          settings: settings,
+          servicePeriods: _servicePeriods,
+          onEnterCovers: _handleManualEntry,
+          onCopyYesterday: _handleCopyYesterday,
+        ),
+      ],
+      if (_showWalkInCard) ...[
+        const SizedBox(height: 18),
+        WalkInHandlingCard(
+          mode: _walkInMode,
+          onModeChanged: _handleWalkInModeChanged,
+          businessDateIso: widget.businessDateIso,
+          dailyWalkInCount: _walkInDailyCount,
+          servicePeriods: _servicePeriods,
+          perPeriodWalkInCounts: _walkInCountsByServicePeriod(),
+          source: settings.walkInHandlingModeSource,
+          onDailyWalkInCountChanged: _handleWalkInCountChanged,
+          onPerPeriodWalkInCountChanged: _handleWalkInServicePeriodCountChanged,
+        ),
+      ],
+      if (_showHistoricalSeedCard) ...[
+        const SizedBox(height: 18),
+        CoversHistoricalSeedCard(
+          endDateIso: _yesterdayIso(widget.businessDateIso),
+          dayCount: 60,
+          servicePeriods: _servicePeriods,
+          initialEntries: <String, Map<String, int>>{
+            for (final e in _manualEntries.entries)
+              e.key: Map<String, int>.from(e.value),
+          },
+          onApplySeed: _handleApplySeed,
+        ),
+      ],
+      if (widget.dataAccuracyGateway != null) ...[
+        const SizedBox(height: 18),
+        const _DataAccuracyGroupLabel(
+          title: 'Service-period overrides',
+          subtitle: 'Add a covers override for a specific service period.',
+        ),
+        const SizedBox(height: 12),
+        KeyedServicePeriodAccuracyCard(
+          rows: _servicePeriodRows,
+          busy: _servicePeriodsLoading || _savingServicePeriod,
+          loadError: _servicePeriodLoadError,
+          saveError: _servicePeriodSaveError,
+          editingEnabled: widget._canEditDataAccuracy,
+          configuredServicePeriods: _servicePeriods,
+          defaultEffectiveAtBusinessDateIso: widget.businessDateIso,
+          onAddOrEdit: _saveKeyedServicePeriod,
+          onReset: _resetKeyedServicePeriod,
+          onRetry: _loadServicePeriodSettings,
+        ),
+      ],
+    ];
+  }
+
+  List<Widget> _buildFreshnessPanel() {
+    return <Widget>[
+      if (_pollingApplicabilityError != null) ...[
+        _ApplicabilityWarningBanner(
+          key: const Key(
+            'operator_web_data_accuracy_polling_applicability_error',
+          ),
+          message: _pollingApplicabilityError!,
+        ),
+        const SizedBox(height: 14),
+      ],
+      PollingTierStatusCard(
+        status: _displayTierStatus,
+        bundle: _bundle,
+        appliesToConnectedVendors: _dataFreshnessApplies,
+        onRequestTierChange: _handleRequestTierChange,
+        actionLabel: widget.pollingTierActionLabel,
+        actionDescription: widget.pollingTierActionDescription,
+        actionIcon: widget.pollingTierActionIcon,
+        actionEnabled: widget.pollingTierActionEnabled,
+        actionAvailableWhenNotApplicable:
+            widget.pollingTierActionAvailableWhenNotApplicable,
+      ),
+    ];
   }
 
   String _locationLabel() {
@@ -1608,22 +1678,148 @@ class _DataAccuracyGroupLabel extends StatelessWidget {
   }
 }
 
-/// Section heading for the Data Accuracy screen used for the main
-/// vertical groupings ("Labor", "Covers", "Data Freshness"). Larger than
-/// [_DataAccuracyGroupLabel] so the operator's eye jumps to the
-/// section boundary. The screen-level "Data accuracy" title still
-/// uses `display20`; section headings use `display16` so they sit
-/// below the page title but above card titles.
-class _DataAccuracySectionHeading extends StatelessWidget {
-  const _DataAccuracySectionHeading({required this.title});
+/// Segmented tab bar for the three data-accuracy areas (Labor,
+/// Covers, Data freshness). Styled to the app theme's pill grammar:
+/// the active tab is a raised surface chip in the sunset family; each
+/// tab carries a small current-value pill (the wage choice, the
+/// agreed covers source or "Mixed", the freshness tier). Mirrors the
+/// approved redesign mockup's pill tab bar so the operator reads about
+/// one source group at a time.
+class _DataAccuracyTabBar extends StatelessWidget {
+  const _DataAccuracyTabBar({
+    required this.activeTab,
+    required this.laborValue,
+    required this.coversValue,
+    required this.freshnessValue,
+    required this.onTabSelected,
+  });
 
-  final String title;
+  final int activeTab;
+  final String laborValue;
+  final String coversValue;
+  final String freshnessValue;
+  final ValueChanged<int> onTabSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: AppTextStyles.display16(color: AppColors.textPrimary),
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: <Widget>[
+          _DataAccuracyTab(
+            tabKey: const Key('data_accuracy_tab_labor'),
+            icon: Icons.payments_outlined,
+            label: 'Labor',
+            value: laborValue,
+            selected: activeTab == _DataAccuracyScreenState._kTabLabor,
+            onTap: () => onTabSelected(_DataAccuracyScreenState._kTabLabor),
+          ),
+          _DataAccuracyTab(
+            tabKey: const Key('data_accuracy_tab_covers'),
+            icon: Icons.groups_2_outlined,
+            label: 'Covers',
+            value: coversValue,
+            selected: activeTab == _DataAccuracyScreenState._kTabCovers,
+            onTap: () => onTabSelected(_DataAccuracyScreenState._kTabCovers),
+          ),
+          _DataAccuracyTab(
+            tabKey: const Key('data_accuracy_tab_freshness'),
+            icon: Icons.sync_outlined,
+            label: 'Data freshness',
+            value: freshnessValue,
+            selected: activeTab == _DataAccuracyScreenState._kTabFreshness,
+            onTap: () => onTabSelected(_DataAccuracyScreenState._kTabFreshness),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DataAccuracyTab extends StatelessWidget {
+  const _DataAccuracyTab({
+    required this.tabKey,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Key tabKey;
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: tabKey,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.backgroundSurface : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: selected
+              ? <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : const <BoxShadow>[],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? AppColors.sunsetDark : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: AppTextStyles.body14(
+                color: selected
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
+            if (value.isNotEmpty) ...<Widget>[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 1),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppColors.sunset.withValues(alpha: 0.12)
+                      : AppColors.backgroundSurface,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  value,
+                  style: AppTextStyles.body12(
+                    color: selected
+                        ? AppColors.sunsetDark
+                        : AppColors.textMuted,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
