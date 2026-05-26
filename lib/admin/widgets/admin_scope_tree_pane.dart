@@ -116,29 +116,22 @@ class AdminScopeTreePane extends StatelessWidget {
               color: AppColors.sunsetDark.withValues(alpha: borderAlpha),
               width: 3,
             ),
-            boxShadow: intensity <= 0
-                ? const <BoxShadow>[]
-                : <BoxShadow>[
-                    BoxShadow(
-                      color: AppColors.sunset.withValues(
-                        alpha: (0.18 + 0.18 * flash) * intensity,
-                      ),
-                      blurRadius: 24,
-                      spreadRadius: 2,
-                    ),
-                  ],
           ),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              child!,
+              RepaintBoundary(child: child!),
               if (active)
                 Positioned.fill(
                   child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _ScopeAttentionSweepPainter(
-                        progress: progress,
-                        intensity: intensity,
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        isComplex: false,
+                        willChange: true,
+                        painter: _ScopeAttentionSweepPainter(
+                          progress: progress,
+                          intensity: intensity,
+                        ),
                       ),
                     ),
                   ),
@@ -240,9 +233,8 @@ class _ScopeAttentionSweepPainter extends CustomPainter {
     final glowPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = 11
-      ..color = AppColors.sunset.withValues(alpha: 0.24 * intensity)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      ..strokeWidth = 13
+      ..color = AppColors.sunset.withValues(alpha: 0.18 * intensity);
 
     final startAngle = (progress * math.pi * 2 * 2.2) - math.pi / 2;
     const sweepAngle = math.pi / 2.7;
