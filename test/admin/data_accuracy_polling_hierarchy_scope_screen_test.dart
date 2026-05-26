@@ -462,7 +462,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('admin_tier_assignment_dialog')),
-          matching: find.text('Assign polling setup'),
+          matching: find.text('Assign polling tier'),
         ),
         findsOneWidget,
       );
