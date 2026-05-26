@@ -4725,7 +4725,15 @@ const Set<String> kFfDataAccuracyAdminReadRoles = <String>{
   'super_admin',
   'ff_support',
 };
-const Set<String> kFfVendorApplicabilityAdminRoles = <String>{'super_admin'};
+const Set<String> kFfVendorApplicabilityAdminWriteRoles = <String>{
+  'super_admin',
+};
+const Set<String> kFfVendorApplicabilityAdminReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+const Set<String> kFfVendorApplicabilityAdminRoles =
+    kFfVendorApplicabilityAdminWriteRoles;
 
 /// Roles that admit a caller to the pricing admin **write** surface
 /// (PATCH / PUT / POST). Super-admin-only by design; pricing
@@ -12347,11 +12355,16 @@ Future<void> routeRequest(
             authGuard,
           );
           if (actor == null) return;
-          if (!_callerHasAnyRole(actor, kFfVendorApplicabilityAdminRoles)) {
+          final requiredRoles = request.method == 'GET'
+              ? kFfVendorApplicabilityAdminReadRoles
+              : kFfVendorApplicabilityAdminWriteRoles;
+          if (!_callerHasAnyRole(actor, requiredRoles)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'permission_denied',
-              'message': 'admin vendor-applicability requires super_admin role',
-              'required_roles': kFfVendorApplicabilityAdminRoles.toList(),
+              'message': request.method == 'GET'
+                  ? 'admin vendor-applicability read requires super_admin or ff_support role'
+                  : 'admin vendor-applicability writes require super_admin role',
+              'required_roles': requiredRoles.toList(),
             });
             return;
           }

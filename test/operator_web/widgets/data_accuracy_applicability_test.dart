@@ -286,6 +286,29 @@ void main() {
           coversSourceOptionApplies(CoversSource.manual, bundle()),
           isTrue,
         );
+
+        expect(
+          effectiveCoversSourceHonoringApplicability(
+            configured: CoversSource.vendor,
+            bundle: bundle(
+              pos: row(vendorId: 'toast', category: VendorCategory.pos),
+            ),
+            vendorApplicabilityBound: true,
+            applicableCoversVendorSlugs: const <String>['lightspeed_lsk'],
+          ),
+          CoversSource.manual,
+        );
+        expect(
+          effectiveCoversSourceHonoringApplicability(
+            configured: CoversSource.vendor,
+            bundle: bundle(
+              pos: row(vendorId: 'toast', category: VendorCategory.pos),
+            ),
+            vendorApplicabilityBound: true,
+            applicableCoversVendorSlugs: const <String>['toast'],
+          ),
+          CoversSource.vendor,
+        );
       },
     );
 

@@ -152,6 +152,22 @@ CoversSource effectiveCoversSource(
       : CoversSource.manual;
 }
 
+CoversSource effectiveCoversSourceHonoringApplicability({
+  required CoversSource configured,
+  required VendorConnectionsBundle? bundle,
+  required bool vendorApplicabilityBound,
+  required Iterable<String> applicableCoversVendorSlugs,
+}) {
+  return coversSourceOptionSelectable(
+        source: configured,
+        bundle: bundle,
+        vendorApplicabilityBound: vendorApplicabilityBound,
+        applicableCoversVendorSlugs: applicableCoversVendorSlugs,
+      )
+      ? configured
+      : CoversSource.manual;
+}
+
 String? coversSourceDisabledReason(
   CoversSource source,
   VendorConnectionsBundle? bundle,

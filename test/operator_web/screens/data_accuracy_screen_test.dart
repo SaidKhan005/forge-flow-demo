@@ -26,6 +26,7 @@ import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_
 import 'package:forge_and_flow/operator_web/services/operator_web_tier_email_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_wage_authority_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_vendor_applicability_gateway.dart';
+import 'package:forge_and_flow/operator_web/widgets/covers_source_toggle.dart';
 import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -1945,13 +1946,87 @@ void main() {
       return inkWell.onTap != null;
     }
 
+    testWidgets('connected POS not in covers allow-list disables the Vendor chip '
+        'with a clear reason', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      // Allow-list clears a DIFFERENT POS (lightspeed), not the
+      // connected one (toast), so toast covers must be blocked.
+      final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
+        ..rows = <WebVendorApplicabilityRow>[
+          _vendorApplicabilityRow(
+            id: 'covers-lightspeed',
+            vendorSlug: 'lightspeed',
+            enabled: true,
+            settingKind: 'covers',
+          ),
+        ];
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: gatewayWithBundle(
+              ownerSession,
+              bundleFor(
+                session: ownerSession,
+                pos: row(
+                  vendorId: 'toast',
+                  displayName: 'Toast',
+                  category: VendorCategory.pos,
+                ),
+              ),
+            ),
+            vendorApplicabilityGateway: applicabilityGateway,
+            servicePeriodsLoader: () async => coversPeriods,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await openCoversTab(tester);
+
+      expect(
+        applicabilityGateway.calls,
+        containsAll(<String>['wage', 'covers']),
+      );
+      final vendorChip = find.byKey(
+        const Key('covers_source_chip_dinner_vendor'),
+      );
+      await tester.ensureVisible(vendorChip);
+      await tester.pumpAndSettle();
+      expect(
+        chipEnabled(tester, const Key('covers_source_chip_dinner_vendor')),
+        isFalse,
+      );
+      // The disabled-reason copy names the connected POS and stays in
+      // operator-web vocabulary (covers / vendor covers).
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip &&
+              (widget.message?.contains(
+                    'Toast is not cleared by Forge & Flow for vendor covers yet',
+                  ) ??
+                  false),
+        ),
+        findsOneWidget,
+      );
+      // forecast + manual are never gated by the allow-list.
+      expect(
+        chipEnabled(tester, const Key('covers_source_chip_dinner_forecast')),
+        isTrue,
+      );
+      expect(
+        chipEnabled(tester, const Key('covers_source_chip_dinner_manual')),
+        isTrue,
+      );
+    });
+
     testWidgets(
-      'connected POS not in covers allow-list disables the Vendor chip '
-      'with a clear reason',
+      'saved vendor covers source falls back when the vendor is blocked',
       (tester) async {
         await sizeViewport(tester, const Size(1280, 1200));
-        // Allow-list clears a DIFFERENT POS (lightspeed), not the
-        // connected one (toast), so toast covers must be blocked.
         final applicabilityGateway = _FakeWebVendorApplicabilityGateway()
           ..rows = <WebVendorApplicabilityRow>[
             _vendorApplicabilityRow(
@@ -1961,6 +2036,19 @@ void main() {
               settingKind: 'covers',
             ),
           ];
+        final initialSettings = DataAccuracySettings(
+          settingId: 'setting-1',
+          operatorId: ownerSession.operatorId,
+          locationId: ownerSession.primaryLocationId ?? '',
+          coversSourcePerServicePeriod: const <String, CoversSource>{
+            'dinner': CoversSource.vendor,
+          },
+          coversManualEntries: const <String, Map<String, int>>{},
+          wageSource: WageSource.vendor,
+          createdAt: DateTime.utc(2026, 5, 6),
+          updatedAt: DateTime.utc(2026, 5, 6),
+          updatedBy: ownerSession.uid,
+        );
 
         await tester.pumpWidget(
           wrap(
@@ -1979,6 +2067,7 @@ void main() {
                   ),
                 ),
               ),
+              initialSettings: initialSettings,
               vendorApplicabilityGateway: applicabilityGateway,
               servicePeriodsLoader: () async => coversPeriods,
             ),
@@ -1987,36 +2076,10 @@ void main() {
         await tester.pumpAndSettle();
         await openCoversTab(tester);
 
-        expect(
-          applicabilityGateway.calls,
-          containsAll(<String>['wage', 'covers']),
+        final toggle = tester.widget<CoversSourceToggle>(
+          find.byType(CoversSourceToggle),
         );
-        final vendorChip = find.byKey(
-          const Key('covers_source_chip_dinner_vendor'),
-        );
-        await tester.ensureVisible(vendorChip);
-        await tester.pumpAndSettle();
-        expect(
-          chipEnabled(tester, const Key('covers_source_chip_dinner_vendor')),
-          isFalse,
-        );
-        // The disabled-reason copy names the connected POS and stays in
-        // operator-web vocabulary (covers / vendor covers).
-        expect(
-          find.textContaining(
-            'Toast is not cleared by Forge & Flow for vendor covers yet',
-          ),
-          findsOneWidget,
-        );
-        // forecast + manual are never gated by the allow-list.
-        expect(
-          chipEnabled(tester, const Key('covers_source_chip_dinner_forecast')),
-          isTrue,
-        );
-        expect(
-          chipEnabled(tester, const Key('covers_source_chip_dinner_manual')),
-          isTrue,
-        );
+        expect(toggle.settings.coversSourceFor('dinner'), CoversSource.manual);
       },
     );
 
