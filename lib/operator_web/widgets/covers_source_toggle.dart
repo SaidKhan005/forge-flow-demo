@@ -101,9 +101,11 @@ class CoversSourceToggle extends StatelessWidget {
             for (final period in servicePeriods) ...[
               _PeriodRow(
                 period: period,
-                source: effectiveCoversSource(
-                  settings.coversSourceFor(period.id),
-                  bundle,
+                source: effectiveCoversSourceHonoringApplicability(
+                  configured: settings.coversSourceFor(period.id),
+                  bundle: bundle,
+                  vendorApplicabilityBound: vendorApplicabilityBound,
+                  applicableCoversVendorSlugs: applicableCoversVendorSlugs,
                 ),
                 sourceMetadata: settings.coversSourceSourceFor(period.id),
                 bundle: bundle,

@@ -11,7 +11,7 @@ const String _locationId = '33333333-3333-4333-8333-333333333333';
 
 void main() {
   group('vendor applicability proxy routes', () {
-    test('admin GET is super_admin-only and returns gateway rows', () async {
+    test('admin GET returns gateway rows for super_admin callers', () async {
       final gateway = _FakeVendorApplicabilityGateway();
       final ctx = await _serve(
         claims: const ProxyJwtClaims(
@@ -38,7 +38,7 @@ void main() {
       expect(gateway.listAdminCalls.single.currentOnly, isFalse);
     });
 
-    test('ff_support cannot read the launch admin route', () async {
+    test('ff_support can read the admin route without write access', () async {
       final gateway = _FakeVendorApplicabilityGateway();
       final ctx = await _serve(
         claims: const ProxyJwtClaims(
@@ -55,8 +55,33 @@ void main() {
         ctx.uri('/v1/admin/vendor-applicability'),
       );
 
+      expect(response.statusCode, 200);
+      expect(gateway.listAdminCalls, hasLength(1));
+    });
+
+    test('ff_support cannot write the admin route', () async {
+      final gateway = _FakeVendorApplicabilityGateway();
+      final ctx = await _serve(
+        claims: const ProxyJwtClaims(
+          userId: 'support-user',
+          firebaseUid: 'support-user',
+          operatorId: null,
+          locationId: null,
+          roles: <String>['ff_support'],
+        ),
+        gateway: gateway,
+      );
+      addTearDown(ctx.close);
+
+      final response = await _httpJson(
+        'POST',
+        ctx.uri('/v1/admin/vendor-applicability'),
+        idempotencyKey: 'support-write',
+        body: _upsertBody(),
+      );
+
       expect(response.statusCode, 403);
-      expect(gateway.listAdminCalls, isEmpty);
+      expect(gateway.upsertCalls, isEmpty);
     });
 
     test(
@@ -323,45 +348,8 @@ void main() {
       },
     );
 
-    test('admin PATCH end threads location_id through to the gateway', () async {
-      final gateway = _FakeVendorApplicabilityGateway();
-      final ctx = await _serve(
-        claims: const ProxyJwtClaims(
-          userId: 'firebase-admin',
-          firebaseUid: 'firebase-admin',
-          operatorId: null,
-          locationId: null,
-          roles: <String>['super_admin'],
-        ),
-        gateway: gateway,
-        resolver: _FakeIntegrationAdminActorResolver(_adminPostgresUserId),
-        idempotencyStore: _MemoryAdminIdempotencyStore(),
-      );
-      addTearDown(ctx.close);
-
-      final response = await _httpJson(
-        'PATCH',
-        ctx.uri('/v1/admin/vendor-applicability'),
-        idempotencyKey: 'idem-location-end',
-        body: <String, Object?>{
-          'action': 'end',
-          'operator_id': _operatorId,
-          'location_id': _locationId,
-          'setting_kind': 'wage',
-          'setting_key': 'tip_credit',
-          'vendor_slug': 'toast',
-          'admin_reason': 'Ticket VA-130 retire location override',
-        },
-      );
-
-      expect(response.statusCode, 200);
-      expect(gateway.endCalls, hasLength(1));
-      expect(gateway.endCalls.single.operatorId, _operatorId);
-      expect(gateway.endCalls.single.locationId, _locationId);
-    });
-
     test(
-      'admin PATCH end rejects location_id without operator_id',
+      'admin PATCH end threads location_id through to the gateway',
       () async {
         final gateway = _FakeVendorApplicabilityGateway();
         final ctx = await _serve(
@@ -381,23 +369,60 @@ void main() {
         final response = await _httpJson(
           'PATCH',
           ctx.uri('/v1/admin/vendor-applicability'),
-          idempotencyKey: 'idem-end-location-no-operator',
+          idempotencyKey: 'idem-location-end',
           body: <String, Object?>{
             'action': 'end',
+            'operator_id': _operatorId,
             'location_id': _locationId,
             'setting_kind': 'wage',
             'setting_key': 'tip_credit',
             'vendor_slug': 'toast',
-            'admin_reason': 'Ticket VA-131 bad scope',
+            'admin_reason': 'Ticket VA-130 retire location override',
           },
         );
 
-        expect(response.statusCode, 400);
-        final decoded = jsonDecode(response.body) as Map<String, Object?>;
-        expect(decoded['error'], 'location_requires_operator');
-        expect(gateway.endCalls, isEmpty);
+        expect(response.statusCode, 200);
+        expect(gateway.endCalls, hasLength(1));
+        expect(gateway.endCalls.single.operatorId, _operatorId);
+        expect(gateway.endCalls.single.locationId, _locationId);
       },
     );
+
+    test('admin PATCH end rejects location_id without operator_id', () async {
+      final gateway = _FakeVendorApplicabilityGateway();
+      final ctx = await _serve(
+        claims: const ProxyJwtClaims(
+          userId: 'firebase-admin',
+          firebaseUid: 'firebase-admin',
+          operatorId: null,
+          locationId: null,
+          roles: <String>['super_admin'],
+        ),
+        gateway: gateway,
+        resolver: _FakeIntegrationAdminActorResolver(_adminPostgresUserId),
+        idempotencyStore: _MemoryAdminIdempotencyStore(),
+      );
+      addTearDown(ctx.close);
+
+      final response = await _httpJson(
+        'PATCH',
+        ctx.uri('/v1/admin/vendor-applicability'),
+        idempotencyKey: 'idem-end-location-no-operator',
+        body: <String, Object?>{
+          'action': 'end',
+          'location_id': _locationId,
+          'setting_kind': 'wage',
+          'setting_key': 'tip_credit',
+          'vendor_slug': 'toast',
+          'admin_reason': 'Ticket VA-131 bad scope',
+        },
+      );
+
+      expect(response.statusCode, 400);
+      final decoded = jsonDecode(response.body) as Map<String, Object?>;
+      expect(decoded['error'], 'location_requires_operator');
+      expect(gateway.endCalls, isEmpty);
+    });
 
     test('admin GET passes operator + location filters through', () async {
       final gateway = _FakeVendorApplicabilityGateway();
@@ -439,9 +464,7 @@ void main() {
       addTearDown(ctx.close);
 
       final response = await _httpGet(
-        ctx.uri(
-          '/v1/admin/vendor-applicability?location_id=$_locationId',
-        ),
+        ctx.uri('/v1/admin/vendor-applicability?location_id=$_locationId'),
       );
 
       expect(response.statusCode, 400);

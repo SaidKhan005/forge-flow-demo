@@ -303,6 +303,18 @@ class CanonicalFactToClosedShiftInputAggregator
         operatorId: operatorId,
         locationId: locationId,
       );
+      final blockedWageVendorSlugs = await _readExplicitlyBlockedVendorSlugs(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        settingKind: 'wage',
+      );
+      final blockedCoversVendorSlugs = await _readExplicitlyBlockedVendorSlugs(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        settingKind: 'covers',
+      );
 
       final useDateAwareKeyedBase = _effectiveCoversSourceIsKeyedBase(
         settings,
@@ -427,6 +439,7 @@ class CanonicalFactToClosedShiftInputAggregator
         periodDefinitions: periodDefinitions,
         distributionWeights: distributionWeights,
         walkInOverride: walkInOverride,
+        blockedCoversVendorSlugs: blockedCoversVendorSlugs,
       );
       if (coversResolution == null) {
         // Stage 5: unavailable. Aggregator returns null per contract.
@@ -440,6 +453,7 @@ class CanonicalFactToClosedShiftInputAggregator
         fohHoursOverride: laborSplit.fohHoursInPeriod,
         bohHoursOverride: laborSplit.bohHoursInPeriod,
         perPunchHoursInPeriod: laborSplit.perPunchHoursInPeriod,
+        blockedWageVendorSlugs: blockedWageVendorSlugs,
       );
 
       // ─── Sales (POS-derived; sums actual_sales across cover_facts) ─
@@ -540,6 +554,7 @@ class CanonicalFactToClosedShiftInputAggregator
     required List<ServicePeriodDefinition> periodDefinitions,
     required ScheduleDistributionWeights? distributionWeights,
     required ReservationWalkInOverride? walkInOverride,
+    required Set<String> blockedCoversVendorSlugs,
   }) {
     final operatorPreference = _resolveOperatorCoversPreference(
       settings: settings,
@@ -579,6 +594,7 @@ class CanonicalFactToClosedShiftInputAggregator
     // coversFieldExposed=true AND vendor fact populated covers).
     if (operatorPreference == _OperatorCoversPreference.vendor &&
         posVendorId != null &&
+        !blockedCoversVendorSlugs.contains(posVendorId) &&
         posVendorExposesCovers(posVendorId) == true) {
       var hasVendorCovers = false;
       final summed = coverFacts.fold<int>(0, (acc, row) {
@@ -606,6 +622,21 @@ class CanonicalFactToClosedShiftInputAggregator
     // operator walk-in count). Bucketing already filtered to this slot
     // via reservation_at / seated_at according to vendor availability.
     if (operatorPreference == _OperatorCoversPreference.reservationPlusWalkin) {
+      final reservationVendorId = reservationFacts.isEmpty
+          ? ''
+          : reservationFacts.first['vendor_id'] as String? ?? '';
+      if (reservationVendorId.isNotEmpty &&
+          blockedCoversVendorSlugs.contains(reservationVendorId)) {
+        return _resolveForecastCovers(
+          dayLabel: dayLabel,
+          posVendorId: reservationVendorId,
+          forecastContext: forecastContext,
+          periodDefinition: periodDefinition,
+          periodDefinitions: periodDefinitions,
+          distributionWeights: distributionWeights,
+          explicitOperatorForecast: false,
+        );
+      }
       final resolvedWalkInOverride =
           walkInOverride ??
           _walkInOverrideFromSettings(
@@ -624,8 +655,6 @@ class CanonicalFactToClosedShiftInputAggregator
           if (raw is num) return acc + raw.toInt();
           return acc;
         });
-        final reservationVendorId =
-            reservationFacts.first['vendor_id'] as String? ?? '';
         if (seatedSum > 0 && reservationVendorId.isNotEmpty) {
           return _CoversResolution(
             covers: seatedSum + resolvedWalkInOverride.operatorWalkInCount,
@@ -662,7 +691,7 @@ class CanonicalFactToClosedShiftInputAggregator
     // disambiguate: stage 1 is the operator-elected manual path
     // (operator picked `CoversSource.manual` in Data Accuracy);
     // stage 3.5 is the automatic POS-capability fallback.
-    if (_posLacksCoversCapability(posVendorId)) {
+    if (_posCannotSupplyCovers(posVendorId, blockedCoversVendorSlugs)) {
       final manual = settings.manualCoversFor(isoBusinessDate, servicePeriodId);
       if (manual != null) {
         return _CoversResolution(
@@ -767,8 +796,12 @@ class CanonicalFactToClosedShiftInputAggregator
   /// safer assumption when F&F cannot classify the vendor is that POS
   /// covers cannot be trusted; manual entries (if any) take the
   /// fallback slot ahead of forecast substitution.
-  static bool _posLacksCoversCapability(String? posVendorId) {
-    return posVendorExposesCovers(posVendorId) != true;
+  static bool _posCannotSupplyCovers(
+    String? posVendorId,
+    Set<String> blockedCoversVendorSlugs,
+  ) {
+    return posVendorExposesCovers(posVendorId) != true ||
+        (posVendorId != null && blockedCoversVendorSlugs.contains(posVendorId));
   }
 
   static ReservationWalkInOverride? _walkInOverrideFromSettings(
@@ -836,6 +869,7 @@ class CanonicalFactToClosedShiftInputAggregator
     int? fohHoursOverride,
     int? bohHoursOverride,
     Map<Map<String, Object?>, double>? perPunchHoursInPeriod,
+    required Set<String> blockedWageVendorSlugs,
   }) {
     // Per-Daypart V1 Slice 1.5 (Gap 21): hours come from
     // `DaypartBucketer.bucketLaborPunch` per-period segments, not from
@@ -875,6 +909,16 @@ class CanonicalFactToClosedShiftInputAggregator
 
     final laborVendorId =
         laborPunches.first['vendor_id'] as String? ?? 'unknown';
+    if (blockedWageVendorSlugs.contains(laborVendorId)) {
+      return _LaborResolution(
+        fohHours: fohHours,
+        bohHours: bohHours,
+        fohDollars: null,
+        bohDollars: null,
+        provenance:
+            'vendor_${laborVendorId}_wage_applicability_blocked_target_wage_substituted',
+      );
+    }
     final wageClass = laborWageSourceClassFor(laborVendorId);
 
     // Stage 2 — perEmployeeWithDollars (vendor sums per-shift dollars
@@ -1018,6 +1062,66 @@ class CanonicalFactToClosedShiftInputAggregator
   ) {
     final source = settings.coversSourceSourceFor(servicePeriodId);
     return source?.sourceKind == 'service_period_setting';
+  }
+
+  Future<Set<String>> _readExplicitlyBlockedVendorSlugs(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String settingKind,
+  }) async {
+    final rows = await exec.query(
+      'with visible as ('
+      '  select '
+      '    vendor_slug, '
+      '    setting_key, '
+      '    enabled, '
+      '    effective_from, '
+      '    case '
+      '      when location_id = @location_id::uuid then 2 '
+      '      when operator_id = @operator_id::uuid and location_id is null then 1 '
+      '      when operator_id is null then 0 '
+      '      else -1 '
+      '    end as specificity_rank '
+      '  from public.vendor_applicability '
+      '  where effective_until is null '
+      '    and setting_kind = @setting_kind '
+      '    and ('
+      '      operator_id is null '
+      '      or (operator_id = @operator_id::uuid and location_id is null) '
+      '      or (operator_id = @operator_id::uuid and location_id = @location_id::uuid)'
+      '    )'
+      '), ranked as ('
+      '  select *, row_number() over ('
+      '    partition by setting_key, vendor_slug '
+      '    order by specificity_rank desc, effective_from desc'
+      '  ) as rn '
+      '  from visible '
+      '  where specificity_rank >= 0'
+      ') '
+      'select vendor_slug, enabled '
+      'from ranked '
+      'where rn = 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'setting_kind': settingKind,
+      },
+    );
+
+    final vendorsWithEnabledWinners = <String>{};
+    final vendorsWithDisabledWinners = <String>{};
+    for (final row in rows) {
+      final vendorSlug = row['vendor_slug'];
+      final enabled = row['enabled'];
+      if (vendorSlug is! String || enabled is! bool) continue;
+      if (enabled) {
+        vendorsWithEnabledWinners.add(vendorSlug);
+      } else {
+        vendorsWithDisabledWinners.add(vendorSlug);
+      }
+    }
+    return vendorsWithDisabledWinners.difference(vendorsWithEnabledWinners);
   }
 
   // ─── DAS read (inline, same tenant transaction) ────────────────────

@@ -72,8 +72,11 @@ const ServicePeriodDefinition lateNightPeriod = ServicePeriodDefinition(
   applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
 );
 
-const List<ServicePeriodDefinition> standardPeriods =
-    <ServicePeriodDefinition>[lunchPeriod, dinnerPeriod, lateNightPeriod];
+const List<ServicePeriodDefinition> standardPeriods = <ServicePeriodDefinition>[
+  lunchPeriod,
+  dinnerPeriod,
+  lateNightPeriod,
+];
 
 // 22:00 UTC = 18:00 EDT (America/Toronto, May 2026) → buckets to
 // dinner. Used by all three canonical fact tables.
@@ -117,6 +120,12 @@ String get businessDateIso =>
     '-${businessDate.month.toString().padLeft(2, '0')}'
     '-${businessDate.day.toString().padLeft(2, '0')}';
 
+DateTime _dateTime(Object? value) {
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.parse(value);
+  return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+}
+
 class FakePool implements PostgresPool {
   static const String _effectiveSettingsViewAsOfDate = '2026-05-19';
 
@@ -151,6 +160,8 @@ class FakePool implements PostgresPool {
       <String, List<Map<String, Object?>>>{};
   final Map<String, List<Map<String, Object?>>>
   reservationFactsByOperatorLocation = <String, List<Map<String, Object?>>>{};
+  final List<Map<String, Object?>> vendorApplicabilityRows =
+      <Map<String, Object?>>[];
 
   /// Keyed by `(operator_id, location_id, business_date_iso, daypart)`.
   /// Pre-seed when a test wants to exercise priorTargetProfileVersionId.
@@ -215,6 +226,47 @@ class FakeTransaction implements PostgresTransaction {
     if (sql.contains('select set_config(')) {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
+    }
+    if (sql.contains('from public.vendor_applicability')) {
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final settingKind = parameters['setting_kind'] as String;
+      final winners = <String, Map<String, Object?>>{};
+      for (final row in pool.vendorApplicabilityRows) {
+        if (row['setting_kind'] != settingKind) continue;
+        if (row['effective_until'] != null) continue;
+        final rowOperatorId = row['operator_id'];
+        final rowLocationId = row['location_id'];
+        final rank = rowOperatorId == null
+            ? 0
+            : rowOperatorId == operatorId && rowLocationId == null
+            ? 1
+            : rowOperatorId == operatorId && rowLocationId == locationId
+            ? 2
+            : -1;
+        if (rank < 0) continue;
+        final settingKey = row['setting_key'];
+        final vendorSlug = row['vendor_slug'];
+        if (settingKey is! String || vendorSlug is! String) continue;
+        final key = '$settingKey|$vendorSlug';
+        final existing = winners[key];
+        if (existing == null ||
+            rank > (existing['_rank'] as int? ?? -1) ||
+            (rank == (existing['_rank'] as int? ?? -1) &&
+                _dateTime(
+                  row['effective_from'],
+                ).isAfter(_dateTime(existing['effective_from'])))) {
+          winners[key] = <String, Object?>{...row, '_rank': rank};
+        }
+      }
+      return winners.values
+          .map(
+            (row) => <String, Object?>{
+              'vendor_slug': row['vendor_slug'],
+              'enabled': row['enabled'],
+            },
+          )
+          .toList(growable: false);
     }
     if (sql.contains('from public.effective_data_accuracy_settings_v')) {
       final operatorId = parameters['operator_id'] as String;

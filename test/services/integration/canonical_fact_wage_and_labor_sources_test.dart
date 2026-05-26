@@ -33,31 +33,30 @@ void main() {
             'actual_sales': 480.00,
           },
         ];
-        pool.laborPunchesByOperatorLocation['$opA|$locA|$businessDateIso'] =
-            [
-              <String, Object?>{
-                'vendor_id': 'humanity',
-                'vendor_entity_id': 'sched_001',
-                'employee_source_id': 'emp_1',
-                'role_name': 'server',
-                'shift_start': dinnerInstantUtc,
-                'shift_end': dinnerInstantUtc.add(const Duration(hours: 4)),
-                'hours_worked': 4,
-                'pay_rate': 22.0,
-                'business_date': businessDateIso,
-              },
-              <String, Object?>{
-                'vendor_id': 'humanity',
-                'vendor_entity_id': 'sched_002',
-                'employee_source_id': 'emp_2',
-                'role_name': 'cook',
-                'shift_start': dinnerInstantUtc,
-                'shift_end': dinnerInstantUtc.add(const Duration(hours: 5)),
-                'hours_worked': 5,
-                'pay_rate': 24.0,
-                'business_date': businessDateIso,
-              },
-            ];
+        pool.laborPunchesByOperatorLocation['$opA|$locA|$businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'humanity',
+            'vendor_entity_id': 'sched_001',
+            'employee_source_id': 'emp_1',
+            'role_name': 'server',
+            'shift_start': dinnerInstantUtc,
+            'shift_end': dinnerInstantUtc.add(const Duration(hours: 4)),
+            'hours_worked': 4,
+            'pay_rate': 22.0,
+            'business_date': businessDateIso,
+          },
+          <String, Object?>{
+            'vendor_id': 'humanity',
+            'vendor_entity_id': 'sched_002',
+            'employee_source_id': 'emp_2',
+            'role_name': 'cook',
+            'shift_start': dinnerInstantUtc,
+            'shift_end': dinnerInstantUtc.add(const Duration(hours: 5)),
+            'hours_worked': 5,
+            'pay_rate': 24.0,
+            'business_date': businessDateIso,
+          },
+        ];
 
         final aggregator = CanonicalFactToClosedShiftInputAggregator(
           TenantTransactionWrapper(pool),
@@ -240,6 +239,71 @@ void main() {
             'per_employee_rates qualifier disambiguates from perEmployeeWithDollars',
       );
     });
+
+    test(
+      'explicit wage applicability block prevents vendor wage dollars',
+      () async {
+        final pool = FakePool()..seedLocation(opA, locA);
+        pool.vendorApplicabilityRows.add(<String, Object?>{
+          'operator_id': null,
+          'location_id': null,
+          'setting_kind': 'wage',
+          'setting_key': 'default',
+          'vendor_slug': 'quickbooks_time',
+          'enabled': false,
+          'effective_from': DateTime.utc(2026, 5, 1),
+          'effective_until': null,
+        });
+        pool.coverFactsByOperatorLocation['$opA|$locA|$businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_001',
+            'vendor_modified_at': dinnerInstantUtc,
+            'covers': 10,
+            'covers_source': 'direct',
+            'opened_at': dinnerInstantUtc,
+            'closed_at': dinnerInstantUtc,
+            'business_date': businessDateIso,
+            'actual_sales': 400.00,
+          },
+        ];
+        pool.laborPunchesByOperatorLocation['$opA|$locA|$businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'quickbooks_time',
+            'vendor_entity_id': 'ts_001',
+            'employee_source_id': 'emp_1',
+            'role_name': 'server',
+            'shift_start': dinnerInstantUtc,
+            'shift_end': dinnerInstantUtc.add(const Duration(hours: 4)),
+            'hours_worked': 4,
+            'pay_rate': 18.0,
+            'business_date': businessDateIso,
+          },
+        ];
+
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: opA,
+              locationId: locA,
+              restaurantId: restaurantA,
+              businessDate: businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'dinner',
+              periodDefinition: dinnerPeriod,
+            );
+
+        expect(result, isNotNull);
+        expect(result!.input.actualFohHours, 4);
+        expect(result.input.actualFohLaborDollars, isNull);
+        expect(
+          result.provenance.laborDollarsProvenance,
+          'vendor_quickbooks_time_wage_applicability_blocked_target_wage_substituted',
+        );
+      },
+    );
   });
 
   // ─────────────────── J — hoursOnly (ADP, Push Operations) ───────────────
