@@ -148,138 +148,132 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
           role: AdminActionRole.primary,
         ),
       ],
-      child: Flexible(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Description',
-                style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Description',
+              style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              key: const Key('admin_tier_definition_dialog_description'),
+              controller: _description,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
               ),
-              const SizedBox(height: 6),
-              TextField(
-                key: const Key('admin_tier_definition_dialog_description'),
-                controller: _description,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  isDense: true,
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Default tier price (USD/month/location)',
+                        style: AppTextStyles.uiLabel(
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        key: const Key('admin_tier_definition_dialog_price'),
+                        controller: _priceDollars,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                        ],
+                        decoration: InputDecoration(
+                          prefixText: '\$ ',
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                          errorText: _priceError,
+                        ),
+                        style: AppTextStyles.mono14(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                style: AppTextStyles.body14(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Default tier price (USD/month/location)',
-                          style: AppTextStyles.uiLabel(
-                            color: AppColors.textMuted,
-                          ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Vendor API cost basis (USD/month/location)',
+                        style: AppTextStyles.uiLabel(
+                          color: AppColors.textMuted,
                         ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          key: const Key('admin_tier_definition_dialog_price'),
-                          controller: _priceDollars,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          inputFormatters: <TextInputFormatter>[
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.]'),
-                            ),
-                          ],
-                          decoration: InputDecoration(
-                            prefixText: '\$ ',
-                            isDense: true,
-                            border: const OutlineInputBorder(),
-                            errorText: _priceError,
-                          ),
-                          style: AppTextStyles.mono14(
-                            color: AppColors.textPrimary,
-                          ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        key: const Key('admin_tier_definition_dialog_cost'),
+                        controller: _costDollars,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
-                      ],
-                    ),
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                        ],
+                        decoration: InputDecoration(
+                          prefixText: '\$ ',
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                          errorText: _costError,
+                        ),
+                        style: AppTextStyles.mono14(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Vendor API cost basis (USD/month/location)',
-                          style: AppTextStyles.uiLabel(
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          key: const Key('admin_tier_definition_dialog_cost'),
-                          controller: _costDollars,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          inputFormatters: <TextInputFormatter>[
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.]'),
-                            ),
-                          ],
-                          decoration: InputDecoration(
-                            prefixText: '\$ ',
-                            isDense: true,
-                            border: const OutlineInputBorder(),
-                            errorText: _costError,
-                          ),
-                          style: AppTextStyles.mono14(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              PerVendorCadenceEditor(
-                initialCadence: _cadence,
-                onChanged: (next) => setState(() {
-                  _cadence = next;
-                  if (_cadenceError != null) _cadenceError = null;
-                }),
-              ),
-              if (_cadenceError != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  _cadenceError!,
-                  style: AppTextStyles.body12(color: AppColors.negative),
                 ),
               ],
-              const SizedBox(height: 16),
-              Text(
-                'Reason note (audit log)',
-                style: AppTextStyles.uiLabel(color: AppColors.textMuted),
-              ),
+            ),
+            const SizedBox(height: 16),
+            PerVendorCadenceEditor(
+              initialCadence: _cadence,
+              onChanged: (next) => setState(() {
+                _cadence = next;
+                if (_cadenceError != null) _cadenceError = null;
+              }),
+            ),
+            if (_cadenceError != null) ...[
               const SizedBox(height: 6),
-              TextField(
-                key: const Key('admin_tier_definition_dialog_reason'),
-                controller: _reason,
-                maxLines: 2,
-                decoration: InputDecoration(
-                  border: const OutlineInputBorder(),
-                  isDense: true,
-                  errorText: _reasonError,
-                  hintText: 'Why this change?',
-                ),
-                style: AppTextStyles.body14(color: AppColors.textPrimary),
+              Text(
+                _cadenceError!,
+                style: AppTextStyles.body12(color: AppColors.negative),
               ),
             ],
-          ),
+            const SizedBox(height: 16),
+            Text(
+              'Reason note (audit log)',
+              style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              key: const Key('admin_tier_definition_dialog_reason'),
+              controller: _reason,
+              maxLines: 2,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                isDense: true,
+                errorText: _reasonError,
+                hintText: 'Why this change?',
+              ),
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            ),
+          ],
         ),
       ),
     );

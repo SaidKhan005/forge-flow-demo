@@ -47,7 +47,7 @@ class PollingAndPricingAdminScreen extends StatefulWidget {
     this.scopeLocationIds,
     this.onBackToBusinessAccounts,
     this.showPageHeader = true,
-    this.showScopeControls = true,
+    this.showScopeControls = false,
   });
 
   final DataAccuracyAdminGateway gateway;
@@ -88,8 +88,6 @@ class _PollingAndPricingAdminScreenState
       const <DataAccuracyAdminAuditEvent>[];
 
   PollingTierKey? _tierFilter;
-  String? _marginBandFilter;
-  String? _locationCountFilter;
   String? _vendorFilter;
   String _operatorNameFilter = '';
   late AdminHierarchyScopeIntent? _scope = _decoratedInitialScope;
@@ -194,14 +192,6 @@ class _PollingAndPricingAdminScreenState
   }
 
   List<TierAssignmentAdminRow> get _filteredAssignments {
-    final perOperatorLocationCount = <String, int>{};
-    for (final row in _assignments) {
-      perOperatorLocationCount.update(
-        row.operatorRef.operatorId,
-        (count) => count + 1,
-        ifAbsent: () => 1,
-      );
-    }
     return _assignments
         .where((row) {
           // The tier filter applies only to rows with an assignment.
@@ -224,23 +214,6 @@ class _PollingAndPricingAdminScreenState
           final vendor = _vendorFilter;
           if (vendor != null && !_rowUsesPollingVendor(row, vendor)) {
             return false;
-          }
-          final band = _marginBandFilter;
-          if (band != null) {
-            // Margin band only meaningful for assigned rows; unassigned
-            // rows are filtered out when a band is selected.
-            if (row.assignment == null) return false;
-            final margin = row.assignment!.netMarginCents ?? 0;
-            if (band == 'positive' && margin <= 0) return false;
-            if (band == 'break_even' && margin != 0) return false;
-            if (band == 'negative' && margin >= 0) return false;
-          }
-          final loc = _locationCountFilter;
-          if (loc != null) {
-            final count =
-                perOperatorLocationCount[row.operatorRef.operatorId] ?? 0;
-            if (loc == 'single' && count != 1) return false;
-            if (loc == 'multi' && count < 2) return false;
           }
           final query = _operatorNameFilter.trim().toLowerCase();
           if (query.isNotEmpty &&
@@ -295,8 +268,6 @@ class _PollingAndPricingAdminScreenState
     final hasLocalFilter =
         _scope != null ||
         _tierFilter != null ||
-        _marginBandFilter != null ||
-        _locationCountFilter != null ||
         _vendorFilter != null ||
         _operatorNameFilter.trim().isNotEmpty;
     if (!hasLocalFilter) return _rollup;
@@ -311,6 +282,19 @@ class _PollingAndPricingAdminScreenState
   }
 
   String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
+
+  String? get _assignmentScopeLabel {
+    final scope = _scope;
+    if (scope == null) return null;
+    switch (scope.scopeType) {
+      case AdminHierarchyScopeType.business:
+        return scope.operatorName ?? scope.displayLabel;
+      case AdminHierarchyScopeType.orgUnit:
+        return scope.orgUnitName ?? scope.displayLabel;
+      case AdminHierarchyScopeType.location:
+        return scope.locationName ?? scope.displayLabel;
+    }
+  }
 
   List<TierAssignmentAdminRow> get _selectedScopeAssignments {
     final scope = _scope;
@@ -649,6 +633,17 @@ class _PollingAndPricingAdminScreenState
         message: _loadError!,
       );
     }
+    final visibleAssignments = _filteredAssignments;
+    final assignShownAction = _scopeMutationEnabled
+        ? _onAssignSelectedScope
+        : _locationMutationEnabled && visibleAssignments.length == 1
+        ? () => _onAssignTier(visibleAssignments.single)
+        : null;
+    final assignShownCount = _scopeMutationEnabled
+        ? _selectedScopeLocationCount
+        : visibleAssignments.length;
+    final useRowAssignmentActions =
+        _locationMutationEnabled && assignShownAction == null;
     return OperatorWebScreenBody(
       maxContentWidth: 1120,
       // Top inset is owned by the pinned header block above when the page
@@ -714,29 +709,19 @@ class _PollingAndPricingAdminScreenState
                 ),
               ),
             ),
-          if (_scopeMutationEnabled) ...[
-            const SizedBox(height: 16),
-            _ScopedPollingActionCard(
-              locationCount: _selectedScopeLocationCount,
-              onPressed: _onAssignSelectedScope,
-            ),
-          ],
           const SizedBox(height: 16),
           PerLocationTierAssignmentTable(
-            rows: _filteredAssignments,
+            rows: visibleAssignments,
             tierDefinitions: _definitions,
-            editingEnabled: _locationMutationEnabled,
+            editingEnabled: useRowAssignmentActions,
             onAssign: _onAssignTier,
+            onAssignShown: assignShownAction,
+            assignShownLocationCount: assignShownCount,
+            scopeLabel: _assignmentScopeLabel,
             tierFilter: _tierFilter,
-            marginBandFilter: _marginBandFilter,
-            locationCountFilter: _locationCountFilter,
             operatorNameFilter: _operatorNameFilter,
             vendorFilter: _vendorFilter,
             onTierFilterChanged: (v) => setState(() => _tierFilter = v),
-            onMarginBandFilterChanged: (v) =>
-                setState(() => _marginBandFilter = v),
-            onLocationCountFilterChanged: (v) =>
-                setState(() => _locationCountFilter = v),
             onOperatorNameFilterChanged: (v) =>
                 setState(() => _operatorNameFilter = v),
             onVendorFilterChanged: (v) => setState(() => _vendorFilter = v),
@@ -867,35 +852,6 @@ class _PollingAndPricingAdminScreenState
       case AdminHierarchyScopeType.location:
         return AdminDataAccuracyMutationScopeType.location;
     }
-  }
-}
-
-class _ScopedPollingActionCard extends StatelessWidget {
-  const _ScopedPollingActionCard({
-    required this.locationCount,
-    required this.onPressed,
-  });
-
-  final int locationCount;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebPanel(
-      key: const Key('admin_polling_setup_scope_action_card'),
-      title: 'Assign polling setup',
-      trailing: AdminActionButton(
-        key: const Key('admin_polling_setup_scope_assign'),
-        label: 'Assign',
-        onPressed: onPressed,
-        icon: Icons.payments_outlined,
-        role: AdminActionRole.primary,
-      ),
-      child: Text(
-        'Apply one polling setup to the covered $locationCount location${locationCount == 1 ? '' : 's'}. Lower location settings can still override it.',
-        style: AppTextStyles.body13(color: AppColors.textSecondary),
-      ),
-    );
   }
 }
 
@@ -1096,183 +1052,179 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
           role: AdminActionRole.primary,
         ),
       ],
-      child: Flexible(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              DropdownButtonFormField<PollingTierKey>(
-                key: const Key('admin_tier_assignment_dialog_tier'),
-                initialValue: _tierKey,
-                decoration: const InputDecoration(
-                  labelText: 'Tier',
-                  border: OutlineInputBorder(),
-                ),
-                items: PollingTierKey.values
-                    .map(
-                      (t) => DropdownMenuItem<PollingTierKey>(
-                        value: t,
-                        child: Text(_tierLabel(t)),
-                      ),
-                    )
-                    .toList(growable: false),
-                onChanged: (v) {
-                  if (v != null) setState(() => _tierKey = v);
-                },
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            DropdownButtonFormField<PollingTierKey>(
+              key: const Key('admin_tier_assignment_dialog_tier'),
+              initialValue: _tierKey,
+              decoration: const InputDecoration(
+                labelText: 'Tier',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 12),
-              if (_tierKey == PollingTierKey.custom)
-                PerVendorCadenceEditor(
-                  initialCadence: _customCadence,
-                  onChanged: (next) => setState(() => _customCadence = next),
-                ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('admin_tier_assignment_dialog_price'),
-                controller: _price,
-                decoration: const InputDecoration(
-                  labelText: 'Price override (USD/month)',
-                  hintText: 'Leave blank to use tier default',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+              items: PollingTierKey.values
+                  .map(
+                    (t) => DropdownMenuItem<PollingTierKey>(
+                      value: t,
+                      child: Text(_tierLabel(t)),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (v) {
+                if (v != null) setState(() => _tierKey = v);
+              },
+            ),
+            const SizedBox(height: 12),
+            if (_tierKey == PollingTierKey.custom)
+              PerVendorCadenceEditor(
+                initialCadence: _customCadence,
+                onChanged: (next) => setState(() => _customCadence = next),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('admin_tier_assignment_dialog_cost'),
-                controller: _cost,
-                decoration: const InputDecoration(
-                  labelText: 'Cost basis override (USD/month)',
-                  hintText: 'Leave blank to use tier default',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_tier_assignment_dialog_price'),
+              controller: _price,
+              decoration: const InputDecoration(
+                labelText: 'Price override (USD/month)',
+                hintText: 'Leave blank to use tier default',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 12),
-              Container(
-                key: const Key('admin_polling_cost_calculator'),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.peacock.withValues(alpha: 0.06),
-                  border: Border.all(
-                    color: AppColors.peacock.withValues(alpha: 0.24),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_tier_assignment_dialog_cost'),
+              controller: _cost,
+              decoration: const InputDecoration(
+                labelText: 'Cost basis override (USD/month)',
+                hintText: 'Leave blank to use tier default',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              key: const Key('admin_polling_cost_calculator'),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.peacock.withValues(alpha: 0.06),
+                border: Border.all(
+                  color: AppColors.peacock.withValues(alpha: 0.24),
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Cost calculator',
+                    style: AppTextStyles.uiLabel(color: AppColors.peacockDark),
                   ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Cost calculator',
-                      style: AppTextStyles.uiLabel(
-                        color: AppColors.peacockDark,
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          key: const Key(
+                            'admin_polling_calculator_calls_per_day',
+                          ),
+                          controller: _callsPerDay,
+                          decoration: const InputDecoration(
+                            labelText: 'Calls per day per location',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            key: const Key(
-                              'admin_polling_calculator_calls_per_day',
-                            ),
-                            controller: _callsPerDay,
-                            decoration: const InputDecoration(
-                              labelText: 'Calls per day per location',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            onChanged: (_) => setState(() {}),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          key: const Key(
+                            'admin_polling_calculator_cost_per_call',
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            key: const Key(
-                              'admin_polling_calculator_cost_per_call',
-                            ),
-                            controller: _apiCostPerCall,
-                            decoration: const InputDecoration(
-                              labelText: 'API cost per call (USD)',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            onChanged: (_) => setState(() {}),
+                          controller: _apiCostPerCall,
+                          decoration: const InputDecoration(
+                            labelText: 'API cost per call (USD)',
+                            border: OutlineInputBorder(),
                           ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) => setState(() {}),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Builder(
-                      builder: (context) {
-                        final perLocation = _calculatorMonthlyCostCents;
-                        return Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                perLocation == null
-                                    ? 'Enter calls and API cost to estimate monthly cost.'
-                                    : 'Estimate: \$${_formatCents(perLocation)} per location.',
-                                style: AppTextStyles.body13(
-                                  color: AppColors.textSecondary,
-                                ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Builder(
+                    builder: (context) {
+                      final perLocation = _calculatorMonthlyCostCents;
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              perLocation == null
+                                  ? 'Enter calls and API cost to estimate monthly cost.'
+                                  : 'Estimate: \$${_formatCents(perLocation)} per location.',
+                              style: AppTextStyles.body13(
+                                color: AppColors.textSecondary,
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            AdminActionButton(
-                              key: const Key(
-                                'admin_polling_calculator_use_estimate',
-                              ),
-                              label: 'Use estimate',
-                              onPressed: perLocation == null
-                                  ? null
-                                  : () => setState(() {
-                                      _cost.text = _formatCents(perLocation);
-                                    }),
-                              icon: Icons.calculate_outlined,
-                              compact: true,
+                          ),
+                          const SizedBox(width: 10),
+                          AdminActionButton(
+                            key: const Key(
+                              'admin_polling_calculator_use_estimate',
                             ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                            label: 'Use estimate',
+                            onPressed: perLocation == null
+                                ? null
+                                : () => setState(() {
+                                    _cost.text = _formatCents(perLocation);
+                                  }),
+                            icon: Icons.calculate_outlined,
+                            compact: true,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('admin_tier_assignment_dialog_notes'),
-                controller: _notes,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Admin notes',
-                  border: OutlineInputBorder(),
-                ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_tier_assignment_dialog_notes'),
+              controller: _notes,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Admin notes',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('admin_tier_assignment_dialog_reason'),
-                controller: _reason,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Reason for assignment',
-                  hintText: 'Required for the audit log',
-                  border: OutlineInputBorder(),
-                ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_tier_assignment_dialog_reason'),
+              controller: _reason,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Reason for assignment',
+                hintText: 'Required for the audit log',
+                border: OutlineInputBorder(),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

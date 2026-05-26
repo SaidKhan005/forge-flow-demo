@@ -298,9 +298,11 @@ void main() {
         find.text('Showing polling setup for org unit scope'),
         findsNothing,
       );
-      expect(find.text('Effective: Org unit scope'), findsOneWidget);
-      expect(find.text('Assign'), findsWidgets);
-      expect(find.textContaining('Apply one polling setup'), findsOneWidget);
+      expect(find.text('Effective: Org unit scope'), findsNothing);
+      expect(find.text('Assignments'), findsOneWidget);
+      expect(find.text('2 locations in North Region'), findsOneWidget);
+      expect(find.text('Assign shown locations'), findsOneWidget);
+      expect(find.textContaining('Apply one polling setup'), findsNothing);
       expect(find.text('Toronto Yorkville'), findsOneWidget);
       expect(find.text('Vancouver Robson'), findsOneWidget);
       expect(
@@ -349,7 +351,9 @@ void main() {
     expect(find.text('Toronto Yorkville'), findsOneWidget);
     expect(find.text('Vancouver Robson'), findsNothing);
     expect(find.text('1 location'), findsOneWidget);
-    expect(find.textContaining('covered 2 locations'), findsOneWidget);
+    expect(find.text('2 locations in North Region'), findsOneWidget);
+    expect(find.text('Assign shown locations'), findsOneWidget);
+    expect(find.textContaining('covered 2 locations'), findsNothing);
   });
 
   testWidgets(
@@ -380,7 +384,8 @@ void main() {
         const Key('admin_polling_setup_scope_assign'),
       );
       expect(scopeButton, findsOneWidget);
-      expect(find.textContaining('Apply one polling setup'), findsOneWidget);
+      expect(find.text('Assign shown locations'), findsOneWidget);
+      expect(find.textContaining('Apply one polling setup'), findsNothing);
       expect(find.textContaining('Selected scope:'), findsNothing);
       await tester.ensureVisible(scopeButton);
       await tester.tap(scopeButton);
@@ -465,14 +470,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Location only'), findsOneWidget);
-    expect(
-      find.text('Effective: Per-location tier assignment'),
-      findsOneWidget,
-    );
+    expect(find.text('Location only'), findsNothing);
+    expect(find.text('Effective: Per-location tier assignment'), findsNothing);
+    expect(find.text('Assignments'), findsOneWidget);
+    expect(find.text('1 location in Toronto Yorkville'), findsOneWidget);
+    expect(find.text('Assign shown location'), findsOneWidget);
     expect(
       find.byKey(const Key('admin_tier_assignment_assign_op-1_loc-1a')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Vancouver Robson'), findsNothing);
   });
