@@ -407,11 +407,19 @@ void main() {
   );
 
   testWidgets(
-    'admin shell with ff_support source renders corpus in read-only mode',
+    'admin shell with ff_support source renders corpus read-only without overflow at narrow width',
     (tester) async {
-      // Side nav grew with members/roles-hierarchy-sessions/audited-support-actions
-      // routes; expand the surface so the corpus nav item is on-screen and tappable.
-      await tester.binding.setSurfaceSize(const Size(1400, 1200));
+      // B-r2 full-app coverage: drive the real [AdminConsoleApp] (whose
+      // builder clamps text scaling up to a 1.12 floor) to the ff_support
+      // read-only Knowledge Base at a realistic narrow admin width. 760px
+      // is wide enough to keep the 304px side nav (so the corpus nav item
+      // is reachable) but narrow enough that the scoped workspace falls
+      // into its compact tab layout, leaving the function pane ~456px wide.
+      // That is the pane where `_TechDetailsToggle` used to overflow the
+      // "Show technical details" label under the 1.12 scaler. The
+      // `takeException()` assertion guards that regression; the read-only
+      // assertions preserve the original ff_support coverage.
+      await tester.binding.setSurfaceSize(const Size(760, 1100));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       final gateway = InMemoryCorpusAdminGateway(
@@ -448,12 +456,35 @@ void main() {
       await tester.tap(corpusNavItem);
       await tester.pumpAndSettle();
 
+      // The corpus route opens inside a scoped workspace that needs a
+      // selected business before the function pane loads. At this narrow
+      // width the workspace is in compact tab mode, so pick the seeded
+      // demo business from the Scope tab, then switch to the function tab.
+      final businessRow = find.byKey(
+        const Key(
+          'admin_setup_scope_business_00000000-0000-4000-8000-000000000001',
+        ),
+      );
+      await tester.ensureVisible(businessRow);
+      await tester.tap(businessRow);
+      await tester.pumpAndSettle();
+
+      final functionTab = find.descendant(
+        of: find.byType(TabBar),
+        matching: find.text('Knowledge Base'),
+      );
+      await tester.tap(functionTab.first);
+      await tester.pumpAndSettle();
+
       expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
       expect(
         find.byKey(const Key('admin_corpus_readonly_banner')),
         findsOneWidget,
       );
       expect(find.byKey(const Key('admin_corpus_upload_button')), findsNothing);
+      // The toggle label must degrade gracefully (Flexible + ellipsis)
+      // rather than overflow the compact function pane under 1.12 scaling.
+      expect(tester.takeException(), isNull);
     },
   );
 

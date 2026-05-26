@@ -1697,9 +1697,18 @@ class _TechDetailsToggle extends StatelessWidget {
             children: <Widget>[
               Switch(value: value, onChanged: onChanged),
               const SizedBox(width: 8),
-              Text(
-                AdminKnowledgeBaseCopy.showTechnicalDetails,
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              // B-r2: let the label shrink/ellipsize instead of overflowing.
+              // Under the admin console's 1.12 text-scaling floor, this Row
+              // sits in a narrow scoped-workspace function pane (~440px); a
+              // rigid Text pushed the Row ~3px past the available width. A
+              // loose Flexible keeps the natural one-line look when there is
+              // room and degrades gracefully when there is not.
+              Flexible(
+                child: Text(
+                  AdminKnowledgeBaseCopy.showTechnicalDetails,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
               ),
             ],
           ),
