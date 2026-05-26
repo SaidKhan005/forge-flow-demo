@@ -74,7 +74,7 @@ class BlendedWageSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          OperatorWebSectionHeading(
+          OperatorWebPlainSectionHeading(
             title: 'Blended wage mix',
             trailing: OperatorWebInfoButton(
               title: 'Blended wage mix',
@@ -121,7 +121,7 @@ class BlendedWageSummaryCard extends StatelessWidget {
             _BucketBadgeRow(perBucket: summary.perBucket),
           ] else ...<Widget>[
             Text(
-              'Blended wage mix: not enough data yet',
+              'Not enough data yet',
               key: const Key('wage_authority_blended_empty'),
               style: AppTextStyles.body13(color: AppColors.textMuted),
             ),

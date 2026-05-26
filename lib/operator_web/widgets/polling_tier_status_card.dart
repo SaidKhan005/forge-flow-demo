@@ -362,9 +362,11 @@ class _VendorCadenceRow extends StatelessWidget {
 }
 
 /// Maps a stable vendor id to the operator-facing display name. The
-/// 5 poll-only vendors per the contract live here; webhook vendors
-/// are intentionally absent because the cadence list never carries
-/// them.
+/// poll-only vendors per the contract drive the cadence list; the wage
+/// vendor slugs are mapped too so the "Enabled wage vendors" line reads
+/// in friendly names rather than raw slugs. Webhook vendors that never
+/// appear in the cadence list still resolve here for the shared wage
+/// list. Falls back to the raw id for any unknown vendor.
 String friendlyVendorDisplayName(String vendorId) {
   switch (vendorId) {
     case 'oracle_micros_simphony':
@@ -377,6 +379,16 @@ String friendlyVendorDisplayName(String vendorId) {
       return 'Agendrix';
     case 'push_operations':
       return 'Push Operations';
+    case 'adp':
+      return 'ADP';
+    case 'seven_shifts':
+      return '7shifts';
+    case 'square':
+      return 'Square';
+    case 'toast':
+      return 'Toast';
+    case 'clover':
+      return 'Clover';
     default:
       return vendorId;
   }
@@ -562,7 +574,7 @@ class _DataAccuracyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OperatorWebSectionHeading(
+          OperatorWebPlainSectionHeading(
             title: title,
             trailing: OperatorWebInfoButton(
               title: title,

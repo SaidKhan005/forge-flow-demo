@@ -835,7 +835,7 @@ class _BucketSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          OperatorWebSectionHeading(
+          OperatorWebPlainSectionHeading(
             title: bucket.label,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -867,8 +867,7 @@ class _BucketSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
                 canWrite
-                    ? "No wage rates set at this scope yet. Add rates and "
-                          "Forge & Flow will inherit them down to lower scopes."
+                    ? "No rates here yet. Add one and lower scopes inherit it."
                     : "No roles yet for this group. An operator owner "
                           "can add one so Forge & Flow knows the typical "
                           "hourly cost.",
@@ -1288,7 +1287,24 @@ class _WageRowFormState extends State<_WageRowForm> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 18),
+          // Advanced, less-prominent: the three technical match fields
+          // only matter when an operator is wiring a vendor's payroll
+          // feed to these rows. Grouped under a muted subhead so the
+          // common case (name + rate + hours) stays front and centre.
+          const Divider(height: 1, color: AppColors.borderSubtle),
+          const SizedBox(height: 12),
+          Text(
+            'Advanced (optional)',
+            style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Match this role to a vendor payroll feed. Leave blank if you '
+            'are not syncing rates from a vendor.',
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 10),
           Row(
             children: <Widget>[
               Expanded(
@@ -1299,9 +1315,7 @@ class _WageRowFormState extends State<_WageRowForm> {
                         : 'wage_authority_form_job_code_edit_${widget.initial!.wageRoleRowId}',
                   ),
                   controller: _jobCode,
-                  decoration: const InputDecoration(
-                    labelText: 'Job code (optional)',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Job code'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1313,9 +1327,7 @@ class _WageRowFormState extends State<_WageRowForm> {
                         : 'wage_authority_form_vendor_id_edit_${widget.initial!.wageRoleRowId}',
                   ),
                   controller: _vendorId,
-                  decoration: const InputDecoration(
-                    labelText: 'Vendor id (optional)',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Vendor ID'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1328,7 +1340,7 @@ class _WageRowFormState extends State<_WageRowForm> {
                   ),
                   controller: _vendorRoleId,
                   decoration: const InputDecoration(
-                    labelText: 'Vendor role id (optional)',
+                    labelText: "Vendor's role ID",
                   ),
                 ),
               ),
