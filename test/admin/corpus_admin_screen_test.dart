@@ -458,7 +458,8 @@ void main() {
   );
 
   testWidgets(
-    'admin shell with ff_support source renders corpus in read-only mode',
+    'admin shell with ff_support source gates corpus on the shared scope '
+    'picker (restored)',
     (tester) async {
       // Side nav grew with members/roles-hierarchy-sessions/audited-support-actions
       // routes; expand the surface so the corpus nav item is on-screen and tappable.
@@ -510,32 +511,28 @@ void main() {
       await tester.tap(corpusNavItem);
       await pumpEventually(tester);
 
-      // KB-polish: the knowledge documents are GLOBAL Forge & Flow content,
-      // so the Knowledge base no longer sits behind the shared
-      // business-scope workspace (that left scope pane was redundant on the
-      // Knowledge tab). The corpus screen now builds directly on nav, with
-      // no "Pick a business first" gate. The Connections tab carries its
-      // own compact scope control for the commit target instead.
+      // KB-fidelity: the Knowledge base uses the SAME standard hierarchy
+      // scope picker every other per-business admin screen uses (restored
+      // after PR #1400 removed it). So the left scope pane is present, and
+      // the corpus screen waits behind a "pick a business first" gate until
+      // a business is chosen. The scope only sets where approved
+      // connections are saved (the in-screen banner states this); the
+      // Knowledge documents themselves are global.
       expect(
         find.byKey(const Key('admin_setup_workspace_scope_pane')),
-        findsNothing,
-        reason: 'the redundant left scope pane is gone for the corpus route',
-      );
-
-      expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
-      expect(
-        find.byKey(const Key('admin_corpus_readonly_banner')),
         findsOneWidget,
+        reason: 'the standard left scope pane is restored on the corpus route',
       );
-      // B-r3 redesign: the edit-only "Choose a file" affordance replaces
-      // the old upload button and must be hidden for read-only ff_support.
-      expect(
-        find.byKey(const Key('admin_corpus_add_choose_file')),
-        findsNothing,
-      );
+      // The live (ff_support) path does NOT pre-select a scope, so the
+      // corpus screen is not rendered yet: the function pane waits for a
+      // business pick through the restored shared scope picker, exactly
+      // like every other per-business admin screen. (The read-only banner +
+      // hidden Choose-file affordances on the rendered screen are covered by
+      // the dedicated bare-widget read-only test above, which drives
+      // CorpusAdminScreen(editingEnabled: false) directly.)
+      expect(find.byKey(const Key('admin_corpus_screen')), findsNothing);
       // Regression guard: at the admin console's 1.12 text-scaling floor the
-      // read-only Knowledge base renders with no RenderFlex overflow (the
-      // _TechDetailsToggle label shrinks).
+      // restored scope workspace lays out with no RenderFlex overflow.
       expect(tester.takeException(), isNull);
     },
   );

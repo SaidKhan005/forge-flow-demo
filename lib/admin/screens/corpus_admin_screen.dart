@@ -1027,7 +1027,7 @@ class _ChunkPreviewTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Topic header row: kind icon tile · name + kind line · kind
+          // Topic header row: kind icon tile, name + kind line, kind
           // pill. Mockup `.topic`: 38px rounded icon tile, name 15.5
           // semibold, kind sub-label muted 13px, a right kind pill. Sans
           // throughout (no tiny monospace).
