@@ -27,6 +27,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_human_labels.dart';
 import 'package:forge_and_flow/admin/models/corpus_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/corpus_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/corpus_admin_gateway.dart';
@@ -266,7 +267,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('In use now'), findsOneWidget);
-      expect(find.textContaining('by F and F staff'), findsWidgets);
+      expect(
+        find.textContaining(AdminKnowledgeBaseCopy.historyByStaff),
+        findsWidgets,
+      );
 
       // Honest empty state: only the current version exists, so there is
       // no "Go back" affordance and the no-prior notice shows.
