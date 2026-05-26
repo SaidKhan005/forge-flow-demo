@@ -62,6 +62,22 @@ void main() {
     home: Scaffold(body: child),
   );
 
+  // The screen now shows one area at a time behind a segmented tab bar
+  // (Labor / Covers / Data freshness). Labor is the default tab; the
+  // Covers and Data-freshness controls live on their own tabs. These
+  // helpers move to the tab a control lives on before the test
+  // interacts with it. They do NOT change what any test verifies — only
+  // the navigation needed to reach the control.
+  Future<void> openCoversTab(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('data_accuracy_tab_covers')));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openFreshnessTab(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('data_accuracy_tab_freshness')));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -190,24 +206,37 @@ void main() {
           find.byKey(const Key('operator_web_data_accuracy_screen')),
           findsOneWidget,
         );
+        // The three area tabs render; the wage card sits on the default
+        // (Labor) tab. The redesign removed the top explainer card from
+        // the screen (it now lives behind each card's info button).
+        expect(
+          find.byKey(const Key('data_accuracy_tab_labor')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('data_accuracy_tab_covers')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('data_accuracy_tab_freshness')),
+          findsOneWidget,
+        );
         expect(
           find.byKey(const Key('data_accuracy_wage_source_card')),
           findsOneWidget,
         );
         expect(
+          find.byKey(const Key('data_accuracy_explainer_card')),
+          findsNothing,
+        );
+
+        // Covers card lives on the Covers tab; conditional fallback
+        // cards stay off in the default fixture (Toast exposes covers).
+        await openCoversTab(tester);
+        expect(
           find.byKey(const Key('data_accuracy_covers_source_card')),
           findsOneWidget,
         );
-        expect(
-          find.byKey(const Key('data_accuracy_polling_tier_status_card')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('data_accuracy_explainer_card')),
-          findsOneWidget,
-        );
-
-        // Conditional cards stay off in the default fixture.
         expect(
           find.byKey(const Key('data_accuracy_walk_in_handling_card')),
           findsNothing,
@@ -220,6 +249,15 @@ void main() {
           find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
           findsNothing,
         );
+
+        // Polling card lives on the Data freshness tab; with no
+        // poll-only vendor it shows the not-applicable notice and a
+        // disabled request button.
+        await openFreshnessTab(tester);
+        expect(
+          find.byKey(const Key('data_accuracy_polling_tier_status_card')),
+          findsOneWidget,
+        );
         expect(
           find.byKey(const Key('polling_tier_not_applicable_notice')),
           findsOneWidget,
@@ -231,7 +269,9 @@ void main() {
       },
     );
 
-    testWidgets('map names primary location', (tester) async {
+    testWidgets('header shows the lean subtitle with no pinned key', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 800));
 
       await tester.pumpWidget(
@@ -248,16 +288,23 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // The redesign replaced the top explainer card with a one-line
+      // header subtitle. The subtitle text must render, but with NO key
+      // (tests assert the `operator_web_data_accuracy_subtitle` key is
+      // absent).
       expect(
         find.byKey(const Key('operator_web_data_accuracy_subtitle')),
         findsNothing,
       );
-      await tester.tap(find.byTooltip('How Forge & Flow reads this location'));
-      await tester.pumpAndSettle();
       expect(
-        find.textContaining('Brio - Chicago Loop'),
+        find.text("Where this location's numbers come from."),
         findsOneWidget,
-        reason: 'The map help should name the primary location explicitly.',
+      );
+      // The old top explainer card (and its tooltip) are gone from the
+      // screen.
+      expect(
+        find.byKey(const Key('data_accuracy_explainer_card')),
+        findsNothing,
       );
     });
   });
@@ -333,6 +380,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         expect(
           find.byKey(const Key('data_accuracy_walk_in_handling_card')),
@@ -374,6 +422,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openCoversTab(tester);
 
         expect(
           find.byKey(const Key('data_accuracy_walk_in_handling_card')),
