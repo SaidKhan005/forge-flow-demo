@@ -30,6 +30,8 @@ import 'package:forge_and_flow/admin/screens/corpus_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/corpus_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+import '../_test_helpers/widget_pump_helpers.dart';
+
 /// B-r1: flips the screen-level "Show technical details" toggle ON.
 /// The toggle is OFF by default, hiding machine-flavored details (raw
 /// IDs, content hashes, version IDs) and the per-card disclosures.
@@ -434,6 +436,13 @@ void main() {
         ),
       );
       addTearDown(source.dispose);
+      // Drive the full AdminConsoleApp so this also covers the admin
+      // console's text-scaling path: its root MediaQuery clamps OS text
+      // scaling up to a 1.12 floor. The Knowledge Base "Show technical
+      // details" toggle now lets its label shrink (see _TechDetailsToggle in
+      // corpus_admin_screen.dart), so the read-only screen renders inside the
+      // capped-width scoped-workspace function pane without a RenderFlex
+      // overflow. The takeException check at the end guards that regression.
       await tester.pumpWidget(
         AdminConsoleServicesScope(
           corpusAdminGateway: gateway,
@@ -441,12 +450,43 @@ void main() {
           child: AdminConsoleApp(authSource: source),
         ),
       );
-      await tester.pumpAndSettle();
+      // Bounded settling (pumpEventually) instead of pumpAndSettle: the
+      // shared scope-tree pane runs a finite attention-pulse animation, so an
+      // unbounded settle can hang. Mirrors admin_shell_widget_test.dart.
+      await pumpEventually(tester);
 
       final corpusNavItem = find.byKey(const Key('admin_nav_item_corpus'));
       await tester.ensureVisible(corpusNavItem);
+      await pumpEventually(tester);
       await tester.tap(corpusNavItem);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
+
+      // 44e225a9 ("Complete admin hierarchy UX consolidation", #481) moved
+      // the Knowledge base behind the shared scoped-admin workspace: the
+      // corpus screen only builds once a business scope is picked. Until
+      // then the function pane shows the "Pick a business first" card. Pick
+      // the seeded demo business ("Demo Diner Co.") so the ff_support
+      // read-only corpus screen loads — the same scope-first nav flow the
+      // AI-workspace tests in admin_shell_widget_test.dart exercise.
+      final demoBusinessScope = find.byKey(
+        const Key(
+          'admin_setup_scope_business_00000000-0000-4000-8000-000000000001',
+        ),
+      );
+      await tester.ensureVisible(demoBusinessScope);
+      await pumpEventually(tester);
+      await tester.tap(demoBusinessScope);
+      await pumpEventually(tester);
+      // On compact widths the function pane is tabbed behind the scope pane;
+      // tap the 'Knowledge Base' tab when present so the corpus screen is the
+      // visible pane before asserting.
+      if (find
+          .byKey(const Key('admin_setup_workspace_tabs'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.widgetWithText(Tab, 'Knowledge Base'));
+        await pumpEventually(tester);
+      }
 
       expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
       expect(
@@ -454,6 +494,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('admin_corpus_upload_button')), findsNothing);
+      // Regression guard: at the admin console's 1.12 text-scaling floor the
+      // read-only Knowledge Base renders in the capped-width function pane
+      // with no RenderFlex overflow (the _TechDetailsToggle label shrinks).
+      expect(tester.takeException(), isNull);
     },
   );
 

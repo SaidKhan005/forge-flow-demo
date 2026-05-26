@@ -14,6 +14,8 @@ import 'package:forge_and_flow/admin/services/integration_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/vendor_applicability_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+import '../_test_helpers/widget_pump_helpers.dart';
+
 void main() {
   const adminOnlyCopy =
       'This surface is for F&F admins only. Operators cannot see it.';
@@ -107,7 +109,7 @@ void main() {
       expect(routeById(kAdminVendorIntegrationsRouteId).badge, isNull);
       expect(
         routeById(kAdminVendorIntegrationsRouteId).subtitle,
-        contains('super admins can connect, test, disconnect'),
+        contains('super admins can connect, test, and disconnect vendors'),
       );
       expect(
         routeById(kAdminTimingSetupRouteId).subtitle,
@@ -153,13 +155,26 @@ void main() {
     testWidgets('vendor applicability route builds reachable admin page', (
       tester,
     ) async {
+      // 618eadbd ("Move vendor applicability scope to workspace tree") wrapped
+      // this route in the shared scoped-admin workspace. With no
+      // AdminRouteHandoff ancestor it opens on the auto-selected "All
+      // businesses" view, but at the workspace's compact width the function
+      // pane (which hosts the screen) is tabbed behind the scope pane and is
+      // not built until shown. Give it a realistic compact admin width, then
+      // reveal the function tab before asserting the screen is reachable.
+      await tester.binding.setSurfaceSize(const Size(1000, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
       final route = routeById(kAdminVendorApplicabilityRouteId);
 
       expect(route.visibleInNav, isTrue);
       expect(route.section, AdminRouteSection.operations);
 
       await tester.pumpWidget(wrap(Builder(builder: route.builder)));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
+
+      await tester.tap(find.widgetWithText(Tab, 'Vendor Applicability'));
+      await pumpEventually(tester);
 
       expect(find.byType(VendorApplicabilityAdminScreen), findsOneWidget);
       expect(find.text('Vendor Applicability'), findsWidgets);
