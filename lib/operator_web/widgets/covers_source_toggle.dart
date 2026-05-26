@@ -82,10 +82,10 @@ class CoversSourceToggle extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           OperatorWebSectionHeading(
-            title: 'Where covers come from, per service period',
+            title: 'Where covers come from',
             trailing: OperatorWebInfoButton(
-              title: 'Where covers come from, per service period',
-              tooltip: 'Where covers come from, per service period',
+              title: 'Where covers come from',
+              tooltip: 'Where covers come from',
               body: const DataAccuracyCoversModeInfo(),
             ),
           ),
