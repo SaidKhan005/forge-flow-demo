@@ -1,14 +1,14 @@
 # Plans and Limits Scoped Custom Contracts
 
-Status: Draft implementation plan
-Date: 2026-05-25
-Branch: codex/plans-limits-scoped-contracts
+Status: SHIPPED to master through final QA polish (2026-05-26)
+Date: 2026-05-26
+Branch history: `codex/plans-limits-scoped-contracts` -> follow-up QA/copy polish through PR #1388
 
 ## Goal
 
 Add business, org-unit, and location scoped custom contract support to Plans and limits without redesigning the admin console.
 
-The first supported custom plan is Enterprise. Enterprise stays the top plan key, but a selected business scope can carry custom commercial terms:
+Enterprise is the custom-contract base plan. A selected hierarchy scope can carry custom commercial terms while still resolving through the same plan key:
 
 - effective plan
 - inherited source
@@ -22,145 +22,132 @@ The first supported custom plan is Enterprise. Enterprise stays the top plan key
 
 Every pricing mutation must show the selected scope, inherited source, and effective value before saving.
 
+## Shipped Scope
+
+- Enterprise stays the single custom-contract plan key; no new tier key was invented.
+- Custom terms can be set at business, org-unit, or location scope.
+- Location overrides org unit, org unit overrides business, business overrides the global catalog.
+- Missing lower-scope terms inherit from the nearest configured ancestor.
+- Admin Businesses tab shows selected scope, inherited source, effective value, and set-here/inherited/catalog status.
+- Admin Businesses tab supports edit, save, clear, and inherit behavior.
+- Admin Plans tab keeps the six global plan cards and treats Enterprise as the custom base.
+- Business Accounts stale launch-plan wording was removed; subscription editing stays owned by Plans and limits.
+- Operator Web "Your plan" remains display-only and reads cleanly for Enterprise/custom contracts.
+- No Stripe, invoice, payment-method, checkout, or operator self-serve billing flow was added.
+
 ## Current State
 
-Admin Plans and limits already exists at `lib/admin/screens/pricing_tier_admin_screen.dart`.
+Admin Plans and limits lives at `lib/admin/screens/pricing_tier_admin_screen.dart`.
 
 - Plans tab shows the six global plans.
 - Features tab edits the global feature entitlement matrix, but does not gate the app yet.
-- Businesses tab uses the left hierarchy tree as the selector and shows plan, margin, presets, recent hits, and usage limits.
-- Enterprise exists as a static tier key with "Custom" global catalog pricing.
-- Usage caps have a two-slot hierarchy key in the database, but the admin pricing route still mostly writes root/root.
-- Plan catalog and feature entitlements are global tables, not business scoped.
+- Businesses tab uses the left hierarchy tree as the selector and shows plan, margin, recent hits, usage limits, and scoped custom contracts.
+- Enterprise global catalog pricing is "Custom".
+- Usage caps retain the hierarchy-shaped pricing controls already used by the admin pricing surface.
+- Plan catalog and feature entitlements remain global tables.
 
-Operator web already has a display-only "Your plan" surface at `lib/operator_web/screens/plan_screen.dart`.
+Operator Web has a display-only "Your plan" surface at `lib/operator_web/screens/plan_screen.dart`.
 
-Admin Polling and Pricing is a separate internal data freshness/vendor-cost surface. It should not become the subscription contract editor.
+Admin Polling and Pricing remains a separate internal data freshness/vendor-cost surface. It is not the subscription contract editor.
 
-## Backend Trace
+## Backend Truth
 
-Current plan truth:
+Plan and pricing storage:
 
 - `operators.subscription_tier`
 - six-tier CHECK migration: `db/migrations/202605240900_plans_and_limits_phase0_subscription_tier_check.sql`
 - global plan catalog: `pricing_plan_catalog`
 - global feature matrix: `feature_entitlements`
+- scoped custom contracts: `pricing_contract_overrides`
 - usage controls: `usage_caps`
 - spend logs and cap telemetry: `usage_logs`, `usage_cap_events`
 
-Current proxy routes:
+Scoped contract migrations:
 
-- `GET /v1/admin/pricing/operators`
-- `PATCH /v1/admin/pricing/operators/{operatorId}`
-- `POST /v1/admin/pricing/operators/{operatorId}/apply-template`
-- `GET /v1/admin/pricing/operators/{operatorId}/spend-summary`
-- `PUT /v1/admin/pricing/usage-caps`
-- `DELETE /v1/admin/pricing/usage-caps`
-- `GET /v1/admin/pricing/plans`
-- `PATCH /v1/admin/pricing/plans/{tierKey}`
-- `GET /v1/admin/pricing/entitlements`
-- `PATCH /v1/admin/pricing/entitlements/{tierKey}/{featureSlug}`
+- `db/migrations/202605251000_plans_and_limits_scoped_contract_overrides.sql`
+- `db/migrations/202605251020_plans_and_limits_scoped_contract_windows.sql`
 
-Missing backend truth:
+Repository and resolver:
 
-- no persisted custom contract per business, org unit, or location
-- no effective pricing resolver with inheritance provenance
-- no scoped contract route
-- no scoped contract client model
-- no scoped contract editor in the Businesses tab
+- `lib/infrastructure/persistence/postgres/repositories/pricing_contract_overrides_repository.dart`
+- returns selected scope, inherited source, effective terms, override status, and mutation target
+- covers set-here, inherited, catalog-default, and clear-to-inherit flows
 
-## Proposed Data Model
+Admin client models and gateway:
 
-Keep `pricing_plan_catalog` as the global default catalog.
+- `lib/admin/models/pricing_tier_admin_models.dart`
+- `lib/admin/services/pricing_tier_admin_gateway.dart`
+- fake/in-memory gateway behavior covers the scoped contract flow for local/admin tests
 
-Add `pricing_contract_overrides`:
+Proxy routes:
 
-- `id`
-- `operator_id`
-- `scope_type`: `business`, `org_unit`, `location`
-- `org_unit_id`
-- `location_id`
-- `tier_key`
-- `billing_owner_org_unit_id`
-- `monthly_usd`
-- `first_n_seats`
-- `first_seat_usd`
-- `additional_seat_usd`
-- `onboarding_min_usd`
-- `onboarding_max_usd`
-- `advisor_cap_monthly_usd`
-- `effective_from`
-- `effective_until`
-- `contract_label`
-- `internal_note`
-- `updated_at`
-- `updated_by`
+- `GET /v1/admin/pricing/scoped-contracts/effective?operator_id=...&scope_type=...&org_unit_id=...&location_id=...`
+- `PUT /v1/admin/pricing/scoped-contracts`
+- `DELETE /v1/admin/pricing/scoped-contracts/{id}`
 
-Suggested uniqueness:
+Write gates:
 
-- one active override per operator and scope target
-- lower scopes win over higher scopes
-- location beats org unit, org unit beats business, business beats global catalog
+- super-admin pricing write posture
+- step-up auth route coverage
+- idempotency key
+- mutation reason
+- audited save/delete events
 
-## Effective Resolver
+## Resolution Rule
 
-Create a resolver that returns one object for the selected hierarchy node:
+The effective contract for a selected hierarchy node resolves in this order:
 
-- selected scope
-- inherited source
-- effective tier
-- effective pricing
-- effective advisor cap
-- override status: set here, inherited, or catalog default
-- editable mutation target
+1. Location override
+2. Org-unit override
+3. Business override
+4. Global plan catalog
 
-This resolver is the contract between the database, proxy, admin gateway, and Businesses tab.
-
-## Billing Rollup
-
-Do not implement Stripe, invoices, payment methods, or actual payment collection in this slice.
-
-Billing math should be preview/read model only:
-
-- Business scope is the top rollup.
-- Org units and locations can override terms.
-- Lower scope overrides affect only their subtree.
-- If a location has no override, it inherits from its parent org unit.
-- If the org unit has no override, it inherits from business.
-- If business has no override, it uses the global plan catalog.
-- Usage costs still meter through `usage_caps` and the two-slot key.
-- Rollup totals build upward by summing locations into org units, then org units into business.
+The UI must show where the value came from before a save or clear action.
 
 Plain English example:
 
 - Demo Diner Co. is Enterprise with a custom $2,500 monthly minimum.
 - East region inherits that unless it sets its own terms.
 - Toronto Yorkville can override to a $500 monthly minimum and $300 advisor cap.
-- The business rollup shows Demo Diner Co. total expected revenue and advisor cap exposure, with Toronto Yorkville called out as a location-level override.
+- Clearing Toronto Yorkville returns it to East region if East is set, otherwise Demo Diner Co., otherwise the global catalog.
 
-## Screens That Change
+## Billing Rollup
+
+This slice does not implement Stripe, invoices, payment methods, or actual payment collection.
+
+Billing math is preview/display only:
+
+- Business scope is the top rollup.
+- Org units and locations can override terms.
+- Lower-scope overrides affect only their subtree.
+- Rollup totals build upward by summing locations into org units, then org units into the business.
+- Usage costs still meter through `usage_caps` and spend telemetry.
+
+## Screens Changed
 
 Primary:
 
 - Admin Plans and limits, Businesses tab
-  - add a compact scoped contract summary
-  - show selected scope, inherited source, and effective value
-  - add edit/clear custom contract actions
-  - keep left hierarchy pane unchanged
+  - scoped contract summary
+  - selected scope, inherited source, effective value
+  - edit custom contract
+  - clear custom contract
+  - inherit behavior
+  - left hierarchy pane unchanged
 
 Secondary:
 
 - Admin Plans and limits, Plans tab
-  - keep global plan cards
-  - clarify Enterprise is the custom contract base plan
+  - global plan cards retained
+  - Enterprise reads as the custom-contract base plan
 
-- Admin Business accounts
-  - remove/retire stale `launch` plan copy if still present
-  - keep subscription editing owned by Plans and limits
+- Admin Business Accounts
+  - stale launch wording removed
+  - no subscription editor added
 
-- Operator web Your plan
-  - display effective Enterprise/custom contract copy if the session can safely project it
-  - no self-serve billing changes
+- Operator Web Your plan
+  - display-only plan/contract wording checked
+  - no checkout or self-serve billing action
 
 No functional change:
 
@@ -168,88 +155,31 @@ No functional change:
   - remains data freshness/vendor-cost margin tooling
   - may later consume contract revenue for margin reporting, but is not the editor
 
-## API Shape
-
-Proposed routes:
-
-- `GET /v1/admin/pricing/scoped-contracts/effective?operator_id=...&scope_type=...&org_unit_id=...&location_id=...`
-- `PUT /v1/admin/pricing/scoped-contracts`
-- `DELETE /v1/admin/pricing/scoped-contracts/{id}`
-
-Writes must require:
-
-- super admin role
-- fresh step-up auth where existing pricing writes require it
-- idempotency key
-- mutation reason
-
-## Parallel Implementation Lanes
-
-Lane 0: Contract and audit doc
-
-- Owns this plan.
-- Defines route and DTO names.
-- Keeps agents aligned.
-
-Lane 1: Database and repository
-
-- migration for `pricing_contract_overrides`
-- repository and resolver tests
-- no UI edits
-
-Lane 2: Proxy routes
-
-- new scoped contract routes
-- request validation
-- idempotency and audit behavior
-- step-up route coverage
-- proxy tests
-
-Lane 3: Admin client models and gateway
-
-- scoped contract DTOs
-- HTTP gateway methods
-- fake/in-memory gateway behavior
-- gateway tests
-
-Lane 4: Admin UI
-
-- Businesses tab scoped contract summary/editor
-- minimal Plans tab wording for Enterprise
-- widget tests
-
-Lane 5: Operator and ops read-only pass
-
-- confirm "Your plan" copy
-- confirm Business accounts stale plan labels
-- no operator billing checkout
-- no Polling and Pricing editor changes
-
-Lane 6: QA and acceptance
-
-- targeted Dart tests
-- admin browser smoke test
-- screenshot of Businesses tab before/after
-- verify no plan/limit text overlaps
-
-## Risk Gates
-
-Do not merge until these are true:
+## Verified Acceptance
 
 - selected scope, inherited source, and effective value are visible before mutation
 - global plan catalog still works for non-custom plans
-- Enterprise can carry scoped custom terms without inventing a new tier key
-- usage cap writes respect the two-slot key
+- Enterprise carries scoped custom terms without a new tier key
+- clear behavior returns the selected scope to inheritance
 - step-up and role checks cover money/limit writes
 - tests cover inherited, set-here, and clear-to-inherit flows
+- final browser QA checked Businesses tab spacing, custom contract popup, clear/inherit behavior, Operator Web "Your plan", and Business Accounts copy
 - Polling and Pricing remains separate from subscription contracts
 
-## Non Goals
+## Still Future
 
+- actual feature gates from `feature_entitlements` remain deferred until LMS, scoreboard, SOPs, workflows, or another gateable surface exists
 - Stripe
 - invoices
 - payment methods
+- checkout
 - operator self-serve plan changes
-- app-wide feature gating from `feature_entitlements`
+- production/staging application of the code-ready Plans and limits migrations remains under the normal operator-approved migration queue
+
+## Non Goals
+
 - rewriting the Plans and limits layout
 - moving the hierarchy pane
+- turning Enterprise into a separate billing engine
+- adding a subscription editor to Business Accounts
+- adding custom contract editing to Polling and Pricing

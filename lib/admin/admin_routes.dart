@@ -12,6 +12,7 @@
 // fixtures so the kDemoMode walkthrough click path runs without
 // the Cloud Run admin proxy.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_session.dart';
@@ -315,6 +316,16 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildIntegrations,
   ),
   AdminRoute(
+    id: kAdminVendorApplicabilityRouteId,
+    title: 'Vendor applicability',
+    path: '/vendor-applicability',
+    icon: Icons.fact_check_outlined,
+    section: AdminRouteSection.serviceSetup,
+    subtitle:
+        'Choose which vendors can power wage, covers, and data freshness.',
+    builder: _buildVendorApplicability,
+  ),
+  AdminRoute(
     id: kAdminHealthRouteId,
     title: 'System health',
     path: '/health',
@@ -375,16 +386,6 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildDataAccuracy,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
-  ),
-  AdminRoute(
-    id: kAdminVendorApplicabilityRouteId,
-    title: 'Vendor Applicability',
-    path: '/vendor-applicability',
-    icon: Icons.fact_check_outlined,
-    section: AdminRouteSection.operations,
-    subtitle:
-        'This surface is for F&F admins only - choose which vendors can power wage, covers, and polling settings.',
-    builder: _buildVendorApplicability,
   ),
   AdminRoute(
     id: kAdminPollingPricingRouteId,
@@ -1336,7 +1337,7 @@ Widget _buildVendorApplicability(BuildContext context) {
   return _buildScopedAdminWorkspace(
     context: context,
     routeId: kAdminVendorApplicabilityRouteId,
-    functionTitle: 'Vendor Applicability',
+    functionTitle: 'Vendor applicability',
     description:
         'Choose which vendors are allowed to power wage, covers, and data '
         'freshness settings.',
@@ -3233,33 +3234,33 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.adminSecurityGateway ?? _defaultAdminSecurityDemoGateway;
   }
 
+  List<Object?> get _notifySlots => <Object?>[
+    operatorLocationGateway,
+    pricingTierGateway,
+    corpusAdminGateway,
+    integrationGateway,
+    vendorConnectionsGateway,
+    healthGateway,
+    observabilityGateway,
+    featureFlagsGateway,
+    defaultRoleCatalogAdminGateway,
+    debugConsoleGateway,
+    dataAccuracyAdminGateway,
+    vendorApplicabilityGateway,
+    membersAdminGateway,
+    rolesHierarchySessionsAdminGateway,
+    auditedSupportActionsAdminGateway,
+    auditChainAnchorsGateway,
+    adminAccountGateway,
+    adminNotificationPreferencesGateway,
+    adminSessionsGateway,
+    adminSecurityGateway,
+    timingResolutionGateway,
+    timingProfilesGateway,
+    adminAuthSource,
+  ];
+
   @override
   bool updateShouldNotify(AdminConsoleServicesScope oldWidget) =>
-      operatorLocationGateway != oldWidget.operatorLocationGateway ||
-      pricingTierGateway != oldWidget.pricingTierGateway ||
-      corpusAdminGateway != oldWidget.corpusAdminGateway ||
-      integrationGateway != oldWidget.integrationGateway ||
-      vendorConnectionsGateway != oldWidget.vendorConnectionsGateway ||
-      healthGateway != oldWidget.healthGateway ||
-      observabilityGateway != oldWidget.observabilityGateway ||
-      featureFlagsGateway != oldWidget.featureFlagsGateway ||
-      defaultRoleCatalogAdminGateway !=
-          oldWidget.defaultRoleCatalogAdminGateway ||
-      debugConsoleGateway != oldWidget.debugConsoleGateway ||
-      dataAccuracyAdminGateway != oldWidget.dataAccuracyAdminGateway ||
-      vendorApplicabilityGateway != oldWidget.vendorApplicabilityGateway ||
-      membersAdminGateway != oldWidget.membersAdminGateway ||
-      rolesHierarchySessionsAdminGateway !=
-          oldWidget.rolesHierarchySessionsAdminGateway ||
-      auditedSupportActionsAdminGateway !=
-          oldWidget.auditedSupportActionsAdminGateway ||
-      auditChainAnchorsGateway != oldWidget.auditChainAnchorsGateway ||
-      adminAccountGateway != oldWidget.adminAccountGateway ||
-      adminNotificationPreferencesGateway !=
-          oldWidget.adminNotificationPreferencesGateway ||
-      adminSessionsGateway != oldWidget.adminSessionsGateway ||
-      adminSecurityGateway != oldWidget.adminSecurityGateway ||
-      timingResolutionGateway != oldWidget.timingResolutionGateway ||
-      timingProfilesGateway != oldWidget.timingProfilesGateway ||
-      adminAuthSource != oldWidget.adminAuthSource;
+      !listEquals<Object?>(_notifySlots, oldWidget._notifySlots);
 }

@@ -348,7 +348,6 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
 
   List<Widget> _envelopeBody(ObservabilityEnvelope envelope) {
     return <Widget>[
-      _AsOfStrip(envelope: envelope, month: _month),
       _HeroCards(envelope: envelope, useCase: _useCase),
       const SizedBox(height: 18),
       _ObservabilityTabBar(controller: _tabs),
@@ -565,31 +564,6 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
           text: 'The page can take a few minutes to update.',
         ),
       ],
-    );
-  }
-}
-
-/// As-of strip: one line giving the data timestamp, the active month
-/// bucket, and the platform-wide reminder (mirrors the mockup's context
-/// line under the title).
-class _AsOfStrip extends StatelessWidget {
-  const _AsOfStrip({required this.envelope, required this.month});
-
-  final ObservabilityEnvelope envelope;
-  final ObservabilityMonth month;
-
-  @override
-  Widget build(BuildContext context) {
-    final monthLabel = month == ObservabilityMonth.current
-        ? 'This month'
-        : 'Last month';
-    return Padding(
-      key: const Key('admin_observability_as_of_strip'),
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Text(
-        '$monthLabel · updated ${adminHumanDateTime(envelope.asOf)}',
-        style: AppTextStyles.body12(color: AppColors.textMuted),
-      ),
     );
   }
 }
@@ -1284,6 +1258,9 @@ class _ModelMixBar extends StatelessWidget {
               child: SizedBox(
                 height: 14,
                 child: Row(
+                  // stretch makes each split fill the 14px track height; the
+                  // childless ColoredBox shares would otherwise collapse to 0.
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     Expanded(
                       flex: math.max(0, (entry.haikuShare * 1000).round()),
@@ -1416,6 +1393,10 @@ class _LabeledBar extends StatelessWidget {
                     FractionallySizedBox(
                       alignment: Alignment.centerLeft,
                       widthFactor: clamped == 0 ? 0.001 : clamped,
+                      // heightFactor pins the fill to the full track height;
+                      // a childless ColoredBox otherwise collapses to 0px tall
+                      // (loose height constraint) and the bar never shows.
+                      heightFactor: 1,
                       child: ColoredBox(color: barColor),
                     ),
                   ],
@@ -1650,6 +1631,9 @@ class _SpenderRow extends StatelessWidget {
                     FractionallySizedBox(
                       alignment: Alignment.centerLeft,
                       widthFactor: clamped == 0 ? 0.001 : clamped,
+                      // heightFactor pins the fill to the full track height
+                      // (a childless DecoratedBox otherwise collapses to 0px).
+                      heightFactor: 1,
                       child: const DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(

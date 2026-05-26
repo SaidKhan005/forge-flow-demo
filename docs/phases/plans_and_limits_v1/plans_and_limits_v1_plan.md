@@ -1,10 +1,10 @@
 # Plans & Limits V1 — Pricing Model + Admin Redesign Plan
 
-Status: SHIPPED through Phase 5 Wave 1+2 (2026-05-25). Only 5d (feature gates) remains, DEFERRED until the gateable features are built (see Phase 5).
+Status: SHIPPED through Phase 5 Wave 1+2 plus scoped custom contracts and final QA polish (2026-05-26). Only 5d (real feature gates) remains DEFERRED until the gateable features exist; Phase 6 billing remains FUTURE.
 Created: 2026-05-24
-Updated: 2026-05-25
+Updated: 2026-05-26
 
-Progress (2026-05-25):
+Progress (through 2026-05-26):
 - SHIPPED to master: Phase 0 (six real plans incl. `elite`), Phase 1 (rebuilt admin
   "Plans & limits" screen) + the preset preview-diff, Phase 2 (live spend numbers +
   delete-a-limit), Phase 3 (editable `pricing_plan_catalog`), Phase 4a (operator
@@ -17,6 +17,12 @@ Progress (2026-05-25):
   single business selector; redundant business list removed), 5b ("Your plan" on
   operator-web), 5b live-data follow-up (plan + trial on the operator account read). Plus
   a 5a test-compile regression fixed (#1343); full-package analyze is error-free.
+- SHIPPED to master (scoped custom contracts + final QA, 2026-05-26): Enterprise is the
+  custom-contract base plan; business, org-unit, and location scopes can carry custom terms;
+  lower scopes override higher scopes; effective pricing now resolves through the hierarchy;
+  admin Businesses tab can edit, clear, and inherit custom contracts; Operator Web "Your plan"
+  is display-only; Business Accounts stale launch wording was removed. No billing checkout,
+  invoices, or payment collection were added.
 - ONLY REMAINING: 5d (actual feature gates) — DEFERRED (see Phase 5). Reality-check
   (2026-05-25) found the gateable features (LMS / scoreboard / SOPs / workflows) have NO
   real surfaces yet, so there is nothing to gate. Blocked by features-not-built, not by
@@ -44,7 +50,8 @@ detail + rationale: decision register section above.
 
 ## 2. End-to-end audit (2026-05-24)
 
-Foundation exists; the app stores the tier but does almost nothing with it yet.
+Historical starting-state audit preserved for traceability. Current shipped state is
+summarized in the progress and closeout sections above.
 
 | Layer | What exists (file:line) | Gap / change needed |
 |---|---|---|
@@ -94,7 +101,7 @@ approval per CLAUDE.md (auth/RLS/schema/proxy-touching).
 - Files: `tool/advisor_proxy/**`, `observability_admin_gateway.dart`, proxy tests.
 
 ### Phase 3 — Make plan pricing editable (M, gate: schema + proxy)
-- New `pricing_templates` table (tier_key, monthly_usd, first_n_seats,
+- Landed as `pricing_plan_catalog` (tier_key, monthly_usd, first_n_seats,
   first_seat_usd, additional_seat_usd, onboarding_min/max, + cap rows).
 - Move tier templates out of hardcoded Dart; admin routes to read/update the catalog.
 - Wires the mockup's plan-pricing editor to a real save path.
@@ -123,7 +130,8 @@ approval per CLAUDE.md (auth/RLS/schema/proxy-touching).
   `lib/admin/models/feature_flags_admin_models.dart`.)
 - Model routing `ProxyLlmTier {haiku, sonnet}` exists
   (`tool/advisor_proxy/advisor_proxy.dart:2833`) but is NOT tier-driven today.
-- Operator-web has ZERO tier awareness (`lib/operator_web/**`) — "Your plan" is greenfield.
+- Operator-web had ZERO tier awareness before 5b; Phase 5b added the display-only
+  "Your plan" surface.
 
 **Slices (build order):**
 - **5a — Entitlements foundation (M, gate: schema + proxy).** New GLOBAL
@@ -172,6 +180,30 @@ the standing "Web/Mobile Visual Consistency" + "Admin-Web UX Parity" standards. 
 admin-side Phase 5 entitlements editor (5a) likewise matches the existing Plans &
 limits screen, not a new look.
 
+### Scoped custom contracts - SHIPPED 2026-05-26
+
+Enterprise is the custom-contract base plan. Business, org-unit, and location scopes
+can carry custom commercial terms while preserving the hierarchy rule: location
+overrides org unit, org unit overrides business, and business overrides the global
+catalog. The shipped resolver returns the selected scope, inherited source, effective
+terms, override status, and mutation target.
+
+Shipped surfaces:
+- `pricing_contract_overrides` plus effective-window follow-up migration.
+- Repository/resolver + proxy routes:
+  `GET /v1/admin/pricing/scoped-contracts/effective`,
+  `PUT /v1/admin/pricing/scoped-contracts`, and
+  `DELETE /v1/admin/pricing/scoped-contracts/{id}`.
+- Admin gateway/models and in-memory behavior for edit/save/clear/inherit.
+- Businesses tab scoped contract summary and editor.
+- Plans tab Enterprise/custom copy.
+- Operator Web "Your plan" display-only copy.
+- Business Accounts stale launch wording cleanup.
+
+Still not included: Stripe, invoices, payment methods, checkout, operator self-serve
+plan changes, or real feature gates for features that do not exist yet. Details:
+`docs/phases/plans_and_limits_v1/scoped_custom_contracts_plan.md`.
+
 ### Phase 6 — Billing (XL, FUTURE)
 - Seat counting (`operators.active_seat_count` or a seats table + nightly rollup),
   payments (Stripe adapter), invoices, payment methods.
@@ -186,16 +218,19 @@ limits screen, not a new look.
 - **Billing is future:** Phase 6 is a separate sprint; large blast radius.
 - **Pilot ≠ demo mode:** Phase 4 must add a trial flag, not a parallel demo system,
   or it violates HP#2 (demo is a writer-side switch).
-- **Pricing source split:** until Phase 3, prices live in Dart; any billing work
-  must read the catalog table, not the client constants.
+- **Pricing source:** prices now read/write through `pricing_plan_catalog`; scoped
+  custom Enterprise terms resolve through `pricing_contract_overrides`. Any future
+  billing work must use those server-side sources, not client constants.
 
 ## 5. Start here
 
-Phases **0 + 1** are the cheap, high-value start (correctness fixes + the approved
-screen). Everything past Phase 1 touches schema/proxy and needs operator sign-off.
+No active implementation slice remains in this plan except deferred Phase 5d feature
+gates and future Phase 6 billing. Use the scoped custom contracts plan for the shipped
+custom-contract closeout details.
 
 ## 6. Links
 
 - Decision: `docs/phases/phase_11a/phase_11a_decision_register.md` (Reconciled pricing model 2026-05-24).
 - Mockup: `docs/_mockups/admin_plans_and_limits_redesign.html`.
-- Links updated elsewhere: no (new doc; not yet referenced from NEXT_WAVE_PLAN).
+- Scoped custom contracts closeout:
+  `docs/phases/plans_and_limits_v1/scoped_custom_contracts_plan.md`.

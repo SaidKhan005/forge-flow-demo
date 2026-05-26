@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-22. Routing map only: shows **only what is left**.
+Updated: 2026-05-26. Routing map only: shows **only what is left**.
 Completed phases/slices: `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 Stale sprint-execution docs: `docs/archive/_execution/`. `docs/archive/**`
 is history; ignore unless explicitly named.
@@ -57,6 +57,8 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 | --- | --- | --- |
 | `docs/_indices/NEXT_WAVE_PLAN.md` | All | Forward 6-phase pipeline. **Phase 2.5 — Per-Daypart Targets V1 is the active feature work** (output of Phase 2 mobile walkthrough). |
 | `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md` | All | **Active feature plan.** Self-contained; 14 decisions locked; 9 slices; 44 gaps consolidated; reusable audit method. |
+| `docs/phases/plans_and_limits_v1/plans_and_limits_v1_plan.md` | Reference | Plans & Limits V1 closeout. Six plans, admin Plans and limits, pricing catalog, entitlements matrix, model routing, Operator Web "Your plan", and scoped custom contracts are shipped; real feature gates and billing remain future/deferred. |
+| `docs/phases/plans_and_limits_v1/scoped_custom_contracts_plan.md` | Reference | Scoped Enterprise/custom-contract closeout: business/org-unit/location overrides, inheritance resolver, admin edit/clear/inherit flow, Operator Web display-only behavior, and non-goals. |
 | `docs/_indices/WAVE_2_LEDGER.md` | Reference | Wave 2's slice ledger. Operator-web + admin lanes CLOSED 2026-05-14; mobile lane closed for walkthrough 2026-05-15 (transitioned to Per-Daypart Targets V1). |
 | `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth on every brain-dump ask from `debug.md` mapped to ✅/🚧/❌/🔍 with citations. |
 | `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | General Claude executor handoff. |
@@ -237,6 +239,13 @@ arrive.
 - CI is intentionally dark until 2026-06-01 (see header). Verify
   high-risk slices with disclosed local `dart analyze` / `flutter test`;
   use `tool/pre_merge_gate.sh` and `tool/verify_pr_landed.sh`.
+- Plans & Limits V1 plus scoped Enterprise/custom contracts are shipped
+  through final QA (2026-05-26). Remaining Plans/Limits work is not an
+  active V1 launch slice: real feature gates wait until LMS / scoreboard /
+  SOPs / workflows (or another gateable surface) exist; billing checkout,
+  invoices, payment methods, and payment collection are future; production
+  application of the code-ready Plans/Limits migrations stays in the normal
+  operator-approved migration queue.
 - Mobile architecture (canonical-fact dicts → operator-scoped Postgres
   `shift_records` → mobile SQLite via proxy sync) bound by
   `integration_spine_architecture_contract.md`.
@@ -253,7 +262,7 @@ arrive.
 - **Notify before** any live Firebase mutation, key/account request,
   billing setup, provider call, or product decision.
 
-## Recently landed (through 2026-05-22)
+## Recently landed (through 2026-05-26)
 
 Themed digest of what landed since the last tracker refresh (commit
 `54dbd2f5`). None of this changes the V1 launch path above; it is
@@ -375,6 +384,27 @@ feature build-out, doc alignment, and repo hygiene.
 - **In-browser QA harness:** operator-web QA harness (#1172) +
   admin-console QA runbook coverage; headless-Electron polyfill fixes;
   stale operator-web tests quarantined pending surface-freeze (#1167).
+
+### 2026-05-23 to 2026-05-26
+
+- **Plans & Limits V1 shipped:** six real plans including Elite and
+  Enterprise; admin Plans and limits rebuilt; live spend/caps and delete
+  limit support; editable `pricing_plan_catalog`; Pilot trial flag and
+  conversion path; feature-entitlements matrix; model routing by plan;
+  Operator Web display-only "Your plan" surface.
+- **Scoped Enterprise/custom contracts shipped:** business, org-unit, and
+  location terms persist in `pricing_contract_overrides`; the effective
+  resolver applies lower-scope overrides over higher-scope terms; admin
+  Businesses tab supports edit/save/clear/inherit; Business Accounts stale
+  launch wording was removed; Operator Web stays display-only with no billing
+  checkout.
+- **Plans & Limits final QA polish:** Businesses tab, edit custom contract
+  popup, clear/inherit behavior, Enterprise/custom copy, Operator Web "Your
+  plan", and Business Accounts copy were browser-checked and cleaned up
+  through PR #1388.
+- **Still not active:** real feature gates wait until gateable product
+  surfaces exist; Stripe, invoices, payment methods, checkout, and operator
+  self-serve plan changes remain future work.
 
 ## Recently archived
 

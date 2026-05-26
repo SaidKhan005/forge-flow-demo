@@ -6,8 +6,8 @@
 // without a backend or real proxy. Coverage:
 //
 //   * Initial render is manual-only and does not fetch.
-//   * Confirmed manual fetch shows the four tabs, hero cards, and the
-//     as-of strip.
+//   * Confirmed manual fetch shows the four tabs, hero cards, and one
+//     header freshness status.
 //   * Scope AND month (current / previous) pass through to the gateway
 //     request; switching month re-fetches with the new bucket.
 //   * Each tab renders its key panels:
@@ -160,8 +160,8 @@ void main() {
     expect(gateway.requests.single.month, equals(ObservabilityMonth.current));
   });
 
-  testWidgets('confirmed manual fetch renders four tabs, hero cards, as-of '
-      'strip', (tester) async {
+  testWidgets('confirmed manual fetch renders four tabs, hero cards, and one '
+      'freshness status', (tester) async {
     setLargeViewport(tester);
     final gateway = InMemoryObservabilityAdminGateway(
       envelope: kObservabilityAdminDemoEnvelope,
@@ -208,8 +208,9 @@ void main() {
     }
     expect(
       find.byKey(const Key('admin_observability_as_of_strip')),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(find.textContaining('This month · updated'), findsNothing);
   });
 
   testWidgets('switching to Last month re-fetches with the previous bucket', (
@@ -331,6 +332,48 @@ void main() {
       find.byKey(const Key('admin_observability_model_mix_over_coach_qa')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Money tab bars render with a visible (non-zero height) fill', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+
+    // Regression: the saved-answer reuse fill is a FractionallySizedBox
+    // whose childless ColoredBox used to collapse to 0px tall (loose height
+    // constraint), so only the grey track showed and the coloured bar was
+    // invisible. heightFactor: 1 must give the fill a real height.
+    final reuseFill = find.descendant(
+      of: find.byKey(
+        const Key('admin_observability_cache_hit_rate_advisor_qa'),
+      ),
+      matching: find.byType(FractionallySizedBox),
+    );
+    expect(reuseFill, findsOneWidget);
+    expect(tester.getSize(reuseFill).height, greaterThan(0));
+
+    // The same collapse hit the model-mix split (a Row of ColoredBox
+    // shares); CrossAxisAlignment.stretch now gives each share a real
+    // height instead of 0.
+    final modelMixFill = find
+        .descendant(
+          of: find.byKey(const Key('admin_observability_model_mix_advisor_qa')),
+          matching: find.byType(ColoredBox),
+        )
+        .first;
+    expect(tester.getSize(modelMixFill).height, greaterThan(0));
   });
 
   testWidgets('Customers tab renders top spenders and needs-attention rows', (

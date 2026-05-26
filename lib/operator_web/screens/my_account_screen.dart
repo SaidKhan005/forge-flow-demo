@@ -924,9 +924,8 @@ class _ProfileSection extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 14),
-                    textStyle: AppTextStyles.mono14(
+                    textStyle: AppTextStyles.buttonLabel(
                       color: AppColors.sunsetDark,
-                      weight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -981,7 +980,7 @@ class _ProfileField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTextStyles.mono11(color: AppColors.textMuted)),
+        Text(label, style: AppTextStyles.uiLabel(color: AppColors.textMuted)),
         const SizedBox(height: 4),
         Text(value, style: AppTextStyles.body13(color: AppColors.textPrimary)),
       ],
@@ -1116,9 +1115,8 @@ class _SecuritySection extends StatelessWidget {
             actionKey: const Key('account_section_password_change'),
             header: 'Change password',
             body:
-                'You\'ll be asked for your current password, then your new '
-                'password twice. Your new password must be at least 12 '
-                'characters and not match one of your last five passwords.',
+                'Use at least 12 characters, and not one of your last five '
+                'passwords.',
             buttonLabel: 'Change password',
             onPressed: canWrite ? onChangePassword : null,
             tooltip: canWrite ? null : readOnlyTooltip,
@@ -1231,16 +1229,12 @@ class _LoginHistorySection extends StatelessWidget {
       children: [
         Text(
           'Recent sign-in activity',
-          style: AppTextStyles.mono14(
-            color: AppColors.textPrimary,
-            weight: FontWeight.w700,
-          ),
+          style: AppTextStyles.body15Bold(color: AppColors.textPrimary),
         ),
         const SizedBox(height: 4),
         Text(
-          'Sign-ins, password changes, and authenticator events from your '
-          'account, capped at the last 90 days. If you see an event you do '
-          'not recognise, change your password and review your authenticators.',
+          'Sign-ins, password changes, and authenticator events from the '
+          'last 90 days. If anything looks unfamiliar, change your password.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 10),
@@ -1373,7 +1367,7 @@ class _WindowChip extends StatelessWidget {
       key: Key(keyName),
       label: Text(label),
       selected: selected,
-      labelStyle: AppTextStyles.mono11(
+      labelStyle: AppTextStyles.uiLabel(
         color: selected ? AppColors.sunsetDark : AppColors.textSecondary,
       ),
       selectedColor: AppColors.sunset.withValues(alpha: 0.15),
@@ -1618,7 +1612,7 @@ class _ActiveSessionRow extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   'Started ${_formatDateTime(session.createdAt)}',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
               ],
             ),
@@ -1738,7 +1732,7 @@ class _StatusBadge extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(label, style: AppTextStyles.mono8(color: color)),
+      child: Text(label, style: AppTextStyles.chipLabel(color: color)),
     );
   }
 }
@@ -1778,9 +1772,8 @@ class _ActionRow extends StatelessWidget {
           ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          textStyle: AppTextStyles.mono14(
+          textStyle: AppTextStyles.buttonLabel(
             color: AppColors.sunsetDark,
-            weight: FontWeight.w600,
           ),
         ),
         child: Text(buttonLabel),
@@ -1789,7 +1782,7 @@ class _ActionRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(header, style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+        Text(header, style: AppTextStyles.uiLabel(color: AppColors.sunsetDark)),
         const SizedBox(height: 4),
         Text(body, style: AppTextStyles.body13(color: AppColors.textPrimary)),
         const SizedBox(height: 10),
