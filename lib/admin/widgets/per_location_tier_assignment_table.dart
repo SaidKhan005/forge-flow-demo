@@ -206,7 +206,7 @@ class _PerLocationTierAssignmentTableState
         : _definitionFor(assignment.tierKey);
     final cadences = assignment?.pollingCadencePerVendorSeconds;
     final cadenceLabel = assignment == null
-        ? 'After setup'
+        ? 'Choose a tier first'
         : ((cadences == null || cadences.isEmpty)
               ? _cadenceSummary(definition?.pollingCadencePerVendorSeconds)
               : _cadenceSummary(cadences));
@@ -215,7 +215,7 @@ class _PerLocationTierAssignmentTableState
         ? '${notes.substring(0, 30)}...'
         : notes;
     final setupLabel = assignment?.tierKey == null
-        ? 'Needs setup'
+        ? 'Needs tier'
         : _tierLabel(assignment!.tierKey);
     final activeSinceLabel = assignment == null
         ? null
@@ -391,7 +391,7 @@ class _AssignmentHeaderRow extends StatelessWidget {
       child: Row(
         children: <Widget>[
           const Expanded(flex: 26, child: _HeaderCell('Location')),
-          const Expanded(flex: 17, child: _HeaderCell('Setup')),
+          const Expanded(flex: 17, child: _HeaderCell('Polling tier')),
           const Expanded(flex: 18, child: _HeaderCell('Polling frequency')),
           const Expanded(flex: 31, child: _HeaderCell('Price/margins')),
           if (showActions) const Expanded(flex: 8, child: SizedBox.shrink()),
@@ -580,6 +580,7 @@ class _StackedCell extends StatelessWidget {
           style: AppTextStyles.body13(
             color: AppColors.textPrimary,
           ).copyWith(fontWeight: primaryWeight),
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
         if (secondary != null && secondary!.isNotEmpty) ...[
@@ -587,6 +588,7 @@ class _StackedCell extends StatelessWidget {
           Text(
             secondary!,
             style: AppTextStyles.body12(color: AppColors.textSecondary),
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
         ],

@@ -8,6 +8,7 @@ import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.da
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/admin_previous_screen_back_button.dart';
 import 'package:forge_and_flow/admin/widgets/data_accuracy_audit_history_panel.dart';
+import 'package:forge_and_flow/admin/widgets/margin_rollup_card.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_data_accuracy_table.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_tier_assignment_table.dart';
 import 'package:forge_and_flow/admin/widgets/plain_english_explainer_card.dart';
@@ -590,14 +591,17 @@ void main() {
       expect(find.text('Tier'), findsOneWidget);
       expect(find.text('Vendor'), findsOneWidget);
       expect(find.text('Location'), findsOneWidget);
-      expect(find.text('Setup'), findsOneWidget);
+      expect(find.text('Polling tier'), findsOneWidget);
       expect(find.text('Polling frequency'), findsOneWidget);
       expect(find.text('Price/margins'), findsOneWidget);
+      expect(find.text('Setup'), findsNothing);
       expect(find.text('Cadence'), findsNothing);
       expect(find.text('Commercials'), findsNothing);
       expect(find.text('Notes'), findsNothing);
-      expect(find.text('Needs setup'), findsOneWidget);
-      expect(find.text('After setup'), findsOneWidget);
+      expect(find.text('Needs tier'), findsOneWidget);
+      expect(find.text('Choose a tier first'), findsOneWidget);
+      expect(find.text('Needs setup'), findsNothing);
+      expect(find.text('After setup'), findsNothing);
       expect(find.text('Assign tier to set price/margins'), findsOneWidget);
       expect(find.text('Cost and margin after setup'), findsNothing);
       expect(find.text('Operator location count'), findsNothing);
@@ -727,6 +731,77 @@ void main() {
       expect(find.text('Cost \$12.00, Margin \$87.00'), findsOneWidget);
       expect(find.text('5 vendors: 5 min'), findsOneWidget);
       expect(find.textContaining('Tier default'), findsNothing);
+    });
+
+    testWidgets('margin snapshot uses metric tiles and visual breakdowns', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(900, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        wrap(
+          MarginRollupCard(
+            rollup: const TierMarginRollup(
+              totalMonthlyPriceCents: 29800,
+              totalMonthlyVendorCostCents: 6000,
+              perTier: <TierMarginPerTier>[
+                TierMarginPerTier(
+                  tierKey: PollingTierKey.standard,
+                  assignmentCount: 1,
+                  totalMonthlyPriceCents: 9900,
+                  totalMonthlyVendorCostCents: 1200,
+                ),
+                TierMarginPerTier(
+                  tierKey: PollingTierKey.premium,
+                  assignmentCount: 1,
+                  totalMonthlyPriceCents: 19900,
+                  totalMonthlyVendorCostCents: 4800,
+                ),
+              ],
+              perVendor: <TierMarginPerVendor>[
+                TierMarginPerVendor(
+                  vendorId: 'quickbooks_time',
+                  totalMonthlyVendorCostCents: 3600,
+                ),
+                TierMarginPerVendor(
+                  vendorId: 'humanity',
+                  totalMonthlyVendorCostCents: 2400,
+                ),
+              ],
+            ),
+            canExportCsv: true,
+            onExportCsv: () async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Margin snapshot'), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_margin_metric_revenue')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_margin_metric_vendor_cost')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_margin_metric_net_margin')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_margin_metric_margin_percent')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_margin_revenue_mix')), findsOneWidget);
+      expect(find.text('By tier'), findsOneWidget);
+      expect(find.text('Regular'), findsOneWidget);
+      expect(find.text('Premium'), findsOneWidget);
+      expect(find.text('QuickBooks Time'), findsOneWidget);
+      expect(find.text('Humanity'), findsOneWidget);
+      expect(find.text('Per-tier breakdown'), findsNothing);
+      expect(find.text('Per-vendor cost breakdown'), findsNothing);
     });
 
     testWidgets('tier assignment filters stay lean without a clear action', (
@@ -928,6 +1003,10 @@ void main() {
       expect(find.text('Assignments'), findsOneWidget);
       expect(find.text('1 location'), findsWidgets);
       expect(find.text('Location name'), findsOneWidget);
+      expect(find.text('Polling tiers'), findsOneWidget);
+      expect(find.text('Margin snapshot'), findsOneWidget);
+      expect(find.text('Tier definitions'), findsNothing);
+      expect(find.text('Margin rollup'), findsNothing);
       expect(find.byKey(kAdminPreviousScreenBackButtonKey), findsNothing);
       expect(find.text('Operator location count'), findsNothing);
       expect(find.text('Margin band'), findsNothing);

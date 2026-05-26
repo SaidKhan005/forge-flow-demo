@@ -500,7 +500,7 @@ class _PollingAndPricingAdminScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Applied polling setup to ${update.affectedLocationCount} '
+            'Applied polling tier to ${update.affectedLocationCount} '
             'location${update.affectedLocationCount == 1 ? '' : 's'}.',
           ),
         ),
@@ -549,7 +549,7 @@ class _PollingAndPricingAdminScreenState
       await Clipboard.setData(ClipboardData(text: csv));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Margin rollup CSV copied to clipboard.')),
+        const SnackBar(content: Text('Margin CSV copied to clipboard.')),
       );
     } on DataAccuracyAdminForbiddenException catch (error) {
       if (!mounted) return;
@@ -1044,7 +1044,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
     return OperatorWebDialog(
       key: const Key('admin_tier_assignment_dialog'),
       maxWidth: 560,
-      title: 'Assign polling setup',
+      title: 'Assign polling tier',
       actions: <Widget>[
         AdminActionButton(
           key: const Key('admin_tier_assignment_dialog_cancel'),
@@ -1054,7 +1054,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
         ),
         AdminActionButton(
           key: const Key('admin_tier_assignment_dialog_submit'),
-          label: 'Assign / update',
+          label: 'Save tier',
           onPressed: () {
             final reason = _reason.text.trim();
             if (reason.isEmpty) return;
