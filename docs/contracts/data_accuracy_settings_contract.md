@@ -1,7 +1,7 @@
 # Data Accuracy Settings Contract
 
 Status: **Active authority** (Tier-2 contract)
-Updated: 2026-05-19
+Updated: 2026-05-26
 Owner: Phase 8 spine-bridge sprint
 Authority position:
 
@@ -221,7 +221,26 @@ The tab carries four cards in this order:
 4. **What this means card** - a brief inline explainer (per the UX
    writing standard `memory/project_ux_writing_standard.md`) that
    walks the operator through each setting in plain English with one
-   example per setting.
+   example per setting. **Superseded by the tabbed layout (PR #1399);
+   see the layout note below.**
+
+**Layout note (2026-05-26, PR #1399; UX only, no functionality
+change).** These four surfaces are no longer stacked on one long page.
+They are now grouped into three tabs (Labor: wage source; Covers:
+covers source plus fallback entries; Data freshness: polling tier),
+shown one area at a time under a one-line header subtitle ("Where this
+location's numbers come from."). The standalone inline explainer card
+(#4 above, the `DataAccuracyExplainerCard` "How Forge & Flow reads this
+location" card) is no longer mounted; its plain-English guidance now
+lives per-card behind info ("i") buttons. The widget file
+`lib/operator_web/widgets/data_accuracy_explainer_card.dart` still
+exists only because its `DataAccuracyCoversModeInfo` is reused by
+`covers_source_toggle.dart`. The card inventory above still enumerates
+the operator-controlled surfaces; their behavior, write paths, and
+vendor-relativity labels are unchanged. The same screen backs the admin
+per-location surface
+(`lib/admin/screens/per_location_data_accuracy_screen.dart`), so the
+tabbed presentation applies there too.
 
 ### F&F Ops Console - per-location admin surface
 
