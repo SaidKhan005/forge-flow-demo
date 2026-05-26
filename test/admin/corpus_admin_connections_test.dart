@@ -1085,4 +1085,223 @@ void main() {
       findsNothing,
     );
   });
+
+  // ─── Scope control: Connections-only, commit target preserved ────────
+
+  testWidgets('the scope control appears on the Connections tab and names '
+      'the target, NOT on the Knowledge tab', (tester) async {
+    final gateway = InMemoryCorpusAdminGateway(
+      seed: <CorpusBundle>[
+        CorpusBundle(
+          version: CorpusVersionRef(
+            versionId: 'v-scope',
+            createdBy: 'seed',
+            createdAt: DateTime.utc(2026, 1, 1),
+            summary: 'scope check',
+            rollbackOf: null,
+            supersededAt: null,
+            chunkCount: 1,
+          ),
+          chunks: const <ChunkPreview>[
+            ChunkPreview(
+              chunkId: 'food_safety_manual.md#001',
+              docId: 'food_safety_manual.md',
+              sourcePath: 'food_safety_manual.md',
+              headingPath: <String>['FIFO (First In, First Out)'],
+              snippet: 'Rotate stock so the oldest is used first.',
+              estimatedTokens: 40,
+              riskLevel: 'standard',
+              contentSha256: 'aa',
+              versionId: 'v-scope',
+              active: true,
+            ),
+          ],
+        ),
+      ],
+      graphCandidateSeed: buildDiff(),
+    );
+    await tester.pumpWidget(
+      wrap(
+        CorpusAdminScreen(
+          gateway: gateway,
+          targetOperatorId: demoTargetOperatorId,
+          targetLocationId: demoTargetLocationId,
+          targetLabel: 'Demo Diner Co. : Toronto Yorkville',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Knowledge tab is the default: the scope control must NOT be here
+    // (knowledge documents are global, so the tab carries no scope).
+    expect(
+      find.byKey(const Key('admin_corpus_connections_scope_control')),
+      findsNothing,
+      reason: 'the scope control belongs only to the Connections tab',
+    );
+    expect(
+      find.byKey(const Key('admin_hierarchy_scope_prompt')),
+      findsNothing,
+      reason: 'the redundant left scope picker is gone for this route',
+    );
+
+    await openConnectionsTab(tester);
+
+    // Connections tab: the scope control renders and names the target.
+    final control = find.byKey(
+      const Key('admin_corpus_connections_scope_control'),
+    );
+    await tester.ensureVisible(control);
+    await tester.pumpAndSettle();
+    expect(control, findsOneWidget);
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsScopeLabel),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Demo Diner Co. : Toronto Yorkville'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the scope control opens the picker via its change affordance', (
+    tester,
+  ) async {
+    var pickerOpened = false;
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
+    await tester.pumpWidget(
+      wrap(
+        CorpusAdminScreen(
+          gateway: gateway,
+          targetOperatorId: demoTargetOperatorId,
+          targetLocationId: demoTargetLocationId,
+          targetLabel: 'Demo Diner Co. : Toronto Yorkville',
+          // The opener returns null (admin cancelled); we only assert the
+          // affordance is wired and reachable from the Connections tab.
+          operatorPickerOpener: (_) async {
+            pickerOpened = true;
+            return null;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openConnectionsTab(tester);
+
+    final change = find.byKey(
+      const Key('admin_corpus_connections_scope_change'),
+    );
+    await tester.ensureVisible(change);
+    await tester.pumpAndSettle();
+    await tester.tap(change);
+    await tester.pumpAndSettle();
+
+    expect(pickerOpened, isTrue);
+  });
+
+  // ─── Count reconciliation: summary == sum of bucket lists ────────────
+
+  testWidgets('the summary counts equal the sum of the bucket lists', (
+    tester,
+  ) async {
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
+    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openConnectionsTab(tester);
+
+    // The fixture is 2 clear + 1 worth-checking + 2 not-sure = 5 total.
+    // The headline names the total; each clarity chip names its bucket;
+    // and the three add up to the total. Reveal every group so each
+    // bucket's count pill is on screen.
+    await tester.tap(find.byKey(const Key('admin_corpus_connections_show')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.text(AdminKnowledgeBaseCopy.connectionsShowEverything(5)).last,
+    );
+    await tester.pumpAndSettle();
+
+    const clear = 2, check = 1, unsure = 2, total = 5;
+    expect(clear + check + unsure, total);
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsFound(total)),
+      findsOneWidget,
+    );
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsClearChip(clear)),
+      findsOneWidget,
+    );
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsCheckChip(check)),
+      findsOneWidget,
+    );
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsUnsureChip(unsure)),
+      findsOneWidget,
+    );
+    // Each clarity-grouped list renders, so the buckets that sum to the
+    // total are all present (their count pills mirror the chip counts).
+    expect(
+      find.byKey(const Key('admin_corpus_connections_group_clear')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_connections_group_check')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_connections_group_unsure')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an empty clarity bucket drops its summary chip (no '
+      '"0 worth checking" noise)', (tester) async {
+    // All-clear fixture: no worth-checking, no not-sure. The empty chips
+    // must not render (de-clutter: a "0" chip is noise, not signal).
+    final gateway = InMemoryCorpusAdminGateway(
+      graphCandidateSeed: GraphCandidateDiff(
+        graphScope: 'methodology',
+        graphVersion: '1',
+        graphifyVersion: 'v5',
+        graphifySourceCommit: null,
+        extracted: <GraphCandidate>[
+          GraphCandidate(
+            candidateId: 'edge:clear:only',
+            kind: GraphCandidateKind.edge,
+            candidateKey: 'graphify:edge:clear:only',
+            candidateType: 'CONTAINS',
+            label: GraphCandidateLabel.extracted,
+            confidenceScore: 0.95,
+            sourceFile: 'methodology_seed.md',
+            sourceRef: null,
+            fromNodeKey: 'graphify:a',
+            toNodeKey: 'graphify:b',
+            payload: const <String, Object?>{
+              'from_node_type': 'MANUAL',
+              'to_node_type': 'SOP',
+            },
+          ),
+        ],
+        inferred: const <GraphCandidate>[],
+        ambiguous: const <GraphCandidate>[],
+      ),
+    );
+    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openConnectionsTab(tester);
+
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsClearChip(1)),
+      findsOneWidget,
+    );
+    // The empty buckets' chips are gone (not rendered as "0 ...").
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsCheckChip(0)),
+      findsNothing,
+    );
+    expect(
+      find.text(AdminKnowledgeBaseCopy.connectionsUnsureChip(0)),
+      findsNothing,
+    );
+  });
 }

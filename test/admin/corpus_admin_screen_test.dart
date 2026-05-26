@@ -510,32 +510,17 @@ void main() {
       await tester.tap(corpusNavItem);
       await pumpEventually(tester);
 
-      // 44e225a9 ("Complete admin hierarchy UX consolidation", #481) moved
-      // the Knowledge base behind the shared scoped-admin workspace: the
-      // corpus screen only builds once a business scope is picked. Until
-      // then the function pane shows the "Pick a business first" card. Pick
-      // the seeded demo business ("Demo Diner Co.") so the ff_support
-      // read-only corpus screen loads — the same scope-first nav flow the
-      // AI-workspace tests in admin_shell_widget_test.dart exercise.
-      final demoBusinessScope = find.byKey(
-        const Key(
-          'admin_setup_scope_business_00000000-0000-4000-8000-000000000001',
-        ),
+      // KB-polish: the knowledge documents are GLOBAL Forge & Flow content,
+      // so the Knowledge base no longer sits behind the shared
+      // business-scope workspace (that left scope pane was redundant on the
+      // Knowledge tab). The corpus screen now builds directly on nav, with
+      // no "Pick a business first" gate. The Connections tab carries its
+      // own compact scope control for the commit target instead.
+      expect(
+        find.byKey(const Key('admin_setup_workspace_scope_pane')),
+        findsNothing,
+        reason: 'the redundant left scope pane is gone for the corpus route',
       );
-      await tester.ensureVisible(demoBusinessScope);
-      await pumpEventually(tester);
-      await tester.tap(demoBusinessScope);
-      await pumpEventually(tester);
-      // On compact widths the function pane is tabbed behind the scope pane;
-      // tap the 'Knowledge Base' tab when present so the corpus screen is the
-      // visible pane before asserting.
-      if (find
-          .byKey(const Key('admin_setup_workspace_tabs'))
-          .evaluate()
-          .isNotEmpty) {
-        await tester.tap(find.widgetWithText(Tab, 'Knowledge Base'));
-        await pumpEventually(tester);
-      }
 
       expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
       expect(
@@ -549,8 +534,8 @@ void main() {
         findsNothing,
       );
       // Regression guard: at the admin console's 1.12 text-scaling floor the
-      // read-only Knowledge Base renders in the capped-width function pane
-      // with no RenderFlex overflow (the _TechDetailsToggle label shrinks).
+      // read-only Knowledge base renders with no RenderFlex overflow (the
+      // _TechDetailsToggle label shrinks).
       expect(tester.takeException(), isNull);
     },
   );

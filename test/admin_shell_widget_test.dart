@@ -326,11 +326,12 @@ void main() {
       title: 'Plans and limits',
       screenKey: Key('admin_pricing_screen'),
     ),
-    (
-      routeId: kAdminCorpusRouteId,
-      title: 'Knowledge Base',
-      screenKey: Key('admin_corpus_screen'),
-    ),
+    // KB-polish: the Knowledge base no longer uses the shared
+    // business-scope workspace. Its documents are global Forge & Flow
+    // content, so the redundant left scope pane was removed; the screen
+    // builds directly on nav (covered by the corpus-route test in
+    // corpus_admin_screen_test.dart). It is intentionally NOT in this
+    // shared-workspace loop anymore.
     (
       routeId: kAdminObservabilityRouteId,
       title: 'AI Metrics',

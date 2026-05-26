@@ -164,13 +164,24 @@ class _ChunkGroupedViewState extends State<ChunkGroupedView> {
     return result;
   }
 
-  /// Friendly display name: filename without directory prefix or extension;
-  /// underscores replaced with spaces.
+  /// Friendly display name: filename without directory prefix or
+  /// extension; underscores become spaces and each word is title-cased so
+  /// a raw id like `food_safety_manual.md` reads "Food Safety Manual"
+  /// instead of a lowercase machine name.
   static String _docDisplayName(String sourcePath) {
     final last = sourcePath.split('/').last.split('\\').last;
     final dotIndex = last.lastIndexOf('.');
-    if (dotIndex > 0) return last.substring(0, dotIndex).replaceAll('_', ' ');
-    return last.isEmpty ? sourcePath : last;
+    final base = dotIndex > 0 ? last.substring(0, dotIndex) : last;
+    final cleaned = base.replaceAll('_', ' ').trim();
+    if (cleaned.isEmpty) return sourcePath;
+    return cleaned
+        .split(RegExp(r'\s+'))
+        .map(
+          (word) => word.isEmpty
+              ? word
+              : '${word[0].toUpperCase()}${word.substring(1)}',
+        )
+        .join(' ');
   }
 
   bool _chunkMatchesQuery(ChunkPreview chunk, String q) {

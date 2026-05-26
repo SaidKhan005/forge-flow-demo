@@ -66,6 +66,7 @@ class CorpusAdminScreen extends StatefulWidget {
     this.idempotencyKeyGenerator,
     this.targetOperatorId,
     this.targetLocationId,
+    this.targetLabel,
     this.operatorPickerOpener,
   });
 
@@ -96,6 +97,13 @@ class CorpusAdminScreen extends StatefulWidget {
   /// cannot accidentally write against a wrong tenant.
   final String? targetOperatorId;
   final String? targetLocationId;
+
+  /// Optional plain-English "Business : Location" label for a
+  /// host-supplied default target (the demo path supplies this so the
+  /// Connections tab's scope control reads the friendly business +
+  /// location names without a gateway round-trip). When the admin picks
+  /// a target through the in-tab control, that pick's label takes over.
+  final String? targetLabel;
 
   /// Phase 11A.3a follow-up - opens the operator picker modal. When
   /// the admin confirms a pair, the screen state takes over the
@@ -142,6 +150,12 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
       _pickedOperatorId ?? widget.targetOperatorId;
   String? get _effectiveTargetLocationId =>
       _pickedLocationId ?? widget.targetLocationId;
+
+  /// Friendly "Business : Location" label for the active commit target:
+  /// the admin's in-session pick wins, otherwise the host-supplied
+  /// default label (demo path). Null when no target has a known label.
+  String? get _effectiveTargetLabel =>
+      _pickedTargetLabel ?? widget.targetLabel;
 
   @override
   void initState() {
@@ -308,8 +322,10 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
     setState(() {
       _pickedOperatorId = result.operatorId;
       _pickedLocationId = result.locationId;
+      // Colon separator (UX no-em-dash law: a colon is the label/value
+      // joiner). Reads "Demo Diner Co. : Toronto Yorkville".
       _pickedTargetLabel =
-          '${result.operatorBusinessName} - ${result.locationName}';
+          '${result.operatorBusinessName} : ${result.locationName}';
     });
   }
 
@@ -414,7 +430,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                           onPickOperator: widget.operatorPickerOpener == null
                               ? null
                               : _onPickOperatorPressed,
-                          pickedTargetLabel: _pickedTargetLabel,
+                          targetLabel: _effectiveTargetLabel,
                         ),
                       ),
                     ],
@@ -611,7 +627,7 @@ class _GraphCandidatesTab extends StatefulWidget {
     required this.targetOperatorId,
     required this.targetLocationId,
     required this.onPickOperator,
-    required this.pickedTargetLabel,
+    required this.targetLabel,
   });
 
   final CorpusAdminGateway gateway;
@@ -619,20 +635,21 @@ class _GraphCandidatesTab extends StatefulWidget {
   final String Function() newIdempotencyKey;
 
   /// When either is null the tab still renders the diff but disables
-  /// the commit button and asks the admin to choose a location scope.
+  /// the commit button and asks the admin to choose a business scope
+  /// through the in-tab scope control.
   final String? targetOperatorId;
   final String? targetLocationId;
 
-  /// Phase 11A.3a follow-up - opens the legacy operator picker when
-  /// a standalone host wires it. Shared admin setup hosts leave this
-  /// null and rely on the workspace scope pane instead.
+  /// Opens the business + location picker for the in-tab scope control.
+  /// Null disables the control's change affordance (pre-picker test
+  /// paths); the control still renders the current target read-only.
   final VoidCallback? onPickOperator;
 
-  /// "Business name - Location name" for the actively-picked target,
-  /// when the admin resolved it through the picker this session.
-  /// Null when no pick has occurred yet (or the target came from a
-  /// host-supplied default).
-  final String? pickedTargetLabel;
+  /// Friendly "Business : Location" label for the active commit target
+  /// (an in-session pick, or a host-supplied default). Null when no
+  /// target has a known label yet, so the control reads its
+  /// "choose a business" empty state.
+  final String? targetLabel;
 
   bool get hasTarget =>
       (targetOperatorId?.isNotEmpty ?? false) &&
@@ -903,12 +920,16 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
             editingEnabled: widget.editingEnabled,
             showTechDetails: _CorpusTechDetailsScope.of(context),
             busy: _busy,
-            // The redesign drops the visible operator-picker affordance,
-            // but the safety property stays: when the host has not
-            // configured a commit target (live route pre-picker), saving
-            // is disabled so a click cannot write against the wrong
-            // tenant. The demo/test path always supplies a target.
+            // The knowledge documents are global, so the scope control
+            // lives here on the Connections tab (not the Knowledge tab):
+            // approving a connection is the only write that targets a
+            // specific business + location. Saving stays disabled until a
+            // target is set, so a click cannot write against the wrong
+            // tenant (HP #4). The demo/test path supplies a default
+            // target; the live path leaves it null until the admin picks.
             canSave: widget.hasTarget,
+            scopeLabel: widget.targetLabel,
+            onChangeScope: widget.onPickOperator,
             pendingCount: _pendingCount,
             queuedDecisionFor: _queuedDecisionFor,
             onApprove: _toggleApprove,
@@ -1129,15 +1150,19 @@ class _ChunkPreviewTile extends StatelessWidget {
             maxLines: 4,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 4),
-          Text(
-            'About ${chunk.estimatedTokens} words of context',
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
-          ),
+          // B-r-polish: the machine-flavored "words of context" measure,
+          // content ID, source file, risk level, and hash now ALL sit
+          // behind the "Show technical details" toggle (OFF by default),
+          // so the everyday topic row stays calm. The disclosure renders
+          // nothing while the toggle is off.
           _AdvancedDetails(
             keyName: 'admin_corpus_chunk_details_${chunk.chunkId}',
             title: 'Technical details',
             children: <Widget>[
+              _DetailRow(
+                label: 'Words of context',
+                value: 'About ${chunk.estimatedTokens}',
+              ),
               _DetailRow(label: 'Content ID', value: chunk.chunkId),
               _DetailRow(label: 'Source file', value: chunk.sourcePath),
               _DetailRow(label: 'Risk level', value: chunk.riskLevel),

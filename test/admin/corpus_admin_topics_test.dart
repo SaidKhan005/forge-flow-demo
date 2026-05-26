@@ -156,6 +156,50 @@ void main() {
         AdminCorpusTopicKind.document,
       );
     });
+
+    test("derives Concept from the well-known 4 C's framework", () {
+      // The apostrophe in "C's" breaks word-boundary matching, so the
+      // derivation matches the recognizable phrase directly. No
+      // fabrication: it reads what the heading already says.
+      expect(
+        corpusTopicKindForChunk(
+          _chunk(
+            chunkId: 'c4#1',
+            sourcePath: 'food_safety_manual.md',
+            headingPath: const <String>["The 4 C's"],
+          ),
+        ),
+        AdminCorpusTopicKind.concept,
+      );
+    });
+
+    test('derives Concept from a named "... Zone" framework', () {
+      expect(
+        corpusTopicKindForChunk(
+          _chunk(
+            chunkId: 'opz#1',
+            sourcePath: 'bold_by_design.md',
+            headingPath: const <String>['Optimal Productivity Zone'],
+          ),
+        ),
+        AdminCorpusTopicKind.concept,
+      );
+    });
+
+    test('the Temperature Danger Zone stays a Risk, not a Concept', () {
+      // Order matters: the risk branch claims "danger" before the
+      // concept branch sees "zone", so the danger zone never mislabels.
+      expect(
+        corpusTopicKindForChunk(
+          _chunk(
+            chunkId: 'tdz#1',
+            sourcePath: 'food_safety_manual.md',
+            headingPath: const <String>['Temperature Danger Zone'],
+          ),
+        ),
+        AdminCorpusTopicKind.risk,
+      );
+    });
   });
 
   // ── Widget: topic presentation + filtering on the Knowledge tab ──
@@ -231,6 +275,108 @@ void main() {
     expect(find.text('Document'), findsWidgets);
     expect(find.text('A document'), findsWidgets);
   });
+
+  testWidgets('preview-style content renders several distinct kind pills', (
+    tester,
+  ) async {
+    // Mirrors the enriched demo seed: plainly-titled sections whose
+    // headings signal varied kinds, so the Topics card shows more than
+    // one kind (the launch corpus used to read all "Document"). No
+    // fabrication: the kind is derived from the heading text.
+    final gateway = InMemoryCorpusAdminGateway(
+      seed: <CorpusBundle>[
+        CorpusBundle(
+          version: CorpusVersionRef(
+            versionId: 'v-variety',
+            createdBy: 'seed-actor',
+            createdAt: DateTime.utc(2026, 1, 1),
+            summary: 'Variety check',
+            rollbackOf: null,
+            supersededAt: null,
+            chunkCount: 6,
+          ),
+          chunks: <ChunkPreview>[
+            _chunk(
+              chunkId: 'food_safety_manual.md#fifo',
+              sourcePath: 'food_safety_manual.md',
+              headingPath: const <String>['FIFO (First In, First Out)'],
+            ),
+            _chunk(
+              chunkId: 'company_handbook.md#harassment',
+              sourcePath: 'company_handbook.md',
+              headingPath: const <String>['Workplace Harassment Policy'],
+            ),
+            _chunk(
+              chunkId: 'bold_by_design.md#cplh',
+              sourcePath: 'bold_by_design.md',
+              headingPath: const <String>['Cost per Labor Hour (CPLH)'],
+            ),
+            _chunk(
+              chunkId: 'bold_by_design.md#equation',
+              sourcePath: 'bold_by_design.md',
+              headingPath: const <String>['The Core Labor Equation'],
+            ),
+            _chunk(
+              chunkId: 'food_safety_manual.md#fourcs',
+              sourcePath: 'food_safety_manual.md',
+              headingPath: const <String>["The 4 C's"],
+            ),
+            _chunk(
+              chunkId: 'company_handbook.md#expo',
+              sourcePath: 'company_handbook.md',
+              headingPath: const <String>['Expo (role)'],
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+
+    // At least a handful of distinct kind pills render (proves the seed
+    // is no longer one monotonous "Document" list).
+    expect(find.text('SOP'), findsWidgets);
+    expect(find.text('Policy'), findsWidgets);
+    expect(find.text('Metric'), findsWidgets);
+    expect(find.text('Formula'), findsWidgets);
+    expect(find.text('Concept'), findsWidgets);
+    expect(find.text('Role'), findsWidgets);
+  });
+
+  testWidgets(
+    'the "words of context" measure is hidden until "Show technical '
+    'details" is on',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[topicsBundle()],
+      );
+      await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+
+      // De-clutter: the machine-flavored "About N words of context"
+      // measure now sits behind the tech-details toggle (OFF by default),
+      // so it never shows on the everyday topic row.
+      expect(find.textContaining('words of context'), findsNothing);
+
+      // Flip the screen-level toggle ON, then open a chunk's technical
+      // disclosure: the measure surfaces inside it.
+      final toggle = find.byKey(const Key('admin_corpus_tech_details_toggle'));
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      final details = find.byKey(
+        const Key('admin_corpus_chunk_details_food_safety_manual.md#001'),
+      );
+      await tester.ensureVisible(details);
+      await tester.pumpAndSettle();
+      await tester.tap(details);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Words of context'), findsWidgets);
+    },
+  );
 
   testWidgets('shows a "Showing X of Y" count over the topic list', (
     tester,
