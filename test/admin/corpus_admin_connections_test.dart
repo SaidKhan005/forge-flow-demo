@@ -328,8 +328,13 @@ void main() {
       findsNothing,
     );
 
-    // Switching "Show" to everything reveals the clear group too.
-    await tester.tap(find.byKey(const Key('admin_corpus_connections_show')));
+    // Switching "Show" to everything reveals the clear group too. The
+    // Connections-only scope banner adds height above the summary, so make
+    // the Show control visible before tapping it.
+    final showDropdown = find.byKey(const Key('admin_corpus_connections_show'));
+    await tester.ensureVisible(showDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(showDropdown);
     await tester.pumpAndSettle();
     await tester.tap(
       find.text(AdminKnowledgeBaseCopy.connectionsShowEverything(5)).last,
@@ -508,8 +513,12 @@ void main() {
     await tester.pumpAndSettle();
     await openConnectionsTab(tester);
 
-    // Reveal the clear group (switch Show to everything).
-    await tester.tap(find.byKey(const Key('admin_corpus_connections_show')));
+    // Reveal the clear group (switch Show to everything). Ensure the Show
+    // control is visible first (the scope banner adds height above it).
+    final showDropdown = find.byKey(const Key('admin_corpus_connections_show'));
+    await tester.ensureVisible(showDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(showDropdown);
     await tester.pumpAndSettle();
     await tester.tap(
       find.text(AdminKnowledgeBaseCopy.connectionsShowEverything(5)).last,
@@ -1086,10 +1095,11 @@ void main() {
     );
   });
 
-  // ─── Scope control: Connections-only, commit target preserved ────────
+  // ─── Connections-only scope banner; no bespoke in-tab scope control ──
 
-  testWidgets('the scope control appears on the Connections tab and names '
-      'the target, NOT on the Knowledge tab', (tester) async {
+  testWidgets('the Connections-only scope banner renders on the Connections '
+      'tab, NOT on the Knowledge tab, and the old bespoke scope control is '
+      'gone', (tester) async {
     final gateway = InMemoryCorpusAdminGateway(
       seed: <CorpusBundle>[
         CorpusBundle(
@@ -1126,77 +1136,66 @@ void main() {
           gateway: gateway,
           targetOperatorId: demoTargetOperatorId,
           targetLocationId: demoTargetLocationId,
-          targetLabel: 'Demo Diner Co. : Toronto Yorkville',
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    // Knowledge tab is the default: the scope control must NOT be here
-    // (knowledge documents are global, so the tab carries no scope).
+    // The bespoke in-Connections scope strip (#1400) is removed: neither
+    // it nor its change button exist anywhere on the screen.
     expect(
       find.byKey(const Key('admin_corpus_connections_scope_control')),
       findsNothing,
-      reason: 'the scope control belongs only to the Connections tab',
+      reason: 'the bespoke in-tab scope control is removed (operator-LOCKED)',
     );
     expect(
-      find.byKey(const Key('admin_hierarchy_scope_prompt')),
+      find.byKey(const Key('admin_corpus_connections_scope_change')),
       findsNothing,
-      reason: 'the redundant left scope picker is gone for this route',
+    );
+
+    // Knowledge tab is the default: it carries no scope banner and no scope
+    // picker (knowledge documents are global Forge & Flow content).
+    expect(
+      find.byKey(const Key('admin_corpus_connections_scope_banner')),
+      findsNothing,
+      reason: 'the scope banner belongs only to the Connections tab',
     );
 
     await openConnectionsTab(tester);
 
-    // Connections tab: the scope control renders and names the target.
-    final control = find.byKey(
-      const Key('admin_corpus_connections_scope_control'),
+    // Connections tab: the short plain-English scope banner renders.
+    final banner = find.byKey(
+      const Key('admin_corpus_connections_scope_banner'),
     );
-    await tester.ensureVisible(control);
+    await tester.ensureVisible(banner);
     await tester.pumpAndSettle();
-    expect(control, findsOneWidget);
+    expect(banner, findsOneWidget);
     expect(
-      find.text(AdminKnowledgeBaseCopy.connectionsScopeLabel),
-      findsOneWidget,
-    );
-    expect(
-      find.text('Demo Diner Co. : Toronto Yorkville'),
+      find.text(AdminKnowledgeBaseCopy.connectionsScopeBanner),
       findsOneWidget,
     );
   });
 
-  testWidgets('the scope control opens the picker via its change affordance', (
-    tester,
-  ) async {
-    var pickerOpened = false;
+  testWidgets('read-only (ff_support) shows no scope banner (it never '
+      'approves) but still renders the connections', (tester) async {
     final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
     await tester.pumpWidget(
-      wrap(
-        CorpusAdminScreen(
-          gateway: gateway,
-          targetOperatorId: demoTargetOperatorId,
-          targetLocationId: demoTargetLocationId,
-          targetLabel: 'Demo Diner Co. : Toronto Yorkville',
-          // The opener returns null (admin cancelled); we only assert the
-          // affordance is wired and reachable from the Connections tab.
-          operatorPickerOpener: (_) async {
-            pickerOpened = true;
-            return null;
-          },
-        ),
-      ),
+      wrap(buildScreen(gateway: gateway, editingEnabled: false)),
     );
     await tester.pumpAndSettle();
     await openConnectionsTab(tester);
 
-    final change = find.byKey(
-      const Key('admin_corpus_connections_scope_change'),
+    // The scope banner is edit-only: read-only support never picks a scope.
+    expect(
+      find.byKey(const Key('admin_corpus_connections_scope_banner')),
+      findsNothing,
     );
-    await tester.ensureVisible(change);
-    await tester.pumpAndSettle();
-    await tester.tap(change);
-    await tester.pumpAndSettle();
-
-    expect(pickerOpened, isTrue);
+    // The connections still render (the read-only banner is asserted by the
+    // dedicated read-only test above).
+    expect(
+      find.byKey(const Key('admin_corpus_connections_summary')),
+      findsOneWidget,
+    );
   });
 
   // ─── Count reconciliation: summary == sum of bucket lists ────────────
@@ -1212,8 +1211,12 @@ void main() {
     // The fixture is 2 clear + 1 worth-checking + 2 not-sure = 5 total.
     // The headline names the total; each clarity chip names its bucket;
     // and the three add up to the total. Reveal every group so each
-    // bucket's count pill is on screen.
-    await tester.tap(find.byKey(const Key('admin_corpus_connections_show')));
+    // bucket's count pill is on screen. Ensure the Show control is visible
+    // first (the scope banner adds height above it).
+    final showDropdown = find.byKey(const Key('admin_corpus_connections_show'));
+    await tester.ensureVisible(showDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(showDropdown);
     await tester.pumpAndSettle();
     await tester.tap(
       find.text(AdminKnowledgeBaseCopy.connectionsShowEverything(5)).last,

@@ -40,7 +40,6 @@ import '../widgets/admin_action_controls.dart';
 import 'corpus_admin_chunk_view.dart';
 import 'corpus_admin_connections_view.dart';
 import 'corpus_admin_history_view.dart';
-import 'operator_picker_screen.dart';
 
 /// Test seam: lets widget tests inject a synthetic upload byte source
 /// without driving the platform file picker. Production's
@@ -49,13 +48,6 @@ import 'operator_picker_screen.dart';
 /// a fixture markdown body when this picker is left null.
 typedef CorpusUploadPicker =
     Future<UploadCommand?> Function(BuildContext context);
-
-/// Phase 11A.3a follow-up - opens [OperatorPickerScreen] (or a stub
-/// in tests) and resolves to the picked (operator, location) pair, or
-/// null if the admin cancels. Wired by `admin_routes.dart`'s
-/// `_buildCorpus`; tests can pass a deterministic stub.
-typedef OperatorPickerOpener =
-    Future<OperatorPickerResult?> Function(BuildContext context);
 
 class CorpusAdminScreen extends StatefulWidget {
   const CorpusAdminScreen({
@@ -66,8 +58,6 @@ class CorpusAdminScreen extends StatefulWidget {
     this.idempotencyKeyGenerator,
     this.targetOperatorId,
     this.targetLocationId,
-    this.targetLabel,
-    this.operatorPickerOpener,
   });
 
   final CorpusAdminGateway gateway;
@@ -85,32 +75,20 @@ class CorpusAdminScreen extends StatefulWidget {
   /// deterministic.
   final String Function()? idempotencyKeyGenerator;
 
-  /// Phase 11A.3b - destination (operator, location) for approved
-  /// graph candidates. Super_admin is cross-tenant, so the Graph
-  /// candidates commit must name an operator explicitly. The screen
-  /// itself does NOT default these - the host wiring in
-  /// [lib/admin/admin_routes.dart] picks the targets explicitly:
-  /// the demo path passes the kDemoMode tenant seed; the live path
-  /// leaves them null until the admin uses the "Pick operator"
-  /// button (Phase 11A.3a follow-up), and the Graph candidates
-  /// commit button stays disabled in that case so the operator
-  /// cannot accidentally write against a wrong tenant.
+  /// Phase 11A.3b - destination (operator, location) for approved graph
+  /// candidates. Super_admin is cross-tenant, so the Graph candidates
+  /// commit must name an operator explicitly. The screen itself does NOT
+  /// default these: the host wiring in [lib/admin/admin_routes.dart] feeds
+  /// them from the SAME standard hierarchy scope picker every other
+  /// per-business admin screen uses. The demo path pre-selects the seeded
+  /// demo business + location; the live path leaves them null until the
+  /// F&F admin picks a scope, and the Connections "Save my choices" button
+  /// stays disabled in that case so a decision cannot write against the
+  /// wrong tenant (HP #4). The knowledge documents themselves are global,
+  /// so the Knowledge tab carries no scope and an in-screen banner states
+  /// that the scope only sets where approved connections are saved.
   final String? targetOperatorId;
   final String? targetLocationId;
-
-  /// Optional plain-English "Business : Location" label for a
-  /// host-supplied default target (the demo path supplies this so the
-  /// Connections tab's scope control reads the friendly business +
-  /// location names without a gateway round-trip). When the admin picks
-  /// a target through the in-tab control, that pick's label takes over.
-  final String? targetLabel;
-
-  /// Phase 11A.3a follow-up - opens the operator picker modal. When
-  /// the admin confirms a pair, the screen state takes over the
-  /// effective target so the commit button enables. Null disables
-  /// the picker affordance (pre-follow-up tests; the banner still
-  /// renders in that path).
-  final OperatorPickerOpener? operatorPickerOpener;
 
   @override
   State<CorpusAdminScreen> createState() => _CorpusAdminScreenState();
@@ -136,26 +114,6 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
   String? _actionError;
   bool _busy = false;
   int _idempotencyCounter = 0;
-
-  // Phase 11A.3a follow-up - once the admin confirms a pair through
-  // the operator picker, these override [widget.targetOperatorId] /
-  // [widget.targetLocationId] for the rest of the admin session. They
-  // are intentionally session-scoped (not durable) - durable
-  // persistence is a future slice.
-  String? _pickedOperatorId;
-  String? _pickedLocationId;
-  String? _pickedTargetLabel;
-
-  String? get _effectiveTargetOperatorId =>
-      _pickedOperatorId ?? widget.targetOperatorId;
-  String? get _effectiveTargetLocationId =>
-      _pickedLocationId ?? widget.targetLocationId;
-
-  /// Friendly "Business : Location" label for the active commit target:
-  /// the admin's in-session pick wins, otherwise the host-supplied
-  /// default label (demo path). Null when no target has a known label.
-  String? get _effectiveTargetLabel =>
-      _pickedTargetLabel ?? widget.targetLabel;
 
   @override
   void initState() {
@@ -314,21 +272,6 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
     }, successHint: AdminKnowledgeBaseCopy.addSavedToast);
   }
 
-  Future<void> _onPickOperatorPressed() async {
-    final opener = widget.operatorPickerOpener;
-    if (opener == null) return;
-    final result = await opener(context);
-    if (result == null || !mounted) return;
-    setState(() {
-      _pickedOperatorId = result.operatorId;
-      _pickedLocationId = result.locationId;
-      // Colon separator (UX no-em-dash law: a colon is the label/value
-      // joiner). Reads "Demo Diner Co. : Toronto Yorkville".
-      _pickedTargetLabel =
-          '${result.operatorBusinessName} : ${result.locationName}';
-    });
-  }
-
   Future<void> _onRollbackPressed(CorpusVersionRef target) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -425,12 +368,8 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                           gateway: widget.gateway,
                           editingEnabled: widget.editingEnabled,
                           newIdempotencyKey: _newIdempotencyKey,
-                          targetOperatorId: _effectiveTargetOperatorId,
-                          targetLocationId: _effectiveTargetLocationId,
-                          onPickOperator: widget.operatorPickerOpener == null
-                              ? null
-                              : _onPickOperatorPressed,
-                          targetLabel: _effectiveTargetLabel,
+                          targetOperatorId: widget.targetOperatorId,
+                          targetLocationId: widget.targetLocationId,
                         ),
                       ),
                     ],
@@ -626,30 +565,18 @@ class _GraphCandidatesTab extends StatefulWidget {
     required this.newIdempotencyKey,
     required this.targetOperatorId,
     required this.targetLocationId,
-    required this.onPickOperator,
-    required this.targetLabel,
   });
 
   final CorpusAdminGateway gateway;
   final bool editingEnabled;
   final String Function() newIdempotencyKey;
 
-  /// When either is null the tab still renders the diff but disables
-  /// the commit button and asks the admin to choose a business scope
-  /// through the in-tab scope control.
+  /// Commit target fed from the standard hierarchy scope picker. When
+  /// either is null (the live path before a scope is picked) the tab
+  /// still renders the diff but disables the "Save my choices" button, so
+  /// a decision cannot write against the wrong tenant (HP #4).
   final String? targetOperatorId;
   final String? targetLocationId;
-
-  /// Opens the business + location picker for the in-tab scope control.
-  /// Null disables the control's change affordance (pre-picker test
-  /// paths); the control still renders the current target read-only.
-  final VoidCallback? onPickOperator;
-
-  /// Friendly "Business : Location" label for the active commit target
-  /// (an in-session pick, or a host-supplied default). Null when no
-  /// target has a known label yet, so the control reads its
-  /// "choose a business" empty state.
-  final String? targetLabel;
 
   bool get hasTarget =>
       (targetOperatorId?.isNotEmpty ?? false) &&
@@ -920,16 +847,13 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
             editingEnabled: widget.editingEnabled,
             showTechDetails: _CorpusTechDetailsScope.of(context),
             busy: _busy,
-            // The knowledge documents are global, so the scope control
-            // lives here on the Connections tab (not the Knowledge tab):
-            // approving a connection is the only write that targets a
-            // specific business + location. Saving stays disabled until a
-            // target is set, so a click cannot write against the wrong
-            // tenant (HP #4). The demo/test path supplies a default
-            // target; the live path leaves it null until the admin picks.
+            // The standard hierarchy scope picker (restored on this route)
+            // feeds the commit target. Saving stays disabled until a
+            // business + location is picked, so a click cannot write
+            // against the wrong tenant (HP #4). The demo path pre-selects
+            // the seeded target; the live path leaves it unset until the
+            // admin picks one in the picker.
             canSave: widget.hasTarget,
-            scopeLabel: widget.targetLabel,
-            onChangeScope: widget.onPickOperator,
             pendingCount: _pendingCount,
             queuedDecisionFor: _queuedDecisionFor,
             onApprove: _toggleApprove,
@@ -1103,34 +1027,32 @@ class _ChunkPreviewTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Topic header row: kind icon · name + kind line · kind pill.
+          // Topic header row: kind icon tile, name + kind line, kind
+          // pill. Mockup `.topic`: 38px rounded icon tile, name 15.5
+          // semibold, kind sub-label muted 13px, a right kind pill. Sans
+          // throughout (no tiny monospace).
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               TopicKindIcon(kind: kind),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
                       _chunkTitle(chunk),
-                      style: AppTextStyles.mono14(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w600,
-                      ),
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       kind.description,
-                      style: AppTextStyles.mono11(
-                        color: AppColors.textSecondary,
-                      ),
+                      style: AppTextStyles.body12(color: AppColors.textMuted),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               TopicKindPill(kind: kind),
             ],
           ),
@@ -1140,7 +1062,7 @@ class _ChunkPreviewTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               chunk.headingPath.join(' › '),
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ],
           const SizedBox(height: 6),

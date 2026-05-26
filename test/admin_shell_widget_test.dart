@@ -326,12 +326,13 @@ void main() {
       title: 'Plans and limits',
       screenKey: Key('admin_pricing_screen'),
     ),
-    // KB-polish: the Knowledge base no longer uses the shared
-    // business-scope workspace. Its documents are global Forge & Flow
-    // content, so the redundant left scope pane was removed; the screen
-    // builds directly on nav (covered by the corpus-route test in
-    // corpus_admin_screen_test.dart). It is intentionally NOT in this
-    // shared-workspace loop anymore.
+    // KB-fidelity: the Knowledge base uses the SAME shared business-scope
+    // workspace every other per-business admin screen uses (restored after
+    // PR #1400 removed it). It is verified by its own test below rather than
+    // this gating loop, because the DEMO path pre-selects the seeded
+    // business+location (so the Connections "Save my choices" walkthrough
+    // opens scoped) and therefore skips the "pick a business first" gate
+    // that this loop asserts. The live (non-demo) path still gates.
     (
       routeId: kAdminObservabilityRouteId,
       title: 'AI Metrics',
@@ -399,6 +400,43 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('Knowledge base uses the shared hierarchy workspace and the '
+      'demo path pre-selects a scope', (tester) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        AdminShell(
+          session: superAdmin,
+          authSource: source,
+          initialRouteId: kAdminCorpusRouteId,
+        ),
+      ),
+    );
+    await pumpEventually(tester);
+
+    // KB-fidelity: the standard left scope pane is restored on the corpus
+    // route (the same picker every other per-business admin screen uses).
+    expect(
+      find.byKey(const Key('admin_setup_workspace_scope_pane')),
+      findsOneWidget,
+      reason: 'the standard left scope pane is restored on the corpus route',
+    );
+    // The demo path pre-selects the seeded business+location, so the corpus
+    // screen opens already scoped (no "pick a business first" gate) and the
+    // Connections "Save my choices" walkthrough can run.
+    expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('Connected services opens without the hierarchy workspace', (
     tester,

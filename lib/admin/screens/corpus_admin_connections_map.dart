@@ -22,16 +22,21 @@
 // and shows an honest "No connections to map yet." card when there is no
 // graph data at all.
 
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../../widgets/console/console_surface.dart';
 import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
+import 'corpus_admin_chunk_view.dart' show corpusTopicKindIcon;
 import 'corpus_admin_connections_view.dart'
     show
         CorpusConnectionClarity,
         corpusConnectionClarity,
+        corpusConnectionNodeKind,
         corpusConnectionNodeName,
         corpusRelationshipVerb;
 
@@ -58,15 +63,32 @@ Color corpusMapClarityColor(CorpusConnectionClarity clarity) {
 class CorpusMapEdge {
   const CorpusMapEdge({
     required this.otherName,
+    required this.otherKind,
     required this.verb,
     required this.clarity,
     required this.outbound,
   });
 
   final String otherName;
+
+  /// Kind of the connected (non-focused) topic, so the map node can lead
+  /// with the same per-kind icon the topic list + connection flow use.
+  final AdminCorpusTopicKind otherKind;
   final String verb;
   final CorpusConnectionClarity clarity;
   final bool outbound;
+
+  @override
+  bool operator ==(Object other) =>
+      other is CorpusMapEdge &&
+      other.otherName == otherName &&
+      other.otherKind == otherKind &&
+      other.verb == verb &&
+      other.clarity == clarity &&
+      other.outbound == outbound;
+
+  @override
+  int get hashCode => Object.hash(otherName, otherKind, verb, clarity, outbound);
 }
 
 /// Pure model of the focused map: the centred topic, the distinct list of
@@ -79,6 +101,7 @@ class CorpusMapModel {
   const CorpusMapModel({
     required this.topics,
     required this.focus,
+    required this.focusKind,
     required this.edges,
     required this.totalEdges,
   });
@@ -89,6 +112,11 @@ class CorpusMapModel {
 
   /// The currently-centred topic, or null when there are no topics.
   final String? focus;
+
+  /// Kind of the focused topic, so the centre node leads with the same
+  /// per-kind icon the rest of the screen uses. Defaults to Document when
+  /// the producer recorded no type for it.
+  final AdminCorpusTopicKind focusKind;
 
   /// The edges directly connected to [focus] (deduped by other-topic +
   /// verb so a repeated pair does not draw twice).
@@ -113,20 +141,39 @@ class CorpusMapModel {
       ...diff.ambiguous,
     ].where((c) => c.kind == GraphCandidateKind.edge).toList(growable: false);
 
-    // Distinct topic names across both endpoints.
+    // Distinct topic names across both endpoints, plus a best-effort kind
+    // per topic read from the producer's recorded node types (the same
+    // signal the connection flow uses). A topic with no recorded type
+    // reads as a Document; nothing is fabricated.
     final topicSet = <String>{};
+    final topicKinds = <String, AdminCorpusTopicKind>{};
+    void note(String name, String? rawType) {
+      if (name == 'this topic') return;
+      topicSet.add(name);
+      if (!topicKinds.containsKey(name) && rawType != null) {
+        topicKinds[name] = corpusConnectionNodeKind(rawType);
+      }
+    }
+
     for (final c in allEdges) {
-      final from = corpusConnectionNodeName(c.fromNodeKey);
-      final to = corpusConnectionNodeName(c.toNodeKey);
-      if (from != 'this topic') topicSet.add(from);
-      if (to != 'this topic') topicSet.add(to);
+      note(
+        corpusConnectionNodeName(c.fromNodeKey),
+        c.payload['from_node_type'] as String?,
+      );
+      note(
+        corpusConnectionNodeName(c.toNodeKey),
+        c.payload['to_node_type'] as String?,
+      );
     }
     final topics = topicSet.toList()..sort();
+    AdminCorpusTopicKind kindOf(String name) =>
+        topicKinds[name] ?? AdminCorpusTopicKind.document;
 
     if (topics.isEmpty) {
       return const CorpusMapModel(
         topics: <String>[],
         focus: null,
+        focusKind: AdminCorpusTopicKind.document,
         edges: <CorpusMapEdge>[],
         totalEdges: 0,
       );
@@ -156,6 +203,7 @@ class CorpusMapModel {
       edges.add(
         CorpusMapEdge(
           otherName: other,
+          otherKind: kindOf(other),
           verb: verb,
           clarity: clarity,
           outbound: outbound,
@@ -166,6 +214,7 @@ class CorpusMapModel {
     return CorpusMapModel(
       topics: topics,
       focus: focus,
+      focusKind: kindOf(focus),
       edges: edges,
       totalEdges: allEdges.length,
     );
@@ -233,7 +282,11 @@ class _CorpusConnectionsMapState extends State<CorpusConnectionsMap> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _MapDiagram(focus: focus, edges: model.edges),
+          _MapDiagram(
+            focus: focus,
+            focusKind: model.focusKind,
+            edges: model.edges,
+          ),
           const SizedBox(height: 12),
           Text(
             AdminKnowledgeBaseCopy.connectionsMapCaption(
@@ -315,39 +368,45 @@ class _FocusDropdown extends StatelessWidget {
   }
 }
 
-/// C2-map: the node-link diagram. The focused topic box sits on the left;
-/// the connected topic boxes stack down the right; one clarity-styled
-/// line per edge joins them with its verb label. Drawn as a single
-/// [CustomPaint] so the layout stays simple + honest and never pulls a
-/// graph-layout package. When the focus has no edges the painter renders
-/// just the focused box plus an honest "no links" note.
+/// C2-map: the node-link diagram. The focused topic box sits left-of-
+/// centre; the connected topic boxes fan out to the right at a FIXED
+/// offset (not the full panel width), so one or two edges still read as a
+/// deliberate, filled diagram rather than a thin line spanning a big gap.
+/// One clarity-styled line per edge joins them with its verb label. Drawn
+/// as a single [CustomPaint] so the layout stays simple + honest and never
+/// pulls a graph-layout package. When the focus has no edges the painter
+/// renders just the focused box plus an honest "no links" note. Matches
+/// the mockup's filled, balanced 640x270 look.
 class _MapDiagram extends StatelessWidget {
-  const _MapDiagram({required this.focus, required this.edges});
+  const _MapDiagram({
+    required this.focus,
+    required this.focusKind,
+    required this.edges,
+  });
 
   final String focus;
+  final AdminCorpusTopicKind focusKind;
   final List<CorpusMapEdge> edges;
 
   @override
   Widget build(BuildContext context) {
-    // Height grows with the connected-node count so rows never overlap;
-    // a comfortable per-row band with a sensible floor.
-    const double rowHeight = 64;
-    const double minHeight = 150;
+    // Height grows with the connected-node count so rows never overlap; a
+    // comfortable per-row band with a sensible floor that matches the
+    // mockup's ~270px panel for a small fan of edges.
+    const double rowHeight = 62;
+    const double minHeight = 200;
     final height = edges.isEmpty
         ? minHeight
-        : (edges.length * rowHeight + 40).clamp(minHeight, 520).toDouble();
+        : (edges.length * rowHeight + 70).clamp(minHeight, 520).toDouble();
 
     return Container(
       key: const Key('admin_corpus_connections_map_diagram'),
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.backgroundMid.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(
-          color: AppColors.borderSubtle.withValues(alpha: 0.6),
-          width: 1,
-        ),
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(AppRadius.card + 4),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
       ),
       child: SizedBox(
         height: height,
@@ -358,14 +417,18 @@ class _MapDiagram extends StatelessWidget {
               size: size,
               painter: _MapPainter(
                 focus: focus,
+                focusKind: focusKind,
                 edges: edges,
-                // Resolve the text styles in the widget tree so the
-                // painter draws the same fonts the rest of the screen
-                // uses (google_fonts resolves lazily otherwise).
-                nodeStyle: AppTextStyles.mono11(color: AppColors.textPrimary),
-                verbStyleFor: (clarity) => AppTextStyles.mono8(
+                // Resolve the text styles in the widget tree so the painter
+                // draws the same sans fonts the rest of the screen uses
+                // (google_fonts resolves lazily otherwise). Node names are
+                // sans bold ~15px; verb labels are sans ~13px (no tiny
+                // monospace).
+                nodeStyle: AppTextStyles.body14(color: AppColors.textPrimary),
+                nodeKindStyle: AppTextStyles.body11(color: AppColors.textMuted),
+                verbStyleFor: (clarity) => AppTextStyles.body12(
                   color: corpusMapClarityColor(clarity),
-                ),
+                ).copyWith(fontWeight: FontWeight.w600),
                 emptyStyle: AppTextStyles.body12(
                   color: AppColors.textSecondary,
                 ),
@@ -385,35 +448,53 @@ class _MapDiagram extends StatelessWidget {
 class _MapPainter extends CustomPainter {
   _MapPainter({
     required this.focus,
+    required this.focusKind,
     required this.edges,
     required this.nodeStyle,
+    required this.nodeKindStyle,
     required this.verbStyleFor,
     required this.emptyStyle,
     required this.emptyNote,
   });
 
   final String focus;
+  final AdminCorpusTopicKind focusKind;
   final List<CorpusMapEdge> edges;
   final TextStyle nodeStyle;
+  final TextStyle nodeKindStyle;
   final TextStyle Function(CorpusConnectionClarity clarity) verbStyleFor;
   final TextStyle emptyStyle;
   final String emptyNote;
 
-  static const double _nodeWidth = 150;
-  static const double _nodeHeight = 40;
-  static const double _radius = 11;
+  static const double _nodeWidth = 178;
+  static const double _nodeHeight = 52;
+  static const double _radius = 12;
+
+  // Fixed horizontal gap between the focus node's right edge and the
+  // target column's left edge. Keeps a 1-2 edge fan compact and balanced
+  // (focus left-of-centre, targets clustered right) instead of stretching
+  // a single line across the whole panel.
+  static const double _columnGap = 150;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final focusCenter = Offset(_nodeWidth / 2 + 4, size.height / 2);
+    // Focus node sits left-of-centre with a small inset.
+    final focusCenter = Offset(_nodeWidth / 2 + 6, size.height / 2);
 
-    // Connected node centres: stacked down the right edge.
-    final rightX = size.width - _nodeWidth / 2 - 4;
+    // Target column at a FIXED offset from the focus, capped so it never
+    // runs off the right edge. This is the layout fix: with few edges the
+    // targets cluster near the centre-right rather than pinning to the far
+    // right with a big empty gap.
+    final focusRight = focusCenter.dx + _nodeWidth / 2;
+    final desiredTargetCenterX = focusRight + _columnGap + _nodeWidth / 2;
+    final maxTargetCenterX = size.width - _nodeWidth / 2 - 6;
+    final targetCenterX = math.min(desiredTargetCenterX, maxTargetCenterX);
+
     final centers = <Offset>[];
     if (edges.isNotEmpty) {
       final slot = size.height / edges.length;
       for (var i = 0; i < edges.length; i++) {
-        centers.add(Offset(rightX, slot * (i + 0.5)));
+        centers.add(Offset(targetCenterX, slot * (i + 0.5)));
       }
     }
 
@@ -421,10 +502,7 @@ class _MapPainter extends CustomPainter {
     for (var i = 0; i < edges.length; i++) {
       final edge = edges[i];
       final color = corpusMapClarityColor(edge.clarity);
-      final start = Offset(
-        focusCenter.dx + _nodeWidth / 2,
-        focusCenter.dy,
-      );
+      final start = Offset(focusRight, focusCenter.dy);
       final end = Offset(centers[i].dx - _nodeWidth / 2, centers[i].dy);
       _drawClarityLine(canvas, start, end, color, edge.clarity);
       _drawArrowHead(canvas, start, end, color, edge.outbound);
@@ -432,28 +510,29 @@ class _MapPainter extends CustomPainter {
       // Verb label near the line midpoint, nudged above the line.
       final mid = Offset(
         (start.dx + end.dx) / 2,
-        (start.dy + end.dy) / 2 - 10,
+        (start.dy + end.dy) / 2 - 12,
       );
       _drawText(
         canvas,
         edge.verb,
         mid,
         verbStyleFor(edge.clarity),
-        maxWidth: (end.dx - start.dx).abs(),
+        maxWidth: math.max((end.dx - start.dx).abs() + 40, 80),
         center: true,
       );
     }
 
-    // 2) The focused node box.
+    // 2) The focused node box (leads with its kind icon).
     _drawNodeBox(
       canvas,
       focusCenter,
       focus,
+      focusKind,
       fill: AppColors.backgroundMid,
       border: AppColors.borderSubtle,
     );
 
-    // 3) Connected node boxes, tinted by clarity.
+    // 3) Connected node boxes, tinted by clarity, each with its kind icon.
     for (var i = 0; i < edges.length; i++) {
       final edge = edges[i];
       final color = corpusMapClarityColor(edge.clarity);
@@ -461,6 +540,7 @@ class _MapPainter extends CustomPainter {
         canvas,
         centers[i],
         edge.otherName,
+        edge.otherKind,
         fill: color.withValues(alpha: 0.12),
         border: color,
       );
@@ -471,9 +551,9 @@ class _MapPainter extends CustomPainter {
       _drawText(
         canvas,
         emptyNote,
-        Offset(focusCenter.dx + _nodeWidth / 2 + 16, focusCenter.dy - 8),
+        Offset(focusRight + 18, focusCenter.dy - 8),
         emptyStyle,
-        maxWidth: size.width - (_nodeWidth + 28),
+        maxWidth: size.width - (focusRight + 30),
         center: false,
       );
     }
@@ -562,7 +642,8 @@ class _MapPainter extends CustomPainter {
   void _drawNodeBox(
     Canvas canvas,
     Offset center,
-    String label, {
+    String label,
+    AdminCorpusTopicKind kind, {
     required Color fill,
     required Color border,
   }) {
@@ -580,15 +661,72 @@ class _MapPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5,
     );
-    _drawText(
-      canvas,
-      label,
-      center,
-      nodeStyle,
-      maxWidth: _nodeWidth - 14,
-      center: true,
-      verticalCenter: true,
+
+    // Leading per-kind icon (same mapping as the topic list + flow). Drawn
+    // as the MaterialIcons glyph so the painter stays a single CustomPaint.
+    const double iconSize = 20;
+    const double pad = 12;
+    final iconCenter = Offset(
+      rect.left + pad + iconSize / 2,
+      center.dy,
     );
+    _drawIcon(canvas, corpusTopicKindIcon(kind), iconCenter, iconSize);
+
+    // Name (bold) over a small kind sub-label, to the right of the icon.
+    final textLeft = rect.left + pad + iconSize + 9;
+    final textMaxWidth = rect.right - pad - textLeft;
+    final namePainter = _layoutText(
+      label,
+      nodeStyle,
+      maxWidth: textMaxWidth,
+      maxLines: 1,
+    );
+    final kindPainter = _layoutText(
+      kind.pill,
+      nodeKindStyle,
+      maxWidth: textMaxWidth,
+      maxLines: 1,
+    );
+    final totalTextHeight = namePainter.height + kindPainter.height;
+    final nameTop = center.dy - totalTextHeight / 2;
+    namePainter.paint(canvas, Offset(textLeft, nameTop));
+    kindPainter.paint(
+      canvas,
+      Offset(textLeft, nameTop + namePainter.height),
+    );
+  }
+
+  /// Draws a Material icon [icon] centred on [center] at [size]px in the
+  /// peacock-dark glyph colour, using the MaterialIcons font so it renders
+  /// inside the CustomPaint alongside the node text.
+  void _drawIcon(Canvas canvas, IconData icon, Offset center, double size) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          fontSize: size,
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+          color: AppColors.peacockDark,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset(center.dx - tp.width / 2, center.dy - tp.height / 2));
+  }
+
+  TextPainter _layoutText(
+    String text,
+    TextStyle style, {
+    required double maxWidth,
+    int maxLines = 2,
+  }) {
+    return TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: maxLines,
+      ellipsis: '...',
+    )..layout(maxWidth: maxWidth < 0 ? 0 : maxWidth);
   }
 
   void _drawText(
@@ -614,7 +752,9 @@ class _MapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MapPainter old) =>
-      old.focus != focus || old.edges != edges;
+      old.focus != focus ||
+      old.focusKind != focusKind ||
+      !listEquals(old.edges, edges);
 }
 
 /// C2-map: the clarity legend (Clear / Worth checking / Not sure), each
@@ -665,8 +805,8 @@ class _LegendItem extends StatelessWidget {
             painter: _LegendLinePainter(color: color, clarity: clarity),
           ),
         ),
-        const SizedBox(width: 6),
-        Text(label, style: AppTextStyles.mono8(color: color)),
+        const SizedBox(width: 7),
+        Text(label, style: AppTextStyles.body12(color: color)),
       ],
     );
   }
