@@ -3,19 +3,32 @@
 // Drives the screen against an `InMemoryCorpusAdminGateway` so the
 // click path runs end-to-end without a backend. Coverage:
 //
-//   * Initial render lists every seeded version with current chip.
-//   * Empty state renders when no versions are seeded.
-//   * Upload + preview + commit flow drops a new current version.
-//   * Rollback flow re-points current to the rolled-back chunk set.
+//   * Initial render lists every seeded version in the Update history
+//     timeline with the "In use now" badge on the current version.
+//   * Empty state renders the Add-knowledge card with a "Choose a file"
+//     prompt.
+//   * Add-document + preview + save flow drops a new current version.
+//   * Go-back (rollback) flow re-points current to the picked chunk set.
 //   * Read-only mode (`editingEnabled: false`) hides every mutate
 //     affordance — exercised by the `ff_support` walkthrough.
 //   * Binary upload surfaces the typed action banner instead of
-//     advancing the staged-diff card.
+//     advancing the change preview.
 //
 // B1 additions (Advisor Knowledge Activation):
-//   * Injected picker returning .md bytes reaches the preview-diff card.
-//   * Injected picker returning .txt bytes reaches the preview-diff card.
+//   * Injected picker returning .md bytes reaches the change preview.
+//   * Injected picker returning .txt bytes reaches the change preview.
 //   * Injected picker returning null (cancel) leaves the screen unchanged.
+//
+// B-r3 redesign (Update history + Add knowledge):
+//   * The Knowledge tab is the approved preview's vertical card stack
+//     (Add knowledge -> Topics -> Update history); the old master-detail
+//     version list/detail panes are gone. These tests drive the new
+//     card keys (admin_corpus_add_choose_file / admin_corpus_change_preview
+//     / admin_corpus_save_update_button / admin_corpus_go_back_<id> /
+//     admin_corpus_history_in_use_<id>).
+//
+// Scope guard: this file drives only the Knowledge tab and never touches
+// the Connections tab or its shared widgets.
 
 import 'dart:typed_data';
 
@@ -96,7 +109,7 @@ void main() {
     );
   }
 
-  testWidgets('renders one row per seeded version with current chip', (
+  testWidgets('history timeline lists every version with the In-use badge', (
     tester,
   ) async {
     final gateway = InMemoryCorpusAdminGateway(
@@ -118,17 +131,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
-    expect(find.byKey(const Key('admin_corpus_row_v1')), findsOneWidget);
-    expect(find.byKey(const Key('admin_corpus_row_v2')), findsOneWidget);
-    expect(find.byKey(const Key('admin_corpus_current_v2')), findsOneWidget);
-    expect(find.byKey(const Key('admin_corpus_current_v1')), findsNothing);
+    expect(find.byKey(const Key('admin_corpus_history_card')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_corpus_history_row_v1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_history_row_v2')),
+      findsOneWidget,
+    );
+    // "In use now" badge sits on the current version (v2) only.
+    expect(
+      find.byKey(const Key('admin_corpus_history_in_use_v2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_history_in_use_v1')),
+      findsNothing,
+    );
     expect(find.textContaining('sha256'), findsNothing);
     expect(find.textContaining('aaaaaaaaaaaa'), findsNothing);
 
     // B-r1: machine-flavored details (and the per-card "Technical
     // details" disclosure) only render when the screen-level "Show
-    // technical details" toggle is ON. Flip it on before reaching for
-    // the chunk disclosure.
+    // technical details" toggle is ON. The Topics card shows the current
+    // version's content, so its chunk disclosure is reachable once ON.
     await _enableTechDetails(tester);
 
     final chunkDetails = find.byKey(
@@ -169,7 +196,7 @@ void main() {
     expect(
       gateway.graphCandidateFetchCount,
       equals(0),
-      reason: 'default Versions tab should not prefetch the hidden graph tab',
+      reason: 'default Knowledge tab should not prefetch the hidden graph tab',
     );
 
     final tabFinder = find.descendant(
@@ -186,7 +213,7 @@ void main() {
     expect(gateway.graphCandidateFetchCount, equals(1));
   });
 
-  testWidgets('stacks version list/detail panes on compact widths', (
+  testWidgets('Knowledge tab renders its card stack on compact widths', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(520, 720);
@@ -205,28 +232,39 @@ void main() {
     await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('admin_corpus_version_list')), findsOneWidget);
     expect(
-      find.byKey(const Key('admin_corpus_detail_v-compact')),
+      find.byKey(const Key('admin_corpus_knowledge_tab')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('admin_corpus_add_knowledge_card')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('admin_corpus_history_card')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('renders the empty state with an upload prompt', (tester) async {
+  testWidgets('renders the empty state with an Add-knowledge prompt', (
+    tester,
+  ) async {
     final gateway = InMemoryCorpusAdminGateway();
     await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_corpus_empty')), findsOneWidget);
-    expect(find.text('No advisor content yet'), findsOneWidget);
     expect(
-      find.byKey(const Key('admin_corpus_first_upload_button')),
+      find.byKey(const Key('admin_corpus_add_knowledge_card')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_add_choose_file')),
       findsOneWidget,
     );
   });
 
-  testWidgets('upload + preview produces a staged diff card', (tester) async {
+  testWidgets('add document + preview produces the change preview', (
+    tester,
+  ) async {
     final gateway = InMemoryCorpusAdminGateway(
       seed: <CorpusBundle>[
         seedBundle(versionId: 'v1', summary: 'seed', chunkCount: 1),
@@ -245,18 +283,28 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+    await tester.tap(find.byKey(const Key('admin_corpus_add_choose_file')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('admin_corpus_staged_diff')), findsOneWidget);
-    expect(find.byKey(const Key('admin_corpus_commit_button')), findsOneWidget);
     expect(
-      find.byKey(const Key('admin_corpus_discard_button')),
+      find.byKey(const Key('admin_corpus_change_preview')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('admin_corpus_save_update_button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_corpus_cancel_update_button')),
+      findsOneWidget,
+    );
+    // The staged document differs from the seed, so at least one change
+    // row renders and the "nothing changed" notice does not.
+    expect(find.byKey(const Key('admin_corpus_change_none')), findsNothing);
+    expect(find.text('What this update changes'), findsOneWidget);
   });
 
-  testWidgets('commit promotes staged upload to the current version', (
+  testWidgets('save promotes the staged document to the current version', (
     tester,
   ) async {
     final gateway = InMemoryCorpusAdminGateway(
@@ -276,18 +324,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+    await tester.tap(find.byKey(const Key('admin_corpus_add_choose_file')));
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('admin_corpus_staged_diff')),
+      find.byKey(const Key('admin_corpus_change_preview')),
       findsOneWidget,
-      reason: 'staged diff card should render after preview',
+      reason: 'change preview should render after staging a document',
     );
+    final saveButton = find.byKey(const Key('admin_corpus_save_update_button'));
     expect(
-      find.byKey(const Key('admin_corpus_commit_button')),
+      saveButton,
       findsOneWidget,
-      reason: 'commit button should render before tap',
+      reason: 'save button should render before tap',
     );
     expect(
       find.byKey(const Key('admin_corpus_action_error')),
@@ -295,30 +344,26 @@ void main() {
       reason: 'no action error should have surfaced',
     );
 
-    await tester.ensureVisible(
-      find.byKey(const Key('admin_corpus_commit_button')),
-    );
+    await tester.ensureVisible(saveButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('admin_corpus_commit_button')));
+    await tester.tap(saveButton);
     await tester.pumpAndSettle();
 
     final errorBanner = find.byKey(const Key('admin_corpus_action_error'));
     if (errorBanner.evaluate().isNotEmpty) {
-      // Surface the actual error so the failure message names the
-      // missing field instead of an opaque "no action error".
       final errorText =
           (errorBanner.evaluate().first.widget as dynamic).message as String;
-      fail('action error after commit: $errorText');
+      fail('action error after save: $errorText');
     }
 
     final versions = await gateway.listVersions();
-    // Seed (v1) plus the freshly-committed version.
+    // Seed (v1) plus the freshly-saved version.
     expect(versions, hasLength(2));
     expect(versions.first.isCurrent, isTrue);
     expect(versions.first.versionId, isNot(equals('v1')));
   });
 
-  testWidgets('rollback writes a new current version pointing at target', (
+  testWidgets('go-back writes a new current version pointing at target', (
     tester,
   ) async {
     final gateway = InMemoryCorpusAdminGateway(
@@ -346,18 +391,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // D7e shared-console adoption: the screen header now uses
-    // OperatorWebScreenHeader, whose multi-line subtitle reflows the
-    // version list a few pixels lower on the default 800x600 surface,
-    // leaving the prior-version Restore button at the viewport edge.
-    // Scroll it into view before tapping (same pattern the sibling
-    // graph-candidates tests already use). Intent is unchanged: the tap
-    // still opens the confirm dialog and the rollback assertions below
-    // still run.
-    final rollbackButton = find.byKey(const Key('admin_corpus_rollback_v1'));
-    await tester.ensureVisible(rollbackButton);
+    // The prior version's "Go back to this version" button sits near the
+    // bottom of the timeline; scroll it into view before tapping.
+    final goBackButton = find.byKey(const Key('admin_corpus_go_back_v1'));
+    await tester.ensureVisible(goBackButton);
     await tester.pumpAndSettle();
-    await tester.tap(rollbackButton);
+    await tester.tap(goBackButton);
     await tester.pumpAndSettle();
 
     expect(
@@ -375,7 +414,7 @@ void main() {
   });
 
   testWidgets(
-    'editingEnabled: false hides upload, commit, and rollback affordances',
+    'editingEnabled: false hides add, save, and go-back affordances',
     (tester) async {
       final gateway = InMemoryCorpusAdminGateway(
         seed: <CorpusBundle>[
@@ -401,8 +440,18 @@ void main() {
         find.byKey(const Key('admin_corpus_readonly_banner')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('admin_corpus_upload_button')), findsNothing);
-      expect(find.byKey(const Key('admin_corpus_rollback_v1')), findsNothing);
+      // The history card (read-only) stays visible, but every mutate
+      // affordance is hidden.
+      expect(find.byKey(const Key('admin_corpus_history_card')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_corpus_add_choose_file')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_add_drop_zone')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('admin_corpus_go_back_v1')), findsNothing);
     },
   );
 
@@ -453,7 +502,10 @@ void main() {
         find.byKey(const Key('admin_corpus_readonly_banner')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('admin_corpus_upload_button')), findsNothing);
+      expect(
+        find.byKey(const Key('admin_corpus_add_choose_file')),
+        findsNothing,
+      );
     },
   );
 
@@ -480,17 +532,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+    await tester.tap(find.byKey(const Key('admin_corpus_add_choose_file')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_corpus_action_error')), findsOneWidget);
-    expect(find.byKey(const Key('admin_corpus_staged_diff')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_corpus_change_preview')),
+      findsNothing,
+    );
   });
 
   // ── B1 tests: injected-picker seam exercises the real preview-diff flow ──
 
   testWidgets(
-    'B1: injected .md picker returns UploadCommand and reaches staged-diff card',
+    'B1: injected .md picker returns UploadCommand and reaches change preview',
     (tester) async {
       final gateway = InMemoryCorpusAdminGateway(
         seed: <CorpusBundle>[
@@ -516,13 +571,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+      await tester.tap(find.byKey(const Key('admin_corpus_add_choose_file')));
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_corpus_staged_diff')),
+        find.byKey(const Key('admin_corpus_change_preview')),
         findsOneWidget,
-        reason: '.md upload should produce a staged-diff preview card',
+        reason: '.md upload should produce a change preview',
       );
       expect(
         find.byKey(const Key('admin_corpus_action_error')),
@@ -530,15 +585,15 @@ void main() {
         reason: 'no error banner should appear for a valid .md upload',
       );
       expect(
-        find.byKey(const Key('admin_corpus_commit_button')),
+        find.byKey(const Key('admin_corpus_save_update_button')),
         findsOneWidget,
-        reason: 'commit button should be visible after preview',
+        reason: 'save button should be visible after preview',
       );
     },
   );
 
   testWidgets(
-    'B1: injected .txt picker returns UploadCommand and reaches staged-diff card',
+    'B1: injected .txt picker returns UploadCommand and reaches change preview',
     (tester) async {
       final gateway = InMemoryCorpusAdminGateway(
         seed: <CorpusBundle>[
@@ -563,13 +618,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+      await tester.tap(find.byKey(const Key('admin_corpus_add_choose_file')));
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_corpus_staged_diff')),
+        find.byKey(const Key('admin_corpus_change_preview')),
         findsOneWidget,
-        reason: '.txt upload should produce a staged-diff preview card',
+        reason: '.txt upload should produce a change preview',
       );
       expect(
         find.byKey(const Key('admin_corpus_action_error')),
@@ -607,11 +662,6 @@ void main() {
         reason: 'tech disclosure must be hidden while the toggle is OFF',
       );
       expect(
-        find.byKey(const Key('admin_corpus_version_details_v-b2')),
-        findsNothing,
-        reason: 'version tech disclosure must be hidden while the toggle is OFF',
-      );
-      expect(
         find.textContaining('methodology_seed.md#000'),
         findsNothing,
         reason: 'raw chunk ID must not appear in primary label',
@@ -622,8 +672,8 @@ void main() {
         reason: 'sha256 label must not appear in primary label',
       );
 
-      // Flip the toggle ON: the disclosures now render (machine IDs are
-      // reachable behind them).
+      // Flip the toggle ON: the Topics card's chunk disclosure now
+      // renders (machine IDs are reachable behind it).
       await _enableTechDetails(tester);
       expect(
         find.byKey(
@@ -631,19 +681,6 @@ void main() {
         ),
         findsOneWidget,
         reason: 'technical-details ExpansionTile must exist for chunk when ON',
-      );
-      expect(
-        find.byKey(const Key('admin_corpus_version_details_v-b2')),
-        findsOneWidget,
-        reason: 'technical-details ExpansionTile must exist for version when ON',
-      );
-
-      // The raw version ID still stays inside the disclosure, not the
-      // primary label, even with the toggle ON.
-      expect(
-        find.text('v-b2'),
-        findsNothing,
-        reason: 'raw version ID must not appear outside the disclosure',
       );
     },
   );
@@ -666,16 +703,19 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
+      await tester.tap(find.byKey(const Key('admin_corpus_add_choose_file')));
       await tester.pumpAndSettle();
 
-      // Cancelling the picker should not show any diff or error.
-      expect(find.byKey(const Key('admin_corpus_staged_diff')), findsNothing);
+      // Cancelling the picker should not show any change preview or error.
+      expect(
+        find.byKey(const Key('admin_corpus_change_preview')),
+        findsNothing,
+      );
       expect(find.byKey(const Key('admin_corpus_action_error')), findsNothing);
     },
   );
 
-  // ── B3 tests: grouped sections view + client-side search ──
+  // ── B3 tests: grouped sections view + client-side search (Topics card) ──
 
   CorpusBundle b3Bundle() {
     // Two source documents, three sections total:

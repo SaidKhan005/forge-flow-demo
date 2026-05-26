@@ -38,8 +38,8 @@ import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
 import '../widgets/admin_action_controls.dart';
-import '../widgets/admin_responsive_layout.dart';
 import 'corpus_admin_chunk_view.dart';
+import 'corpus_admin_history_view.dart';
 import 'operator_picker_screen.dart';
 
 /// Test seam: lets widget tests inject a synthetic upload byte source
@@ -248,6 +248,14 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
     final picker = widget.uploadPicker ?? _defaultDemoPicker;
     final command = await picker(context);
     if (command == null) return;
+    await _previewUpload(command);
+  }
+
+  /// Stages [command] through the proxy preview pipeline and lands on the
+  /// "What this update changes" diff. Shared by the "Choose a file"
+  /// button (via [_onUploadPressed]) and the inline dropzone's drag-drop
+  /// path so both entry points behave identically.
+  Future<void> _previewUpload(UploadCommand command) async {
     try {
       final diff = await widget.gateway.previewDiff(command);
       if (!mounted) return;
@@ -289,7 +297,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
         _stagedDiff = null;
         _stagedFileName = null;
       });
-    }, successHint: 'Advisor content published.');
+    }, successHint: AdminKnowledgeBaseCopy.addSavedToast);
   }
 
   Future<void> _onPickOperatorPressed() async {
@@ -309,11 +317,9 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => _ConfirmDialog(
-        title: 'Restore this version?',
-        message:
-            'Makes this version current again. The previous version stays '
-            'in history, so past advisor recommendations can still be traced.',
-        confirmLabel: 'Restore',
+        title: AdminKnowledgeBaseCopy.historyGoBackTitle,
+        message: AdminKnowledgeBaseCopy.historyGoBackBody,
+        confirmLabel: AdminKnowledgeBaseCopy.historyGoBackConfirm,
       ),
     );
     if (confirmed != true) return;
@@ -321,20 +327,11 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
       await widget.gateway.rollbackToVersion(
         RollbackCommand(
           targetVersionId: target.versionId,
-          summary: 'Restored ${_shortVersion(target.versionId)}',
+          summary: 'Went back to ${_shortVersion(target.versionId)}',
           idempotencyKey: _newIdempotencyKey(),
         ),
       );
-    }, successHint: 'Advisor content restored.');
-  }
-
-  CorpusVersionRef? get _selected {
-    final id = _selectedVersionId;
-    if (id == null) return null;
-    for (final v in _versions) {
-      if (v.versionId == id) return v;
-    }
-    return null;
+    }, successHint: AdminKnowledgeBaseCopy.historyWentBackToast);
   }
 
   @override
@@ -393,18 +390,13 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                         loading: _loading,
                         loadError: _loadError,
                         versions: _versions,
-                        selectedVersionId: _selectedVersionId,
-                        selectedBundle: _selectedBundle,
+                        currentBundle: _selectedBundle,
                         stagedDiff: _stagedDiff,
                         stagedFileName: _stagedFileName,
                         editingEnabled: widget.editingEnabled,
                         busy: _busy,
-                        selected: _selected,
-                        onSelect: (id) {
-                          setState(() => _selectedVersionId = id);
-                          _loadSelectedBundle();
-                        },
                         onUploadPressed: _onUploadPressed,
+                        onUploadCommand: _previewUpload,
                         onRollbackPressed: _onRollbackPressed,
                         onCommitPressed: _onCommitPressed,
                         onDiscardStaged: () => setState(() {
@@ -437,20 +429,29 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
   }
 }
 
+/// The Knowledge tab body. B-r3 redesigns it into the approved preview's
+/// vertical card stack:
+///
+///   1. [CorpusAddKnowledgeCard] — dropzone + "What this update changes".
+///   2. "Topics the advisor knows" — B-r2's grouped [ChunkGroupedView]
+///      over the current version's content.
+///   3. [CorpusUpdateHistoryCard] — current-first version timeline with
+///      rollback.
+///
+/// The screen owns all async work + idempotency keys; this widget only
+/// renders state and raises callbacks.
 class _VersionsTab extends StatelessWidget {
   const _VersionsTab({
     required this.loading,
     required this.loadError,
     required this.versions,
-    required this.selectedVersionId,
-    required this.selectedBundle,
+    required this.currentBundle,
     required this.stagedDiff,
     required this.stagedFileName,
     required this.editingEnabled,
     required this.busy,
-    required this.selected,
-    required this.onSelect,
     required this.onUploadPressed,
+    required this.onUploadCommand,
     required this.onRollbackPressed,
     required this.onCommitPressed,
     required this.onDiscardStaged,
@@ -459,15 +460,15 @@ class _VersionsTab extends StatelessWidget {
   final bool loading;
   final String? loadError;
   final List<CorpusVersionRef> versions;
-  final String? selectedVersionId;
-  final CorpusBundle? selectedBundle;
+
+  /// The current version's content, shown in the Topics card.
+  final CorpusBundle? currentBundle;
   final CorpusDiff? stagedDiff;
   final String? stagedFileName;
   final bool editingEnabled;
   final bool busy;
-  final CorpusVersionRef? selected;
-  final ValueChanged<String> onSelect;
   final VoidCallback onUploadPressed;
+  final ValueChanged<UploadCommand> onUploadCommand;
   final void Function(CorpusVersionRef target) onRollbackPressed;
   final VoidCallback onCommitPressed;
   final VoidCallback onDiscardStaged;
@@ -493,66 +494,59 @@ class _VersionsTab extends StatelessWidget {
         message: loadError!,
       );
     }
+
+    final addCard = CorpusAddKnowledgeCard(
+      editingEnabled: editingEnabled,
+      busy: busy,
+      stagedDiff: stagedDiff,
+      stagedFileName: stagedFileName,
+      onChooseFile: onUploadPressed,
+      onUploadCommand: onUploadCommand,
+      onSave: onCommitPressed,
+      onCancel: onDiscardStaged,
+    );
+
+    // Empty corpus: the Add-knowledge card is the whole story (no topics,
+    // no history yet). It carries its own dropzone + "Choose a file", so
+    // there is nothing more to show until the first version lands.
     if (versions.isEmpty) {
-      return Center(
+      return SingleChildScrollView(
         key: const Key('admin_corpus_empty'),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'No advisor content yet',
-                  style: AppTextStyles.display20(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Upload a document to create the first set of knowledge the advisor can use.',
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-                if (editingEnabled) ...[
-                  const SizedBox(height: 16),
-                  AdminActionButton(
-                    key: const Key('admin_corpus_first_upload_button'),
-                    label: 'Upload a document',
-                    onPressed: busy ? null : onUploadPressed,
-                    icon: Icons.upload_file_outlined,
-                    role: AdminActionRole.primary,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: addCard,
       );
     }
-    return AdminMasterDetailLayout(
-      masterWidth: 320,
-      compactMasterHeight: 260,
-      master: _VersionList(
-        versions: versions,
-        selectedVersionId: selectedVersionId,
-        editingEnabled: editingEnabled,
-        busy: busy,
-        onSelect: onSelect,
-        onUploadPressed: onUploadPressed,
-        onRollbackPressed: onRollbackPressed,
-      ),
-      detail: selected == null
-          ? const SizedBox.shrink()
-          : _VersionDetail(
-              version: selected!,
-              bundle: selectedBundle,
-              stagedDiff: stagedDiff,
-              stagedFileName: stagedFileName,
-              editingEnabled: editingEnabled,
-              busy: busy,
-              onCommitPressed: onCommitPressed,
-              onDiscardStaged: onDiscardStaged,
+
+    final chunks = currentBundle?.chunks ?? const <ChunkPreview>[];
+    return SingleChildScrollView(
+      key: const Key('admin_corpus_knowledge_tab'),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          addCard,
+          const SizedBox(height: 16),
+          OperatorWebPanel(
+            title: AdminKnowledgeBaseCopy.topicsTitle,
+            subtitle: AdminKnowledgeBaseCopy.topicsLead,
+            child: ChunkGroupedView(
+              key: const Key('admin_corpus_grouped_view_current'),
+              chunks: chunks,
+              sectionTileBuilder: (c) => _ChunkPreviewTile(
+                key: Key('admin_corpus_chunk_${c.chunkId}'),
+                chunk: c,
+              ),
             ),
+          ),
+          const SizedBox(height: 16),
+          CorpusUpdateHistoryCard(
+            versions: versions,
+            editingEnabled: editingEnabled,
+            busy: busy,
+            onGoBack: onRollbackPressed,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1747,416 +1741,6 @@ class _CorpusTechDetailsScope extends InheritedWidget {
       showTechDetails != oldWidget.showTechDetails;
 }
 
-class _VersionList extends StatelessWidget {
-  const _VersionList({
-    required this.versions,
-    required this.selectedVersionId,
-    required this.editingEnabled,
-    required this.busy,
-    required this.onSelect,
-    required this.onUploadPressed,
-    required this.onRollbackPressed,
-  });
-
-  final List<CorpusVersionRef> versions;
-  final String? selectedVersionId;
-  final bool editingEnabled;
-  final bool busy;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onUploadPressed;
-  final void Function(CorpusVersionRef target) onRollbackPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_corpus_version_list'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (editingEnabled)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: AdminActionButton(
-                key: const Key('admin_corpus_upload_button'),
-                label: 'Upload a document',
-                onPressed: busy ? null : onUploadPressed,
-                icon: Icons.upload_file_outlined,
-                role: AdminActionRole.primary,
-              ),
-            ),
-          const Divider(height: 1, color: AppColors.borderSubtle),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              itemCount: versions.length,
-              separatorBuilder: (_, __) => Container(
-                height: 1,
-                color: AppColors.borderSubtle.withValues(alpha: 0.4),
-              ),
-              itemBuilder: (context, index) {
-                final v = versions[index];
-                final selected = v.versionId == selectedVersionId;
-                return Material(
-                  color: selected
-                      ? AppColors.sunset.withValues(alpha: 0.10)
-                      : Colors.transparent,
-                  child: InkWell(
-                    key: Key('admin_corpus_row_${v.versionId}'),
-                    onTap: () => onSelect(v.versionId),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  v.isCurrent
-                                      ? 'Current version'
-                                      : 'Prior version',
-                                  style: AppTextStyles.mono14(
-                                    color: AppColors.textPrimary,
-                                    weight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              if (v.isCurrent)
-                                _CurrentChip(
-                                  key: Key(
-                                    'admin_corpus_current_${v.versionId}',
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            v.summary.isEmpty ? 'No summary' : v.summary,
-                            style: AppTextStyles.body13(
-                              color: AppColors.textSecondary,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${v.chunkCount} content piece'
-                            '${v.chunkCount == 1 ? '' : 's'} - '
-                            'created ${adminHumanDateTime(v.createdAt)}',
-                            style: AppTextStyles.mono8(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                          if (v.rollbackOf != null) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              'Restored from an earlier version',
-                              style: AppTextStyles.mono8(
-                                color: AppColors.textMuted,
-                              ),
-                            ),
-                          ],
-                          if (editingEnabled && !v.isCurrent) ...[
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: AdminActionButton(
-                                key: Key(
-                                  'admin_corpus_rollback_${v.versionId}',
-                                ),
-                                label: 'Restore',
-                                onPressed: busy
-                                    ? null
-                                    : () => onRollbackPressed(v),
-                                icon: Icons.history_outlined,
-                                compact: true,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VersionDetail extends StatelessWidget {
-  const _VersionDetail({
-    required this.version,
-    required this.bundle,
-    required this.stagedDiff,
-    required this.stagedFileName,
-    required this.editingEnabled,
-    required this.busy,
-    required this.onCommitPressed,
-    required this.onDiscardStaged,
-  });
-
-  final CorpusVersionRef version;
-  final CorpusBundle? bundle;
-  final CorpusDiff? stagedDiff;
-  final String? stagedFileName;
-  final bool editingEnabled;
-  final bool busy;
-  final VoidCallback onCommitPressed;
-  final VoidCallback onDiscardStaged;
-
-  @override
-  Widget build(BuildContext context) {
-    final chunks = bundle?.chunks ?? const <ChunkPreview>[];
-    return SingleChildScrollView(
-      key: Key('admin_corpus_detail_${version.versionId}'),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          OperatorWebPanel(
-            title: version.isCurrent
-                ? 'Current knowledge'
-                : 'Earlier knowledge version',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _DetailRow(
-                  label: 'Status',
-                  value: version.isCurrent
-                      ? 'Live now'
-                      : 'Replaced by a newer version',
-                ),
-                _DetailRow(
-                  label: 'Created',
-                  value: adminHumanDateTime(version.createdAt),
-                ),
-                _DetailRow(
-                  label: 'Created by',
-                  value: version.createdBy ?? 'Unknown',
-                ),
-                _DetailRow(label: 'Summary', value: version.summary),
-                if (version.rollbackOf != null)
-                  _DetailRow(
-                    label: 'Restored from',
-                    value: 'Earlier content version',
-                  ),
-                _DetailRow(label: 'Content pieces', value: '${chunks.length}'),
-                _AdvancedDetails(
-                  keyName: 'admin_corpus_version_details_${version.versionId}',
-                  title: 'Technical details',
-                  children: <Widget>[
-                    _DetailRow(label: 'Version ID', value: version.versionId),
-                    if (version.rollbackOf != null)
-                      _DetailRow(
-                        label: 'Restored from ID',
-                        value: version.rollbackOf!,
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (stagedDiff != null && editingEnabled) ...[
-            _StagedDiffCard(
-              diff: stagedDiff!,
-              fileName: stagedFileName,
-              busy: busy,
-              onCommit: onCommitPressed,
-              onDiscard: onDiscardStaged,
-            ),
-            const SizedBox(height: 16),
-          ],
-          OperatorWebPanel(
-            title: AdminKnowledgeBaseCopy.topicsTitle,
-            subtitle: AdminKnowledgeBaseCopy.topicsLead,
-            child: ChunkGroupedView(
-              key: Key('admin_corpus_grouped_view_${version.versionId}'),
-              chunks: chunks,
-              sectionTileBuilder: (c) => _ChunkPreviewTile(
-                key: Key('admin_corpus_chunk_${c.chunkId}'),
-                chunk: c,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StagedDiffCard extends StatelessWidget {
-  const _StagedDiffCard({
-    required this.diff,
-    required this.fileName,
-    required this.busy,
-    required this.onCommit,
-    required this.onDiscard,
-  });
-
-  final CorpusDiff diff;
-  final String? fileName;
-  final bool busy;
-  final VoidCallback onCommit;
-  final VoidCallback onDiscard;
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebPanel(
-      key: const Key('admin_corpus_staged_diff'),
-      title: 'Upload preview',
-      subtitle: diff.summary,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (fileName != null)
-            _AdvancedDetails(
-              keyName: 'admin_corpus_staged_file_details',
-              title: 'Technical details',
-              children: <Widget>[
-                _DetailRow(label: 'Uploaded file', value: fileName!),
-              ],
-            ),
-          const SizedBox(height: 12),
-          _DiffSection(
-            label: 'New',
-            countKey: const Key('admin_corpus_diff_added_count'),
-            chunks: diff.added,
-            color: AppColors.positive,
-            keyPrefix: 'added',
-          ),
-          _DiffSection(
-            label: 'Modified',
-            countKey: const Key('admin_corpus_diff_modified_count'),
-            chunks: diff.modified,
-            color: AppColors.sunset,
-            keyPrefix: 'modified',
-          ),
-          _DiffSection(
-            label: 'Archived',
-            countKey: const Key('admin_corpus_diff_inactivated_count'),
-            chunks: diff.inactivated,
-            color: AppColors.negative,
-            keyPrefix: 'inactivated',
-          ),
-          const SizedBox(height: 12),
-          AdminActionBar(
-            alignment: WrapAlignment.start,
-            children: <Widget>[
-              AdminActionButton(
-                key: const Key('admin_corpus_commit_button'),
-                label: 'Publish content',
-                onPressed: busy ? null : onCommit,
-                role: AdminActionRole.primary,
-              ),
-              AdminActionButton(
-                key: const Key('admin_corpus_discard_button'),
-                label: 'Clear preview',
-                onPressed: busy ? null : onDiscard,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DiffSection extends StatelessWidget {
-  const _DiffSection({
-    required this.label,
-    required this.countKey,
-    required this.chunks,
-    required this.color,
-    required this.keyPrefix,
-  });
-
-  final String label;
-  final Key countKey;
-  final List<ChunkPreview> chunks;
-  final Color color;
-  final String keyPrefix;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: AppTextStyles.mono14(
-                  color: AppColors.textPrimary,
-                  weight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${chunks.length}',
-                key: countKey,
-                style: AppTextStyles.mono14(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          if (chunks.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: Text(
-                'None',
-                style: AppTextStyles.mono11(color: AppColors.textMuted),
-              ),
-            )
-          else
-            ...chunks
-                .take(6)
-                .map(
-                  (c) => Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 2, 0, 4),
-                    child: _ChunkPreviewTile(
-                      key: Key('admin_corpus_diff_${keyPrefix}_${c.chunkId}'),
-                      chunk: c,
-                    ),
-                  ),
-                ),
-          if (chunks.length > 6)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 2, 0, 0),
-              child: Text(
-                '+${chunks.length - 6} more',
-                style: AppTextStyles.mono11(color: AppColors.textMuted),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ChunkPreviewTile extends StatelessWidget {
   const _ChunkPreviewTile({super.key, required this.chunk});
 
@@ -2263,25 +1847,6 @@ String _chunkTitle(ChunkPreview chunk) {
   final doc = chunk.docId.trim();
   if (doc.isNotEmpty) return 'Knowledge content';
   return 'Content piece';
-}
-
-class _CurrentChip extends StatelessWidget {
-  const _CurrentChip({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: AppColors.positive.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(AdminButtonStyles.radius),
-      ),
-      child: Text(
-        'Current',
-        style: AppTextStyles.mono8(color: AppColors.positive),
-      ),
-    );
-  }
 }
 
 class _AdvancedDetails extends StatelessWidget {
