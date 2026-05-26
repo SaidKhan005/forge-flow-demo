@@ -65,7 +65,7 @@ class VendorRelativityLabel extends StatelessWidget {
         children: [
           Text(
             'Vendor fit',
-            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+            style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
           ),
           const SizedBox(height: 5),
           for (var i = 0; i < lines.length; i++) ...[

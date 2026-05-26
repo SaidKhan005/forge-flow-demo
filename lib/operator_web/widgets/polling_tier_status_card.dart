@@ -107,7 +107,7 @@ class PollingTierStatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_polling_tier_status_card'),
-      title: 'Your data freshness tier',
+      title: 'Data freshness tier',
       headerExplainer:
           'This applies only to vendors that do not push live updates. '
           'Forge & Flow asks those vendors for new data on the schedule '
@@ -266,8 +266,8 @@ class _TierStatusBlock extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Your current tier',
-                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+                  'Current tier',
+                  style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -294,8 +294,8 @@ class _PerVendorCadenceList extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
-          'Every vendor you have connected pushes updates to Forge & Flow '
-          'when they happen, so there is no polling schedule to edit here.',
+          'Every connected vendor pushes updates to Forge & Flow when they '
+          'happen, so there is no schedule to set here.',
           style: AppTextStyles.body13(color: AppColors.textMuted),
         ),
       );
@@ -306,8 +306,8 @@ class _PerVendorCadenceList extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Schedule for your poll-only vendors',
-          style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+          'How often we check each vendor',
+          style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
         ),
         const SizedBox(height: 6),
         for (final entry in entries) ...[
