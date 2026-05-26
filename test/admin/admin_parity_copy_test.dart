@@ -107,7 +107,7 @@ void main() {
       expect(routeById(kAdminVendorIntegrationsRouteId).badge, isNull);
       expect(
         routeById(kAdminVendorIntegrationsRouteId).subtitle,
-        contains('super admins can connect, test, disconnect'),
+        contains('super admins can connect, test, and disconnect vendors'),
       );
       expect(
         routeById(kAdminTimingSetupRouteId).subtitle,

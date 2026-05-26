@@ -448,6 +448,23 @@ void main() {
       await tester.tap(corpusNavItem);
       await tester.pumpAndSettle();
 
+      // 44e225a9 ("Complete admin hierarchy UX consolidation", #481) moved
+      // the Knowledge base behind the shared scoped-admin workspace: the
+      // corpus screen only builds once a business scope is picked. Until
+      // then the function pane shows the "Pick a business first" card. Pick
+      // the seeded demo business ("Demo Diner Co.") so the ff_support
+      // read-only corpus screen loads — the same scope-first nav flow the
+      // AI-workspace tests in admin_shell_widget_test.dart exercise.
+      final demoBusinessScope = find.byKey(
+        const Key(
+          'admin_setup_scope_business_00000000-0000-4000-8000-000000000001',
+        ),
+      );
+      await tester.ensureVisible(demoBusinessScope);
+      await tester.pumpAndSettle();
+      await tester.tap(demoBusinessScope);
+      await tester.pumpAndSettle();
+
       expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
       expect(
         find.byKey(const Key('admin_corpus_readonly_banner')),
