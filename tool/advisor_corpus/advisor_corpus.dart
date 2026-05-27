@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/domain/services/rerank_provider.dart';
 import 'package:forge_and_flow/services/voyage_embedding_provider.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
@@ -23,6 +25,22 @@ const advisorContextModel = 'claude-haiku-4-5';
 const advisorAnthropicMessagesEndpoint =
     'https://api.anthropic.com/v1/messages';
 const advisorContextMaxOutputTokens = 120;
+
+/// Proxy route path for server-side C3 semantic extraction.
+///
+/// HP#7: the proxy brokers the Anthropic LLM call with a server-side key.
+/// This tool POSTs chunks here and never holds a provider key for extraction.
+/// Mirrors the canonical `graphExtractPath` in
+/// tool/advisor_proxy/graph_extract_route_part.dart (declared locally so the
+/// tool does not import the proxy package).
+const advisorGraphExtractPath = '/v1/admin/graph/extract';
+
+/// Default proxy base URL for semantic extraction.
+///
+/// Placeholder/localhost default for tests and local dev. Real runs inject
+/// the deployed proxy base URL (constructor / extract() param / FF_PROXY_BASE_URL
+/// env). NOT a provider endpoint: the provider key lives server-side.
+const advisorProxyDefaultBaseUrl = 'http://localhost:8080';
 const advisorEmbeddingInputType = 'document';
 const advisorEmbeddingOutputDtype = 'float';
 const advisorVoyageEmbeddingsEndpoint =
@@ -3876,15 +3894,14 @@ class ContextExecutionResult {
 // wire values) by prompting an LLM through the existing gateway abstraction
 // (the same AdvisorContextGateway seam used by CorpusContextExecutor).
 //
-// HP#9 compliance:
-//   Every call records a SemanticExtractionCostRecord in the execution
-//   manifest: provider, model, estimated_input_tokens, estimated_output_tokens,
-//   and cost_class ('semantic_extraction'). The manifest accumulates these
-//   per-chunk records so a downstream billing pass can tally spend without
-//   needing a live DB connection. No actual proxy_requests row is written here
-//   (the tool does not call the proxy); that bookkeeping belongs to a future
-//   proxy-side endpoint when the operator runs real extractions.
-//   Follow-up flag in PR body: "Proxy endpoint needed - see PR body."
+// HP#7 + HP#9 compliance:
+//   Extraction is brokered through the proxy route POST /v1/admin/graph/extract
+//   (advisorGraphExtractPath). The proxy holds the provider key server-side and
+//   meters spend under its 'graph_extraction' usage class; this tool sends only
+//   a proxy bearer token. Each call records a SemanticExtractionCostRecord in
+//   the execution manifest (provider, model, the proxy-reported input/output
+//   tokens, cost_class 'semantic_extraction') for audit. proxy_requests rows
+//   are written proxy-side, not by this tool.
 //
 // Idempotency:
 //   Each chunk is keyed by (chunk_id, content_sha256). The extractor skips
@@ -3905,9 +3922,9 @@ class ContextExecutionResult {
 //   Edge candidates: candidate_id, kind='edge', candidate_type (C3 edge type),
 //     label, from_node_key, to_node_key, payload (includes verb_phrase).
 //
-// Hard rule: No live API calls here. All tests use a mock gateway.
-// A NEW PROXY ENDPOINT is required before real extraction runs can be
-// cost-metered server-side. See PR body for the follow-up flag.
+// Hard rule: all tests use a mock gateway -- no real network, no real proxy,
+// no provider call. The production gateway POSTs the proxy route so real
+// extraction is cost-metered server-side (HP#7 + HP#9).
 
 /// One typed node extracted from a corpus chunk by the LLM.
 class SemanticNodeExtraction {
@@ -4051,23 +4068,32 @@ class SemanticExtractionResult {
 }
 
 /// Gateway seam for LLM-driven semantic extraction.
-/// The concrete implementation calls the Anthropic messages API through
-/// the existing proxy infrastructure. Tests inject a mock implementation.
 ///
-/// HARD RULE: No implementation here may make a real network call without an
-/// explicit operator spend approval. The tool ships with a mock-only path.
-/// The real [AnthropicSemanticExtractionGateway] is provided for wiring only;
-/// it MUST NOT be invoked in tests or CI.
+/// HP#7 (server-side keys): the production implementation
+/// [ProxyGraphExtractionGateway] POSTs each chunk to the proxy route
+/// [advisorGraphExtractPath]. The proxy brokers the Anthropic LLM call with a
+/// server-side key, so this tool holds NO provider key for extraction. It
+/// authenticates to the proxy with a bearer token only.
 ///
-/// Follow-up: a proxy endpoint is required so real runs are cost-metered
-/// server-side (HP#7: server-side keys; HP#9: metered by class).
-/// See PR body for the follow-up flag.
+/// HP#9 (metered by class): the proxy meters every call under the
+/// 'graph_extraction' usage class; this tool surfaces the proxy-reported
+/// token counts in its cost manifest.
+///
+/// The [apiKey] parameter carries the PROXY bearer token (admin /
+/// service-principal), NOT a provider key. The name is retained so the
+/// extractor's call sites are unchanged.
+///
+/// Tests inject a mock implementation. No implementation here calls a provider
+/// directly.
 abstract class AdvisorSemanticExtractionGateway {
   /// Extract typed nodes and edges from [chunkText].
   ///
-  /// [documentTitle] and [headingPath] provide provenance context for the
-  /// prompt. The gateway returns raw [SemanticExtractionResponse]; vocab
-  /// validation is the caller's responsibility.
+  /// [documentTitle] and [headingPath] provide provenance context. The proxy
+  /// validates output against the sealed C3 vocabulary; this gateway maps the
+  /// proxy response back into [SemanticExtractionResponse].
+  ///
+  /// [apiKey] is the proxy bearer token (HP#7: not a provider key).
+  /// [contentSha256] + [chunkId] derive the proxy Idempotency-Key.
   Future<SemanticExtractionResponse> extractFromChunk({
     required String apiKey,
     required String model,
@@ -4078,38 +4104,64 @@ abstract class AdvisorSemanticExtractionGateway {
     required Set<String> nodeKinds,
     required Set<String> edgeTypes,
     required Map<String, String> edgeVerbPhrases,
+    String chunkId = '',
+    String contentSha256 = '',
   });
 }
 
-/// Production gateway: Anthropic messages API.
-/// NOT called in tests. Used only when the operator explicitly authorises
-/// a paid extraction run (separate operator-funded step per task spec).
-class AnthropicSemanticExtractionGateway
+/// Production gateway: F&F proxy semantic-extraction route (HP#7).
+///
+/// POSTs each chunk to [advisorGraphExtractPath] on a configurable proxy base
+/// URL. The proxy brokers the Anthropic LLM call with a server-side key, so
+/// this gateway holds NO provider key. It authenticates to the proxy with a
+/// bearer token (admin / service-principal) only.
+///
+/// HP#7 before/after: the prior gateway POSTed directly to
+/// api.anthropic.com/v1/messages with an `x-api-key` provider secret. This
+/// gateway POSTs to the proxy route; the provider key never leaves the server.
+///
+/// HP#9: the proxy meters the call under the 'graph_extraction' usage class
+/// and returns input_tokens/output_tokens, which this gateway surfaces in the
+/// cost manifest.
+///
+/// Idempotency: every request carries an Idempotency-Key derived
+/// deterministically from content_sha256 + chunk_id, so retries dedup at the
+/// proxy (proxy_requests UNIQUE).
+///
+/// Uses package:http with an injectable [httpClient] so tests pass a mock
+/// client (e.g. MockClient) with no network I/O.
+class ProxyGraphExtractionGateway
     implements AdvisorSemanticExtractionGateway {
-  AnthropicSemanticExtractionGateway({HttpClient? httpClient, Uri? endpoint})
-    : _httpClient = httpClient ?? HttpClient(),
-      _endpoint = endpoint ?? Uri.parse(advisorAnthropicMessagesEndpoint);
+  ProxyGraphExtractionGateway({
+    http.Client? httpClient,
+    Uri? proxyBaseUrl,
+    Duration timeout = const Duration(seconds: 45),
+  }) : _httpClient = httpClient ?? http.Client(),
+       _proxyBaseUrl = proxyBaseUrl ?? Uri.parse(advisorProxyDefaultBaseUrl),
+       _timeout = timeout;
 
-  final HttpClient _httpClient;
-  final Uri _endpoint;
+  final http.Client _httpClient;
+  final Uri _proxyBaseUrl;
+  final Duration _timeout;
 
-  static const int _maxOutputTokens = 2048;
-  static const String _extractionSystemPrompt =
-      'You are a knowledge-graph extraction assistant for a restaurant '
-      'operations methodology corpus. Your output MUST be a single valid '
-      'JSON object with exactly two keys: "nodes" (array) and "edges" '
-      '(array). No markdown fences, no prose, no extra keys. '
-      'Each node: {"key": string, "kind": one-of-node-kinds, '
-      '"label": "EXTRACTED"|"INFERRED", "verbatim": string}. '
-      'Each edge: {"from": string, "to": string, "type": one-of-edge-types, '
-      '"label": "EXTRACTED"|"INFERRED", "verbatim": string}. '
-      'Use only the provided node-kinds and edge-types. '
-      'If unsure, use "Concept" for nodes and "RELATES_TO" for edges '
-      'and set label to "INFERRED". Do not invent new kinds or types.';
+  /// Builds a stable Idempotency-Key from content hash + chunk id.
+  ///
+  /// SHA-256 over 'sha:id' keeps the header bounded and ASCII while remaining
+  /// stable across retries of the same chunk content. Falls back to a
+  /// chunk-text-independent value only when both inputs are empty.
+  static String idempotencyKeyFor({
+    required String contentSha256,
+    required String chunkId,
+  }) {
+    final material = '$contentSha256:$chunkId';
+    final digest = sha256.convert(utf8.encode(material));
+    return 'graph-extract-$digest';
+  }
 
   @override
   Future<SemanticExtractionResponse> extractFromChunk({
     required String apiKey,
+    // HP#7: this is the PROXY bearer token, not a provider key.
     required String model,
     required String documentTitle,
     required String sourcePath,
@@ -4118,167 +4170,142 @@ class AnthropicSemanticExtractionGateway
     required Set<String> nodeKinds,
     required Set<String> edgeTypes,
     required Map<String, String> edgeVerbPhrases,
+    String chunkId = '',
+    String contentSha256 = '',
   }) async {
-    final heading = headingPath.isEmpty ? '(root)' : headingPath.join(' > ');
-    final nodeKindList = nodeKinds.toList()..sort();
-    final edgeTypeList = edgeTypes.toList()..sort();
-
-    final userPrompt =
-        'Extract typed knowledge-graph nodes and edges from this corpus chunk.\n\n'
-        'Document: $documentTitle\n'
-        'Source path: $sourcePath\n'
-        'Heading: $heading\n\n'
-        'Approved node kinds: ${nodeKindList.join(', ')}\n'
-        'Approved edge types (type: verb-phrase): '
-        '${edgeTypeList.map((t) => '$t: ${edgeVerbPhrases[t] ?? t}').join('; ')}\n\n'
-        'Chunk:\n$chunkText\n\n'
-        'Return a JSON object {"nodes":[...],"edges":[...]}. '
-        'Only use the approved node kinds and edge types above.';
-
-    final estimatedInputTokens = _estimateTokens(
-      _extractionSystemPrompt + userPrompt,
+    final endpoint = _proxyBaseUrl.replace(
+      path: _joinPath(_proxyBaseUrl.path, advisorGraphExtractPath),
     );
 
-    final request = await _httpClient.postUrl(_endpoint);
-    request.headers
-      ..set(HttpHeaders.contentTypeHeader, 'application/json')
-      ..set('x-api-key', apiKey)
-      ..set('anthropic-version', '2023-06-01');
+    final idempotencyKey = idempotencyKeyFor(
+      contentSha256: contentSha256,
+      chunkId: chunkId,
+    );
 
-    final body = <String, Object?>{
+    final requestBody = jsonEncode(<String, Object?>{
+      'chunk_text': chunkText,
+      'chunk_id': chunkId,
+      'content_sha256': contentSha256,
+      'document_title': documentTitle,
+      'source_path': sourcePath,
+      'heading_path': headingPath,
       'model': model,
-      'max_tokens': _maxOutputTokens,
-      'temperature': 0,
-      'system': _extractionSystemPrompt,
-      'messages': <Map<String, Object?>>[
-        <String, Object?>{'role': 'user', 'content': userPrompt},
-      ],
-    };
+    });
 
-    request.add(utf8.encode(jsonEncode(body)));
-    final response = await request.close();
-    final responseBody = await utf8.decodeStream(response);
+    final http.Response response;
+    try {
+      response = await _httpClient
+          .post(
+            endpoint,
+            headers: <String, String>{
+              HttpHeaders.contentTypeHeader: 'application/json',
+              HttpHeaders.authorizationHeader: 'Bearer $apiKey',
+              'Idempotency-Key': idempotencyKey,
+            },
+            body: requestBody,
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw CorpusManifestException(
+        'Proxy semantic extraction timed out after ${_timeout.inSeconds}s '
+        '(chunk $chunkId).',
+      );
+    } on SocketException catch (e) {
+      throw CorpusManifestException(
+        'Proxy semantic extraction network error: ${e.message} '
+        '(chunk $chunkId).',
+      );
+    }
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CorpusManifestException(
-        'Anthropic semantic extraction request failed '
+        'Proxy semantic extraction request failed '
         '(status ${response.statusCode}): '
-        '${_safeProviderErrorMessage(responseBody)}',
+        '${_safeProviderErrorMessage(response.body)} (chunk $chunkId).',
       );
     }
 
-    final decoded = jsonDecode(responseBody) as Map<String, Object?>;
-    final content = decoded['content'];
-    if (content is! List) {
+    final Map<String, Object?> decoded;
+    try {
+      decoded = jsonDecode(response.body) as Map<String, Object?>;
+    } catch (_) {
       throw CorpusManifestException(
-        'Anthropic semantic extraction response missing content array.',
+        'Proxy semantic extraction response is not valid JSON (chunk $chunkId).',
       );
     }
-    final textParts = <String>[];
-    for (final part in content) {
-      if (part is Map<String, Object?> && part['type'] == 'text') {
-        final text = part['text']?.toString().trim();
-        if (text != null && text.isNotEmpty) {
-          textParts.add(text);
-        }
+
+    return _mapProxyResponse(decoded);
+  }
+
+  /// Maps the proxy 200 JSON (node_key/kind/label/verbatim_text +
+  /// from_node_key/to_node_key/edge_type and input/output token counts) into
+  /// the tool's [SemanticExtractionResponse] so the rest of the pipeline is
+  /// unchanged. The proxy already constrains output to the sealed C3
+  /// vocabulary; this mapping is a faithful field rename.
+  SemanticExtractionResponse _mapProxyResponse(Map<String, Object?> decoded) {
+    final nodes = <SemanticNodeExtraction>[];
+    final rawNodes = decoded['nodes'];
+    if (rawNodes is List) {
+      for (final entry in rawNodes) {
+        if (entry is! Map<String, Object?>) continue;
+        final nodeKey = entry['node_key']?.toString().trim() ?? '';
+        if (nodeKey.isEmpty) continue;
+        nodes.add(
+          SemanticNodeExtraction(
+            nodeKey: nodeKey,
+            kind: entry['kind']?.toString().trim() ?? 'Concept',
+            label: entry['label']?.toString().trim() ?? 'AMBIGUOUS',
+            verbatimText: entry['verbatim_text']?.toString().trim() ?? '',
+          ),
+        );
       }
     }
-    final rawJson = textParts.join('\n').trim();
-    if (rawJson.isEmpty) {
-      throw CorpusManifestException(
-        'Anthropic semantic extraction response produced no text.',
-      );
+
+    final edges = <SemanticEdgeExtraction>[];
+    final rawEdges = decoded['edges'];
+    if (rawEdges is List) {
+      for (final entry in rawEdges) {
+        if (entry is! Map<String, Object?>) continue;
+        final fromKey = entry['from_node_key']?.toString().trim() ?? '';
+        final toKey = entry['to_node_key']?.toString().trim() ?? '';
+        if (fromKey.isEmpty || toKey.isEmpty) continue;
+        edges.add(
+          SemanticEdgeExtraction(
+            fromNodeKey: fromKey,
+            toNodeKey: toKey,
+            edgeType: entry['edge_type']?.toString().trim() ?? 'RELATES_TO',
+            label: entry['label']?.toString().trim() ?? 'AMBIGUOUS',
+            verbatimText: entry['verbatim_text']?.toString().trim() ?? '',
+          ),
+        );
+      }
     }
 
-    // Usage for HP#9 token accounting.
-    final usage = decoded['usage'];
-    final outputTokens = usage is Map<String, Object?>
-        ? (usage['output_tokens'] as num?)?.toInt() ?? _maxOutputTokens
-        : _maxOutputTokens;
+    final inputTokens = (decoded['input_tokens'] as num?)?.toInt() ?? 0;
+    final outputTokens = (decoded['output_tokens'] as num?)?.toInt() ?? 0;
 
-    final parsed = _parseExtractionJson(rawJson);
     return SemanticExtractionResponse(
-      nodes: parsed.nodes,
-      edges: parsed.edges,
-      estimatedInputTokens: estimatedInputTokens,
-      estimatedOutputTokens: outputTokens,
+      nodes: nodes,
+      edges: edges,
+      estimatedInputTokens: inputTokens < 0 ? 0 : inputTokens,
+      estimatedOutputTokens: outputTokens < 0 ? 0 : outputTokens,
     );
   }
 }
 
-/// Validates and normalises a raw LLM JSON extraction string.
-/// Unknown node kinds fall back to 'Concept' (AMBIGUOUS).
-/// Unknown edge types fall back to 'RELATES_TO' (AMBIGUOUS).
-/// Parse errors throw [CorpusManifestException].
-_ParsedExtraction _parseExtractionJson(String rawJson) {
-  final Map<String, Object?> root;
-  try {
-    root = jsonDecode(rawJson) as Map<String, Object?>;
-  } catch (e) {
-    throw CorpusManifestException(
-      'Semantic extraction response is not valid JSON: $e\n'
-      'Raw response (first 500 chars): ${rawJson.substring(0, rawJson.length.clamp(0, 500))}',
-    );
-  }
-
-  final rawNodes = (root['nodes'] as List?) ?? const <Object?>[];
-  final rawEdges = (root['edges'] as List?) ?? const <Object?>[];
-
-  final nodes = <SemanticNodeExtraction>[];
-  for (final entry in rawNodes) {
-    if (entry is! Map<String, Object?>) continue;
-    final nodeKey = entry['key']?.toString().trim() ?? '';
-    if (nodeKey.isEmpty) continue;
-    final rawKind = entry['kind']?.toString().trim() ?? '';
-    final rawLabel = entry['label']?.toString().trim().toUpperCase() ?? '';
-    final isValidKind = kC3NodeKinds.contains(rawKind);
-    final resolvedKind = isValidKind ? rawKind : 'Concept';
-    final resolvedLabel =
-        (!isValidKind || rawLabel == 'AMBIGUOUS')
-        ? 'AMBIGUOUS'
-        : (rawLabel == 'INFERRED' ? 'INFERRED' : 'EXTRACTED');
-    nodes.add(
-      SemanticNodeExtraction(
-        nodeKey: nodeKey,
-        kind: resolvedKind,
-        label: resolvedLabel,
-        verbatimText: entry['verbatim']?.toString().trim() ?? '',
-      ),
-    );
-  }
-
-  final edges = <SemanticEdgeExtraction>[];
-  for (final entry in rawEdges) {
-    if (entry is! Map<String, Object?>) continue;
-    final fromKey = entry['from']?.toString().trim() ?? '';
-    final toKey = entry['to']?.toString().trim() ?? '';
-    if (fromKey.isEmpty || toKey.isEmpty) continue;
-    final rawType = entry['type']?.toString().trim() ?? '';
-    final rawLabel = entry['label']?.toString().trim().toUpperCase() ?? '';
-    final isValidType = kC3EdgeTypes.contains(rawType);
-    final resolvedType = isValidType ? rawType : 'RELATES_TO';
-    final resolvedLabel =
-        (!isValidType || rawLabel == 'AMBIGUOUS')
-        ? 'AMBIGUOUS'
-        : (rawLabel == 'INFERRED' ? 'INFERRED' : 'EXTRACTED');
-    edges.add(
-      SemanticEdgeExtraction(
-        fromNodeKey: fromKey,
-        toNodeKey: toKey,
-        edgeType: resolvedType,
-        label: resolvedLabel,
-        verbatimText: entry['verbatim']?.toString().trim() ?? '',
-      ),
-    );
-  }
-
-  return _ParsedExtraction(nodes: nodes, edges: edges);
+/// Joins a proxy base path with a route path without doubling slashes.
+String _joinPath(String basePath, String routePath) {
+  final left = basePath.endsWith('/')
+      ? basePath.substring(0, basePath.length - 1)
+      : basePath;
+  final right = routePath.startsWith('/') ? routePath : '/$routePath';
+  return '$left$right';
 }
 
-class _ParsedExtraction {
-  _ParsedExtraction({required this.nodes, required this.edges});
-  final List<SemanticNodeExtraction> nodes;
-  final List<SemanticEdgeExtraction> edges;
-}
+// Node/edge JSON parsing + C3 vocab validation now happens proxy-side in
+// tool/advisor_proxy/graph_extract_route_part.dart. The tool maps the
+// already-validated proxy response in ProxyGraphExtractionGateway, so no
+// tool-local extraction-JSON parser is needed after the F1 re-point.
 
 /// Semantic extraction executor.
 ///
@@ -4295,19 +4322,20 @@ class _ParsedExtraction {
 /// can consume both without changes.
 ///
 /// HARD RULE: No real API calls in tests. Inject a mock gateway.
-/// The [AnthropicSemanticExtractionGateway] is only instantiated when an
-/// API key is explicitly provided AND the operator has approved a paid run.
-///
-/// Follow-up (proxy endpoint): real extraction runs must be cost-metered
-/// server-side via a new proxy endpoint. See PR body.
+/// HP#7: the default production gateway is [ProxyGraphExtractionGateway],
+/// which POSTs chunks to the proxy ([advisorGraphExtractPath]); the provider
+/// key lives server-side, so this tool holds NO provider key for extraction.
+/// The auth token passed to [extract] is the PROXY bearer token.
 class CorpusSemanticExtractor {
   CorpusSemanticExtractor({
     required Directory repoRoot,
     AdvisorSemanticExtractionGateway? gateway,
     String provider = advisorSemanticProvider,
     String model = advisorSemanticModel,
+    Uri? proxyBaseUrl,
   }) : _repoRoot = repoRoot,
-       _gateway = gateway ?? AnthropicSemanticExtractionGateway(),
+       _gateway =
+           gateway ?? ProxyGraphExtractionGateway(proxyBaseUrl: proxyBaseUrl),
        _provider = provider,
        _model = model;
 
@@ -4325,8 +4353,11 @@ class CorpusSemanticExtractor {
     void Function(int processed, int total, String chunkId)?
     onChunkComplete,
   }) async {
+    // HP#7: this is the PROXY bearer token, never a provider key.
+    // FF_PROXY_TOKEN is the env fallback; the provider key lives server-side
+    // in the proxy environment / KMS, never on this tool host.
     final resolvedApiKey =
-        apiKey ?? Platform.environment['ANTHROPIC_API_KEY'];
+        apiKey ?? Platform.environment['FF_PROXY_TOKEN'];
 
     final materialized = Directory(
       p.join(_repoRoot.path, materializationDirectory),
@@ -4347,9 +4378,10 @@ class CorpusSemanticExtractor {
           a['chunk_id'].toString().compareTo(b['chunk_id'].toString()),
     );
 
-    // Guard against real API calls: only raise the key-missing error when
-    // there are chunks that would actually trigger an LLM call.
-    // Empty or fully-skipped runs do not need an API key.
+    // Guard: only require the proxy token when there are chunks that would
+    // actually trigger a proxy call. Empty or fully-skipped runs need no token.
+    // HP#7: the token authenticates to the PROXY; the paid LLM call and its
+    // provider key live server-side, not on this tool host.
     final hasChunksToProcess = chunks.any(
       (chunk) {
         final key =
@@ -4360,9 +4392,10 @@ class CorpusSemanticExtractor {
     if (hasChunksToProcess &&
         (resolvedApiKey == null || resolvedApiKey.trim().isEmpty)) {
       throw CorpusManifestException(
-        'ANTHROPIC_API_KEY is required to run semantic extraction. '
-        'This command makes paid API calls. '
-        'Ensure operator approval before running.',
+        'A proxy bearer token is required to run semantic extraction '
+        '(pass --proxy-token or set FF_PROXY_TOKEN). '
+        'The proxy brokers the paid LLM call server-side (HP#7); '
+        'this tool holds no provider key.',
       );
     }
 
@@ -4405,6 +4438,8 @@ class CorpusSemanticExtractor {
           nodeKinds: kC3NodeKinds,
           edgeTypes: kC3EdgeTypes,
           edgeVerbPhrases: kC3EdgeVerbPhrases,
+          chunkId: chunkId,
+          contentSha256: contentSha256,
         );
       } catch (e) {
         // Non-fatal: record the failure as a cost record with zero tokens
@@ -4558,13 +4593,13 @@ class CorpusSemanticExtractor {
       'ambiguous_edge_count': ambiguousEdges,
       'total_estimated_input_tokens': totalInputTokens,
       'total_estimated_output_tokens': totalOutputTokens,
-      // HP#9: per-call cost records for downstream billing.
+      // HP#9: per-call token counts mirror the proxy-reported usage.
       'hp9_cost_class': advisorSemanticCostClass,
       'hp9_note':
-          'Per-call token counts recorded below. '
-          'USD conversion is deferred to a future proxy endpoint '
-          '(follow-up: proxy cost-metering endpoint for semantic extraction). '
-          'No proxy_requests rows are written by this tool.',
+          'Token counts are the proxy-reported input/output tokens for each '
+          'POST $advisorGraphExtractPath call. The proxy meters spend '
+          "server-side under its 'graph_extraction' usage class and writes "
+          'proxy_requests rows; this tool records the counts for audit only.',
       'hp9_cost_records':
           costRecords.map((r) => r.toJson()).toList(growable: false),
       'c3_vocab': <String, Object?>{
@@ -4579,12 +4614,14 @@ class CorpusSemanticExtractor {
       ],
       'mode': 'semantic_extraction_llm_call',
       'database_mutation': false,
-      'proxy_endpoint_needed': true,
+      // HP#7 satisfied (F1): extraction is brokered through the proxy route.
+      'proxy_endpoint_needed': false,
+      'proxy_endpoint_path': advisorGraphExtractPath,
       'proxy_endpoint_note':
-          'A new proxy endpoint is required for server-side cost metering '
-          '(HP#7 server-side keys + HP#9 metered by class). '
-          'This tool-side client is built and tested against a mock; '
-          'the real extraction run is a separate operator-funded step.',
+          'Extraction is brokered server-side through the proxy route '
+          '$advisorGraphExtractPath (HP#7 server-side keys + HP#9 metered by '
+          'class). This tool authenticates to the proxy with a bearer token '
+          'and holds no provider key.',
     };
 
     await File(

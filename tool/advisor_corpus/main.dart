@@ -279,23 +279,26 @@ Future<void> main(List<String> args) async {
         );
         break;
       case 'prepare-semantic-candidates':
-        // G4 C3: semantic extraction of typed graph candidates.
-        // OP-GATED: this command makes PAID LLM API calls.
+        // G4 C3 + F1: semantic extraction of typed graph candidates.
+        // OP-GATED: this command drives PAID LLM calls brokered by the proxy.
         // Do NOT run without explicit operator spend approval.
-        // Requires ANTHROPIC_API_KEY in the environment.
+        //
+        // HP#7: the call is brokered through the proxy route
+        // POST /v1/admin/graph/extract. This tool holds NO provider key; it
+        // sends a PROXY bearer token (--proxy-token or FF_PROXY_TOKEN) to the
+        // proxy base URL (--proxy-base or FF_PROXY_BASE_URL). The provider key
+        // lives server-side in the proxy environment / KMS.
         //
         // Reads: build/advisor_corpus/source_chunks.jsonl (materialize first).
         // Writes:
         //   tool/advisor_proxy/graphify_candidates/semantic/
         //     semantic_node_candidates.jsonl
         //     semantic_edge_candidates.jsonl
-        //     semantic_extraction_manifest.json (includes HP#9 cost records)
+        //     semantic_extraction_manifest.json (includes HP#9 token records)
         //
         // Idempotent: skips chunks whose idempotency key is already present
-        // in the output JSONL from a prior run.
-        //
-        // Follow-up: a new proxy endpoint is needed for server-side cost
-        // metering (HP#7 server-side keys + HP#9 metered by class).
+        // in the output JSONL from a prior run; each proxy POST also carries
+        // an Idempotency-Key header so retries dedup proxy-side.
         final semanticMaterializationDirectory =
             _option(args, 'materialized') ?? 'build/advisor_corpus';
         final semanticOutputDirectory =
@@ -305,17 +308,29 @@ Future<void> main(List<String> args) async {
             _option(args, 'graph-scope') ?? 'methodology';
         final semanticGraphVersion =
             _option(args, 'graph-version') ?? '1';
+        final semanticProxyBase =
+            _option(args, 'proxy-base') ??
+            Platform.environment['FF_PROXY_BASE_URL'];
+        final semanticProxyToken =
+            _option(args, 'proxy-token') ??
+            Platform.environment['FF_PROXY_TOKEN'];
         stderr.writeln(
-          'WARNING: prepare-semantic-candidates makes PAID API calls. '
-          'Ensure operator approval before running. '
+          'WARNING: prepare-semantic-candidates drives PAID LLM calls '
+          '(brokered by the proxy). Ensure operator approval before running. '
           'Press Ctrl-C to abort.',
         );
-        final semanticExtractor = CorpusSemanticExtractor(repoRoot: repoRoot);
+        final semanticExtractor = CorpusSemanticExtractor(
+          repoRoot: repoRoot,
+          proxyBaseUrl: semanticProxyBase == null
+              ? null
+              : Uri.parse(semanticProxyBase),
+        );
         final semanticResult = await semanticExtractor.extract(
           materializationDirectory: semanticMaterializationDirectory,
           outputDirectory: semanticOutputDirectory,
           graphScope: semanticGraphScope,
           graphVersion: semanticGraphVersion,
+          apiKey: semanticProxyToken,
           onChunkComplete: (processed, total, chunkId) {
             stdout.writeln(
               'Semantic extraction $processed/$total: $chunkId',
@@ -342,7 +357,8 @@ Future<void> main(List<String> args) async {
         stdout.writeln('Execution ID: ${semanticResult.executionId}');
         stdout.writeln('Output: ${semanticResult.outputDirectory}');
         stdout.writeln(
-          'Proxy endpoint needed for server-side cost metering. '
+          'Brokered through the proxy route /v1/admin/graph/extract '
+          '(HP#7 server-side keys). '
           'See semantic_extraction_manifest.json proxy_endpoint_note.',
         );
         break;
