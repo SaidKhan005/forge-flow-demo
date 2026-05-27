@@ -132,14 +132,21 @@ void main() {
       find.byKey(const Key('operator_web_data_accuracy_screen')),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('data_accuracy_tab_labor')), findsOneWidget);
+    expect(find.byKey(const Key('data_accuracy_tab_covers')), findsOneWidget);
     expect(
-      find.byKey(const Key('data_accuracy_explainer_card')),
+      find.byKey(const Key('data_accuracy_tab_freshness')),
       findsOneWidget,
     );
     expect(
       find.byKey(const Key('data_accuracy_wage_source_card')),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('data_accuracy_explainer_card')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('data_accuracy_tab_covers')));
+    await tester.pumpAndSettle();
+
     expect(
       find.byKey(const Key('data_accuracy_covers_source_card')),
       findsOneWidget,

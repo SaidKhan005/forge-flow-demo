@@ -1,6 +1,6 @@
 # V1 Operator Launch Punchlist Runbook
 
-Updated: 2026-05-06
+Updated: 2026-05-27
 Owner: operator/founder action, with Codex repo support
 
 This runbook executes the repo-side preparation for the open Operator (You)
@@ -108,8 +108,8 @@ Pending inventory:
 
 - The authoritative pending Production1 migration queue is the P0 table in
   `docs/POST_HARDENING_FOLLOWUPS.md`.
-- As of 2026-05-26, that queue contains 75 files through
-  `db/migrations/202605251020_plans_and_limits_scoped_contract_windows.sql`.
+- As of 2026-05-27, that queue contains 76 files through
+  `db/migrations/202605261200_phase_12_c3_typed_graph_vocabulary.sql`.
 - Two rows in that queue are specifically operator-decision-sensitive:
   `db/migrations/202605061800_phase_8_first_connection_backfill_jobs.sql` and
   `db/migrations/202605070000_phase_11W_7_operator_account_fields.sql`.

@@ -17,49 +17,45 @@ import '../_harness.dart';
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Auth-01: cold boot in share-preview mode mounts the admin shell '
-    'without a login screen',
-    (tester) async {
-      final tap = FlutterErrorTap.install();
-      addTearDown(tap.restore);
+  testWidgets('Auth-01: cold boot in share-preview mode mounts the admin shell '
+      'without a login screen', (tester) async {
+    final tap = FlutterErrorTap.install();
+    addTearDown(tap.restore);
 
-      await launchAdminSharePreview(tester);
+    await launchAdminSharePreview(tester);
 
-      // Assertion 1: admin shell mounted.
-      await expectAdminShellMounted(tester);
+    // Assertion 1: admin shell mounted.
+    await expectAdminShellMounted(tester);
 
-      // Assertion 2: identity chip in the header is the seeded
-      // super-admin's email. Key from lib/admin/admin_shell.dart:653.
-      expect(
-        find.byKey(const Key('admin_header_identity')),
-        findsOneWidget,
-        reason:
-            'Header identity chip (Key=admin_header_identity) is missing — '
-            'share-preview fixture identity was not threaded into the shell.',
-      );
+    // Assertion 2: identity chip in the header is the seeded
+    // super-admin's email. Key from lib/admin/admin_shell.dart:653.
+    expect(
+      find.byKey(const Key('admin_header_identity')),
+      findsOneWidget,
+      reason:
+          'Header identity chip (Key=admin_header_identity) is missing — '
+          'share-preview fixture identity was not threaded into the shell.',
+    );
 
-      // Assertion 3: demo banner present. Key from
-      // lib/admin/widgets/admin_demo_banner.dart:38.
-      expect(
-        find.byKey(const Key('admin_demo_banner')),
-        findsOneWidget,
-        reason:
-            'AdminDemoBanner missing — share-preview should always render '
-            'the demo banner so the operator knows fixtures are in use.',
-      );
+    // Assertion 3: demo banner present. Key from
+    // lib/admin/widgets/admin_demo_banner.dart:38.
+    expect(
+      find.byKey(const Key('admin_demo_banner')),
+      findsOneWidget,
+      reason:
+          'AdminDemoBanner missing — share-preview should always render '
+          'the demo banner so the operator knows fixtures are in use.',
+    );
 
-      // Assertion 4: no RenderFlex overflows on boot. The 2026-05-22
-      // pressure test surfaced a 76 px header overflow; this lane is
-      // the canary for "boot is clean".
-      expect(
-        tap.overflowErrors,
-        isEmpty,
-        reason:
-            'RenderFlex overflows detected on admin cold-boot: '
-            '${tap.overflowErrors.map((e) => e.exception).join(', ')}',
-      );
-    },
-    timeout: const Timeout(Duration(minutes: 2)),
-  );
+    // Assertion 4: no RenderFlex overflows on boot. The 2026-05-22
+    // pressure test surfaced a 76 px header overflow; this lane is
+    // the canary for "boot is clean".
+    expect(
+      tap.overflowErrors,
+      isEmpty,
+      reason:
+          'RenderFlex overflows detected on admin cold-boot: '
+          '${tap.overflowErrors.map((e) => e.exception).join(', ')}',
+    );
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }

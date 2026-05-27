@@ -1,8 +1,6 @@
-// Stub — Scenario Ops/BA-03 (account profile dialog).
+// integration_test/admin_pressure/ops_business_accounts/scenario_ops_ba_03_account_profile_dialog_open_and_cancel.dart
 //
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Ops/BA-03: account profile edit dialog opens and cancels cleanly.
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,12 +9,18 @@ import '../_harness.dart';
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Ops/BA-03 (stub): share-preview boot leaves account profile dialog reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for account profile dialog.
-    },
-  );
+  testWidgets('Ops/BA-03: account profile dialog opens and cancels', (
+    tester,
+  ) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await selectDemoDinerBusinessScope(tester);
+
+    await tapAdminKey(tester, 'admin_operator_edit_button');
+    expectAdminKey('admin_edit_operator_dialog');
+    expectAdminKey('admin_edit_business_name');
+
+    await tapAdminKey(tester, 'admin_edit_cancel_button');
+    expectAdminKey('admin_operator_profile_card');
+  });
 }

@@ -1,22 +1,23 @@
-// Stub — Scenario Sysmon/Health-01 (system health categories).
+// integration_test/admin_pressure/sysmon_health/scenario_sysmon_health_01_categories_render.dart
 //
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Sysmon/Health-01: System health renders summary categories.
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Sysmon/Health-01 (stub): share-preview boot leaves system health categories reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for system health categories.
-    },
-  );
+  testWidgets('Sysmon/Health-01: health categories render', (tester) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await tapAdminNav(tester, kAdminHealthRouteId);
+
+    expectAdminKey('admin_health_screen');
+    expectAdminKey('admin_health_summary');
+    expectAdminKey('admin_health_tabs');
+  });
 }

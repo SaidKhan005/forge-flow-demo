@@ -101,6 +101,17 @@ const String kVoyageRerankUsageClass = 'voyage_rerank';
 /// it.
 const String kAdvisorAnswerUsageClass = 'advisor_answer';
 
+/// Usage-class string for the server-side Anthropic semantic-extraction
+/// call on the POST /v1/admin/graph/extract endpoint (Slice G4b).
+///
+/// HP #9 (AI cost metered by class): graph extraction spend is a distinct
+/// class from advisor_answer and advisor_qa so the AI Metrics panel can
+/// attribute graph-building cost separately. 'usage_class' is a free-form
+/// text column (1 to 64 chars), so no migration is required for a new
+/// class value. Exposed as a top-level const so route code and tests
+/// reference the same literal.
+const String kGraphExtractionUsageClass = 'graph_extraction';
+
 /// Per-model token-cost rates. Cents per million tokens, stored as ints
 /// so we can do integer-arithmetic cost computation without floats.
 /// Numbers are list prices per provider as of late 2025 / early 2026 —

@@ -624,24 +624,70 @@ class _OperatorLocationAdminScreenState
 
   Future<void> _suspend(OperatorAdminBundle bundle) async {
     if (!widget.editingEnabled) return;
+    final reason = await _askOperatorReason(
+      dialogKey: const Key('admin_operator_suspend_dialog'),
+      reasonKey: const Key('admin_operator_suspend_reason'),
+      submitKey: const Key('admin_operator_suspend_submit'),
+      title: 'Suspend ${bundle.operator.businessName}',
+      message:
+          'This blocks admin access for the business account until it is reactivated.',
+      submitLabel: 'Suspend',
+      danger: true,
+    );
+    if (reason == null) return;
     final key = _nextIdempotencyKey();
     await _runAndRefresh(() async {
       await widget.gateway.suspendOperator(
         bundle.operator.operatorId,
         idempotencyKey: key,
+        adminReason: reason,
       );
     }, successHint: 'Operator suspended.');
   }
 
   Future<void> _reactivate(OperatorAdminBundle bundle) async {
     if (!widget.editingEnabled) return;
+    final reason = await _askOperatorReason(
+      dialogKey: const Key('admin_operator_reactivate_dialog'),
+      reasonKey: const Key('admin_operator_reactivate_reason'),
+      submitKey: const Key('admin_operator_reactivate_submit'),
+      title: 'Reactivate ${bundle.operator.businessName}',
+      message: 'This restores access for the business account.',
+      submitLabel: 'Reactivate',
+      danger: false,
+    );
+    if (reason == null) return;
     final key = _nextIdempotencyKey();
     await _runAndRefresh(() async {
       await widget.gateway.reactivateOperator(
         bundle.operator.operatorId,
         idempotencyKey: key,
+        adminReason: reason,
       );
     }, successHint: 'Operator reactivated.');
+  }
+
+  Future<String?> _askOperatorReason({
+    required Key dialogKey,
+    required Key reasonKey,
+    required Key submitKey,
+    required String title,
+    required String message,
+    required String submitLabel,
+    required bool danger,
+  }) {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _HierarchyReasonDialog(
+        dialogKey: dialogKey,
+        reasonKey: reasonKey,
+        submitKey: submitKey,
+        title: title,
+        message: message,
+        submitLabel: submitLabel,
+        danger: danger,
+      ),
+    );
   }
 
   Future<void> _openAddLocationDialog(OperatorAdminBundle bundle) async {

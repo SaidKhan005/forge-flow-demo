@@ -1,22 +1,55 @@
-// Stub — Scenario Reg-04 (full-tour unhandled exceptions guard).
+// integration_test/admin_pressure/regression/scenario_reg_04_no_unhandled_exceptions_full_tour.dart
 //
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Reg-04: a non-AI admin tour completes without Flutter framework errors.
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/admin_routes.dart';
+
 import '../_harness.dart';
+
+const List<String> _kNonAiPrimaryTour = <String>[
+  kAdminOperatorsRouteId,
+  kAdminVendorApplicabilityRouteId,
+  kAdminHealthRouteId,
+  kAdminDebugConsoleRouteId,
+  kAdminIntegrationsRouteId,
+  kAdminFeatureFlagsRouteId,
+  kAdminDefaultRoleCatalogRouteId,
+  kAdminMyAccountRouteId,
+  kAdminNotificationPreferencesRouteId,
+];
 
 void main() {
   bootstrapBinding();
 
   testWidgets(
-    'Reg-04 (stub): share-preview boot leaves full-tour unhandled exceptions guard reachable',
+    'Reg-04: non-AI full tour has no unhandled errors',
     (tester) async {
+      final tap = FlutterErrorTap.install();
+      addTearDown(tap.restore);
+
       await launchAdminSharePreview(tester);
       await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for full-tour unhandled exceptions guard.
+
+      for (final routeId in _kNonAiPrimaryTour) {
+        await tapAdminNav(tester, routeId);
+        await expectAdminShellMounted(tester);
+      }
+
+      await selectDemoDinerBusinessScope(tester);
+      for (final routeId in <String>[
+        kAdminMembersRouteId,
+        kAdminRolesHierarchySessionsRouteId,
+        kAdminAuditedSupportActionsRouteId,
+        kAdminPollingPricingRouteId,
+      ]) {
+        await tapAdminClusterRoute(tester, routeId);
+        await expectAdminShellMounted(tester);
+      }
+
+      expect(tap.all, isEmpty);
     },
+    timeout: const Timeout(Duration(minutes: 5)),
   );
 }

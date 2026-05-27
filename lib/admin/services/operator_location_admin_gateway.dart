@@ -86,10 +86,12 @@ abstract class OperatorLocationAdminGateway {
   Future<OperatorAdminRecord> suspendOperator(
     String operatorId, {
     required String idempotencyKey,
+    required String adminReason,
   });
   Future<OperatorAdminRecord> reactivateOperator(
     String operatorId, {
     required String idempotencyKey,
+    required String adminReason,
   });
   Future<LocationAdminRecord> addLocation(LocationCreateCommand command);
   Future<LocationAdminRecord> patchLocation(LocationPatchCommand command);
@@ -174,15 +176,13 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   Future<OperatorAdminRecord> suspendOperator(
     String operatorId, {
     required String idempotencyKey,
+    required String adminReason,
   }) async {
     final body = await _send(
       method: 'POST',
       path: '$operatorsPath/${Uri.encodeComponent(operatorId)}/suspend',
       idempotencyKey: idempotencyKey,
-      jsonBody: _withAdminReason(
-        const <String, Object?>{},
-        'admin.operator_location.suspend',
-      ),
+      jsonBody: _withAdminReason(const <String, Object?>{}, adminReason),
     );
     return OperatorAdminRecord.fromJson(
       (body['operator'] as Map).cast<String, Object?>(),
@@ -193,15 +193,13 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   Future<OperatorAdminRecord> reactivateOperator(
     String operatorId, {
     required String idempotencyKey,
+    required String adminReason,
   }) async {
     final body = await _send(
       method: 'POST',
       path: '$operatorsPath/${Uri.encodeComponent(operatorId)}/reactivate',
       idempotencyKey: idempotencyKey,
-      jsonBody: _withAdminReason(
-        const <String, Object?>{},
-        'admin.operator_location.reactivate',
-      ),
+      jsonBody: _withAdminReason(const <String, Object?>{}, adminReason),
     );
     return OperatorAdminRecord.fromJson(
       (body['operator'] as Map).cast<String, Object?>(),
@@ -480,6 +478,7 @@ class InMemoryOperatorLocationAdminGateway
   Future<OperatorAdminRecord> suspendOperator(
     String operatorId, {
     required String idempotencyKey,
+    required String adminReason,
   }) async {
     final cached = _idempotentResults[idempotencyKey];
     if (cached is OperatorAdminRecord) return cached;
@@ -498,6 +497,7 @@ class InMemoryOperatorLocationAdminGateway
   Future<OperatorAdminRecord> reactivateOperator(
     String operatorId, {
     required String idempotencyKey,
+    required String adminReason,
   }) async {
     final cached = _idempotentResults[idempotencyKey];
     if (cached is OperatorAdminRecord) return cached;

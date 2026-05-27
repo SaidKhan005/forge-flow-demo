@@ -216,6 +216,21 @@ void main() {
     await pumpEventually(tester);
   }
 
+  Future<void> revealDataAccuracyFreshnessTab(WidgetTester tester) async {
+    final tab = find.byKey(const Key('data_accuracy_tab_freshness'));
+    final scroller = find.ancestor(
+      of: tab,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is SingleChildScrollView &&
+            widget.scrollDirection == Axis.horizontal,
+      ),
+    );
+    if (scroller.evaluate().isEmpty) return;
+    await tester.drag(scroller.first, const Offset(-360, 0));
+    await pumpEventually(tester);
+  }
+
   Future<void> tapLocationOverflowAction(
     WidgetTester tester,
     String locationId,
@@ -569,11 +584,13 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('data_accuracy_covers_source_card')),
+        find.byKey(const Key('data_accuracy_wage_source_card')),
         findsOneWidget,
       );
+
+      await tapKey(tester, const Key('data_accuracy_tab_covers'));
       expect(
-        find.byKey(const Key('data_accuracy_wage_source_card')),
+        find.byKey(const Key('data_accuracy_covers_source_card')),
         findsOneWidget,
       );
       expect(
@@ -582,6 +599,9 @@ void main() {
         ),
         findsNothing,
       );
+
+      await revealDataAccuracyFreshnessTab(tester);
+      await tapKey(tester, const Key('data_accuracy_tab_freshness'));
       expect(find.text('Open Polling Setup'), findsOneWidget);
       expect(find.text('Request faster data freshness'), findsNothing);
 
@@ -602,8 +622,35 @@ void main() {
         find.byKey(const Key('operator_web_data_accuracy_screen')),
         findsOneWidget,
       );
+      await revealDataAccuracyFreshnessTab(tester);
+      await tapKey(tester, const Key('data_accuracy_tab_freshness'));
       expect(find.text('Open Polling Setup'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'business suspend requires an admin reason before gateway write',
+    (tester) async {
+      final operatorGateway = await pumpAdminConsole(tester);
+
+      await tapKey(tester, Key('admin_setup_scope_business_$dinerOperatorId'));
+      await tapKey(tester, const Key('admin_operator_suspend_button'));
+
+      expect(
+        find.byKey(const Key('admin_operator_suspend_dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_operator_suspend_reason')),
+        findsOneWidget,
+      );
+
+      await tapKey(tester, const Key('admin_operator_suspend_submit'));
+      expect(find.text('Add a reason before continuing.'), findsOneWidget);
+
+      final operator = (await operatorGateway.listOperators()).single.operator;
+      expect(operator.isSuspended, isFalse);
     },
   );
 

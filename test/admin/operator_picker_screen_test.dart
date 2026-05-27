@@ -39,9 +39,7 @@ class _FailOnceGateway implements OperatorLocationAdminGateway {
   }
 
   @override
-  Future<OperatorAdminBundle> onboardOperator(
-    OperatorOnboardCommand command,
-  ) =>
+  Future<OperatorAdminBundle> onboardOperator(OperatorOnboardCommand command) =>
       throw UnimplementedError();
 
   @override
@@ -52,15 +50,15 @@ class _FailOnceGateway implements OperatorLocationAdminGateway {
   Future<OperatorAdminRecord> suspendOperator(
     String operatorId, {
     required String idempotencyKey,
-  }) =>
-      throw UnimplementedError();
+    required String adminReason,
+  }) => throw UnimplementedError();
 
   @override
   Future<OperatorAdminRecord> reactivateOperator(
     String operatorId, {
     required String idempotencyKey,
-  }) =>
-      throw UnimplementedError();
+    required String adminReason,
+  }) => throw UnimplementedError();
 
   @override
   Future<LocationAdminRecord> addLocation(LocationCreateCommand command) =>
@@ -75,8 +73,7 @@ class _FailOnceGateway implements OperatorLocationAdminGateway {
     required String operatorId,
     required String locationId,
     required String idempotencyKey,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 void main() {
@@ -110,17 +107,16 @@ void main() {
     required String locationId,
     required String operatorId,
     required String name,
-  }) =>
-      LocationAdminRecord(
-        locationId: locationId,
-        operatorId: operatorId,
-        name: name,
-        address: '',
-        timezone: 'America/Toronto',
-        businessDayRolloverHour: 4,
-        createdAt: DateTime.utc(2026, 1, 1),
-        updatedAt: DateTime.utc(2026, 1, 1),
-      );
+  }) => LocationAdminRecord(
+    locationId: locationId,
+    operatorId: operatorId,
+    name: name,
+    address: '',
+    timezone: 'America/Toronto',
+    businessDayRolloverHour: 4,
+    createdAt: DateTime.utc(2026, 1, 1),
+    updatedAt: DateTime.utc(2026, 1, 1),
+  );
 
   // Mounts a host that pushes [child] when the user taps the host
   // button, and forwards the popped result back to the test.
@@ -139,10 +135,10 @@ void main() {
               onPressed: () async {
                 final result = await Navigator.of(context)
                     .push<OperatorPickerResult?>(
-                  MaterialPageRoute<OperatorPickerResult?>(
-                    builder: (_) => child,
-                  ),
-                );
+                      MaterialPageRoute<OperatorPickerResult?>(
+                        builder: (_) => child,
+                      ),
+                    );
                 onPopped(result);
               },
               child: const Text('Open picker'),
@@ -153,118 +149,109 @@ void main() {
     );
   }
 
-  testWidgets(
-    'both dropdowns populate from the gateway and confirm pops the '
-    'resolved (operator, location) pair',
-    (tester) async {
-      final gateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[
-          bundle(
-            operatorId: 'op-diner',
-            name: 'Demo Diner',
-            primaryLocationId: 'loc-toronto',
-            locations: <LocationAdminRecord>[
-              loc(
-                locationId: 'loc-toronto',
-                operatorId: 'op-diner',
-                name: 'Toronto Yorkville',
-              ),
-              loc(
-                locationId: 'loc-montreal',
-                operatorId: 'op-diner',
-                name: 'Montreal Plateau',
-              ),
-            ],
-          ),
-          bundle(
-            operatorId: 'op-cafe',
-            name: 'Sunset Cafe',
-            primaryLocationId: 'loc-nyc',
-            locations: <LocationAdminRecord>[
-              loc(
-                locationId: 'loc-nyc',
-                operatorId: 'op-cafe',
-                name: 'NYC Williamsburg',
-              ),
-            ],
-          ),
-        ],
-      );
-      OperatorPickerResult? popped;
-      var poppedCalls = 0;
-      await tester.pumpWidget(
-        pickerHost(
-          OperatorPickerScreen(gateway: gateway),
-          onPopped: (r) {
-            popped = r;
-            poppedCalls++;
-          },
+  testWidgets('both dropdowns populate from the gateway and confirm pops the '
+      'resolved (operator, location) pair', (tester) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        bundle(
+          operatorId: 'op-diner',
+          name: 'Demo Diner',
+          primaryLocationId: 'loc-toronto',
+          locations: <LocationAdminRecord>[
+            loc(
+              locationId: 'loc-toronto',
+              operatorId: 'op-diner',
+              name: 'Toronto Yorkville',
+            ),
+            loc(
+              locationId: 'loc-montreal',
+              operatorId: 'op-diner',
+              name: 'Montreal Plateau',
+            ),
+          ],
         ),
-      );
-      await tester.tap(find.byKey(const Key('open_picker_host_button')));
-      await tester.pumpAndSettle();
-
-      // Picker is mounted on a fresh route.
-      expect(
-        find.byKey(const Key('admin_operator_picker_screen')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(
-          const Key('admin_operator_picker_operator_dropdown'),
+        bundle(
+          operatorId: 'op-cafe',
+          name: 'Sunset Cafe',
+          primaryLocationId: 'loc-nyc',
+          locations: <LocationAdminRecord>[
+            loc(
+              locationId: 'loc-nyc',
+              operatorId: 'op-cafe',
+              name: 'NYC Williamsburg',
+            ),
+          ],
         ),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(
-          const Key('admin_operator_picker_location_dropdown'),
-        ),
-        findsOneWidget,
-      );
+      ],
+    );
+    OperatorPickerResult? popped;
+    var poppedCalls = 0;
+    await tester.pumpWidget(
+      pickerHost(
+        OperatorPickerScreen(gateway: gateway),
+        onPopped: (r) {
+          popped = r;
+          poppedCalls++;
+        },
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open_picker_host_button')));
+    await tester.pumpAndSettle();
 
-      // Confirm starts disabled (no selection yet).
-      final confirmFinder =
-          find.byKey(const Key('admin_operator_picker_confirm'));
-      expect(
-        tester.widget<FilledButton>(confirmFinder).onPressed,
-        isNull,
-        reason: 'confirm must be disabled before any selection is made',
-      );
+    // Picker is mounted on a fresh route.
+    expect(
+      find.byKey(const Key('admin_operator_picker_screen')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_operator_picker_operator_dropdown')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_operator_picker_location_dropdown')),
+      findsOneWidget,
+    );
 
-      // Open the operator dropdown and pick "Sunset Cafe".
-      await tester.tap(find.byKey(
-        const Key('admin_operator_picker_operator_dropdown'),
-      ));
-      await tester.pumpAndSettle();
-      // Both fixture operators are visible in the open menu.
-      expect(find.text('Demo Diner'), findsWidgets);
-      expect(find.text('Sunset Cafe'), findsWidgets);
-      await tester.tap(find.text('Sunset Cafe').last);
-      await tester.pumpAndSettle();
+    // Confirm starts disabled (no selection yet).
+    final confirmFinder = find.byKey(
+      const Key('admin_operator_picker_confirm'),
+    );
+    expect(
+      tester.widget<FilledButton>(confirmFinder).onPressed,
+      isNull,
+      reason: 'confirm must be disabled before any selection is made',
+    );
 
-      // Location auto-selected to the operator's primary location
-      // ("NYC Williamsburg") — the dropdown shows that label.
-      expect(find.text('NYC Williamsburg'), findsWidgets);
-      // Confirm enables once both dropdowns have values.
-      expect(
-        tester.widget<FilledButton>(confirmFinder).onPressed,
-        isNotNull,
-      );
+    // Open the operator dropdown and pick "Sunset Cafe".
+    await tester.tap(
+      find.byKey(const Key('admin_operator_picker_operator_dropdown')),
+    );
+    await tester.pumpAndSettle();
+    // Both fixture operators are visible in the open menu.
+    expect(find.text('Demo Diner'), findsWidgets);
+    expect(find.text('Sunset Cafe'), findsWidgets);
+    await tester.tap(find.text('Sunset Cafe').last);
+    await tester.pumpAndSettle();
 
-      // Tap confirm.
-      await tester.ensureVisible(confirmFinder);
-      await tester.pumpAndSettle();
-      await tester.tap(confirmFinder);
-      await tester.pumpAndSettle();
+    // Location auto-selected to the operator's primary location
+    // ("NYC Williamsburg") — the dropdown shows that label.
+    expect(find.text('NYC Williamsburg'), findsWidgets);
+    // Confirm enables once both dropdowns have values.
+    expect(tester.widget<FilledButton>(confirmFinder).onPressed, isNotNull);
 
-      expect(poppedCalls, 1);
-      expect(popped, isNotNull);
-      expect(popped!.operatorId, equals('op-cafe'));
-      expect(popped!.locationId, equals('loc-nyc'));
-      expect(popped!.operatorBusinessName, equals('Sunset Cafe'));
-      expect(popped!.locationName, equals('NYC Williamsburg'));
-    },
-  );
+    // Tap confirm.
+    await tester.ensureVisible(confirmFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(confirmFinder);
+    await tester.pumpAndSettle();
+
+    expect(poppedCalls, 1);
+    expect(popped, isNotNull);
+    expect(popped!.operatorId, equals('op-cafe'));
+    expect(popped!.locationId, equals('loc-nyc'));
+    expect(popped!.operatorBusinessName, equals('Sunset Cafe'));
+    expect(popped!.locationName, equals('NYC Williamsburg'));
+  });
 
   testWidgets('empty operator list renders the empty state', (tester) async {
     final gateway = InMemoryOperatorLocationAdminGateway();
@@ -289,120 +276,102 @@ void main() {
     );
 
     // Cancelling the empty state pops null.
-    await tester.tap(find.byKey(
-      const Key('admin_operator_picker_empty_cancel'),
-    ));
+    await tester.tap(
+      find.byKey(const Key('admin_operator_picker_empty_cancel')),
+    );
     await tester.pumpAndSettle();
     expect(popped, isNull);
   });
 
-  testWidgets(
-    'network error renders the error banner with a retry that '
-    'recovers on the next call',
-    (tester) async {
-      final gateway = _FailOnceGateway(failuresRemaining: 1);
-      await tester.pumpWidget(
-        pickerHost(
-          OperatorPickerScreen(gateway: gateway),
-          onPopped: (_) {},
+  testWidgets('network error renders the error banner with a retry that '
+      'recovers on the next call', (tester) async {
+    final gateway = _FailOnceGateway(failuresRemaining: 1);
+    await tester.pumpWidget(
+      pickerHost(OperatorPickerScreen(gateway: gateway), onPopped: (_) {}),
+    );
+    await tester.tap(find.byKey(const Key('open_picker_host_button')));
+    await tester.pumpAndSettle();
+
+    // First load failed → banner renders with retry.
+    expect(
+      find.byKey(const Key('admin_operator_picker_error')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_operator_picker_retry')),
+      findsOneWidget,
+    );
+
+    // Tap retry — gateway now returns an empty list.
+    await tester.tap(find.byKey(const Key('admin_operator_picker_retry')));
+    await tester.pumpAndSettle();
+
+    // Banner cleared, empty state renders instead.
+    expect(find.byKey(const Key('admin_operator_picker_error')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_operator_picker_empty')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('adminUid cache pre-selects the most-recently-touched pair on '
+      'subsequent opens', (tester) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        bundle(
+          operatorId: 'op-diner',
+          name: 'Demo Diner',
+          primaryLocationId: 'loc-toronto',
+          locations: <LocationAdminRecord>[
+            loc(
+              locationId: 'loc-toronto',
+              operatorId: 'op-diner',
+              name: 'Toronto Yorkville',
+            ),
+          ],
         ),
-      );
-      await tester.tap(find.byKey(const Key('open_picker_host_button')));
-      await tester.pumpAndSettle();
+      ],
+    );
 
-      // First load failed → banner renders with retry.
-      expect(
-        find.byKey(const Key('admin_operator_picker_error')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_operator_picker_retry')),
-        findsOneWidget,
-      );
+    // Seed the cache directly via a confirm round-trip on the
+    // first push so the second push starts pre-selected.
+    OperatorPickerResult? popped;
+    await tester.pumpWidget(
+      pickerHost(
+        OperatorPickerScreen(gateway: gateway, adminUid: 'admin-uid-7'),
+        onPopped: (r) => popped = r,
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open_picker_host_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('admin_operator_picker_operator_dropdown')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Demo Diner').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_operator_picker_confirm')));
+    await tester.pumpAndSettle();
+    expect(popped, isNotNull);
+    expect(
+      OperatorPickerScreen.cachedFor('admin-uid-7')?.operatorId,
+      equals('op-diner'),
+    );
 
-      // Tap retry — gateway now returns an empty list.
-      await tester.tap(find.byKey(
-        const Key('admin_operator_picker_retry'),
-      ));
-      await tester.pumpAndSettle();
-
-      // Banner cleared, empty state renders instead.
-      expect(
-        find.byKey(const Key('admin_operator_picker_error')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_operator_picker_empty')),
-        findsOneWidget,
-      );
-    },
-  );
-
-  testWidgets(
-    'adminUid cache pre-selects the most-recently-touched pair on '
-    'subsequent opens',
-    (tester) async {
-      final gateway = InMemoryOperatorLocationAdminGateway(
-        seed: <OperatorAdminBundle>[
-          bundle(
-            operatorId: 'op-diner',
-            name: 'Demo Diner',
-            primaryLocationId: 'loc-toronto',
-            locations: <LocationAdminRecord>[
-              loc(
-                locationId: 'loc-toronto',
-                operatorId: 'op-diner',
-                name: 'Toronto Yorkville',
-              ),
-            ],
-          ),
-        ],
-      );
-
-      // Seed the cache directly via a confirm round-trip on the
-      // first push so the second push starts pre-selected.
-      OperatorPickerResult? popped;
-      await tester.pumpWidget(
-        pickerHost(
-          OperatorPickerScreen(
-            gateway: gateway,
-            adminUid: 'admin-uid-7',
-          ),
-          onPopped: (r) => popped = r,
-        ),
-      );
-      await tester.tap(find.byKey(const Key('open_picker_host_button')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(
-        const Key('admin_operator_picker_operator_dropdown'),
-      ));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Demo Diner').last);
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('admin_operator_picker_confirm')),
-      );
-      await tester.pumpAndSettle();
-      expect(popped, isNotNull);
-      expect(
-        OperatorPickerScreen.cachedFor('admin-uid-7')?.operatorId,
-        equals('op-diner'),
-      );
-
-      // Push the picker again. The cached pair pre-selects so
-      // confirm enables immediately, without re-touching either
-      // dropdown.
-      await tester.tap(find.byKey(const Key('open_picker_host_button')));
-      await tester.pumpAndSettle();
-      final confirmFinder =
-          find.byKey(const Key('admin_operator_picker_confirm'));
-      expect(
-        tester.widget<FilledButton>(confirmFinder).onPressed,
-        isNotNull,
-        reason:
-            'confirm must enable on second open because the cache hit '
-            'pre-selected both dropdowns',
-      );
-    },
-  );
+    // Push the picker again. The cached pair pre-selects so
+    // confirm enables immediately, without re-touching either
+    // dropdown.
+    await tester.tap(find.byKey(const Key('open_picker_host_button')));
+    await tester.pumpAndSettle();
+    final confirmFinder = find.byKey(
+      const Key('admin_operator_picker_confirm'),
+    );
+    expect(
+      tester.widget<FilledButton>(confirmFinder).onPressed,
+      isNotNull,
+      reason:
+          'confirm must enable on second open because the cache hit '
+          'pre-selected both dropdowns',
+    );
+  });
 }

@@ -32,8 +32,11 @@ void main() {
 
       // Identity chip present (Key from lib/admin/admin_shell.dart:653).
       final identity = find.byKey(const Key('admin_header_identity'));
-      expect(identity, findsOneWidget,
-          reason: 'Header identity chip missing in share-preview boot.');
+      expect(
+        identity,
+        findsOneWidget,
+        reason: 'Header identity chip missing in share-preview boot.',
+      );
 
       // The identity widget is a Text node; pull its data and check the
       // email matches the seeded super-admin (see
@@ -58,10 +61,13 @@ void main() {
       );
 
       // No overflows from the identity / header layout.
-      expect(tap.overflowErrors, isEmpty,
-          reason:
-              'Header layout overflowed: '
-              '${tap.overflowErrors.map((e) => e.exception).join(', ')}');
+      expect(
+        tap.overflowErrors,
+        isEmpty,
+        reason:
+            'Header layout overflowed: '
+            '${tap.overflowErrors.map((e) => e.exception).join(', ')}',
+      );
     },
     timeout: const Timeout(Duration(minutes: 2)),
   );

@@ -1,22 +1,23 @@
-// Stub — Scenario Ops/VA-01 (vendor applicability table).
+// integration_test/admin_pressure/ops_vendor_applicability/scenario_ops_va_01_table_renders.dart
 //
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Ops/VA-01: Vendor applicability renders its table and toolbar.
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Ops/VA-01 (stub): share-preview boot leaves vendor applicability table reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for vendor applicability table.
-    },
-  );
+  testWidgets('Ops/VA-01: vendor applicability table renders', (tester) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await tapAdminNav(tester, kAdminVendorApplicabilityRouteId);
+
+    expectAdminKey('admin_vendor_applicability_screen');
+    expectAdminKey('admin_vendor_applicability_toolbar');
+    expectAdminKey('admin_vendor_applicability_list');
+  });
 }

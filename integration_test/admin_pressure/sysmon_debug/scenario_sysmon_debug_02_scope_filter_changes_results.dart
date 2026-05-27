@@ -1,22 +1,23 @@
-// Stub — Scenario Sysmon/Debug-02 (support logs scope filter).
-//
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Scenario Sysmon/Debug-02 (support logs scope filter).
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Sysmon/Debug-02 (stub): share-preview boot leaves support logs scope filter reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for support logs scope filter.
-    },
-  );
+  testWidgets('Sysmon/Debug-02: Support logs expose scope filter controls', (
+    tester,
+  ) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await tapAdminNav(tester, kAdminDebugConsoleRouteId);
+
+    expectAdminKey('admin_debug_console_screen');
+    expectAdminKey('admin_debug_console_scope_body');
+    expectAdminKey('admin_debug_console_request_log_body');
+  });
 }

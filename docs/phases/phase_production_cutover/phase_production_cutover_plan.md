@@ -1,7 +1,23 @@
 # Phase Production Cutover
 
-Updated: 2026-05-03
-Status: Paused before production runtime setup. **`cutover.0a` (CMK provisioning) + `cutover.0a.pg` (Production1 PG re-create with CMK) accepted 2026-05-01.** Production1 now has a GCP/Firebase shell, but no production Cloud Run, Secret Manager namespace, VPC/static egress, DNS, Firebase apps/client configs, or traffic has been set up. Current staging parity is frozen in `production1_staging_parity_baseline_2026-05-03.md`; any new staging work after that file is a production-readiness delta. `cutover.0b` Tier-M perf-gate remains launch-blocking, but the checked-in runner requires the Production1 corpus seed/harness artifacts, so it runs after `cutover.1` corpus load and before first-operator/live-traffic slices. `cutover.2-5` stay queued until `0b` clears.
+Updated: 2026-05-27
+Status: Runtime setup completed up to the migration/DNS boundary.
+**`cutover.0a` (CMK provisioning) + `cutover.0a.pg` (Production1 PG
+re-create with CMK) accepted 2026-05-01; the 2026-05-06
+operator-approved runtime pass then stood up Production1 Firebase
+apps/configs, Secret Manager, VPC/static egress, Azure firewall
+allowlist, and Cloud Run services.** DNS/custom-domain changes, the
+Firebase Auth action-domain switch, SendGrid production credentials,
+Production1 follow-up migrations, and traffic switch remain unperformed.
+Current staging parity is anchored in
+`production1_staging_parity_baseline_2026-05-03.md`, with the
+2026-05-06 runtime closeout recorded in
+`runbooks/v1_operator_launch_punchlist_runbook.md`; any staging work
+after those anchors is a production-readiness delta. `cutover.0b`
+Tier-M perf-gate remains launch-blocking, but the checked-in runner
+requires the Production1 corpus seed/harness artifacts, so it runs after
+`cutover.1` corpus load and before first-operator/live-traffic slices.
+`cutover.2-5` stay queued until `0b` clears.
 Owner: F&F launch lane
 
 ## 2026-04-28 - Phase 9 Foundation Dependencies

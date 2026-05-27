@@ -14,8 +14,7 @@ import '../../tool/pressure/p5_push_delivery_proof.dart';
 
 void main() {
   group('evaluatePushDeliveryState', () {
-    test('Patrol missing from dev_dependencies → deferredPatrolMissing',
-        () {
+    test('Patrol missing from dev_dependencies → deferredPatrolMissing', () {
       final state = evaluatePushDeliveryState(
         env: const <String, String>{
           'PATROL_DEVICE_A_ID': 'emulator-5554',
@@ -29,8 +28,7 @@ void main() {
       expect(state, PushDeliveryHarnessState.deferredPatrolMissing);
     });
 
-    test(
-        'Patrol present but missing env vars → deferredEnvMissing for '
+    test('Patrol present but missing env vars → deferredEnvMissing for '
         'each required key', () {
       // Walk every required env var and confirm absence triggers the
       // env-missing state.
@@ -55,13 +53,15 @@ void main() {
           env: env,
           devDependencies: const <String>['flutter_test', 'patrol'],
         );
-        expect(state, PushDeliveryHarnessState.deferredEnvMissing,
-            reason: 'missing $missing should yield deferredEnvMissing');
+        expect(
+          state,
+          PushDeliveryHarnessState.deferredEnvMissing,
+          reason: 'missing $missing should yield deferredEnvMissing',
+        );
       }
     });
 
-    test('production-looking PROXY_URL → deferredProxyValidationFailed',
-        () {
+    test('production-looking PROXY_URL → deferredProxyValidationFailed', () {
       final state = evaluatePushDeliveryState(
         env: const <String, String>{
           'PATROL_DEVICE_A_ID': 'emulator-5554',
@@ -104,8 +104,7 @@ void main() {
       expect(line['reason'], contains('dev_dependencies'));
     });
 
-    test('deferredEnvMissing reason enumerates the required env vars',
-        () {
+    test('deferredEnvMissing reason enumerates the required env vars', () {
       final line = buildSkippedLine(
         state: PushDeliveryHarnessState.deferredEnvMissing,
         ts: ts,
@@ -114,8 +113,7 @@ void main() {
       expect(line['reason'], contains('PROXY_URL'));
     });
 
-    test(
-        'deferredProxyValidationFailed reason cites the allow-list + '
+    test('deferredProxyValidationFailed reason cites the allow-list + '
         'refuses production', () {
       final line = buildSkippedLine(
         state: PushDeliveryHarnessState.deferredProxyValidationFailed,
@@ -127,8 +125,7 @@ void main() {
   });
 
   group('runPushDeliveryProof', () {
-    test(
-        'Patrol-missing state emits ONE skipped line and exits 0 '
+    test('Patrol-missing state emits ONE skipped line and exits 0 '
         '(env-gated inert)', () async {
       final sink = _BufferedSink();
       final exitCode = await runPushDeliveryProof(
@@ -147,14 +144,12 @@ void main() {
 
       expect(exitCode, 0);
       expect(sink.lines, hasLength(1));
-      final decoded =
-          jsonDecode(sink.lines.single) as Map<String, Object?>;
+      final decoded = jsonDecode(sink.lines.single) as Map<String, Object?>;
       expect(decoded['metric'], 'push_delivery.skipped');
       expect(decoded['state'], 'deferredPatrolMissing');
     });
 
-    test(
-        'env-missing state when Patrol is wired but creds absent → '
+    test('env-missing state when Patrol is wired but creds absent → '
         'skipped line with env-missing reason, exit 0', () async {
       final sink = _BufferedSink();
       final exitCode = await runPushDeliveryProof(
@@ -172,13 +167,11 @@ void main() {
       await sink.close();
 
       expect(exitCode, 0);
-      final decoded =
-          jsonDecode(sink.lines.single) as Map<String, Object?>;
+      final decoded = jsonDecode(sink.lines.single) as Map<String, Object?>;
       expect(decoded['state'], 'deferredEnvMissing');
     });
 
-    test('ready state emits the "ready-but-unimplemented" line + exit 0',
-        () async {
+    test('ready state emits not-implemented line and exits non-zero', () async {
       final sink = _BufferedSink();
       final exitCode = await runPushDeliveryProof(
         env: const <String, String>{
@@ -194,27 +187,33 @@ void main() {
       );
       await sink.close();
 
-      expect(exitCode, 0);
-      final decoded =
-          jsonDecode(sink.lines.single) as Map<String, Object?>;
+      expect(exitCode, 2);
+      final decoded = jsonDecode(sink.lines.single) as Map<String, Object?>;
+      expect(decoded['metric'], 'push_delivery.not_implemented');
       expect(decoded['state'], 'ready_but_unimplemented');
       expect(decoded['reason'], contains('Follow-up'));
     });
   });
 
   test(
-      'kDeclaredDevDependencies does NOT yet declare patrol — when it '
-      'does, the wired branch unlocks', () {
-    // Pinning test: if patrol is added to pubspec.yaml and the
-    // const list updates accordingly, this test enforces a code
-    // review by failing loudly.
-    expect(kDeclaredDevDependencies.contains('patrol'), isFalse,
-        reason: 'When patrol lands in pubspec.yaml dev_dependencies, '
-            'add "patrol" to kDeclaredDevDependencies in '
-            'tool/pressure/p5_push_delivery_proof.dart AND replace '
-            'the ready-state stub with the actual two-device proof '
-            'body; then update this pinning expectation to isTrue.');
-  });
+    'kDeclaredDevDependencies declares patrol so the ready branch is reachable',
+    () {
+      expect(kDeclaredDevDependencies.contains('patrol'), isTrue);
+      expect(
+        evaluatePushDeliveryState(
+          env: const <String, String>{
+            'PATROL_DEVICE_A_ID': 'emulator-5554',
+            'PATROL_DEVICE_B_ID': 'emulator-5556',
+            'PROXY_URL': 'https://preview.forgeflow.app',
+            'PROXY_OPERATOR_TOKEN_A': 'tok-a',
+            'PROXY_OPERATOR_TOKEN_B': 'tok-b',
+          },
+          devDependencies: kDeclaredDevDependencies,
+        ),
+        PushDeliveryHarnessState.ready,
+      );
+    },
+  );
 }
 
 /// Buffered IOSink that captures every `writeln` line into an in-memory

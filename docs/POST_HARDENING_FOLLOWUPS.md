@@ -1,6 +1,6 @@
 # Post-Hardening Follow-ups
 
-Updated: 2026-05-08 (post-audit remediation wave landed: 9 lanes
+Updated: 2026-05-27 (post-audit remediation wave landed: 9 lanes
 merged across PRs [#417](https://github.com/SaidKhan005/forge-flow-demo/pull/417)–
 [#426](https://github.com/SaidKhan005/forge-flow-demo/pull/426). 4 of
 5 P1 audit-addition items closed; the AI-frozen `advisor_proxy.dart`

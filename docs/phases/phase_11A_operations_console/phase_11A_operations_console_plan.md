@@ -2,7 +2,11 @@
 
 Updated: 2026-05-07
 Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`6`/`7`/`UX.health` accepted. **Cross-operator parity slices ACCEPT 2026-05-06**: `11A.12` Members + Invites admin parity (`f84424db`), `11A.13` Roles + Hierarchy + Sessions admin parity (`d26425b3`), `11A.14` cross-operator audit log + audited support actions (`bbc6e134`; ships new `admin.users.reset_mfa_factors` permission key, hash-chained audit row shape). 348 admin tests PASS. Audit follow-up `45bdd734` cleared remaining drift on authority docs.
-Remaining: `11A.8` (support audit), `11A.9` (cross-operator reads), `11A.10` (user impersonation) — not started; deferred post-launch unless escalated.
+Remaining: `11A.8` (API version management), `11A.9` (audit log
+review), `11A.10` (status page management) — not started; deferred
+post-launch unless escalated. Cross-operator support parity is already
+covered by accepted `11A.12`/`11A.13`/`11A.14`; true operator-user
+impersonation is not part of this remaining numbered trio.
 Owner: F&F admin / operations lane
 
 ## Phase 9 Foundation Dependencies (status as of 2026-05-03)

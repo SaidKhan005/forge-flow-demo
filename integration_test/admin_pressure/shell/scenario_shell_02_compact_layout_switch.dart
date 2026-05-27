@@ -1,12 +1,8 @@
-// Stub — Lane A — Shell-02: compact layout switch boundary (720 px).
+// integration_test/admin_pressure/shell/scenario_shell_02_compact_layout_switch.dart
 //
-// The shell flips from the wide left-nav layout to the compact top-nav
-// at the _kCompactShellBreakpoint (720 px) in
-// lib/admin/admin_shell.dart:26. This stub boots the shell, mounts,
-// and leaves a TODO for fleshing out the layout-flip assertions
-// (Key=admin_compact_nav and Key=admin_side_nav presence depending on
-// width).
+// Shell-02: compact and wide layouts both mount the admin shell.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../_harness.dart';
@@ -15,13 +11,26 @@ void main() {
   bootstrapBinding();
 
   testWidgets(
-    'Shell-02 (stub): compact-vs-wide layout flip at 720 px boundary',
+    'Shell-02: compact and wide layout switch mounts cleanly',
     (tester) async {
+      final tap = FlutterErrorTap.install();
+      addTearDown(tap.restore);
+
+      await tester.binding.setSurfaceSize(const Size(680, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
       await launchAdminSharePreview(tester);
       await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for compact/wide
-      // layout flip. Walk surface size around 720 px and assert
-      // admin_compact_nav vs admin_side_nav presence flips.
+      expectAdminKey('admin_header_bar');
+
+      await tester.binding.setSurfaceSize(const Size(1180, 900));
+      await tester.pump();
+      await pumpUntil(tester, budget: kAdminNavBudget);
+
+      await expectAdminShellMounted(tester);
+      expectAdminKey('admin_header_bar');
+      expect(tap.overflowErrors, isEmpty);
     },
+    timeout: const Timeout(Duration(minutes: 3)),
   );
 }
