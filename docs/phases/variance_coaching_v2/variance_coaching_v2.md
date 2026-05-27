@@ -1,7 +1,6 @@
 # Variance Coaching V2 (Phase doc)
 
-Status: Lane A IN-REVIEW (gated). Lanes B to G BLOCKED pending Lane A
-operator approval.
+Status: Lanes A through F MERGED. Lane G wave-close in review (PR #915; operator visual sign-off pending).
 Owner: orchestrator (Lane A is orchestrator-owned and gated).
 Created: 2026-05-16.
 
