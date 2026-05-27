@@ -1,7 +1,7 @@
 -- Lane C C-1a — email_event.provider_event_id + partial UNIQUE INDEX.
 --
 -- Authority:
---   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-1a (line 82) —
+--   * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md row C-1a (line 82) —
 --     prep migration for SendGrid Event Webhook idempotency; operator
 --     Path A pick 2026-05-13.
 --   * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-1
