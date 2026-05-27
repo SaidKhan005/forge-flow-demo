@@ -2242,6 +2242,7 @@ Future<void> _runProxy(List<String> args) async {
                 productionBindings.vendorApplicabilityGateway,
             corpusAdminGateway: productionBindings.corpusAdminGateway,
             graphCandidatesGateway: productionBindings.graphCandidatesGateway,
+            ageRebuildGateway: productionBindings.ageRebuildGateway,
             integrationAdminGateway: productionBindings.integrationAdminGateway,
             integrationAdminActorResolver:
                 productionBindings.integrationAdminActorResolver,
