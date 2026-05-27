@@ -152,6 +152,12 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
+`202605261200_phase_12_c3_typed_graph_vocabulary.sql`
+(Phase 12 / G2 C3 typed graph vocabulary: adds global
+`public.graph_node_kinds` + `public.graph_edge_types` lookup tables seeding
+the C3-sealed node kinds and edge types plus validation views; additive only,
+no changes to `graph_nodes` / `graph_edges`; OP-GATED on operator approval),
+preceded by
 `202605251020_plans_and_limits_scoped_contract_windows.sql`
 (Plans & Limits V1 scoped custom contract foundation plus windows: creates
 operator-scoped `public.pricing_contract_overrides` for Enterprise/custom
