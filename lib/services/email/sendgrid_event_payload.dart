@@ -35,7 +35,7 @@
 //   UNIQUE INDEX `email_event_provider_event_id_unique`.
 //
 // Authority:
-//   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-1 (line 83) — slice
+//   * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md row C-1 (line 83) — slice
 //     scope: route + parser + signature verification + idempotent
 //     insert + 6-8 tests.
 //   * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-1

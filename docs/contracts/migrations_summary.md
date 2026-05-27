@@ -5832,7 +5832,7 @@ Migration count: **145**
   Lane C C-1a — email_event.provider_event_id + partial UNIQUE INDEX.
 
   Authority:
-  * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-1a (line 82) —
+  * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md row C-1a (line 82) —
   prep migration for SendGrid Event Webhook idempotency; operator
   Path A pick 2026-05-13.
   * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-1
@@ -5953,7 +5953,7 @@ Migration count: **145**
   ("Adaptive 2FA button"). Pure additive expand.
 
   Authority:
-  * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-7a (line 94) — prep
+  * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md row C-7a (line 94) — prep
   migration unblocking Codex's C-7 ("Adaptive 2FA button"). Operator
   approved 2026-05-13 ("yes to all" on the open-decisions slate).
   * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-7
@@ -6062,7 +6062,7 @@ Migration count: **145**
   Lane C C-2-D — vendor_sync_outage_state (first-failure-of-outage detector).
 
   Authority:
-  * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-2-D (line 86) —
+  * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md row C-2-D (line 86) —
   wire `vendor_sync_error_alert` with a first-failure-of-outage
   detector; per-row email would spam on transients. Operator
   picked WIRE option (D) in the C-2 matrix.
