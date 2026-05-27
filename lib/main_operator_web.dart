@@ -93,21 +93,32 @@ const String _kOperatorWebProxyBaseUri = String.fromEnvironment(
   'OPERATOR_WEB_PROXY_BASE_URI',
 );
 
-/// Release/profile fail-closed copy for an accidental demo-auth build.
+/// Release fail-closed copy for an accidental demo-auth build.
 @visibleForTesting
 const String kOperatorWebDemoAuthBlockedMessage =
-    'Operator Web demo auth is blocked in a non-debug build. '
+    'Operator Web demo auth is blocked in a release build. '
     'OPERATOR_WEB_DEMO_AUTH was set, but demo auth bypasses Firebase '
     'and must never ship on a public endpoint. Drop the demo flag and '
     'ship live Firebase auth.';
 
 /// Pure decision for the real runtime guard in [main].
+///
+/// Only **release** builds with `OPERATOR_WEB_DEMO_AUTH=true` are blocked:
+/// the Cloud Run deploy script ships release artifacts, so that is the
+/// real public-endpoint hazard. Debug builds are unblocked (local dev)
+/// and profile builds are unblocked because the operator-web QA runbook
+/// builds with `--profile` to bypass the DDC debug client — that is a
+/// local-QA-only build target and never the deploy artifact. See
+/// `docs/_audits/operator_web_demo_boot_2026_05_27.md` for the
+/// regression that motivated tightening the predicate.
 @visibleForTesting
 bool operatorWebDemoAuthBlockedInRelease({
   required bool isDebugMode,
+  required bool isProfileMode,
   required bool operatorWebDemoAuth,
 }) {
   if (isDebugMode) return false;
+  if (isProfileMode) return false;
   return operatorWebDemoAuth;
 }
 
@@ -162,6 +173,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (operatorWebDemoAuthBlockedInRelease(
     isDebugMode: kDebugMode,
+    isProfileMode: kProfileMode,
     operatorWebDemoAuth: _kOperatorWebDemoAuth,
   )) {
     final error = StateError(kOperatorWebDemoAuthBlockedMessage);
