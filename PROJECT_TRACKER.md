@@ -157,24 +157,31 @@ Resume notes: `memory/project_phase_pause_2026_05_03.md`,
 | `8.5`, `11W.9` | Outward-vendor freeze |
 | `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze |
 
-**Advisor-launch carve-out (2026-05-25):** the **Advisor Knowledge
-Activation** plan
-(`docs/phases/advisor_knowledge_activation/advisor_knowledge_activation_plan.md`)
-is the operator-driven ACTIVE work against the Phase 11b advisor portion
-listed above; that portion is no longer frozen. The rest of the AI-freeze
-set (`12.0`–`12.5`, `11A.11`, `10b`, `9.8` advisor portion) stays paused.
+**Advisor Knowledge + Graph Activation — PAUSED 2026-05-27** (was the
+2026-05-25 active carve-out). The advisor "brain" (Workstream A), the
+operator-facing chat UI (D web + mobile), the admin Knowledge +
+Connections tabs (B + C2), and the knowledge-graph activation
+(G1/G2/G4/G4b/G5a) are all built and on `master`, inert until deploy.
+Three audited held PRs await operator merge: #1429 (F1 tool re-point),
+#1430 (F2 extract metering + idempotency), #1428 (F3 AGE DML grant,
+schema). The full phased resume sequence, remaining engineering (G5b
+advisor-reads-graph + the other HP#7 re-points), open decisions, the
+documented-gaps reference, and the go-live action list are in
+`docs/phases/advisor_knowledge_activation/advisor_graph_activation_resume_plan.md`.
+**Resume AFTER** the refactor lane (NEXT_WAVE_PLAN Phase 3: R-1/R-2/R-3)
+and Per-Daypart Targets V1 (Phase 2.5). The rest of the AI-freeze set
+(`12.0`–`12.5`, `11A.11`, `10b`, `9.8` advisor portion) stays paused.
 
-**`11A.3.x` graphify-candidates — status update (2026-05-25, supersedes the
-2026-05-07 paused-by-design note):** now governed by the Advisor Knowledge
-Activation plan (Workstream C). The candidate-review gateway is bound in
-the proxy and a candidate bundle is staged under
-`tool/advisor_proxy/graphify_candidates/candidates/`, so the original
-"first task on resume is bundle staging" is DONE (plan C1 = code-complete).
-Remaining before the review surface lights up: confirm the deployed image
-ships the candidate artifacts + `corpus_manifest.yaml` to the runtime
-path; make the candidate-content decision (the staged bundle is
-Barrio-handbook-heavy, vs regenerate F&F-only); and the Connections-tab
-redesign (plan C2). The canonical-graph write path stays op-gated.
+**`11A.3.x` graphify-candidates — status (updated 2026-05-27):** governed
+by the Advisor Knowledge Activation plan (Workstream C); C1 is
+code-complete and the Connections-tab redesign (C2 + map) is DONE +
+merged. The candidate-content decision is RESOLVED: BOTH brands (Forge &
+Flow + Barrio data only; Barrio app code stays paused), regenerated +
+staged by G1 (#1420). What remains is deploy-time only (confirm the
+deployed image ships the candidate JSONL + `corpus_manifest.yaml`; the
+un-pause call; runtime `commit-batch` verify), tracked as phase R2 in
+`advisor_graph_activation_resume_plan.md`. The canonical-graph write path
+stays op-gated.
 
 **AI/advisor deferred gap pickup (2026-05-27 audit):** keep the remaining
 AI/advisor fixes in their lane. Concrete references live in
