@@ -7,11 +7,20 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605270000_phase_11A_age_rebuild_runtime_dml_grants.sql`
+(Graph F3: grants the proxy runtime role `forge_admin` the minimal DML on the
+`forgeflow` Apache AGE graph schema -- usage + create on the schema, plus
+INSERT/UPDATE/DELETE/SELECT on its tables and usage/select/update on its
+sequences, with matching default privileges -- so the G5a AGE rebuild can
+delete-and-reproject instead of surfacing a typed 503; least-privilege,
+`forge_admin` only, scoped to the AGE schema, does not touch RLS on the
+canonical `public.graph_nodes` / `public.graph_edges`; OP-GATED on operator
+approval before apply; see the migration list below), preceded by
 `202605261200_phase_12_c3_typed_graph_vocabulary.sql`
 (Phase 12 / G2 C3 typed graph vocabulary: adds `public.graph_node_kinds` +
 `public.graph_edge_types` global lookup tables with the C3-approved node kinds
 and edge types, plus `graph_nodes_unknown_kinds` / `graph_edges_unknown_types`
-validation views for C4 FK preparation; global — no operator_id / RLS;
+validation views for C4 FK preparation; global -- no operator_id / RLS;
 OP-GATED on operator approval before apply; see the migration list below),
 preceded by
 `202605251020_plans_and_limits_scoped_contract_windows.sql`
@@ -160,7 +169,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (67 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (68 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -432,6 +441,23 @@ Current known post-cutoff staging additions:
   `authenticated`, full DML to `service_role` + `forge_admin`. Additive only;
   does not touch `graph_nodes` or `graph_edges`. **OP-GATED — hold for explicit
   operator approval before any apply.**
+- `db/migrations/202605270000_phase_11A_age_rebuild_runtime_dml_grants.sql`
+  (Graph F3) grants the proxy runtime role `forge_admin` the minimal DML the
+  G5a AGE rebuild needs on the `forgeflow` Apache AGE graph schema: usage +
+  create on the schema (create lets a cypher MERGE materialize a new label
+  table at projection time), INSERT/UPDATE/DELETE/SELECT on its tables
+  (including the owner-created `_ag_label_vertex` / `_ag_label_edge` parents),
+  and usage/select/update on its sequences, with matching default privileges
+  for future owner-created label objects. Complements
+  `202605021710_phase_11A_health_age_runtime_grants.sql`, which granted only
+  SELECT (enough for the health MATCH); without the DML a live rebuild raises
+  a privilege error the gateway returns as a typed 503. Least-privilege:
+  `forge_admin` only (not `service_role`), no superuser / ownership / broad
+  `ALL`, scoped to the `forgeflow` AGE schema + `ag_catalog`. Does NOT touch
+  RLS on the canonical `public.graph_nodes` / `public.graph_edges`; per-operator
+  isolation for the projection is enforced by G5a stamping `operator_id` on
+  every vertex/edge and scoping its DETACH DELETE by `operator_id`, not by
+  schema. **OP-GATED -- hold for explicit operator approval before any apply.**
 
 Migration drift automation:
 

@@ -156,6 +156,17 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
+`202605270000_phase_11A_age_rebuild_runtime_dml_grants.sql`
+(Graph F3: grants the proxy runtime role `forge_admin` the minimal DML the
+G5a AGE rebuild needs on the `forgeflow` Apache AGE graph schema -- usage +
+create on the schema, INSERT/UPDATE/DELETE/SELECT on its tables,
+usage/select/update on its sequences, with matching default privileges -- so a
+live rebuild delete-and-reprojects instead of surfacing a typed 503;
+complements the SELECT-only health grant
+`202605021710_phase_11A_health_age_runtime_grants.sql`; least-privilege,
+`forge_admin` only, scoped to the AGE schema, does not touch RLS on the
+canonical `public.graph_nodes` / `public.graph_edges`; OP-GATED on operator
+approval), preceded by
 `202605261200_phase_12_c3_typed_graph_vocabulary.sql`
 (Phase 12 / G2 C3 typed graph vocabulary: adds global
 `public.graph_node_kinds` + `public.graph_edge_types` lookup tables seeding
