@@ -154,6 +154,17 @@ Do not re-open stale findings unless the repo regresses:
   `public.graph_node_kinds` + `public.graph_edge_types` lookup tables with
   the C3-sealed node kinds and edge types plus C4 validation views
   (additive only; OP-GATED on operator approval).
+  Graph F3 then advances the cutoff to
+  `202605270000_phase_11A_age_rebuild_runtime_dml_grants.sql`: grants the
+  proxy runtime role `forge_admin` the minimal DML the G5a AGE rebuild needs
+  on the `forgeflow` Apache AGE graph schema (usage + create on the schema,
+  INSERT/UPDATE/DELETE/SELECT on its tables, usage/select/update on its
+  sequences, with matching default privileges) so a live rebuild
+  delete-and-reprojects instead of surfacing a typed 503. Complements the
+  SELECT-only health grant `202605021710_phase_11A_health_age_runtime_grants.sql`;
+  least-privilege, `forge_admin` only, scoped to the AGE schema, and does not
+  touch RLS on the canonical `public.graph_nodes` / `public.graph_edges`
+  (additive only; OP-GATED on operator approval).
   The Hardening Wave B3 audit-anchor
   cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron

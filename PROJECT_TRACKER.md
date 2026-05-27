@@ -100,7 +100,7 @@ Detail + resume guide: `docs/archive/_execution/2026-05-06_v1_operator_punchlist
 | Item | Owner | Blocks |
 |---|---|---|
 | Firebase Auth action-domain switch (`auth.feflow.org` → `forge-flow-production1.web.app`, set `callbackUri`, run 4 validation checks) | You / Cloud | `cutover.0` preflight |
-| Decide + apply the authoritative Production1 pending-migration queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0. Two rows in that queue remain specifically operator-decision-sensitive (first-connect-backfill jobs + 11W.7 operator account fields); the full queue is 76 files through `202605261200_phase_12_c3_typed_graph_vocabulary.sql`. | You + runbook | First-connect on prod, operator-web Account writes on prod, all staging-ready schema-backed features |
+| Decide + apply the authoritative Production1 pending-migration queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0. Two rows in that queue remain specifically operator-decision-sensitive (first-connect-backfill jobs + 11W.7 operator account fields); the full queue is 77 files through `202605270000_phase_11A_age_rebuild_runtime_dml_grants.sql`. | You + runbook | First-connect on prod, operator-web Account writes on prod, all staging-ready schema-backed features |
 | Seed operator-authored T&C content into `tos_versions` (universal + per-vendor scopes) at deploy time. Operator self-authors per `docs/contracts/operator_self_served_tos_contract.md`; no external legal-review gate. | You / Eng | `cutover.2` |
 | Sandbox creds for trio: Lightspeed K-Series · Libro · QuickBooks Time | You / Vendors | `*.live.sandbox` slices for trio |
 
