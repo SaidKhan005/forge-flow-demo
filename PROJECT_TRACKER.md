@@ -59,9 +59,11 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 | `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md` | All | **Active feature plan.** Self-contained; 14 decisions locked; 9 slices; 44 gaps consolidated; reusable audit method. |
 | `docs/phases/plans_and_limits_v1/plans_and_limits_v1_plan.md` | Reference | Plans & Limits V1 closeout. Six plans, admin Plans and limits, pricing catalog, entitlements matrix, model routing, Operator Web "Your plan", and scoped custom contracts are shipped; real feature gates and billing remain future/deferred. |
 | `docs/phases/plans_and_limits_v1/scoped_custom_contracts_plan.md` | Reference | Scoped Enterprise/custom-contract closeout: business/org-unit/location overrides, inheritance resolver, admin edit/clear/inherit flow, Operator Web display-only behavior, and non-goals. |
-| `docs/_indices/WAVE_2_LEDGER.md` | Reference | Wave 2's slice ledger. Operator-web + admin lanes CLOSED 2026-05-14; mobile lane closed for walkthrough 2026-05-15 (transitioned to Per-Daypart Targets V1). |
 | `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth on every brain-dump ask from `debug.md` mapped to ✅/🚧/❌/🔍 with citations. |
+| `docs/_indices/INFRA_DEFERRALS_INVENTORY.md` | All | Discovery index for ~20+ deliberate "we'll finish this later" infrastructure deferrals scattered across per-file code comments. Not authority; points back to governing phase/contract docs. |
 | `docs/_indices/README.md` | All | Explains the index pattern + when to read which doc. |
+| `docs/_indices/WAVE_2_LEDGER.md` | Frozen reference | **CLOSED 2026-05-15** (header marker). Operator-web + admin lanes closed 2026-05-14; mobile lane transitioned to Per-Daypart Targets V1 2026-05-15. Frozen for history; not an active routing target. |
+| `docs/_indices/VARIANCE_COACHING_V2_LEDGER.md` | Frozen reference | **CLOSED** — Lanes A to G all merged (Lane G PR #915, 2026-05-17). Two Lane-G follow-ups remain open in that doc; the ledger itself is frozen reference, not an active routing target. |
 
 **Archived indices** (closed-wave artifacts retired 2026-05-15):
 `docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md`
@@ -100,7 +102,7 @@ Detail + resume guide: `docs/archive/_execution/2026-05-06_v1_operator_punchlist
 | Item | Owner | Blocks |
 |---|---|---|
 | Firebase Auth action-domain switch (`auth.feflow.org` → `forge-flow-production1.web.app`, set `callbackUri`, run 4 validation checks) | You / Cloud | `cutover.0` preflight |
-| Decide + apply the authoritative Production1 pending-migration queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0. Two rows in that queue remain specifically operator-decision-sensitive (first-connect-backfill jobs + 11W.7 operator account fields); the full queue is 77 files through `202605270000_phase_11A_age_rebuild_runtime_dml_grants.sql`. | You + runbook | First-connect on prod, operator-web Account writes on prod, all staging-ready schema-backed features |
+| Decide + apply the authoritative Production1 pending-migration queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0. Two rows in that queue remain specifically operator-decision-sensitive (first-connect-backfill jobs + 11W.7 operator account fields); the full queue is 77 files through `202605270000_phase_11A_age_rebuild_runtime_dml_grants.sql` (per `POST_HARDENING_FOLLOWUPS.md` L34). | You + runbook | First-connect on prod, operator-web Account writes on prod, all staging-ready schema-backed features |
 | Seed operator-authored T&C content into `tos_versions` (universal + per-vendor scopes) at deploy time. Operator self-authors per `docs/contracts/operator_self_served_tos_contract.md`; no external legal-review gate. | You / Eng | `cutover.2` |
 | Sandbox creds for trio: Lightspeed K-Series · Libro · QuickBooks Time | You / Vendors | `*.live.sandbox` slices for trio |
 
@@ -122,7 +124,8 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 
 | Slice | Status | Plan |
 |---|---|---|
-| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active implementation; Slices 0 to 6 landed, completing the full numbered sequence (covers-source per-period schema + bottom-up locked weekly-plan snapshot + per-period verdict carry + Slice 6 audit-scorer per-period & pool-consistency checks, #917/#948); benchmark-rework follow-ups in flight** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`**: 9 slices (0 to 1 to 1.5 to 2 to 2.5 to 3 to 4 to 5 to 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. Landed covers-source de-hardcode R5/R7a to R7d (#943/#972/#975 to #977; **#977 schema-destructive: drops legacy whole-day columns + trims view scalars**); run `migration_drift_scanner` + `migration_cutoff_lint` after any further `db/migrations` change. |
+| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active implementation; Slices 0, 1, 1.5, 2, 2.5, 3, 4, 5, 6 all landed (covers-source per-period schema + bottom-up locked weekly-plan snapshot + per-period verdict carry + Slice 6 audit-scorer per-period & pool-consistency checks, #917/#948); benchmark-rework follow-ups in flight per the per-slice ledger** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`**: 9 slices (0 to 1 to 1.5 to 2 to 2.5 to 3 to 4 to 5 to 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. Landed covers-source de-hardcode R5/R7a to R7d (#943/#972/#975 to #977; **#977 schema-destructive: drops legacy whole-day columns + trims view scalars**); run `migration_drift_scanner` + `migration_cutoff_lint` after any further `db/migrations` change. |
+| **Refactor phase** (R-1 / R-2 / R-3 per `POST_HARDENING_FOLLOWUPS.md`) | Phase A guardrails landed (#1162, #1163, #1165); Phase B gated on happy-state tag, which is gated on Per-Daypart V1 exit + walkthrough re-run. | `docs/phases/refactor_phase/refactor_phase_plan.md` (created 2026-05-22; refreshed 2026-05-27 via #1424). Sequences `NEXT_WAVE_PLAN` Phase 3 (R-1 + R-2) + Phase 4 (re-test) with zero-behavior-change refactor doctrine. |
 | `11A.8` API version management | not started | `phase_11A_operations_console/*` |
 | `11A.9` Audit log review | not started | `phase_11A_operations_console/*` |
 | `11A.10` Status page management | not started | `phase_11A_operations_console/*` |
@@ -148,12 +151,10 @@ and `*.live.prod` slice fires only when vendor credentials arrive. Tracker:
 
 ## Paused
 
-Resume notes: `memory/project_phase_pause_2026_05_03.md`,
-`memory/project_barrio_paused.md`.
-
 | Phase | Reason |
 |---|---|
-| `11b` / `.1` / `.2`, `12.0`–`12.5`, `11A.3` + `11A.3.x`, `11A.11`, `9.8` advisor portion, `10b` | AI freeze |
+| `12.0`–`12.5`, `11A.11`, `9.8` advisor portion, `10b` | AI freeze (persistent) |
+| `11b` / `.1` / `.2`, `11A.3` + `11A.3.x` | AI freeze with active carve-outs — see Advisor Knowledge + Graph Activation block below (`11b/.1/.2` paused 2026-05-27 after build; `11A.3.x` resolved per the 2026-05-27 audit, deploy-time only). |
 | `8.5`, `11W.9` | Outward-vendor freeze |
 | `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze |
 
@@ -273,61 +274,13 @@ arrive.
 - **Notify before** any live Firebase mutation, key/account request,
   billing setup, provider call, or product decision.
 
-## Recently landed (through 2026-05-26)
+## Recently landed (through 2026-05-27)
 
 Themed digest of what landed since the last tracker refresh (commit
 `54dbd2f5`). None of this changes the V1 launch path above; it is
 feature build-out, doc alignment, and repo hygiene.
 
-### 2026-05-16 to 2026-05-18 (92 non-merge commits since `54dbd2f5`)
-
-- **Covers-source per-period schema (Per-Daypart V1 Slice 0 to 5):**
-  R5 covers-source de-hardcode + keyed-table backfill (#943); R7a
-  per-period hierarchy view + scoped-override re-key, additive (#972);
-  R7b proxy onto per-period keyed view, wire-compatible (#975); R7c
-  dead legacy-column Dart removed (#976); **R7d FINAL,
-  schema-destructive: drops legacy whole-day columns + trims view
-  scalars (#977)**. Bottom-up locked weekly-plan snapshot (#917/#941);
-  Slice 5 Variance Full Week non-closed rows read locked sub-rows
-  (#951); SA/SD/SE benchmark-rework + per-period verdict carry
-  (#907/#919/#926/#934).
-- **Doc-alignment audit Phases 1 to 4 (contracts vs code):** Phase 1
-  core_app_architecture.md alignment + 4 drift corrections
-  (#981/#982); Phase 2 Tier-2 contracts + corrections (#983/#985);
-  Phase 3 priority code/schema-binding contracts + corrections
-  (#984/#985); Phase 4 remaining contracts (#986); full-scope fixes
-  for 3 flagged items: ToS impl, migrations summary, 7.58 + accuracy
-  lags (#987). Contract edits owned by that audit lane, not this
-  tracker.
-- **Choose Star Shifts redesign (R1 to R10):** operator-config daypart
-  lens + 2-state hero calendar + pre-commit gate (#932); tap-day
-  bottom sheet whole-day rollup (#940); Lean/Balanced/Generous band
-  (#946); 4-period demo operator proving daypart de-hardcode (#929);
-  align to committed prototype (#952); single continuous scroll +
-  PLAN IMPACT dropdown (#959); per-daypart mix-and-match band +
-  scope-label header (#966); spec + prototype docs (#947).
-- **Variance Coaching V2 (Lanes A to G):** evolved copy catalog,
-  Primary Driver arrow-chain widget, This Week / History V2 parity,
-  History CPLH-vs-OPZ 60-day band, Learn restructure (#898 to #969
-  range); Lane G wave-close test re-pin + verification (#915).
-- **Mobile-UX polish:** readable type scale + spacing tokens + OS
-  text scaling, premium surface system, off-scale spacing
-  normalization across baseline_tracker / notifications / schedule /
-  shift_dashboard, Shift gradient-card unification (#953 to #971
-  range).
-- **Advisor-proxy size discipline:** route groups extracted so the
-  proxy falls back under its size ceiling, no behavior change (#979).
-- **Repo hygiene + safety:** repo_janitor wired via the `post-merge`
-  git hook with `pre_merge_gate` mandated while CI is dark;
-  repo_janitor hardened to never auto-prune session/loop worktrees
-  (#980); auto-hygiene enabled (dry-run default); repo-wide
-  branch/worktree cleanup done; full lost-work rescue sweep completed
-  (`rescue/*` branches pushed to `origin`).
-- **Misc fixes:** closed-state Shift dashboard + closed-shift chrome
-  suppression (#937/#950/#962), audit-panel RenderFlex overflow +
-  wage-at-lock-time reframe (#920/#948), settings/integrations copy
-  and DI fixes, deterministic polling-vendor filter test (#978),
-  demo-seed reservation apportionment (#956).
+**2026-05-16 to 2026-05-18:** retired to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md` 2026-05-27 (49 entries covering Per-Daypart Slices 0 to 5, doc-alignment audit Phases 1 to 4, Choose Star Shifts R1 to R10, Variance Coaching V2 Lanes A to G, mobile UX polish, advisor-proxy size discipline, repo hygiene, misc fixes).
 
 ### 2026-05-19 to 2026-05-22 (199 non-merge commits)
 
@@ -396,7 +349,7 @@ feature build-out, doc alignment, and repo hygiene.
   admin-console QA runbook coverage; headless-Electron polyfill fixes;
   stale operator-web tests quarantined pending surface-freeze (#1167).
 
-### 2026-05-23 to 2026-05-26
+### 2026-05-23 to 2026-05-27
 
 - **Plans & Limits V1 shipped:** six real plans including Elite and
   Enterprise; admin Plans and limits rebuilt; live spend/caps and delete
@@ -413,6 +366,34 @@ feature build-out, doc alignment, and repo hygiene.
   popup, clear/inherit behavior, Enterprise/custom copy, Operator Web "Your
   plan", and Business Accounts copy were browser-checked and cleaned up
   through PR #1388.
+- **Advisor D1 + D2 (chat surfaces):** Slice D1 Advisor Answer client
+  (#1392); Advisor Chat operator-web D2 (#1414); mobile chat (#1418).
+  Followed by the 2026-05-27 Advisor Knowledge + Graph Activation pause
+  (see Paused section above).
+- **Knowledge-graph activation lane:** G1 candidate bundle regenerated for
+  both brands (#1420); C3 typed-vocabulary migration (#1421); C3
+  semantic-extraction tooling (#1422); proxy semantic-extraction endpoint
+  (#1423); AGE rebuild G5a (#1427); follow-ups F1/F2/F3 (#1428, #1429,
+  #1430).
+- **Admin pressure suite scaffold + runner:** scaffold (#1407) + runner
+  (#1415; 124/124 PASSED).
+- **Admin Knowledge base C2 redesign:** Connections-tab redesign + map
+  through PRs #1389, #1390, #1400, #1416.
+- **Data Accuracy tabbed redesign:** #1399, #1402, #1403.
+- **Vendor applicability end-to-end:** #1387, #1395.
+- **Refactor phase plan creation + refresh:** added 2026-05-22 at
+  `docs/phases/refactor_phase/refactor_phase_plan.md`; refreshed 2026-05-27
+  via #1424.
+- **Operator Web shared body refactor:** PR #1198 routed every screen
+  body through the shared `OperatorWebScreenBody`.
+- **Mobile pressure Wave 2 (Lanes E to H, 20 scenarios):** harness +
+  notifier fixes landed on master commit `e700cecb`.
+- **Archive sweeps:** mobile pressure 2026-05-22 (#1408); operator-web UX
+  consistency (#1409); 6 shipped 2026-05-20 execution plans (#1410);
+  test-suite tightening audit (#1411); admin_support_logs_redesign
+  (#1413); citation repoints (#1431); 5 stale doc refs (#1425);
+  CLAUDE.md Session Handoff section removed (#1426); `.gitignore` A6
+  (#1432).
 - **Still not active:** real feature gates wait until gateable product
   surfaces exist; Stripe, invoices, payment methods, checkout, and operator
   self-serve plan changes remain future work.
