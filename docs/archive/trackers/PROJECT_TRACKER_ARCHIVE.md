@@ -963,3 +963,61 @@ The following accepted/closed rows were moved here from the active board:
   closed-row proxy gap (V1.A), FK posture flip (V1.B), same-second
   prefix collision resolved.
 - **Phase 7.61.2 / 7.61.3** — closed (`cd0b32d`, `f21baf4`).
+
+## Recently landed 2026-05-16 to 2026-05-18 (retired from active tracker 2026-05-27)
+
+Moved verbatim from `PROJECT_TRACKER.md` "Recently landed" section as
+part of the 10-item pre-refactor sweep. 49 entries covering Per-Daypart
+Slices 0 to 5, doc-alignment audit Phases 1 to 4, Choose Star Shifts
+R1 to R10, Variance Coaching V2 Lanes A to G, mobile UX polish,
+advisor-proxy size discipline, repo hygiene, misc fixes.
+
+### 2026-05-16 to 2026-05-18 (92 non-merge commits since `54dbd2f5`)
+
+- **Covers-source per-period schema (Per-Daypart V1 Slice 0 to 5):**
+  R5 covers-source de-hardcode + keyed-table backfill (#943); R7a
+  per-period hierarchy view + scoped-override re-key, additive (#972);
+  R7b proxy onto per-period keyed view, wire-compatible (#975); R7c
+  dead legacy-column Dart removed (#976); **R7d FINAL,
+  schema-destructive: drops legacy whole-day columns + trims view
+  scalars (#977)**. Bottom-up locked weekly-plan snapshot (#917/#941);
+  Slice 5 Variance Full Week non-closed rows read locked sub-rows
+  (#951); SA/SD/SE benchmark-rework + per-period verdict carry
+  (#907/#919/#926/#934).
+- **Doc-alignment audit Phases 1 to 4 (contracts vs code):** Phase 1
+  core_app_architecture.md alignment + 4 drift corrections
+  (#981/#982); Phase 2 Tier-2 contracts + corrections (#983/#985);
+  Phase 3 priority code/schema-binding contracts + corrections
+  (#984/#985); Phase 4 remaining contracts (#986); full-scope fixes
+  for 3 flagged items: ToS impl, migrations summary, 7.58 + accuracy
+  lags (#987). Contract edits owned by that audit lane, not this
+  tracker.
+- **Choose Star Shifts redesign (R1 to R10):** operator-config daypart
+  lens + 2-state hero calendar + pre-commit gate (#932); tap-day
+  bottom sheet whole-day rollup (#940); Lean/Balanced/Generous band
+  (#946); 4-period demo operator proving daypart de-hardcode (#929);
+  align to committed prototype (#952); single continuous scroll +
+  PLAN IMPACT dropdown (#959); per-daypart mix-and-match band +
+  scope-label header (#966); spec + prototype docs (#947).
+- **Variance Coaching V2 (Lanes A to G):** evolved copy catalog,
+  Primary Driver arrow-chain widget, This Week / History V2 parity,
+  History CPLH-vs-OPZ 60-day band, Learn restructure (#898 to #969
+  range); Lane G wave-close test re-pin + verification (#915).
+- **Mobile-UX polish:** readable type scale + spacing tokens + OS
+  text scaling, premium surface system, off-scale spacing
+  normalization across baseline_tracker / notifications / schedule /
+  shift_dashboard, Shift gradient-card unification (#953 to #971
+  range).
+- **Advisor-proxy size discipline:** route groups extracted so the
+  proxy falls back under its size ceiling, no behavior change (#979).
+- **Repo hygiene + safety:** repo_janitor wired via the `post-merge`
+  git hook with `pre_merge_gate` mandated while CI is dark;
+  repo_janitor hardened to never auto-prune session/loop worktrees
+  (#980); auto-hygiene enabled (dry-run default); repo-wide
+  branch/worktree cleanup done; full lost-work rescue sweep completed
+  (`rescue/*` branches pushed to `origin`).
+- **Misc fixes:** closed-state Shift dashboard + closed-shift chrome
+  suppression (#937/#950/#962), audit-panel RenderFlex overflow +
+  wage-at-lock-time reframe (#920/#948), settings/integrations copy
+  and DI fixes, deterministic polling-vendor filter test (#978),
+  demo-seed reservation apportionment (#956).
