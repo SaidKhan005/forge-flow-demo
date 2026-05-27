@@ -48,6 +48,8 @@ class _MockGateway implements AdvisorSemanticExtractionGateway {
     required Set<String> nodeKinds,
     required Set<String> edgeTypes,
     required Map<String, String> edgeVerbPhrases,
+    String chunkId = '',
+    String contentSha256 = '',
   }) async {
     final index = callCount.clamp(0, rawJsonResponses.length - 1);
     callCount += 1;
@@ -631,7 +633,10 @@ void main() {
       expect(costRecordsInManifest.length, result.processedChunkCount);
     });
 
-    test('manifest flags proxy_endpoint_needed as true', () async {
+    test('manifest reports extraction is brokered through the proxy route',
+        () async {
+      // F1 (HP#7): the proxy route is wired, so proxy_endpoint_needed flips to
+      // false and the manifest records the route path the tool POSTs to.
       final repo = await _createFixtureRepo();
       await _materializeChunks(repo);
 
@@ -646,10 +651,11 @@ void main() {
         File('$outputDir/$semanticExtractionManifestFileName')
             .readAsStringSync(),
       ) as Map<String, Object?>;
-      expect(manifest['proxy_endpoint_needed'], isTrue);
+      expect(manifest['proxy_endpoint_needed'], isFalse);
+      expect(manifest['proxy_endpoint_path'], advisorGraphExtractPath);
       expect(
         manifest['proxy_endpoint_note']?.toString(),
-        contains('proxy endpoint'),
+        contains(advisorGraphExtractPath),
       );
     });
 
