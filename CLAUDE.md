@@ -22,7 +22,6 @@ Phase Doc Hygiene ·
 Tooling (Codex skill · MCP servers) ·
 Knowledge Graph (graphify) ·
 Commits & Push ·
-Session Handoff ·
 Demo Mode ·
 Flavors.
 
@@ -369,10 +368,6 @@ rules, Tooling, and Commits & Push):
 - Push is automatic on commit.
 - Local hooks are cheap guardrails only. Install with `scripts/install_git_hooks.ps1`; they do not run graphify, provider calls, cloud actions, browser QA, or full Flutter test suites.
 - Graphify is never run by hooks or mid-session: see "Knowledge Graph".
-
-## Session Handoff (only when wrapping)
-
-Update `~/.claude/projects/C--forge-flow-demo/memory/session_handoff.md` with what finished, files changed, tests run, next steps, doc moves. Hard cap **40 lines**. "What Completed" = last accepted slice only (prior slices live in `PROJECT_TRACKER.md`). Not prompt authority; don't reread mid-execution.
 
 ## Demo Mode
 
