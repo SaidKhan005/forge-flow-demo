@@ -672,6 +672,269 @@ void main() {
       expect(a.length, 64);
     });
   });
+
+  // A2(b) envelope pin — every non-2xx response body MUST carry both a
+  // machine `error` code AND a human-readable `message` (the
+  // operator-facing copy that drives the "sign in again" hint per the
+  // proxy_error_envelope_contract.md mfaFreshnessRedirect kind).
+  // The existing groups above pin `error`; this group pins `message`
+  // so the envelope-helper extraction in B3 cannot silently drop the
+  // user-facing copy on either the challenge-emit 401 or the
+  // consume-reject 410 / 401 paths.
+  //
+  // BEHAVIOR-ONLY pins. B11.2.b is auth-critical per CLAUDE.md but
+  // these tests assert what the existing dispatcher already emits;
+  // they do not introduce new policy or change any role gate.
+  group('StepUpChallengeRouter envelope `message` pins (A2(b))', () {
+    final now = DateTime.utc(2026, 5, 13, 14, 0);
+
+    test('401 challenge body carries the route label as `message`', () async {
+      final gateway = _FakeStepUpGateway(emitReturning: 'CID_LABEL');
+      final router = StepUpChallengeRouter(
+        gateway: gateway,
+        auditSink: _RecordingStepUpAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/auth/password/change',
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        actorKind: 'user',
+        authTime: now.subtract(const Duration(minutes: 10)),
+        presentedChallengeId: null,
+        sourceDeviceFingerprint: null,
+        now: () => now,
+      );
+      expect(result, isA<StepUpDispatchChallenge>());
+      final challenge = result as StepUpDispatchChallenge;
+      // `message` carries the spec.label so the client can render a
+      // route-specific reason. The exact string is "Changing your
+      // password requires a fresh sign-in." per
+      // kStepUpSensitiveRoutes. Pin existence + non-empty + plain
+      // English (no em dash per CLAUDE.md "UX no-em-dash law").
+      expect(challenge.body['message'], isA<String>());
+      final message = challenge.body['message']! as String;
+      expect(message.isNotEmpty, isTrue);
+      expect(message.contains('—'), isFalse,
+          reason: 'no em-dash per CLAUDE.md UX no-em-dash law');
+      expect(message, contains('fresh sign-in'));
+    });
+
+    test('410 already_consumed reject body carries a message', () async {
+      final gateway = _FakeStepUpGateway(
+        consumeReturning: null,
+        replayState: StepUpChallengeState(
+          operatorId: _opA,
+          userId: _userA,
+          routePath: '/v1/auth/password/change',
+          expiresAt: now.add(const Duration(minutes: 4)),
+          consumedAt: now.subtract(const Duration(minutes: 1)),
+        ),
+      );
+      final router = StepUpChallengeRouter(
+        gateway: gateway,
+        auditSink: _RecordingStepUpAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/auth/password/change',
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        actorKind: 'user',
+        authTime: now.subtract(const Duration(minutes: 10)),
+        presentedChallengeId: 'CID_REPLAY',
+        sourceDeviceFingerprint: null,
+        now: () => now,
+      );
+      final reject = result as StepUpDispatchReject;
+      expect(reject.statusCode, 410);
+      expect(reject.body['error'], 'step_up_challenge_already_consumed');
+      expect(reject.body['message'], isA<String>());
+      expect((reject.body['message']! as String).isNotEmpty, isTrue);
+      expect(
+        (reject.body['message']! as String).contains('—'),
+        isFalse,
+        reason: 'no em-dash per CLAUDE.md UX no-em-dash law',
+      );
+    });
+
+    test('401 unknown/expired oracle-safe reject body carries a message',
+        () async {
+      final gateway = _FakeStepUpGateway(
+        consumeReturning: null,
+        replayState: null, // unknown id
+      );
+      final router = StepUpChallengeRouter(
+        gateway: gateway,
+        auditSink: _RecordingStepUpAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/auth/password/change',
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        actorKind: 'user',
+        authTime: now.subtract(const Duration(minutes: 10)),
+        presentedChallengeId: 'CID_UNKNOWN',
+        sourceDeviceFingerprint: null,
+        now: () => now,
+      );
+      final reject = result as StepUpDispatchReject;
+      expect(reject.statusCode, 401);
+      expect(reject.body['error'], kStepUpErrorCode);
+      expect(reject.body['message'], isA<String>());
+      expect((reject.body['message']! as String).isNotEmpty, isTrue);
+    });
+
+    test('401 challenge envelope includes EVERY documented field', () async {
+      // Pins the wire shape against the file-header doc-comment so the
+      // B3 envelope-helper extraction cannot quietly drop a field.
+      final gateway = _FakeStepUpGateway(emitReturning: 'CID_SHAPE');
+      final router = StepUpChallengeRouter(
+        gateway: gateway,
+        auditSink: _RecordingStepUpAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/auth/password/change',
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        actorKind: 'user',
+        authTime: now.subtract(const Duration(minutes: 10)),
+        presentedChallengeId: null,
+        sourceDeviceFingerprint: null,
+        now: () => now,
+      );
+      final challenge = result as StepUpDispatchChallenge;
+      // Header — WWW-Authenticate is the only required header.
+      expect(challenge.headers.keys, contains(kStepUpWwwAuthenticateHeader));
+      expect(challenge.headers.length, 1);
+      // Status code — RFC 9470 §3 mandates 401 for the step-up
+      // challenge response.
+      expect(challenge.statusCode, 401);
+      // Body — pin every key the file-header doc-comment promises so
+      // helper extraction can't drop one.
+      expect(challenge.body.keys, containsAll(<String>[
+        'error',
+        'message',
+        'challenge_id',
+        'required_acr',
+        'max_age_seconds',
+        'challenge_expires_in_seconds',
+        'reason',
+      ]));
+      expect(challenge.body['error'], equals(kStepUpErrorCode));
+      expect(challenge.body['challenge_id'], equals('CID_SHAPE'));
+      expect(challenge.body['required_acr'], equals(kStepUpDefaultAcr));
+      expect(
+        challenge.body['max_age_seconds'],
+        equals(kStepUpDefaultFreshness.inSeconds),
+      );
+      expect(
+        challenge.body['challenge_expires_in_seconds'],
+        equals(kStepUpDefaultChallengeTtl.inSeconds),
+      );
+    });
+  });
+
+  // A2(b) auth-guard behavior pin — pins the existing per-actor-kind
+  // gate behavior across actor_kind values. BEHAVIOR-ONLY: these
+  // assertions reflect what the current dispatcher already does (per
+  // `StepUpPolicy.evaluate`); they do not introduce or modify any
+  // auth policy. CLAUDE.md "Auth-critical, RLS-touching" gating
+  // applies to policy changes, not to behavior-preserving tests.
+  group('StepUpChallengeRouter actor_kind gate (A2(b) auth-guard pin)', () {
+    final now = DateTime.utc(2026, 5, 13, 14, 0);
+
+    test('actor_kind=user with stale auth_time -> challenge (existing '
+        'behavior pin)', () async {
+      final gateway = _FakeStepUpGateway(emitReturning: 'CID_USER');
+      final router = StepUpChallengeRouter(
+        gateway: gateway,
+        auditSink: _RecordingStepUpAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/auth/password/change',
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        actorKind: 'user',
+        authTime: now.subtract(const Duration(minutes: 10)),
+        presentedChallengeId: null,
+        sourceDeviceFingerprint: null,
+        now: () => now,
+      );
+      expect(result, isA<StepUpDispatchChallenge>());
+      expect(gateway.emitCalls, hasLength(1));
+    });
+
+    test('actor_kind=service_principal admits without emitting (V1 skip '
+        'behavior pin)', () async {
+      final gateway = _FakeStepUpGateway();
+      final router = StepUpChallengeRouter(
+        gateway: gateway,
+        auditSink: _RecordingStepUpAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/auth/password/change',
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        actorKind: 'service_principal',
+        // Even with no auth_time at all the SP must pass through.
+        authTime: null,
+        presentedChallengeId: null,
+        sourceDeviceFingerprint: null,
+        now: () => now,
+      );
+      expect(result, isA<StepUpDispatchAdmit>());
+      expect(gateway.emitCalls, isEmpty);
+    });
+
+    test('actor_kind=sp:* (prefixed taxonomy) also admits without '
+        'emitting', () async {
+      // Pins the sp: prefix branch of the V1 skip — every service-
+      // principal flavor (sp:integration_oauth, sp:graphify_runner,
+      // ...) MUST pass through. The existing dispatcher already
+      // does this; pin so the extraction in B3 cannot quietly
+      // tighten the check to `== service_principal` only.
+      final gateway = _FakeStepUpGateway();
+      final router = StepUpChallengeRouter(
+        gateway: gateway,
+        auditSink: _RecordingStepUpAuditSink(),
+      );
+      for (final actorKind in const <String>[
+        'sp:integration_oauth',
+        'sp:graphify_runner',
+        'sp:integration_oauth_callback',
+      ]) {
+        final result = await router.dispatch(
+          method: 'POST',
+          path: '/v1/auth/password/change',
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          actorKind: actorKind,
+          authTime: null,
+          presentedChallengeId: null,
+          sourceDeviceFingerprint: null,
+          now: () => now,
+        );
+        expect(
+          result,
+          isA<StepUpDispatchAdmit>(),
+          reason: 'actor_kind=$actorKind must skip step-up',
+        );
+      }
+      expect(gateway.emitCalls, isEmpty);
+    });
+  });
 }
 
 // ─── fakes ──────────────────────────────────────────────────────────

@@ -468,6 +468,236 @@ void main() {
     });
   });
 
+  // A2(b) envelope pin — every non-2xx envelope MUST carry both an
+  // `error` (machine code) and a `message` (human-readable) field per
+  // `docs/contracts/proxy_error_envelope_contract.md`. The existing
+  // groups above pin `error`; this group pins `message` so the
+  // envelope helper extraction in B3 cannot silently drop the human
+  // copy when it moves the response-builders to `route_helpers.dart`.
+  group('DefaultRoleCatalogAdminRouter error envelope `message` pins', () {
+    test('403 permission_denied carries a message', () async {
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: _FakeCatalogRepository(),
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'GET',
+        path: '/v1/admin/auth/role-catalogs',
+        actorRoles: const <String>{'operator_owner'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: null,
+        limitQueryParam: null,
+        body: const <String, Object?>{},
+      );
+      expect(result.statusCode, equals(403));
+      expect(result.body['error'], equals('permission_denied'));
+      expect(result.body['message'], isA<String>());
+      expect((result.body['message'] as String).isNotEmpty, isTrue);
+    });
+
+    test('404 not_found carries a message', () async {
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: _FakeCatalogRepository(),
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'GET',
+        path: '/v1/admin/auth/some-other-thing',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: null,
+        limitQueryParam: null,
+        body: const <String, Object?>{},
+      );
+      expect(result.body['message'], isA<String>());
+      expect((result.body['message'] as String).isNotEmpty, isTrue);
+    });
+
+    test('400 missing_idempotency_key carries a message', () async {
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: _FakeCatalogRepository(),
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/admin/auth/role-catalogs/publish',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: null,
+        limitQueryParam: null,
+        body: <String, Object?>{'payload': _kPayload},
+      );
+      expect(result.statusCode, equals(400));
+      expect(result.body['message'], isA<String>());
+      expect((result.body['message'] as String).isNotEmpty, isTrue);
+    });
+
+    test('400 idempotency_key_too_long carries a message', () async {
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: _FakeCatalogRepository(),
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/admin/auth/role-catalogs/publish',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: 'x' * 201,
+        limitQueryParam: null,
+        body: <String, Object?>{'payload': _kPayload},
+      );
+      expect(result.statusCode, equals(400));
+      expect(result.body['message'], isA<String>());
+      expect((result.body['message'] as String).isNotEmpty, isTrue);
+    });
+
+    test('400 missing_payload + empty_payload + invalid_notes each '
+        'carry a message', () async {
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: _FakeCatalogRepository(),
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+      );
+      // missing_payload
+      var r = await router.dispatch(
+        method: 'POST',
+        path: '/v1/admin/auth/role-catalogs/publish',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: 'k',
+        limitQueryParam: null,
+        body: const <String, Object?>{},
+      );
+      expect(r.body['error'], equals('missing_payload'));
+      expect((r.body['message'] as String).isNotEmpty, isTrue);
+      // empty_payload
+      r = await router.dispatch(
+        method: 'POST',
+        path: '/v1/admin/auth/role-catalogs/publish',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: 'k',
+        limitQueryParam: null,
+        body: <String, Object?>{'payload': const <Object?>[]},
+      );
+      expect(r.body['error'], equals('empty_payload'));
+      expect((r.body['message'] as String).isNotEmpty, isTrue);
+      // invalid_notes
+      r = await router.dispatch(
+        method: 'POST',
+        path: '/v1/admin/auth/role-catalogs/publish',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: 'k',
+        limitQueryParam: null,
+        body: <String, Object?>{'payload': _kPayload, 'notes': 42},
+      );
+      expect(r.body['error'], equals('invalid_notes'));
+      expect((r.body['message'] as String).isNotEmpty, isTrue);
+    });
+
+    test('503 actor_resolver_not_configured carries a message', () async {
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: _FakeCatalogRepository(),
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/admin/auth/role-catalogs/publish',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: null,
+        idempotencyKeyHeader: 'k',
+        limitQueryParam: null,
+        body: <String, Object?>{'payload': _kPayload},
+      );
+      expect(result.statusCode, equals(503));
+      expect(result.body['message'], isA<String>());
+      expect((result.body['message'] as String).isNotEmpty, isTrue);
+    });
+
+    test('403 actor_user_not_resolvable carries a message', () async {
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: _FakeCatalogRepository(),
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/admin/auth/role-catalogs/publish',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver:
+            ({required String firebaseUid, required String adminReason}) async =>
+                null,
+        idempotencyKeyHeader: 'k',
+        limitQueryParam: null,
+        body: <String, Object?>{'payload': _kPayload},
+      );
+      expect(result.statusCode, equals(403));
+      expect(result.body['error'], equals('actor_user_not_resolvable'));
+      expect(result.body['message'], isA<String>());
+      expect((result.body['message'] as String).isNotEmpty, isTrue);
+    });
+
+    test('happy 200 list body carries `history` array (response shape '
+        'pin for the envelope-helper extraction)', () async {
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: _FakeCatalogRepository(),
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+      );
+      final result = await router.dispatch(
+        method: 'GET',
+        path: '/v1/admin/auth/role-catalogs',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: null,
+        limitQueryParam: null,
+        body: const <String, Object?>{},
+      );
+      expect(result.statusCode, equals(200));
+      // The 200 list response is NOT an error envelope — it carries
+      // domain data, not `{error, message}`. Pin the contract that
+      // `history` is always present (possibly empty) so the helper
+      // extraction in B3 cannot silently drop the field.
+      expect(result.body.containsKey('history'), isTrue);
+      expect(result.body['history'], isA<List<Object?>>());
+    });
+
+    test('happy 201 publish body carries version_id + version_number + '
+        'is_current', () async {
+      final repo = _FakeCatalogRepository();
+      final router = DefaultRoleCatalogAdminRouter(
+        repository: repo,
+        auditSink: const NoopDefaultRoleCatalogAuditSink(),
+        now: () => DateTime.utc(2026, 5, 13, 10),
+      );
+      final result = await router.dispatch(
+        method: 'POST',
+        path: '/v1/admin/auth/role-catalogs/publish',
+        actorRoles: const <String>{'super_admin'},
+        actorFirebaseUid: _kFirebaseUid,
+        actorResolver: _resolveToAdmin,
+        idempotencyKeyHeader: 'k',
+        limitQueryParam: null,
+        body: <String, Object?>{'payload': _kPayload},
+      );
+      expect(result.statusCode, equals(201));
+      // These keys come from DefaultRoleCatalogVersionRow.toJson(); B3
+      // must not silently re-shape the publish 201 envelope.
+      expect(result.body.containsKey('version_id'), isTrue);
+      expect(result.body.containsKey('version_number'), isTrue);
+      expect(result.body.containsKey('is_current'), isTrue);
+      expect(result.body.containsKey('payload_sha256'), isTrue);
+    });
+  });
+
   // B-1 — c_12_lane_c_closeout_audit.md: the proxy dispatcher must wrap
   // publish in ProxyAuthIdempotencyCache.runOrReplay so two retries with
   // the same Idempotency-Key coalesce to one repository publish and the
