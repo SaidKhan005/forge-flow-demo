@@ -184,6 +184,22 @@ export 'advisor_rerank_gateway_part.dart'
 // encryptor + key-length error stay encapsulated in the part file.
 export 'package:forge_and_flow/infrastructure/crypto/advisor_conversation_envelope.dart'
     show AdvisorConversationCmkResolver;
+// Slice G4b -- graph semantic-extraction gateway types exported so
+// proxy_bootstrap.dart and main.dart can construct the production gateway
+// by importing advisor_proxy.dart only.
+export 'graph_extract_route_part.dart'
+    show
+        GraphSemanticExtractGateway,
+        GraphExtractGatewayException,
+        GraphExtractResult,
+        GraphExtractNode,
+        GraphExtractEdge,
+        AnthropicHttpExtractGateway,
+        graphExtractPath,
+        kGraphExtractionUsageClass,
+        kGraphExtractWriteRoles,
+        kGraphExtractionDefaultModel,
+        kGraphExtractionAllowedModels;
 export 'log.dart'
     show
         LogSeverity,
@@ -416,6 +432,19 @@ import 'advisor_query_embedding_gateway_part.dart'
 // plus `RerankCandidate` to build the candidate pool from chunks.
 import 'advisor_rerank_gateway_part.dart'
     show AdvisorRerankGateway, AdvisorRerankException, AdvisorRerankResult;
+
+// Slice G4b: POST /v1/admin/graph/extract -- server-side semantic-extraction
+// endpoint. Standalone file (not a `part`) so its own imports (dart:io,
+// dart:convert, package:http) do not land in the monolith's import space.
+// The abstract gateway + production gateway are re-exported below so
+// proxy_bootstrap.dart and main.dart can construct them by importing
+// advisor_proxy.dart only.
+import 'graph_extract_route_part.dart'
+    show
+        GraphSemanticExtractGateway,
+        handleGraphExtract,
+        graphExtractPath,
+        kGraphExtractWriteRoles;
 
 // chore(advisor-proxy) size refactor: cohesive admin route group
 // (corpus / debug-console / observability / feature-flags /
@@ -6513,6 +6542,15 @@ Future<void> routeRequest(
   VendorApplicabilityProxyGateway? vendorApplicabilityGateway,
   CorpusAdminProxyGateway? corpusAdminGateway,
   GraphCandidatesProxyGateway? graphCandidatesGateway,
+  // Slice G4b -- POST /v1/admin/graph/extract: server-side semantic
+  // extraction endpoint. Optional: when null the route returns 503
+  // graph_extract_not_configured so existing tests and scaffolds stay
+  // byte-compatible. Production wires the
+  // AnthropicHttpExtractGateway + server-side ANTHROPIC_API_KEY.
+  // OP-GATED: do NOT enable without explicit operator approval.
+  // HP #7: [anthropicApiKeyForGraphExtract] is a server-side secret.
+  GraphSemanticExtractGateway? graphExtractGateway,
+  String? anthropicApiKeyForGraphExtract,
   IntegrationAdminProxyGateway? integrationAdminGateway,
   IntegrationAdminActorResolver? integrationAdminActorResolver,
   FeatureFlagsAdminProxyGateway? featureFlagsAdminGateway,
@@ -12745,6 +12783,59 @@ Future<void> routeRequest(
           return;
         }
 
+        // Slice G4b — POST /v1/admin/graph/extract: server-side semantic-
+        // extraction endpoint. OP-GATED: nil-gateway check returns 503 until
+        // the operator approves enabling production extraction runs.
+        if (request.method == 'POST' && path == graphExtractPath) {
+          if (graphExtractGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'graph_extract_not_configured',
+              'message':
+                  'Graph semantic-extraction is OP-GATED. '
+                  'Wire graphExtractGateway in proxy_bootstrap.dart after '
+                  'operator approval.',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+
+          if (!_callerHasAnyRole(actor, kGraphExtractWriteRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'super_admin role is required for graph extraction',
+              'required_roles': kGraphExtractWriteRoles.toList(),
+            });
+            return;
+          }
+
+          final idempotencyKey =
+              request.headers.value('Idempotency-Key')?.trim();
+          if (idempotencyKey == null || idempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_idempotency_key',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
+
+          await handleGraphExtract(
+            request: request,
+            response: response,
+            actorUserId: actor.userId,
+            idempotencyKey: idempotencyKey,
+            gateway: graphExtractGateway,
+            anthropicApiKey: anthropicApiKeyForGraphExtract,
+            clock: now,
+          );
+          return;
+        }
+
         // Phase 11A.3b — AGE rebuild route. Role gate + Idempotency-Key
         // are still enforced so the test contract can verify the gating
         // is wired even though the actual rebuild infrastructure ships
@@ -16249,6 +16340,9 @@ bool _isAdminCorpusPath(String path) {
   // for the new routes too.
   if (_isGraphCandidatesPath(path)) return true;
   if (path == adminAgeRebuildPath) return true;
+  // Slice G4b — semantic-extraction endpoint shares the same corpus
+  // admin CORS preflight posture.
+  if (path == graphExtractPath) return true;
   return false;
 }
 
