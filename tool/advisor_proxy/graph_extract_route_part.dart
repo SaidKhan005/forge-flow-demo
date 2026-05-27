@@ -544,6 +544,103 @@ class _GraphExtractInputError implements Exception {
   final String message;
 }
 
+// --- HP #9 metering seam ------------------------------------------------------
+//
+// This file is a standalone `import` (NOT a `part of advisor_proxy.dart`), so it
+// CANNOT name the monolith's metering types (ProxyUsageGuard,
+// ProxyAccountingStore, OperatorContext, LlmCostRateRegistry, ...). Those types
+// live in the monolith library and importing advisor_proxy.dart here would be a
+// circular import.
+//
+// To wire HP #9 cost metering + proxy_requests idempotency WITHOUT inventing a
+// parallel stack (HP #8), the dispatcher in advisor_proxy.dart -- where those
+// types ARE visible -- supplies two typed callback seams. The closures it
+// passes call the SAME ProxyUsageGuard / ProxyAccountingStore instances the
+// advisor answer route uses (startRequest + requireAllowed for the reservation
+// and cap-check; commitUsageLog + recordAllowed + completeRequest on success).
+// This mirrors the established AnthropicHttpExtractFn typedef seam already in
+// this file -- the orchestration sequence (reserve -> gateway -> commit) stays
+// HERE; only the typed monolith calls cross the boundary as closures.
+
+/// Outcome of the idempotency reservation + cap-check seam.
+///
+/// Wraps the `ProxyAccountingStore.startRequest` reservation result and the
+/// `ProxyUsageGuard.requireAllowed` cap-check into one plain-Dart value the
+/// standalone route file can branch on without naming monolith types.
+sealed class GraphExtractReservation {
+  const GraphExtractReservation();
+}
+
+/// The request reserved cleanly and passed the cap-check: proceed to call the
+/// provider and (on success) commit usage via [GraphExtractCommitFn].
+class GraphExtractReserveProceed extends GraphExtractReservation {
+  const GraphExtractReserveProceed();
+}
+
+/// An idempotency replay: the prior response payload is cached; the route
+/// returns it verbatim (status 200) WITHOUT re-calling the provider.
+class GraphExtractReserveReplay extends GraphExtractReservation {
+  const GraphExtractReserveReplay({required this.responsePayload});
+
+  /// The exact prior 200 body the first call persisted via completeRequest.
+  final Map<String, Object?> responsePayload;
+}
+
+/// The request is blocked before any provider work: either the accounting
+/// store refused on a cap (402 usage_cap_reached, same shape the answer route
+/// returns) or the usage guard raised a UsageRefusal (its own status + body).
+/// The route writes [statusCode] + [body] and does NOT call the provider.
+class GraphExtractReserveBlocked extends GraphExtractReservation {
+  const GraphExtractReserveBlocked({
+    required this.statusCode,
+    required this.body,
+  });
+
+  final int statusCode;
+  final Map<String, Object?> body;
+}
+
+/// The reservation seam failed (the accounting store was unavailable). The
+/// route maps this to 503 accounting_store_unavailable, mirroring the answer
+/// route's `on Exception` handling around `startRequest`.
+class GraphExtractReserveStoreUnavailable extends GraphExtractReservation {
+  const GraphExtractReserveStoreUnavailable();
+}
+
+/// Reserves the idempotency row + runs the HP #9 cap-check.
+///
+/// The dispatcher's closure calls `accountingStore.startRequest` (proxy_requests
+/// UNIQUE reservation, replay lookup, per-tier cap refusal) and
+/// `usageGuard.requireAllowed` (per-minute / monthly cap) against the verified
+/// caller scope. [estimatedInputTokens] / [estimatedOutputTokens] feed the
+/// pre-flight cost estimate; [model] selects the per-class rate.
+typedef GraphExtractReserveFn =
+    Future<GraphExtractReservation> Function({
+      required String idempotencyKey,
+      required String model,
+      required int estimatedInputTokens,
+      required int estimatedOutputTokens,
+    });
+
+/// Commits the metered spend after a successful extraction.
+///
+/// The dispatcher's closure calls `accountingStore.commitUsageLog`
+/// (kGraphExtractionUsageClass rollup), `usageGuard.recordAllowed` (advance the
+/// per-minute / monthly counters), and `accountingStore.completeRequest` (mark
+/// the idempotency row complete with [responsePayload] so a later replay
+/// returns it). Cost is derived from the provider-reported [inputTokens] /
+/// [outputTokens] via the monolith's LlmCostRateRegistry. Best-effort: a
+/// commit-side failure must not change the already-built 200 response, mirroring
+/// the answer route, so the closure swallows store exceptions.
+typedef GraphExtractCommitFn =
+    Future<void> Function({
+      required String idempotencyKey,
+      required String model,
+      required int inputTokens,
+      required int outputTokens,
+      required Map<String, Object?> responsePayload,
+    });
+
 /// Handler for POST [graphExtractPath].
 ///
 /// Called from the routeRequest dispatcher AFTER JWT is verified and the
@@ -552,18 +649,25 @@ class _GraphExtractInputError implements Exception {
 /// Flow:
 ///   1. Read + validate request body (chunk_text, chunk_id, content_sha256,
 ///      document_title, source_path, heading_path, optional model).
-///   2. HP #9 cap-check via [usageGuard] (when wired) -- cost estimate
-///      based on the known token ceiling.
-///   3. Reserve idempotency row via [accountingStore.startRequest] (when
-///      wired) -- returns the cached response on replay.
-///   4. Forward to [gateway.extractFromChunk] with the server-side API key.
-///   5. Validate + constrain output to the sealed C3 vocabulary.
-///   6. Meter the spend via [accountingStore.commitUsageLog] +
-///      [usageGuard.recordAllowed] (HP #9).
-///   7. Mark the idempotency row complete + return 200 JSON.
+///   2. HP #9 cap-check + idempotency reservation via [reserve] (when wired).
+///      On replay -> return the cached prior response (no provider call). On a
+///      cap refusal -> return the refusal shape (no provider call). On a store
+///      outage -> 503 accounting_store_unavailable (no provider call).
+///   3. Forward to [gateway.extractFromChunk] with the server-side API key.
+///   4. Validate + constrain output to the sealed C3 vocabulary.
+///   5. Meter the spend + mark the idempotency row complete via [commit] (when
+///      wired) under kGraphExtractionUsageClass with the provider tokens.
+///   6. Return 200 JSON.
+///
+/// The [reserve] / [commit] seams are OPTIONAL. When both are null (tests that
+/// only exercise the extraction logic, or a scaffold) the route skips metering
+/// and idempotency entirely -- the gateway-only behaviour stays byte-identical
+/// to the pre-F2 endpoint. The production dispatcher always wires both.
 ///
 /// HP #7: [anthropicApiKey] is NEVER logged, NEVER put in the response.
-/// HP #4: scope values come ONLY from the verified [operatorContext].
+/// HP #4: the [reserve] / [commit] closures are bound by the dispatcher to the
+/// verified caller scope (from the JWT); this handler accepts no scope from the
+/// request body.
 Future<void> handleGraphExtract({
   required HttpRequest request,
   required HttpResponse response,
@@ -571,11 +675,11 @@ Future<void> handleGraphExtract({
   required String idempotencyKey,
   required GraphSemanticExtractGateway gateway,
   required String? anthropicApiKey,
-  // HP #9 metering -- optional for back-compat with tests that only need
-  // to verify the extraction logic.
-  Object? usageGuard,
-  Object? accountingStore,
-  Object? operatorContext,
+  // HP #9 metering + proxy_requests idempotency seams. Optional for
+  // back-compat with tests that only need to verify the extraction logic;
+  // when null the route runs gateway-only with no cap-check / reservation.
+  GraphExtractReserveFn? reserve,
+  GraphExtractCommitFn? commit,
   DateTime Function()? clock,
 }) async {
   final requestClock = clock ?? DateTime.now;
@@ -659,6 +763,53 @@ Future<void> handleGraphExtract({
     return;
   }
 
+  // HP #9 cap-check + proxy_requests idempotency reservation (when wired).
+  // Runs AFTER body validation (so a malformed request never reserves a row)
+  // and BEFORE the provider call (so a replay / cap refusal / store outage
+  // never reaches the gateway). The estimated input tokens use the standard
+  // proxy heuristic (ceil(chars/4)) over the chunk + grounding metadata; the
+  // estimated output tokens use the hard ceiling the gateway enforces
+  // (kGraphExtractMaxOutputTokens) so the pre-flight cost estimate is
+  // conservative. Mirrors the advisor answer route's reserve-then-call order.
+  if (reserve != null) {
+    final estimatedChars =
+        chunkText.length +
+        documentTitle.length +
+        sourcePath.length +
+        headingPath.fold<int>(0, (sum, h) => sum + h.length);
+    final estimatedInputTokens = (estimatedChars + 3) ~/ 4;
+    final reservation = await reserve(
+      idempotencyKey: idempotencyKey,
+      model: model,
+      estimatedInputTokens: estimatedInputTokens,
+      estimatedOutputTokens: kGraphExtractMaxOutputTokens,
+    );
+    switch (reservation) {
+      case GraphExtractReserveReplay(:final responsePayload):
+        // Idempotent replay: return the cached prior response verbatim. The
+        // provider is NOT called again.
+        _graphWriteJson(response, 200, <String, Object?>{
+          ...responsePayload,
+          'idempotent_replay': true,
+        });
+        return;
+      case GraphExtractReserveBlocked(:final statusCode, :final body):
+        // Cap refusal (accounting store or usage guard): return the refusal
+        // shape. The provider is NOT called.
+        _graphWriteJson(response, statusCode, body);
+        return;
+      case GraphExtractReserveStoreUnavailable():
+        _graphWriteJson(response, 503, <String, Object?>{
+          'error': 'accounting_store_unavailable',
+          'message': 'proxy accounting store unavailable',
+        });
+        return;
+      case GraphExtractReserveProceed():
+        // Reserved + within cap: fall through to the provider call.
+        break;
+    }
+  }
+
   // Call the extraction gateway (server-side key, never returned).
   GraphExtractResult result;
   try {
@@ -709,7 +860,26 @@ Future<void> handleGraphExtract({
     'ambiguous_edge_count':
         result.edges.where((e) => e.label == 'AMBIGUOUS').length,
     'extracted_at': requestedAt.toIso8601String(),
+    // First-time success carries idempotent_replay=false; this is the exact
+    // payload completeRequest persists, so a later replay returns it with the
+    // flag flipped to true (see the GraphExtractReserveReplay branch above).
+    'idempotent_replay': false,
   };
+
+  // HP #9: meter the spend under kGraphExtractionUsageClass + mark the
+  // idempotency row complete with this payload (when wired). The provider
+  // tokens drive the recorded cost (via the monolith rate registry inside the
+  // dispatcher closure). Best-effort by contract: the 200 below is written
+  // regardless of a commit-side store hiccup, mirroring the answer route.
+  if (commit != null) {
+    await commit(
+      idempotencyKey: idempotencyKey,
+      model: model,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      responsePayload: responsePayload,
+    );
+  }
 
   _graphWriteJson(response, 200, responsePayload);
 }
