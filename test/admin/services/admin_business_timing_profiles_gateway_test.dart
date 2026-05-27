@@ -19,99 +19,204 @@ void main() {
     String tz = 'America/Toronto',
     String dayStart = '04:00',
     List<Map<String, Object?>> periods = const <Map<String, Object?>>[],
-  }) =>
-      <String, Object?>{
-        'profileId': profileId,
-        'versionId': profileId,
-        'scopeKind': 'operator',
-        'scopeId': 'op-1',
-        'effectiveAtBusinessDate': '2026-05-24',
-        'ianaTimezone': tz,
-        'weekStartDay': 'monday',
-        'businessDayStartLocal': dayStart,
-        'servicePeriods': periods,
-        'createdAt': '2026-05-24T00:00:00Z',
-        'updatedAt': '2026-05-24T00:00:00Z',
-      };
+  }) => <String, Object?>{
+    'profileId': profileId,
+    'versionId': profileId,
+    'scopeKind': 'operator',
+    'scopeId': 'op-1',
+    'effectiveAtBusinessDate': '2026-05-24',
+    'ianaTimezone': tz,
+    'weekStartDay': 'monday',
+    'businessDayStartLocal': dayStart,
+    'servicePeriods': periods,
+    'createdAt': '2026-05-24T00:00:00Z',
+    'updatedAt': '2026-05-24T00:00:00Z',
+  };
 
-  HttpAdminBusinessTimingProfilesGateway gateway(http.Client client) =>
-      HttpAdminBusinessTimingProfilesGateway(
-        baseUri: Uri.parse('https://admin-proxy.forgeflow.app'),
-        bearerTokenProvider: () async => 'tok',
-        httpClient: client,
+  HttpAdminBusinessTimingProfilesGateway gateway(
+    http.Client client, {
+    bool useStablePayloadIdempotencyKeys = true,
+  }) => HttpAdminBusinessTimingProfilesGateway(
+    baseUri: Uri.parse('https://admin-proxy.forgeflow.app'),
+    bearerTokenProvider: () async => 'tok',
+    httpClient: client,
+    useStablePayloadIdempotencyKeys: useStablePayloadIdempotencyKeys,
+  );
+
+  test('createProfile POSTs to the admin profiles route with admin_reason + '
+      'idempotency key, and parses the returned record', () async {
+    late http.Request captured;
+    final client = MockClient((req) async {
+      captured = req;
+      return http.Response(
+        jsonEncode(
+          recordJson(
+            periods: <Map<String, Object?>>[
+              <String, Object?>{
+                'key': 'lunch',
+                'label': 'Lunch',
+                'startLocal': '11:00',
+                'endLocal': '15:00',
+                'rollsPastMidnight': false,
+                'shortLabel': 'L',
+                'sortOrder': 1,
+                'applicableDays': <int>[1, 2, 3, 4, 5, 6, 7],
+              },
+            ],
+          ),
+        ),
+        201,
+        headers: const <String, String>{'content-type': 'application/json'},
       );
+    });
+
+    final record = await gateway(client).createProfile(
+      operatorId: 'op-1',
+      profile: const AdminBusinessTimingProfileCreate(
+        scopeKind: 'operator',
+        scopeId: 'op-1',
+        effectiveAtBusinessDate: '2026-05-24',
+        ianaTimezone: 'America/Toronto',
+        weekStartDay: 'monday',
+        businessDayStartLocal: '04:00',
+        servicePeriods: <AdminServicePeriodWrite>[
+          AdminServicePeriodWrite(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+          ),
+        ],
+      ),
+      adminReason: 'support repair',
+      idempotencyKey: 'idem-1',
+    );
+
+    expect(captured.method, 'POST');
+    expect(
+      captured.url.path,
+      '/v1/admin/operators/op-1/business-timing-profiles',
+    );
+    // Never the operator-scoped route (no silent permission downgrade).
+    expect(captured.url.path, isNot(contains('/v1/operator/')));
+    expect(
+      captured.headers['idempotency-key'],
+      startsWith('admin-timing-profile-create-'),
+    );
+    expect(captured.headers['authorization'], 'Bearer tok');
+
+    final sent = jsonDecode(captured.body) as Map<String, Object?>;
+    expect(sent['admin_reason'], 'support repair');
+    expect(sent['scopeKind'], 'operator');
+    expect((sent['servicePeriods'] as List).length, 1);
+
+    expect(record.profileId, 'p1');
+    expect(record.ianaTimezone, 'America/Toronto');
+    expect(record.servicePeriods.single.key, 'lunch');
+  });
+
+  test('updateProfile PATCHes the profile route, sends only non-null patch '
+      'fields + admin_reason', () async {
+    late http.Request captured;
+    final client = MockClient((req) async {
+      captured = req;
+      return http.Response(jsonEncode(recordJson(dayStart: '05:00')), 200);
+    });
+
+    await gateway(client).updateProfile(
+      operatorId: 'op-1',
+      profileId: 'p1',
+      patch: const AdminBusinessTimingProfilePatch(
+        scopeKind: 'org_unit',
+        scopeId: 'ou-1',
+        businessDayStartLocal: '05:00',
+      ),
+      adminReason: 'shift start fix',
+      idempotencyKey: 'idem-2',
+    );
+
+    expect(captured.method, 'PATCH');
+    expect(
+      captured.url.path,
+      '/v1/admin/operators/op-1/business-timing-profiles/p1',
+    );
+    final sent = jsonDecode(captured.body) as Map<String, Object?>;
+    expect(sent['scopeKind'], 'org_unit');
+    expect(sent['scopeId'], 'ou-1');
+    expect(sent['businessDayStartLocal'], '05:00');
+    expect(sent['admin_reason'], 'shift start fix');
+    expect(
+      captured.headers['idempotency-key'],
+      startsWith('admin-timing-profile-update-'),
+    );
+    // Null patch fields are omitted (server's immutable-field guard
+    // never sees an unchanged field).
+    expect(sent.containsKey('ianaTimezone'), isFalse);
+    expect(sent.containsKey('servicePeriods'), isFalse);
+  });
 
   test(
-    'createProfile POSTs to the admin profiles route with admin_reason + '
-    'idempotency key, and parses the returned record',
+    'updateProfile derives a stable payload idempotency key while preserving '
+    'admin_reason in the body',
     () async {
-      late http.Request captured;
+      final captured = <http.Request>[];
       final client = MockClient((req) async {
-        captured = req;
-        return http.Response(
-          jsonEncode(recordJson(periods: <Map<String, Object?>>[
-            <String, Object?>{
-              'key': 'lunch',
-              'label': 'Lunch',
-              'startLocal': '11:00',
-              'endLocal': '15:00',
-              'rollsPastMidnight': false,
-              'shortLabel': 'L',
-              'sortOrder': 1,
-              'applicableDays': <int>[1, 2, 3, 4, 5, 6, 7],
-            },
-          ])),
-          201,
-          headers: const <String, String>{'content-type': 'application/json'},
-        );
+        captured.add(req);
+        return http.Response(jsonEncode(recordJson(dayStart: '05:00')), 200);
       });
+      final adminGateway = gateway(client);
+      const patch = AdminBusinessTimingProfilePatch(
+        scopeKind: 'location',
+        scopeId: 'loc-1',
+        businessDayStartLocal: '05:00',
+      );
 
-      final record = await gateway(client).createProfile(
+      await adminGateway.updateProfile(
         operatorId: 'op-1',
-        profile: const AdminBusinessTimingProfileCreate(
-          scopeKind: 'operator',
-          scopeId: 'op-1',
-          effectiveAtBusinessDate: '2026-05-24',
-          ianaTimezone: 'America/Toronto',
-          weekStartDay: 'monday',
-          businessDayStartLocal: '04:00',
-          servicePeriods: <AdminServicePeriodWrite>[
-            AdminServicePeriodWrite(
-              key: 'lunch',
-              label: 'Lunch',
-              startLocal: '11:00',
-              endLocal: '15:00',
-            ),
-          ],
-        ),
-        adminReason: 'support repair',
-        idempotencyKey: 'idem-1',
+        profileId: 'p1',
+        patch: patch,
+        adminReason: 'same support reason',
+        idempotencyKey: 'caller-key-1',
+      );
+      await adminGateway.updateProfile(
+        operatorId: 'op-1',
+        profileId: 'p1',
+        patch: patch,
+        adminReason: 'same support reason',
+        idempotencyKey: 'caller-key-2',
+      );
+      await adminGateway.updateProfile(
+        operatorId: 'op-1',
+        profileId: 'p1',
+        patch: patch,
+        adminReason: 'different support reason',
+        idempotencyKey: 'caller-key-3',
       );
 
-      expect(captured.method, 'POST');
+      expect(captured, hasLength(3));
+      final firstKey = captured[0].headers['idempotency-key'];
+      expect(firstKey, startsWith('admin-timing-profile-update-'));
       expect(
-        captured.url.path,
-        '/v1/admin/operators/op-1/business-timing-profiles',
+        firstKey,
+        captured[1].headers['idempotency-key'],
+        reason: 'same logical PATCH should replay under the same key',
       );
-      // Never the operator-scoped route (no silent permission downgrade).
-      expect(captured.url.path, isNot(contains('/v1/operator/')));
-      expect(captured.headers['idempotency-key'], 'idem-1');
-      expect(captured.headers['authorization'], 'Bearer tok');
+      expect(
+        firstKey,
+        isNot(captured[2].headers['idempotency-key']),
+        reason: 'admin_reason is part of the audited payload',
+      );
+      expect(firstKey, isNot('caller-key-1'));
 
-      final sent = jsonDecode(captured.body) as Map<String, Object?>;
-      expect(sent['admin_reason'], 'support repair');
-      expect(sent['scopeKind'], 'operator');
-      expect((sent['servicePeriods'] as List).length, 1);
-
-      expect(record.profileId, 'p1');
-      expect(record.ianaTimezone, 'America/Toronto');
-      expect(record.servicePeriods.single.key, 'lunch');
+      final sent = jsonDecode(captured[0].body) as Map<String, Object?>;
+      expect(sent['scopeKind'], 'location');
+      expect(sent['scopeId'], 'loc-1');
+      expect(sent['admin_reason'], 'same support reason');
     },
   );
 
   test(
-    'updateProfile PATCHes the profile route, sends only non-null patch '
-    'fields + admin_reason',
+    'legacy mode can still forward the caller-supplied idempotency key',
     () async {
       late http.Request captured;
       final client = MockClient((req) async {
@@ -119,28 +224,22 @@ void main() {
         return http.Response(jsonEncode(recordJson(dayStart: '05:00')), 200);
       });
 
-      await gateway(client).updateProfile(
+      await gateway(
+        client,
+        useStablePayloadIdempotencyKeys: false,
+      ).updateProfile(
         operatorId: 'op-1',
         profileId: 'p1',
         patch: const AdminBusinessTimingProfilePatch(
+          scopeKind: 'operator',
+          scopeId: 'op-1',
           businessDayStartLocal: '05:00',
         ),
         adminReason: 'shift start fix',
-        idempotencyKey: 'idem-2',
+        idempotencyKey: 'caller-owned-key',
       );
 
-      expect(captured.method, 'PATCH');
-      expect(
-        captured.url.path,
-        '/v1/admin/operators/op-1/business-timing-profiles/p1',
-      );
-      final sent = jsonDecode(captured.body) as Map<String, Object?>;
-      expect(sent['businessDayStartLocal'], '05:00');
-      expect(sent['admin_reason'], 'shift start fix');
-      // Null patch fields are omitted (server's immutable-field guard
-      // never sees an unchanged field).
-      expect(sent.containsKey('ianaTimezone'), isFalse);
-      expect(sent.containsKey('servicePeriods'), isFalse);
+      expect(captured.headers['idempotency-key'], 'caller-owned-key');
     },
   );
 
