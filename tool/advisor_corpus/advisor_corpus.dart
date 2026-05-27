@@ -2055,6 +2055,92 @@ const Set<String> kGraphifyApprovedEdgeTypes = <String>{
   'RELATES_TO',
 };
 
+// ─── G4 C3 vocabulary wire sets ──────────────────────────────────────────────
+//
+// Sealed at C3 (202605261200_phase_12_c3_typed_graph_vocabulary.sql).
+// These are the ONLY valid wire values for semantic-extraction output.
+// The extractor validates every model-produced kind/type against these sets
+// and rejects (labels AMBIGUOUS + flags) anything not present.
+//
+// Node kinds: 13 total (methodology, operational, structural categories).
+// Edge types: 15 total (core + C3 additions).
+//
+// Source of truth: the SQL migration above. Do NOT expand these sets here
+// without a corresponding migration + operator sign-off.
+
+/// Sealed C3 node-kind wire values.
+/// Mirrors graph_node_kinds.kind from the C3 migration.
+const Set<String> kC3NodeKinds = <String>{
+  // Methodology
+  'Concept',
+  'SOP',
+  'Policy',
+  'Metric',
+  'Formula',
+  'Risk',
+  'Word_To_Know',
+  'Coaching_Move',
+  // Operational
+  'Role',
+  'Workflow',
+  // Structural
+  'Document',
+  'Chunk',
+  // Legacy alias (backward compat with existing importer seeds)
+  'Procedure',
+};
+
+/// Sealed C3 edge-type wire values.
+/// Mirrors graph_edge_types.edge_type from the C3 migration.
+const Set<String> kC3EdgeTypes = <String>{
+  'CONTAINS',
+  'CAUSES',
+  'INFORMS',
+  'RELATES_TO',
+  'DEPENDS_ON',
+  'GOVERNS',
+  'MITIGATES',
+  'TEACHES',
+  'DEFINES',
+  'MEASURES',
+  'CALCULATES',
+  'REDUCES_RISK_OF',
+  'REQUIRES',
+  'PART_OF',
+  'NEAR',
+};
+
+/// Plain-English verb phrase for each C3 edge type.
+/// Mirrors graph_edge_types.verb_phrase - single source of truth for the
+/// extraction prompt and any later display layer.
+const Map<String, String> kC3EdgeVerbPhrases = <String, String>{
+  'CONTAINS': 'includes',
+  'CAUSES': 'can cause',
+  'INFORMS': 'informs',
+  'RELATES_TO': 'is related to',
+  'DEPENDS_ON': 'depends on',
+  'GOVERNS': 'governs',
+  'MITIGATES': 'reduces the risk of',
+  'TEACHES': 'teaches',
+  'DEFINES': 'defines',
+  'MEASURES': 'measures',
+  'CALCULATES': 'is used to calculate',
+  'REDUCES_RISK_OF': 'reduces the risk of',
+  'REQUIRES': 'requires',
+  'PART_OF': 'is part of',
+  'NEAR': 'is related to',
+};
+
+/// Output filenames for semantic extraction candidates.
+const String semanticNodeCandidatesFileName =
+    'semantic_node_candidates.jsonl';
+const String semanticEdgeCandidatesFileName =
+    'semantic_edge_candidates.jsonl';
+const String semanticExtractionManifestFileName =
+    'semantic_extraction_manifest.json';
+const String semanticExtractionOutputDirectory =
+    'tool/advisor_proxy/graphify_candidates/semantic';
+
 /// Map a Graphify-emitted `relation` string to the F&F approved
 /// edge_type vocabulary. Unknown relations fall through to
 /// `RELATES_TO` and the candidate is bucketed AMBIGUOUS so the
@@ -3782,6 +3868,837 @@ class ContextExecutionResult {
   final int chunkCount;
   final List<String> outputFiles;
 }
+
+// ─── G4 C3 Semantic extraction ────────────────────────────────────────────────
+//
+// CorpusSemanticExtractor turns each corpus chunk into typed graph candidates
+// (typed nodes with C3 node-kind wire values + typed edges with C3 edge-type
+// wire values) by prompting an LLM through the existing gateway abstraction
+// (the same AdvisorContextGateway seam used by CorpusContextExecutor).
+//
+// HP#9 compliance:
+//   Every call records a SemanticExtractionCostRecord in the execution
+//   manifest: provider, model, estimated_input_tokens, estimated_output_tokens,
+//   and cost_class ('semantic_extraction'). The manifest accumulates these
+//   per-chunk records so a downstream billing pass can tally spend without
+//   needing a live DB connection. No actual proxy_requests row is written here
+//   (the tool does not call the proxy); that bookkeeping belongs to a future
+//   proxy-side endpoint when the operator runs real extractions.
+//   Follow-up flag in PR body: "Proxy endpoint needed - see PR body."
+//
+// Idempotency:
+//   Each chunk is keyed by (chunk_id, content_sha256). The extractor skips
+//   any chunk whose idempotency key already appears in the output JSONL from
+//   a prior run. Re-runs process only new/changed chunks.
+//
+// Vocab enforcement:
+//   Model-produced node kinds and edge types are validated against kC3NodeKinds
+//   and kC3EdgeTypes. Unknown values are remapped to the fallback
+//   ('Concept' / 'RELATES_TO') and the candidate is labeled AMBIGUOUS so the
+//   admin re-classifies before commit.
+//
+// Output format:
+//   Emits the same JSONL candidate shape as GraphifyCandidateImporter so the
+//   existing proxy commit path consumes semantic candidates without changes.
+//   Node candidates: candidate_id, kind='node', candidate_type (C3 node kind),
+//     label (EXTRACTED/INFERRED/AMBIGUOUS), source_file, source_ref, payload.
+//   Edge candidates: candidate_id, kind='edge', candidate_type (C3 edge type),
+//     label, from_node_key, to_node_key, payload (includes verb_phrase).
+//
+// Hard rule: No live API calls here. All tests use a mock gateway.
+// A NEW PROXY ENDPOINT is required before real extraction runs can be
+// cost-metered server-side. See PR body for the follow-up flag.
+
+/// One typed node extracted from a corpus chunk by the LLM.
+class SemanticNodeExtraction {
+  const SemanticNodeExtraction({
+    required this.nodeKey,
+    required this.kind,
+    required this.label,
+    required this.verbatimText,
+  });
+
+  /// Short key for this node (e.g. the concept name or metric label).
+  final String nodeKey;
+
+  /// C3 node-kind wire value (validated against kC3NodeKinds).
+  final String kind;
+
+  /// Confidence classification: EXTRACTED | INFERRED | AMBIGUOUS.
+  final String label;
+
+  /// Verbatim text from the chunk that grounds this node.
+  final String verbatimText;
+}
+
+/// One typed edge extracted from a corpus chunk by the LLM.
+class SemanticEdgeExtraction {
+  const SemanticEdgeExtraction({
+    required this.fromNodeKey,
+    required this.toNodeKey,
+    required this.edgeType,
+    required this.label,
+    required this.verbatimText,
+  });
+
+  final String fromNodeKey;
+  final String toNodeKey;
+
+  /// C3 edge-type wire value (validated against kC3EdgeTypes).
+  final String edgeType;
+
+  /// Confidence classification: EXTRACTED | INFERRED | AMBIGUOUS.
+  final String label;
+
+  /// Verbatim text from the chunk that grounds this edge.
+  final String verbatimText;
+}
+
+/// Raw extraction result returned by the gateway for one chunk.
+class SemanticExtractionResponse {
+  const SemanticExtractionResponse({
+    required this.nodes,
+    required this.edges,
+    required this.estimatedInputTokens,
+    required this.estimatedOutputTokens,
+  });
+
+  final List<SemanticNodeExtraction> nodes;
+  final List<SemanticEdgeExtraction> edges;
+  final int estimatedInputTokens;
+  final int estimatedOutputTokens;
+}
+
+/// HP#9 cost record per extraction call. Accumulated in the manifest.
+/// cost_class is 'semantic_extraction' per the two-slot key convention
+/// (class + sub-class where needed). No USD amounts here; the proxy
+/// cost-metering endpoint (follow-up) converts tokens -> USD server-side.
+class SemanticExtractionCostRecord {
+  const SemanticExtractionCostRecord({
+    required this.chunkId,
+    required this.contentSha256,
+    required this.provider,
+    required this.model,
+    required this.estimatedInputTokens,
+    required this.estimatedOutputTokens,
+    required this.costClass,
+  });
+
+  final String chunkId;
+  final String contentSha256;
+  final String provider;
+  final String model;
+  final int estimatedInputTokens;
+  final int estimatedOutputTokens;
+
+  /// HP#9 two-slot cost class. Always 'semantic_extraction' for this tool.
+  final String costClass;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'chunk_id': chunkId,
+    'content_sha256': contentSha256,
+    'provider': provider,
+    'model': model,
+    'estimated_input_tokens': estimatedInputTokens,
+    'estimated_output_tokens': estimatedOutputTokens,
+    'cost_class': costClass,
+  };
+}
+
+/// Result of one [CorpusSemanticExtractor.extract] run.
+class SemanticExtractionResult {
+  const SemanticExtractionResult({
+    required this.outputDirectory,
+    required this.executionId,
+    required this.provider,
+    required this.model,
+    required this.processedChunkCount,
+    required this.skippedChunkCount,
+    required this.nodeCandidateCount,
+    required this.edgeCandidateCount,
+    required this.ambiguousNodeCount,
+    required this.ambiguousEdgeCount,
+    required this.totalEstimatedInputTokens,
+    required this.totalEstimatedOutputTokens,
+    required this.costRecords,
+  });
+
+  final String outputDirectory;
+  final String executionId;
+  final String provider;
+  final String model;
+
+  /// Chunks that had LLM extraction run this invocation.
+  final int processedChunkCount;
+
+  /// Chunks skipped because their idempotency key was already present.
+  final int skippedChunkCount;
+
+  final int nodeCandidateCount;
+  final int edgeCandidateCount;
+
+  /// Nodes that fell back to 'Concept' + were bucketed AMBIGUOUS.
+  final int ambiguousNodeCount;
+
+  /// Edges that fell back to 'RELATES_TO' + were bucketed AMBIGUOUS.
+  final int ambiguousEdgeCount;
+
+  final int totalEstimatedInputTokens;
+  final int totalEstimatedOutputTokens;
+
+  /// One record per processed chunk. Written to the manifest for HP#9.
+  final List<SemanticExtractionCostRecord> costRecords;
+}
+
+/// Gateway seam for LLM-driven semantic extraction.
+/// The concrete implementation calls the Anthropic messages API through
+/// the existing proxy infrastructure. Tests inject a mock implementation.
+///
+/// HARD RULE: No implementation here may make a real network call without an
+/// explicit operator spend approval. The tool ships with a mock-only path.
+/// The real [AnthropicSemanticExtractionGateway] is provided for wiring only;
+/// it MUST NOT be invoked in tests or CI.
+///
+/// Follow-up: a proxy endpoint is required so real runs are cost-metered
+/// server-side (HP#7: server-side keys; HP#9: metered by class).
+/// See PR body for the follow-up flag.
+abstract class AdvisorSemanticExtractionGateway {
+  /// Extract typed nodes and edges from [chunkText].
+  ///
+  /// [documentTitle] and [headingPath] provide provenance context for the
+  /// prompt. The gateway returns raw [SemanticExtractionResponse]; vocab
+  /// validation is the caller's responsibility.
+  Future<SemanticExtractionResponse> extractFromChunk({
+    required String apiKey,
+    required String model,
+    required String documentTitle,
+    required String sourcePath,
+    required List<String> headingPath,
+    required String chunkText,
+    required Set<String> nodeKinds,
+    required Set<String> edgeTypes,
+    required Map<String, String> edgeVerbPhrases,
+  });
+}
+
+/// Production gateway: Anthropic messages API.
+/// NOT called in tests. Used only when the operator explicitly authorises
+/// a paid extraction run (separate operator-funded step per task spec).
+class AnthropicSemanticExtractionGateway
+    implements AdvisorSemanticExtractionGateway {
+  AnthropicSemanticExtractionGateway({HttpClient? httpClient, Uri? endpoint})
+    : _httpClient = httpClient ?? HttpClient(),
+      _endpoint = endpoint ?? Uri.parse(advisorAnthropicMessagesEndpoint);
+
+  final HttpClient _httpClient;
+  final Uri _endpoint;
+
+  static const int _maxOutputTokens = 2048;
+  static const String _extractionSystemPrompt =
+      'You are a knowledge-graph extraction assistant for a restaurant '
+      'operations methodology corpus. Your output MUST be a single valid '
+      'JSON object with exactly two keys: "nodes" (array) and "edges" '
+      '(array). No markdown fences, no prose, no extra keys. '
+      'Each node: {"key": string, "kind": one-of-node-kinds, '
+      '"label": "EXTRACTED"|"INFERRED", "verbatim": string}. '
+      'Each edge: {"from": string, "to": string, "type": one-of-edge-types, '
+      '"label": "EXTRACTED"|"INFERRED", "verbatim": string}. '
+      'Use only the provided node-kinds and edge-types. '
+      'If unsure, use "Concept" for nodes and "RELATES_TO" for edges '
+      'and set label to "INFERRED". Do not invent new kinds or types.';
+
+  @override
+  Future<SemanticExtractionResponse> extractFromChunk({
+    required String apiKey,
+    required String model,
+    required String documentTitle,
+    required String sourcePath,
+    required List<String> headingPath,
+    required String chunkText,
+    required Set<String> nodeKinds,
+    required Set<String> edgeTypes,
+    required Map<String, String> edgeVerbPhrases,
+  }) async {
+    final heading = headingPath.isEmpty ? '(root)' : headingPath.join(' > ');
+    final nodeKindList = nodeKinds.toList()..sort();
+    final edgeTypeList = edgeTypes.toList()..sort();
+
+    final userPrompt =
+        'Extract typed knowledge-graph nodes and edges from this corpus chunk.\n\n'
+        'Document: $documentTitle\n'
+        'Source path: $sourcePath\n'
+        'Heading: $heading\n\n'
+        'Approved node kinds: ${nodeKindList.join(', ')}\n'
+        'Approved edge types (type: verb-phrase): '
+        '${edgeTypeList.map((t) => '$t: ${edgeVerbPhrases[t] ?? t}').join('; ')}\n\n'
+        'Chunk:\n$chunkText\n\n'
+        'Return a JSON object {"nodes":[...],"edges":[...]}. '
+        'Only use the approved node kinds and edge types above.';
+
+    final estimatedInputTokens = _estimateTokens(
+      _extractionSystemPrompt + userPrompt,
+    );
+
+    final request = await _httpClient.postUrl(_endpoint);
+    request.headers
+      ..set(HttpHeaders.contentTypeHeader, 'application/json')
+      ..set('x-api-key', apiKey)
+      ..set('anthropic-version', '2023-06-01');
+
+    final body = <String, Object?>{
+      'model': model,
+      'max_tokens': _maxOutputTokens,
+      'temperature': 0,
+      'system': _extractionSystemPrompt,
+      'messages': <Map<String, Object?>>[
+        <String, Object?>{'role': 'user', 'content': userPrompt},
+      ],
+    };
+
+    request.add(utf8.encode(jsonEncode(body)));
+    final response = await request.close();
+    final responseBody = await utf8.decodeStream(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw CorpusManifestException(
+        'Anthropic semantic extraction request failed '
+        '(status ${response.statusCode}): '
+        '${_safeProviderErrorMessage(responseBody)}',
+      );
+    }
+
+    final decoded = jsonDecode(responseBody) as Map<String, Object?>;
+    final content = decoded['content'];
+    if (content is! List) {
+      throw CorpusManifestException(
+        'Anthropic semantic extraction response missing content array.',
+      );
+    }
+    final textParts = <String>[];
+    for (final part in content) {
+      if (part is Map<String, Object?> && part['type'] == 'text') {
+        final text = part['text']?.toString().trim();
+        if (text != null && text.isNotEmpty) {
+          textParts.add(text);
+        }
+      }
+    }
+    final rawJson = textParts.join('\n').trim();
+    if (rawJson.isEmpty) {
+      throw CorpusManifestException(
+        'Anthropic semantic extraction response produced no text.',
+      );
+    }
+
+    // Usage for HP#9 token accounting.
+    final usage = decoded['usage'];
+    final outputTokens = usage is Map<String, Object?>
+        ? (usage['output_tokens'] as num?)?.toInt() ?? _maxOutputTokens
+        : _maxOutputTokens;
+
+    final parsed = _parseExtractionJson(rawJson);
+    return SemanticExtractionResponse(
+      nodes: parsed.nodes,
+      edges: parsed.edges,
+      estimatedInputTokens: estimatedInputTokens,
+      estimatedOutputTokens: outputTokens,
+    );
+  }
+}
+
+/// Validates and normalises a raw LLM JSON extraction string.
+/// Unknown node kinds fall back to 'Concept' (AMBIGUOUS).
+/// Unknown edge types fall back to 'RELATES_TO' (AMBIGUOUS).
+/// Parse errors throw [CorpusManifestException].
+_ParsedExtraction _parseExtractionJson(String rawJson) {
+  final Map<String, Object?> root;
+  try {
+    root = jsonDecode(rawJson) as Map<String, Object?>;
+  } catch (e) {
+    throw CorpusManifestException(
+      'Semantic extraction response is not valid JSON: $e\n'
+      'Raw response (first 500 chars): ${rawJson.substring(0, rawJson.length.clamp(0, 500))}',
+    );
+  }
+
+  final rawNodes = (root['nodes'] as List?) ?? const <Object?>[];
+  final rawEdges = (root['edges'] as List?) ?? const <Object?>[];
+
+  final nodes = <SemanticNodeExtraction>[];
+  for (final entry in rawNodes) {
+    if (entry is! Map<String, Object?>) continue;
+    final nodeKey = entry['key']?.toString().trim() ?? '';
+    if (nodeKey.isEmpty) continue;
+    final rawKind = entry['kind']?.toString().trim() ?? '';
+    final rawLabel = entry['label']?.toString().trim().toUpperCase() ?? '';
+    final isValidKind = kC3NodeKinds.contains(rawKind);
+    final resolvedKind = isValidKind ? rawKind : 'Concept';
+    final resolvedLabel =
+        (!isValidKind || rawLabel == 'AMBIGUOUS')
+        ? 'AMBIGUOUS'
+        : (rawLabel == 'INFERRED' ? 'INFERRED' : 'EXTRACTED');
+    nodes.add(
+      SemanticNodeExtraction(
+        nodeKey: nodeKey,
+        kind: resolvedKind,
+        label: resolvedLabel,
+        verbatimText: entry['verbatim']?.toString().trim() ?? '',
+      ),
+    );
+  }
+
+  final edges = <SemanticEdgeExtraction>[];
+  for (final entry in rawEdges) {
+    if (entry is! Map<String, Object?>) continue;
+    final fromKey = entry['from']?.toString().trim() ?? '';
+    final toKey = entry['to']?.toString().trim() ?? '';
+    if (fromKey.isEmpty || toKey.isEmpty) continue;
+    final rawType = entry['type']?.toString().trim() ?? '';
+    final rawLabel = entry['label']?.toString().trim().toUpperCase() ?? '';
+    final isValidType = kC3EdgeTypes.contains(rawType);
+    final resolvedType = isValidType ? rawType : 'RELATES_TO';
+    final resolvedLabel =
+        (!isValidType || rawLabel == 'AMBIGUOUS')
+        ? 'AMBIGUOUS'
+        : (rawLabel == 'INFERRED' ? 'INFERRED' : 'EXTRACTED');
+    edges.add(
+      SemanticEdgeExtraction(
+        fromNodeKey: fromKey,
+        toNodeKey: toKey,
+        edgeType: resolvedType,
+        label: resolvedLabel,
+        verbatimText: entry['verbatim']?.toString().trim() ?? '',
+      ),
+    );
+  }
+
+  return _ParsedExtraction(nodes: nodes, edges: edges);
+}
+
+class _ParsedExtraction {
+  _ParsedExtraction({required this.nodes, required this.edges});
+  final List<SemanticNodeExtraction> nodes;
+  final List<SemanticEdgeExtraction> edges;
+}
+
+/// Semantic extraction executor.
+///
+/// Reads materialized chunks (source_chunks.jsonl), calls the gateway once
+/// per chunk (skipping chunks whose idempotency key is already in the output),
+/// validates + maps all model output to C3 vocab wire values, accumulates HP#9
+/// cost records, and writes:
+///   - [semanticNodeCandidatesFileName]   typed node candidates JSONL
+///   - [semanticEdgeCandidatesFileName]   typed edge candidates JSONL
+///   - [semanticExtractionManifestFileName] summary + HP#9 cost records
+///
+/// The JSONL candidate format is identical to GraphifyCandidateImporter output
+/// so the existing proxy commit path (advisor_proxy graphify candidate routes)
+/// can consume both without changes.
+///
+/// HARD RULE: No real API calls in tests. Inject a mock gateway.
+/// The [AnthropicSemanticExtractionGateway] is only instantiated when an
+/// API key is explicitly provided AND the operator has approved a paid run.
+///
+/// Follow-up (proxy endpoint): real extraction runs must be cost-metered
+/// server-side via a new proxy endpoint. See PR body.
+class CorpusSemanticExtractor {
+  CorpusSemanticExtractor({
+    required Directory repoRoot,
+    AdvisorSemanticExtractionGateway? gateway,
+    String provider = advisorSemanticProvider,
+    String model = advisorSemanticModel,
+  }) : _repoRoot = repoRoot,
+       _gateway = gateway ?? AnthropicSemanticExtractionGateway(),
+       _provider = provider,
+       _model = model;
+
+  final Directory _repoRoot;
+  final AdvisorSemanticExtractionGateway _gateway;
+  final String _provider;
+  final String _model;
+
+  Future<SemanticExtractionResult> extract({
+    String materializationDirectory = 'build/advisor_corpus',
+    String outputDirectory = semanticExtractionOutputDirectory,
+    String? apiKey,
+    String graphScope = 'methodology',
+    String graphVersion = '1',
+    void Function(int processed, int total, String chunkId)?
+    onChunkComplete,
+  }) async {
+    final resolvedApiKey =
+        apiKey ?? Platform.environment['ANTHROPIC_API_KEY'];
+
+    final materialized = Directory(
+      p.join(_repoRoot.path, materializationDirectory),
+    );
+    final output = Directory(p.join(_repoRoot.path, outputDirectory));
+    output.createSync(recursive: true);
+
+    // Load prior-run output to build the idempotency skip-set.
+    final priorIdempotencyKeys = await _loadPriorIdempotencyKeys(
+      output: output,
+    );
+
+    final chunks = await _readJsonLines(
+      File(p.join(materialized.path, 'source_chunks.jsonl')),
+    );
+    chunks.sort(
+      (a, b) =>
+          a['chunk_id'].toString().compareTo(b['chunk_id'].toString()),
+    );
+
+    // Guard against real API calls: only raise the key-missing error when
+    // there are chunks that would actually trigger an LLM call.
+    // Empty or fully-skipped runs do not need an API key.
+    final hasChunksToProcess = chunks.any(
+      (chunk) {
+        final key =
+            '${chunk['chunk_id']}:${chunk['content_sha256']}';
+        return !priorIdempotencyKeys.contains(key);
+      },
+    );
+    if (hasChunksToProcess &&
+        (resolvedApiKey == null || resolvedApiKey.trim().isEmpty)) {
+      throw CorpusManifestException(
+        'ANTHROPIC_API_KEY is required to run semantic extraction. '
+        'This command makes paid API calls. '
+        'Ensure operator approval before running.',
+      );
+    }
+
+    final nodeCandidates = <Map<String, Object?>>[];
+    final edgeCandidates = <Map<String, Object?>>[];
+    final costRecords = <SemanticExtractionCostRecord>[];
+    var processedCount = 0;
+    var skippedCount = 0;
+    var ambiguousNodes = 0;
+    var ambiguousEdges = 0;
+    var totalInputTokens = 0;
+    var totalOutputTokens = 0;
+
+    for (var index = 0; index < chunks.length; index += 1) {
+      final chunk = chunks[index];
+      final chunkId = chunk['chunk_id'].toString();
+      final contentSha256 = chunk['content_sha256'].toString();
+      final idempotencyKey = '$chunkId:$contentSha256';
+
+      // Idempotency: skip if already extracted in a prior run.
+      if (priorIdempotencyKeys.contains(idempotencyKey)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      final headingPath = _stringList(chunk['heading_path']);
+      final sourcePath = chunk['source_path'].toString();
+      final docId = chunk['doc_id'].toString();
+      final chunkText = chunk['text'].toString();
+
+      SemanticExtractionResponse response;
+      try {
+        response = await _gateway.extractFromChunk(
+          apiKey: resolvedApiKey ?? '',
+          model: _model,
+          documentTitle: docId,
+          sourcePath: sourcePath,
+          headingPath: headingPath,
+          chunkText: chunkText,
+          nodeKinds: kC3NodeKinds,
+          edgeTypes: kC3EdgeTypes,
+          edgeVerbPhrases: kC3EdgeVerbPhrases,
+        );
+      } catch (e) {
+        // Non-fatal: record the failure as a cost record with zero tokens
+        // and continue. The missing chunk will be picked up on the next run.
+        costRecords.add(
+          SemanticExtractionCostRecord(
+            chunkId: chunkId,
+            contentSha256: contentSha256,
+            provider: _provider,
+            model: _model,
+            estimatedInputTokens: 0,
+            estimatedOutputTokens: 0,
+            costClass: advisorSemanticCostClass,
+          ),
+        );
+        // Rethrow so the caller knows something went wrong.
+        rethrow;
+      }
+
+      processedCount += 1;
+      totalInputTokens += response.estimatedInputTokens;
+      totalOutputTokens += response.estimatedOutputTokens;
+
+      costRecords.add(
+        SemanticExtractionCostRecord(
+          chunkId: chunkId,
+          contentSha256: contentSha256,
+          provider: _provider,
+          model: _model,
+          estimatedInputTokens: response.estimatedInputTokens,
+          estimatedOutputTokens: response.estimatedOutputTokens,
+          costClass: advisorSemanticCostClass,
+        ),
+      );
+
+      // Emit node candidates.
+      for (final node in response.nodes) {
+        if (node.label == 'AMBIGUOUS') ambiguousNodes += 1;
+        final candidateKey = 'semantic:$chunkId:${node.nodeKey}';
+        nodeCandidates.add(<String, Object?>{
+          'candidate_id': 'node:$candidateKey',
+          'kind': 'node',
+          'candidate_key': candidateKey,
+          'candidate_type': node.kind,
+          'label': node.label,
+          'source_file': sourcePath,
+          'source_ref': headingPath.join(' > '),
+          'idempotency_key': idempotencyKey,
+          'payload': <String, Object?>{
+            'label': node.nodeKey,
+            'verbatim': node.verbatimText,
+            'chunk_id': chunkId,
+            'doc_id': docId,
+            'extraction_provider': _provider,
+            'extraction_model': _model,
+          },
+        });
+      }
+
+      // Emit edge candidates.
+      for (final edge in response.edges) {
+        if (edge.label == 'AMBIGUOUS') ambiguousEdges += 1;
+        final verbPhrase = kC3EdgeVerbPhrases[edge.edgeType] ?? edge.edgeType;
+        final fromKey = 'semantic:$chunkId:${edge.fromNodeKey}';
+        final toKey = 'semantic:$chunkId:${edge.toNodeKey}';
+        final candidateKey =
+            'semantic:edge:$chunkId:${edge.fromNodeKey}:${edge.toNodeKey}'
+            ':${edge.edgeType.toLowerCase()}';
+        edgeCandidates.add(<String, Object?>{
+          'candidate_id': 'edge:$candidateKey',
+          'kind': 'edge',
+          'candidate_key': candidateKey,
+          'candidate_type': edge.edgeType,
+          'label': edge.label,
+          'source_file': sourcePath,
+          'source_ref': headingPath.join(' > '),
+          'from_node_key': fromKey,
+          'to_node_key': toKey,
+          'idempotency_key': idempotencyKey,
+          'payload': <String, Object?>{
+            'verb_phrase': verbPhrase,
+            'verbatim': edge.verbatimText,
+            'chunk_id': chunkId,
+            'doc_id': docId,
+            'extraction_provider': _provider,
+            'extraction_model': _model,
+          },
+        });
+      }
+
+      onChunkComplete?.call(index + 1, chunks.length, chunkId);
+    }
+
+    // Merge with any prior-run candidates already on disk.
+    final allNodes = await _mergeWithPrior(
+      output: output,
+      fileName: semanticNodeCandidatesFileName,
+      newCandidates: nodeCandidates,
+    );
+    final allEdges = await _mergeWithPrior(
+      output: output,
+      fileName: semanticEdgeCandidatesFileName,
+      newCandidates: edgeCandidates,
+    );
+
+    // Sort for deterministic output.
+    allNodes.sort(
+      (a, b) =>
+          a['candidate_id'].toString().compareTo(b['candidate_id'].toString()),
+    );
+    allEdges.sort(
+      (a, b) =>
+          a['candidate_id'].toString().compareTo(b['candidate_id'].toString()),
+    );
+
+    await _writeJsonLines(
+      File(p.join(output.path, semanticNodeCandidatesFileName)),
+      allNodes,
+    );
+    await _writeJsonLines(
+      File(p.join(output.path, semanticEdgeCandidatesFileName)),
+      allEdges,
+    );
+
+    final executionId = _deterministicUuid(
+      jsonEncode(<String, Object?>{
+        'provider': _provider,
+        'model': _model,
+        'processed_count': processedCount,
+        'skipped_count': skippedCount,
+        'total_input_tokens': totalInputTokens,
+        'total_output_tokens': totalOutputTokens,
+        'node_count': allNodes.length,
+        'edge_count': allEdges.length,
+      }),
+    );
+
+    final manifest = <String, Object?>{
+      'record_type': 'semantic_extraction_manifest',
+      'extraction_version': 1,
+      'execution_id': executionId,
+      'provider': _provider,
+      'model': _model,
+      'graph_scope': graphScope,
+      'graph_version': graphVersion,
+      'processed_chunk_count': processedCount,
+      'skipped_chunk_count': skippedCount,
+      'node_candidate_count': allNodes.length,
+      'edge_candidate_count': allEdges.length,
+      'ambiguous_node_count': ambiguousNodes,
+      'ambiguous_edge_count': ambiguousEdges,
+      'total_estimated_input_tokens': totalInputTokens,
+      'total_estimated_output_tokens': totalOutputTokens,
+      // HP#9: per-call cost records for downstream billing.
+      'hp9_cost_class': advisorSemanticCostClass,
+      'hp9_note':
+          'Per-call token counts recorded below. '
+          'USD conversion is deferred to a future proxy endpoint '
+          '(follow-up: proxy cost-metering endpoint for semantic extraction). '
+          'No proxy_requests rows are written by this tool.',
+      'hp9_cost_records':
+          costRecords.map((r) => r.toJson()).toList(growable: false),
+      'c3_vocab': <String, Object?>{
+        'node_kinds': kC3NodeKinds.toList()..sort(),
+        'edge_types': kC3EdgeTypes.toList()..sort(),
+        'source_migration':
+            'db/migrations/202605261200_phase_12_c3_typed_graph_vocabulary.sql',
+      },
+      'output_files': <String>[
+        semanticNodeCandidatesFileName,
+        semanticEdgeCandidatesFileName,
+      ],
+      'mode': 'semantic_extraction_llm_call',
+      'database_mutation': false,
+      'proxy_endpoint_needed': true,
+      'proxy_endpoint_note':
+          'A new proxy endpoint is required for server-side cost metering '
+          '(HP#7 server-side keys + HP#9 metered by class). '
+          'This tool-side client is built and tested against a mock; '
+          'the real extraction run is a separate operator-funded step.',
+    };
+
+    await File(
+      p.join(output.path, semanticExtractionManifestFileName),
+    ).writeAsString(const JsonEncoder.withIndent('  ').convert(manifest));
+
+    return SemanticExtractionResult(
+      outputDirectory: output.path,
+      executionId: executionId,
+      provider: _provider,
+      model: _model,
+      processedChunkCount: processedCount,
+      skippedChunkCount: skippedCount,
+      nodeCandidateCount: allNodes.length,
+      edgeCandidateCount: allEdges.length,
+      ambiguousNodeCount: ambiguousNodes,
+      ambiguousEdgeCount: ambiguousEdges,
+      totalEstimatedInputTokens: totalInputTokens,
+      totalEstimatedOutputTokens: totalOutputTokens,
+      costRecords: costRecords,
+    );
+  }
+
+  /// Build the set of idempotency keys already present in [output].
+  Future<Set<String>> _loadPriorIdempotencyKeys({
+    required Directory output,
+  }) async {
+    final keys = <String>{};
+    for (final fileName in <String>[
+      semanticNodeCandidatesFileName,
+      semanticEdgeCandidatesFileName,
+    ]) {
+      final file = File(p.join(output.path, fileName));
+      if (!file.existsSync()) continue;
+      final lines = await file.readAsLines();
+      for (final line in lines.where((l) => l.trim().isNotEmpty)) {
+        try {
+          final record = jsonDecode(line) as Map<String, Object?>;
+          final key = record['idempotency_key']?.toString();
+          if (key != null && key.isNotEmpty) {
+            keys.add(key);
+          }
+        } catch (_) {
+          // Malformed line - skip silently.
+        }
+      }
+    }
+    return keys;
+  }
+
+  /// Merge [newCandidates] with any prior-run candidates already on disk.
+  /// Prior candidates whose candidate_id is NOT in [newCandidates] are
+  /// preserved (idempotent re-runs). New candidates win on conflict.
+  Future<List<Map<String, Object?>>> _mergeWithPrior({
+    required Directory output,
+    required String fileName,
+    required List<Map<String, Object?>> newCandidates,
+  }) async {
+    final file = File(p.join(output.path, fileName));
+    final prior = <String, Map<String, Object?>>{};
+    if (file.existsSync()) {
+      final lines = await file.readAsLines();
+      for (final line in lines.where((l) => l.trim().isNotEmpty)) {
+        try {
+          final record = jsonDecode(line) as Map<String, Object?>;
+          final id = record['candidate_id']?.toString();
+          if (id != null) prior[id] = record;
+        } catch (_) {
+          // Malformed prior line - skip.
+        }
+      }
+    }
+    for (final candidate in newCandidates) {
+      final id = candidate['candidate_id']?.toString();
+      if (id != null) prior[id] = candidate;
+    }
+    return prior.values.toList(growable: true);
+  }
+
+  Future<List<Map<String, Object?>>> _readJsonLines(File file) async {
+    if (!file.existsSync()) {
+      throw CorpusManifestException(
+        'Materialized corpus file not found: ${file.path}',
+      );
+    }
+    final records = <Map<String, Object?>>[];
+    final lines = await file.readAsLines();
+    for (final line in lines.where((l) => l.trim().isNotEmpty)) {
+      records.add(jsonDecode(line) as Map<String, Object?>);
+    }
+    return records;
+  }
+
+  Future<void> _writeJsonLines(
+    File file,
+    List<Map<String, Object?>> records,
+  ) async {
+    final buffer = StringBuffer();
+    for (final record in records) {
+      buffer.writeln(jsonEncode(record));
+    }
+    await file.writeAsString(buffer.toString());
+  }
+}
+
+/// Provider constants for semantic extraction (G4 C3).
+const String advisorSemanticProvider = 'anthropic';
+
+/// Default model for semantic extraction.
+/// haiku-4-5 balances cost vs. quality for typed extraction.
+const String advisorSemanticModel = 'claude-haiku-4-5';
+
+/// HP#9 two-slot cost class for semantic extraction calls.
+const String advisorSemanticCostClass = 'semantic_extraction';
 
 class CorpusManifestException implements Exception {
   CorpusManifestException(this.message);
