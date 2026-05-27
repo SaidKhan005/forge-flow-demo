@@ -25,6 +25,7 @@ import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
+import '../../services/advisor/advisor_answer_gateway.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../services/auth/custom_role_validator.dart' show RoleScope;
 import '../../services/integration/iana_timezone_converter.dart';
@@ -53,6 +54,7 @@ import '../services/web_team_roles_gateway.dart';
 import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
+import '../screens/advisor_chat_nav.dart';
 import '../screens/audit_log_screen.dart';
 // Per-Daypart Targets V1 / Slice 2 (Gap 35): the operator-web
 // Benchmarks override surface was cut entirely. Mobile Baseline
@@ -283,6 +285,8 @@ String? _navIdFromRaw(String? raw) {
     // landing on the wage section without 404ing.
     'wage_authority' => kOperatorWebNavDataAccuracy,
     'schedule' => kOperatorWebNavSchedule,
+    'advisor' || 'ask_the_advisor' || 'advisor_chat' =>
+      kOperatorWebNavAdvisorChat,
     'plan' || 'your_plan' || 'plans' => kOperatorWebNavPlan,
     'security' || 'sign_in_security' => kOperatorWebNavMyAccount,
     _ => null,
@@ -1586,6 +1590,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         group: 'People & access',
       ),
       kOperatorWebPlanNavItem, // Plans & limits Phase 5b — "Your plan".
+      kOperatorWebAdvisorChatNavItem, // Advisor D2-web — "Ask the advisor".
     ];
     final Widget body;
     switch (_selectedNavId) {
@@ -2005,6 +2010,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           nowUtc: widget.nowUtc,
         );
         break;
+      case kOperatorWebNavAdvisorChat: // Advisor D2-web — wiring in advisor_chat_nav.dart.
+        body = operatorWebAdvisorChatScreenBody(gateway: _advisorAnswerGateway);
+        break;
       default:
         body = AccountScreen(
           session: session,
@@ -2353,6 +2361,21 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   }
 
   OperatorWebDemoScheduleGateway? _routerOwnedDemoScheduleGateway;
+
+  /// Advisor D2-web — operator-facing advisor chat gateway. Live wiring
+  /// (Firebase source + proxy) mixes in [AdvisorAnswerGatewayProvider];
+  /// demo / fixture sources fall back to the router-owned
+  /// [AdvisorAnswerGatewayDemo] (HP #2 demo parity). Recommendation-read
+  /// only: no execute/apply path (HP #6); never echoes the token (HP #7).
+  AdvisorAnswerGateway get _advisorAnswerGateway {
+    final source = widget.source;
+    if (source is AdvisorAnswerGatewayProvider) {
+      return (source as AdvisorAnswerGatewayProvider).advisorAnswerGateway;
+    }
+    return _routerOwnedDemoAdvisorAnswerGateway ??= AdvisorAnswerGatewayDemo();
+  }
+
+  AdvisorAnswerGatewayDemo? _routerOwnedDemoAdvisorAnswerGateway;
 
   String? get _currentSessionId {
     final source = widget.source;
