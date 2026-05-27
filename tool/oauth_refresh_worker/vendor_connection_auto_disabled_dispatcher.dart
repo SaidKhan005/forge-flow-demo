@@ -17,7 +17,7 @@
 //     `~600 LoC full fanout` for lower scope and a narrower blast
 //     radius (no `NotificationEventFanout` bootstrap in the Cloud Run
 //     worker required).
-//   * `docs/_indices/WAVE_EXECUTION_LEDGER.md` row C-2-F.
+//   * `docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md` row C-2-F.
 //   * Reference pattern:
 //     `tool/advisor_proxy/email_dispatch/vendor_lifecycle_notification_dispatcher.dart`
 //     (V1.E lane Notify-me fanout). The shape mirrors it (abstract

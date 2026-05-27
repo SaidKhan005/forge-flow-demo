@@ -2,7 +2,7 @@
 -- ("Adaptive 2FA button"). Pure additive expand.
 --
 -- Authority:
---   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-7a (line 94) — prep
+--   * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md row C-7a (line 94) — prep
 --     migration unblocking Codex's C-7 ("Adaptive 2FA button"). Operator
 --     approved 2026-05-13 ("yes to all" on the open-decisions slate).
 --   * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-7

@@ -13,7 +13,7 @@
 //
 // Authority:
 //   * tool/advisor_proxy/admin_default_role_catalog_routes.dart
-//   * docs/_indices/WAVE_EXECUTION_LEDGER.md (row B2.3)
+//   * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md (row B2.3)
 //   * B2.2 PR #590 disclosed gap #1
 //
 // What we assert:

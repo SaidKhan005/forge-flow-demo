@@ -1,7 +1,7 @@
 -- Lane C C-2-D — vendor_sync_outage_state (first-failure-of-outage detector).
 --
 -- Authority:
---   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-2-D (line 86) —
+--   * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md row C-2-D (line 86) —
 --     wire `vendor_sync_error_alert` with a first-failure-of-outage
 --     detector; per-row email would spam on transients. Operator
 --     picked WIRE option (D) in the C-2 matrix.

@@ -58,7 +58,7 @@
 // RETURNING clause yields the surrogate `event_id` UUID.
 //
 // Authority:
-//   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-1 (line 83).
+//   * docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md row C-1 (line 83).
 //   * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-1
 //     — SendGrid Event Webhook receiver" (line 9-29).
 //   * db/migrations/202605131700_c_1a_email_event_provider_id.sql.
