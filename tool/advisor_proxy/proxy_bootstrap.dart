@@ -244,6 +244,7 @@ class ProxyProductionBindings {
     required this.vendorApplicabilityGateway,
     required this.corpusAdminGateway,
     required this.graphCandidatesGateway,
+    required this.ageRebuildGateway,
     required this.integrationAdminGateway,
     required this.integrationAdminActorResolver,
     required this.firstConnectionBackfillEnqueueGateway,
@@ -362,6 +363,15 @@ class ProxyProductionBindings {
   final VendorApplicabilityProxyGateway vendorApplicabilityGateway;
   final CorpusAdminProxyGateway corpusAdminGateway;
   final GraphCandidatesProxyGateway graphCandidatesGateway;
+
+  /// Graph G5a -- AGE rebuild gateway. Projects the approved canonical
+  /// graph for one operator into the `forgeflow` AGE label graph. OP-
+  /// GATED: the production binding is constructed (so the wiring exists
+  /// end-to-end), but go-live is the operator's deploy decision and a
+  /// live projection additionally needs the forge_admin DML grant on the
+  /// `forgeflow` schema (operator deploy step). See
+  /// [RepositoryAgeRebuildGateway].
+  final AgeRebuildGateway ageRebuildGateway;
   final IntegrationAdminProxyGateway integrationAdminGateway;
   final IntegrationAdminActorResolver integrationAdminActorResolver;
   final FirstConnectionBackfillEnqueueGateway
@@ -1701,6 +1711,20 @@ ProxyProductionBindings buildProxyProductionBindings(
       graphRepository: GraphRepository(tenantWrapper),
       auditRepository: adminAudit,
       repoRoot: Directory.current,
+    ),
+    // Graph G5a -- AGE rebuild gateway. Reads the approved canonical
+    // graph for the operator named in the verified JWT and re-projects
+    // it into the `forgeflow` AGE label graph (the same graph the strict
+    // /health probe queries). Runs through the admin pool's `runAsSystem`
+    // because AGE keeps its functions/types in `ag_catalog`, which only
+    // `forge_admin` is granted usage on. OP-GATED: the binding exists so
+    // the route is wired end-to-end, but a live projection additionally
+    // needs the operator's deploy + the forge_admin DML grant on the
+    // `forgeflow` schema (a follow-up migration / env grant, out of this
+    // slice's scope). No live switch is flipped here.
+    ageRebuildGateway: RepositoryAgeRebuildGateway(
+      adminWrapper: adminWrapper,
+      auditRepository: adminAudit,
     ),
     // Phase 11A.4c — Integration management gateway with the GCP
     // Secret Manager rollout wired in. The KmsLaneRouter dispatches
@@ -9710,6 +9734,370 @@ class _GraphCandidateBundle {
   final String? graphifySourceCommit;
   final List<Map<String, Object?>> nodes;
   final List<Map<String, Object?>> edges;
+}
+
+/// Graph G5a -- production [AgeRebuildGateway].
+///
+/// Turns the old 501 stub into a real projection: reads the APPROVED
+/// canonical graph rows for ONE operator and re-projects them into the
+/// `forgeflow` Apache AGE label graph that the strict /health probe and
+/// the (separate, G5b) advisor graph-read both query.
+///
+/// "APPROVED" is structural in this schema: only approved candidates are
+/// ever written to `public.graph_nodes` / `public.graph_edges` by
+/// [GraphRepository.commitBatch] (rejected candidates go to
+/// `public.graphify_review_audit`, which has no FK back to canonical
+/// storage). So the approved subgraph is exactly the active canonical
+/// rows: `deleted_at IS NULL AND archived_at IS NULL AND active_from <=
+/// now() AND (active_to IS NULL OR active_to > now())`. This mirrors the
+/// active-row filter the build-artifact generator in
+/// `tool/graph_projection` uses.
+///
+/// Hard rules:
+///   * HP#4 isolation (non-negotiable). The reads filter on
+///     `operator_id = <verified-JWT operator>` and the AGE projection
+///     stamps `operator_id` on every vertex/edge and scopes its
+///     convergence DETACH DELETE by `operator_id`. The operator id is
+///     the one [handleAgeRebuild] took from the verified claims; it is
+///     NEVER read from the request body.
+///   * Idempotent / convergent. Each rebuild DETACH DELETEs the
+///     operator's existing AGE subgraph, then MERGEs the approved rows.
+///     Re-running with identical canonical data yields the same
+///     queryable subgraph (no duplicates). In-process Idempotency-Key
+///     dedup collapses retries to one projection + one cached response.
+///   * forge_admin write path. AGE keeps its functions/types in
+///     `ag_catalog` and label tables in the graph-named schema; only the
+///     `forge_admin` role is granted `ag_catalog` usage (see
+///     `202605021710_phase_11A_health_age_runtime_grants.sql`). The
+///     projection therefore runs through [TenantTransactionWrapper.runAsSystem]
+///     on the admin pool, matching the health probe and the rest of the
+///     proxy's cross-tenant admin paths. The F&F super_admin actor is
+///     cross-operator, so a tenant SET LOCAL would be the wrong scope --
+///     the explicit `operator_id` filter is what enforces isolation here.
+///   * No AI cost (HP#9). The projection is pure Postgres-to-AGE; no
+///     provider/LLM/embedding call runs, so there is nothing to meter.
+///   * No secrets (HP#7). No provider key is needed or touched.
+///
+/// **Live-projection grant prerequisite (operator deploy):** the runtime
+/// grants migration currently gives `forge_admin` only `SELECT` on the
+/// `forgeflow` schema (enough for the health MATCH). Writing AGE
+/// vertices/edges (MERGE / DETACH DELETE) needs DML on the graph schema.
+/// Granting that is an operator-gated deploy step (a follow-up migration
+/// or environment grant), out of this slice's `tool/** + test/**` scope.
+/// Until that grant lands in an environment, a live rebuild surfaces the
+/// privilege error as a typed 503 rather than projecting silently. The
+/// gateway code is complete and correct; go-live is the operator's
+/// deploy decision (OP-GATED).
+class RepositoryAgeRebuildGateway implements AgeRebuildGateway {
+  RepositoryAgeRebuildGateway({
+    required TenantTransactionWrapper adminWrapper,
+    required AuthEventsAuditRepository auditRepository,
+    String graphName = 'forgeflow',
+  })  : _adminWrapper = adminWrapper,
+        _auditRepository = auditRepository,
+        _graphName = graphName;
+
+  final TenantTransactionWrapper _adminWrapper;
+  final AuthEventsAuditRepository _auditRepository;
+  final String _graphName;
+
+  /// In-process Idempotency-Key dedup, concurrent-safe -- identical
+  /// posture to [RepositoryGraphCandidatesProxyGateway]. The cache
+  /// stores the in-flight Future (not the resolved result) and the
+  /// public [rebuild] reserves the key SYNCHRONOUSLY (before any await)
+  /// so two overlapping retries with the same key share one Future and
+  /// only one projection runs. On error the entry is removed so a fresh
+  /// retry can succeed. The route handler already rejects a missing key
+  /// (400), so a non-empty key is guaranteed here.
+  final Map<String, Future<AgeRebuildResult>> _idempotentResults =
+      <String, Future<AgeRebuildResult>>{};
+
+  @override
+  Future<AgeRebuildResult> rebuild({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String adminReason,
+  }) {
+    final existing = _idempotentResults[idempotencyKey];
+    if (existing != null) return existing;
+    final pending =
+        _rebuildInternal(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          locationId: locationId,
+          idempotencyKey: idempotencyKey,
+          adminReason: adminReason,
+        ).catchError((Object error, StackTrace stackTrace) {
+          _idempotentResults.remove(idempotencyKey);
+          // Rethrow the original error so awaiters of the chained Future
+          // see the real failure (not a wrapped one). `error` is already
+          // the caught Object; re-throwing it preserves type + message.
+          // ignore: only_throw_errors - rethrow original error to awaiters
+          throw error;
+        });
+    _idempotentResults[idempotencyKey] = pending;
+    return pending;
+  }
+
+  Future<AgeRebuildResult> _rebuildInternal({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String idempotencyKey,
+    required String adminReason,
+  }) async {
+    // Validate the operator id shape up front so a malformed value
+    // never reaches the AGE literal. (Defense in depth: the value comes
+    // from a verified JWT, but the AGE cypher embeds it as a literal so
+    // we refuse anything that is not a strict lowercase UUID.)
+    if (!_uuidPattern.hasMatch(operatorId)) {
+      throw const AgeRebuildGatewayValidationError(
+        statusCode: 400,
+        code: 'invalid_operator_id',
+        message: 'operator_id is not a valid UUID',
+      );
+    }
+
+    final result = await _adminWrapper.runAsSystem<AgeRebuildResult>(
+      (exec) async {
+        // 1. AGE availability gate. A missing extension is config drift,
+        //    not a per-tenant error: report age_available=false (no-op)
+        //    so the operator knows vector-only retrieval is the fallback
+        //    (mirrors the AGE_BLOCKER posture of tool/graph_projection).
+        final ageRows = await exec.query(
+          "select exists (select 1 from pg_available_extensions "
+          "where name = 'age') as present",
+        );
+        final ageAvailable =
+            ageRows.isNotEmpty && (ageRows.single['present'] == true);
+        if (!ageAvailable) {
+          return const AgeRebuildResult(
+            nodesProjected: 0,
+            edgesProjected: 0,
+            nodesDeleted: 0,
+            ageAvailable: false,
+          );
+        }
+
+        // 2. Read the APPROVED (= active) canonical rows for THIS
+        //    operator only. The explicit operator_id filter is the HP#4
+        //    isolation boundary (runAsSystem bypasses RLS, so the filter
+        //    -- not a policy -- is what scopes the read).
+        final nodes = await exec.query(
+          'select id::text as id, graph_scope, graph_version, node_key, '
+          'node_type '
+          'from public.graph_nodes '
+          'where operator_id = @operator_id::uuid '
+          'and deleted_at is null and archived_at is null '
+          'and active_from <= now() '
+          'and (active_to is null or active_to > now()) '
+          'order by graph_scope, graph_version, id',
+          parameters: <String, Object?>{'operator_id': operatorId},
+        );
+        final edges = await exec.query(
+          'select id::text as id, graph_scope, graph_version, edge_key, '
+          'edge_type, from_node_id::text as from_node_id, '
+          'to_node_id::text as to_node_id '
+          'from public.graph_edges '
+          'where operator_id = @operator_id::uuid '
+          'and deleted_at is null and archived_at is null '
+          'and active_from <= now() '
+          'and (active_to is null or active_to > now()) '
+          'order by graph_scope, graph_version, id',
+          parameters: <String, Object?>{'operator_id': operatorId},
+        );
+
+        // 3. Convergence: count then DETACH DELETE the operator's
+        //    existing AGE subgraph so a re-run replaces rather than
+        //    duplicates. Scoped strictly by operator_id (HP#4).
+        final opLiteral = _cypherQuote(operatorId);
+        final deletedCountRows = await exec.query(
+          _cypherSingleStatement(
+            'MATCH (v {operator_id: $opLiteral}) RETURN count(v)',
+            columns: '(deleted ag_catalog.agtype)',
+          ),
+        );
+        final nodesDeleted = deletedCountRows.isEmpty
+            ? 0
+            : _agtypeToInt(deletedCountRows.single['deleted']);
+        await exec.query(
+          _cypherSingleStatement(
+            'MATCH (v {operator_id: $opLiteral}) DETACH DELETE v',
+            columns: '(deleted ag_catalog.agtype)',
+          ),
+        );
+
+        // 4. Re-project the approved nodes. The MERGE pattern carries
+        //    the composite canonical identity (operator_id, graph_scope,
+        //    graph_version, node_id) so cross-tenant / cross-scope /
+        //    cross-version UUIDs never collapse into one vertex.
+        var nodesProjected = 0;
+        for (final row in nodes) {
+          final nodeType = row['node_type'] as String? ?? '';
+          if (!_ageLabelPattern.hasMatch(nodeType)) {
+            throw AgeRebuildGatewayValidationError(
+              statusCode: 422,
+              code: 'invalid_node_type',
+              message:
+                  'canonical node ${row['id']} has node_type "$nodeType" '
+                  'which is not a valid AGE label (^[A-Za-z_][A-Za-z0-9_]*); '
+                  'the C3 vocabulary lock should prevent this -- '
+                  'investigate the canonical row before retrying',
+            );
+          }
+          final cypher =
+              'MERGE (v:$nodeType {operator_id: $opLiteral, '
+              'graph_scope: ${_cypherQuote(row['graph_scope'] as String? ?? '')}, '
+              'graph_version: ${_cypherQuote(row['graph_version'] as String? ?? '')}, '
+              'node_id: ${_cypherQuote(row['id'] as String? ?? '')}}) '
+              'SET v.node_key = ${_cypherQuote(row['node_key'] as String? ?? '')}, '
+              'v.node_type = ${_cypherQuote(nodeType)} '
+              'RETURN v';
+          await exec.query(
+            _cypherSingleStatement(cypher, columns: '(v ag_catalog.agtype)'),
+          );
+          nodesProjected += 1;
+        }
+
+        // 5. Re-project the approved edges. Endpoints MATCH on the same
+        //    composite identity tuple so an edge can only attach to a
+        //    vertex inside its own (operator, scope, version) frame.
+        var edgesProjected = 0;
+        for (final row in edges) {
+          final edgeType = row['edge_type'] as String? ?? '';
+          if (!_ageLabelPattern.hasMatch(edgeType)) {
+            throw AgeRebuildGatewayValidationError(
+              statusCode: 422,
+              code: 'invalid_edge_type',
+              message:
+                  'canonical edge ${row['id']} has edge_type "$edgeType" '
+                  'which is not a valid AGE label (^[A-Za-z_][A-Za-z0-9_]*); '
+                  'the C3 vocabulary lock should prevent this -- '
+                  'investigate the canonical row before retrying',
+            );
+          }
+          final scopeLiteral =
+              _cypherQuote(row['graph_scope'] as String? ?? '');
+          final versionLiteral =
+              _cypherQuote(row['graph_version'] as String? ?? '');
+          final cypher =
+              'MATCH (a {operator_id: $opLiteral, graph_scope: $scopeLiteral, '
+              'graph_version: $versionLiteral, '
+              'node_id: ${_cypherQuote(row['from_node_id'] as String? ?? '')}}), '
+              '(b {operator_id: $opLiteral, graph_scope: $scopeLiteral, '
+              'graph_version: $versionLiteral, '
+              'node_id: ${_cypherQuote(row['to_node_id'] as String? ?? '')}}) '
+              'MERGE (a)-[r:$edgeType {operator_id: $opLiteral, '
+              'graph_scope: $scopeLiteral, graph_version: $versionLiteral, '
+              'edge_id: ${_cypherQuote(row['id'] as String? ?? '')}, '
+              'edge_key: ${_cypherQuote(row['edge_key'] as String? ?? '')}}]->(b) '
+              'SET r.edge_type = ${_cypherQuote(edgeType)}, '
+              'r.from_node_id = ${_cypherQuote(row['from_node_id'] as String? ?? '')}, '
+              'r.to_node_id = ${_cypherQuote(row['to_node_id'] as String? ?? '')} '
+              'RETURN r';
+          await exec.query(
+            _cypherSingleStatement(cypher, columns: '(e ag_catalog.agtype)'),
+          );
+          edgesProjected += 1;
+        }
+
+        return AgeRebuildResult(
+          nodesProjected: nodesProjected,
+          edgesProjected: edgesProjected,
+          nodesDeleted: nodesDeleted,
+          ageAvailable: true,
+          graphName: _graphName,
+        );
+      },
+      reason: adminReason,
+    );
+
+    // Best-effort audit (mirrors the candidates gateway): a failure here
+    // must NOT propagate, or the .catchError above would clear the
+    // idempotency entry and a retry would re-project for an operation
+    // that already succeeded. The AGE projection has already committed.
+    try {
+      await _auditRepository.insertSystemEvent(
+        actorKind: 'forge_admin',
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.age.rebuild',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'admin_reason': adminReason,
+          'graph_name': _graphName,
+          'idempotency_key': idempotencyKey,
+          'nodes_projected': result.nodesProjected,
+          'edges_projected': result.edgesProjected,
+          'nodes_deleted': result.nodesDeleted,
+          'age_available': result.ageAvailable,
+        },
+      );
+    } catch (auditError, auditStack) {
+      log(
+        LogSeverity.warning,
+        'admin.age.rebuild.audit_write_failed',
+        fields: <String, Object?>{
+          'idempotency_key': idempotencyKey,
+          'operator_id': operatorId,
+          'nodes_projected': result.nodesProjected,
+          'edges_projected': result.edgesProjected,
+          'error_type': auditError.runtimeType.toString(),
+          'error_message': auditError.toString(),
+          'stack_first_frame': firstStackFrame(auditStack),
+        },
+      );
+    }
+
+    return result;
+  }
+
+  /// Strict 8-4-4-4-12 lowercase UUID, matching [TenantContext].
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  );
+
+  /// AGE label safety: a node/edge type used as a Cypher label must be a
+  /// bare identifier. The C3 vocabulary lock already constrains these,
+  /// but we re-check before embedding so a tampered canonical row cannot
+  /// smuggle Cypher through the label position.
+  static final RegExp _ageLabelPattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+
+  /// Wraps a Cypher body in a single fully-qualified `ag_catalog.cypher`
+  /// statement (no `SET search_path` prefix) so it survives the proxy's
+  /// prepared-query runner, which rejects multi-command strings. Same
+  /// shape the strict health probe uses.
+  String _cypherSingleStatement(String body, {required String columns}) {
+    return "select * from ag_catalog.cypher('$_graphName', "
+        '\$ffage\$ $body \$ffage\$) as $columns';
+  }
+
+  /// Escapes a string for safe embedding as a single-quoted Cypher
+  /// literal. Backslashes first, then single quotes. The values here are
+  /// UUIDs, scope/version strings, and node/edge keys -- never free
+  /// operator text -- but we escape defensively so the projection can
+  /// never be turned into injected Cypher.
+  static String _cypherQuote(String value) {
+    final escaped = value.replaceAll('\\', r'\\').replaceAll("'", r"\'");
+    return "'$escaped'";
+  }
+
+  /// AGE returns `count(v)` as an `agtype` integer; the driver hands it
+  /// back as an `int`, a `String`, or a `num` depending on the binding.
+  /// Normalize to `int`, defaulting to 0 on anything unparseable.
+  static int _agtypeToInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      // agtype text can arrive quoted (e.g. '"3"'); strip then parse.
+      final cleaned = value.replaceAll('"', '').trim();
+      return int.tryParse(cleaned) ?? 0;
+    }
+    return 0;
+  }
 }
 
 /// Vendor status rows rendered by the admin Connected services screen.

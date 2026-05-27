@@ -157,6 +157,24 @@ import 'weekly_plan_routes.dart';
 // independent file; this single import is the only monolith growth A4.1
 // adds besides the `part` declaration below.
 import 'anthropic_tool_use_complete_fn.dart';
+// Graph G5a -- AGE rebuild route seam. Standalone, import-independent
+// file (NOT a `part`): abstract gateway, result type, typed validation
+// error, and the route handler. The monolith threads an OPTIONAL
+// `AgeRebuildGateway? ageRebuildGateway` through `routeRequest`; when it
+// is null the AGE rebuild route keeps returning the historical 501
+// not_implemented response (existing tests stay byte-compatible), and
+// when injected the route delegates to `handleAgeRebuild`. Re-exported
+// so proxy_bootstrap.dart / main.dart construct the production gateway
+// by importing advisor_proxy.dart only.
+import 'age_rebuild_route_part.dart';
+export 'age_rebuild_route_part.dart'
+    show
+        AgeRebuildGateway,
+        AgeRebuildGatewayValidationError,
+        AgeRebuildResult,
+        AgeRebuildRouteResult,
+        handleAgeRebuild,
+        kAgeRebuildDefaultAdminReason;
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
 // Slice A2b — server-side query embedding gateway types exported so
@@ -6513,6 +6531,13 @@ Future<void> routeRequest(
   VendorApplicabilityProxyGateway? vendorApplicabilityGateway,
   CorpusAdminProxyGateway? corpusAdminGateway,
   GraphCandidatesProxyGateway? graphCandidatesGateway,
+  // Graph G5a -- AGE rebuild gateway. Optional: when null the
+  // `/v1/admin/age/rebuild` route keeps returning the historical 501
+  // not_implemented response so existing tests do not need to plumb a
+  // gateway through every routeRequest call site. When injected, the
+  // route runs the real delete-and-reproject projection scoped to the
+  // operator named in the verified JWT (HP#4).
+  AgeRebuildGateway? ageRebuildGateway,
   IntegrationAdminProxyGateway? integrationAdminGateway,
   IntegrationAdminActorResolver? integrationAdminActorResolver,
   FeatureFlagsAdminProxyGateway? featureFlagsAdminGateway,
@@ -12745,11 +12770,14 @@ Future<void> routeRequest(
           return;
         }
 
-        // Phase 11A.3b — AGE rebuild route. Role gate + Idempotency-Key
-        // are still enforced so the test contract can verify the gating
-        // is wired even though the actual rebuild infrastructure ships
-        // in 11A.3c. Returns 501 with a typed `not_implemented` error so
-        // the screen surfaces the actionable banner instead of a 5xx.
+        // AGE rebuild route. Role gate + Idempotency-Key ordering is
+        // PRESERVED from the 11A.3b stub: verify claims, enforce the
+        // super_admin write gate (`kFfCorpusAdminWriteRoles`), then
+        // require a non-empty Idempotency-Key. Graph G5a turns the old
+        // 501 stub into a real delete-and-reproject projection when an
+        // `ageRebuildGateway` is injected; when it is null the route
+        // keeps returning the historical 501 `not_implemented` response
+        // so existing tests stay byte-compatible.
         if (_isAgeRebuildOperation(path, request.method)) {
           final actor = await _resolveVerifiedClaimsOrWrite(
             request,
@@ -12778,12 +12806,48 @@ Future<void> routeRequest(
             return;
           }
 
-          _writeJson(response, 501, <String, Object?>{
-            'error': 'not_implemented',
-            'message':
-                'AGE rebuild ships in slice 11A.3c — '
-                'corpus_pipeline_not_configured',
-          });
+          if (ageRebuildGateway == null) {
+            // Unwired (no projection dependency injected): preserve the
+            // historical 501 not_implemented response byte-for-byte so
+            // existing tests stay green. Production wiring exists in
+            // proxy_bootstrap.dart; go-live is gated by the operator's
+            // deploy.
+            _writeJson(response, 501, <String, Object?>{
+              'error': 'not_implemented',
+              'message':
+                  'AGE rebuild ships in slice 11A.3c -- '
+                  'corpus_pipeline_not_configured',
+            });
+            return;
+          }
+
+          // HP#4: operator/location scope comes ONLY from the verified
+          // claims, never the request body. handleAgeRebuild rejects an
+          // un-scoped token with a typed 400 rather than reading scope
+          // from the body.
+          try {
+            final routeResult = await handleAgeRebuild(
+              gateway: ageRebuildGateway,
+              actorUserId: actor.userId,
+              operatorId: actor.operatorId,
+              locationId: actor.locationId,
+              idempotencyKey: idempotencyKey,
+            );
+            _writeJson(response, routeResult.statusCode, routeResult.body);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'age_rebuild',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'age_rebuild_unavailable',
+              'message': 'AGE rebuild is unavailable; please retry',
+            });
+          }
           return;
         }
 
