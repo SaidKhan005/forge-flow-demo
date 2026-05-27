@@ -462,7 +462,11 @@ import 'graph_extract_route_part.dart'
         GraphSemanticExtractGateway,
         handleGraphExtract,
         graphExtractPath,
-        kGraphExtractWriteRoles;
+        kGraphExtractWriteRoles,
+        GraphExtractReserveProceed,
+        GraphExtractReserveReplay,
+        GraphExtractReserveBlocked,
+        GraphExtractReserveStoreUnavailable;
 
 // chore(advisor-proxy) size refactor: cohesive admin route group
 // (corpus / debug-console / observability / feature-flags /
@@ -12849,6 +12853,32 @@ Future<void> routeRequest(
             return;
           }
 
+          // F2 -- HP #9 cost metering + proxy_requests idempotency. The route
+          // file is a standalone import that cannot name ProxyUsageGuard /
+          // ProxyAccountingStore / OperatorContext / LlmCostRateRegistry, so
+          // the typed orchestration is threaded in here (where they ARE
+          // visible) via two closures that call the SAME guard + accounting
+          // store instances the advisor answer route uses (HP #8: no parallel
+          // stack). HP #4: scope is built from the verified JWT claims only,
+          // never from the request body.
+          final graphScope = OperatorContext(
+            userId: actor.userId,
+            operatorId: actor.operatorId ?? actor.userId,
+            locationId: actor.locationId ?? '',
+            roles: actor.roles,
+            actorKind: actor.actorKind,
+            servicePrincipalId: actor.servicePrincipalId,
+            firebaseUid: actor.firebaseUid,
+            rolesVersion: actor.rolesVersion ?? 0,
+            lastFreshAuthAt: actor.lastFreshAuthAt,
+            permissionVersion: actor.permissionVersion,
+          );
+          // Carried from the reservation into the commit so completeRequest's
+          // stats row correlates to the proxy_requests reservation and
+          // recordAllowed advances the counters against the same decision.
+          ProxyAccountingReserved? graphReservation;
+          UsageDecisionAllowed? graphUsageDecision;
+
           await handleGraphExtract(
             request: request,
             response: response,
@@ -12857,6 +12887,160 @@ Future<void> routeRequest(
             gateway: graphExtractGateway,
             anthropicApiKey: anthropicApiKeyForGraphExtract,
             clock: now,
+            reserve:
+                accountingStore == null
+                ? null
+                : ({
+                    required String idempotencyKey,
+                    required String model,
+                    required int estimatedInputTokens,
+                    required int estimatedOutputTokens,
+                  }) async {
+                    // (1) HP #9 per-minute / monthly cap pre-check (when the
+                    // guard is wired), BEFORE reserving an idempotency row,
+                    // mirroring the answer route's order.
+                    if (usageGuard != null) {
+                      try {
+                        graphUsageDecision = await usageGuard.requireAllowed(
+                          operator: graphScope,
+                          estimate: UsageEstimate(
+                            requestTokens: estimatedInputTokens,
+                          ),
+                        );
+                      } on UsageRefusal catch (refusal) {
+                        return GraphExtractReserveBlocked(
+                          statusCode: refusal.statusCode,
+                          body: refusal.toJson(),
+                        );
+                      }
+                    }
+                    // (2) Reserve the proxy_requests row (UNIQUE idempotency
+                    // key) + per-tier cap check + replay lookup.
+                    final preflightCostCents =
+                        LlmCostRateRegistry.rateFor(model)?.costCentsFor(
+                          inputTokens: estimatedInputTokens,
+                          outputTokens: estimatedOutputTokens,
+                        ) ??
+                        0;
+                    ProxyAccountingStartResult start;
+                    try {
+                      start = await accountingStore.startRequest(
+                        idempotencyKey: idempotencyKey,
+                        requestType: 'graph_extract',
+                        operator: graphScope,
+                        usageClass: kGraphExtractionUsageClass,
+                        telemetry: ProxyUsageTelemetry(
+                          queryClass: 'graph_extraction',
+                          cacheHit: false,
+                          llmTier: 'graph_extraction',
+                          modelUsed: model,
+                        ),
+                        estimate: ProxyUsageChargeEstimate(
+                          tokenCount:
+                              estimatedInputTokens + estimatedOutputTokens,
+                          costCents: preflightCostCents,
+                        ),
+                        now: clock().toUtc(),
+                      );
+                    } on Exception {
+                      return const GraphExtractReserveStoreUnavailable();
+                    }
+                    if (start is ProxyAccountingReplayed) {
+                      return GraphExtractReserveReplay(
+                        responsePayload: start.responsePayload,
+                      );
+                    }
+                    if (start is ProxyAccountingRefused) {
+                      return GraphExtractReserveBlocked(
+                        statusCode: 402,
+                        body: <String, Object?>{
+                          'error': 'usage_cap_reached',
+                          'message':
+                              'usage cap reached before provider call',
+                          'cap_status': start.capStatus.toJson(),
+                        },
+                      );
+                    }
+                    graphReservation = start as ProxyAccountingReserved;
+                    return const GraphExtractReserveProceed();
+                  },
+            commit:
+                accountingStore == null
+                ? null
+                : ({
+                    required String idempotencyKey,
+                    required String model,
+                    required int inputTokens,
+                    required int outputTokens,
+                    required Map<String, Object?> responsePayload,
+                  }) async {
+                    // Cost from the ACTUAL provider-reported tokens via the
+                    // per-class rate (unknown model -> 0, registry fail-open).
+                    final costCents =
+                        LlmCostRateRegistry.rateFor(model)?.costCentsFor(
+                          inputTokens: inputTokens,
+                          outputTokens: outputTokens,
+                        ) ??
+                        0;
+                    // (1) Roll up the usage_logs row under the graph class.
+                    try {
+                      await accountingStore.commitUsageLog(
+                        operator: graphScope,
+                        usageClass: kGraphExtractionUsageClass,
+                        telemetry: ProxyUsageTelemetry(
+                          queryClass: 'graph_extraction',
+                          cacheHit: false,
+                          llmTier: 'graph_extraction',
+                          modelUsed: model,
+                        ),
+                        estimate: ProxyUsageChargeEstimate(
+                          tokenCount: inputTokens + outputTokens,
+                          costCents: costCents,
+                        ),
+                        now: clock().toUtc(),
+                      );
+                    } on Exception {
+                      // Best-effort: a metering write failure must not change
+                      // the already-served extraction. Mirrors the answer
+                      // route's non-fatal commit posture.
+                    }
+                    // (2) Advance the per-minute / monthly counters.
+                    final decision = graphUsageDecision;
+                    if (usageGuard != null && decision != null) {
+                      await usageGuard.recordAllowed(
+                        operator: graphScope,
+                        decision: decision,
+                        costCentsToAdd: costCents,
+                      );
+                    }
+                    // (3) Mark the idempotency row complete with the served
+                    // payload so a later replay returns it. STATS ONLY -- no
+                    // chunk content in the stats row.
+                    final reservation = graphReservation;
+                    try {
+                      await accountingStore.completeRequest(
+                        operator: graphScope,
+                        idempotencyKey: idempotencyKey,
+                        responsePayload: responsePayload,
+                        now: clock().toUtc(),
+                        stats: ProxyRequestStats(
+                          usageClass: kGraphExtractionUsageClass,
+                          resultStatus: 'success',
+                          requestId: reservation?.requestId,
+                          actorUserId: graphScope.isServicePrincipal
+                              ? null
+                              : graphScope.userId,
+                          provider: providerFromModelId(model),
+                          modelId: model,
+                          promptTokenCount: inputTokens,
+                          completionTokenCount: outputTokens,
+                          costUsd: costCents / 100,
+                        ),
+                      );
+                    } on Exception {
+                      // Best-effort: see commitUsageLog note above.
+                    }
+                  },
           );
           return;
         }

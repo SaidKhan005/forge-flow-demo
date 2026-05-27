@@ -24,11 +24,24 @@
 //  13.  Valid model override (claude-sonnet-4-6) accepted.
 //  14.  ff_support role -> 403 (only super_admin for writes).
 //  15.  AMBIGUOUS counts reflected in 200 response.
+//
+// F2 (HP #9 cap + proxy_requests idempotency wiring) -- MOCKED guard + store:
+//  16.  Idempotent replay: a 2nd call with the same Idempotency-Key returns
+//       the cached 200 response and does NOT re-invoke the gateway.
+//  17.  Accounting cap refusal -> 402 usage_cap_reached; gateway NOT invoked.
+//  18.  Usage-guard exhaustion -> 402 monthly_cap_reached; gateway NOT invoked
+//       and NO reservation made (guard check precedes the reservation).
+//  19.  Successful call commits ONE usage-log row under 'graph_extraction'
+//       with the provider-reported tokens + the rate-derived cost, and one
+//       completeRequest stats row attributed to the verified caller.
+//  20.  HP #7: the server-side key is absent from the metered 200 body.
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/services/advisor_provider_constants.dart'
+    show LlmCostRateRegistry;
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
 import '../advisor_proxy_test_helpers.dart';
@@ -105,6 +118,51 @@ Map<String, Object?> _validBody({
   };
 }
 
+// --- Metering doubles (F2) ----------------------------------------------------
+
+/// An OPEN usage guard: zero usage, launch tier, always allows. Mirrors the
+/// advisor answer route's `_openGuard()`.
+ProxyUsageGuard _openGuard() => ProxyUsageGuard(
+  store: FixedSnapshotProxyUsageStore(
+    snapshot: UsageSnapshot(
+      requestsThisMinute: 0,
+      costCentsThisMonth: 0,
+      minuteBucketStart: DateTime.utc(2026, 5, 27, 12, 0),
+      monthBucketStart: DateTime.utc(2026, 5, 1),
+    ),
+  ),
+  tierResolver: const FixedLaunchTierResolver(),
+);
+
+/// An EXHAUSTED usage guard: the monthly cost cap is already reached, so
+/// `requireAllowed` raises `UsageRefusal` (402 monthly_cap_reached) BEFORE any
+/// reservation or provider call. Mirrors the answer route's `_exhaustedGuard()`.
+ProxyUsageGuard _exhaustedGuard() => ProxyUsageGuard(
+  store: FixedSnapshotProxyUsageStore(
+    snapshot: UsageSnapshot(
+      requestsThisMinute: 0,
+      costCentsThisMonth: PolicyTier.launch.maxMonthlyCostCents,
+      minuteBucketStart: DateTime.utc(2026, 5, 27, 12, 0),
+      monthBucketStart: DateTime.utc(2026, 5, 1),
+    ),
+  ),
+  tierResolver: const FixedLaunchTierResolver(),
+);
+
+/// An accounting store whose per-tier monthly cap is already exhausted, so
+/// `startRequest` returns `ProxyAccountingRefused` (route -> 402
+/// usage_cap_reached) BEFORE the provider call. monthlyUsed == monthlyCap so
+/// any positive pre-flight estimate trips `monthlyExceeded`.
+InMemoryAccountingStore _refusingAccountingStore() => InMemoryAccountingStore(
+  capStatus: const ProxyCapStatus(
+    usageClass: 'graph_extraction',
+    monthlyCapCents: 1,
+    monthlyUsedCents: 1,
+    perInvocationCapCents: 0,
+    estimatedCostCents: 0,
+  ),
+);
+
 // ── Tests ───────────────────────────────────────────────────────────────────────
 
 void main() {
@@ -130,6 +188,10 @@ void main() {
       GraphSemanticExtractGateway? graphExtractGateway,
       String? anthropicApiKey,
       Set<String> roles = const <String>{'super_admin'},
+      // F2 -- HP #9 metering + proxy_requests idempotency seams. Optional so
+      // the 19 pre-F2 tests keep driving the gateway-only path unchanged.
+      ProxyUsageGuard? usageGuard,
+      ProxyAccountingStore? accountingStore,
     }) async {
       verifier = SettableVerifier();
       verifier.claims = ProxyJwtClaims(
@@ -147,6 +209,8 @@ void main() {
             guard,
             graphExtractGateway: graphExtractGateway,
             anthropicApiKeyForGraphExtract: anthropicApiKey,
+            usageGuard: usageGuard,
+            accountingStore: accountingStore,
           );
         } catch (_) {
           try {
@@ -519,6 +583,271 @@ void main() {
           final decoded = jsonDecode(r.body) as Map<String, Object?>;
           expect(decoded['ambiguous_node_count'], 1);
           expect(decoded['ambiguous_edge_count'], 1);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+  });
+
+  // --- F2: HP #9 cap + proxy_requests idempotency wiring --------------------
+  //
+  // MOCKED ONLY. No real DB, no real provider, no paid AI. A loopback
+  // HttpServer drives the real `routeRequest` dispatch with an injected mock
+  // `ProxyUsageGuard` (built from a fixed-snapshot counter store) and the
+  // shared in-memory `ProxyAccountingStore` fake. Proves the dispatcher's two
+  // metering closures behave like the advisor answer route: replay returns the
+  // cached response WITHOUT re-invoking the gateway; either cap path returns
+  // the refusal shape WITHOUT invoking the gateway; a success commits a usage
+  // log under 'graph_extraction' with the provider-reported tokens + cost.
+  group('POST $graphExtractPath (F2 metering + idempotency)', () {
+    late HttpServer server;
+    late HttpClient client;
+    late Uri baseUri;
+    late SettableVerifier verifier;
+
+    Future<void> spinUp({
+      required GraphSemanticExtractGateway graphExtractGateway,
+      String? anthropicApiKey = 'k',
+      ProxyUsageGuard? usageGuard,
+      ProxyAccountingStore? accountingStore,
+    }) async {
+      verifier = SettableVerifier();
+      verifier.claims = const ProxyJwtClaims(
+        userId: 'user_g4b_test',
+        operatorId: 'op_g4b_test',
+        locationId: 'loc_g4b_test',
+        roles: <String>['super_admin'],
+      );
+      final guard = ProxyRequestGuard(verifier: verifier);
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((req) async {
+        try {
+          await routeRequest(
+            req,
+            guard,
+            graphExtractGateway: graphExtractGateway,
+            anthropicApiKeyForGraphExtract: anthropicApiKey,
+            usageGuard: usageGuard,
+            accountingStore: accountingStore,
+          );
+        } catch (_) {
+          try {
+            req.response.statusCode = 500;
+            await req.response.close();
+          } catch (_) {/* ignore */}
+        }
+      });
+      client = HttpClient();
+      baseUri = Uri.parse('http://${server.address.host}:${server.port}');
+    }
+
+    Future<void> shutDown() async {
+      client.close(force: true);
+      await server.close(force: true);
+    }
+
+    Future<HttpResponseSnapshot> postExtract({
+      Map<String, Object?>? body,
+      String idempotencyKey = 'test-idem-key',
+    }) async {
+      return httpPost(
+        client,
+        baseUri.resolve(graphExtractPath),
+        authorization: 'Bearer test-token',
+        body: body ?? _validBody(),
+        headers: <String, String>{'Idempotency-Key': idempotencyKey},
+      );
+    }
+
+    // 16. Idempotent replay: a second call with the same Idempotency-Key
+    //     returns the cached 200 response WITHOUT re-invoking the gateway.
+    test('idempotent replay returns cached response, gateway not re-invoked',
+        () async {
+      await withRealHttp(() async {
+        final gateway = _MockExtractGateway(
+          stubNodes: <GraphExtractNode>[
+            const GraphExtractNode(
+              nodeKey: 'CPLH',
+              kind: 'Metric',
+              label: 'EXTRACTED',
+              verbatimText: 'CPLH is cost per labor hour',
+            ),
+          ],
+          stubInputTokens: 150,
+          stubOutputTokens: 90,
+        );
+        final accounting = InMemoryAccountingStore.open();
+        await spinUp(
+          graphExtractGateway: gateway,
+          usageGuard: _openGuard(),
+          accountingStore: accounting,
+        );
+        try {
+          // First call: real extraction, provider invoked once, persisted.
+          final first = await postExtract();
+          expect(first.statusCode, 200);
+          final firstDecoded = jsonDecode(first.body) as Map<String, Object?>;
+          expect(firstDecoded['idempotent_replay'], isFalse);
+          expect(firstDecoded['node_count'], 1);
+          expect(gateway.calls.length, 1);
+          expect(accounting.completeCalls, 1);
+
+          // Second call, SAME key: cached replay, provider NOT invoked again.
+          final second = await postExtract();
+          expect(second.statusCode, 200);
+          final secondDecoded =
+              jsonDecode(second.body) as Map<String, Object?>;
+          expect(secondDecoded['idempotent_replay'], isTrue);
+          // Body otherwise matches the first response (node_count carried).
+          expect(secondDecoded['node_count'], 1);
+          expect(secondDecoded['chunk_id'], firstDecoded['chunk_id']);
+          // The gateway was NOT called a second time.
+          expect(gateway.calls.length, 1,
+              reason: 'replay must not re-invoke the extraction gateway');
+          // No second completion either (replay early-returns).
+          expect(accounting.completeCalls, 1);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    // 17. Accounting-store cap refusal: startRequest refuses -> 402
+    //     usage_cap_reached, gateway NOT invoked.
+    test('accounting cap refusal returns 402, gateway not invoked', () async {
+      await withRealHttp(() async {
+        final gateway = _MockExtractGateway();
+        final accounting = _refusingAccountingStore();
+        await spinUp(
+          graphExtractGateway: gateway,
+          usageGuard: _openGuard(),
+          accountingStore: accounting,
+        );
+        try {
+          final r = await postExtract();
+          expect(r.statusCode, 402);
+          final decoded = jsonDecode(r.body) as Map<String, Object?>;
+          expect(decoded['error'], 'usage_cap_reached');
+          expect(decoded['cap_status'], isA<Map<String, Object?>>());
+          // Refused BEFORE the provider call.
+          expect(gateway.calls, isEmpty,
+              reason: 'cap refusal must not invoke the extraction gateway');
+          expect(accounting.startCalls, 1);
+          expect(accounting.completeCalls, 0);
+          expect(accounting.commitCalls, 0);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    // 18. Usage-guard cap exhaustion: requireAllowed raises UsageRefusal ->
+    //     402 monthly_cap_reached, gateway NOT invoked, NO reservation made.
+    test('usage guard exhaustion returns 402 monthly_cap_reached, '
+        'gateway not invoked', () async {
+      await withRealHttp(() async {
+        final gateway = _MockExtractGateway();
+        final accounting = InMemoryAccountingStore.open();
+        await spinUp(
+          graphExtractGateway: gateway,
+          usageGuard: _exhaustedGuard(),
+          accountingStore: accounting,
+        );
+        try {
+          final r = await postExtract();
+          expect(r.statusCode, 402);
+          final decoded = jsonDecode(r.body) as Map<String, Object?>;
+          expect(decoded['error'], 'monthly_cap_reached');
+          expect(gateway.calls, isEmpty,
+              reason: 'guard refusal must not invoke the extraction gateway');
+          // The guard check precedes the reservation, so no row was reserved.
+          expect(accounting.startCalls, 0);
+          expect(accounting.completeCalls, 0);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    // 19. Successful call commits a usage-log row under 'graph_extraction'
+    //     with the provider-reported tokens + the rate-derived cost.
+    test('successful extraction commits usage under graph_extraction class',
+        () async {
+      await withRealHttp(() async {
+        // 1,000,000 input + 1,000,000 output tokens -> a non-zero cost that
+        // proves the wiring end-to-end (haiku: 100/500 cents per MTok).
+        final gateway = _MockExtractGateway(
+          stubInputTokens: 1000000,
+          stubOutputTokens: 1000000,
+        );
+        final accounting = InMemoryAccountingStore.open();
+        await spinUp(
+          graphExtractGateway: gateway,
+          usageGuard: _openGuard(),
+          accountingStore: accounting,
+        );
+        try {
+          final r = await postExtract();
+          expect(r.statusCode, 200);
+
+          // Exactly one usage-log commit + one completion.
+          expect(accounting.commitCalls, 1);
+          expect(accounting.completeCalls, 1);
+
+          // token_count carries the summed provider totals (input + output).
+          expect(accounting.lastCommittedTokenCount, 2000000);
+
+          // Cost DERIVED from the provider tokens via the model rate, not a
+          // constant. Cross-check directly against the registry.
+          final rate = LlmCostRateRegistry.rateFor(kGraphExtractionDefaultModel);
+          expect(rate, isNotNull);
+          expect(
+            accounting.lastCommittedCostCents,
+            rate!.costCentsFor(inputTokens: 1000000, outputTokens: 1000000),
+          );
+          expect(accounting.lastCommittedCostCents, greaterThan(0));
+
+          // Metered under the dedicated graph class.
+          expect(
+            accounting.lastCommittedTelemetry?.modelUsed,
+            kGraphExtractionDefaultModel,
+          );
+
+          // The completion stats row carries the same class + real tokens.
+          final stats = accounting.lastStats;
+          expect(stats, isNotNull);
+          expect(stats!.usageClass, kGraphExtractionUsageClass);
+          expect(stats.resultStatus, 'success');
+          expect(stats.promptTokenCount, 1000000);
+          expect(stats.completionTokenCount, 1000000);
+          // HP #4: stats actor is the verified caller (super_admin user id).
+          expect(stats.actorUserId, 'user_g4b_test');
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    // 20. HP #7 under metering: the server-side key never appears in the
+    //     200 body even when the full metering path runs.
+    test('HP #7: key absent from response on the metered success path',
+        () async {
+      await withRealHttp(() async {
+        const testKey = 'super-secret-hp7-metered-key-123';
+        final gateway = _MockExtractGateway();
+        final accounting = InMemoryAccountingStore.open();
+        await spinUp(
+          graphExtractGateway: gateway,
+          anthropicApiKey: testKey,
+          usageGuard: _openGuard(),
+          accountingStore: accounting,
+        );
+        try {
+          final r = await postExtract();
+          expect(r.statusCode, 200);
+          expect(r.body.contains(testKey), isFalse,
+              reason: 'HP #7: the key must never appear in the response');
         } finally {
           await shutDown();
         }
