@@ -24,6 +24,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+import 'package:forge_and_flow/admin/admin_routes.dart';
+import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart'
+    show kDemoDinerLocationToronto, kDemoDinerOperatorId;
 import 'package:forge_and_flow/main_admin.dart' as admin_app;
 
 /// Mirror of `kDemoMode` in the mobile harness. Read at compile time so
@@ -120,6 +123,50 @@ Future<void> tapAdminNav(WidgetTester tester, String routeId) async {
   await pumpUntil(tester, budget: kAdminNavBudget);
 }
 
+/// Selects the seeded Demo Diner business in the Business accounts scope tree.
+/// This activates the per-business nav cluster used by hidden operations
+/// routes such as Members, Access, Audit log, Data accuracy, and Timing.
+Future<void> selectDemoDinerBusinessScope(WidgetTester tester) async {
+  await tapAdminNav(tester, kAdminOperatorsRouteId);
+  await _tapRequiredKey(
+    tester,
+    Key('admin_setup_scope_business_$kDemoDinerOperatorId'),
+  );
+}
+
+/// Selects the seeded Toronto Yorkville location. Use this for screens that
+/// require a concrete location scope, such as Data accuracy, Vendor
+/// integrations, and Timing.
+Future<void> selectDemoDinerTorontoLocationScope(WidgetTester tester) async {
+  await selectDemoDinerBusinessScope(tester);
+  await _tapRequiredKey(
+    tester,
+    Key('admin_setup_scope_location_$kDemoDinerLocationToronto'),
+  );
+}
+
+/// Opens a per-business cluster route after a business/location scope has
+/// already been selected.
+Future<void> tapAdminClusterRoute(WidgetTester tester, String routeId) async {
+  await _tapRequiredKey(tester, Key('admin_nav_cluster_item_$routeId'));
+}
+
+Future<void> _tapRequiredKey(WidgetTester tester, Key key) async {
+  final finder = find.byKey(key);
+  expect(finder, findsAtLeast(1), reason: 'Expected admin key $key.');
+  await tester.ensureVisible(finder.first);
+  await tester.pump();
+  await tester.tap(finder.first, warnIfMissed: false);
+  await tester.pump();
+  await pumpUntil(tester, budget: kAdminNavBudget);
+}
+
+/// Taps a widget by string key. Keeps scenario files focused on the surface
+/// contract instead of importing Flutter solely for `Key(...)`.
+Future<void> tapAdminKey(WidgetTester tester, String keyName) async {
+  await _tapRequiredKey(tester, Key(keyName));
+}
+
 /// Asserts the given route id is the active route. Validated by the
 /// presence of the per-route screen key. For routes whose screens do
 /// not (yet) expose a scoped Key, the fallback is to confirm the shell
@@ -197,6 +244,24 @@ class FlutterErrorTap {
 /// Useful for soft-asserting optional surfaces (e.g. a dialog that may
 /// or may not have opened yet during a transition).
 bool isWidgetMountedByKey(Key key) => find.byKey(key).evaluate().isNotEmpty;
+
+/// Returns true if a widget with the given string key is mounted.
+bool isAdminKeyMounted(String keyName) =>
+    find.byKey(Key(keyName)).evaluate().isNotEmpty;
+
+/// Asserts a widget with [keyName] is present. Keeps scenario files compact
+/// and avoids every pressure test importing Flutter just for `Key(...)`.
+void expectAdminKey(String keyName, {Matcher matcher = findsOneWidget}) {
+  expect(find.byKey(Key(keyName)), matcher);
+}
+
+/// Asserts at least one of the given keyed states is mounted.
+void expectAnyAdminKey(Iterable<String> keyNames) {
+  final mounted = keyNames
+      .where((keyName) => find.byKey(Key(keyName)).evaluate().isNotEmpty)
+      .toList();
+  expect(mounted, isNotEmpty, reason: 'Expected one of $keyNames.');
+}
 
 /// Returns true if a widget rendering the given text is mounted.
 bool isTextMounted(String text) => find.text(text).evaluate().isNotEmpty;

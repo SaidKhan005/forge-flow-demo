@@ -1,17 +1,17 @@
-# p5_push_delivery_proof — two-device push delivery proof (deferred stub)
+# p5_push_delivery_proof — two-device push delivery proof readiness gate
 
 **Runner:** `test/pressure/p5_push_delivery_proof_test.dart`
 (unit tests for `tool/pressure/p5_push_delivery_proof.dart` — Slice C-11)
 
 **What it pressures:** the state-machine seam in front of the two-device
-Patrol push-delivery proof. The full two-device proof body is deferred
-(Patrol is not yet in `dev_dependencies`); this harness pins the
-env-gated inert behavior, the URL allow-list, and the pinning test that
-will fail loudly the moment Patrol lands so the wired branch gets a
-code review.
+Patrol push-delivery proof. Patrol is now declared in `dev_dependencies`,
+but the full two-device proof body is still deferred behind device/env
+wiring. This harness pins the env-gated inert behavior, the URL allow-list,
+and the non-zero ready-state placeholder so a fully-prepared run cannot look
+green until the actual Patrol body exists.
 
-**Status at f0bf2702:** PASS. The runner is a structural shim until
-Patrol lands and the ready-state body is filled in.
+**Status as of 2026-05-27:** PASS. The runner is a structural shim until
+the ready-state body is filled in.
 
 ## Inputs
 
@@ -35,21 +35,24 @@ Patrol lands and the ready-state body is filled in.
   "production").
 - `runPushDeliveryProof` emits exactly ONE structured log line per
   invocation and exits 0 in every deferred state.
-- Ready state emits a `ready_but_unimplemented` line whose reason
-  cites the follow-up (Patrol body is the next slice).
-- Pinning guard: `kDeclaredDevDependencies` does NOT contain `patrol`
-  — when it does, this test fails loudly so the wired branch gets
-  a code review (instructions live in the test reason string).
+- Ready state emits `metric: push_delivery.not_implemented`,
+  `state: ready_but_unimplemented`, and exits 2 so the proof cannot pass
+  without running.
+- Dependency guard: `kDeclaredDevDependencies` contains `patrol`, and the
+  default dependency list reaches the `ready` state when all required env vars
+  are present.
 
 ## How to read the output
 
-- Healthy run: all tests pass; emitted JSON decodes with the
+- Healthy deferred run: all tests pass; emitted JSON decodes with the
   documented `metric: push_delivery.skipped`, `state`, `reason` shape.
+- Fully prepared but still-unimplemented run: emits
+  `metric: push_delivery.not_implemented` and exits 2.
 - Regression: a state mis-route (e.g. Patrol-missing + env-missing both
   routing to one branch) would mask the actual blocker; relaxing the
   URL allow-list silently breaks the production-guard.
 - No committed findings file — the harness emits one line per
-  invocation; the ready-state path is intentionally stubbed.
+  invocation; the ready-state path intentionally fails until implemented.
 
 ## Related
 

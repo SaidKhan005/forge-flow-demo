@@ -1,22 +1,24 @@
-// Stub — Scenario Ops/SA-01 (Security & audit log).
+// integration_test/admin_pressure/ops_security_audit/scenario_ops_sa_01_audit_log_renders.dart
 //
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Ops/SA-01: the per-business audit log renders rows and filters.
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Ops/SA-01 (stub): share-preview boot leaves Security & audit log reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for Security & audit log.
-    },
-  );
+  testWidgets('Ops/SA-01: audit log renders', (tester) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await selectDemoDinerBusinessScope(tester);
+    await tapAdminClusterRoute(tester, kAdminAuditedSupportActionsRouteId);
+
+    expectAdminKey('admin_audited_support_actions_screen');
+    expectAdminKey('admin_asa_filters');
+    expectAdminKey('admin_asa_audit_log_list');
+  });
 }

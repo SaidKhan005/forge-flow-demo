@@ -194,6 +194,7 @@ void main() {
       final suspended = await gateway.suspendOperator(
         bundle.operator.operatorId,
         idempotencyKey: 'k-suspend-1',
+        adminReason: 'Suspension test',
       );
       expect(suspended.isSuspended, isTrue);
       expect(suspended.suspendedAt, isNotNull);
@@ -201,6 +202,7 @@ void main() {
       final reactivated = await gateway.reactivateOperator(
         bundle.operator.operatorId,
         idempotencyKey: 'k-reactivate-1',
+        adminReason: 'Reactivation test',
       );
       expect(reactivated.isSuspended, isFalse);
       expect(reactivated.suspendedAt, isNull);
@@ -517,10 +519,12 @@ void main() {
         final first = await gateway.suspendOperator(
           bundle.operator.operatorId,
           idempotencyKey: 'idem-suspend',
+          adminReason: 'First suspend',
         );
         final second = await gateway.suspendOperator(
           bundle.operator.operatorId,
           idempotencyKey: 'idem-suspend',
+          adminReason: 'First suspend',
         );
         expect(first.suspendedAt, equals(second.suspendedAt));
       },
@@ -670,6 +674,7 @@ void main() {
         await gateway.suspendOperator(
           'op-1',
           idempotencyKey: 'idem-http-suspend',
+          adminReason: 'Audit reason',
         );
         final req = captured.single;
         expect(req.method, equals('POST'));
@@ -678,6 +683,7 @@ void main() {
           req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
           equals('idem-http-suspend'),
         );
+        expect(req.body['admin_reason'], equals('Audit reason'));
       },
     );
 

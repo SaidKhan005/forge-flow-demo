@@ -20,6 +20,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/domain/models/notification_preference.dart';
 import 'package:forge_and_flow/services/email/email_template_renderer.dart';
 
 import '../../../tool/advisor_proxy/email_dispatch/notification_event_fanout.dart';
@@ -464,6 +465,10 @@ void main() {
       expect(
         fanoutCalls.first.envelope.emailTemplateData['vendorName'],
         'Toast',
+      );
+      expect(
+        fanoutCalls.first.envelope.suppressedChannels,
+        contains(NotificationChannel.email),
       );
     });
 

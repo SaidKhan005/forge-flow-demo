@@ -1,5 +1,5 @@
 // Pressure preview v1 — Slice C-11 (R4 §4B + §7C) — push-delivery proof
-// harness STUB. The slice spec calls for a Patrol two-device test that
+// harness readiness gate. The slice spec calls for a Patrol two-device test that
 // asserts the bell-badge invalidation SLO (≤ 5s mark-read across two
 // connected mobile devices, per inventory rollup §11.b + R4 §3B).
 //
@@ -22,36 +22,27 @@
 //      subscribers + `mobile_push_notification_service.dart` foreground
 //      banner + `getInitialMessage` cold-start path).
 //
-// Current state: STUB (Patrol/Flutter mobile test infra NOT wired)
-// -----------------------------------------------------------------
-// Patrol is NOT a declared dev_dependency in `pubspec.yaml`. The Flutter
-// mobile test infrastructure required to drive a two-device proof
-// (Patrol + `nativeAutomatorConfig`, plus connected Android/iOS test
-// hardware) is not present in this repo. Shipping a speculative Patrol
-// harness body here would either (a) fail to compile (Patrol imports
-// resolve to nothing) or (b) require expanding the dev_dependency graph
-// for code that cannot run without external test hardware — both
-// anti-`Build-Toward-Production` per the F&F doctrine (`feedback_production_not_backlog.md`).
-//
-// Instead, this file ships the env-gated-inert posture: when invoked,
-// it emits ONE structured "deferred" log line citing the missing
-// infrastructure and exits 0. The PR body + lane evidence doc disclose
-// the deferral honestly so the operator's pressure-test inventory is
-// not misled by a fabricated "green" record.
+// Current state: Patrol dependency present; two-device body pending
+// ----------------------------------------------------------------
+// Patrol is now a declared dev_dependency in `pubspec.yaml`. The Flutter
+// mobile test infrastructure required to drive a two-device proof is
+// still gated by test devices and preview credentials. Missing devices
+// / credentials still emit a structured deferral and exit 0. Once
+// Patrol + all required env vars are present, the harness reaches the
+// ready branch and exits non-zero with `push_delivery.not_implemented`
+// until the real two-device body replaces the placeholder.
 //
 // What unblocks the full harness
 // ------------------------------
-//   1. Add `patrol: ^<version>` + `patrol_finders` to the
-//      `dev_dependencies` block in `pubspec.yaml`.
-//   2. Add `patrol` CLI tooling to the CI runners (Patrol's own
+//   1. Add `patrol` CLI tooling to the CI runners (Patrol's own
 //      `setup-patrol` GitHub Action or equivalent).
-//   3. Wire two test devices (emulators or physical) accessible to the
+//   2. Wire two test devices (emulators or physical) accessible to the
 //      preview deployment's FCM project.
-//   4. Provision two operator-test accounts whose `mobile_push_tokens`
+//   3. Provision two operator-test accounts whose `mobile_push_tokens`
 //      can be observed in the preview Postgres instance.
-//   5. Add a `PATROL_DEVICE_A_ID` + `PATROL_DEVICE_B_ID` env var pair
+//   4. Add a `PATROL_DEVICE_A_ID` + `PATROL_DEVICE_B_ID` env var pair
 //      so the harness knows which two adb / xcode devices to target.
-//   6. Wire `MOBILE_PUSH_NOTIFICATIONS_ENABLED=true` dart-define for
+//   5. Wire `MOBILE_PUSH_NOTIFICATIONS_ENABLED=true` dart-define for
 //      the test build so `firebase_auth_runtime_bindings.dart:117`'s
 //      gate selects the FCM-backed gateway.
 //
@@ -68,8 +59,9 @@
 //
 // Output line shapes (mirror `p5_email_scenario_loopback.dart`)
 // -------------------------------------------------------------
-//   { "ts": "<iso>", "metric": "push_delivery.skipped",
-//     "reason": "Patrol/Flutter mobile test infra not wired" }
+//   { "ts": "<iso>", "metric": "push_delivery.skipped", "state": "..." }
+//   { "ts": "<iso>", "metric": "push_delivery.not_implemented",
+//     "state": "ready_but_unimplemented" }
 //   (future) { "ts": "<iso>", "metric": "push_delivery.case",
 //             "device_a": "...", "device_b": "...",
 //             "bell_invalidation_ms": <int>, "slo_met": <bool> }
@@ -131,8 +123,9 @@ PushDeliveryHarnessState evaluatePushDeliveryState({
     }
   }
   final proxyUrl = env['PROXY_URL']!.trim();
-  final urlOk = kPushDeliveryAllowedProxySubstrings
-      .any((sub) => proxyUrl.contains(sub));
+  final urlOk = kPushDeliveryAllowedProxySubstrings.any(
+    (sub) => proxyUrl.contains(sub),
+  );
   if (!urlOk) return PushDeliveryHarnessState.deferredProxyValidationFailed;
   return PushDeliveryHarnessState.ready;
 }
@@ -168,20 +161,19 @@ Map<String, Object?> buildSkippedLine({
 
 /// Statically declared dev-dependency identifiers. The harness reads
 /// this list to decide whether Patrol is wired. The list MUST be kept
-/// in sync with `pubspec.yaml`'s `dev_dependencies` block — when Patrol
-/// is added there, append `'patrol'` here (and the harness gains
-/// access to the `ready` branch).
+/// in sync with `pubspec.yaml`'s `dev_dependencies` block so the
+/// readiness gate matches the repo's real test dependency posture.
 ///
 /// Why static instead of parsing pubspec.yaml at runtime: parsing YAML
 /// from a CLI tool would require pulling in `package:yaml`, which is
 /// already a transitive dep but cleanly avoiding the import keeps this
-/// harness self-contained. The two-line maintenance cost is paid by the
-/// PR that wires Patrol.
+/// harness self-contained. The maintenance cost is paid by the PR that
+/// changes the test dependency graph.
 const List<String> kDeclaredDevDependencies = <String>[
-  // Synced with `pubspec.yaml` `dev_dependencies` at C-11 land time
-  // (2026-05-13). Patrol is intentionally absent — see file header.
+  // Synced with `pubspec.yaml` `dev_dependencies` as of 2026-05-27.
   'flutter_test',
   'flutter_driver',
+  'patrol',
   'fake_async',
   'mockito',
   'build_runner',
@@ -212,7 +204,7 @@ Future<int> runPushDeliveryProof({
 
   // ----- READY branch: deliberately left as a placeholder -----
   //
-  // When Patrol lands, this branch fans out into the two-device proof:
+  // When the full proof lands, this branch fans out into the two-device proof:
   //   1. Spin up Device A via `patrol` cli — sign-in operator-A.
   //   2. Spin up Device B — sign-in operator-B for the same operator
   //      tenant (or, for the bell-badge test, the same user across
@@ -228,18 +220,20 @@ Future<int> runPushDeliveryProof({
   //      decrements within the SLO budget.
   //   6. Emit `push_delivery.case` JSON line per device.
   //
-  // STUB: we still emit a single "ready-but-unimplemented" line so the
-  // operator sees the harness reached the active branch without
-  // running. A follow-up slice replaces this body with the actual
-  // Patrol calls.
-  output.writeln(jsonEncode(<String, Object?>{
-    'ts': clock().toIso8601String(),
-    'metric': 'push_delivery.skipped',
-    'state': 'ready_but_unimplemented',
-    'reason': 'Patrol is wired and env is set, but the two-device proof '
-        'body has not been ported yet. Follow-up slice required.',
-  }));
-  return 0;
+  // STUB: emit a single "ready-but-unimplemented" line and fail the
+  // command. Reaching this branch means all prerequisites are present;
+  // returning 0 would falsely advertise a proof that did not run.
+  output.writeln(
+    jsonEncode(<String, Object?>{
+      'ts': clock().toIso8601String(),
+      'metric': 'push_delivery.not_implemented',
+      'state': 'ready_but_unimplemented',
+      'reason':
+          'Patrol is wired and env is set, but the two-device proof '
+          'body has not been ported yet. Follow-up slice required.',
+    }),
+  );
+  return 2;
 }
 
 Future<void> main(List<String> args) async {

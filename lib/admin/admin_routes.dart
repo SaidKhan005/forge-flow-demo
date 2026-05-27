@@ -2905,19 +2905,16 @@ class AdminConsoleServicesScope extends InheritedWidget {
 
   // HARD-B / HARD-E - the demo fallback gateways (`_defaultDemoGateway`,
   // `_defaultPricingDemoGateway`, `_defaultFeatureFlagsDemoGateway`,
-  // etc.) used by the `*Of(context)` accessors below are reachable
-  // only when `_kAdminDemoAuth == true`. That const lives in
-  // `lib/main_admin.dart` and is computed from
-  // `--dart-define=ADMIN_DEMO_AUTH=true` at compile time; its default
-  // is `false`. Production builds MUST ship without this define (or
-  // with `false`) so the seeded fixture `super.admin@forgeflow.test`
-  // / `support@forgeflow.test` accounts cannot sign in against a
-  // publicly-routed Cloud Run admin console. The release-build CI
-  // assertion that pins this is owned by HARD-E
+  // etc.) used by the `*Of(context)` accessors below are fixture
+  // fallbacks for tests, share-preview, and locally unscoped routes
+  // when no live gateway is injected. They are not production wiring.
+  // Production builds must inject HTTP-backed gateways and must ship
+  // without `_kAdminDemoAuth` (computed in `lib/main_admin.dart` from
+  // `--dart-define=ADMIN_DEMO_AUTH=true`) so seeded fixture accounts
+  // cannot sign in against a publicly routed Cloud Run admin console.
+  // The release-build CI assertion that pins this is owned by HARD-E
   // (`scripts/deploy_admin_console.ps1` `-DemoMode` switch + the CI
-  // job that grep-asserts the build flags); the gate itself lives
-  // here so any future `*Of(context)` fallback inherits the same
-  // compile-time discipline.
+  // job that grep-asserts the build flags).
 
   /// Production wires the HTTP-backed gateway here. Null falls back
   /// to the seeded in-memory demo gateway in [operatorLocationGatewayOf].

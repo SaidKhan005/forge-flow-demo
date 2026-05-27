@@ -257,6 +257,7 @@ class NotificationEventEnvelope {
     required this.emailTemplateData,
     this.deeplink,
     this.pushData = const <String, Object?>{},
+    this.suppressedChannels = const <NotificationChannel>{},
   });
 
   /// Catalog event_key (e.g. `notif.backfill.complete`).
@@ -288,6 +289,12 @@ class NotificationEventEnvelope {
   /// handlers branch on these keys (e.g. `data['inbox'] = 'true'`
   /// for the inbox-routed copy).
   final Map<String, Object?> pushData;
+
+  /// Channels this trigger intentionally owns somewhere else. The
+  /// vendor availability trigger uses this to keep the legacy
+  /// "Notify me" pending-row table as the only email source while
+  /// still letting the generic fanout handle push/inbox delivery.
+  final Set<NotificationChannel> suppressedChannels;
 }
 
 /// Outcome shape returned by [NotificationEventFanout.fanOut]. The
@@ -453,6 +460,9 @@ class NotificationEventFanout {
       );
 
       for (final channel in channels) {
+        if (envelope.suppressedChannels.contains(channel)) {
+          continue;
+        }
         try {
           switch (channel) {
             case NotificationChannel.push:

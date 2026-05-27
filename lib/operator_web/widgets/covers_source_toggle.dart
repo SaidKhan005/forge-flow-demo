@@ -105,7 +105,10 @@ class CoversSourceToggle extends StatelessWidget {
     String? firstManualPeriodId;
     if (_inlineManualEnabled) {
       for (final period in servicePeriods) {
-        if (effectiveCoversSource(settings.coversSourceFor(period.id), bundle) ==
+        if (effectiveCoversSource(
+              settings.coversSourceFor(period.id),
+              bundle,
+            ) ==
             CoversSource.manual) {
           firstManualPeriodId = period.id;
           break;
@@ -159,7 +162,9 @@ class CoversSourceToggle extends StatelessWidget {
                 manualEntry: _inlineManualEnabled
                     ? _PeriodManualEntry(
                         manualCardKey: period.id == firstManualPeriodId
-                            ? const Key('data_accuracy_covers_manual_entry_card')
+                            ? const Key(
+                                'data_accuracy_covers_manual_entry_card',
+                              )
                             : null,
                         todayValue: settings.manualCoversFor(
                           businessDateIso!,
@@ -485,7 +490,8 @@ class _InlineManualRowState extends State<_InlineManualRow> {
 
   @override
   Widget build(BuildContext context) {
-    final canCopy = widget.yesterdayValue != null && widget.onCopyYesterday != null;
+    final canCopy =
+        widget.yesterdayValue != null && widget.onCopyYesterday != null;
     return Container(
       key: widget.cardKey,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -497,20 +503,20 @@ class _InlineManualRowState extends State<_InlineManualRow> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 10,
             children: [
               const Icon(
                 Icons.edit_outlined,
                 size: 16,
                 color: AppColors.sunsetDark,
               ),
-              const SizedBox(width: 8),
               Text(
                 "Today's guest count",
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
-              const SizedBox(width: 12),
               SizedBox(
                 width: 110,
                 child: TextField(
@@ -532,7 +538,6 @@ class _InlineManualRowState extends State<_InlineManualRow> {
                   style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
               ),
-              const SizedBox(width: 10),
               Tooltip(
                 message: canCopy
                     ? "Copy yesterday's value"

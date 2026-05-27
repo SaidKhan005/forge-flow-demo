@@ -1,22 +1,25 @@
-// Stub — Scenario Ops/DA-01 (data accuracy table).
-//
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Scenario Ops/DA-01 (data accuracy table).
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Ops/DA-01 (stub): share-preview boot leaves data accuracy table reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for data accuracy table.
-    },
-  );
+  testWidgets('Ops/DA-01: Data accuracy renders for a selected location', (
+    tester,
+  ) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await selectDemoDinerTorontoLocationScope(tester);
+    await tapAdminClusterRoute(tester, kAdminDataAccuracyRouteId);
+
+    expectAdminKey('admin_data_accuracy_screen');
+    expectAdminKey('operator_web_data_accuracy_screen');
+    expectAdminKey('data_accuracy_covers_source_card');
+    expectAdminKey('data_accuracy_wage_source_card');
+  });
 }

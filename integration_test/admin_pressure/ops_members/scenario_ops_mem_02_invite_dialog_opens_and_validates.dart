@@ -1,22 +1,23 @@
-// Stub — Scenario Ops/Mem-02 (invite dialog).
-//
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Scenario Ops/Mem-02 (invite dialog).
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Ops/Mem-02 (stub): share-preview boot leaves invite dialog reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for invite dialog.
-    },
-  );
+  testWidgets('Ops/Mem-02: Invite dialog opens from Members', (tester) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await selectDemoDinerBusinessScope(tester);
+    await tapAdminClusterRoute(tester, kAdminMembersRouteId);
+
+    expectAdminKey('admin_members_screen');
+    await tapAdminKey(tester, 'admin_members_invite_button');
+
+    expectAdminKey('admin_members_invite_dialog');
+  });
 }

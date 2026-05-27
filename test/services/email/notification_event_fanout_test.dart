@@ -191,6 +191,55 @@ void main() {
       );
     });
 
+    test('suppressed channel is not dispatched even when enabled', () async {
+      // Vendor availability owns email through its pending-row
+      // "Notify me" table, so its trigger suppresses generic fanout
+      // email even if catalog defaults or preferences would allow it.
+      final prefs = _FakePrefSeam(
+        rows: <NotificationPreferenceRow>[
+          const NotificationPreferenceRow(
+            userId: 'user-1',
+            channel: NotificationChannel.email,
+            scopeKind: NotificationScopeKind.operator,
+            scopeId: null,
+            enabled: true,
+          ),
+          const NotificationPreferenceRow(
+            userId: 'user-1',
+            channel: NotificationChannel.inbox,
+            scopeKind: NotificationScopeKind.operator,
+            scopeId: null,
+            enabled: true,
+          ),
+        ],
+      );
+      final pushes = _RecordingPushSeam();
+      final emails = _RecordingEmailSeam();
+      final fanout = NotificationEventFanout(
+        preferenceReadSeam: prefs,
+        userDirectory: ({required String operatorId}) async => <FanoutUser>[
+          _ownerUser(),
+        ],
+        pushDispatch: pushes.dispatch,
+        emailDispatch: emails.dispatch,
+      );
+
+      final outcome = await fanout.fanOut(
+        operatorId: 'op-1',
+        envelope: _backfillCompleteEnvelope(
+          suppressedChannels: const <NotificationChannel>{
+            NotificationChannel.email,
+          },
+        ),
+      );
+
+      expect(outcome.pushDispatched, 1);
+      expect(outcome.emailDispatched, 0);
+      expect(outcome.inboxDispatched, 1);
+      expect(outcome.skipped, 0);
+      expect(emails.calls, isEmpty);
+    });
+
     test('location-scoped row beats operator-scoped row', () async {
       // notif.backfill.complete catalog default = {push, email}.
       // Operator-scope preference: email = enabled.
@@ -638,8 +687,10 @@ void main() {
   });
 }
 
-NotificationEventEnvelope _backfillCompleteEnvelope() {
-  return const NotificationEventEnvelope(
+NotificationEventEnvelope _backfillCompleteEnvelope({
+  Set<NotificationChannel> suppressedChannels = const <NotificationChannel>{},
+}) {
+  return NotificationEventEnvelope(
     eventKey: 'notif.backfill.complete',
     dedupeKeyPrefix: 'notif.backfill.complete:op-1:job-x',
     pushTitle: 'First Connect Backfill complete',
@@ -656,6 +707,7 @@ NotificationEventEnvelope _backfillCompleteEnvelope() {
       'vendor_id': 'toast',
       'connection_id': 'conn-1',
     },
+    suppressedChannels: suppressedChannels,
   );
 }
 

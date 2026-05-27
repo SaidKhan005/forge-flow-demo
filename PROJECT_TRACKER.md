@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-26. Routing map only: shows **only what is left**.
+Updated: 2026-05-27. Routing map only: shows **only what is left**.
 Completed phases/slices: `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 Stale sprint-execution docs: `docs/archive/_execution/`. `docs/archive/**`
 is history; ignore unless explicitly named.
@@ -100,7 +100,7 @@ Detail + resume guide: `docs/archive/_execution/2026-05-06_v1_operator_punchlist
 | Item | Owner | Blocks |
 |---|---|---|
 | Firebase Auth action-domain switch (`auth.feflow.org` → `forge-flow-production1.web.app`, set `callbackUri`, run 4 validation checks) | You / Cloud | `cutover.0` preflight |
-| Decide + apply the authoritative Production1 pending-migration queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0. Two rows in that queue remain specifically operator-decision-sensitive (first-connect-backfill jobs + 11W.7 operator account fields); the full queue is 75 files through `202605251020_plans_and_limits_scoped_contract_windows.sql`. | You + runbook | First-connect on prod, operator-web Account writes on prod, all staging-ready schema-backed features |
+| Decide + apply the authoritative Production1 pending-migration queue in `docs/POST_HARDENING_FOLLOWUPS.md` P0. Two rows in that queue remain specifically operator-decision-sensitive (first-connect-backfill jobs + 11W.7 operator account fields); the full queue is 76 files through `202605261200_phase_12_c3_typed_graph_vocabulary.sql`. | You + runbook | First-connect on prod, operator-web Account writes on prod, all staging-ready schema-backed features |
 | Seed operator-authored T&C content into `tos_versions` (universal + per-vendor scopes) at deploy time. Operator self-authors per `docs/contracts/operator_self_served_tos_contract.md`; no external legal-review gate. | You / Eng | `cutover.2` |
 | Sandbox creds for trio: Lightspeed K-Series · Libro · QuickBooks Time | You / Vendors | `*.live.sandbox` slices for trio |
 
@@ -123,9 +123,9 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 | Slice | Status | Plan |
 |---|---|---|
 | **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active implementation; Slices 0 to 6 landed, completing the full numbered sequence (covers-source per-period schema + bottom-up locked weekly-plan snapshot + per-period verdict carry + Slice 6 audit-scorer per-period & pool-consistency checks, #917/#948); benchmark-rework follow-ups in flight** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`**: 9 slices (0 to 1 to 1.5 to 2 to 2.5 to 3 to 4 to 5 to 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. Landed covers-source de-hardcode R5/R7a to R7d (#943/#972/#975 to #977; **#977 schema-destructive: drops legacy whole-day columns + trims view scalars**); run `migration_drift_scanner` + `migration_cutoff_lint` after any further `db/migrations` change. |
-| `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
-| `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
-| `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
+| `11A.8` API version management | not started | `phase_11A_operations_console/*` |
+| `11A.9` Audit log review | not started | `phase_11A_operations_console/*` |
+| `11A.10` Status page management | not started | `phase_11A_operations_console/*` |
 | `9.8` inbound vendor T&Cs (code lane) | code-ready; operator-self-served content seeding pending | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
 | `admin-hierarchy-settings-overhaul` | complete (2026-05-12; evidence: `docs/archive/_execution/admin_hierarchy_settings_overhaul/06_closure_evidence_2026-05-12.md`) | `docs/archive/_execution/admin_hierarchy_settings_overhaul/` (plan archived to `docs/archive/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md`) |
@@ -175,6 +175,13 @@ ships the candidate artifacts + `corpus_manifest.yaml` to the runtime
 path; make the candidate-content decision (the staged bundle is
 Barrio-handbook-heavy, vs regenerate F&F-only); and the Connections-tab
 redesign (plan C2). The canonical-graph write path stays op-gated.
+
+**AI/advisor deferred gap pickup (2026-05-27 audit):** keep the remaining
+AI/advisor fixes in their lane. Concrete references live in
+`docs/_audits/deep_unrun_lane_audit_2026_05_27_report.md`: live/demo Advisor
+gateway binding, client `prior_turns`, Advisor CMK deploy-secret mapping,
+Advisor/Tier-M cutover wording alignment, graph candidate artifact/content
+cleanup, and the AI/corpus/pricing/observability admin-pressure placeholders.
 
 ## Prompt Fetch Map
 

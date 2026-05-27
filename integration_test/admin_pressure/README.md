@@ -115,17 +115,13 @@ integration_test/admin_pressure/
 
 ---
 
-## Wired-vs-stub status (v1 baseline)
+## Wired-vs-stub status
 
-The v1 slice ships **12 fully-wired scenarios** with real assertions
-and roughly 35 **stubs** that boot the shell and leave a
-`// TODO(admin-pressure): ...` for the next person to land. The stubs
-mean the directory tree is exhaustive (every surface in the runbook is
-represented) while the wired set locks in the boot path, the shell,
-and the four highest-impact regressions from the 2026-05-22 manual
-pressure test.
+All non-AI lanes now carry surface-specific assertions. The remaining
+placeholder scenarios are intentionally limited to the paused AI lane:
+Plans and limits, Knowledge base, and AI Metrics follow-up coverage.
 
-### Fully wired (12)
+### Core wired coverage
 
 | File | What it locks in |
 |---|---|
@@ -142,13 +138,11 @@ pressure test.
 | `regression/scenario_reg_01_no_renderflex_overflow_full_nav_tour.dart` | Regression — full primary-nav tour at 980x900 emits zero RenderFlex overflows. |
 | `regression/scenario_reg_02_account_profile_ai_plan_is_actually_disabled.dart` | Regression — the AI-plan detail row is genuinely non-tappable when marked disabled (no role=button affordance lie). |
 
-### Stub (the rest)
+### Deferred placeholders
 
-Every other scenario file in the directory tree is a stub that boots
-the shell and leaves a `// TODO(admin-pressure): ...` comment naming
-the surface to flesh out. Stubs intentionally do not have real
-assertions beyond `expectAdminShellMounted` so they pass cleanly while
-land-able placeholders exist; the team lands them one at a time.
+Only the AI-lane scenarios remain placeholders while that lane is being
+completed. Do not treat those as launch-ready assertions until the AI
+lane is unfrozen and wired.
 
 ---
 
@@ -161,6 +155,11 @@ land-able placeholders exist; the team lands them one at a time.
 | `launchAdminSharePreview(tester)` | Boots the admin app via `main_admin.dart`. Throws a `StateError` if `ADMIN_SHARE_PREVIEW` is not set. |
 | `expectAdminShellMounted(tester)` | Waits for `Key('admin_shell_scaffold')` and asserts it is present. |
 | `tapAdminNav(tester, routeId)` | Taps `Key('admin_nav_item_<routeId>')`. Use route-id constants from `lib/admin/admin_routes.dart`. |
+| `selectDemoDinerBusinessScope(tester)` | Opens Business accounts and selects the seeded Demo Diner business. |
+| `selectDemoDinerTorontoLocationScope(tester)` | Selects Demo Diner, then the seeded Toronto location. |
+| `tapAdminClusterRoute(tester, routeId)` | Taps a per-business cluster row after a business/location is selected. |
+| `tapAdminKey(tester, keyName)` | Taps a widget by string key and waits for route/dialog settling. |
+| `expectAdminKey(keyName)` / `expectAnyAdminKey([...])` | Assert one keyed widget, or one of several keyed states, is mounted. |
 | `expectAdminRoute(tester, routeId)` | Soft-asserts a route is active (today: shell still mounted). Tighten per-scenario with a screen-specific key check. |
 | `tapAdminLabel(tester, label)` | Fallback "tap by visible label" — same shape as the admin runbook's `flt-semantics`-by-text helper. |
 | `FlutterErrorTap.install()` | Captures FlutterError.onError. Has `.overflowErrors` and `.all` getters; call `.restore()` from `addTearDown`. |

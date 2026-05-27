@@ -1,22 +1,29 @@
-// Stub — Scenario Ops/Pol-02 (polling assign scope dialog).
+// integration_test/admin_pressure/ops_polling/scenario_ops_pol_02_assign_scope_dialog_open_cancel.dart
 //
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Ops/Pol-02: scope assignment opens and cancels from Polling Setup.
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Ops/Pol-02 (stub): share-preview boot leaves polling assign scope dialog reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for polling assign scope dialog.
-    },
-  );
+  testWidgets('Ops/Pol-02: polling assign-scope dialog opens and cancels', (
+    tester,
+  ) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await selectDemoDinerBusinessScope(tester);
+    await tapAdminClusterRoute(tester, kAdminPollingPricingRouteId);
+
+    await tapAdminKey(tester, 'admin_polling_setup_scope_assign');
+    expectAdminKey('admin_tier_assignment_dialog');
+    expectAdminKey('admin_tier_assignment_dialog_tier');
+
+    await tapAdminKey(tester, 'admin_tier_assignment_dialog_cancel');
+    expectAdminKey('admin_polling_pricing_screen');
+  });
 }

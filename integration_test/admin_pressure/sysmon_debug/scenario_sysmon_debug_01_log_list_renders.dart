@@ -1,22 +1,23 @@
-// Stub — Scenario Sysmon/Debug-01 (support logs list).
-//
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Scenario Sysmon/Debug-01 (support logs list).
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Sysmon/Debug-01 (stub): share-preview boot leaves support logs list reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for support logs list.
-    },
-  );
+  testWidgets('Sysmon/Debug-01: Support logs list shell renders', (
+    tester,
+  ) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await tapAdminNav(tester, kAdminDebugConsoleRouteId);
+
+    expectAdminKey('admin_debug_console_screen');
+    expectAdminKey('admin_debug_console_request_log_body');
+    expect(find.text('Support logs'), findsAtLeast(1));
+  });
 }

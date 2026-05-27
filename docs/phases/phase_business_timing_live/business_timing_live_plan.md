@@ -1,9 +1,16 @@
 # Business Timing + Live Shift Implementation Plan
 
-Status: foundation + UI shell merged; live producer/proxy write paths still gated
+Status: code-ready outside production apply. Schema, resolver, UI shell,
+operator/admin timing profile routes, resolution reads, open-shift snapshot
+projector, and Phase 8 post-commit projector wiring have landed. Staging and
+Production1 migration apply, review deploy proof, connected-device/mobile
+sync proof, and vendor-live proof remain gated before calling this production
+live.
 Owner: Codex  
-Branch: `codex/business-timing-live`  
-Worktree: `C:\Git Local Repos\forge_flow_demo\.codex_worktrees\business-timing-live`
+Branch: historical `codex/business-timing-live`; current truth is on `master`
+after merge
+Worktree: historical
+`C:\Git Local Repos\forge_flow_demo\.codex_worktrees\business-timing-live`
 
 ## Product Goal
 
@@ -190,7 +197,7 @@ immutability. Live open snapshots are additive and provisional.
 
 ## Execution Evidence - 2026-05-06
 
-Completed in this branch:
+Original branch closeout:
 
 - Domain timing profile models and inheritance resolver.
 - Postgres migration for timing profiles, service periods, audit events, and
@@ -205,13 +212,26 @@ Completed in this branch:
 - Migration cutoff/docs updates through
   `202605060000_phase_business_timing_live_schema.sql`.
 
-Not completed in this branch:
+Landed after the original branch closeout:
 
-- `OpenShiftSnapshotProjector` from live canonical vendor facts.
-- Production proxy routes for resolved timing/open snapshot reads.
-- Audited operator/admin timing write endpoints and live console edit forms.
-- Cloud Run review deployment with the new migration applied.
+- `OpenShiftSnapshotProjector` now buckets canonical live facts through the
+  effective timing profile and writes `open_shift_snapshots`.
+- Phase 8 production projector wiring now attaches the open-shift projector
+  after canonical fact writes, alongside the closed-shift projector.
+- Operator routes now include timing profile reads/writes and location-scoped
+  business-timing resolution reads.
+- Admin routes now include cross-operator timing profile reads/writes with
+  `admin_reason`, plus read-only timing resolution.
+- Proxy/mobile sync reads `open_shift_snapshots` through the existing durable
+  sync resource path.
 
-Those remaining items are intentionally named because shipping the UI/schema
-without the producer/proxy write path must not be described as a live vendor
-feed.
+Still gated before production-live claims:
+
+- Apply and verify the timing/open-shift migrations on staging and then
+  Production1 under the migration apply runbook.
+- Deploy review Cloud Run revisions and prove operator/admin timing reads and
+  writes against the live proxy.
+- Run connected-device/mobile sync proof for resolved timing and open-shift
+  snapshots.
+- Run vendor-live proof that real canonical facts produce fresh open-shift
+  snapshots.

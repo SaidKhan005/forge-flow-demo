@@ -1,22 +1,23 @@
-// Stub — Scenario Setup/Int-01 (connected services provider tiles).
+// integration_test/admin_pressure/setup_integrations/scenario_setup_int_01_provider_tiles_render.dart
 //
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Setup/Int-01: Connected services renders provider tiles.
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Setup/Int-01 (stub): share-preview boot leaves connected services provider tiles reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for connected services provider tiles.
-    },
-  );
+  testWidgets('Setup/Int-01: provider tiles render', (tester) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await tapAdminNav(tester, kAdminIntegrationsRouteId);
+
+    expectAdminKey('admin_integrations_screen');
+    expectAdminKey('admin_integrations_provider_anthropic');
+    expectAdminKey('admin_integrations_provider_sendgrid');
+  });
 }

@@ -1,22 +1,29 @@
-// Stub — Scenario Account/Not-02 (notification toggle persistence).
+// integration_test/admin_pressure/account_notifications/scenario_account_not_02_toggle_persists_optimistically.dart
 //
-// Placeholder asserting the admin shell mounts after a share-preview
-// boot. Replace the TODO below with surface-specific assertions when
-// landing this scenario.
+// Account/Not-02: a notification toggle can be changed without leaving the route.
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_routes.dart';
 
 import '../_harness.dart';
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Account/Not-02 (stub): share-preview boot leaves notification toggle persistence reachable',
-    (tester) async {
-      await launchAdminSharePreview(tester);
-      await expectAdminShellMounted(tester);
-      // TODO(admin-pressure): flesh out assertions for notification toggle persistence.
-    },
-  );
+  testWidgets('Account/Not-02: notification toggle changes in place', (
+    tester,
+  ) async {
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+    await tapAdminNav(tester, kAdminNotificationPreferencesRouteId);
+
+    const toggleKey =
+        'admin_notification_preferences_toggle_notif.backfill.complete_push';
+    expectAdminKey(toggleKey);
+    await tapAdminKey(tester, toggleKey);
+
+    expectAdminKey('admin_notification_preferences_screen');
+    expect(find.textContaining('Notifications'), findsAtLeast(1));
+  });
 }

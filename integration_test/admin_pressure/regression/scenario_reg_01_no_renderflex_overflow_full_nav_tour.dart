@@ -35,34 +35,30 @@ const List<String> _kFullTour = <String>[
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Reg-01 (regression): full primary-nav tour at narrow desktop '
-    'width emits zero RenderFlex overflows',
-    (tester) async {
-      final tap = FlutterErrorTap.install();
-      addTearDown(tap.restore);
+  testWidgets('Reg-01 (regression): full primary-nav tour at narrow desktop '
+      'width emits zero RenderFlex overflows', (tester) async {
+    final tap = FlutterErrorTap.install();
+    addTearDown(tap.restore);
 
-      // The historical overflow zone — set surface size BEFORE boot
-      // so the layout is built once at this width.
-      await tester.binding.setSurfaceSize(const Size(980, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+    // The historical overflow zone — set surface size BEFORE boot
+    // so the layout is built once at this width.
+    await tester.binding.setSurfaceSize(const Size(980, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      await launchAdminSharePreview(tester);
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+
+    for (final routeId in _kFullTour) {
+      await tapAdminNav(tester, routeId);
       await expectAdminShellMounted(tester);
-
-      for (final routeId in _kFullTour) {
-        await tapAdminNav(tester, routeId);
-        await expectAdminShellMounted(tester);
-        // Fail fast — capture which route triggered the overflow.
-        if (tap.overflowErrors.isNotEmpty) {
-          fail(
-            'RenderFlex overflow during nav tour at route "$routeId" '
-            'at 980x900: '
-            '${tap.overflowErrors.map((e) => e.exception).join(', ')}',
-          );
-        }
+      // Fail fast — capture which route triggered the overflow.
+      if (tap.overflowErrors.isNotEmpty) {
+        fail(
+          'RenderFlex overflow during nav tour at route "$routeId" '
+          'at 980x900: '
+          '${tap.overflowErrors.map((e) => e.exception).join(', ')}',
+        );
       }
-    },
-    timeout: const Timeout(Duration(minutes: 5)),
-  );
+    }
+  }, timeout: const Timeout(Duration(minutes: 5)));
 }

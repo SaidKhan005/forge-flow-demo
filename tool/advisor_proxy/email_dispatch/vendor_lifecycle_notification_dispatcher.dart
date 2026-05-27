@@ -39,6 +39,7 @@
 //     no jargon, no em-dashes per the UX writing standard.
 
 import 'package:forge_and_flow/services/email/email_template_renderer.dart';
+import 'package:forge_and_flow/domain/models/notification_preference.dart';
 
 import 'notification_event_fanout.dart';
 
@@ -238,13 +239,14 @@ class VendorLifecycleNotificationDispatchOutcome {
 /// can pass fakes for every seam without touching disk or Postgres.
 ///
 /// Phase 8 W2.B refactor: when an [eventFanout] is supplied, the
-/// dispatcher delegates `notif.vendor.now_available` push + inbox
+/// dispatcher delegates `notif.vendor.now_available` non-email
 /// channels to [NotificationEventFanout.fanOut] in addition to the
 /// existing per-row email enqueue. The legacy email path stays
 /// unchanged so the V1.E "Notify me" pending-row table remains the
 /// source of truth for email recipients (those rows are picker-side
 /// opt-ins, not preference rows). The fanout layers push/inbox on
-/// top for users whose `notification_preferences` admit them.
+/// top for users whose `notification_preferences` admit them without
+/// generating a second generic email.
 class VendorLifecycleNotificationDispatcher {
   VendorLifecycleNotificationDispatcher({
     required VendorLifecycleNotificationReadRepository notificationRepository,
@@ -333,12 +335,11 @@ class VendorLifecycleNotificationDispatcher {
       };
 
       // Phase 8 W2.B: invoke the multi-channel fanout once per
-      // operator BEFORE walking the pending email rows. The fanout
-      // layers push + inbox channels on top of the legacy per-row
-      // email path for any user in the operator whose preference
-      // matrix admits them. Failures from the fanout do not block
-      // the email path -- preferences are an enrichment, not a
-      // gate, for the V1.E "Notify me" picker rows.
+      // operator before walking the pending email rows. Email is
+      // intentionally suppressed here because the pending rows below
+      // are the source of truth for "Notify me" email recipients.
+      // Failures from the fanout do not block the email path:
+      // preferences are an enrichment, not a gate, for the V1.E rows.
       final fanout = _eventFanout;
       if (fanout != null) {
         try {
@@ -363,6 +364,9 @@ class VendorLifecycleNotificationDispatcher {
               },
               deeplink: operatorContext.integrationConsoleUrl,
               pushData: <String, Object?>{'vendor_id': vendorId},
+              suppressedChannels: const <NotificationChannel>{
+                NotificationChannel.email,
+              },
             ),
           );
         } catch (_) {
