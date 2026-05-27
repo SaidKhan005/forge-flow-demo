@@ -18,11 +18,13 @@
 > already did).
 >
 > **Status:** Active. 6-phase pipeline. **Current position (refreshed
-> 2026-05-19): Phase 1 (Wave 2) CLOSED; Phase 2.5 (Per-Daypart Targets
-> V1) is the live phase, Slices 0 to 5 landed, later slices in flight.
-> No happy-state tag yet (Phase 2 tag drops only after Phase 2.5 exits +
-> walkthrough re-runs clean).** See "Wave 2 status snapshot" at the
-> bottom for the dated detail.
+> 2026-05-27): Phase 1 (Wave 2) CLOSED; Phase 2.5 (Per-Daypart Targets
+> V1) is code-complete — all 9 slices + vendor-date 7a/7b + benchmark-rework
+> follow-ups landed on `origin/master`, and the 4 operator decisions (Gaps
+> 42/31/36/35) were resolved 2026-05-15; zero open PRs. No happy-state tag
+> yet (verified 2026-05-27) — the only remaining Phase 2.5 exit step is the
+> Phase 2 walkthrough re-run, after which happy state is tagged.** See
+> "Wave 2 status snapshot" at the bottom for the older dated 2026-05-19 detail.
 > **Owner:** Operator drives sequencing; main orchestrator + second
 > Claude lane execute.
 
