@@ -902,6 +902,11 @@ void main() {
       '11111111-1111-1111-1111-111111111111',
     );
     expect(snapshots.single.servicePeriodKey, 'lunch');
+    expect(snapshots.single.blendedWageAvailable, isTrue);
+    expect(
+      snapshots.single.provenance['blended_wage_provenance'],
+      'canonical_labor_wage',
+    );
 
     final storedOpenRows = await db.query(
       'open_shift_snapshots',
@@ -917,6 +922,11 @@ void main() {
       '11111111-1111-1111-1111-111111111111',
     );
     expect(storedOpenRows.single['service_period_key'], 'lunch');
+    expect(storedOpenRows.single['blended_wage_available'], 1);
+    expect(
+      storedOpenRows.single['provenance'],
+      contains('canonical_labor_wage'),
+    );
 
     final timingRows = await db.query(
       'restaurant_timing_configs',
@@ -1382,8 +1392,14 @@ OpenShiftSnapshot _openSnapshot(
     currentCPLH: 21.0,
     currentSPLH: 95.0,
     blendedWage: 19.25,
+    blendedWageAvailable: true,
     sourceSystem: 'oracle_micros_simphony',
     sourceShiftId: 'live-shift-1',
+    provenance: const <String, Object?>{
+      'projection': 'open_shift_snapshot_projector',
+      'blended_wage_available': true,
+      'blended_wage_provenance': 'canonical_labor_wage',
+    },
     lastEventAt: '2026-05-04T16:30:00.000Z',
     updatedAt: '2026-05-04T16:31:00.000Z',
   );

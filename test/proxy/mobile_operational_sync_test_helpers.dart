@@ -32,15 +32,14 @@ import '../../tool/advisor_proxy/advisor_proxy.dart';
 
 /// Return type of [spinUp]. Made public so split test files can hold the
 /// context in a typed local without re-stating the field list.
-typedef MobileOperationalSyncTestContext =
-    ({
-      HttpServer server,
-      HttpClient client,
-      Uri baseUri,
-      FakeMobileOperationalSyncGateway gateway,
-      FakeDemoModeMasterSwitchGateway demoSwitchGateway,
-      FakeAdminRequestIdempotencyStore idempotencyStore,
-    });
+typedef MobileOperationalSyncTestContext = ({
+  HttpServer server,
+  HttpClient client,
+  Uri baseUri,
+  FakeMobileOperationalSyncGateway gateway,
+  FakeDemoModeMasterSwitchGateway demoSwitchGateway,
+  FakeAdminRequestIdempotencyStore idempotencyStore,
+});
 
 /// Runs [body] with `HttpOverrides.global` cleared, restoring whatever was
 /// installed beforehand once the body completes. Required because the
@@ -87,8 +86,7 @@ Future<MobileOperationalSyncTestContext> spinUp({
   );
   final guard = ProxyRequestGuard(verifier: verifier);
   final gateway = FakeMobileOperationalSyncGateway();
-  final switchGateway =
-      demoSwitchGateway ?? FakeDemoModeMasterSwitchGateway();
+  final switchGateway = demoSwitchGateway ?? FakeDemoModeMasterSwitchGateway();
   final adminIdempotencyStore =
       idempotencyStore ?? FakeAdminRequestIdempotencyStore();
   final demoSwitchRouter = DemoModeMasterSwitchRouter(
@@ -145,8 +143,7 @@ class SettableVerifier implements ProxyJwtVerifier {
 /// matching the production "already taken" semantics, and throws
 /// [AdminIdempotencyKeyConflict] from `lookup()` when the body hash for
 /// the same key drifts.
-class FakeAdminRequestIdempotencyStore
-    implements AdminRequestIdempotencyStore {
+class FakeAdminRequestIdempotencyStore implements AdminRequestIdempotencyStore {
   final Map<String, _FakeAdminRequestIdempotencyRow> _rows =
       <String, _FakeAdminRequestIdempotencyRow>{};
   final List<String?> reserveActorUserIds = <String?>[];
@@ -337,6 +334,11 @@ class FakeMobileOperationalSyncGateway
           'business_timing_profile_version_id':
               '11111111-1111-1111-1111-111111111111',
           'service_period_key': 'lunch',
+          'blended_wage_available': false,
+          'provenance': <String, Object?>{
+            'projection': 'open_shift_snapshot_projector',
+            'blended_wage_available': false,
+          },
         },
       ],
       'next_cursor': null,

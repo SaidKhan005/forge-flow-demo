@@ -63,12 +63,14 @@ const String _foreignOperatorId = '99999999-9999-4999-8999-999999999999';
 
 const String _restaurantId = 'demo_restaurant_001';
 
-ProxyJwtClaims _callerClaims() => const ProxyJwtClaims(
-      userId: _callerUserId,
-      operatorId: _callerOperatorId,
-      locationId: _callerLocationId,
-      roles: <String>['advisor.read'],
-    );
+ProxyJwtClaims _callerClaims({
+  List<String> roles = const <String>['advisor.read'],
+}) => ProxyJwtClaims(
+  userId: _callerUserId,
+  operatorId: _callerOperatorId,
+  locationId: _callerLocationId,
+  roles: roles,
+);
 
 // ── Scripted Anthropic tool-use gateway ──────────────────────────────────────
 
@@ -124,16 +126,19 @@ class _ScriptedGateway {
 
   final List<AnthropicToolUseTurn> script;
   int callCount = 0;
+  final List<String> modelIds = <String>[];
   final List<List<Map<String, Object?>>> messagesPerCall =
       <List<Map<String, Object?>>>[];
 
-  AnthropicToolUseCompleteFn get fn => ({
+  AnthropicToolUseCompleteFn get fn =>
+      ({
         required String modelId,
         String? system,
         required List<Map<String, Object?>> messages,
         required List<AnthropicToolDefinition> tools,
         Map<String, Object?>? toolChoice,
       }) async {
+        modelIds.add(modelId);
         messagesPerCall.add(
           List<Map<String, Object?>>.from(
             messages.map((m) => Map<String, Object?>.from(m)),
@@ -170,9 +175,18 @@ class _FakeCmkResolver implements AdvisorConversationCmkResolver {
 class _ShortKeyCmkResolver implements AdvisorConversationCmkResolver {
   @override
   ({List<int> keyBytes, String keyRef}) resolve() => (
-        keyBytes: List<int>.filled(16, 1), // 128-bit, not 256-bit → too short
-        keyRef: 'kv://forge-flow/cmk/test-short',
-      );
+    keyBytes: List<int>.filled(16, 1), // 128-bit, not 256-bit → too short
+    keyRef: 'kv://forge-flow/cmk/test-short',
+  );
+}
+
+class _FixedAdvisorAnswerPlanResolver implements AdvisorAnswerPlanResolver {
+  const _FixedAdvisorAnswerPlanResolver(this.plan);
+
+  final AdvisorAnswerPlan plan;
+
+  @override
+  Future<AdvisorAnswerPlan> resolve(OperatorContext operator) async => plan;
 }
 
 // ── Fake Postgres pool (drives the REAL repos) ───────────────────────────────
@@ -206,10 +220,10 @@ class _FakePool implements PostgresPool {
   /// transactions, in order. The captured parameters carry exactly what the
   /// handler bound — the scope (HP #4) + the encrypted fields.
   List<_SqlCall> get conversationLogInserts => <_SqlCall>[
-        for (final tx in transactions)
-          for (final c in tx.queryCalls)
-            if (c.sql.contains('insert into advisor_conversation_log')) c,
-      ];
+    for (final tx in transactions)
+      for (final c in tx.queryCalls)
+        if (c.sql.contains('insert into advisor_conversation_log')) c,
+  ];
 
   @override
   Future<PostgresTransaction> beginTransaction() async {
@@ -296,6 +310,21 @@ class _CommitCall {
 /// The other store methods are minimal no-ops — the answer route meters via
 /// `commitUsageLog` only.
 class _RecordingAccountingStore implements ProxyAccountingStore {
+  _RecordingAccountingStore({
+    this.startResult = const ProxyAccountingReserved(
+      capStatus: ProxyCapStatus(
+        usageClass: 'unused',
+        monthlyCapCents: 0,
+        monthlyUsedCents: 0,
+        perInvocationCapCents: 0,
+        estimatedCostCents: 0,
+      ),
+    ),
+  });
+
+  final ProxyAccountingStartResult startResult;
+  int startCalls = 0;
+  int completeCalls = 0;
   final List<_CommitCall> commits = <_CommitCall>[];
 
   @override
@@ -306,14 +335,16 @@ class _RecordingAccountingStore implements ProxyAccountingStore {
     required ProxyUsageChargeEstimate estimate,
     required DateTime now,
   }) async {
-    commits.add(_CommitCall(
-      operatorId: operator.operatorId,
-      locationId: operator.locationId,
-      usageClass: usageClass,
-      tokenCount: estimate.tokenCount,
-      costCents: estimate.costCents,
-      modelUsed: telemetry.modelUsed,
-    ));
+    commits.add(
+      _CommitCall(
+        operatorId: operator.operatorId,
+        locationId: operator.locationId,
+        usageClass: usageClass,
+        tokenCount: estimate.tokenCount,
+        costCents: estimate.costCents,
+        modelUsed: telemetry.modelUsed,
+      ),
+    );
   }
 
   @override
@@ -326,15 +357,8 @@ class _RecordingAccountingStore implements ProxyAccountingStore {
     required ProxyUsageChargeEstimate estimate,
     required DateTime now,
   }) async {
-    return const ProxyAccountingReserved(
-      capStatus: ProxyCapStatus(
-        usageClass: 'unused',
-        monthlyCapCents: 0,
-        monthlyUsedCents: 0,
-        perInvocationCapCents: 0,
-        estimatedCostCents: 0,
-      ),
-    );
+    startCalls += 1;
+    return startResult;
   }
 
   @override
@@ -344,7 +368,9 @@ class _RecordingAccountingStore implements ProxyAccountingStore {
     required Map<String, Object?> responsePayload,
     required DateTime now,
     ProxyRequestStats? stats,
-  }) async {}
+  }) async {
+    completeCalls += 1;
+  }
 
   @override
   Future<void> recordRequestStats({
@@ -357,67 +383,67 @@ class _RecordingAccountingStore implements ProxyAccountingStore {
 
 /// An OPEN guard: zero usage, launch tier. Allows the request.
 ProxyUsageGuard _openGuard() => ProxyUsageGuard(
-      store: FixedSnapshotProxyUsageStore(
-        snapshot: UsageSnapshot(
-          requestsThisMinute: 0,
-          costCentsThisMonth: 0,
-          minuteBucketStart: DateTime.utc(2026, 5, 24, 12, 0),
-          monthBucketStart: DateTime.utc(2026, 5, 1),
-        ),
-      ),
-      tierResolver: const FixedLaunchTierResolver(),
-    );
+  store: FixedSnapshotProxyUsageStore(
+    snapshot: UsageSnapshot(
+      requestsThisMinute: 0,
+      costCentsThisMonth: 0,
+      minuteBucketStart: DateTime.utc(2026, 5, 24, 12, 0),
+      monthBucketStart: DateTime.utc(2026, 5, 1),
+    ),
+  ),
+  tierResolver: const FixedLaunchTierResolver(),
+);
 
 /// An EXHAUSTED guard: the monthly cost cap is already reached, so
 /// `requireAllowed` raises `UsageRefusal` (402 monthly_cap_reached).
 ProxyUsageGuard _exhaustedGuard() => ProxyUsageGuard(
-      store: FixedSnapshotProxyUsageStore(
-        snapshot: UsageSnapshot(
-          requestsThisMinute: 0,
-          costCentsThisMonth: PolicyTier.launch.maxMonthlyCostCents,
-          minuteBucketStart: DateTime.utc(2026, 5, 24, 12, 0),
-          monthBucketStart: DateTime.utc(2026, 5, 1),
-        ),
-      ),
-      tierResolver: const FixedLaunchTierResolver(),
-    );
+  store: FixedSnapshotProxyUsageStore(
+    snapshot: UsageSnapshot(
+      requestsThisMinute: 0,
+      costCentsThisMonth: PolicyTier.launch.maxMonthlyCostCents,
+      minuteBucketStart: DateTime.utc(2026, 5, 24, 12, 0),
+      monthBucketStart: DateTime.utc(2026, 5, 1),
+    ),
+  ),
+  tierResolver: const FixedLaunchTierResolver(),
+);
 
 // ── Fixed fact rows (caller-owned) ───────────────────────────────────────────
 
 PostgresRow _cycleRow() => <String, Object?>{
-      'cycle_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      'operator_id': _callerOperatorId,
-      'location_id': _callerLocationId,
-      'restaurant_id': _restaurantId,
-      'source': 'recommended',
-      'effective_start': '2026-05-01',
-      'effective_end': '2026-06-30',
-      'calibration_window_start': '2026-04-01',
-      'calibration_window_end': '2026-04-30',
-      'target_cplh': 8.0,
-      'target_splh': 120.0,
-      'target_ppa': 24.0,
-      'foh_wage': 18.0,
-      'boh_wage': 20.0,
-      'opz_floor_cplh': 7.0,
-      'opz_ceiling_cplh': 9.5,
-      'manager_override_used': false,
-      'manager_override_at': null,
-      'manager_override_by_user_id': null,
-      'admin_replaced_at': null,
-      'admin_replaced_by_user_id': null,
-      'supersedes_cycle_id': null,
-      'selected_shift_count': 12,
-      'selected_record_keys': '[]',
-      'selection_decision_ids': '[]',
-      'replacement_reason': null,
-      'idempotency_key': 'idem-cycle-1',
-      'request_hash': 'hash-1',
-      'created_by': _callerUserId,
-      'created_at': '2026-05-01T00:00:00.000Z',
-      'updated_at': '2026-05-01T00:00:00.000Z',
-      'deactivated_at': null,
-    };
+  'cycle_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'operator_id': _callerOperatorId,
+  'location_id': _callerLocationId,
+  'restaurant_id': _restaurantId,
+  'source': 'recommended',
+  'effective_start': '2026-05-01',
+  'effective_end': '2026-06-30',
+  'calibration_window_start': '2026-04-01',
+  'calibration_window_end': '2026-04-30',
+  'target_cplh': 8.0,
+  'target_splh': 120.0,
+  'target_ppa': 24.0,
+  'foh_wage': 18.0,
+  'boh_wage': 20.0,
+  'opz_floor_cplh': 7.0,
+  'opz_ceiling_cplh': 9.5,
+  'manager_override_used': false,
+  'manager_override_at': null,
+  'manager_override_by_user_id': null,
+  'admin_replaced_at': null,
+  'admin_replaced_by_user_id': null,
+  'supersedes_cycle_id': null,
+  'selected_shift_count': 12,
+  'selected_record_keys': '[]',
+  'selection_decision_ids': '[]',
+  'replacement_reason': null,
+  'idempotency_key': 'idem-cycle-1',
+  'request_hash': 'hash-1',
+  'created_by': _callerUserId,
+  'created_at': '2026-05-01T00:00:00.000Z',
+  'updated_at': '2026-05-01T00:00:00.000Z',
+  'deactivated_at': null,
+};
 
 // ── Server harness ───────────────────────────────────────────────────────────
 
@@ -446,6 +472,7 @@ void main() {
     TargetCycleRepository? targetCycleRepository,
     WeeklyPlanSnapshotRepository? weeklyPlanSnapshotRepository,
     ShiftRecordsReadRepository? shiftRecordsReadRepository,
+    AdvisorAnswerPlanResolver? planResolver,
     ProxyUsageGuard? usageGuard,
     ProxyAccountingStore? accountingStore,
     ProxyJwtClaims? claims,
@@ -466,6 +493,7 @@ void main() {
           advisorAnswerWeeklyPlanSnapshotRepository:
               weeklyPlanSnapshotRepository,
           advisorAnswerShiftRecordsReadRepository: shiftRecordsReadRepository,
+          advisorAnswerPlanResolver: planResolver,
           usageGuard: usageGuard,
           accountingStore: accountingStore,
         );
@@ -473,7 +501,9 @@ void main() {
         try {
           request.response.statusCode = 500;
           await request.response.close();
-        } catch (_) {/* ignore */}
+        } catch (_) {
+          /* ignore */
+        }
       }
     });
     client = HttpClient();
@@ -492,7 +522,8 @@ void main() {
     WeeklyPlanSnapshotRepository weekPlan,
     ShiftRecordsReadRepository shifts,
     AdvisorConversationLogRepository log,
-  }) buildRepos(_FakePool pool) {
+  })
+  buildRepos(_FakePool pool) {
     final wrapper = TenantTransactionWrapper(pool);
     return (
       targets: TargetCycleRepository(wrapper),
@@ -507,20 +538,19 @@ void main() {
   _ScriptedGateway twoTurnScript({
     int finalInputTokens = 1000000,
     int finalOutputTokens = 1000000,
-  }) =>
-      _ScriptedGateway(<AnthropicToolUseTurn>[
-        _toolUseTurn(
-          toolUseId: 'toolu_1',
-          toolName: advisorToolGetActiveTargets,
-          input: const <String, Object?>{},
-        ),
-        _textTurn(
-          'You could consider trimming the early prep shift; one option is '
-          'shifting an hour to mid-day.',
-          inputTokens: finalInputTokens,
-          outputTokens: finalOutputTokens,
-        ),
-      ]);
+  }) => _ScriptedGateway(<AnthropicToolUseTurn>[
+    _toolUseTurn(
+      toolUseId: 'toolu_1',
+      toolName: advisorToolGetActiveTargets,
+      input: const <String, Object?>{},
+    ),
+    _textTurn(
+      'You could consider trimming the early prep shift; one option is '
+      'shifting an hour to mid-day.',
+      inputTokens: finalInputTokens,
+      outputTokens: finalOutputTokens,
+    ),
+  ]);
 
   group('POST /v1/advisor/answer (A4.2b — happy path)', () {
     test('(a) returns 200 with answer + citations + conversation_id + '
@@ -672,6 +702,158 @@ void main() {
     });
   });
 
+  group('POST /v1/advisor/answer (server-side preflight)', () {
+    test('rejects a caller without advisor.read before encryption/provider '
+        'work', () async {
+      await withRealHttp(() async {
+        final pool = _FakePool();
+        final repos = buildRepos(pool);
+        final gateway = _ScriptedGateway(<AnthropicToolUseTurn>[
+          _textTurn('You could review the prep schedule.'),
+        ]);
+        final cmkResolver = _FakeCmkResolver();
+        await spinUp(
+          completeFn: gateway.fn,
+          cmkResolver: cmkResolver,
+          conversationLogRepository: repos.log,
+          claims: _callerClaims(roles: const <String>[]),
+        );
+        try {
+          final response = await httpPost(
+            client,
+            baseUri.resolve(advisorAnswerPath),
+            authorization: 'Bearer token',
+            body: <String, Object?>{'question': 'Why is my CPLH high?'},
+          );
+          expect(response.statusCode, equals(403));
+          final decoded = jsonDecode(response.body) as Map<String, Object?>;
+          expect(decoded['error'], equals('permission_denied'));
+          expect(decoded['permission_key'], equals('advisor.read'));
+          expect(gateway.callCount, equals(0));
+          expect(cmkResolver.resolveCalls, equals(0));
+          expect(pool.conversationLogInserts, isEmpty);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('ignores forged subscription_tier/query_class when routing the '
+        'answer model', () async {
+      await withRealHttp(() async {
+        final pool = _FakePool();
+        final repos = buildRepos(pool);
+        final gateway = _ScriptedGateway(<AnthropicToolUseTurn>[
+          _textTurn('You could review the prep schedule.'),
+          _textTurn('You could compare the last two shifts.'),
+        ]);
+        await spinUp(
+          completeFn: gateway.fn,
+          cmkResolver: _FakeCmkResolver(),
+          conversationLogRepository: repos.log,
+          planResolver: const _FixedAdvisorAnswerPlanResolver(
+            AdvisorAnswerPlan(
+              subscriptionTier: 'premium',
+              queryClass: 'recommendation',
+              advisorEnabled: true,
+            ),
+          ),
+        );
+        try {
+          final expectedModel = const ProxyLlmModelRouting().modelIdFor(
+            ProxyLlmTier.sonnet,
+          );
+
+          final upgradeAttempt = await httpPost(
+            client,
+            baseUri.resolve(advisorAnswerPath),
+            authorization: 'Bearer token',
+            body: <String, Object?>{
+              'question': 'Give me a nuanced recommendation.',
+              'subscription_tier': 'enterprise',
+              'query_class': 'recommendation',
+            },
+          );
+          final downgradeAttempt = await httpPost(
+            client,
+            baseUri.resolve(advisorAnswerPath),
+            authorization: 'Bearer token',
+            body: <String, Object?>{
+              'question': 'Keep it cheap.',
+              'subscription_tier': 'starter',
+              'query_class': 'methodology_lookup',
+            },
+          );
+
+          expect(upgradeAttempt.statusCode, equals(200));
+          expect(downgradeAttempt.statusCode, equals(200));
+          expect(
+            gateway.modelIds,
+            equals(<String>[expectedModel, expectedModel]),
+          );
+
+          final decodedUpgrade =
+              jsonDecode(upgradeAttempt.body) as Map<String, Object?>;
+          final decodedDowngrade =
+              jsonDecode(downgradeAttempt.body) as Map<String, Object?>;
+          expect(decodedUpgrade['model_used'], equals(expectedModel));
+          expect(decodedDowngrade['model_used'], equals(expectedModel));
+          expect(decodedUpgrade['query_class'], equals('recommendation'));
+          expect(decodedDowngrade['query_class'], equals('recommendation'));
+
+          for (final insert in pool.conversationLogInserts) {
+            expect(insert.parameters['query_class'], equals('recommendation'));
+          }
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test(
+      'rejects when the server-side advisor entitlement is disabled',
+      () async {
+        await withRealHttp(() async {
+          final pool = _FakePool();
+          final repos = buildRepos(pool);
+          final gateway = _ScriptedGateway(<AnthropicToolUseTurn>[
+            _textTurn('You could review the prep schedule.'),
+          ]);
+          final cmkResolver = _FakeCmkResolver();
+          await spinUp(
+            completeFn: gateway.fn,
+            cmkResolver: cmkResolver,
+            conversationLogRepository: repos.log,
+            planResolver: const _FixedAdvisorAnswerPlanResolver(
+              AdvisorAnswerPlan(
+                subscriptionTier: 'starter',
+                queryClass: 'methodology_lookup',
+                advisorEnabled: false,
+              ),
+            ),
+          );
+          try {
+            final response = await httpPost(
+              client,
+              baseUri.resolve(advisorAnswerPath),
+              authorization: 'Bearer token',
+              body: <String, Object?>{'question': 'Why is my CPLH high?'},
+            );
+            expect(response.statusCode, equals(403));
+            final decoded = jsonDecode(response.body) as Map<String, Object?>;
+            expect(decoded['error'], equals('advisor_not_enabled'));
+            expect(decoded['feature_slug'], equals(kAdvisorAnswerFeatureSlug));
+            expect(gateway.callCount, equals(0));
+            expect(cmkResolver.resolveCalls, equals(0));
+            expect(pool.conversationLogInserts, isEmpty);
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
+  });
+
   group('POST /v1/advisor/answer (A4.2b — fail-closed encryption-first)', () {
     test('(c) CMK resolver null → 503 advisor_answer_encryption_unavailable, '
         'NO provider call, no answer', () async {
@@ -816,108 +998,163 @@ void main() {
   });
 
   group('POST /v1/advisor/answer (A4.2b — cap refusal + metering)', () {
-    test('(d) an exhausted usage guard refuses 402 before the provider call',
-        () async {
-      await withRealHttp(() async {
-        final pool = _FakePool(targetCycleRows: <PostgresRow>[_cycleRow()]);
-        final repos = buildRepos(pool);
-        final gateway = twoTurnScript();
-        final accounting = _RecordingAccountingStore();
-        await spinUp(
-          completeFn: gateway.fn,
-          cmkResolver: _FakeCmkResolver(),
-          conversationLogRepository: repos.log,
-          targetCycleRepository: repos.targets,
-          weeklyPlanSnapshotRepository: repos.weekPlan,
-          shiftRecordsReadRepository: repos.shifts,
-          usageGuard: _exhaustedGuard(),
-          accountingStore: accounting,
-        );
-        try {
-          final response = await httpPost(
-            client,
-            baseUri.resolve(advisorAnswerPath),
-            authorization: 'Bearer token',
-            body: <String, Object?>{'question': 'expensive question'},
+    test(
+      '(d) an exhausted usage guard refuses 402 before the provider call',
+      () async {
+        await withRealHttp(() async {
+          final pool = _FakePool(targetCycleRows: <PostgresRow>[_cycleRow()]);
+          final repos = buildRepos(pool);
+          final gateway = twoTurnScript();
+          final accounting = _RecordingAccountingStore();
+          await spinUp(
+            completeFn: gateway.fn,
+            cmkResolver: _FakeCmkResolver(),
+            conversationLogRepository: repos.log,
+            targetCycleRepository: repos.targets,
+            weeklyPlanSnapshotRepository: repos.weekPlan,
+            shiftRecordsReadRepository: repos.shifts,
+            usageGuard: _exhaustedGuard(),
+            accountingStore: accounting,
           );
-          expect(response.statusCode, equals(402));
-          final decoded = jsonDecode(response.body) as Map<String, Object?>;
-          expect(decoded['error'], equals('monthly_cap_reached'));
-          // Refused BEFORE the provider call → no answer, no persistence,
-          // no metered cost.
-          expect(gateway.callCount, equals(0));
-          expect(pool.conversationLogInserts, isEmpty);
-          expect(accounting.commits, isEmpty);
-        } finally {
-          await shutDown();
-        }
-      });
-    });
+          try {
+            final response = await httpPost(
+              client,
+              baseUri.resolve(advisorAnswerPath),
+              authorization: 'Bearer token',
+              body: <String, Object?>{'question': 'expensive question'},
+            );
+            expect(response.statusCode, equals(402));
+            final decoded = jsonDecode(response.body) as Map<String, Object?>;
+            expect(decoded['error'], equals('monthly_cap_reached'));
+            // Refused BEFORE the provider call → no answer, no persistence,
+            // no metered cost.
+            expect(gateway.callCount, equals(0));
+            expect(pool.conversationLogInserts, isEmpty);
+            expect(accounting.commits, isEmpty);
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
 
-    test('(e) records a commitUsageLog under usage_class advisor_answer '
-        'attributed to the caller, cost derived from provider tokens',
-        () async {
-      await withRealHttp(() async {
-        final pool = _FakePool(targetCycleRows: <PostgresRow>[_cycleRow()]);
-        final repos = buildRepos(pool);
-        // 1,000,000 input + 1,000,000 output tokens on the final turn.
-        final gateway = twoTurnScript(
-          finalInputTokens: 1000000,
-          finalOutputTokens: 1000000,
-        );
-        final accounting = _RecordingAccountingStore();
-        await spinUp(
-          completeFn: gateway.fn,
-          cmkResolver: _FakeCmkResolver(),
-          conversationLogRepository: repos.log,
-          targetCycleRepository: repos.targets,
-          weeklyPlanSnapshotRepository: repos.weekPlan,
-          shiftRecordsReadRepository: repos.shifts,
-          usageGuard: _openGuard(),
-          accountingStore: accounting,
-        );
-        try {
-          final response = await httpPost(
-            client,
-            baseUri.resolve(advisorAnswerPath),
-            authorization: 'Bearer token',
-            body: <String, Object?>{'question': 'Why is my CPLH high?'},
+    test(
+      'accounting cap refusal returns 402 before the provider call',
+      () async {
+        await withRealHttp(() async {
+          final pool = _FakePool(targetCycleRows: <PostgresRow>[_cycleRow()]);
+          final repos = buildRepos(pool);
+          final gateway = twoTurnScript();
+          final cmkResolver = _FakeCmkResolver();
+          final accounting = _RecordingAccountingStore(
+            startResult: const ProxyAccountingRefused(
+              capStatus: ProxyCapStatus(
+                usageClass: kAdvisorAnswerUsageClass,
+                monthlyCapCents: 100,
+                monthlyUsedCents: 95,
+                perInvocationCapCents: 50,
+                estimatedCostCents: 75,
+              ),
+            ),
           );
-          expect(response.statusCode, equals(200));
-          final decoded = jsonDecode(response.body) as Map<String, Object?>;
-          final modelUsed = decoded['model_used'] as String;
-
-          // Exactly one commit, under the advisor_answer class, attributed
-          // to the CALLER's operator + location (HP #4 / HP #9).
-          expect(accounting.commits, hasLength(1));
-          final commit = accounting.commits.single;
-          expect(commit.usageClass, equals('advisor_answer'));
-          expect(commit.usageClass, equals(kAdvisorAnswerUsageClass));
-          expect(commit.operatorId, equals(_callerOperatorId));
-          expect(commit.locationId, equals(_callerLocationId));
-          expect(commit.modelUsed, equals(modelUsed));
-
-          // token_count carries the summed provider totals (input + output).
-          expect(commit.tokenCount, equals(2000000));
-
-          // Cost is DERIVED from the provider tokens via the model rate, not
-          // a hardcoded constant. Cross-check directly against the registry.
-          final rate = LlmCostRateRegistry.rateFor(modelUsed);
-          expect(rate, isNotNull, reason: 'routed model must have a rate');
-          expect(
-            commit.costCents,
-            equals(rate!.costCentsFor(
-              inputTokens: 1000000,
-              outputTokens: 1000000,
-            )),
+          await spinUp(
+            completeFn: gateway.fn,
+            cmkResolver: cmkResolver,
+            conversationLogRepository: repos.log,
+            targetCycleRepository: repos.targets,
+            weeklyPlanSnapshotRepository: repos.weekPlan,
+            shiftRecordsReadRepository: repos.shifts,
+            usageGuard: _openGuard(),
+            accountingStore: accounting,
           );
-          // Sanity: the derived cost is non-zero (proves wiring end-to-end).
-          expect(commit.costCents, greaterThan(0));
-        } finally {
-          await shutDown();
-        }
-      });
-    });
+          try {
+            final response = await httpPost(
+              client,
+              baseUri.resolve(advisorAnswerPath),
+              authorization: 'Bearer token',
+              body: <String, Object?>{'question': 'expensive question'},
+            );
+            expect(response.statusCode, equals(402));
+            final decoded = jsonDecode(response.body) as Map<String, Object?>;
+            expect(decoded['error'], equals('usage_cap_reached'));
+            expect(gateway.callCount, equals(0));
+            expect(cmkResolver.resolveCalls, equals(0));
+            expect(pool.conversationLogInserts, isEmpty);
+            expect(accounting.startCalls, equals(1));
+            expect(accounting.completeCalls, equals(0));
+            expect(accounting.commits, isEmpty);
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
+
+    test(
+      '(e) records a commitUsageLog under usage_class advisor_answer '
+      'attributed to the caller, cost derived from provider tokens',
+      () async {
+        await withRealHttp(() async {
+          final pool = _FakePool(targetCycleRows: <PostgresRow>[_cycleRow()]);
+          final repos = buildRepos(pool);
+          // 1,000,000 input + 1,000,000 output tokens on the final turn.
+          final gateway = twoTurnScript(
+            finalInputTokens: 1000000,
+            finalOutputTokens: 1000000,
+          );
+          final accounting = _RecordingAccountingStore();
+          await spinUp(
+            completeFn: gateway.fn,
+            cmkResolver: _FakeCmkResolver(),
+            conversationLogRepository: repos.log,
+            targetCycleRepository: repos.targets,
+            weeklyPlanSnapshotRepository: repos.weekPlan,
+            shiftRecordsReadRepository: repos.shifts,
+            usageGuard: _openGuard(),
+            accountingStore: accounting,
+          );
+          try {
+            final response = await httpPost(
+              client,
+              baseUri.resolve(advisorAnswerPath),
+              authorization: 'Bearer token',
+              body: <String, Object?>{'question': 'Why is my CPLH high?'},
+            );
+            expect(response.statusCode, equals(200));
+            final decoded = jsonDecode(response.body) as Map<String, Object?>;
+            final modelUsed = decoded['model_used'] as String;
+
+            // Exactly one commit, under the advisor_answer class, attributed
+            // to the CALLER's operator + location (HP #4 / HP #9).
+            expect(accounting.commits, hasLength(1));
+            final commit = accounting.commits.single;
+            expect(commit.usageClass, equals('advisor_answer'));
+            expect(commit.usageClass, equals(kAdvisorAnswerUsageClass));
+            expect(commit.operatorId, equals(_callerOperatorId));
+            expect(commit.locationId, equals(_callerLocationId));
+            expect(commit.modelUsed, equals(modelUsed));
+
+            // token_count carries the summed provider totals (input + output).
+            expect(commit.tokenCount, equals(2000000));
+
+            // Cost is DERIVED from the provider tokens via the model rate, not
+            // a hardcoded constant. Cross-check directly against the registry.
+            final rate = LlmCostRateRegistry.rateFor(modelUsed);
+            expect(rate, isNotNull, reason: 'routed model must have a rate');
+            expect(
+              commit.costCents,
+              equals(
+                rate!.costCentsFor(inputTokens: 1000000, outputTokens: 1000000),
+              ),
+            );
+            // Sanity: the derived cost is non-zero (proves wiring end-to-end).
+            expect(commit.costCents, greaterThan(0));
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
   });
 
   group('POST /v1/advisor/answer (A4.2b — HP #4 isolation)', () {
@@ -962,8 +1199,11 @@ void main() {
               }
             }
           }
-          expect(sawOperatorSetLocal, isTrue,
-              reason: 'at least one tenant SET LOCAL must have run');
+          expect(
+            sawOperatorSetLocal,
+            isTrue,
+            reason: 'at least one tenant SET LOCAL must have run',
+          );
 
           // Both conversation-log writes bound the CALLER's operator/location.
           final inserts = pool.conversationLogInserts;
@@ -972,10 +1212,7 @@ void main() {
             expect(insert.parameters['operator_id'], equals(_callerOperatorId));
             expect(insert.parameters['location_id'], equals(_callerLocationId));
             expect(insert.parameters['user_id'], equals(_callerUserId));
-            expect(
-              insert.parameters['operator_id'],
-              isNot(_foreignOperatorId),
-            );
+            expect(insert.parameters['operator_id'], isNot(_foreignOperatorId));
           }
 
           // The response echoes the caller scope, not the body's.
@@ -990,37 +1227,39 @@ void main() {
   });
 
   group('POST /v1/advisor/answer (A4.2b — input validation)', () {
-    test('(g) missing question → 400 invalid_question, no provider call',
-        () async {
-      await withRealHttp(() async {
-        final pool = _FakePool();
-        final repos = buildRepos(pool);
-        final gateway = twoTurnScript();
-        await spinUp(
-          completeFn: gateway.fn,
-          cmkResolver: _FakeCmkResolver(),
-          conversationLogRepository: repos.log,
-          targetCycleRepository: repos.targets,
-          weeklyPlanSnapshotRepository: repos.weekPlan,
-          shiftRecordsReadRepository: repos.shifts,
-        );
-        try {
-          final response = await httpPost(
-            client,
-            baseUri.resolve(advisorAnswerPath),
-            authorization: 'Bearer token',
-            body: const <String, Object?>{},
+    test(
+      '(g) missing question → 400 invalid_question, no provider call',
+      () async {
+        await withRealHttp(() async {
+          final pool = _FakePool();
+          final repos = buildRepos(pool);
+          final gateway = twoTurnScript();
+          await spinUp(
+            completeFn: gateway.fn,
+            cmkResolver: _FakeCmkResolver(),
+            conversationLogRepository: repos.log,
+            targetCycleRepository: repos.targets,
+            weeklyPlanSnapshotRepository: repos.weekPlan,
+            shiftRecordsReadRepository: repos.shifts,
           );
-          expect(response.statusCode, equals(400));
-          final decoded = jsonDecode(response.body) as Map<String, Object?>;
-          expect(decoded['error'], equals('invalid_question'));
-          expect(gateway.callCount, equals(0));
-          expect(pool.conversationLogInserts, isEmpty);
-        } finally {
-          await shutDown();
-        }
-      });
-    });
+          try {
+            final response = await httpPost(
+              client,
+              baseUri.resolve(advisorAnswerPath),
+              authorization: 'Bearer token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(400));
+            final decoded = jsonDecode(response.body) as Map<String, Object?>;
+            expect(decoded['error'], equals('invalid_question'));
+            expect(gateway.callCount, equals(0));
+            expect(pool.conversationLogInserts, isEmpty);
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
 
     test('empty/whitespace question → 400 invalid_question', () async {
       await withRealHttp(() async {

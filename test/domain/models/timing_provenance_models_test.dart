@@ -80,7 +80,7 @@ void main() {
     });
 
     test('OpenShiftSnapshot serializes timing triplet additively', () {
-      const snapshot = OpenShiftSnapshot(
+      final snapshot = OpenShiftSnapshot(
         restaurantId: 'rest-1',
         weekId: '2026-W19',
         dayLabel: 'Wed',

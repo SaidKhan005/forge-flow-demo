@@ -73,19 +73,40 @@ class FeatureEntitlementsRepository {
   Future<List<FeatureEntitlementRow>> listEntitlements({
     String reason = 'admin.pricing.entitlements_list',
   }) {
-    return _tenantWrapper.runAsSystem<List<FeatureEntitlementRow>>(
-      (exec) async {
-        final rows = await exec.query(
-          'select tier_key, feature_slug, enabled, updated_at, updated_by '
-          'from public.feature_entitlements '
-          'order by tier_key asc, feature_slug asc',
-        );
-        return <FeatureEntitlementRow>[
-          for (final row in rows) _rowFromMap(row),
-        ];
-      },
-      reason: reason,
-    );
+    return _tenantWrapper.runAsSystem<List<FeatureEntitlementRow>>((
+      exec,
+    ) async {
+      final rows = await exec.query(
+        'select tier_key, feature_slug, enabled, updated_at, updated_by '
+        'from public.feature_entitlements '
+        'order by tier_key asc, feature_slug asc',
+      );
+      return <FeatureEntitlementRow>[for (final row in rows) _rowFromMap(row)];
+    }, reason: reason);
+  }
+
+  /// Returns whether one `(tier_key, feature_slug)` pair is enabled.
+  /// Missing rows fail closed to `false`.
+  Future<bool> isEnabled({
+    required String tierKey,
+    required String featureSlug,
+    String reason = 'admin.pricing.entitlement_check',
+  }) {
+    return _tenantWrapper.runAsSystem<bool>((exec) async {
+      final rows = await exec.query(
+        'select enabled '
+        'from public.feature_entitlements '
+        'where tier_key = @tier_key '
+        'and feature_slug = @feature_slug '
+        'limit 1',
+        parameters: <String, Object?>{
+          'tier_key': tierKey,
+          'feature_slug': featureSlug,
+        },
+      );
+      if (rows.isEmpty) return false;
+      return _asBool(rows.single['enabled']);
+    }, reason: reason);
   }
 
   /// Sets one `(tier_key, feature_slug)` pair's `enabled` flag, stamping
@@ -104,28 +125,25 @@ class FeatureEntitlementsRepository {
     required String updatedByUserId,
     String reason = 'admin.pricing.set_entitlement',
   }) {
-    return _tenantWrapper.runAsSystem<FeatureEntitlementRow>(
-      (exec) async {
-        final rows = await exec.query(
-          'insert into public.feature_entitlements '
-          '(tier_key, feature_slug, enabled, updated_at, updated_by) '
-          'values (@tier_key, @feature_slug, @enabled, now(), @updated_by) '
-          'on conflict (tier_key, feature_slug) do update set '
-          'enabled = excluded.enabled, '
-          'updated_at = now(), '
-          'updated_by = excluded.updated_by '
-          'returning tier_key, feature_slug, enabled, updated_at, updated_by',
-          parameters: <String, Object?>{
-            'tier_key': tierKey,
-            'feature_slug': featureSlug,
-            'enabled': enabled,
-            'updated_by': updatedByUserId,
-          },
-        );
-        return _rowFromMap(rows.single);
-      },
-      reason: reason,
-    );
+    return _tenantWrapper.runAsSystem<FeatureEntitlementRow>((exec) async {
+      final rows = await exec.query(
+        'insert into public.feature_entitlements '
+        '(tier_key, feature_slug, enabled, updated_at, updated_by) '
+        'values (@tier_key, @feature_slug, @enabled, now(), @updated_by) '
+        'on conflict (tier_key, feature_slug) do update set '
+        'enabled = excluded.enabled, '
+        'updated_at = now(), '
+        'updated_by = excluded.updated_by '
+        'returning tier_key, feature_slug, enabled, updated_at, updated_by',
+        parameters: <String, Object?>{
+          'tier_key': tierKey,
+          'feature_slug': featureSlug,
+          'enabled': enabled,
+          'updated_by': updatedByUserId,
+        },
+      );
+      return _rowFromMap(rows.single);
+    }, reason: reason);
   }
 
   FeatureEntitlementRow _rowFromMap(Map<String, Object?> row) {

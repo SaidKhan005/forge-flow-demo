@@ -1778,6 +1778,21 @@ Future<void> _runProxy(List<String> args) async {
     return buildOperatorLocationIntegrationsBundleJson(bundle);
   }
 
+  Future<List<Map<String, Object?>>> operatorLocationIntegrationLogsProjection({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String vendorId,
+    required int limit,
+  }) {
+    return operatorOAuthGateway.listSyncLogs(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: vendorId,
+      limit: limit,
+    );
+  }
+
   log(
     LogSeverity.info,
     'startup.operator_oauth_routes.installed',
@@ -1821,7 +1836,8 @@ Future<void> _runProxy(List<String> args) async {
       'startup.advisor_answer_route.provider_absent',
       fields: <String, Object?>{
         'anthropic_key_loaded': false,
-        'note': 'POST /v1/advisor/answer fails closed until '
+        'note':
+            'POST /v1/advisor/answer fails closed until '
             'ANTHROPIC_API_KEY is provisioned',
       },
     );
@@ -2197,6 +2213,8 @@ Future<void> _runProxy(List<String> args) async {
                 productionBindings.permissionSnapshotResolver,
             operatorLocationIntegrationsProjection:
                 operatorLocationIntegrationsProjection,
+            operatorLocationIntegrationLogsProjection:
+                operatorLocationIntegrationLogsProjection,
             adminPermissionGuard: productionBindings.adminPermissionGuard,
             authOperationsGateway: productionBindings.authOperationsGateway,
             servicePrincipalJwtIssuanceGateway:
@@ -2340,16 +2358,18 @@ Future<void> _runProxy(List<String> args) async {
             corpusRetrievalService: productionBindings.corpusRetrievalService,
             corpusQueryEmbeddingGateway:
                 productionBindings.corpusQueryEmbeddingGateway,
-            voyageApiKeyForRetrieval:
-                config.secretFor(ProxySecretNames.voyageApiKey),
+            voyageApiKeyForRetrieval: config.secretFor(
+              ProxySecretNames.voyageApiKey,
+            ),
             // Slice A3 — server-side Voyage rerank gateway + key. Reuses the
             // SAME VOYAGE_API_KEY secret as the embedding gateway (one Voyage
             // account, two endpoints). HP #7: the key is resolved here at the
             // call site and never stored on [productionBindings]; its lifetime
             // is bounded to the duration of each request.
             corpusRerankGateway: productionBindings.corpusRerankGateway,
-            voyageRerankApiKeyForRetrieval:
-                config.secretFor(ProxySecretNames.voyageApiKey),
+            voyageRerankApiKeyForRetrieval: config.secretFor(
+              ProxySecretNames.voyageApiKey,
+            ),
             // Slice A4.2b — POST /v1/advisor/answer. The tool-use gateway is
             // built once at startup over a shared http.Client (null when
             // ANTHROPIC_API_KEY is absent → the route fails closed). The
@@ -2370,6 +2390,8 @@ Future<void> _runProxy(List<String> args) async {
                 productionBindings.advisorAnswerWeeklyPlanSnapshotRepository,
             advisorAnswerShiftRecordsReadRepository:
                 productionBindings.advisorAnswerShiftRecordsReadRepository,
+            advisorAnswerPlanResolver:
+                productionBindings.advisorAnswerPlanResolver,
           );
         } catch (error, stack) {
           log(

@@ -162,18 +162,84 @@ class BusinessTimingProfilesRepository extends OperatorScopedRepository {
       userId: userId,
     );
     return withTenant<List<BusinessTimingProfileRow>>(ctx, (exec) async {
-      final rows = await exec.query(
-        _candidateChainSql,
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'location_id': locationId,
-          'business_date': businessDate,
-        },
+      return listCandidateProfilesForLocationInTransaction(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        businessDate: businessDate,
       );
-      return <BusinessTimingProfileRow>[
-        for (final row in rows) _profileRowFromMap(row),
-      ];
     });
+  }
+
+  /// In-transaction version of [listCandidateProfilesForLocation].
+  ///
+  /// Used by writers that already run inside a tenant transaction and
+  /// must resolve `business_date` atomically with the row they insert
+  /// (audit log, usage cap events, PII erasure audit side effects).
+  static Future<List<BusinessTimingProfileRow>>
+  listCandidateProfilesForLocationInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+  }) async {
+    final rows = await exec.query(
+      _candidateChainSql,
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'business_date': businessDate,
+      },
+    );
+    return <BusinessTimingProfileRow>[
+      for (final row in rows) _profileRowFromMap(row),
+    ];
+  }
+
+  /// Reads the canonical effective IANA timezone for a location inside
+  /// an existing tenant transaction. This mirrors the timezone portion
+  /// of [_candidateChainSql] and intentionally ignores legacy rollover
+  /// columns.
+  static Future<String?> readLocationBusinessTimezoneInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final rows = await exec.query(
+      'select coalesce('
+      '  location_override.iana_timezone, '
+      '  org_unit_override.iana_timezone, '
+      '  loc.timezone'
+      ') as location_timezone '
+      'from public.locations loc '
+      'left join public.location_account_overrides location_override '
+      '  on location_override.operator_id = loc.operator_id '
+      ' and location_override.location_id = loc.location_id '
+      'left join lateral ('
+      '  select org_override.iana_timezone '
+      '  from public.org_unit_account_overrides org_override '
+      '  join public.org_units ou '
+      '    on ou.operator_id = org_override.operator_id '
+      '   and ou.id = org_override.org_unit_id '
+      '  where org_override.operator_id = loc.operator_id '
+      '    and ou.deleted_at is null '
+      '    and ou.path @> loc.org_unit_path '
+      '    and org_override.iana_timezone is not null '
+      '  order by nlevel(ou.path) desc '
+      '  limit 1'
+      ') org_unit_override on true '
+      'where loc.operator_id = @operator_id::uuid '
+      '  and loc.location_id = @location_id::uuid '
+      'limit 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+    if (rows.isEmpty) return null;
+    final raw = rows.single['location_timezone'];
+    final value = raw?.toString().trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   /// Fix #4 / S2 — the admin/cross-tenant analogue of

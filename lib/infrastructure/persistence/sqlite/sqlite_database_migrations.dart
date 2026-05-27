@@ -9,6 +9,25 @@
 
 part of 'sqlite_database.dart';
 
+Future<void> _migrateToV41(Database db) async {
+  if (!await _columnExists(
+    db,
+    'open_shift_snapshots',
+    'blended_wage_available',
+  )) {
+    await db.execute(
+      'ALTER TABLE open_shift_snapshots '
+      'ADD COLUMN blended_wage_available INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+  if (!await _columnExists(db, 'open_shift_snapshots', 'provenance')) {
+    await db.execute(
+      "ALTER TABLE open_shift_snapshots "
+      "ADD COLUMN provenance TEXT NOT NULL DEFAULT '{}'",
+    );
+  }
+}
+
 /// Strict YYYY-W## weekId + known dayLabel → ISO date, or null.
 final _weekIdPattern = RegExp(r'^\d{4}-W\d{2}$');
 
@@ -956,10 +975,12 @@ Future<void> _migrateToV9(Database db) async {
       current_cplh            REAL NOT NULL,
       current_splh            REAL NOT NULL,
       blended_wage            REAL NOT NULL,
+      blended_wage_available  INTEGER NOT NULL DEFAULT 0,
       time_label              TEXT NOT NULL DEFAULT '',
       service_elapsed_label   TEXT NOT NULL DEFAULT '',
       source_system           TEXT,
       source_shift_id         TEXT,
+      provenance              TEXT NOT NULL DEFAULT '{}',
       last_event_at           TEXT,
       updated_at              TEXT NOT NULL,
       UNIQUE(restaurant_id, week_id, day_label, daypart)

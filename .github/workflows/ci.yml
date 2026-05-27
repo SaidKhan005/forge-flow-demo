@@ -105,7 +105,7 @@ jobs:
 
       - run: flutter pub get
 
-      - name: postgres-import / index-leading-column / permission-key / migration / release-dart-defines / actions-pinning / advisor-proxy-size lints
+      - name: postgres-import / index-leading-column / permission-key / migration / release / CSP / UX / vendor / size lints
         run: |
           dart run tool/postgres_import_lint.dart && \
           dart run tool/index_leading_column_lint.dart && \
@@ -114,5 +114,12 @@ jobs:
           dart run tool/audit_logs_update_lint.dart && \
           dart run tool/migration_drift_scanner.dart --require-expand-contract && \
           dart run tool/release_dart_defines_lint.dart && \
+          dart run tool/release_build_demo_flag_lint.dart && \
+          dart run tool/csp_header_lint.dart && \
+          dart run tool/ux_em_dash_lint.dart && \
+          dart run tool/ignore_justification_lint.dart && \
+          dart run tool/skip_quarantine_lint.dart && \
+          dart run tool/vendor_completeness_lint.dart && \
           dart run tool/actions_pinning_lint.dart && \
+          dart run tool/operator_web_size_lint.dart && \
           dart run tool/advisor_proxy_size_lint.dart

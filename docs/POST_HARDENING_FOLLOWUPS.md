@@ -35,7 +35,9 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 runs through
 `202605251020_plans_and_limits_scoped_contract_windows.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
-Production1 apply.
+Production1 apply. This full P0 table is the authoritative apply inventory;
+the two first-connect / 11W.7 rows called out in the launch punchlist are the
+operator-decision subset, not the complete queue.
 
 | Migration | Origin | Staging |
 |---|---|---|
@@ -1394,7 +1396,11 @@ not under pressure.
 **Authority:** `docs/_audits/code_health/code_hardening_plan_2026_05_21.md`
 §2.3 + §2.4 (tooling gaps) + this entry.
 
-## P3 — Remove orphaned `AuditLogHierarchyFilterPane` widget (operator-web, 2026-05-22)
+## P3 — CLOSED 2026-05-26 - Remove orphaned `AuditLogHierarchyFilterPane` widget (operator-web)
+
+Status: closed by the 2026-05-26 full-system audit fix pass. The orphaned
+widget file was removed and the stale `audit_log_screen.dart` comment now
+points to the shell-owned scope selector.
 
 Surfaced by the full-suite test-health audit (2026-05-22). The
 operator-web audit-log scope UX was reworked so the screen reads the
@@ -1405,16 +1411,12 @@ of rendering a second hierarchy picker inside the page"
 `25d6415b` "simplify operator scope UX") **unwired** the standalone
 in-page picker but left the widget file behind.
 
-**Dead code to remove (operator-web — Codex lane):**
+**Removed dead code (operator-web — Codex lane):**
 
 - `lib/operator_web/screens/audit_log_hierarchy_filter_pane.dart`
-  (~693 lines). `AuditLogHierarchyFilterPane` is imported and
-  instantiated **nowhere** in `lib/` — confirmed via
-  `rg "AuditLogHierarchyFilterPane" lib` (only its own definition + a
-  now-stale doc comment at `audit_log_screen.dart:124`).
-- Stale doc comment at `audit_log_screen.dart:123-124` that still says
-  the screen "renders the `AuditLogHierarchyFilterPane` sibling" — update
-  or drop it when the widget is removed.
+  (~693 lines).
+- Stale doc comment at `audit_log_screen.dart:123-124` now points to the
+  shell-owned scope selector instead of the removed in-page picker.
 
 **Already done (this audit, test-only, PR `claude/fix-stale-operator-web-tests`):**
 The widget's only test, `test/operator_web/screens/

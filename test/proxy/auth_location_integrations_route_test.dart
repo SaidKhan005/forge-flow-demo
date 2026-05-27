@@ -53,9 +53,24 @@ OperatorLocationIntegrationsProjection _failingProjection() {
   };
 }
 
+OperatorLocationIntegrationLogsProjection _logsProjectionFor(
+  List<Map<String, Object?>> rows,
+) {
+  return ({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String vendorId,
+    required int limit,
+  }) async {
+    return rows.take(limit).toList(growable: false);
+  };
+}
+
 Future<({HttpServer server, HttpClient client, Uri baseUri})> _spinUp({
   bool allowIntegrations = true,
   OperatorLocationIntegrationsProjection? projection,
+  OperatorLocationIntegrationLogsProjection? logsProjection,
   ProxyJwtClaims claims = const ProxyJwtClaims(
     userId: 'user-1',
     operatorId: 'op-1',
@@ -77,10 +92,12 @@ Future<({HttpServer server, HttpClient client, Uri baseUri})> _spinUp({
         allowIntegrations: allowIntegrations,
       ),
       operatorLocationIntegrationsProjection: projection,
+      operatorLocationIntegrationLogsProjection: logsProjection,
       adminCorsAllowList: const <String>[_operatorOrigin],
       now: () => DateTime.utc(2026, 5, 7, 12),
     );
   });
+
   final client = HttpClient();
   final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
   return (server: server, client: client, baseUri: baseUri);
@@ -124,6 +141,48 @@ ConnectorConnectionListRow _row({
 }
 
 void main() {
+  test('returns operator-scoped sync logs for a vendor connection', () {
+    return _withRealHttp(() async {
+      final ctx = await _spinUp(
+        logsProjection: _logsProjectionFor(<Map<String, Object?>>[
+          <String, Object?>{
+            'log_id': 'log-1',
+            'connection_id': 'cnx-1',
+            'event_kind': 'pull.succeeded',
+            'records_count': 5,
+            'occurred_at': '2026-05-07T11:30:00Z',
+          },
+        ]),
+      );
+      try {
+        final request = await ctx.client.openUrl(
+          'GET',
+          ctx.baseUri.resolve(
+            '/v1/auth/locations/loc-1/integrations/toast/logs?limit=25',
+          ),
+        );
+        request.headers.set('Authorization', 'Bearer ok');
+        request.headers.set('Origin', _operatorOrigin);
+        request.contentLength = 0;
+        final response = await request.close();
+        final body =
+            jsonDecode(await response.transform(utf8.decoder).join())
+                as Map<String, Object?>;
+
+        expect(response.statusCode, HttpStatus.ok);
+        final logs = body['logs']! as List<Object?>;
+        expect(logs, hasLength(1));
+        expect(
+          (logs.single! as Map<String, Object?>)['event_kind'],
+          'pull.succeeded',
+        );
+      } finally {
+        ctx.client.close(force: true);
+        await ctx.server.close(force: true);
+      }
+    });
+  });
+
   test('returns empty connections list and demo_flags=true when no rows '
       'exist for the operator', () {
     return _withRealHttp(() async {

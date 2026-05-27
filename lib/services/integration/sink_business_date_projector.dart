@@ -72,6 +72,7 @@ import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/business_date_resolver.dart';
 import '../../domain/services/business_timing_profile_resolver.dart';
+import '../../infrastructure/persistence/postgres/postgres_executor.dart';
 import '../../infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
 import 'iana_timezone_converter.dart';
 
@@ -175,6 +176,71 @@ class SinkBusinessDateProjector {
     return _parseUtcMidnight(reResolved);
   }
 
+  /// Resolves `business_date` inside an existing tenant transaction.
+  ///
+  /// Returns `null` when the location or effective timezone cannot be
+  /// read, or when the timezone is invalid. Callers with a hard
+  /// non-null column may either skip the write (usage cap events) or
+  /// fall back to their existing chain date (audit logs).
+  Future<DateTime?> projectBusinessDateForLocation({
+    required PostgresExecutor exec,
+    required String operatorId,
+    required String locationId,
+    required DateTime instantUtc,
+  }) {
+    return projectBusinessDateForLocationInTransaction(
+      exec,
+      operatorId: operatorId,
+      locationId: locationId,
+      instantUtc: instantUtc,
+      timezoneConverter: _timezoneConverter,
+    );
+  }
+
+  static Future<DateTime?> projectBusinessDateForLocationInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required DateTime instantUtc,
+    IanaTimezoneConverter? timezoneConverter,
+  }) async {
+    final converter = timezoneConverter ?? IanaTimezoneConverter.shared;
+    final timezone =
+        await BusinessTimingProfilesRepository.readLocationBusinessTimezoneInTransaction(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+        );
+    if (timezone == null) return null;
+    final instant = instantUtc.toUtc();
+    late final DateTime localWallClock;
+    try {
+      localWallClock = converter.toBusinessLocal(
+        restaurantTimezone: timezone,
+        instant: instant,
+      );
+    } on IanaTimezoneConverterError {
+      return null;
+    }
+    final coarseSeed = _formatDate(localWallClock);
+    final firstResolved = await _resolveBusinessDateInTransaction(
+      exec,
+      operatorId: operatorId,
+      locationId: locationId,
+      coarseSeed: coarseSeed,
+      localWallClock: localWallClock,
+    );
+    if (firstResolved == coarseSeed) return _parseUtcMidnight(firstResolved);
+    final reResolved = await _resolveBusinessDateInTransaction(
+      exec,
+      operatorId: operatorId,
+      locationId: locationId,
+      coarseSeed: firstResolved,
+      localWallClock: localWallClock,
+    );
+    return _parseUtcMidnight(reResolved);
+  }
+
   Future<String> _resolveBusinessDate({
     required String operatorId,
     required String locationId,
@@ -190,6 +256,30 @@ class SinkBusinessDateProjector {
           userId: userId,
         );
 
+    return _resolveBusinessDateFromCandidates(candidates, localWallClock);
+  }
+
+  static Future<String> _resolveBusinessDateInTransaction(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String coarseSeed,
+    required DateTime localWallClock,
+  }) async {
+    final candidates =
+        await BusinessTimingProfilesRepository.listCandidateProfilesForLocationInTransaction(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+          businessDate: coarseSeed,
+        );
+    return _resolveBusinessDateFromCandidates(candidates, localWallClock);
+  }
+
+  static String _resolveBusinessDateFromCandidates(
+    List<BusinessTimingProfileRow> candidates,
+    DateTime localWallClock,
+  ) {
     if (candidates.isEmpty) {
       return BusinessDateResolver.resolve(
         localTimestamp: localWallClock,

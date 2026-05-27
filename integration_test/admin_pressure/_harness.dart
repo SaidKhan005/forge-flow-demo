@@ -21,7 +21,6 @@
 // set, exactly the way the mobile harness throws on missing kDemoMode.
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -100,7 +99,7 @@ Future<void> expectAdminShellMounted(
 }
 
 /// Taps the left-side nav row for the given admin route id. The shell
-/// tags each nav row with Key('admin_nav_item_<routeId>') — see
+/// tags each nav row with `Key('admin_nav_item_<routeId>')` — see
 /// lib/admin/admin_shell.dart:363 (compact) and :785 (side nav).
 ///
 /// Throws via `expect` if the nav row is not present. This is the
@@ -183,9 +182,11 @@ class FlutterErrorTap {
   /// in the admin shell at narrow breakpoints; scenario_shell_03 and
   /// regression_reg_01 lock this surface in.
   List<FlutterErrorDetails> get overflowErrors => _errors
-      .where((e) =>
-          e.exception.toString().contains('RenderFlex') ||
-          (e.context?.toString().toLowerCase().contains('overflow') ?? false))
+      .where(
+        (e) =>
+            e.exception.toString().contains('RenderFlex') ||
+            (e.context?.toString().toLowerCase().contains('overflow') ?? false),
+      )
       .toList();
 
   /// Every captured error in install order.
@@ -195,8 +196,7 @@ class FlutterErrorTap {
 /// Returns true if a widget with the given key is mounted in the tree.
 /// Useful for soft-asserting optional surfaces (e.g. a dialog that may
 /// or may not have opened yet during a transition).
-bool isWidgetMountedByKey(Key key) =>
-    find.byKey(key).evaluate().isNotEmpty;
+bool isWidgetMountedByKey(Key key) => find.byKey(key).evaluate().isNotEmpty;
 
 /// Returns true if a widget rendering the given text is mounted.
 bool isTextMounted(String text) => find.text(text).evaluate().isNotEmpty;
@@ -207,5 +207,7 @@ bool isTextMounted(String text) => find.text(text).evaluate().isNotEmpty;
 /// the launch helper directly; some admin stubs only reference the flag.
 @visibleForTesting
 void useAdminHarness() {
-  debugPrint('admin pressure harness in use (share-preview=$kAdminSharePreview)');
+  debugPrint(
+    'admin pressure harness in use (share-preview=$kAdminSharePreview)',
+  );
 }

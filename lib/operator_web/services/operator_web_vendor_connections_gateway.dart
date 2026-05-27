@@ -230,13 +230,17 @@ class OperatorWebHttpVendorConnectionsGateway
     required String vendorId,
     int limit = 100,
   }) async {
-    // The operator-facing sync-log route ships in a follow-up slice.
-    // Throw a typed gateway error so the UI surfaces the missing
-    // surface gracefully rather than 404'ing the operator.
-    throw VendorConnectionsGatewayError(
-      message: 'Vendor sync logs are not available yet.',
-      remediation: 'Vendor sync logs ship in a follow-up slice.',
+    final cappedLimit = limit < 1 ? 1 : (limit > 500 ? 500 : limit);
+    final body = await _getJson(
+      '/v1/auth/locations/$locationId/integrations/$vendorId/logs',
+      queryParameters: <String, String>{'limit': cappedLimit.toString()},
     );
+    final rawLogs = body['logs'];
+    if (rawLogs is! List) return const <VendorSyncLogEntry>[];
+    return <VendorSyncLogEntry>[
+      for (final raw in rawLogs)
+        if (raw is Map<Object?, Object?>) _logEntryFromJson(raw),
+    ];
   }
 
   Future<Map<String, Object?>> _getJson(
@@ -445,6 +449,17 @@ class OperatorWebHttpVendorConnectionsGateway
       default:
         return null;
     }
+  }
+
+  static VendorSyncLogEntry _logEntryFromJson(Map<Object?, Object?> raw) {
+    return VendorSyncLogEntry(
+      occurredAt:
+          _readDate(raw['occurred_at']) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      eventKind: _readString(raw['event_kind']) ?? 'unknown',
+      recordsCount: _readInt(raw['records_count']),
+      errorMessage: _readString(raw['error_message']),
+    );
   }
 
   static Map<String, Object?> _stringKeyMap(Map<Object?, Object?> raw) {

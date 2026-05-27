@@ -158,6 +158,14 @@ bool _canEditSeededRoles(AdminAuthSession? session) {
   );
 }
 
+bool _canRotateProviderKeys(AdminAuthSession? session) {
+  return adminCanEditDestructive(
+    session,
+    requiredKey: PermissionKeys.integrationKeyRotate,
+    mfaFresh: _isAdminMfaFresh(session),
+  );
+}
+
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
 
@@ -755,7 +763,8 @@ Widget _buildScopedAdminWorkspace({
     description: description,
     operatorGateway: operatorGateway,
     hierarchyGateway: hierarchyGateway,
-    initialScope: handoff?.effectiveHierarchyScope ?? options.initialScopeOverride,
+    initialScope:
+        handoff?.effectiveHierarchyScope ?? options.initialScopeOverride,
     onBackToBusinessAccounts: _backToBusinessAccounts(context),
     showWorkspaceHeader: options.showWorkspaceHeader,
     onScopeChanged: handoff == null
@@ -1195,7 +1204,7 @@ Widget _buildIntegrations(BuildContext context) {
     initialData: source.current,
     builder: (context, snapshot) {
       final session = adminSessionOf(snapshot.data);
-      final canEdit = _isAdminSuperAdmin(session);
+      final canEdit = _canRotateProviderKeys(session);
       return buildScreen(canEdit: canEdit);
     },
   );

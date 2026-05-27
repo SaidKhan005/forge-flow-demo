@@ -24,10 +24,8 @@
 // If the regression returns, tapTab() calls will time out and the test
 // will fail with "timed out waiting for BottomNavigationBar tap to settle".
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/forge_flow_app.dart';
 import 'package:forge_and_flow/screens/shift_dashboard.dart';
 import 'package:forge_and_flow/screens/variance_report.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';

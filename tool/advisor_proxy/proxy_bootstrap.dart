@@ -309,6 +309,7 @@ class ProxyProductionBindings {
     this.advisorAnswerShiftRecordsReadRepository,
     this.advisorConversationLogRepository,
     this.advisorConversationCmkResolver,
+    this.advisorAnswerPlanResolver,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -801,6 +802,11 @@ class ProxyProductionBindings {
   /// until then (encryption-first). HP #7: the resolver never stores or echoes
   /// the key bytes.
   final AdvisorConversationCmkResolver? advisorConversationCmkResolver;
+
+  /// Server-side plan / feature entitlement resolver for advisor answers.
+  /// Production wires this so the route never trusts client-provided
+  /// subscription tier or query-class economics.
+  final AdvisorAnswerPlanResolver? advisorAnswerPlanResolver;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -890,6 +896,40 @@ buildProxyLlmProviders(ProxyConfig config) {
     secondary: secondary,
     geminiSlotEnabled: hasGeminiKey,
   );
+}
+
+class RepositoryAdvisorAnswerPlanResolver implements AdvisorAnswerPlanResolver {
+  RepositoryAdvisorAnswerPlanResolver({
+    required OperatorsRepository operatorsRepository,
+    required FeatureEntitlementsRepository entitlementsRepository,
+  }) : _operators = operatorsRepository,
+       _entitlements = entitlementsRepository;
+
+  final OperatorsRepository _operators;
+  final FeatureEntitlementsRepository _entitlements;
+
+  @override
+  Future<AdvisorAnswerPlan> resolve(OperatorContext operator) async {
+    final row = await _operators.findById(
+      operatorId: operator.operatorId,
+      adminReason: 'advisor.answer.plan_lookup',
+    );
+    final subscriptionTier =
+        row?.subscriptionTier.trim().toLowerCase() ??
+        kAdvisorAnswerDefaultSubscriptionTier;
+    final advisorEnabled = row != null
+        ? await _entitlements.isEnabled(
+            tierKey: subscriptionTier,
+            featureSlug: kAdvisorAnswerFeatureSlug,
+            reason: 'advisor.answer.entitlement_check',
+          )
+        : false;
+    return AdvisorAnswerPlan(
+      subscriptionTier: subscriptionTier,
+      queryClass: kAdvisorAnswerDefaultQueryClass,
+      advisorEnabled: advisorEnabled,
+    );
+  }
 }
 
 /// Builds all Phase 9 production route bindings without opening network or
@@ -1449,6 +1489,12 @@ ProxyProductionBindings buildProxyProductionBindings(
     firebaseAdminAuthClient: firebaseAdmin,
     accountInfoGateway: RepositoryAccountInfoGateway(
       usersRepository: tenantUsers,
+      planSnapshotResolver: RepositoryAccountPlanSnapshotResolver(
+        entitlementsRepository: FeatureEntitlementsRepository(adminWrapper),
+        contractOverridesRepository: PricingContractOverridesRepository(
+          adminWrapper,
+        ),
+      ),
     ),
     // G66 / Q3: operator decision pending — see
     // docs/_audits/cross_surface_parity_v1/onboarding_server_slice_spec.md.
@@ -1951,6 +1997,10 @@ ProxyProductionBindings buildProxyProductionBindings(
     // or echoes the key bytes.
     advisorConversationCmkResolver:
         ProxyAdvisorConversationCmkResolver.tryCreate(config),
+    advisorAnswerPlanResolver: RepositoryAdvisorAnswerPlanResolver(
+      operatorsRepository: OperatorsRepository(adminWrapper),
+      entitlementsRepository: FeatureEntitlementsRepository(adminWrapper),
+    ),
   );
 }
 
@@ -3633,7 +3683,7 @@ class RepositoryMobileOperationalSyncProxyGateway
         'forecast_covers, current_covers, scheduled_foh_hours, '
         'scheduled_boh_hours, current_ppa, current_cplh, current_splh, '
         'blended_wage, time_label, service_elapsed_label, source_system, '
-        'source_shift_id, last_event_at, updated_at '
+        'source_shift_id, provenance, last_event_at, updated_at '
         'from public.open_shift_snapshots '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid '
@@ -4521,10 +4571,14 @@ class RepositoryMobileOperationalSyncProxyGateway
       'current_cplh': _asDouble(row['current_cplh']),
       'current_splh': _asDouble(row['current_splh']),
       'blended_wage': _asDouble(row['blended_wage']),
+      'blended_wage_available': _jsonMap(
+        row['provenance'],
+      )['blended_wage_available'],
       'time_label': row['time_label'] as String? ?? '',
       'service_elapsed_label': row['service_elapsed_label'] as String? ?? '',
       'source_system': row['source_system'],
       'source_shift_id': row['source_shift_id'],
+      'provenance': _jsonMap(row['provenance']),
       'last_event_at': _dateJson(row['last_event_at']),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
     };

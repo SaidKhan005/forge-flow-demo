@@ -74,6 +74,7 @@ import 'dart:convert';
 import '../operator_scoped_repository.dart';
 import '../postgres_executor.dart';
 import '../tenant_context.dart';
+import '../../../../services/integration/sink_business_date_projector.dart';
 
 class AuditLogsRepository {
   const AuditLogsRepository();
@@ -122,6 +123,15 @@ class AuditLogsRepository {
     await _assertTenantContextMatches(exec, operatorId);
     final occurred = (occurredAt ?? DateTime.now()).toUtc();
     final chainDate = _formatChainDate(occurred);
+    final resolvedBusinessDate =
+        businessDate ??
+        await _resolveBusinessDate(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+          occurredAt: occurred,
+          chainDate: chainDate,
+        );
     await exec.query(
       'insert into public.audit_logs ('
       'operator_id, location_id, chain_date, business_date, occurred_at, '
@@ -129,24 +139,7 @@ class AuditLogsRepository {
       'target_kind, target_id, action, payload, admin_reason) '
       'values ('
       '@operator_id::uuid, @location_id::uuid, @chain_date::date, '
-      'coalesce(@business_date::date, ('
-      'select (((@occurred_at::timestamptz at time zone '
-      "coalesce(nullif(l.timezone, ''), 'UTC')) - "
-      "(coalesce(l.business_day_rollover_hour, 0) * interval '1 hour'))::date "
-      'from public.locations l '
-      'where l.operator_id = @operator_id::uuid '
-      'and l.location_id = @location_id::uuid '
-      'limit 1'
-      '), ('
-      'select (((@occurred_at::timestamptz at time zone '
-      "coalesce(nullif(l.timezone, ''), 'UTC')) - "
-      "(coalesce(l.business_day_rollover_hour, 0) * interval '1 hour'))::date "
-      'from public.locations l '
-      'where l.operator_id = @operator_id::uuid '
-      'and l.deleted_at is null '
-      'order by l.location_id '
-      'limit 1'
-      '), @chain_date::date), '
+      '@business_date::date, '
       '@occurred_at::timestamptz, @actor_kind, '
       '@actor_user_id::uuid, @actor_principal_id, '
       '@target_kind, @target_id, @action, @payload::jsonb, @admin_reason) '
@@ -155,7 +148,7 @@ class AuditLogsRepository {
         'operator_id': operatorId,
         'location_id': locationId,
         'chain_date': chainDate,
-        'business_date': businessDate,
+        'business_date': resolvedBusinessDate,
         'occurred_at': occurred,
         'actor_kind': actorKind,
         'actor_user_id': actorUserId,
@@ -167,6 +160,56 @@ class AuditLogsRepository {
         'admin_reason': adminReason,
       },
     );
+  }
+
+  Future<String> _resolveBusinessDate(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String? locationId,
+    required DateTime occurredAt,
+    required String chainDate,
+  }) async {
+    final primaryLocationId = _clean(locationId);
+    if (primaryLocationId != null) {
+      final projected =
+          await SinkBusinessDateProjector.projectBusinessDateForLocationInTransaction(
+            exec,
+            operatorId: operatorId,
+            locationId: primaryLocationId,
+            instantUtc: occurredAt,
+          );
+      if (projected != null) return _formatChainDate(projected);
+    }
+
+    final fallbackLocationId = await _firstTenantLocationId(exec, operatorId);
+    if (fallbackLocationId != null) {
+      final projected =
+          await SinkBusinessDateProjector.projectBusinessDateForLocationInTransaction(
+            exec,
+            operatorId: operatorId,
+            locationId: fallbackLocationId,
+            instantUtc: occurredAt,
+          );
+      if (projected != null) return _formatChainDate(projected);
+    }
+    return chainDate;
+  }
+
+  Future<String?> _firstTenantLocationId(
+    PostgresExecutor exec,
+    String operatorId,
+  ) async {
+    final rows = await exec.query(
+      'select l.location_id::text as location_id '
+      'from public.locations l '
+      'where l.operator_id = @operator_id::uuid '
+      '  and l.deleted_at is null '
+      'order by l.location_id '
+      'limit 1',
+      parameters: <String, Object?>{'operator_id': operatorId},
+    );
+    if (rows.isEmpty) return null;
+    return _clean(rows.single['location_id']?.toString());
   }
 
   /// Reads `current_setting('app.operator_id', true)` from the
@@ -206,6 +249,11 @@ class AuditLogsRepository {
     return '${utc.year.toString().padLeft(4, '0')}-'
         '${utc.month.toString().padLeft(2, '0')}-'
         '${utc.day.toString().padLeft(2, '0')}';
+  }
+
+  static String? _clean(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 }
 
@@ -331,21 +379,21 @@ class AuditLogRow {
   final String? chainDate;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'id': id,
-        'operator_id': operatorId,
-        if (locationId != null) 'location_id': locationId,
-        'occurred_at': occurredAt.toUtc().toIso8601String(),
-        'actor_kind': actorKind,
-        if (actorUserId != null) 'actor_user_id': actorUserId,
-        if (actorPrincipalId != null) 'actor_principal_id': actorPrincipalId,
-        if (targetKind != null) 'target_kind': targetKind,
-        if (targetId != null) 'target_id': targetId,
-        'action': action,
-        'payload': payload,
-        if (adminReason != null) 'admin_reason': adminReason,
-        if (businessDate != null) 'business_date': businessDate,
-        if (chainDate != null) 'chain_date': chainDate,
-      };
+    'id': id,
+    'operator_id': operatorId,
+    if (locationId != null) 'location_id': locationId,
+    'occurred_at': occurredAt.toUtc().toIso8601String(),
+    'actor_kind': actorKind,
+    if (actorUserId != null) 'actor_user_id': actorUserId,
+    if (actorPrincipalId != null) 'actor_principal_id': actorPrincipalId,
+    if (targetKind != null) 'target_kind': targetKind,
+    if (targetId != null) 'target_id': targetId,
+    'action': action,
+    'payload': payload,
+    if (adminReason != null) 'admin_reason': adminReason,
+    if (businessDate != null) 'business_date': businessDate,
+    if (chainDate != null) 'chain_date': chainDate,
+  };
 }
 
 /// Slice B8 — hierarchy scope discriminator. The B8 admin filter
@@ -451,9 +499,7 @@ class AuditLogsReader extends OperatorScopedRepository {
       locationId: locationId,
       userId: userId,
     );
-    final effectiveLimit = (limit ?? defaultLimit)
-        .clamp(1, maxLimit)
-        .toInt();
+    final effectiveLimit = (limit ?? defaultLimit).clamp(1, maxLimit).toInt();
     return withTenant<List<AuditLogRow>>(ctx, (exec) async {
       // Build the WHERE branches in a stable order so the explain
       // plan stays comparable across calls. Parameters bind by name;
@@ -491,7 +537,8 @@ class AuditLogsReader extends OperatorScopedRepository {
           // RLS on org_units clamps the subquery to the caller's
           // tenant, so a foreign org_unit_id returns no scope path
           // and the join yields zero rows.
-          fromClause = 'public.audit_logs al '
+          fromClause =
+              'public.audit_logs al '
               'join public.locations l '
               '  on l.location_id = al.location_id '
               ' and l.deleted_at is null '
@@ -509,7 +556,8 @@ class AuditLogsReader extends OperatorScopedRepository {
           break;
       }
 
-      final sql = 'select '
+      final sql =
+          'select '
           'al.id::text as id, '
           'al.operator_id::text as operator_id, '
           'al.location_id::text as location_id, '

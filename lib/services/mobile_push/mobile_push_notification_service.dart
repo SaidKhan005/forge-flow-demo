@@ -148,11 +148,9 @@ class InMemoryMobilePushIntentStore implements MobilePushIntentDiskStore {
 /// the app returns to foreground — picks it up from disk.
 class MobilePushRouteIntentController
     implements MobilePushRouteIntentSource, MobilePushRouteIntentSink {
-  MobilePushRouteIntentController({
-    MobilePushIntentDiskStore? diskStore,
-  }) : _controller = StreamController<MobilePushRouteIntent>.broadcast(),
-       _diskStore =
-           diskStore ?? SharedPreferencesMobilePushIntentStore();
+  MobilePushRouteIntentController({MobilePushIntentDiskStore? diskStore})
+    : _controller = StreamController<MobilePushRouteIntent>.broadcast(),
+      _diskStore = diskStore ?? SharedPreferencesMobilePushIntentStore();
 
   final StreamController<MobilePushRouteIntent> _controller;
   final List<MobilePushRouteIntent> _pending = <MobilePushRouteIntent>[];
@@ -181,17 +179,20 @@ class MobilePushRouteIntentController
   }
 
   void _drainDiskAsync() {
-    _diskStore.drainPersistedIntents().then((persisted) {
-      for (final intent in persisted) {
-        // Re-publish to the stream so active listeners receive it.
-        if (!_controller.isClosed) {
-          _controller.add(intent);
-        }
-      }
-    }).catchError((_) {
-      // Disk drain failure is non-fatal; intents may be lost on
-      // this cold-start but the app still functions.
-    });
+    _diskStore
+        .drainPersistedIntents()
+        .then((persisted) {
+          for (final intent in persisted) {
+            // Re-publish to the stream so active listeners receive it.
+            if (!_controller.isClosed) {
+              _controller.add(intent);
+            }
+          }
+        })
+        .catchError((_) {
+          // Disk drain failure is non-fatal; intents may be lost on
+          // this cold-start but the app still functions.
+        });
   }
 
   @override
@@ -493,6 +494,7 @@ abstract class MobilePushNotificationService {
   Future<void> updateRegistrationContext(
     MobilePushRegistrationContext? context,
   );
+  Future<void> reValidateToken();
   Future<void> dispose();
 }
 
@@ -534,6 +536,9 @@ class NoopMobilePushNotificationService
   Future<void> updateRegistrationContext(
     MobilePushRegistrationContext? context,
   ) async {}
+
+  @override
+  Future<void> reValidateToken() async {}
 
   @override
   Future<void> dispose() async {}
@@ -805,9 +810,12 @@ class MobilePushNotificationCoordinator
   /// Re-validates the FCM token when the app resumes from background.
   /// Ensures the token is fresh and synchronized with the backend.
   /// Gracefully handles cases where the token is not yet initialized.
+  @override
   Future<void> reValidateToken() async {
     if (!_environment.isMobile) return;
-    await _syncRegistration();
+    final token = await _messaging.getToken();
+    if (token == null || token.isEmpty) return;
+    await _handleTokenRefresh(token);
   }
 
   @override

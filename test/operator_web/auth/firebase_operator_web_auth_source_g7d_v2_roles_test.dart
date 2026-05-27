@@ -136,36 +136,39 @@ void main() {
   }
 
   group('G7d — _inferRoles re-based on the v2 catalog (display names)', () {
-    test('v2 display names map to their PermissionKeys.role* constants', () async {
-      final state = await signInWith(
-        roleLabels: const <String>[
-          'Owner',
-          'General Manager',
-          'Location Manager',
-          'Supervisor',
-          'Finance Analyst',
-          'Auditor / Compliance',
-          'Training Lead',
-          'Team Admin',
-          'F&F Support',
-        ],
-        permissions: const <String, String>{},
-      );
-      final roles = state.session!.roles;
-      expect(roles, contains(PermissionKeys.roleOperatorOwner));
-      expect(roles, contains(PermissionKeys.roleOperatorGeneralManager));
-      expect(roles, contains(PermissionKeys.roleLocationManager));
-      expect(roles, contains(PermissionKeys.roleSupervisor));
-      expect(roles, contains(PermissionKeys.roleFinanceAnalyst));
-      expect(roles, contains(PermissionKeys.roleAuditorCompliance));
-      expect(roles, contains(PermissionKeys.roleTrainingLead));
-      expect(roles, contains(PermissionKeys.roleTeamAdmin));
-      expect(roles, contains(PermissionKeys.roleFfSupport));
-      // The phantom is NEVER synthesized.
-      expect(roles, isNot(contains('operator_admin')));
-      // Owner label admits to the console.
-      expect(state, isA<OperatorWebCompleted>());
-    });
+    test(
+      'v2 display names map to their PermissionKeys.role* constants',
+      () async {
+        final state = await signInWith(
+          roleLabels: const <String>[
+            'Owner',
+            'General Manager',
+            'Location Manager',
+            'Supervisor',
+            'Finance Analyst',
+            'Auditor / Compliance',
+            'Training Lead',
+            'Team Admin',
+            'F&F Support',
+          ],
+          permissions: const <String, String>{},
+        );
+        final roles = state.session!.roles;
+        expect(roles, contains(PermissionKeys.roleOperatorOwner));
+        expect(roles, contains(PermissionKeys.roleOperatorGeneralManager));
+        expect(roles, contains(PermissionKeys.roleLocationManager));
+        expect(roles, contains(PermissionKeys.roleSupervisor));
+        expect(roles, contains(PermissionKeys.roleFinanceAnalyst));
+        expect(roles, contains(PermissionKeys.roleAuditorCompliance));
+        expect(roles, contains(PermissionKeys.roleTrainingLead));
+        expect(roles, contains(PermissionKeys.roleTeamAdmin));
+        expect(roles, contains(PermissionKeys.roleFfSupport));
+        // The phantom is NEVER synthesized.
+        expect(roles, isNot(contains('operator_admin')));
+        // Owner label admits to the console.
+        expect(state, isA<OperatorWebCompleted>());
+      },
+    );
 
     test('Owner-labelled session is admitted (live-path neutral)', () async {
       // Real users carry the hydrated snapshot; the Owner display name
@@ -186,13 +189,27 @@ void main() {
         roleLabels: const <String>['Location Manager'],
         permissions: const <String, String>{},
       );
-      expect(
-        state.session!.roles,
-        <String>[PermissionKeys.roleLocationManager],
-      );
+      expect(state.session!.roles, <String>[
+        PermissionKeys.roleLocationManager,
+      ]);
       expect(
         kOperatorWebAdmittedRoles,
         contains(PermissionKeys.roleLocationManager),
+      );
+      expect(state, isA<OperatorWebCompleted>());
+    });
+
+    test('Auditor / Compliance is kept and admitted to the console', () async {
+      final state = await signInWith(
+        roleLabels: const <String>['Auditor / Compliance'],
+        permissions: const <String, String>{},
+      );
+      expect(state.session!.roles, <String>[
+        PermissionKeys.roleAuditorCompliance,
+      ]);
+      expect(
+        kOperatorWebAdmittedRoles,
+        contains(PermissionKeys.roleAuditorCompliance),
       );
       expect(state, isA<OperatorWebCompleted>());
     });
@@ -236,25 +253,30 @@ void main() {
       },
     );
 
-    test(
-      'empty-label snapshot with a console permission falls back to the '
-      'v2 General Manager constant (not v1 operator_manager)',
-      () async {
-        final state = await signInWith(
-          roleLabels: const <String>[],
-          permissions: const <String, String>{'team.users.view': 'allow'},
-        );
-        expect(
-          state.session!.roles,
-          <String>[PermissionKeys.roleOperatorGeneralManager],
-        );
-        expect(
-          state.session!.roles,
-          isNot(contains('operator_manager')),
-        );
-        expect(state, isA<OperatorWebCompleted>());
-      },
-    );
+    test('empty-label snapshot with a console permission falls back to the '
+        'v2 General Manager constant (not v1 operator_manager)', () async {
+      final state = await signInWith(
+        roleLabels: const <String>[],
+        permissions: const <String, String>{'team.users.view': 'allow'},
+      );
+      expect(state.session!.roles, <String>[
+        PermissionKeys.roleOperatorGeneralManager,
+      ]);
+      expect(state.session!.roles, isNot(contains('operator_manager')));
+      expect(state, isA<OperatorWebCompleted>());
+    });
+
+    test('empty-label snapshot with audit-log permission is admitted without '
+        'inflating to General Manager', () async {
+      final state = await signInWith(
+        roleLabels: const <String>[],
+        permissions: const <String, String>{
+          PermissionKeys.teamAuditLogView: 'allow',
+        },
+      );
+      expect(state.session!.roles, isEmpty);
+      expect(state, isA<OperatorWebCompleted>());
+    });
 
     test(
       'no labels and no console permission ⇒ fail CLOSED (forbidden)',
@@ -275,6 +297,7 @@ void main() {
         PermissionKeys.roleOperatorOwner,
         PermissionKeys.roleOperatorGeneralManager,
         PermissionKeys.roleLocationManager,
+        PermissionKeys.roleAuditorCompliance,
       });
       expect(kOperatorWebAdmittedRoles, isNot(contains('operator_admin')));
     });
@@ -331,7 +354,8 @@ void main() {
           final raw = lines[i];
           final trimmed = raw.trimLeft();
           // Skip comment lines (rationale annotations cite the literal).
-          if (trimmed.startsWith('//') || trimmed.startsWith('///') ||
+          if (trimmed.startsWith('//') ||
+              trimmed.startsWith('///') ||
               trimmed.startsWith('*')) {
             continue;
           }

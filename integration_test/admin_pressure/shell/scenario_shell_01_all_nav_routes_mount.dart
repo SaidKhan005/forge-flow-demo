@@ -16,7 +16,6 @@
 // so this scenario asserts shell-still-mounted + no overflow after each
 // nav transition.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_routes.dart';
@@ -28,51 +27,47 @@ import '../_harness.dart';
 // id (not display label) terms so the scenario stays stable across
 // re-labelling slices.
 const List<String> _kVisibleAdminRouteIds = <String>[
-  kAdminOperatorsRouteId,                  // Business accounts
-  kAdminVendorApplicabilityRouteId,        // Vendor applicability
-  kAdminPricingRouteId,                    // Plans and limits
-  kAdminCorpusRouteId,                     // Knowledge base
-  kAdminObservabilityRouteId,              // AI Metrics
-  kAdminHealthRouteId,                     // System health
-  kAdminDebugConsoleRouteId,               // Support logs
-  kAdminIntegrationsRouteId,               // Connected services
-  kAdminFeatureFlagsRouteId,               // Launch controls
-  kAdminDefaultRoleCatalogRouteId,         // Default roles
-  kAdminMyAccountRouteId,                  // My account
-  kAdminNotificationPreferencesRouteId,    // Notifications
+  kAdminOperatorsRouteId, // Business accounts
+  kAdminVendorApplicabilityRouteId, // Vendor applicability
+  kAdminPricingRouteId, // Plans and limits
+  kAdminCorpusRouteId, // Knowledge base
+  kAdminObservabilityRouteId, // AI Metrics
+  kAdminHealthRouteId, // System health
+  kAdminDebugConsoleRouteId, // Support logs
+  kAdminIntegrationsRouteId, // Connected services
+  kAdminFeatureFlagsRouteId, // Launch controls
+  kAdminDefaultRoleCatalogRouteId, // Default roles
+  kAdminMyAccountRouteId, // My account
+  kAdminNotificationPreferencesRouteId, // Notifications
 ];
 
 void main() {
   bootstrapBinding();
 
-  testWidgets(
-    'Shell-01: each of the 12 primary-nav routes mounts cleanly when '
-    'tapped from the left-side rail',
-    (tester) async {
-      final tap = FlutterErrorTap.install();
-      addTearDown(tap.restore);
+  testWidgets('Shell-01: each of the 12 primary-nav routes mounts cleanly when '
+      'tapped from the left-side rail', (tester) async {
+    final tap = FlutterErrorTap.install();
+    addTearDown(tap.restore);
 
-      await launchAdminSharePreview(tester);
+    await launchAdminSharePreview(tester);
+    await expectAdminShellMounted(tester);
+
+    for (final routeId in _kVisibleAdminRouteIds) {
+      await tapAdminNav(tester, routeId);
       await expectAdminShellMounted(tester);
+      expect(
+        tap.overflowErrors,
+        isEmpty,
+        reason:
+            'RenderFlex overflow detected after navigating to "$routeId": '
+            '${tap.overflowErrors.map((e) => e.exception).join(', ')}',
+      );
+    }
 
-      for (final routeId in _kVisibleAdminRouteIds) {
-        await tapAdminNav(tester, routeId);
-        await expectAdminShellMounted(tester);
-        expect(
-          tap.overflowErrors,
-          isEmpty,
-          reason:
-              'RenderFlex overflow detected after navigating to "$routeId": '
-              '${tap.overflowErrors.map((e) => e.exception).join(', ')}',
-        );
-      }
-
-      // Round-trip back to Business accounts and confirm the shell is
-      // still mounted — IndexedStack / route disposal must not have
-      // destroyed it.
-      await tapAdminNav(tester, kAdminOperatorsRouteId);
-      await expectAdminShellMounted(tester);
-    },
-    timeout: const Timeout(Duration(minutes: 5)),
-  );
+    // Round-trip back to Business accounts and confirm the shell is
+    // still mounted — IndexedStack / route disposal must not have
+    // destroyed it.
+    await tapAdminNav(tester, kAdminOperatorsRouteId);
+    await expectAdminShellMounted(tester);
+  }, timeout: const Timeout(Duration(minutes: 5)));
 }

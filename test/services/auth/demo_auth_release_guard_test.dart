@@ -65,10 +65,7 @@ void main() {
       final result = runWith(yaml);
       expect(result.isClean, isFalse);
       expect(result.violations, hasLength(1));
-      expect(
-        result.violations.first.flag,
-        contains('FORGE_FLOW_DEMO_MODE'),
-      );
+      expect(result.violations.first.flag, contains('FORGE_FLOW_DEMO_MODE'));
     });
 
     test('does NOT flag --debug builds with kDemoMode flag', () {
@@ -136,13 +133,26 @@ void main() {
       - run: flutter build web --dart-define=OPERATOR_WEB_DEMO_AUTH=true
 ''';
       final result = ReleaseBuildDemoFlagLintRunner(
-        files: <String, String>{
-          'workflow1.yml': yaml1,
-          'workflow2.yml': yaml2,
-        },
+        files: <String, String>{'workflow1.yml': yaml1, 'workflow2.yml': yaml2},
       ).run();
       expect(result.violations, hasLength(2));
       expect(result.scannedFileCount, equals(2));
+    });
+
+    test('flags Dockerfile release builds but ignores comment examples', () {
+      const dockerfile = r'''
+# Local-only example:
+# flutter build web --dart-define=OPERATOR_WEB_DEMO_AUTH=true
+RUN flutter build web \
+  --release \
+  --dart-define=OPERATOR_WEB_DEMO_AUTH=true
+''';
+      final result = ReleaseBuildDemoFlagLintRunner(
+        files: const <String, String>{'Dockerfile.operator_web': dockerfile},
+      ).run();
+      expect(result.releaseBuildCount, equals(1));
+      expect(result.violations, hasLength(1));
+      expect(result.violations.single.filePath, 'Dockerfile.operator_web');
     });
   });
 }

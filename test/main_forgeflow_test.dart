@@ -44,90 +44,79 @@ void main() {
     String readForgeFlowMainSource() =>
         File('lib/main_forgeflow.dart').readAsStringSync();
 
-    test(
-      'passes starTargetSelectionWriteClient to bootstrapAndRunApp',
-      () {
-        final source = readForgeFlowMainSource();
-        // The production wiring threads the same HttpSyncProxyClient
-        // reference through both `syncProxyClient` and
-        // `starTargetSelectionWriteClient` (HttpSyncProxyClient
-        // implements both contracts) — same shape as `lib/main.dart`.
-        expect(
-          source,
-          contains('starTargetSelectionWriteClient: syncProxyClient'),
-          reason:
-              'Production ForgeFlow flavor must pass the proxy client as '
-              'starTargetSelectionWriteClient so '
-              'BaselineManagerService.serverSelectionWriter is non-null '
-              '(Hard Rule #1 — server owns star/target selection).',
-        );
-      },
-    );
+    test('passes starTargetSelectionWriteClient to bootstrapAndRunApp', () {
+      final source = readForgeFlowMainSource();
+      // The production wiring threads the same HttpSyncProxyClient
+      // reference through both `syncProxyClient` and
+      // `starTargetSelectionWriteClient` (HttpSyncProxyClient
+      // implements both contracts) — same shape as `lib/main.dart`.
+      expect(
+        source,
+        contains('starTargetSelectionWriteClient: syncProxyClient'),
+        reason:
+            'Production ForgeFlow flavor must pass the proxy client as '
+            'starTargetSelectionWriteClient so '
+            'BaselineManagerService.serverSelectionWriter is non-null '
+            '(Hard Rule #1 — server owns star/target selection).',
+      );
+    });
 
-    test(
-      'still passes syncProxyClient (regression guard for pre-existing '
-      'wiring kept alongside the new line)',
-      () {
-        final source = readForgeFlowMainSource();
-        expect(source, contains('syncProxyClient: syncProxyClient'));
-      },
-    );
+    test('still passes syncProxyClient (regression guard for pre-existing '
+        'wiring kept alongside the new line)', () {
+      final source = readForgeFlowMainSource();
+      expect(source, contains('syncProxyClient: syncProxyClient'));
+    });
+
+    test('registers the FCM token revalidation observer on mobile', () {
+      final source = readForgeFlowMainSource();
+      expect(source, contains('WidgetsBinding.instance.addObserver'));
+      expect(source, contains('FcmTokenRevalidationObserver'));
+      expect(source, contains('mobilePushService: mobilePushNotifications'));
+    });
   });
 
-  group(
-    'BaselineManagerService.serverSelectionWriter — wiring contract',
-    () {
-      // The bootstrap performs the assignment:
-      //
-      //   BaselineManagerService.instance.serverSelectionWriter =
-      //       starTargetSelectionWriteClient == null
-      //           ? null
-      //           : AuthSessionStarTargetSelectionWriter(...);
-      //
-      // These tests exercise the same condition `bootstrapAndRunApp`
-      // applies, without booting Flutter, so the test asserts the
-      // observable post-bootstrap state without calling `runApp`.
-      // (The full bootstrap mounts a `MaterialApp`, which is not safe
-      // to drive from a non-widget test.)
-      tearDown(() {
-        BaselineManagerService.instance.serverSelectionWriter = null;
-      });
+  group('BaselineManagerService.serverSelectionWriter — wiring contract', () {
+    // The bootstrap performs the assignment:
+    //
+    //   BaselineManagerService.instance.serverSelectionWriter =
+    //       starTargetSelectionWriteClient == null
+    //           ? null
+    //           : AuthSessionStarTargetSelectionWriter(...);
+    //
+    // These tests exercise the same condition `bootstrapAndRunApp`
+    // applies, without booting Flutter, so the test asserts the
+    // observable post-bootstrap state without calling `runApp`.
+    // (The full bootstrap mounts a `MaterialApp`, which is not safe
+    // to drive from a non-widget test.)
+    tearDown(() {
+      BaselineManagerService.instance.serverSelectionWriter = null;
+    });
 
-      test(
-        'is non-null when bootstrap-equivalent wiring receives a '
-        'non-null StarTargetSelectionWriteClient',
-        () {
-          final client = _NoopStarTargetSelectionWriteClient();
-          BaselineManagerService.instance.serverSelectionWriter =
-              AuthSessionStarTargetSelectionWriter(
-                client: client,
-                authSessionProvider: () => null,
-              );
-          expect(
-            BaselineManagerService.instance.serverSelectionWriter,
-            isNotNull,
-            reason:
-                'A non-null write client must produce a non-null '
-                'serverSelectionWriter so the manager-override path '
-                'round-trips through the proxy instead of writing '
-                'directly to local SQLite.',
+    test('is non-null when bootstrap-equivalent wiring receives a '
+        'non-null StarTargetSelectionWriteClient', () {
+      final client = _NoopStarTargetSelectionWriteClient();
+      BaselineManagerService.instance.serverSelectionWriter =
+          AuthSessionStarTargetSelectionWriter(
+            client: client,
+            authSessionProvider: () => null,
           );
-        },
+      expect(
+        BaselineManagerService.instance.serverSelectionWriter,
+        isNotNull,
+        reason:
+            'A non-null write client must produce a non-null '
+            'serverSelectionWriter so the manager-override path '
+            'round-trips through the proxy instead of writing '
+            'directly to local SQLite.',
       );
+    });
 
-      test(
-        'remains null when no StarTargetSelectionWriteClient is '
-        'wired (demo / no-Firebase path)',
-        () {
-          BaselineManagerService.instance.serverSelectionWriter = null;
-          expect(
-            BaselineManagerService.instance.serverSelectionWriter,
-            isNull,
-          );
-        },
-      );
-    },
-  );
+    test('remains null when no StarTargetSelectionWriteClient is '
+        'wired (demo / no-Firebase path)', () {
+      BaselineManagerService.instance.serverSelectionWriter = null;
+      expect(BaselineManagerService.instance.serverSelectionWriter, isNull);
+    });
+  });
 }
 
 class _NoopStarTargetSelectionWriteClient

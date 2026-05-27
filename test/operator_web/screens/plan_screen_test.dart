@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/plan_screen.dart';
+import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -41,6 +42,7 @@ void main() {
     String? tier,
     bool trialMode = false,
     DateTime? trialExpiresAt,
+    AccountPlanSnapshot? planSnapshot,
   }) => OperatorWebSession(
     uid: 'demo-owner',
     email: 'owner@demo.forgeflow.test',
@@ -53,6 +55,7 @@ void main() {
     subscriptionTier: tier,
     trialMode: trialMode,
     trialExpiresAt: trialExpiresAt,
+    planSnapshot: planSnapshot,
   );
 
   Future<void> pump(
@@ -139,6 +142,31 @@ void main() {
       find.textContaining('could not work out how many days'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('live plan snapshot overrides fallback price and features', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      sessionFor(
+        tier: 'starter',
+        planSnapshot: const AccountPlanSnapshot(
+          tierKey: 'premium',
+          priceLine: r'$375/mo plus $4/seat',
+          enabledFeatureSlugs: <String>['advisor', 'workflows'],
+          contractLabel: 'Franchise 2026',
+          overrideStatus: 'set_here',
+        ),
+      ),
+    );
+
+    expect(find.text('Premium'), findsOneWidget);
+    expect(find.text(r'$375/mo plus $4/seat'), findsOneWidget);
+    expect(find.text('Franchise 2026'), findsOneWidget);
+    expect(find.text('AI advisor'), findsOneWidget);
+    expect(find.text('Workflow catalog'), findsOneWidget);
+    expect(find.text('Learning (LMS)'), findsNothing);
   });
 
   testWidgets('top plan hides the upgrade CTA and shows the top-plan note', (

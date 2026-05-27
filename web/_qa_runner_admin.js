@@ -124,9 +124,16 @@
     document.dispatchEvent(new KeyboardEvent('keyup',   { key: 'Escape', bubbles: true }));
   }
 
-  async function nav(label) {
-    clickLabel(label);
+  async function nav(route, labels) {
+    var candidates = Array.isArray(labels) ? labels : [labels];
+    var clicked = clickAnyLabel(candidates);
+    if (clicked) {
+      pass(route, 'navigation: clicked "' + clicked + '"');
+    } else {
+      fail(route, 'navigation: clicked ' + candidates.join(' / '), 'button not found');
+    }
     await wait(1100);
+    return clicked;
   }
 
   // Console-error tap for RenderFlex / framework errors. Set up BEFORE
@@ -246,7 +253,7 @@
   _hb('R_BA');
 
   var R_BA = 'Business accounts';
-  await nav('Business accounts');
+  await nav(R_BA, 'Business accounts');
 
   assertText(R_BA, 'Business accounts');
   assertText(R_BA, 'New business');
@@ -282,7 +289,7 @@
   _hb('R_TM');
 
   var R_TM = 'Team members';
-  await nav('Team members');
+  await nav(R_TM, 'Team members');
 
   assertText(R_TM, 'Invite member');
   assertAnyText(R_TM, ['Status', 'Role', 'Two-factor sign-in'],
@@ -293,7 +300,7 @@
   _hb('R_RP');
 
   var R_RP = 'Roles & permissions';
-  await nav('Roles & permissions');
+  await nav(R_RP, 'Roles & permissions');
 
   assertText(R_RP, 'New role');
   assertTextRe(R_RP, /Custom roles \(\d+\)/, '"Custom roles (N)" header present');
@@ -306,7 +313,7 @@
   _hb('R_AL');
 
   var R_AL = 'Audit log';
-  await nav('Audit log');
+  await nav(R_AL, 'Audit log');
 
   assertText(R_AL, 'Export CSV');
   assertText(R_AL, 'Filters');
@@ -337,7 +344,7 @@
   _hb('R_VI');
 
   var R_VI = 'Vendor integrations';
-  await nav('Vendor integrations');
+  await nav(R_VI, 'Vendor integrations');
 
   // Org-unit scope shows the "select a location" empty state.
   assertAnyText(R_VI, [
@@ -350,7 +357,7 @@
   _hb('R_DA');
 
   var R_DA = 'Data accuracy';
-  await nav('Data accuracy');
+  await nav(R_DA, 'Data accuracy');
 
   assertAnyText(R_DA, [
     'Select a location to edit data accuracy',
@@ -362,7 +369,7 @@
   _hb('R_SP');
 
   var R_SP = 'Service periods';
-  await nav('Service periods');
+  await nav(R_SP, 'Service periods');
 
   assertText(R_SP, 'Edit service periods');
   assertAnyText(R_SP, ['Service period 1', 'First day of the business week'],
@@ -374,7 +381,7 @@
   _hb('R_PL');
 
   var R_PL = 'Plans and limits';
-  await nav('Plans and limits');
+  await nav(R_PL, 'Plans and limits');
 
   // Three top tabs: Plans / Features / Businesses.
   assertText(R_PL, 'Plans');
@@ -391,7 +398,7 @@
   _hb('R_KB');
 
   var R_KB = 'Knowledge base';
-  await nav('Knowledge base');
+  await nav(R_KB, 'Knowledge base');
 
   assertText(R_KB, 'What the advisor knows');
   assertText(R_KB, 'Add knowledge');
@@ -405,7 +412,7 @@
   _hb('R_AM');
 
   var R_AM = 'AI Metrics';
-  await nav('AI Metrics');
+  await nav(R_AM, 'AI Metrics');
 
   assertText(R_AM, 'AI Metrics');
   assertText(R_AM, 'Run metrics check');
@@ -440,7 +447,7 @@
   _hb('R_SH');
 
   var R_SH = 'System health';
-  await nav('System health');
+  await nav(R_SH, 'System health');
 
   assertText(R_SH, 'System health');
   assertAnyText(R_SH, ['Check system health', 'Run system check'],
@@ -451,7 +458,7 @@
   _hb('R_SL');
 
   var R_SL = 'Support logs';
-  await nav('Support logs');
+  await nav(R_SL, 'Support logs');
 
   assertText(R_SL, 'Refresh');
   assertAnyText(R_SL, ['Filter by type', 'Filter by when', 'Filter by result', 'Set at this scope'],
@@ -462,7 +469,7 @@
   _hb('R_CS');
 
   var R_CS = 'Connected services';
-  await nav('Connected services');
+  await nav(R_CS, 'Connected services');
 
   assertAnyText(R_CS, ['Platform provider keys', 'Anthropic API', 'Voyage embeddings'],
     'Connected-services platform-keys section present');
@@ -474,7 +481,7 @@
   _hb('R_VA');
 
   var R_VA = 'Vendor applicability';
-  await nav('Vendor applicability');
+  await nav(R_VA, 'Vendor applicability');
 
   assertText(R_VA, 'Refresh');
   assertText(R_VA, 'Add rule');
@@ -487,7 +494,7 @@
   _hb('R_LC');
 
   var R_LC = 'Launch controls';
-  await nav('Launch controls');
+  await nav(R_LC, 'Launch controls');
 
   // Launch controls renders a list of flags with Enable/Disable toggles.
   // The shape varies but at least one of these must be in the tree.
@@ -499,7 +506,7 @@
   _hb('R_DR');
 
   var R_DR = 'Default roles';
-  await nav('Default roles');
+  await nav(R_DR, 'Default roles');
 
   assertText(R_DR, 'Manage the starter roles every new business receives');
   assertText(R_DR, 'Add role');
@@ -514,7 +521,7 @@
   _hb('R_MA');
 
   var R_MA = 'My account';
-  await nav('My account');
+  await nav(R_MA, 'My account');
 
   assertText(R_MA, 'Identity');
   assertText(R_MA, 'Display name');
@@ -532,7 +539,7 @@
   _hb('R_NO');
 
   var R_NO = 'Notifications';
-  await nav('Notifications');
+  await nav(R_NO, 'Notifications');
 
   assertText(R_NO, 'About notifications');
   // Three channels mirror operator-web shape.

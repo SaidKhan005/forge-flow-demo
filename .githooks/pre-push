@@ -108,6 +108,14 @@ if has_changed '^\.github/workflows/|^tool/release_dart_defines_lint\.dart$'; th
   run_lint dart run tool/release_dart_defines_lint.dart
 fi
 
+if has_changed '^\.github/workflows/|^Dockerfile|^cloudbuild|^tool/release_build_demo_flag_lint\.dart$'; then
+  run_lint dart run tool/release_build_demo_flag_lint.dart
+fi
+
+if has_changed '^web/index.*\.html$|^tool/csp_header_lint\.dart$'; then
+  run_lint dart run tool/csp_header_lint.dart
+fi
+
 if has_changed '^\.github/workflows/|^tool/actions_pinning_lint\.dart$'; then
   run_lint dart run tool/actions_pinning_lint.dart
 fi
@@ -139,6 +147,10 @@ fi
 # or has a docs/KNOWN_FAILING_TESTS.md row. Fast: scans test/ skip sites.
 if has_changed '^test/.*\.dart$|^docs/KNOWN_FAILING_TESTS\.md$|^tool/skip_quarantine_lint\.dart$'; then
   run_lint dart run tool/skip_quarantine_lint.dart
+fi
+
+if has_changed '^lib/integrations/|^tool/advisor_proxy/.*integrations|^docs/integrations/|^tool/vendor_completeness_lint\.dart$'; then
+  run_lint dart run tool/vendor_completeness_lint.dart
 fi
 
 if [ "$ran" -eq 0 ]; then

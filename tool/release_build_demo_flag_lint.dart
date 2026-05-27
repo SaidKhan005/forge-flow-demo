@@ -1,6 +1,6 @@
 // B1.A5 — Release-build demo-flag lint.
 //
-// Scans GitHub Actions workflow files for `flutter build` commands that
+// Scans release-build files for `flutter build` commands that
 // pass any of the demo-auth elevation flags —
 //   `ADMIN_DEMO_AUTH=true`, `OPERATOR_WEB_DEMO_AUTH=true`,
 //   `kDemoMode=true`, or `FORGE_FLOW_DEMO_MODE=true`
@@ -76,7 +76,7 @@ class ReleaseBuildDemoFlagLintResult {
 class ReleaseBuildDemoFlagLintRunner {
   ReleaseBuildDemoFlagLintRunner({required this.files});
 
-  /// Map of relative-path → workflow YAML body.
+  /// Map of relative-path to file body.
   final Map<String, String> files;
 
   ReleaseBuildDemoFlagLintResult run() {
@@ -89,6 +89,10 @@ class ReleaseBuildDemoFlagLintRunner {
       var i = 0;
       while (i < lines.length) {
         final line = lines[i];
+        if (_isCommentOnly(line)) {
+          i++;
+          continue;
+        }
         if (!_flutterBuildPattern.hasMatch(line)) {
           i++;
           continue;
@@ -100,12 +104,14 @@ class ReleaseBuildDemoFlagLintRunner {
         releaseBuildCount++;
         for (final flag in _forbiddenFlags) {
           if (command.text.contains(flag)) {
-            violations.add(ReleaseBuildDemoFlagViolation(
-              filePath: path,
-              lineNumber: start + 1,
-              command: command.text.trim(),
-              flag: flag,
-            ));
+            violations.add(
+              ReleaseBuildDemoFlagViolation(
+                filePath: path,
+                lineNumber: start + 1,
+                command: command.text.trim(),
+                flag: flag,
+              ),
+            );
           }
         }
       }
@@ -128,6 +134,11 @@ class _Joined {
 }
 
 final RegExp _flutterBuildPattern = RegExp(r'\bflutter\s+build\b');
+
+bool _isCommentOnly(String line) {
+  final trimmed = line.trimLeft();
+  return trimmed.startsWith('#') || trimmed.startsWith('//');
+}
 
 bool _isReleaseBuild(String command) {
   if (command.contains('--debug')) return false;
@@ -156,24 +167,14 @@ _Joined _joinCommand(List<String> lines, int start) {
 // ─── CLI entrypoint ──────────────────────────────────────────────────────────
 
 Future<void> main(List<String> args) async {
-  const root = '.github/workflows';
-  final dir = Directory(root);
-  if (!dir.existsSync()) {
+  final files = _collectReleaseBuildFiles(Directory.current);
+  if (files.isEmpty) {
     stderr.writeln(
-      'release_build_demo_flag_lint: $root not found '
+      'release_build_demo_flag_lint: no release build files found '
       '(run from repository root).',
     );
     exitCode = 2;
     return;
-  }
-
-  final files = <String, String>{};
-  for (final entity in dir.listSync(followLinks: false)) {
-    if (entity is! File) continue;
-    final lower = entity.path.toLowerCase();
-    if (!lower.endsWith('.yml') && !lower.endsWith('.yaml')) continue;
-    final rel = entity.path.replaceAll(r'\', '/');
-    files[rel] = entity.readAsStringSync();
   }
 
   final runner = ReleaseBuildDemoFlagLintRunner(files: files);
@@ -181,7 +182,7 @@ Future<void> main(List<String> args) async {
 
   stdout.writeln(
     'release_build_demo_flag_lint: scanned ${result.scannedFileCount} '
-    'workflow file(s); ${result.releaseBuildCount} release-eligible '
+    'release build file(s); ${result.releaseBuildCount} release-eligible '
     '`flutter build` step(s).',
   );
 
@@ -210,4 +211,60 @@ Future<void> main(List<String> args) async {
     'explicit deploy-script -DemoMode switch with a visible warning.',
   );
   exitCode = 1;
+}
+
+Map<String, String> _collectReleaseBuildFiles(Directory repoRoot) {
+  final files = <String, String>{};
+
+  void addFile(File file) {
+    if (!file.existsSync()) return;
+    final rel = _relativePath(repoRoot, file);
+    files[rel] = file.readAsStringSync();
+  }
+
+  final workflows = Directory('${repoRoot.path}/.github/workflows');
+  if (workflows.existsSync()) {
+    for (final entity in workflows.listSync(followLinks: false)) {
+      if (entity is! File) continue;
+      final lower = entity.path.toLowerCase();
+      if (!lower.endsWith('.yml') && !lower.endsWith('.yaml')) continue;
+      addFile(entity);
+    }
+  }
+
+  final rootPatterns = <RegExp>[
+    RegExp(r'(^|[\\/])Dockerfile(?:\..*)?$'),
+    RegExp(r'(^|[\\/])cloudbuild.*\.ya?ml$'),
+  ];
+  for (final entity in repoRoot.listSync(followLinks: false)) {
+    if (entity is! File) continue;
+    final path = entity.path.replaceAll(r'\', '/');
+    if (rootPatterns.any((pattern) => pattern.hasMatch(path))) {
+      addFile(entity);
+    }
+  }
+
+  final scripts = Directory('${repoRoot.path}/scripts');
+  if (scripts.existsSync()) {
+    for (final entity in scripts.listSync(followLinks: false)) {
+      if (entity is! File) continue;
+      final lower = entity.path.toLowerCase();
+      if (lower.endsWith('.ps1') ||
+          lower.endsWith('.sh') ||
+          lower.endsWith('.bat') ||
+          lower.endsWith('.cmd')) {
+        addFile(entity);
+      }
+    }
+  }
+
+  return files;
+}
+
+String _relativePath(Directory repoRoot, File file) {
+  final root = repoRoot.absolute.path.replaceAll(r'\', '/');
+  final path = file.absolute.path.replaceAll(r'\', '/');
+  final prefix = root.endsWith('/') ? root : '$root/';
+  if (path.startsWith(prefix)) return path.substring(prefix.length);
+  return path;
 }

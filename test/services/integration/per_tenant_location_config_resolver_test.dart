@@ -2,8 +2,9 @@
 //
 // Coverage:
 //   * Happy path: known (operatorId, locationId, vendorId) round-trips
-//     a config whose timezone, rollover hour, and webhook URL all line
-//     up with the row + injected base URI.
+//     a config whose timezone, business-day start, deprecated
+//     compatibility rollover hour, and webhook URL all line up with
+//     the row + injected base URI.
 //   * Cross-tenant isolation: a resolver bound to one tenant cannot
 //     return tenant B's row even when the underlying pool would
 //     otherwise hand it back. The SQL filter on `operator_id` +
@@ -13,8 +14,8 @@
 //     transaction.
 //   * Cache miss after the TTL window re-runs the query.
 //   * Missing location row throws `PerTenantConfigNotFound`.
-//   * Per-location override beats operator default; operator default
-//     wins when location override is null.
+//   * The deprecated hour-only rollover value is derived from the
+//     canonical `businessDayStartLocalTime`.
 //   * Vendor id pattern is enforced so path-traversal cannot land in
 //     the composed webhook URL.
 
@@ -31,13 +32,11 @@ const String _vendor = 'lightspeed_lsk';
 
 PostgresRow _row({
   String timezone = 'America/Toronto',
-  int? locationRolloverHour = 4,
-  int? operatorRolloverHour = 4,
+  String? businessDayStartLocalTime = '04:00',
 }) {
   return <String, Object?>{
     'timezone': timezone,
-    'location_rollover_hour': locationRolloverHour,
-    'operator_rollover_hour': operatorRolloverHour,
+    'business_day_start_local_time': businessDayStartLocalTime,
   };
 }
 
@@ -57,154 +56,112 @@ PerTenantLocationConfigResolver _resolver(
 
 void main() {
   group('PerTenantLocationConfigResolver.resolve — happy path', () {
-    test(
-      'returns a config whose timezone, rollover hour, and webhook URL '
-      'reflect the locations row + injected public base; SQL flows '
-      'through withTenant SET LOCAL chain',
-      () async {
-        final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
-        final resolver = _resolver(pool);
-        final config = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        expect(config.operatorId, equals(_opA));
-        expect(config.locationId, equals(_locA));
-        expect(config.vendorId, equals(_vendor));
-        expect(config.restaurantTimezone, equals('America/Toronto'));
-        expect(config.businessDayRolloverHour, equals(4));
-        expect(
-          config.webhookBaseUri.toString(),
-          equals(
-            'https://api.forgeflow.app/v1/webhooks/$_vendor/$_opA/$_locA',
-          ),
-        );
-
-        final tx = pool.transactions.single;
-        // SET LOCAL chain proves we ran through withTenant: tenant
-        // GUCs land before the SELECT.
-        expect(
-          tx.executedSql.where((s) => s.contains("'app.operator_id'")),
-          hasLength(1),
-        );
-        expect(
-          tx.executedSql.where((s) => s.contains("'app.location_id'")),
-          hasLength(1),
-        );
-        expect(
-          tx.executedSql.where(
-            (s) => s.contains("'app.bypass_rls_audit'") &&
-                !s.contains('system'),
-          ),
-          isNotEmpty,
-          reason: 'tenant-scope marker, not the system: bypass marker',
-        );
-
-        // SQL filters on both operator_id and location_id so cross-
-        // tenant isolation is enforced even on a service_role-only
-        // RLS posture (the locations table predates per-tenant
-        // policies).
-        final selectSql = tx.executedSql.firstWhere(
-          (s) => s.contains('from public.locations loc'),
-        );
-        expect(
-          selectSql,
-          contains('where loc.operator_id = @operator_id::uuid'),
-        );
-        expect(
-          selectSql,
-          contains('and loc.location_id = @location_id::uuid'),
-        );
-        // Joined to operators so the operator-level rollover_hour
-        // default is available for the per-location-null fallback.
-        expect(
-          selectSql,
-          contains('join public.operators op'),
-        );
-
-        final selectParams = tx.parameters.firstWhere(
-          (p) =>
-              p['operator_id'] == _opA && p['location_id'] == _locA,
-        );
-        expect(selectParams['operator_id'], equals(_opA));
-        expect(selectParams['location_id'], equals(_locA));
-      },
-    );
-
-    test(
-      'webhook URL preserves a non-root path on the configured base '
-      'URI (e.g. https://proxy.example/edge -> '
-      'https://proxy.example/edge/v1/webhooks/...)',
-      () async {
-        final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
-        final resolver = _resolver(
-          pool,
-          base: Uri.parse('https://proxy.example/edge'),
-        );
-        final config = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        expect(
-          config.webhookBaseUri.toString(),
-          equals(
-            'https://proxy.example/edge/v1/webhooks/$_vendor/$_opA/$_locA',
-          ),
-        );
-      },
-    );
-
-    test(
-      'webhook URL handles a trailing-slash base without doubling the '
-      'separator',
-      () async {
-        final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
-        final resolver = _resolver(
-          pool,
-          base: Uri.parse('https://api.forgeflow.app/'),
-        );
-        final config = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        expect(
-          config.webhookBaseUri.toString(),
-          equals(
-            'https://api.forgeflow.app/v1/webhooks/$_vendor/$_opA/$_locA',
-          ),
-        );
-      },
-    );
-  });
-
-  group('PerTenantLocationConfigResolver.resolve — rollover precedence',
-      () {
-    test('per-location override beats the operator default', () async {
-      final pool = _ConfigPool(
-        rows: <PostgresRow>[
-          _row(locationRolloverHour: 6, operatorRolloverHour: 3),
-        ],
-      );
+    test('returns a config whose timezone, business-day start, rollover '
+        'compatibility hour, and webhook URL reflect the resolved rows; '
+        'SQL flows through withTenant SET LOCAL chain', () async {
+      final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
       final resolver = _resolver(pool);
       final config = await resolver.resolve(
         operatorId: _opA,
         locationId: _locA,
         vendorId: _vendor,
       );
-      expect(config.businessDayRolloverHour, equals(6));
+      expect(config.operatorId, equals(_opA));
+      expect(config.locationId, equals(_locA));
+      expect(config.vendorId, equals(_vendor));
+      expect(config.restaurantTimezone, equals('America/Toronto'));
+      expect(config.businessDayStartLocalTime, equals('04:00'));
+      expect(config.businessDayRolloverHour, equals(4));
+      expect(
+        config.webhookBaseUri.toString(),
+        equals('https://api.forgeflow.app/v1/webhooks/$_vendor/$_opA/$_locA'),
+      );
+
+      final tx = pool.transactions.single;
+      // SET LOCAL chain proves we ran through withTenant: tenant
+      // GUCs land before the SELECT.
+      expect(
+        tx.executedSql.where((s) => s.contains("'app.operator_id'")),
+        hasLength(1),
+      );
+      expect(
+        tx.executedSql.where((s) => s.contains("'app.location_id'")),
+        hasLength(1),
+      );
+      expect(
+        tx.executedSql.where(
+          (s) => s.contains("'app.bypass_rls_audit'") && !s.contains('system'),
+        ),
+        isNotEmpty,
+        reason: 'tenant-scope marker, not the system: bypass marker',
+      );
+
+      // SQL filters on both operator_id and location_id so cross-
+      // tenant isolation is enforced even on a service_role-only
+      // RLS posture (the locations table predates per-tenant
+      // policies).
+      final selectSql = tx.executedSql.firstWhere(
+        (s) => s.contains('from public.locations loc'),
+      );
+      expect(selectSql, contains('where loc.operator_id = @operator_id::uuid'));
+      expect(selectSql, contains('and loc.location_id = @location_id::uuid'));
+      // Legacy rollover columns are not part of the runtime config
+      // query; cutoff comes from business_timing_profiles.
+      expect(selectSql, isNot(contains('business_day_rollover_hour')));
+      expect(selectSql, isNot(contains('operators op')));
+
+      final selectParams = tx.parameters.firstWhere(
+        (p) => p['operator_id'] == _opA && p['location_id'] == _locA,
+      );
+      expect(selectParams['operator_id'], equals(_opA));
+      expect(selectParams['location_id'], equals(_locA));
     });
 
+    test('webhook URL preserves a non-root path on the configured base '
+        'URI (e.g. https://proxy.example/edge -> '
+        'https://proxy.example/edge/v1/webhooks/...)', () async {
+      final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
+      final resolver = _resolver(
+        pool,
+        base: Uri.parse('https://proxy.example/edge'),
+      );
+      final config = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      expect(
+        config.webhookBaseUri.toString(),
+        equals('https://proxy.example/edge/v1/webhooks/$_vendor/$_opA/$_locA'),
+      );
+    });
+
+    test('webhook URL handles a trailing-slash base without doubling the '
+        'separator', () async {
+      final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
+      final resolver = _resolver(
+        pool,
+        base: Uri.parse('https://api.forgeflow.app/'),
+      );
+      final config = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      expect(
+        config.webhookBaseUri.toString(),
+        equals('https://api.forgeflow.app/v1/webhooks/$_vendor/$_opA/$_locA'),
+      );
+    });
+  });
+
+  group('PerTenantLocationConfigResolver.resolve — business-day start '
+      'compatibility', () {
     test(
-      'operator-level default applies when the location override is '
-      'NULL',
+      'hour-only adapter value is derived from the profile cutoff',
       () async {
         final pool = _ConfigPool(
-          rows: <PostgresRow>[
-            _row(locationRolloverHour: null, operatorRolloverHour: 5),
-          ],
+          rows: <PostgresRow>[_row(businessDayStartLocalTime: '06:30')],
         );
         final resolver = _resolver(pool);
         final config = await resolver.resolve(
@@ -212,18 +169,16 @@ void main() {
           locationId: _locA,
           vendorId: _vendor,
         );
-        expect(config.businessDayRolloverHour, equals(5));
+        expect(config.businessDayStartLocalTime, equals('06:30'));
+        expect(config.businessDayRolloverHour, equals(6));
       },
     );
 
     test(
-      'falls back to the documented default (4) when both location '
-      'and operator rollover columns are NULL',
+      'default cutoff applies when the profile omits a start time',
       () async {
         final pool = _ConfigPool(
-          rows: <PostgresRow>[
-            _row(locationRolloverHour: null, operatorRolloverHour: null),
-          ],
+          rows: <PostgresRow>[_row(businessDayStartLocalTime: null)],
         );
         final resolver = _resolver(pool);
         final config = await resolver.resolve(
@@ -231,6 +186,7 @@ void main() {
           locationId: _locA,
           vendorId: _vendor,
         );
+        expect(config.businessDayStartLocalTime, equals('04:00'));
         expect(
           config.businessDayRolloverHour,
           equals(kPerTenantLocationConfigDefaultRolloverHour),
@@ -239,245 +195,217 @@ void main() {
     );
   });
 
-  group('PerTenantLocationConfigResolver.resolve — cross-tenant isolation',
-      () {
-    test(
-      'second resolve call against a different tenant runs its own '
-      'transaction with its own operator_id/location_id GUCs — the '
-      'first tenant\'s context never bleeds in',
-      () async {
-        final pool = _ConfigPool(
-          rows: <PostgresRow>[_row()],
-          rowsPerTransaction: <List<PostgresRow>>[
-            <PostgresRow>[
-              _row(timezone: 'America/Toronto'),
-            ],
-            <PostgresRow>[
-              _row(timezone: 'Europe/Berlin'),
-            ],
-          ],
-        );
-        final resolver = _resolver(pool);
-        final configA = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        final configB = await resolver.resolve(
-          operatorId: _opB,
-          locationId: _locB,
-          vendorId: _vendor,
-        );
-        expect(configA.restaurantTimezone, equals('America/Toronto'));
-        expect(configB.restaurantTimezone, equals('Europe/Berlin'));
+  group('PerTenantLocationConfigResolver.resolve — cross-tenant isolation', () {
+    test('second resolve call against a different tenant runs its own '
+        'transaction with its own operator_id/location_id GUCs — the '
+        'first tenant\'s context never bleeds in', () async {
+      final pool = _ConfigPool(
+        rows: <PostgresRow>[_row()],
+        rowsPerTransaction: <List<PostgresRow>>[
+          <PostgresRow>[_row(timezone: 'America/Toronto')],
+          <PostgresRow>[_row(timezone: 'Europe/Berlin')],
+        ],
+      );
+      final resolver = _resolver(pool);
+      final configA = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      final configB = await resolver.resolve(
+        operatorId: _opB,
+        locationId: _locB,
+        vendorId: _vendor,
+      );
+      expect(configA.restaurantTimezone, equals('America/Toronto'));
+      expect(configB.restaurantTimezone, equals('Europe/Berlin'));
 
-        expect(pool.transactions, hasLength(2));
+      expect(pool.transactions, hasLength(2));
 
-        // Each transaction sets its OWN operator_id GUC parametrically.
-        final opAParams = pool.transactions[0].parameters
-            .firstWhere((p) => p['value'] == _opA);
-        final opBParams = pool.transactions[1].parameters
-            .firstWhere((p) => p['value'] == _opB);
-        expect(opAParams['value'], equals(_opA));
-        expect(opBParams['value'], equals(_opB));
+      // Each transaction sets its OWN operator_id GUC parametrically.
+      final opAParams = pool.transactions[0].parameters.firstWhere(
+        (p) => p['value'] == _opA,
+      );
+      final opBParams = pool.transactions[1].parameters.firstWhere(
+        (p) => p['value'] == _opB,
+      );
+      expect(opAParams['value'], equals(_opA));
+      expect(opBParams['value'], equals(_opB));
 
-        // Webhook URLs carry the right tenant — a leak would surface
-        // here as a mismatched URL.
-        expect(
-          configA.webhookBaseUri.toString(),
-          equals(
-            'https://api.forgeflow.app/v1/webhooks/$_vendor/$_opA/$_locA',
-          ),
-        );
-        expect(
-          configB.webhookBaseUri.toString(),
-          equals(
-            'https://api.forgeflow.app/v1/webhooks/$_vendor/$_opB/$_locB',
-          ),
-        );
-      },
-    );
+      // Webhook URLs carry the right tenant — a leak would surface
+      // here as a mismatched URL.
+      expect(
+        configA.webhookBaseUri.toString(),
+        equals('https://api.forgeflow.app/v1/webhooks/$_vendor/$_opA/$_locA'),
+      );
+      expect(
+        configB.webhookBaseUri.toString(),
+        equals('https://api.forgeflow.app/v1/webhooks/$_vendor/$_opB/$_locB'),
+      );
+    });
   });
 
   group('PerTenantLocationConfigResolver.resolve — cache TTL', () {
-    test(
-      'second call inside the TTL window returns the cached config '
-      'without opening a second transaction',
-      () async {
-        final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
-        var nowTicks = DateTime.utc(2026, 5, 7, 10);
-        final resolver = _resolver(
-          pool,
-          ttl: const Duration(minutes: 5),
-          now: () => nowTicks,
-        );
-        final first = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        // Advance one minute — still inside the 5-min TTL.
-        nowTicks = nowTicks.add(const Duration(minutes: 1));
-        final second = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        expect(identical(first, second), isTrue);
-        expect(
-          pool.transactions,
-          hasLength(1),
-          reason: 'cache hit must not open a second tx',
-        );
-      },
-    );
+    test('second call inside the TTL window returns the cached config '
+        'without opening a second transaction', () async {
+      final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
+      var nowTicks = DateTime.utc(2026, 5, 7, 10);
+      final resolver = _resolver(
+        pool,
+        ttl: const Duration(minutes: 5),
+        now: () => nowTicks,
+      );
+      final first = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      // Advance one minute — still inside the 5-min TTL.
+      nowTicks = nowTicks.add(const Duration(minutes: 1));
+      final second = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      expect(identical(first, second), isTrue);
+      expect(
+        pool.transactions,
+        hasLength(1),
+        reason: 'cache hit must not open a second tx',
+      );
+    });
 
-    test(
-      'after the TTL expires the next call re-reads through a fresh '
-      'transaction',
-      () async {
-        final pool = _ConfigPool(
-          rowsPerTransaction: <List<PostgresRow>>[
-            <PostgresRow>[_row(timezone: 'America/Toronto')],
-            <PostgresRow>[_row(timezone: 'America/Vancouver')],
-          ],
-        );
-        var nowTicks = DateTime.utc(2026, 5, 7, 10);
-        final resolver = _resolver(
-          pool,
-          ttl: const Duration(minutes: 5),
-          now: () => nowTicks,
-        );
-        final first = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        expect(first.restaurantTimezone, equals('America/Toronto'));
+    test('after the TTL expires the next call re-reads through a fresh '
+        'transaction', () async {
+      final pool = _ConfigPool(
+        rowsPerTransaction: <List<PostgresRow>>[
+          <PostgresRow>[_row(timezone: 'America/Toronto')],
+          <PostgresRow>[_row(timezone: 'America/Vancouver')],
+        ],
+      );
+      var nowTicks = DateTime.utc(2026, 5, 7, 10);
+      final resolver = _resolver(
+        pool,
+        ttl: const Duration(minutes: 5),
+        now: () => nowTicks,
+      );
+      final first = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      expect(first.restaurantTimezone, equals('America/Toronto'));
 
-        // Advance past the TTL — next read must hit the DB again.
-        nowTicks = nowTicks.add(const Duration(minutes: 6));
-        final second = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        expect(second.restaurantTimezone, equals('America/Vancouver'));
-        expect(pool.transactions, hasLength(2));
-      },
-    );
+      // Advance past the TTL — next read must hit the DB again.
+      nowTicks = nowTicks.add(const Duration(minutes: 6));
+      final second = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      expect(second.restaurantTimezone, equals('America/Vancouver'));
+      expect(pool.transactions, hasLength(2));
+    });
 
-    test(
-      'invalidateAll() drops every cached entry so the next resolve '
-      'picks up a freshly-written config',
-      () async {
-        final pool = _ConfigPool(
-          rowsPerTransaction: <List<PostgresRow>>[
-            <PostgresRow>[_row(timezone: 'America/Toronto')],
-            <PostgresRow>[_row(timezone: 'Europe/Berlin')],
-          ],
-        );
-        final resolver = _resolver(pool);
-        await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        resolver.invalidateAll();
-        final second = await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        expect(second.restaurantTimezone, equals('Europe/Berlin'));
-        expect(pool.transactions, hasLength(2));
-      },
-    );
+    test('invalidateAll() drops every cached entry so the next resolve '
+        'picks up a freshly-written config', () async {
+      final pool = _ConfigPool(
+        rowsPerTransaction: <List<PostgresRow>>[
+          <PostgresRow>[_row(timezone: 'America/Toronto')],
+          <PostgresRow>[_row(timezone: 'Europe/Berlin')],
+        ],
+      );
+      final resolver = _resolver(pool);
+      await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      resolver.invalidateAll();
+      final second = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      expect(second.restaurantTimezone, equals('Europe/Berlin'));
+      expect(pool.transactions, hasLength(2));
+    });
 
-    test(
-      'invalidateLocation() targets one (operator, location) tuple — '
-      'other tenants stay cached',
-      () async {
-        final pool = _ConfigPool(
-          rowsPerTransaction: <List<PostgresRow>>[
-            <PostgresRow>[_row(timezone: 'America/Toronto')],
-            <PostgresRow>[_row(timezone: 'Europe/Berlin')],
-            <PostgresRow>[_row(timezone: 'America/Toronto')],
-          ],
-        );
-        final resolver = _resolver(pool);
-        await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        await resolver.resolve(
-          operatorId: _opB,
-          locationId: _locB,
-          vendorId: _vendor,
-        );
-        resolver.invalidateLocation(operatorId: _opA, locationId: _locA);
-        // Tenant A re-reads; tenant B stays cached.
-        await resolver.resolve(
-          operatorId: _opA,
-          locationId: _locA,
-          vendorId: _vendor,
-        );
-        await resolver.resolve(
-          operatorId: _opB,
-          locationId: _locB,
-          vendorId: _vendor,
-        );
-        expect(pool.transactions, hasLength(3));
-      },
-    );
+    test('invalidateLocation() targets one (operator, location) tuple — '
+        'other tenants stay cached', () async {
+      final pool = _ConfigPool(
+        rowsPerTransaction: <List<PostgresRow>>[
+          <PostgresRow>[_row(timezone: 'America/Toronto')],
+          <PostgresRow>[_row(timezone: 'Europe/Berlin')],
+          <PostgresRow>[_row(timezone: 'America/Toronto')],
+        ],
+      );
+      final resolver = _resolver(pool);
+      await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      await resolver.resolve(
+        operatorId: _opB,
+        locationId: _locB,
+        vendorId: _vendor,
+      );
+      resolver.invalidateLocation(operatorId: _opA, locationId: _locA);
+      // Tenant A re-reads; tenant B stays cached.
+      await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      await resolver.resolve(
+        operatorId: _opB,
+        locationId: _locB,
+        vendorId: _vendor,
+      );
+      expect(pool.transactions, hasLength(3));
+    });
   });
 
   group('PerTenantLocationConfigResolver.resolve — error paths', () {
-    test(
-      'throws PerTenantConfigNotFound when the location row is '
-      'missing for the operator',
-      () async {
-        final pool = _ConfigPool(rows: const <PostgresRow>[]);
-        final resolver = _resolver(pool);
-        await expectLater(
-          resolver.resolve(
-            operatorId: _opA,
-            locationId: _locA,
-            vendorId: _vendor,
-          ),
-          throwsA(isA<PerTenantConfigNotFound>()),
-        );
-      },
-    );
-
-    test(
-      'after a NotFound failure, a fresh row landing in the DB resolves '
-      '— the resolver does NOT cache the failure',
-      () async {
-        final pool = _ConfigPool(
-          rowsPerTransaction: <List<PostgresRow>>[
-            const <PostgresRow>[],
-            <PostgresRow>[_row()],
-          ],
-        );
-        final resolver = _resolver(pool);
-        await expectLater(
-          resolver.resolve(
-            operatorId: _opA,
-            locationId: _locA,
-            vendorId: _vendor,
-          ),
-          throwsA(isA<PerTenantConfigNotFound>()),
-        );
-        final second = await resolver.resolve(
+    test('throws PerTenantConfigNotFound when the location row is '
+        'missing for the operator', () async {
+      final pool = _ConfigPool(rows: const <PostgresRow>[]);
+      final resolver = _resolver(pool);
+      await expectLater(
+        resolver.resolve(
           operatorId: _opA,
           locationId: _locA,
           vendorId: _vendor,
-        );
-        expect(second.restaurantTimezone, equals('America/Toronto'));
-      },
-    );
+        ),
+        throwsA(isA<PerTenantConfigNotFound>()),
+      );
+    });
+
+    test('after a NotFound failure, a fresh row landing in the DB resolves '
+        '— the resolver does NOT cache the failure', () async {
+      final pool = _ConfigPool(
+        rowsPerTransaction: <List<PostgresRow>>[
+          const <PostgresRow>[],
+          <PostgresRow>[_row()],
+        ],
+      );
+      final resolver = _resolver(pool);
+      await expectLater(
+        resolver.resolve(
+          operatorId: _opA,
+          locationId: _locA,
+          vendorId: _vendor,
+        ),
+        throwsA(isA<PerTenantConfigNotFound>()),
+      );
+      final second = await resolver.resolve(
+        operatorId: _opA,
+        locationId: _locA,
+        vendorId: _vendor,
+      );
+      expect(second.restaurantTimezone, equals('America/Toronto'));
+    });
 
     test('rejects a blank vendor id', () async {
       final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
@@ -493,38 +421,32 @@ void main() {
       expect(pool.transactions, isEmpty);
     });
 
-    test(
-      'rejects vendor ids with characters outside [a-z0-9_]+ (defends '
-      'the composed webhook URL against path traversal)',
-      () async {
-        final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
-        final resolver = _resolver(pool);
-        expect(
-          () => resolver.resolve(
-            operatorId: _opA,
-            locationId: _locA,
-            vendorId: '../evil',
-          ),
-          throwsA(isA<ArgumentError>()),
-        );
-        expect(pool.transactions, isEmpty);
-      },
-    );
+    test('rejects vendor ids with characters outside [a-z0-9_]+ (defends '
+        'the composed webhook URL against path traversal)', () async {
+      final pool = _ConfigPool(rows: <PostgresRow>[_row()]);
+      final resolver = _resolver(pool);
+      expect(
+        () => resolver.resolve(
+          operatorId: _opA,
+          locationId: _locA,
+          vendorId: '../evil',
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(pool.transactions, isEmpty);
+    });
 
-    test(
-      'rejects a non-http(s) public base URI at construction so a '
-      'misconfigured boot cannot mint a file:// or javascript: URL',
-      () {
-        final pool = _ConfigPool();
-        expect(
-          () => PerTenantLocationConfigResolver(
-            TenantTransactionWrapper(pool),
-            webhookPublicBaseUri: Uri.parse('file:///etc/passwd'),
-          ),
-          throwsA(isA<ArgumentError>()),
-        );
-      },
-    );
+    test('rejects a non-http(s) public base URI at construction so a '
+        'misconfigured boot cannot mint a file:// or javascript: URL', () {
+      final pool = _ConfigPool();
+      expect(
+        () => PerTenantLocationConfigResolver(
+          TenantTransactionWrapper(pool),
+          webhookPublicBaseUri: Uri.parse('file:///etc/passwd'),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
   });
 }
 
@@ -535,10 +457,7 @@ void main() {
 ///   * [rowsPerTransaction] — one entry per transaction in order.
 ///     Tests that exercise cache miss / multi-tenant flows pass this.
 class _ConfigPool implements PostgresPool {
-  _ConfigPool({
-    this.rows = const <PostgresRow>[],
-    this.rowsPerTransaction,
-  });
+  _ConfigPool({this.rows = const <PostgresRow>[], this.rowsPerTransaction});
 
   final List<PostgresRow> rows;
   final List<List<PostgresRow>>? rowsPerTransaction;
@@ -582,8 +501,55 @@ class _ConfigTransaction extends PostgresTransaction {
     if (_finalized) throw StateError('transaction already finalized');
     executedSql.add(sql);
     this.parameters.add(parameters);
-    if (sql.contains('from public.locations loc')) {
-      return rows;
+    if (sql.contains('from public.business_timing_profiles p')) {
+      if (rows.isEmpty) return const <PostgresRow>[];
+      final row = rows.single;
+      final start =
+          row['business_day_start_local_time'] as String? ??
+          '${kPerTenantLocationConfigDefaultRolloverHour.toString().padLeft(2, '0')}:00';
+      return <PostgresRow>[
+        <String, Object?>{
+          'profile_id': 'profile-1',
+          'operator_id': _opA,
+          'scope_type': 'operator',
+          'scope_id': _opA,
+          'display_name': 'Default',
+          'business_day_start_local_time': start,
+          'week_start_day': 1,
+          'close_authority': 'app_local_cutoff_fallback',
+          'local_close_fallback_time': null,
+          'effective_from_business_date': '2026-01-01',
+          'effective_until_business_date': null,
+          'supersedes_profile_id': null,
+          'created_by': null,
+          'updated_by': null,
+          'created_at': DateTime.utc(2026, 1, 1),
+          'updated_at': DateTime.utc(2026, 1, 1),
+          'location_timezone': row['timezone'],
+          'service_periods': const <Map<String, Object?>>[
+            <String, Object?>{
+              'service_period_id': 'service-period-1',
+              'operator_id': _opA,
+              'profile_id': 'profile-1',
+              'service_period_key': 'lunch',
+              'label': 'Lunch',
+              'short_label': 'L',
+              'sort_order': 1,
+              'start_local_time': '11:00',
+              'end_local_time': '15:00',
+              'rolls_past_midnight': false,
+              'applicable_weekdays': <int>[1, 2, 3, 4, 5, 6, 7],
+            },
+          ],
+        },
+      ];
+    }
+    if (sql.contains('location_timezone') &&
+        sql.contains('from public.locations loc')) {
+      if (rows.isEmpty) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{'location_timezone': rows.single['timezone']},
+      ];
     }
     return const <PostgresRow>[];
   }

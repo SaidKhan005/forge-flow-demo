@@ -173,7 +173,7 @@ class SqliteDatabase {
   Future<Database>? _initInFlight;
 
   /// Current schema version.
-  static const int schemaVersion = 40;
+  static const int schemaVersion = 41;
 
   Future<Database> get database {
     final existing = _db;
@@ -706,6 +706,9 @@ class SqliteDatabase {
     }
     if (oldV < 40) {
       await _migrateToV40(db);
+    }
+    if (oldV < 41) {
+      await _migrateToV41(db);
     }
   }
 

@@ -88,6 +88,32 @@ void main() {
       },
     );
 
+    test(
+      'resume revalidation rereads FCM and updates a changed token',
+      () async {
+        final messaging = _FakeMessagingClient(token: 'token_1');
+        final presenter = _FakeForegroundPresenter();
+        final gateway = _FakeTokenGateway();
+        final coordinator = _buildCoordinator(
+          messaging: messaging,
+          presenter: presenter,
+          gateway: gateway,
+        );
+
+        await coordinator.updateRegistrationContext(context);
+        await coordinator.start();
+        messaging.token = 'token_2';
+
+        await coordinator.reValidateToken();
+
+        expect(messaging.tokenReads, 2);
+        expect(gateway.updates, hasLength(1));
+        expect(gateway.updates.single.previousToken, 'token_1');
+        expect(gateway.updates.single.registration.token, 'token_2');
+        expect(gateway.updates.single.registration.context, context);
+      },
+    );
+
     test('deletes the registered token on sign-out', () async {
       final messaging = _FakeMessagingClient(token: 'token_1');
       final presenter = _FakeForegroundPresenter();
@@ -247,7 +273,7 @@ Future<void> _drainMicrotasks() async {
 class _FakeMessagingClient implements MobilePushMessagingClient {
   _FakeMessagingClient({this.token, this.initialMessage});
 
-  final String? token;
+  String? token;
   final MobilePushRemoteMessage? initialMessage;
   final StreamController<MobilePushRemoteMessage> _foreground =
       StreamController<MobilePushRemoteMessage>.broadcast();

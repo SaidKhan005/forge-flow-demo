@@ -3,7 +3,7 @@
 // Persistence layer for the per-(operator, location) override table
 // added by `db/migrations/202605150200_phase_u_fu_hp11_account_per_location_overrides.sql`.
 // Each override row carries optional overrides for the three
-// AccountScreen settings cards (region + business-day + identity
+// AccountScreen settings cards (region + locale/currency + identity
 // contact email + phone). NULL columns inherit the business default
 // from `public.operators`.
 //
@@ -187,6 +187,13 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
       throw const LocationAccountOverridesInputError(
         field: 'patch',
         message: 'at least one field must be set or cleared',
+      );
+    }
+    if (patch.businessDayRolloverHour != null ||
+        patch.clearBusinessDayRolloverHour) {
+      throw const LocationAccountOverridesInputError(
+        field: 'businessDayRolloverHour',
+        message: 'businessDayRolloverHour is edited in Business Timing.',
       );
     }
     final ctx = TenantContext(

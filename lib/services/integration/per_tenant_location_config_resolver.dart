@@ -3,10 +3,12 @@
 // Adapter Deps records (Lightspeed LSK, SevenRooms, …) need three
 // per-tenant runtime values that the credential bridges do not supply:
 //
-//   * `restaurantTimezone` — IANA id, source-of-truth: `locations.timezone`
-//   * `businessDayRolloverHour` — 0..23, source-of-truth: per-location
-//     override (`locations.business_day_rollover_hour`) when set, else
-//     the operator default (`operators.rollover_hour`).
+//   * `restaurantTimezone` — canonical IANA id, resolved from the
+//     location plus hierarchy timing overrides.
+//   * `businessDayStartLocalTime` — canonical HH:MM cutoff from the
+//     effective business-timing profile.
+//   * `businessDayRolloverHour` — deprecated adapter compatibility
+//     integer, derived from `businessDayStartLocalTime`.
 //   * `webhookBaseUri` — the F&F endpoint the vendor calls back into.
 //     Composed from the configured public base URI plus the canonical
 //     `/v1/webhooks/<vendorId>/<operatorId>/<locationId>` shape used
@@ -30,18 +32,18 @@ import 'dart:collection';
 
 import '../../infrastructure/persistence/postgres/operator_scoped_repository.dart';
 import '../../infrastructure/persistence/postgres/postgres_executor.dart';
+import '../../infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
 import '../../infrastructure/persistence/postgres/tenant_context.dart';
 
 /// Default cache time-to-live for resolved configs. Five minutes keeps
 /// the resolver cheap under the 1.C binder's webhook fan-out while
-/// still picking up operator-side timezone / rollover edits within
-/// one cycle.
+/// still picking up operator-side timezone / timing-profile edits
+/// within one cycle.
 const Duration kPerTenantLocationConfigDefaultTtl = Duration(minutes: 5);
 
-/// Default operator-level rollover when neither `locations` nor
-/// `operators` carries a value. Mirrors the
-/// `operators.rollover_hour` column default declared in
-/// `db/migrations/202605070000_phase_11W_7_operator_account_fields.sql`.
+/// Deprecated adapter fallback when no effective business-timing profile
+/// is available. Canonical callers should use
+/// [PerTenantLocationConfig.businessDayStartLocalTime].
 const int kPerTenantLocationConfigDefaultRolloverHour = 4;
 
 /// Resolved per-(operator, location, vendor) runtime config the
@@ -52,6 +54,7 @@ class PerTenantLocationConfig {
     required this.locationId,
     required this.vendorId,
     required this.restaurantTimezone,
+    required this.businessDayStartLocalTime,
     required this.businessDayRolloverHour,
     required this.webhookBaseUri,
   }) {
@@ -86,10 +89,12 @@ class PerTenantLocationConfig {
   /// they land in the table; the resolver trusts what it reads.
   final String restaurantTimezone;
 
-  /// Business-day rollover hour 0..23. Per-location override
-  /// (`locations.business_day_rollover_hour`) wins; falls back to the
-  /// operator-level default (`operators.rollover_hour`); finally
-  /// [kPerTenantLocationConfigDefaultRolloverHour] when neither is set.
+  /// Canonical business-day cutoff (HH:MM) resolved from
+  /// business_timing_profiles.
+  final String businessDayStartLocalTime;
+
+  /// Deprecated integer view of [businessDayStartLocalTime] for older
+  /// adapter interfaces that still take an hour-only cutoff.
   final int businessDayRolloverHour;
 
   /// Vendor-aware F&F webhook URL — the value the adapter surfaces in
@@ -103,10 +108,7 @@ class PerTenantLocationConfig {
 /// operator. Typed so callers can translate the failure into a 404 at
 /// their boundary instead of leaking a generic `StateError`.
 class PerTenantConfigNotFound implements Exception {
-  PerTenantConfigNotFound({
-    required this.operatorId,
-    required this.locationId,
-  });
+  PerTenantConfigNotFound({required this.operatorId, required this.locationId});
 
   final String operatorId;
   final String locationId;
@@ -139,9 +141,9 @@ class PerTenantLocationConfigResolver extends OperatorScopedRepository {
     required Uri webhookPublicBaseUri,
     Duration cacheTtl = kPerTenantLocationConfigDefaultTtl,
     DateTime Function()? now,
-  })  : _webhookPublicBaseUri = _validateBaseUri(webhookPublicBaseUri),
-        _cacheTtl = cacheTtl,
-        _now = now ?? DateTime.now;
+  }) : _webhookPublicBaseUri = _validateBaseUri(webhookPublicBaseUri),
+       _cacheTtl = cacheTtl,
+       _now = now ?? DateTime.now;
 
   final Uri _webhookPublicBaseUri;
   final Duration _cacheTtl;
@@ -209,8 +211,7 @@ class PerTenantLocationConfigResolver extends OperatorScopedRepository {
     required String locationId,
   }) {
     _cache.removeWhere(
-      (key, _) =>
-          key.operatorId == operatorId && key.locationId == locationId,
+      (key, _) => key.operatorId == operatorId && key.locationId == locationId,
     );
   }
 
@@ -220,44 +221,31 @@ class PerTenantLocationConfigResolver extends OperatorScopedRepository {
     required String locationId,
     required String vendorId,
   }) async {
-    final rows = await exec.query(
-      'select '
-      '  loc.timezone as timezone, '
-      '  loc.business_day_rollover_hour as location_rollover_hour, '
-      '  op.rollover_hour as operator_rollover_hour '
-      'from public.locations loc '
-      'join public.operators op '
-      '  on op.operator_id = loc.operator_id '
-      'where loc.operator_id = @operator_id::uuid '
-      '  and loc.location_id = @location_id::uuid '
-      'limit 1',
-      parameters: <String, Object?>{
-        'operator_id': operatorId,
-        'location_id': locationId,
-      },
-    );
-    if (rows.isEmpty) return null;
-    final row = rows.single;
-    final timezone = row['timezone'];
-    if (timezone is! String || timezone.trim().isEmpty) {
-      // The schema declares timezone NOT NULL, but defend in depth:
-      // a stub that returned null would otherwise crash inside the
-      // value-object constructor with a less specific error.
-      throw StateError(
-        'locations.timezone is null/blank for operator=$operatorId '
-        'location=$locationId',
-      );
-    }
-    final rolloverHour = _resolveRolloverHour(
-      locationRollover: _intOrNull(row['location_rollover_hour']),
-      operatorRollover: _intOrNull(row['operator_rollover_hour']),
-    );
+    final timezone =
+        await BusinessTimingProfilesRepository.readLocationBusinessTimezoneInTransaction(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+        );
+    if (timezone == null) return null;
+    final candidates =
+        await BusinessTimingProfilesRepository.listCandidateProfilesForLocationInTransaction(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+          businessDate: _formatDate(_now().toUtc()),
+        );
+    final businessDayStartLocalTime = candidates.isEmpty
+        ? '${kPerTenantLocationConfigDefaultRolloverHour.toString().padLeft(2, '0')}:00'
+        : candidates.last.businessDayStartLocalTime;
+    final rolloverHour = _hourFromLocalTime(businessDayStartLocalTime);
 
     return PerTenantLocationConfig(
       operatorId: operatorId,
       locationId: locationId,
       vendorId: vendorId,
       restaurantTimezone: timezone,
+      businessDayStartLocalTime: businessDayStartLocalTime,
       businessDayRolloverHour: rolloverHour,
       webhookBaseUri: _composeWebhookUri(
         vendorId: vendorId,
@@ -288,20 +276,19 @@ class PerTenantLocationConfigResolver extends OperatorScopedRepository {
   }
 }
 
-int _resolveRolloverHour({
-  required int? locationRollover,
-  required int? operatorRollover,
-}) {
-  if (locationRollover != null) return locationRollover;
-  if (operatorRollover != null) return operatorRollover;
-  return kPerTenantLocationConfigDefaultRolloverHour;
+int _hourFromLocalTime(String value) {
+  final hour = int.tryParse(value.split(':').first);
+  if (hour == null || hour < 0 || hour > 23) {
+    return kPerTenantLocationConfigDefaultRolloverHour;
+  }
+  return hour;
 }
 
-int? _intOrNull(Object? value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  return null;
+String _formatDate(DateTime value) {
+  final utc = value.toUtc();
+  return '${utc.year.toString().padLeft(4, '0')}-'
+      '${utc.month.toString().padLeft(2, '0')}-'
+      '${utc.day.toString().padLeft(2, '0')}';
 }
 
 void _validateVendorId(String vendorId) {
@@ -313,11 +300,7 @@ void _validateVendorId(String vendorId) {
   // `[a-z0-9_]+`. Reject anything else so a path-traversal attempt
   // cannot land inside the composed URL.
   if (!_vendorIdPattern.hasMatch(vendorId)) {
-    throw ArgumentError.value(
-      vendorId,
-      'vendorId',
-      'must match [a-z0-9_]+',
-    );
+    throw ArgumentError.value(vendorId, 'vendorId', 'must match [a-z0-9_]+');
   }
 }
 

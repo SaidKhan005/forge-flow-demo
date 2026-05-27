@@ -450,6 +450,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         subscriptionTier: account.subscriptionTier,
         trialMode: account.trialMode,
         trialExpiresAt: account.trialExpiresAt,
+        planSnapshot: account.planSnapshot,
       );
       if (_hasConsoleAccess(session)) {
         _emit(OperatorWebCompleted(session: session));
@@ -742,6 +743,8 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         PermissionKeys.adminUsersView,
         PermissionKeys.forgeflowSettingsView,
         PermissionKeys.integrationsConfigure,
+        PermissionKeys.teamAuditLogView,
+        PermissionKeys.teamAuditLogExport,
       }.contains,
     );
   }
@@ -788,6 +791,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
       subscriptionTier: session.subscriptionTier,
       trialMode: session.trialMode,
       trialExpiresAt: session.trialExpiresAt,
+      planSnapshot: session.planSnapshot,
     );
   }
 

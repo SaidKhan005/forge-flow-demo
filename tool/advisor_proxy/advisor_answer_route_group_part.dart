@@ -67,6 +67,37 @@ const String advisorAnswerPath = '/v1/advisor/answer';
 /// audit/replay can tell the agentic answer endpoint apart.
 const String kAdvisorAnswerSurface = 'advisor_answer';
 
+/// Existing advisor-read entitlement carried by the verified caller scope.
+/// This route gates on it before any encryption, cap, tool, or provider work.
+const String kAdvisorAnswerReadPermission = 'advisor.read';
+
+/// Safe server-side fallback for answer routing until a richer plan resolver
+/// is injected into this handler. Client-supplied economics are ignored.
+const String kAdvisorAnswerDefaultSubscriptionTier = 'basic';
+const String kAdvisorAnswerDefaultQueryClass = 'methodology_lookup';
+const String kAdvisorAnswerFeatureSlug = 'advisor';
+
+/// Server-owned answer-route economics and feature entitlement.
+///
+/// The client body never decides these values. Production resolves them from
+/// operator billing state plus the global feature-entitlement matrix; tests can
+/// inject a tiny resolver to prove forged request bodies are ignored.
+class AdvisorAnswerPlan {
+  const AdvisorAnswerPlan({
+    required this.subscriptionTier,
+    required this.queryClass,
+    required this.advisorEnabled,
+  });
+
+  final String subscriptionTier;
+  final String queryClass;
+  final bool advisorEnabled;
+}
+
+abstract class AdvisorAnswerPlanResolver {
+  Future<AdvisorAnswerPlan> resolve(OperatorContext operator);
+}
+
 /// Hard cap on prior conversation turns accepted from the client. Bounds the
 /// prompt size (and so the cap-check estimate + provider cost) so a client
 /// cannot replay an unbounded history. Over the cap → 400
@@ -89,16 +120,18 @@ const int kAdvisorAnswerMaxQuestionChars = 8000;
 /// resolved (the dispatch site resolves [operator] and reads [body], exactly
 /// like the retrieve route). Runs the full agentic answer flow:
 ///
-///   1. Parse + validate the body (question, optional conversation_id /
-///      prior_turns / restaurant_id / subscription_tier / query_class).
-///   2. FAIL-CLOSED on the encryption seam BEFORE any provider work.
-///   3. HP #9 cap-check via [usageGuard] (when wired).
-///   4. Tier → model routing.
-///   5. Assemble the tool catalog (retrieve_methodology when retrieval is
+///   1. Gate on the server-derived `advisor.read` caller entitlement.
+///   2. Parse + validate the body (question, optional conversation_id /
+///      prior_turns; client-supplied economics are ignored).
+///   3. Resolve server-side plan / feature entitlement when wired.
+///   4. FAIL-CLOSED on the encryption seam BEFORE any provider work.
+///   5. HP #9 cap-check via [usageGuard] (when wired).
+///   6. Tier → model routing from server-owned values.
+///   7. Assemble the tool catalog (retrieve_methodology when retrieval is
 ///      wired; always the three operational tools) and run the engine.
-///   6. Encrypt + persist the user turn and the assistant turn.
-///   7. Meter the Anthropic spend under [kAdvisorAnswerUsageClass].
-///   8. Return the answer + citations + conversation_id.
+///   8. Encrypt + persist the user turn and the assistant turn.
+///   9. Meter the Anthropic spend under [kAdvisorAnswerUsageClass].
+///   10. Return the answer + citations + conversation_id.
 ///
 /// All injected dependencies are OPTIONAL so existing `routeRequest` callers
 /// (and the many tests that drive other routes) stay byte-compatible; when a
@@ -140,12 +173,25 @@ Future<void> _handleAdvisorAnswer({
   TargetCycleRepository? targetCycleRepository,
   WeeklyPlanSnapshotRepository? weeklyPlanSnapshotRepository,
   ShiftRecordsReadRepository? shiftRecordsReadRepository,
+  AdvisorAnswerPlanResolver? planResolver,
   // ── metering (HP #9) ──
   ProxyUsageGuard? usageGuard,
   ProxyAccountingStore? accountingStore,
   DateTime Function()? clock,
 }) async {
   final answerClock = clock ?? DateTime.now;
+  final requestStartedAt = answerClock().toUtc();
+
+  // Authorization runs before encryption/provider/cap work. The verified
+  // caller scope is server-derived; a body cannot grant advisor read access.
+  if (!operator.roles.contains(kAdvisorAnswerReadPermission)) {
+    _writeJson(response, 403, const <String, Object?>{
+      'error': 'permission_denied',
+      'message': 'advisor.read permission is required to use advisor answer',
+      'permission_key': kAdvisorAnswerReadPermission,
+    });
+    return;
+  }
 
   // ── (a) Parse + validate the body ──────────────────────────────────────
   final rawQuestion = body['question'];
@@ -160,7 +206,8 @@ Future<void> _handleAdvisorAnswer({
   if (question.length > kAdvisorAnswerMaxQuestionChars) {
     _writeJson(response, 400, <String, Object?>{
       'error': 'invalid_question',
-      'message': 'question must be at most '
+      'message':
+          'question must be at most '
           '$kAdvisorAnswerMaxQuestionChars characters',
     });
     return;
@@ -192,19 +239,38 @@ Future<void> _handleAdvisorAnswer({
   }
   final priorTurns = (priorTurnsResult as _AdvisorPriorTurnsParsed).turns;
 
-  // subscription_tier / query_class are cost levers (tier → model). Defaults
-  // mirror the smoke route: 'basic' tier (safe Haiku fallback) +
-  // 'methodology_lookup' query class.
-  final subscriptionTier = _nonBlankOr(
-    body['subscription_tier'] is String
-        ? body['subscription_tier'] as String
-        : null,
-    'basic',
-  );
-  final queryClass = _nonBlankOr(
-    body['query_class'] is String ? body['query_class'] as String : null,
-    'methodology_lookup',
-  );
+  // subscription_tier / query_class are economics levers. The answer route
+  // must not trust client-provided values. Production resolves them from
+  // server-side billing state; scaffolds fall back to safe Haiku defaults.
+  var subscriptionTier = kAdvisorAnswerDefaultSubscriptionTier;
+  var queryClass = kAdvisorAnswerDefaultQueryClass;
+  if (planResolver != null) {
+    AdvisorAnswerPlan plan;
+    try {
+      plan = await planResolver.resolve(operator);
+    } catch (_) {
+      _writeJson(response, 503, const <String, Object?>{
+        'error': 'advisor_answer_plan_unavailable',
+        'message':
+            'advisor answer is unavailable: plan entitlement could not be '
+            'resolved',
+      });
+      return;
+    }
+    if (!plan.advisorEnabled) {
+      _writeJson(response, 403, const <String, Object?>{
+        'error': 'advisor_not_enabled',
+        'message': 'advisor is not enabled for this plan',
+        'feature_slug': kAdvisorAnswerFeatureSlug,
+      });
+      return;
+    }
+    subscriptionTier = _nonBlankOr(
+      plan.subscriptionTier,
+      kAdvisorAnswerDefaultSubscriptionTier,
+    );
+    queryClass = _nonBlankOr(plan.queryClass, kAdvisorAnswerDefaultQueryClass);
+  }
 
   // ── (b) FAIL-CLOSED on the encryption seam, BEFORE any provider work ────
   // HP #7 / encryption-first: there is no path that produces an answer
@@ -225,7 +291,8 @@ Future<void> _handleAdvisorAnswer({
   if (completeFn == null) {
     _writeJson(response, 503, const <String, Object?>{
       'error': 'advisor_answer_not_configured',
-      'message': 'advisor answer is unavailable: the language model provider '
+      'message':
+          'advisor answer is unavailable: the language model provider '
           'is not configured',
     });
     return;
@@ -237,7 +304,8 @@ Future<void> _handleAdvisorAnswer({
   // ACTUAL provider-returned token totals drive the recorded cost below. The
   // guard is OPTIONAL — when unwired (tests/scaffold) no cap-check runs, just
   // like the smoke route with `usageGuard == null`.
-  final estimatedChars = question.length +
+  final estimatedChars =
+      question.length +
       priorTurns.fold<int>(0, (sum, t) => sum + t.content.length);
   final estimatedInputTokens = (estimatedChars + 3) ~/ 4;
   UsageDecisionAllowed? usageDecision;
@@ -264,6 +332,69 @@ Future<void> _handleAdvisorAnswer({
     queryClass: queryClass,
   );
   final modelId = modelRouting.modelIdFor(llmTier);
+
+  ProxyAccountingReserved? accountingReservation;
+  String? accountingIdempotencyKey;
+  if (accountingStore != null) {
+    final headerIdempotencyKey = request.headers.value('Idempotency-Key');
+    final idempotencyKey =
+        (headerIdempotencyKey == null || headerIdempotencyKey.trim().isEmpty)
+        ? 'advisor-answer-auto:${generateUuidV4()}'
+        : headerIdempotencyKey.trim();
+    final preflightOutputTokens =
+        usageDecision?.tier.maxOutputTokens ??
+        PolicyTier.launch.maxOutputTokens;
+    final preflightCostCents =
+        LlmCostRateRegistry.rateFor(modelId)?.costCentsFor(
+          inputTokens: estimatedInputTokens,
+          outputTokens: preflightOutputTokens,
+        ) ??
+        0;
+    final preflightTelemetry = ProxyUsageTelemetry(
+      queryClass: queryClass,
+      cacheHit: false,
+      llmTier: llmTier.id,
+      modelUsed: modelId,
+    );
+    ProxyAccountingStartResult start;
+    try {
+      start = await accountingStore.startRequest(
+        idempotencyKey: idempotencyKey,
+        requestType: kAdvisorAnswerSurface,
+        operator: operator,
+        usageClass: kAdvisorAnswerUsageClass,
+        telemetry: preflightTelemetry,
+        estimate: ProxyUsageChargeEstimate(
+          tokenCount: estimatedInputTokens + preflightOutputTokens,
+          costCents: preflightCostCents,
+        ),
+        now: answerClock().toUtc(),
+      );
+    } on Exception {
+      _writeJson(response, 503, const <String, Object?>{
+        'error': 'accounting_store_unavailable',
+        'message': 'proxy accounting store unavailable',
+      });
+      return;
+    }
+    if (start is ProxyAccountingReplayed) {
+      _writeJson(response, 200, <String, Object?>{
+        ...start.responsePayload,
+        'idempotent_replay': true,
+      });
+      return;
+    }
+    if (start is ProxyAccountingRefused) {
+      _writeJson(response, 402, <String, Object?>{
+        'error': 'usage_cap_reached',
+        'message': 'usage cap reached before provider call',
+        'cap_status': start.capStatus.toJson(),
+      });
+      return;
+    }
+    accountingReservation = start as ProxyAccountingReserved;
+    accountingIdempotencyKey = idempotencyKey;
+  }
 
   // ── (e) Assemble the tool catalog ───────────────────────────────────────
   final toolDefinitions = <AnthropicToolDefinition>[];
@@ -351,7 +482,9 @@ Future<void> _handleAdvisorAnswer({
   // HP #7: encryption happens IN-PROCESS; only ciphertext + IV + key ref +
   // hash reach the repository. The user turn is turnIndex = priorTurns.length
   // (0-indexed conversation position); the assistant turn is the next index.
-  final envelope = AdvisorConversationEnvelope(resolver: conversationCmkResolver);
+  final envelope = AdvisorConversationEnvelope(
+    resolver: conversationCmkResolver,
+  );
   final userTurnIndex = priorTurns.length;
   final assistantTurnIndex = priorTurns.length + 1;
 
@@ -367,10 +500,7 @@ Future<void> _handleAdvisorAnswer({
         );
 
   try {
-    final userEncrypted = envelope.encryptTurn(
-      role: 'user',
-      content: question,
-    );
+    final userEncrypted = envelope.encryptTurn(role: 'user', content: question);
     await conversationLogRepository.recordTurn(
       // HP #4: scope is the verified caller's, NEVER the body.
       operatorId: operator.operatorId,
@@ -480,7 +610,7 @@ Future<void> _handleAdvisorAnswer({
   // ── (i) Success envelope ────────────────────────────────────────────────
   // HP #7: no key field anywhere. Citations are the engine's real,
   // tool-sourced citations only.
-  _writeJson(response, 200, <String, Object?>{
+  final responsePayload = <String, Object?>{
     'answer': result.answer,
     'citations': <Map<String, Object?>>[
       for (final citation in result.citations) citation.toJson(),
@@ -494,7 +624,34 @@ Future<void> _handleAdvisorAnswer({
     'hit_iteration_cap': result.hitIterationCap,
     'operator_id': operator.operatorId,
     'location_id': operator.locationId,
-  });
+  };
+  if (accountingStore != null &&
+      accountingReservation != null &&
+      accountingIdempotencyKey != null) {
+    final latencyMs = answerClock()
+        .toUtc()
+        .difference(requestStartedAt)
+        .inMilliseconds;
+    await accountingStore.completeRequest(
+      operator: operator,
+      idempotencyKey: accountingIdempotencyKey,
+      responsePayload: responsePayload,
+      now: answerClock().toUtc(),
+      stats: ProxyRequestStats(
+        usageClass: kAdvisorAnswerUsageClass,
+        resultStatus: 'success',
+        requestId: accountingReservation.requestId,
+        actorUserId: operator.isServicePrincipal ? null : operator.userId,
+        provider: providerFromModelId(result.modelUsed),
+        modelId: result.modelUsed,
+        promptTokenCount: result.totalInputTokens,
+        completionTokenCount: result.totalOutputTokens,
+        costUsd: costCents / 100,
+        latencyMs: latencyMs < 0 ? 0 : latencyMs,
+      ),
+    );
+  }
+  _writeJson(response, 200, responsePayload);
 }
 
 // ─── prior_turns parsing ───────────────────────────────────────────────────────
@@ -570,7 +727,8 @@ Object _parseAdvisorPriorTurns(Object? raw) {
     if (content.length > kAdvisorAnswerMaxPriorTurnChars) {
       return _AdvisorPriorTurnsFailure(<String, Object?>{
         'error': 'invalid_prior_turns',
-        'message': 'each prior turn content must be at most '
+        'message':
+            'each prior turn content must be at most '
             '$kAdvisorAnswerMaxPriorTurnChars characters',
       });
     }

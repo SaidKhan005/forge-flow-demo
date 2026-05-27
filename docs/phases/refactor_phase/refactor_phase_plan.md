@@ -12,7 +12,8 @@ This is the "refactor phase doc (TBD location)" promised by
   backlog items 1, 4, 8** + the `dart_code_metrics` ratchet (items 2/6
   landed advisory).
 - `docs/POST_HARDENING_FOLLOWUPS.md` **"Refactor phase scope" (R-1/R-2/R-3)**
-  + the **P3 orphaned-`AuditLogHierarchyFilterPane`** flag (2026-05-22).
+  + the **P3 orphaned-`AuditLogHierarchyFilterPane`** flag, now closed
+  2026-05-26 by deleting the dead pane.
 
 **Binding doctrine:** every Phase B slice is structural extraction with
 **zero behavior change**, governed by the reusable
@@ -122,7 +123,7 @@ ratchet count strictly down (never up). Pure structural extraction —
 
 | Slice | Scope | Effort | Gate | Pre-req |
 |---|---|---|---|---|
-| **B0 — Codex follow-up: remove orphaned pane** | Delete `lib/operator_web/screens/audit_log_hierarchy_filter_pane.dart` (~693 lines) + fix the stale doc comment at `audit_log_screen.dart:123-124`. Its test is already deleted (PR #1157). Proof: `rg AuditLogHierarchyFilterPane lib` = 0 refs; full suite green; live screen still covered by `audit_log_screen_test` + `audit_log_integrity_badge_test`. **Operator-web = Codex's lane** → execute in Codex lane or with operator approval. | S | none (dead code) | A1 |
+| **B0 — CLOSED 2026-05-26: remove orphaned pane** | Removed `lib/operator_web/screens/audit_log_hierarchy_filter_pane.dart` (~693 lines) + fixed the stale doc comment at `audit_log_screen.dart:123-124`. Live screen remains covered by `audit_log_screen_test` + `audit_log_integrity_badge_test`. | S | none (dead code) | A1 |
 | **B1 — R-1: `my_account_screen` decomposition** | Extract MFA / sessions / profile / security panes into siblings; parent becomes a thin tab-host. Inherits whatever IA Wave 2 settled (OW-5a / OW-8d). | M | happy-state | A2(a), A3 |
 | **B2 — Item 4: top-3 screen splits + `operator_web_router`** | Verbatim-relocation `part`-file split (the proven `sqlite_database_seed` pattern, item 7) of `operator_location_admin_screen`, `admin_routes`, `roles_hierarchy_sessions_admin_screen`, and `operator_web_router` (`_buildPostOnboardingShell`). 4 independent PRs. | M each | happy-state | A2(c), A3 |
 | **B3 — R-2: proxy helper extraction + ceiling re-lock** | Promote envelope helpers to `tool/advisor_proxy/route_helpers.dart`; migrate the 3 hybrid dispatchers (B2.1, B11.2, C-4) to Pattern A (`router.tryHandle`); **lower** `kAdvisorProxyMaxLines` to new size + ~200 headroom. | M | **proxy** happy-state | A2(b) |

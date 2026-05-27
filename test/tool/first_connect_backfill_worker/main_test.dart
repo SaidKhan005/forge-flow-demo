@@ -74,14 +74,39 @@ void main() {
     });
   });
 
+  group('WorkerCanonicalSink', () {
+    test('demo flip writes canonical demo_mode_state is_demo shape', () async {
+      final wrapper = _FakeTenantWrapper();
+      final sink = WorkerCanonicalSink(
+        tenantWrapper: wrapper,
+        clock: () => _connectedAt,
+      );
+
+      await sink.evaluateDemoFlip(
+        operatorId: _opIdA,
+        locationId: _locIdA,
+        category: IntegrationCategory.pos,
+        connectionStatus: ConnectionStatus.connected,
+        firstBackfillCommitted: true,
+        backfillRecordsWritten: 1,
+        connectionId: _connIdA,
+      );
+
+      expect(wrapper.executedSql, hasLength(1));
+      final sql = wrapper.executedSql.single;
+      expect(sql, contains('insert into public.demo_mode_state'));
+      expect(sql, contains('category, is_demo'));
+      expect(sql, contains('is_demo = false'));
+      expect(sql, isNot(contains('public.demo_mode_states')));
+      expect(sql, isNot(contains(' mode')));
+    });
+  });
+
   group('runWorkerTick', () {
     test(
       'happy path: claim → dispatch → mark succeeded → watermark + sync log + demo flip',
       () async {
-        final scope = WorkerJobScope(
-          operatorId: _opIdA,
-          locationId: _locIdA,
-        );
+        final scope = WorkerJobScope(operatorId: _opIdA, locationId: _locIdA);
         final scopeReader = _FakeScopeReader([scope]);
         final job = _job(jobId: _jobIdA, attemptCount: 1);
         final jobStore = _FakeBackfillJobStore()..addClaimable(scope, job);
@@ -117,66 +142,62 @@ void main() {
         expect(canonicalSink.syncLogs, hasLength(1));
         expect(canonicalSink.syncLogs.single.eventKind, 'backfill_success');
         expect(canonicalSink.demoFlips, hasLength(1));
-        expect(
-          canonicalSink.demoFlips.single.connectionId,
-          job.connectionId,
-        );
+        expect(canonicalSink.demoFlips.single.connectionId, job.connectionId);
       },
     );
 
-    test('SKIP LOCKED: only one of two parallel runs claims a single job',
-        () async {
-      // The fake store models `FOR UPDATE SKIP LOCKED` by handing out
-      // each enqueued job exactly once across all concurrent claimers.
-      // Two parallel runWorkerTick calls against a one-job scope must
-      // result in exactly one dispatch.
-      final scope = WorkerJobScope(
-        operatorId: _opIdA,
-        locationId: _locIdA,
-      );
-      final scopeReader = _FakeScopeReader([scope]);
-      final jobStore = _FakeBackfillJobStore()
-        ..addClaimable(scope, _job(jobId: _jobIdA));
-      final canonicalSink = _RecordingCanonicalSink();
-      final adapterA = _RecordingPosAdapter();
-      final adapterB = _RecordingPosAdapter();
+    test(
+      'SKIP LOCKED: only one of two parallel runs claims a single job',
+      () async {
+        // The fake store models `FOR UPDATE SKIP LOCKED` by handing out
+        // each enqueued job exactly once across all concurrent claimers.
+        // Two parallel runWorkerTick calls against a one-job scope must
+        // result in exactly one dispatch.
+        final scope = WorkerJobScope(operatorId: _opIdA, locationId: _locIdA);
+        final scopeReader = _FakeScopeReader([scope]);
+        final jobStore = _FakeBackfillJobStore()
+          ..addClaimable(scope, _job(jobId: _jobIdA));
+        final canonicalSink = _RecordingCanonicalSink();
+        final adapterA = _RecordingPosAdapter();
+        final adapterB = _RecordingPosAdapter();
 
-      final futures = <Future<WorkerTickResult>>[
-        runWorkerTick(
-          scopeReader: scopeReader,
-          jobStore: jobStore,
-          canonicalSink: canonicalSink,
-          adapterFactory: (_) => adapterA,
-          workerId: 'worker-A',
-          maxJobsPerTick: 5,
-          claimStaleAfter: const Duration(minutes: 15),
-        ),
-        runWorkerTick(
-          scopeReader: scopeReader,
-          jobStore: jobStore,
-          canonicalSink: canonicalSink,
-          adapterFactory: (_) => adapterB,
-          workerId: 'worker-B',
-          maxJobsPerTick: 5,
-          claimStaleAfter: const Duration(minutes: 15),
-        ),
-      ];
-      final results = await Future.wait(futures);
+        final futures = <Future<WorkerTickResult>>[
+          runWorkerTick(
+            scopeReader: scopeReader,
+            jobStore: jobStore,
+            canonicalSink: canonicalSink,
+            adapterFactory: (_) => adapterA,
+            workerId: 'worker-A',
+            maxJobsPerTick: 5,
+            claimStaleAfter: const Duration(minutes: 15),
+          ),
+          runWorkerTick(
+            scopeReader: scopeReader,
+            jobStore: jobStore,
+            canonicalSink: canonicalSink,
+            adapterFactory: (_) => adapterB,
+            workerId: 'worker-B',
+            maxJobsPerTick: 5,
+            claimStaleAfter: const Duration(minutes: 15),
+          ),
+        ];
+        final results = await Future.wait(futures);
 
-      final totalAttempted = results.fold<int>(
-        0,
-        (acc, r) => acc + r.attempted,
-      );
-      expect(
-        totalAttempted,
-        1,
-        reason:
-            'SKIP LOCKED: a single available job must be claimed exactly once '
-            'across two concurrent workers',
-      );
-      expect(adapterA.backfillCalls + adapterB.backfillCalls, 1);
-      expect(jobStore.claimAttempts, greaterThanOrEqualTo(1));
-    });
+        final totalAttempted = results.fold<int>(
+          0,
+          (acc, r) => acc + r.attempted,
+        );
+        expect(
+          totalAttempted,
+          1,
+          reason:
+              'SKIP LOCKED: a single available job must be claimed exactly once '
+              'across two concurrent workers',
+        );
+        expect(adapterA.backfillCalls + adapterB.backfillCalls, 1);
+        expect(jobStore.claimAttempts, greaterThanOrEqualTo(1));
+      },
+    );
   });
 
   group('RetryCappingBackfillJobStore', () {
@@ -226,16 +247,15 @@ void main() {
           delegate.lastErrorMessages.last,
           startsWith(RetryCappingBackfillJobStore.deadLetterErrorPrefix),
         );
-        expect(
-          delegate.lastErrorMessages.last,
-          contains('transient-10'),
-        );
+        expect(delegate.lastErrorMessages.last, contains('transient-10'));
         expect(result, isNotNull);
         expect(tenantWrapper.auditRows, hasLength(1));
         final audit = tenantWrapper.auditRows.single;
         expect(audit.operatorId, _opIdA);
         expect(
-            audit.action, RetryCappingBackfillJobStore.deadLetterAuditAction);
+          audit.action,
+          RetryCappingBackfillJobStore.deadLetterAuditAction,
+        );
         expect(audit.targetId, _jobIdA);
         expect(audit.payload['vendor_id'], _vendorId);
         expect(audit.payload['attempt_count'], 10);
@@ -320,151 +340,162 @@ void main() {
   });
 
   group('BinderBackedAdapterFactory', () {
-    test('looks up active POS factory and returns the per-tenant adapter',
-        () async {
-      final adapter = _RecordingPosAdapter();
-      final factories = Phase8VendorIntegrationFactories(
-        posAdapterFactories: <String, PosAdapterFactory>{
-          _vendorId:
-              ({required String operatorId, required String locationId}) async =>
-                  adapter,
-        },
-        laborAdapterFactories: const <String, LaborAdapterFactory>{},
-        reservationAdapterFactories:
-            const <String, ReservationAdapterFactory>{},
-        signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
-        disabledVendors: const <String, String>{},
-      );
-      final factory = BinderBackedAdapterFactory(factories: factories);
+    test(
+      'looks up active POS factory and returns the per-tenant adapter',
+      () async {
+        final adapter = _RecordingPosAdapter();
+        final factories = Phase8VendorIntegrationFactories(
+          posAdapterFactories: <String, PosAdapterFactory>{
+            _vendorId:
+                ({
+                  required String operatorId,
+                  required String locationId,
+                }) async => adapter,
+          },
+          laborAdapterFactories: const <String, LaborAdapterFactory>{},
+          reservationAdapterFactories:
+              const <String, ReservationAdapterFactory>{},
+          signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
+          disabledVendors: const <String, String>{},
+        );
+        final factory = BinderBackedAdapterFactory(factories: factories);
 
-      final result = factory.call(_job(jobId: _jobIdA));
+        final result = factory.call(_job(jobId: _jobIdA));
 
-      // Amendment A made adapter factories async. The
-      // BinderBackedAdapterFactory.call returns Future<Object> so the
-      // dispatcher can `await` the per-tenant construction; the test
-      // unwraps the Future before identity-checking against the
-      // recorded adapter instance.
-      final resolved = await result;
-      expect(identical(resolved, adapter), isTrue);
-    });
+        // Amendment A made adapter factories async. The
+        // BinderBackedAdapterFactory.call returns Future<Object> so the
+        // dispatcher can `await` the per-tenant construction; the test
+        // unwraps the Future before identity-checking against the
+        // recorded adapter instance.
+        final resolved = await result;
+        expect(identical(resolved, adapter), isTrue);
+      },
+    );
 
-    test('disabled vendor → BackfillVendorDisabledException with reason',
-        () async {
-      final factories = Phase8VendorIntegrationFactories(
-        posAdapterFactories: const <String, PosAdapterFactory>{},
-        laborAdapterFactories: const <String, LaborAdapterFactory>{},
-        reservationAdapterFactories:
-            const <String, ReservationAdapterFactory>{},
-        signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
-        disabledVendors: const <String, String>{
-          'aloha_ncr_voyix': 'aloha_ncr_voyix_credentials_missing',
-        },
-      );
-      final factory = BinderBackedAdapterFactory(factories: factories);
+    test(
+      'disabled vendor → BackfillVendorDisabledException with reason',
+      () async {
+        final factories = Phase8VendorIntegrationFactories(
+          posAdapterFactories: const <String, PosAdapterFactory>{},
+          laborAdapterFactories: const <String, LaborAdapterFactory>{},
+          reservationAdapterFactories:
+              const <String, ReservationAdapterFactory>{},
+          signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
+          disabledVendors: const <String, String>{
+            'aloha_ncr_voyix': 'aloha_ncr_voyix_credentials_missing',
+          },
+        );
+        final factory = BinderBackedAdapterFactory(factories: factories);
 
-      expect(
-        () => factory.call(
-          _job(
-            jobId: _jobIdA,
-            vendorId: 'aloha_ncr_voyix',
-            category: IntegrationCategory.pos,
+        expect(
+          () => factory.call(
+            _job(
+              jobId: _jobIdA,
+              vendorId: 'aloha_ncr_voyix',
+              category: IntegrationCategory.pos,
+            ),
           ),
-        ),
-        throwsA(
-          isA<BackfillVendorDisabledException>()
-              .having((e) => e.vendorId, 'vendorId', 'aloha_ncr_voyix')
-              .having(
-                (e) => e.reason,
-                'reason',
-                'aloha_ncr_voyix_credentials_missing',
-              )
-              .having(
-                (e) => e.toString(),
-                'toString',
-                contains('not active in binder'),
-              ),
-        ),
-      );
-    });
-
-    test('vendor not wired anywhere → BackfillVendorNotWiredException',
-        () async {
-      final factories = Phase8VendorIntegrationFactories(
-        posAdapterFactories: const <String, PosAdapterFactory>{},
-        laborAdapterFactories: const <String, LaborAdapterFactory>{},
-        reservationAdapterFactories:
-            const <String, ReservationAdapterFactory>{},
-        signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
-        disabledVendors: const <String, String>{},
-      );
-      final factory = BinderBackedAdapterFactory(factories: factories);
-
-      expect(
-        () => factory.call(
-          _job(
-            jobId: _jobIdA,
-            vendorId: 'nonexistent_vendor',
-            category: IntegrationCategory.labor,
+          throwsA(
+            isA<BackfillVendorDisabledException>()
+                .having((e) => e.vendorId, 'vendorId', 'aloha_ncr_voyix')
+                .having(
+                  (e) => e.reason,
+                  'reason',
+                  'aloha_ncr_voyix_credentials_missing',
+                )
+                .having(
+                  (e) => e.toString(),
+                  'toString',
+                  contains('not active in binder'),
+                ),
           ),
-        ),
-        throwsA(
-          isA<BackfillVendorNotWiredException>()
-              .having((e) => e.vendorId, 'vendorId', 'nonexistent_vendor')
-              .having((e) => e.category, 'category', IntegrationCategory.labor)
-              .having(
-                (e) => e.toString(),
-                'toString',
-                contains('not wired in the Phase 8 binder builder'),
-              ),
-        ),
-      );
-    });
+        );
+      },
+    );
 
-    test('disabled vendor surfaced through dispatcher → markFailed + clean reason',
-        () async {
-      // End-to-end through runWorkerTick: factory throws
-      // BackfillVendorDisabledException, dispatcher records the
-      // failure, and the job ends marked failed with a clean message
-      // instead of a stack trace. Vendor must exist in the
-      // dispatcher's category registry; we use an existing POS
-      // vendor id (lightspeed_lsk is in the registry but disabled in
-      // the binder per the async-location-config branch).
-      final scope = WorkerJobScope(
-        operatorId: _opIdA,
-        locationId: _locIdA,
-      );
-      final scopeReader = _FakeScopeReader([scope]);
-      final job = _job(jobId: _jobIdA, attemptCount: 1);
-      final jobStore = _FakeBackfillJobStore()..addClaimable(scope, job);
-      final canonicalSink = _RecordingCanonicalSink();
-      final factories = Phase8VendorIntegrationFactories(
-        posAdapterFactories: const <String, PosAdapterFactory>{},
-        laborAdapterFactories: const <String, LaborAdapterFactory>{},
-        reservationAdapterFactories:
-            const <String, ReservationAdapterFactory>{},
-        signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
-        disabledVendors: const <String, String>{
-          _vendorId: 'lightspeed_lsk_async_location_config_required',
-        },
-      );
-      final adapterFactory = BinderBackedAdapterFactory(factories: factories);
+    test(
+      'vendor not wired anywhere → BackfillVendorNotWiredException',
+      () async {
+        final factories = Phase8VendorIntegrationFactories(
+          posAdapterFactories: const <String, PosAdapterFactory>{},
+          laborAdapterFactories: const <String, LaborAdapterFactory>{},
+          reservationAdapterFactories:
+              const <String, ReservationAdapterFactory>{},
+          signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
+          disabledVendors: const <String, String>{},
+        );
+        final factory = BinderBackedAdapterFactory(factories: factories);
 
-      final result = await runWorkerTick(
-        scopeReader: scopeReader,
-        jobStore: jobStore,
-        canonicalSink: canonicalSink,
-        adapterFactory: adapterFactory.call,
-        workerId: 'worker-test',
-        maxJobsPerTick: 5,
-        claimStaleAfter: const Duration(minutes: 15),
-      );
+        expect(
+          () => factory.call(
+            _job(
+              jobId: _jobIdA,
+              vendorId: 'nonexistent_vendor',
+              category: IntegrationCategory.labor,
+            ),
+          ),
+          throwsA(
+            isA<BackfillVendorNotWiredException>()
+                .having((e) => e.vendorId, 'vendorId', 'nonexistent_vendor')
+                .having(
+                  (e) => e.category,
+                  'category',
+                  IntegrationCategory.labor,
+                )
+                .having(
+                  (e) => e.toString(),
+                  'toString',
+                  contains('not wired in the Phase 8 binder builder'),
+                ),
+          ),
+        );
+      },
+    );
 
-      expect(result.attempted, 1);
-      expect(result.failed, 1);
-      expect(jobStore.failedJobIds, <String>[_jobIdA]);
-      expect(canonicalSink.syncLogs, hasLength(1));
-      expect(canonicalSink.syncLogs.single.eventKind, 'backfill_error');
-    });
+    test(
+      'disabled vendor surfaced through dispatcher → markFailed + clean reason',
+      () async {
+        // End-to-end through runWorkerTick: factory throws
+        // BackfillVendorDisabledException, dispatcher records the
+        // failure, and the job ends marked failed with a clean message
+        // instead of a stack trace. Vendor must exist in the
+        // dispatcher's category registry; we use an existing POS
+        // vendor id (lightspeed_lsk is in the registry but disabled in
+        // the binder per the async-location-config branch).
+        final scope = WorkerJobScope(operatorId: _opIdA, locationId: _locIdA);
+        final scopeReader = _FakeScopeReader([scope]);
+        final job = _job(jobId: _jobIdA, attemptCount: 1);
+        final jobStore = _FakeBackfillJobStore()..addClaimable(scope, job);
+        final canonicalSink = _RecordingCanonicalSink();
+        final factories = Phase8VendorIntegrationFactories(
+          posAdapterFactories: const <String, PosAdapterFactory>{},
+          laborAdapterFactories: const <String, LaborAdapterFactory>{},
+          reservationAdapterFactories:
+              const <String, ReservationAdapterFactory>{},
+          signatureVerifiers: const <String, VendorWebhookSignatureVerifier>{},
+          disabledVendors: const <String, String>{
+            _vendorId: 'lightspeed_lsk_async_location_config_required',
+          },
+        );
+        final adapterFactory = BinderBackedAdapterFactory(factories: factories);
+
+        final result = await runWorkerTick(
+          scopeReader: scopeReader,
+          jobStore: jobStore,
+          canonicalSink: canonicalSink,
+          adapterFactory: adapterFactory.call,
+          workerId: 'worker-test',
+          maxJobsPerTick: 5,
+          claimStaleAfter: const Duration(minutes: 15),
+        );
+
+        expect(result.attempted, 1);
+        expect(result.failed, 1);
+        expect(jobStore.failedJobIds, <String>[_jobIdA]);
+        expect(canonicalSink.syncLogs, hasLength(1));
+        expect(canonicalSink.syncLogs.single.eventKind, 'backfill_error');
+      },
+    );
   });
 }
 
@@ -499,7 +530,9 @@ class _FakeBackfillJobStore implements BackfillJobStore {
 
   void addClaimable(WorkerJobScope scope, FirstConnectionBackfillJob job) {
     final key = '${scope.operatorId}:${scope.locationId}';
-    _claimQueues.putIfAbsent(key, () => <FirstConnectionBackfillJob>[]).add(job);
+    _claimQueues
+        .putIfAbsent(key, () => <FirstConnectionBackfillJob>[])
+        .add(job);
   }
 
   @override
@@ -649,10 +682,7 @@ class _RecordingCanonicalSink implements CanonicalSink {
     required DateTime lastModifiedSeen,
   }) async {
     watermarkAdvances.add(
-      _WatermarkAdvance(
-        connectionId: connectionId,
-        cursorToken: cursorToken,
-      ),
+      _WatermarkAdvance(connectionId: connectionId, cursorToken: cursorToken),
     );
   }
 
@@ -752,8 +782,7 @@ class _RecordingPosAdapter implements PosAdapter {
   @override
   Future<PollIncrementalResult> pollIncremental(
     PollIncrementalCommand command,
-  ) =>
-      throw UnimplementedError();
+  ) => throw UnimplementedError();
 
   @override
   Future<HandleWebhookResult> handleWebhook(HandleWebhookCommand command) =>
@@ -789,13 +818,14 @@ class _AuditRowCapture {
 
 class _FakeTenantWrapper implements TenantTransactionWrapper {
   final List<_AuditRowCapture> auditRows = <_AuditRowCapture>[];
+  final List<String> executedSql = <String>[];
 
   @override
   Future<R> runInTenantContext<R>(
     TenantContext context,
     Future<R> Function(PostgresExecutor exec) body,
   ) {
-    final exec = _CapturingExecutor(_onAuditInsert);
+    final exec = _CapturingExecutor(_onAuditInsert, executedSql.add);
     return body(exec);
   }
 
@@ -804,7 +834,7 @@ class _FakeTenantWrapper implements TenantTransactionWrapper {
     String userId,
     Future<R> Function(PostgresExecutor exec) body,
   ) {
-    final exec = _CapturingExecutor(_onAuditInsert);
+    final exec = _CapturingExecutor(_onAuditInsert, executedSql.add);
     return body(exec);
   }
 
@@ -813,7 +843,7 @@ class _FakeTenantWrapper implements TenantTransactionWrapper {
     Future<R> Function(PostgresExecutor exec) body, {
     required String reason,
   }) {
-    final exec = _CapturingExecutor(_onAuditInsert);
+    final exec = _CapturingExecutor(_onAuditInsert, executedSql.add);
     return body(exec);
   }
 
@@ -823,9 +853,10 @@ class _FakeTenantWrapper implements TenantTransactionWrapper {
 }
 
 class _CapturingExecutor implements PostgresExecutor {
-  _CapturingExecutor(this._onAuditInsert);
+  _CapturingExecutor(this._onAuditInsert, this._onExecute);
 
   final void Function(_AuditRowCapture) _onAuditInsert;
+  final void Function(String sql) _onExecute;
 
   @override
   Future<List<PostgresRow>> query(
@@ -853,7 +884,10 @@ class _CapturingExecutor implements PostgresExecutor {
   Future<int> execute(
     String sql, {
     PostgresParameters parameters = const <String, Object?>{},
-  }) async => 0;
+  }) async {
+    _onExecute(sql);
+    return 0;
+  }
 
   Map<String, Object?> _decodePayload(Object? raw) {
     if (raw is Map<String, Object?>) return raw;

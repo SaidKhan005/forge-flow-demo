@@ -323,28 +323,57 @@ void main() {
     expect(result.sampleSummary, 'No sample rows returned.');
   });
 
-  test(
-    'loadLogs throws the missing-route gateway error without hitting proxy',
-    () async {
-      final gateway = AdminHttpVendorConnectionsGateway(
-        baseUri: Uri.parse(proxyBase),
-        bearerTokenProvider: tokenProvider,
-        httpClient: MockClient((request) async {
-          throw StateError('logs route should not be invoked');
-        }),
-      );
+  test('loadLogs calls admin logs route and parses entries', () async {
+    late http.Request captured;
+    final gateway = AdminHttpVendorConnectionsGateway(
+      baseUri: Uri.parse(proxyBase),
+      bearerTokenProvider: tokenProvider,
+      httpClient: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'logs': <Map<String, Object?>>[
+              <String, Object?>{
+                'log_id': 'log-1',
+                'connection_id': 'connection-1',
+                'event_kind': 'pull.succeeded',
+                'records_count': 42,
+                'duration_ms': 120,
+                'occurred_at': '2026-05-04T12:34:56Z',
+              },
+              <String, Object?>{
+                'log_id': 'log-2',
+                'connection_id': 'connection-1',
+                'event_kind': 'pull.failed',
+                'records_count': 0,
+                'error_message': 'rate limited',
+                'occurred_at': '2026-05-04T12:35:56Z',
+              },
+            ],
+          }),
+          200,
+        );
+      }),
+    );
 
-      await expectLater(
-        gateway.loadLogs(
-          operatorId: operatorId,
-          locationId: locationId,
-          vendorId: 'toast',
-          limit: 25,
-        ),
-        throwsA(isA<VendorConnectionsGatewayError>()),
-      );
-    },
-  );
+    final logs = await gateway.loadLogs(
+      operatorId: operatorId,
+      locationId: locationId,
+      vendorId: 'toast',
+      limit: 25,
+    );
+
+    expect(captured.method, 'GET');
+    expect(captured.url.path, '/v1/admin/integrations/toast/logs');
+    expect(captured.url.queryParameters['operator_id'], operatorId);
+    expect(captured.url.queryParameters['location_id'], locationId);
+    expect(captured.url.queryParameters['limit'], '25');
+    expect(logs, hasLength(2));
+    expect(logs.first.eventKind, 'pull.succeeded');
+    expect(logs.first.recordsCount, 42);
+    expect(logs.first.occurredAt, DateTime.parse('2026-05-04T12:34:56Z'));
+    expect(logs.last.errorMessage, 'rate limited');
+  });
 
   test('blank location id fails before hitting the proxy', () async {
     final gateway = AdminHttpVendorConnectionsGateway(

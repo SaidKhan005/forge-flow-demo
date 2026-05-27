@@ -104,10 +104,17 @@ Authority:
 - `runbooks/phase_9_production1_migration_apply_runbook.md`
 - `docs/POST_HARDENING_FOLLOWUPS.md` P0
 
-Pending files:
+Pending inventory:
 
-1. `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
-2. `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
+- The authoritative pending Production1 migration queue is the P0 table in
+  `docs/POST_HARDENING_FOLLOWUPS.md`.
+- As of 2026-05-26, that queue contains 75 files through
+  `db/migrations/202605251020_plans_and_limits_scoped_contract_windows.sql`.
+- Two rows in that queue are specifically operator-decision-sensitive:
+  `db/migrations/202605061800_phase_8_first_connection_backfill_jobs.sql` and
+  `db/migrations/202605070000_phase_11W_7_operator_account_fields.sql`.
+- Do not treat the old two-file list as the full apply queue; it is only the
+  operator-decision subset.
 
 Pre-apply gates:
 
@@ -123,7 +130,7 @@ Live apply remains blocked until the runbook's Live-Mutation Gate is satisfied:
 - exact target confirmed by name only: `forge-flow-production1-pg-cmk`,
   database `forgeflow`,
 - fresh backup or restore point confirmed,
-- staging parity confirmed for both files,
+- staging parity confirmed for the exact queue being applied,
 - operator explicitly approves the apply,
 - no secrets or DSNs pasted into chat or docs.
 

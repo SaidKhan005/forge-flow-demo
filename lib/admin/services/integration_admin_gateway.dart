@@ -108,19 +108,14 @@ class PermissionDeniedException implements Exception {
 /// [PermissionDeniedException] when the actor may not rotate a provider
 /// key; returns normally (no gate) when neither resolver is wired.
 ///
-/// Fail-safe key-first logic, mirroring `adminCanEdit`:
+/// Fail-safe server-aligned logic:
 ///   * Both resolvers null -> return (no gate; production server-
 ///     enforced, demo un-gated).
-///   * Permission set NON-EMPTY -> allow iff it contains
-///     [PermissionKeys.integrationKeyRotate]; otherwise deny. This
-///     activates only once a live permission snapshot is supplied; a
-///     role holding the key is allowed even if not super_admin, and a
-///     role lacking it is denied even if not ff_support (intentional).
-///   * Permission set EMPTY/absent -> fall back to the historic role
-///     check: deny iff the role list contains
-///     [PermissionKeys.roleFfSupport]. Byte-identical to the pre-slice
-///     `roles.contains(roleFfSupport)` deny, so an empty set never
-///     changes the decision.
+///   * Permission set NON-EMPTY -> require
+///     [PermissionKeys.integrationKeyRotate].
+///   * Role resolver wired -> require [PermissionKeys.roleSuperAdmin].
+///     This mirrors the proxy's strict `super_admin` + fresh-auth gate;
+///     the route layer supplies fresh-MFA visibility.
 Future<void> _evaluateRotationGate({
   required PermissionResolver? permissionResolver,
   required RoleResolver? roleResolver,
@@ -136,13 +131,10 @@ Future<void> _evaluateRotationGate({
     if (!perms.contains(PermissionKeys.integrationKeyRotate)) {
       throw const PermissionDeniedException('Read-only access');
     }
-    return;
   }
-  // Empty/absent permission set: preserve today's role-based decision
-  // exactly. If no role resolver is wired either, there is no gate.
   if (roleResolver == null) return;
   final roles = await roleResolver();
-  if (roles.contains(PermissionKeys.roleFfSupport)) {
+  if (!roles.contains(PermissionKeys.roleSuperAdmin)) {
     throw const PermissionDeniedException('Read-only access');
   }
 }

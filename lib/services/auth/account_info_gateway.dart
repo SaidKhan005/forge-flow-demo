@@ -10,6 +10,56 @@ class AccountInfoRequest {
   final String locationId;
 }
 
+class AccountPlanSnapshot {
+  const AccountPlanSnapshot({
+    required this.tierKey,
+    required this.enabledFeatureSlugs,
+    this.priceLine,
+    this.sourceLabel,
+    this.contractLabel,
+    this.overrideStatus,
+  });
+
+  final String tierKey;
+  final List<String> enabledFeatureSlugs;
+  final String? priceLine;
+  final String? sourceLabel;
+  final String? contractLabel;
+  final String? overrideStatus;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'tier_key': tierKey,
+    'enabled_feature_slugs': enabledFeatureSlugs,
+    'price_line': priceLine,
+    'source_label': sourceLabel,
+    'contract_label': contractLabel,
+    'override_status': overrideStatus,
+  };
+
+  static AccountPlanSnapshot? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final json = Map<String, Object?>.from(raw);
+    final tierKey = AccountInfo._readString(json['tier_key']);
+    if (tierKey == null) return null;
+    final featureSlugs = json['enabled_feature_slugs'];
+    return AccountPlanSnapshot(
+      tierKey: tierKey,
+      enabledFeatureSlugs: List<String>.unmodifiable(
+        featureSlugs is List
+            ? featureSlugs
+                  .whereType<String>()
+                  .map((slug) => slug.trim())
+                  .where((slug) => slug.isNotEmpty)
+            : const <String>[],
+      ),
+      priceLine: AccountInfo._readString(json['price_line']),
+      sourceLabel: AccountInfo._readString(json['source_label']),
+      contractLabel: AccountInfo._readString(json['contract_label']),
+      overrideStatus: AccountInfo._readString(json['override_status']),
+    );
+  }
+}
+
 class AccountInfo {
   const AccountInfo({
     required this.displayName,
@@ -25,6 +75,7 @@ class AccountInfo {
     this.subscriptionTier,
     this.trialMode = false,
     this.trialExpiresAt,
+    this.planSnapshot,
   });
 
   final String displayName;
@@ -63,6 +114,14 @@ class AccountInfo {
   /// operator is not on a trial or the payload does not carry it.
   final DateTime? trialExpiresAt;
 
+  /// Live plan truth for the operator's current account scope. When the
+  /// proxy has pricing repositories wired, this carries the effective
+  /// scoped contract and the editable feature-entitlements matrix. Null
+  /// keeps older proxies honest: the Operator Web screen falls back to
+  /// the tier/trial fields or its unknown state without inventing live
+  /// contract details.
+  final AccountPlanSnapshot? planSnapshot;
+
   bool get hasAnyDisplayValue {
     return displayName.trim().isNotEmpty ||
         email.trim().isNotEmpty ||
@@ -91,6 +150,7 @@ class AccountInfo {
     'subscription_tier': subscriptionTier,
     'trial_mode': trialMode,
     'trial_expires_at': trialExpiresAt?.toUtc().toIso8601String(),
+    'plan_snapshot': planSnapshot?.toJson(),
   };
 
   static AccountInfo fromJson(Map<String, Object?> json) {
@@ -134,6 +194,7 @@ class AccountInfo {
       subscriptionTier: _readString(json['subscription_tier']),
       trialMode: _readBool(json['trial_mode']),
       trialExpiresAt: _readDateTime(json['trial_expires_at']),
+      planSnapshot: AccountPlanSnapshot.fromJson(json['plan_snapshot']),
     );
   }
 
@@ -171,4 +232,12 @@ class AccountInfoUnavailable implements Exception {
 
 abstract class AccountInfoGateway {
   Future<AccountInfo> load(AccountInfoRequest request);
+}
+
+abstract class AccountPlanSnapshotResolver {
+  Future<AccountPlanSnapshot?> resolve({
+    required String operatorId,
+    required String locationId,
+    required String? fallbackTierKey,
+  });
 }

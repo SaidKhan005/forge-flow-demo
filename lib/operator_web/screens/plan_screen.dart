@@ -14,13 +14,11 @@
 //     that opens contact guidance. Forge & Flow never changes a plan
 //     on the operator's behalf, so this is an intent, not an action.
 //
-// Display-only. This screen does NOT gate any feature on or off (that
-// is the deferred Phase 5d). It reads the current plan key and the
-// trial fields off [OperatorWebSession] and the per-plan feature list
-// off the client-side pricing constants
-// ([kPricingPlanPresentations] / [kFeatureSlugCatalog] /
-// [buildDefaultFeatureEntitlements]); it makes no proxy call of its
-// own and adds no new endpoint.
+// Display-only. This screen does NOT gate any feature on or off. It
+// reads the current plan key, trial fields, scoped contract price line,
+// and live feature-entitlement snapshot off [OperatorWebSession]. Older
+// proxies that omit the live snapshot keep the existing fallback to the
+// client-side pricing constants.
 //
 // Honest unknown state (Metric Honesty Doctrine): when the session
 // does not carry a recognized tier yet (the live source projects the
@@ -52,7 +50,8 @@ class PlanScreen extends StatelessWidget {
   /// Resolved plan presentation for the session's tier, or null when
   /// the tier is missing / unrecognized (honest unknown state).
   PricingPlanPresentation? get _plan {
-    final tier = session.subscriptionTier?.trim();
+    final tier = (session.planSnapshot?.tierKey ?? session.subscriptionTier)
+        ?.trim();
     if (tier == null || tier.isEmpty) return null;
     return findPricingPlanPresentation(tier);
   }
@@ -91,11 +90,16 @@ class PlanScreen extends StatelessWidget {
           else ...<Widget>[
             _CurrentPlanPanel(
               plan: plan,
+              priceLine: session.planSnapshot?.priceLine,
+              contractLabel: session.planSnapshot?.contractLabel,
               trialDaysLeft: _trialDaysLeft,
               onTrial: session.trialMode,
             ),
             const SizedBox(height: 14),
-            _IncludedPanel(tierKey: plan.tierKey),
+            _IncludedPanel(
+              tierKey: plan.tierKey,
+              liveFeatureSlugs: session.planSnapshot?.enabledFeatureSlugs,
+            ),
             const SizedBox(height: 14),
             _UpgradePanel(plan: plan),
           ],
@@ -148,11 +152,15 @@ class _PlanUnknownPanel extends StatelessWidget {
 class _CurrentPlanPanel extends StatelessWidget {
   const _CurrentPlanPanel({
     required this.plan,
+    required this.priceLine,
+    required this.contractLabel,
     required this.trialDaysLeft,
     required this.onTrial,
   });
 
   final PricingPlanPresentation plan;
+  final String? priceLine;
+  final String? contractLabel;
   final int? trialDaysLeft;
   final bool onTrial;
 
@@ -174,7 +182,7 @@ class _CurrentPlanPanel extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            plan.priceLine,
+            _nonBlankOr(priceLine, plan.priceLine),
             key: const Key('operator_web_plan_price_line'),
             style: AppTextStyles.mono14(color: AppColors.sunsetDark),
           ),
@@ -183,6 +191,14 @@ class _CurrentPlanPanel extends StatelessWidget {
             _planSummary(plan),
             style: AppTextStyles.body14(color: AppColors.textSecondary),
           ),
+          if (_nonBlankOrNull(contractLabel) != null) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              _nonBlankOrNull(contractLabel)!,
+              key: const Key('operator_web_plan_contract_label'),
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ],
           if (onTrial) ...<Widget>[
             const SizedBox(height: 14),
             _TrialCountdownBanner(daysLeft: trialDaysLeft),
@@ -206,6 +222,14 @@ class _CurrentPlanPanel extends StatelessWidget {
   static String _titleCase(String key) {
     if (key.isEmpty) return key;
     return key[0].toUpperCase() + key.substring(1);
+  }
+
+  static String _nonBlankOr(String? value, String fallback) =>
+      _nonBlankOrNull(value) ?? fallback;
+
+  static String? _nonBlankOrNull(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 }
 
@@ -242,13 +266,17 @@ class _TrialCountdownBanner extends StatelessWidget {
 /// client-side entitlement defaults so this stays in step with the
 /// admin Plans & limits screen without a proxy call.
 class _IncludedPanel extends StatelessWidget {
-  const _IncludedPanel({required this.tierKey});
+  const _IncludedPanel({required this.tierKey, this.liveFeatureSlugs});
 
   final String tierKey;
+  final List<String>? liveFeatureSlugs;
 
   @override
   Widget build(BuildContext context) {
-    final features = _includedFeatureNames(tierKey);
+    final features = _includedFeatureNames(
+      tierKey,
+      liveFeatureSlugs: liveFeatureSlugs,
+    );
     return OperatorWebPanel(
       key: const Key('operator_web_plan_included'),
       title: "What's included",
@@ -304,7 +332,20 @@ class _IncludedPanel extends StatelessWidget {
   /// the catalog display order. Built from the same cumulative-ladder
   /// defaults the admin matrix seeds from, so the operator sees the
   /// honest per-plan set rather than a hand-maintained copy.
-  static List<String> _includedFeatureNames(String tierKey) {
+  static List<String> _includedFeatureNames(
+    String tierKey, {
+    List<String>? liveFeatureSlugs,
+  }) {
+    if (liveFeatureSlugs != null) {
+      final enabledSlugs = liveFeatureSlugs
+          .map((slug) => slug.trim().toLowerCase())
+          .where((slug) => slug.isNotEmpty)
+          .toSet();
+      return <String>[
+        for (final slug in kFeatureSlugOrder)
+          if (enabledSlugs.contains(slug)) featureSlugDisplayName(slug),
+      ];
+    }
     final normalized = tierKey.trim().toLowerCase();
     final enabledSlugs = <String>{
       for (final entry in buildDefaultFeatureEntitlements())

@@ -42,19 +42,13 @@
 //      admits the row. The repository pattern is the primary defense; RLS
 //      is the backup. No bare pool-level execution.
 //
-//   3. business_date derived at write from the operator's location
-//      timezone + `business_day_rollover_hour` (Time Guardrails). The
-//      derivation is done in SQL — `INSERT ... SELECT ... FROM
-//      public.locations` — reusing the exact projection
-//      `lib/services/integration/iana_timezone_converter.dart`
-//      (`toBusinessDate`) and the Phase 8 denorm trigger
-//      `202605050400_phase_8_business_date_denorm.sql` use: project
-//      `occurred_at` into the location's IANA timezone, then subtract the
-//      rollover hour so an instant before the rollover buckets to the
-//      prior business date. A NULL/blank timezone falls back to UTC and a
-//      NULL rollover defaults to 0, exactly as the trigger does. Reading
-//      `locations` inside the same tenant transaction keeps the projection
-//      out of the panel's hot read path.
+//   3. business_date derived at write from the canonical business-timing
+//      profile chain (Time Guardrails). The recorder resolves the
+//      effective IANA timezone and business_day_start_local_time through
+//      `SinkBusinessDateProjector.projectBusinessDateForLocation`, which
+//      reads operator -> org_unit -> location profiles inside the same
+//      tenant transaction, then binds `@business_date::date` into the
+//      insert. It never reads legacy `business_day_rollover_hour`.
 //
 //   4. One row per refusal. The table defaults `event_id` to
 //      `gen_random_uuid()`; this recorder issues exactly one INSERT per
@@ -77,6 +71,8 @@
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
+import 'package:forge_and_flow/services/integration/sink_business_date_projector.dart';
 import 'package:forge_and_flow/services/observability/log.dart';
 
 /// USD amounts (`cap_usd` / `attempted_usd`) snapshotted onto a refusal
@@ -137,16 +133,10 @@ class CapEventAmounts {
 
 /// INSERT for one cap-refusal event.
 ///
-/// `INSERT ... SELECT ... FROM public.locations` so `business_date` is
-/// derived in SQL from the location's timezone + `business_day_rollover_hour`
-/// (Time Guardrails). The projection mirrors the Phase 8 denorm trigger
-/// `202605050400_phase_8_business_date_denorm.sql`: project `occurred_at`
-/// into the location's IANA timezone, then subtract the rollover hour. A
-/// blank/NULL timezone falls back to UTC; a NULL rollover defaults to 0.
-/// The SELECT is tenant-scoped (explicit operator+location predicate, and
-/// RLS on `locations`), so a missing/foreign location yields zero inserted
-/// rows rather than a cross-tenant write. `event_id` / `created_at` take
-/// their table defaults (`gen_random_uuid()` / `now()`).
+/// Business date is bound by Dart after resolving the canonical
+/// business-timing profile chain (operator -> org unit -> location).
+/// `event_id` / `created_at` take their table defaults
+/// (`gen_random_uuid()` / `now()`).
 const String capEventInsertSql = '''
 insert into public.usage_cap_events (
   operator_id,
@@ -158,7 +148,7 @@ insert into public.usage_cap_events (
   occurred_at,
   business_date
 )
-select
+values (
   @operator_id::uuid,
   @location_id::uuid,
   @usage_class,
@@ -166,16 +156,8 @@ select
   @cap_usd::numeric,
   @attempted_usd::numeric,
   @occurred_at::timestamptz,
-  (
-    (
-      @occurred_at::timestamptz
-        at time zone coalesce(nullif(btrim(l.timezone), ''), 'UTC')
-    )
-    - (coalesce(l.business_day_rollover_hour, 0) * interval '1 hour')
-  )::date
-from public.locations l
-where l.operator_id = @operator_id::uuid
-  and l.location_id = @location_id::uuid
+  @business_date::date
+)
 ''';
 
 /// Records cap-breach refusals into `public.usage_cap_events`.
@@ -184,10 +166,18 @@ where l.operator_id = @operator_id::uuid
 /// once from the proxy's shared `TenantTransactionWrapper` and call
 /// [recordRefusal] from the refusal branch AFTER the refusal is decided.
 class CapEventRecorder {
-  const CapEventRecorder({required TenantTransactionWrapper wrapper})
-    : _wrapper = wrapper;
+  CapEventRecorder({
+    required TenantTransactionWrapper wrapper,
+    SinkBusinessDateProjector? businessDateProjector,
+  }) : _wrapper = wrapper,
+       _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository: BusinessTimingProfilesRepository(wrapper),
+           );
 
   final TenantTransactionWrapper _wrapper;
+  final SinkBusinessDateProjector _businessDateProjector;
 
   /// Inserts exactly one refusal row, swallowing any failure.
   ///
@@ -221,7 +211,17 @@ class CapEventRecorder {
         locationId: locationId,
         userId: userId,
       );
-      final affected = await _wrapper.runInTenantContext<int>(ctx, (exec) {
+      final affected = await _wrapper.runInTenantContext<int>(ctx, (
+        exec,
+      ) async {
+        final businessDate = await _businessDateProjector
+            .projectBusinessDateForLocation(
+              exec: exec,
+              operatorId: operatorId,
+              locationId: locationId,
+              instantUtc: occurredAt,
+            );
+        if (businessDate == null) return 0;
         return exec.execute(
           capEventInsertSql,
           parameters: <String, Object?>{
@@ -232,6 +232,7 @@ class CapEventRecorder {
             'cap_usd': amounts.capUsd,
             'attempted_usd': amounts.attemptedUsd,
             'occurred_at': occurredAt.toUtc().toIso8601String(),
+            'business_date': _formatDate(businessDate),
           },
         );
       });
@@ -262,4 +263,11 @@ class CapEventRecorder {
       );
     }
   }
+}
+
+String _formatDate(DateTime value) {
+  final utc = value.toUtc();
+  return '${utc.year.toString().padLeft(4, '0')}-'
+      '${utc.month.toString().padLeft(2, '0')}-'
+      '${utc.day.toString().padLeft(2, '0')}';
 }

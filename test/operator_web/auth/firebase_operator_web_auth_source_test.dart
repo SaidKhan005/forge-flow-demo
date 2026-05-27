@@ -348,35 +348,46 @@ void main() {
         'subscription_tier': 'premium',
         'trial_mode': true,
         'trial_expires_at': '2026-06-04T12:00:00Z',
+        'plan_snapshot': <String, Object?>{
+          'tier_key': 'premium',
+          'enabled_feature_slugs': <String>['advisor', 'scoreboard'],
+          'price_line': r'$375/mo plus $4/seat',
+          'contract_label': 'Franchise 2026',
+          'override_status': 'set_here',
+        },
       });
 
       expect(session.subscriptionTier, equals('premium'));
       expect(session.trialMode, isTrue);
       expect(session.trialExpiresAt, equals(DateTime.utc(2026, 6, 4, 12)));
+      expect(session.planSnapshot?.tierKey, equals('premium'));
+      expect(
+        session.planSnapshot?.enabledFeatureSlugs,
+        equals(<String>['advisor', 'scoreboard']),
+      );
+      expect(session.planSnapshot?.priceLine, equals(r'$375/mo plus $4/seat'));
+      expect(session.planSnapshot?.contractLabel, equals('Franchise 2026'));
     });
 
-    test(
-      'leaves plan + trial null/false when the response omits them '
-      '(no crash, honest empty state)',
-      () async {
-        // A pre-follow-up proxy (or any partial payload) omits the new
-        // keys entirely. The live source must still complete sign-in
-        // and leave the tier null + trial false so the "Your plan"
-        // screen renders its honest "could not load" state.
-        final session = await signInWithAccountInfo(<String, Object?>{
-          'display_name': 'Demo Operator Owner',
-          'email': 'owner@demo.forgeflow.test',
-          'status_label': 'Active',
-          'location_label': 'Demo Main Street',
-          'role_labels': <String>['operator_owner'],
-          'mfa_enabled': true,
-        });
+    test('leaves plan + trial null/false when the response omits them '
+        '(no crash, honest empty state)', () async {
+      // A pre-follow-up proxy (or any partial payload) omits the new
+      // keys entirely. The live source must still complete sign-in
+      // and leave the tier null + trial false so the "Your plan"
+      // screen renders its honest "could not load" state.
+      final session = await signInWithAccountInfo(<String, Object?>{
+        'display_name': 'Demo Operator Owner',
+        'email': 'owner@demo.forgeflow.test',
+        'status_label': 'Active',
+        'location_label': 'Demo Main Street',
+        'role_labels': <String>['operator_owner'],
+        'mfa_enabled': true,
+      });
 
-        expect(session.subscriptionTier, isNull);
-        expect(session.trialMode, isFalse);
-        expect(session.trialExpiresAt, isNull);
-      },
-    );
+      expect(session.subscriptionTier, isNull);
+      expect(session.trialMode, isFalse);
+      expect(session.trialExpiresAt, isNull);
+    });
   });
 
   group('FirebaseOperatorWebAuthSource session id lifecycle '

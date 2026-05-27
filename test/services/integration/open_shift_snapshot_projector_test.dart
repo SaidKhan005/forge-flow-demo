@@ -106,6 +106,68 @@ void main() {
       expect(dinner.currentSplh, closeTo(150, 0.001));
     });
 
+    test(
+      'labor without wage truth does not publish a live blended wage',
+      () async {
+        final writer = _InMemorySnapshotWriter();
+        final projector = _projector(writer);
+
+        await projector.projectFacts(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          facts: <OpenShiftCanonicalFact>[
+            _posFact(id: 'check-1', hour: 18, covers: 12, sales: 600),
+            _laborFact(
+              id: 'server-punch',
+              hour: 17,
+              endedHour: 21,
+              roleName: 'server',
+            ),
+          ],
+        );
+
+        final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
+        expect(dinner.scheduledFohHours, 4);
+        expect(dinner.blendedWage, 0);
+        expect(dinner.blendedWageAvailable, isFalse);
+        expect(dinner.provenance['blended_wage_available'], isFalse);
+      },
+    );
+
+    test('labor wage truth computes blended wage with provenance', () async {
+      final writer = _InMemorySnapshotWriter();
+      final projector = _projector(writer);
+
+      await projector.projectFacts(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        facts: <OpenShiftCanonicalFact>[
+          _laborFact(
+            id: 'server-punch',
+            hour: 17,
+            endedHour: 21,
+            roleName: 'server',
+            hourlyWage: 20,
+          ),
+          _laborFact(
+            id: 'cook-punch',
+            hour: 17,
+            endedHour: 21,
+            roleName: 'cook',
+            laborDollars: 100,
+          ),
+        ],
+      );
+
+      final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
+      expect(dinner.blendedWageAvailable, isTrue);
+      expect(dinner.blendedWage, closeTo(22.5, 0.001));
+      expect(
+        dinner.provenance['blended_wage_provenance'],
+        'canonical_labor_wage',
+      );
+    });
+
     test('business-date rollover honors minute precision', () async {
       final writer = _InMemorySnapshotWriter();
       final projector = OpenShiftSnapshotProjector(
@@ -352,54 +414,56 @@ void main() {
       expect(dinner.scheduledBohHours, 8);
     });
 
-    test('FOH allowlist tokens (server/host/runner/busser/foh) classify FOH',
-        () async {
-      final writer = _InMemorySnapshotWriter();
-      final projector = _projector(writer);
+    test(
+      'FOH allowlist tokens (server/host/runner/busser/foh) classify FOH',
+      () async {
+        final writer = _InMemorySnapshotWriter();
+        final projector = _projector(writer);
 
-      await projector.projectFacts(
-        operatorId: _operatorA,
-        locationId: _locationA,
-        facts: <OpenShiftCanonicalFact>[
-          _posFact(id: 'check-1', hour: 18, covers: 6, sales: 240),
-          _laborFact(
-            id: 'punch-server',
-            hour: 17,
-            endedHour: 18,
-            roleName: 'server',
-          ),
-          _laborFact(
-            id: 'punch-host',
-            hour: 17,
-            endedHour: 18,
-            roleName: 'hostess',
-          ),
-          _laborFact(
-            id: 'punch-runner',
-            hour: 17,
-            endedHour: 18,
-            roleName: 'food runner',
-          ),
-          _laborFact(
-            id: 'punch-busser',
-            hour: 17,
-            endedHour: 18,
-            roleName: 'busser',
-          ),
-          _laborFact(
-            id: 'punch-foh',
-            hour: 17,
-            endedHour: 18,
-            roleName: 'FOH',
-          ),
-        ],
-      );
+        await projector.projectFacts(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          facts: <OpenShiftCanonicalFact>[
+            _posFact(id: 'check-1', hour: 18, covers: 6, sales: 240),
+            _laborFact(
+              id: 'punch-server',
+              hour: 17,
+              endedHour: 18,
+              roleName: 'server',
+            ),
+            _laborFact(
+              id: 'punch-host',
+              hour: 17,
+              endedHour: 18,
+              roleName: 'hostess',
+            ),
+            _laborFact(
+              id: 'punch-runner',
+              hour: 17,
+              endedHour: 18,
+              roleName: 'food runner',
+            ),
+            _laborFact(
+              id: 'punch-busser',
+              hour: 17,
+              endedHour: 18,
+              roleName: 'busser',
+            ),
+            _laborFact(
+              id: 'punch-foh',
+              hour: 17,
+              endedHour: 18,
+              roleName: 'FOH',
+            ),
+          ],
+        );
 
-      final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
-      // 5 punches × 1h each → 5h FOH, 0h BOH.
-      expect(dinner.scheduledFohHours, 5);
-      expect(dinner.scheduledBohHours, 0);
-    });
+        final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
+        // 5 punches × 1h each → 5h FOH, 0h BOH.
+        expect(dinner.scheduledFohHours, 5);
+        expect(dinner.scheduledBohHours, 0);
+      },
+    );
   });
 
   // L1 regression — reservation/booking tokens are matched BEFORE the
@@ -489,24 +553,26 @@ void main() {
       );
     });
 
-    test('projected snapshot day_label matches business date weekday',
-        () async {
-      final writer = _InMemorySnapshotWriter();
-      final projector = _projector(writer);
+    test(
+      'projected snapshot day_label matches business date weekday',
+      () async {
+        final writer = _InMemorySnapshotWriter();
+        final projector = _projector(writer);
 
-      // 2026-05-06 is a Wednesday.
-      await projector.projectFacts(
-        operatorId: _operatorA,
-        locationId: _locationA,
-        facts: <OpenShiftCanonicalFact>[
-          _posFact(id: 'check-1', hour: 18, covers: 4, sales: 168),
-        ],
-      );
+        // 2026-05-06 is a Wednesday.
+        await projector.projectFacts(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          facts: <OpenShiftCanonicalFact>[
+            _posFact(id: 'check-1', hour: 18, covers: 4, sales: 168),
+          ],
+        );
 
-      final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
-      expect(dinner.businessDate, '2026-05-06');
-      expect(dinner.dayLabel, 'Wed');
-    });
+        final dinner = writer.byScopeAndKey('service_period', 'dinner')!;
+        expect(dinner.businessDate, '2026-05-06');
+        expect(dinner.dayLabel, 'Wed');
+      },
+    );
 
     // Code Health (Theme G#6) — the per-status seated transition column
     // name is canonicalized through `_kSeatedAtCanonicalKey` in the
@@ -514,27 +580,27 @@ void main() {
     // pattern in `opentable_reservation_postgres_sink_test.dart` and
     // catches a regression where a developer hard-codes the standalone
     // Dart token at a fact-key lookup site.
-    test(
-      'projector source carries no standalone seated_at Dart literal '
-      'outside the central canonical-key declaration',
-      () async {
-        final source = await io.File(
-          'lib/services/integration/open_shift_snapshot_projector.dart',
-        ).readAsString();
-        final stripped = _stripDartComments(source);
-        // The canonical key declaration intentionally splits the
-        // literal into adjacent string fragments (`'seated' '_at'`)
-        // so the standalone token never appears at any source site,
-        // including the declaration. The grep below catches a
-        // regression where a developer reverts to the standalone token.
-        expect(stripped.contains(_seatedDartLiteral), isFalse,
-            reason:
-                'Use `_kSeatedAtCanonicalKey` (split-literal declaration) '
-                'instead of the standalone Dart token at any new use site '
-                'so the per-sink banned-grep convention extends to this '
-                'projector. See CODE_OPS_DEBT.md Theme G#6.');
-      },
-    );
+    test('projector source carries no standalone seated_at Dart literal '
+        'outside the central canonical-key declaration', () async {
+      final source = await io.File(
+        'lib/services/integration/open_shift_snapshot_projector.dart',
+      ).readAsString();
+      final stripped = _stripDartComments(source);
+      // The canonical key declaration intentionally splits the
+      // literal into adjacent string fragments (`'seated' '_at'`)
+      // so the standalone token never appears at any source site,
+      // including the declaration. The grep below catches a
+      // regression where a developer reverts to the standalone token.
+      expect(
+        stripped.contains(_seatedDartLiteral),
+        isFalse,
+        reason:
+            'Use `_kSeatedAtCanonicalKey` (split-literal declaration) '
+            'instead of the standalone Dart token at any new use site '
+            'so the per-sink banned-grep convention extends to this '
+            'projector. See CODE_OPS_DEBT.md Theme G#6.',
+      );
+    });
   });
 }
 
@@ -614,6 +680,8 @@ OpenShiftCanonicalFact _laborFact({
   required int hour,
   required int endedHour,
   required String roleName,
+  double? hourlyWage,
+  double? laborDollars,
 }) {
   return OpenShiftCanonicalFact(
     kind: OpenShiftCanonicalFactKind.labor,
@@ -624,6 +692,8 @@ OpenShiftCanonicalFact _laborFact({
     occurredAt: DateTime.utc(2026, 5, 6, hour),
     endedAt: DateTime.utc(2026, 5, 6, endedHour),
     businessDate: '2026-05-06',
+    hourlyWage: hourlyWage,
+    laborDollars: laborDollars,
     roleName: roleName,
   );
 }

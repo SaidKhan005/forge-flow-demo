@@ -431,6 +431,8 @@ class OpenShiftSnapshotProjector {
       fohHours: fohHours,
       bohHours: bohHours,
       sales: sales,
+      blendedWage: _wholeDayBlendedWage(periodWrites),
+      blendedWageAvailable: _wholeDayBlendedWageAvailable(periodWrites),
       sourceSystem: sourceSystems.isEmpty ? null : sourceSystems.join(','),
       lastEventAt: lastEventAt,
       provenance: <String, Object?>{
@@ -456,6 +458,8 @@ class OpenShiftSnapshotProjector {
     required int fohHours,
     required int bohHours,
     required double sales,
+    required double blendedWage,
+    required bool blendedWageAvailable,
     required String? sourceSystem,
     required DateTime? lastEventAt,
     required Map<String, Object?> provenance,
@@ -491,10 +495,17 @@ class OpenShiftSnapshotProjector {
       currentPpa: currentCovers <= 0 ? 0 : sales / currentCovers,
       currentCplh: fohHours <= 0 ? 0 : currentCovers / fohHours,
       currentSplh: bohHours <= 0 ? 0 : sales / bohHours,
-      blendedWage: 0,
+      blendedWage: blendedWageAvailable ? blendedWage : 0,
+      blendedWageAvailable: blendedWageAvailable,
       sourceSystem: sourceSystem,
       sourceShiftId: null,
-      provenance: provenance,
+      provenance: <String, Object?>{
+        ...provenance,
+        'blended_wage_available': blendedWageAvailable,
+        'blended_wage_provenance': blendedWageAvailable
+            ? 'canonical_labor_wage'
+            : 'unavailable',
+      },
       lastEventAt: lastEventAt,
     );
   }
@@ -540,6 +551,39 @@ class OpenShiftSnapshotProjector {
 
   static double _salesFromWrite(OpenShiftSnapshotProjectionWrite write) {
     return write.currentPpa * write.currentCovers;
+  }
+
+  static double _laborHoursFromWrite(OpenShiftSnapshotProjectionWrite write) {
+    return (write.scheduledFohHours + write.scheduledBohHours).toDouble();
+  }
+
+  static bool _wholeDayBlendedWageAvailable(
+    List<OpenShiftSnapshotProjectionWrite> writes,
+  ) {
+    final laborHours = writes.fold<double>(
+      0,
+      (sum, write) => sum + _laborHoursFromWrite(write),
+    );
+    if (laborHours <= 0) return false;
+    final wageHours = writes
+        .where((write) => write.blendedWageAvailable)
+        .fold<double>(0, (sum, write) => sum + _laborHoursFromWrite(write));
+    return wageHours >= laborHours;
+  }
+
+  static double _wholeDayBlendedWage(
+    List<OpenShiftSnapshotProjectionWrite> writes,
+  ) {
+    var wageHours = 0.0;
+    var wageDollars = 0.0;
+    for (final write in writes) {
+      if (!write.blendedWageAvailable) continue;
+      final hours = _laborHoursFromWrite(write);
+      wageHours += hours;
+      wageDollars += write.blendedWage * hours;
+    }
+    if (wageHours <= 0) return 0;
+    return wageDollars / wageHours;
   }
 }
 
@@ -670,7 +714,9 @@ enum OpenShiftCanonicalFactKind {
 /// file refer to the single declaration instead of minting the
 /// `'seated_at'` standalone Dart literal at every site (which would
 /// trip the per-sink banned-grep tests when broadly applied).
-const String _kSeatedAtCanonicalKey = 'seated' '_at';
+const String _kSeatedAtCanonicalKey =
+    'seated'
+    '_at';
 
 class OpenShiftCanonicalFact {
   const OpenShiftCanonicalFact({
@@ -687,6 +733,8 @@ class OpenShiftCanonicalFact {
     this.partySize,
     this.fohHours,
     this.bohHours,
+    this.hourlyWage,
+    this.laborDollars,
     this.roleName,
   });
 
@@ -743,6 +791,16 @@ class OpenShiftCanonicalFact {
         'scheduled_boh_hours',
         'actual_boh_hours',
       ]),
+      hourlyWage: _double(map, const <String>[
+        'hourly_wage',
+        'hourly_rate',
+        'effective_hourly_wage',
+      ]),
+      laborDollars: _double(map, const <String>[
+        'labor_dollars',
+        'wage_dollars',
+        'gross_pay',
+      ]),
       roleName: _string(map, const <String>['role_name', 'role', 'job_code']),
     );
   }
@@ -760,6 +818,8 @@ class OpenShiftCanonicalFact {
   final int? partySize;
   final double? fohHours;
   final double? bohHours;
+  final double? hourlyWage;
+  final double? laborDollars;
   final String? roleName;
 
   double get laborDurationHours {
@@ -872,6 +932,7 @@ class OpenShiftSnapshotProjectionWrite {
     required this.currentCplh,
     required this.currentSplh,
     required this.blendedWage,
+    required this.blendedWageAvailable,
     this.timeLabel = '',
     this.serviceElapsedLabel = '',
     this.sourceSystem,
@@ -900,6 +961,7 @@ class OpenShiftSnapshotProjectionWrite {
   final double currentCplh;
   final double currentSplh;
   final double blendedWage;
+  final bool blendedWageAvailable;
   final String timeLabel;
   final String serviceElapsedLabel;
   final String? sourceSystem;
@@ -917,6 +979,8 @@ class _OpenShiftBucket {
   double sales = 0;
   double fohHours = 0;
   double bohHours = 0;
+  double wageKnownHours = 0;
+  double laborDollars = 0;
   DateTime? lastEventAt;
   final Set<String> sourceSystems = <String>{};
 
@@ -945,6 +1009,17 @@ class _OpenShiftBucket {
     } else {
       bohHours += hours;
     }
+    final duration = fact.laborDurationHours;
+    final ratio = duration <= 0 ? 1.0 : hours / duration;
+    final factLaborDollars = fact.laborDollars;
+    final hourlyWage = fact.hourlyWage;
+    if (factLaborDollars != null) {
+      laborDollars += factLaborDollars * ratio;
+      wageKnownHours += hours;
+    } else if (hourlyWage != null) {
+      laborDollars += hourlyWage * hours;
+      wageKnownHours += hours;
+    }
     _recordSource(fact);
   }
 
@@ -968,6 +1043,8 @@ class _OpenShiftBucket {
       fohHours: fohHours.round(),
       bohHours: bohHours.round(),
       sales: sales,
+      blendedWage: wageKnownHours <= 0 ? 0 : laborDollars / wageKnownHours,
+      blendedWageAvailable: wageKnownHours > 0,
       sourceSystem: sourceList.isEmpty ? null : sourceList.join(','),
       lastEventAt: lastEventAt,
       provenance: <String, Object?>{
@@ -1003,11 +1080,7 @@ class _OpenShiftBucket {
     // Compound BOH role tokens that must NOT be classified as FOH even
     // though their substrings collide with FOH tokens (e.g. "barback"
     // contains "bar"). Operators overwhelmingly classify these as BOH.
-    const bohBlocklist = <String>{
-      'barback',
-      'bar back',
-      'bar-back',
-    };
+    const bohBlocklist = <String>{'barback', 'bar back', 'bar-back'};
     if (bohBlocklist.contains(role)) return false;
     for (final token in bohBlocklist) {
       if (role.contains(token)) return false;

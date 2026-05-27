@@ -83,6 +83,13 @@ Future<void> main() async {
         defaultValue: 'staging',
       ),
     );
+    if (!kIsWeb) {
+      WidgetsBinding.instance.addObserver(
+        FcmTokenRevalidationObserver(
+          mobilePushService: mobilePushNotifications,
+        ),
+      );
+    }
     // Hard Rule #1 (mobile_core_star_target_truth_contract.md) — the
     // server owns which star shifts the manager picked. The
     // `HttpSyncProxyClient` we just constructed already implements
@@ -197,11 +204,6 @@ class FcmTokenRevalidationObserver extends WidgetsBindingObserver {
   }
 
   Future<void> _reValidateToken() async {
-    // Invoke reValidateToken if the implementation has it, otherwise
-    // this is a graceful no-op for the noop service.
-    if (_mobilePushService
-        case final MobilePushNotificationCoordinator coordinator) {
-      await coordinator.reValidateToken();
-    }
+    await _mobilePushService.reValidateToken();
   }
 }

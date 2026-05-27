@@ -1362,10 +1362,12 @@ class ShiftService {
       currentCPLH: 0,
       currentSPLH: 0,
       blendedWage: snapshot.blendedWage,
+      blendedWageAvailable: snapshot.blendedWageAvailable,
       timeLabel: snapshot.timeLabel,
       serviceElapsedLabel: snapshot.serviceElapsedLabel,
       sourceSystem: snapshot.sourceSystem,
       sourceShiftId: snapshot.sourceShiftId,
+      provenance: snapshot.provenance,
       lastEventAt: snapshot.lastEventAt,
       updatedAt: snapshot.updatedAt,
     );

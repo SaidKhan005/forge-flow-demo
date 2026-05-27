@@ -6230,6 +6230,9 @@ const String authLocationIntegrationsPrefix = '/v1/auth/locations/';
 final RegExp authLocationIntegrationsPattern = RegExp(
   r'^/v1/auth/locations/([^/]+)/integrations$',
 );
+final RegExp authLocationIntegrationLogsPattern = RegExp(
+  r'^/v1/auth/locations/([^/]+)/integrations/([a-z0-9_]+)/logs$',
+);
 
 /// Phase 8 — operator-self-service projection over
 /// `public.connector_connection`. The proxy bootstrap binds a real
@@ -6248,6 +6251,15 @@ typedef OperatorLocationIntegrationsProjection =
       required String operatorId,
       required String locationId,
       required String actorUserId,
+    });
+
+typedef OperatorLocationIntegrationLogsProjection =
+    Future<List<Map<String, Object?>>> Function({
+      required String operatorId,
+      required String locationId,
+      required String actorUserId,
+      required String vendorId,
+      required int limit,
     });
 
 /// Phase 8 — wire-shape encoder for the
@@ -6475,6 +6487,8 @@ Future<void> routeRequest(
   // projection in the proxy bootstrap.
   OperatorLocationIntegrationsProjection?
   operatorLocationIntegrationsProjection,
+  OperatorLocationIntegrationLogsProjection?
+  operatorLocationIntegrationLogsProjection,
   AuthOperationsGateway? authOperationsGateway,
   ProxyAdminPermissionGuard? adminPermissionGuard,
   ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
@@ -6664,6 +6678,7 @@ Future<void> routeRequest(
   TargetCycleRepository? advisorAnswerTargetCycleRepository,
   WeeklyPlanSnapshotRepository? advisorAnswerWeeklyPlanSnapshotRepository,
   ShiftRecordsReadRepository? advisorAnswerShiftRecordsReadRepository,
+  AdvisorAnswerPlanResolver? advisorAnswerPlanResolver,
   // The answer route REUSES the existing retrieval bindings
   // (corpusRetrievalService / corpusQueryEmbeddingGateway /
   // voyageApiKeyForRetrieval / corpusRerankGateway /
@@ -11067,9 +11082,13 @@ Future<void> routeRequest(
           return;
         }
 
+        final authLocationIntegrationLogsMatch =
+            authLocationIntegrationLogsPattern.firstMatch(path);
         final authLocationIntegrationsMatch = authLocationIntegrationsPattern
             .firstMatch(path);
-        if (request.method == 'GET' && authLocationIntegrationsMatch != null) {
+        if (request.method == 'GET' &&
+            (authLocationIntegrationsMatch != null ||
+                authLocationIntegrationLogsMatch != null)) {
           if (permissionSnapshotResolver == null) {
             _writeJson(response, 503, <String, Object?>{
               'error': 'permission_snapshot_not_configured',
@@ -11094,7 +11113,8 @@ Future<void> routeRequest(
           }
 
           final locationId = Uri.decodeComponent(
-            authLocationIntegrationsMatch.group(1)!,
+            (authLocationIntegrationLogsMatch ?? authLocationIntegrationsMatch)!
+                .group(1)!,
           );
           if (locationId != scope.locationId) {
             _writeJson(response, 403, <String, Object?>{
@@ -11129,6 +11149,46 @@ Future<void> routeRequest(
               'message':
                   'an integration permission is required to view vendor connections',
             });
+            return;
+          }
+
+          if (authLocationIntegrationLogsMatch != null) {
+            if (operatorLocationIntegrationLogsProjection == null) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'integrations_logs_not_configured',
+                'message':
+                    'route requires operator integration logs projection to be installed',
+              });
+              return;
+            }
+            final vendorId = Uri.decodeComponent(
+              authLocationIntegrationLogsMatch.group(2)!,
+            );
+            final rawLimit = int.tryParse(
+              request.uri.queryParameters['limit'] ?? '',
+            );
+            final limit = rawLimit == null
+                ? 100
+                : rawLimit < 1
+                ? 1
+                : rawLimit > 500
+                ? 500
+                : rawLimit;
+            try {
+              final logs = await operatorLocationIntegrationLogsProjection(
+                operatorId: scope.operatorId,
+                locationId: locationId,
+                actorUserId: scope.userId,
+                vendorId: vendorId,
+                limit: limit,
+              );
+              _writeJson(response, 200, <String, Object?>{'logs': logs});
+            } on Exception catch (_) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'integrations_logs_unavailable',
+                'message': 'vendor sync logs are unavailable; please retry',
+              });
+            }
             return;
           }
 
@@ -14074,6 +14134,7 @@ Future<void> routeRequest(
                   advisorAnswerWeeklyPlanSnapshotRepository,
               shiftRecordsReadRepository:
                   advisorAnswerShiftRecordsReadRepository,
+              planResolver: advisorAnswerPlanResolver,
               // Metering (HP #9) — the SAME handles the smoke + retrieve routes
               // use (HP #8: no parallel stack); optional, so unmetered when
               // unwired.

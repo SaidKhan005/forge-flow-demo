@@ -1,4 +1,4 @@
-﻿// 11a.10b / 11a.11d / 11a.11c — Advisor proxy usage + accounting + migrations.
+// 11a.10b / 11a.11d / 11a.11c — Advisor proxy usage + accounting + migrations.
 //
 // Bucket 5c-usage+migrations of the 2026-05-20 test-suite tightening audit:
 // split out of `test/advisor_proxy_test.dart` (8,328 lines). This file
@@ -230,7 +230,6 @@ void main() {
       expect(reasonText, isNot(contains('postgres://')));
     });
   });
-
 
   group('Proxy accounting + cost levers (11a.11d)', () {
     test('usage log SQL is an atomic telemetry-aware UPSERT that writes '
@@ -933,139 +932,130 @@ void main() {
       expect(providerFromModelId(''), isNull);
     });
 
-    test(
-      'AI Metrics: a cap refusal records exactly one usage_cap_events row '
-      'with operator/location/usage_class/query_class + snapshotted '
-      'cap_usd/attempted_usd and a SQL-derived business_date',
-      () async {
-        final pool = AccountingPostgresPool();
-        final store = PostgresProxyAccountingStore(
-          wrapper: TenantTransactionWrapper(pool),
-        );
-        final operator = defaultUuidOperatorContext();
+    test('AI Metrics: a cap refusal records exactly one usage_cap_events row '
+        'with operator/location/usage_class/query_class + snapshotted '
+        'cap_usd/attempted_usd and a profile-derived business_date', () async {
+      final pool = AccountingPostgresPool();
+      final store = PostgresProxyAccountingStore(
+        wrapper: TenantTransactionWrapper(pool),
+      );
+      final operator = defaultUuidOperatorContext();
 
-        // The fake cap-status row exposes a per-invocation cap of $2.00
-        // (`AccountingPostgresPool.query` for `public.usage_caps`). A
-        // 500-cent ($5.00) estimate exceeds it, so startRequest refuses.
-        final start = await store.startRequest(
-          idempotencyKey: 'idem-cap-refusal',
-          requestType: 'advisor_smoke',
-          operator: operator,
-          usageClass: 'advisor_qa',
-          telemetry: const ProxyUsageTelemetry(
-            queryClass: 'methodology_lookup',
-            cacheHit: false,
-            llmTier: 'haiku',
-            modelUsed: 'claude-haiku-4-5',
-          ),
-          estimate: const ProxyUsageChargeEstimate(
-            tokenCount: 123,
-            costCents: 500,
-          ),
-          now: DateTime.utc(2026, 4, 26, 12),
-        );
+      // The fake cap-status row exposes a per-invocation cap of $2.00
+      // (`AccountingPostgresPool.query` for `public.usage_caps`). A
+      // 500-cent ($5.00) estimate exceeds it, so startRequest refuses.
+      final start = await store.startRequest(
+        idempotencyKey: 'idem-cap-refusal',
+        requestType: 'advisor_smoke',
+        operator: operator,
+        usageClass: 'advisor_qa',
+        telemetry: const ProxyUsageTelemetry(
+          queryClass: 'methodology_lookup',
+          cacheHit: false,
+          llmTier: 'haiku',
+          modelUsed: 'claude-haiku-4-5',
+        ),
+        estimate: const ProxyUsageChargeEstimate(
+          tokenCount: 123,
+          costCents: 500,
+        ),
+        now: DateTime.utc(2026, 4, 26, 12),
+      );
 
-        expect(start, isA<ProxyAccountingRefused>());
+      expect(start, isA<ProxyAccountingRefused>());
 
-        // Two transactions: the cap-check (committed, no reservation
-        // insert) and a SEPARATE best-effort cap-event transaction. The
-        // recorder runs AFTER the cap-check tx, so there is no nesting.
-        expect(pool.transactions, hasLength(2));
-        final capCheckTx = pool.transactions.first;
-        final capEventTx = pool.transactions[1];
-        expect(capCheckTx.committed, isTrue);
-        expect(capEventTx.committed, isTrue);
-        expect(capEventTx.rolledBack, isFalse);
+      // Two transactions: the cap-check (committed, no reservation
+      // insert) and a SEPARATE best-effort cap-event transaction. The
+      // recorder runs AFTER the cap-check tx, so there is no nesting.
+      expect(pool.transactions, hasLength(2));
+      final capCheckTx = pool.transactions.first;
+      final capEventTx = pool.transactions[1];
+      expect(capCheckTx.committed, isTrue);
+      expect(capEventTx.committed, isTrue);
+      expect(capEventTx.rolledBack, isFalse);
 
-        // The cap-event tx ran inside tenant context (SET LOCAL operator +
-        // location) so the per-tenant RLS INSERT policy admits the row.
-        expect(
-          capEventTx.executedSql,
-          containsAll(<String>[
-            "select set_config('app.operator_id', @value, true)",
-            "select set_config('app.location_id', @value, true)",
-            "select set_config('app.user_id', @value, true)",
-          ]),
-        );
+      // The cap-event tx ran inside tenant context (SET LOCAL operator +
+      // location) so the per-tenant RLS INSERT policy admits the row.
+      expect(
+        capEventTx.executedSql,
+        containsAll(<String>[
+          "select set_config('app.operator_id', @value, true)",
+          "select set_config('app.location_id', @value, true)",
+          "select set_config('app.user_id', @value, true)",
+        ]),
+      );
 
-        // Exactly one cap-event INSERT, and no reservation insert on a
-        // refusal (the request never reserved an idempotency row).
-        final capEventInserts = capEventTx.executeCalls
-            .where((c) => c.sql.contains('insert into public.usage_cap_events'))
-            .toList();
-        expect(capEventInserts, hasLength(1));
-        final insert = capEventInserts.single;
+      // Exactly one cap-event INSERT, and no reservation insert on a
+      // refusal (the request never reserved an idempotency row).
+      final capEventInserts = capEventTx.executeCalls
+          .where((c) => c.sql.contains('insert into public.usage_cap_events'))
+          .toList();
+      expect(capEventInserts, hasLength(1));
+      final insert = capEventInserts.single;
 
-        // business_date is derived in SQL from the location's timezone +
-        // business_day_rollover_hour (Time Guardrails) — not bound from
-        // Dart. The INSERT ... SELECT FROM public.locations carries the
-        // same projection as the Phase 8 denorm trigger.
-        expect(insert.sql, contains('from public.locations l'));
-        expect(insert.sql, contains('business_day_rollover_hour'));
-        expect(insert.sql, contains('at time zone'));
-        expect(insert.parameters.containsKey('business_date'), isFalse);
+      // business_date is resolved through the business-timing profile
+      // chain and bound into the INSERT; the insert no longer derives
+      // it from legacy locations.business_day_rollover_hour SQL.
+      expect(insert.sql, isNot(contains('business_day_rollover_hour')));
+      expect(insert.sql, isNot(contains('at time zone')));
+      expect(insert.parameters['business_date'], equals('2026-04-26'));
 
-        // Correct attribution + snapshotted amounts. The per-invocation
-        // cap ($2.00) tripped, so cap_usd = 2.0000 and attempted_usd =
-        // the single call's projected cost (5.0000). Both fixed-4 strings.
-        expect(insert.parameters['operator_id'], equals(operator.operatorId));
-        expect(insert.parameters['location_id'], equals(operator.locationId));
-        expect(insert.parameters['usage_class'], equals('advisor_qa'));
-        expect(insert.parameters['query_class'], equals('methodology_lookup'));
-        expect(insert.parameters['cap_usd'], equals('2.0000'));
-        expect(insert.parameters['attempted_usd'], equals('5.0000'));
-        expect(
-          insert.parameters['occurred_at'],
-          equals(DateTime.utc(2026, 4, 26, 12).toIso8601String()),
-        );
-      },
-    );
+      // Correct attribution + snapshotted amounts. The per-invocation
+      // cap ($2.00) tripped, so cap_usd = 2.0000 and attempted_usd =
+      // the single call's projected cost (5.0000). Both fixed-4 strings.
+      expect(insert.parameters['operator_id'], equals(operator.operatorId));
+      expect(insert.parameters['location_id'], equals(operator.locationId));
+      expect(insert.parameters['usage_class'], equals('advisor_qa'));
+      expect(insert.parameters['query_class'], equals('methodology_lookup'));
+      expect(insert.parameters['cap_usd'], equals('2.0000'));
+      expect(insert.parameters['attempted_usd'], equals('5.0000'));
+      expect(
+        insert.parameters['occurred_at'],
+        equals(DateTime.utc(2026, 4, 26, 12).toIso8601String()),
+      );
+    });
 
-    test(
-      'AI Metrics: a cap-event insert failure does NOT change the refusal '
-      '(still refuses, no throw escapes the hot path)',
-      () async {
-        // Pool whose cap-event INSERT throws. The cap-check path uses the
-        // standard fake responses (delegated), so the refusal is decided
-        // exactly as in the happy case; only the observability write fails.
-        final pool = _CapEventFailingPool();
-        final store = PostgresProxyAccountingStore(
-          wrapper: TenantTransactionWrapper(pool),
-        );
-        final operator = defaultUuidOperatorContext();
+    test('AI Metrics: a cap-event insert failure does NOT change the refusal '
+        '(still refuses, no throw escapes the hot path)', () async {
+      // Pool whose cap-event INSERT throws. The cap-check path uses the
+      // standard fake responses (delegated), so the refusal is decided
+      // exactly as in the happy case; only the observability write fails.
+      final pool = _CapEventFailingPool();
+      final store = PostgresProxyAccountingStore(
+        wrapper: TenantTransactionWrapper(pool),
+      );
+      final operator = defaultUuidOperatorContext();
 
-        final start = await store.startRequest(
-          idempotencyKey: 'idem-cap-refusal-fail',
-          requestType: 'advisor_smoke',
-          operator: operator,
-          usageClass: 'advisor_qa',
-          telemetry: const ProxyUsageTelemetry(
-            queryClass: 'methodology_lookup',
-            cacheHit: false,
-            llmTier: 'haiku',
-            modelUsed: 'claude-haiku-4-5',
-          ),
-          estimate: const ProxyUsageChargeEstimate(
-            tokenCount: 123,
-            costCents: 500,
-          ),
-          now: DateTime.utc(2026, 4, 26, 12),
-        );
+      final start = await store.startRequest(
+        idempotencyKey: 'idem-cap-refusal-fail',
+        requestType: 'advisor_smoke',
+        operator: operator,
+        usageClass: 'advisor_qa',
+        telemetry: const ProxyUsageTelemetry(
+          queryClass: 'methodology_lookup',
+          cacheHit: false,
+          llmTier: 'haiku',
+          modelUsed: 'claude-haiku-4-5',
+        ),
+        estimate: const ProxyUsageChargeEstimate(
+          tokenCount: 123,
+          costCents: 500,
+        ),
+        now: DateTime.utc(2026, 4, 26, 12),
+      );
 
-        // The refusal is unchanged despite the logging-write failure: the
-        // call returns ProxyAccountingRefused and does NOT throw.
-        expect(start, isA<ProxyAccountingRefused>());
-        final refused = start as ProxyAccountingRefused;
-        expect(refused.capStatus.perInvocationExceeded, isTrue);
+      // The refusal is unchanged despite the logging-write failure: the
+      // call returns ProxyAccountingRefused and does NOT throw.
+      expect(start, isA<ProxyAccountingRefused>());
+      final refused = start as ProxyAccountingRefused;
+      expect(refused.capStatus.perInvocationExceeded, isTrue);
 
-        // The cap-event transaction was attempted (and rolled back by the
-        // wrapper when the INSERT threw), but the failure was swallowed.
-        expect(pool.capEventInsertAttempted, isTrue);
-        expect(pool.transactions.last.rolledBack, isTrue);
-      },
-    );
+      // The cap-event transaction was attempted (and rolled back by the
+      // wrapper when the INSERT threw), but the failure was swallowed.
+      expect(pool.capEventInsertAttempted, isTrue);
+      expect(pool.transactions.last.rolledBack, isTrue);
+    });
   });
-
 
   group('Advisor proxy usage counters migration (11a.10b)', () {
     test('creates the counter table with RLS, service-role policy, and '
@@ -1119,7 +1109,6 @@ void main() {
       expect(migration, contains('to service_role'));
     });
   });
-
 
   group('Advisor cloud foundation migration (11a.11c.1)', () {
     late String migration;
@@ -1372,7 +1361,6 @@ void main() {
     });
   });
 
-
   group('Advisor schema hardening migration (11a.11c.6a)', () {
     late String migration;
     late String normalizedMigration;
@@ -1561,7 +1549,6 @@ void main() {
     });
   });
 
-
   group('Advisor RLS index hardening migration (11a.11c.6 live fix)', () {
     late String migration;
     late String normalizedMigration;
@@ -1665,7 +1652,6 @@ void main() {
       },
     );
   });
-
 
   group('Phase 9.0Σ.g usage_caps two-slot key migration (B28 / item 6)', () {
     // Migration/schema-only assertions — the deep coverage of the
@@ -1938,7 +1924,6 @@ void main() {
       );
     });
   });
-
 }
 
 /// Pool whose `usage_cap_events` INSERT throws, used to prove the

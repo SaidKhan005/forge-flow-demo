@@ -330,8 +330,6 @@ LocationAccountOverridesDecode decodeLocationAccountOverridesPatchBody(
   bool clearLocaleCode = false;
   String? currencyCode;
   bool clearCurrencyCode = false;
-  int? rolloverHour;
-  bool clearRolloverHour = false;
   String? contactEmail;
   bool clearContactEmail = false;
   String? contactPhone;
@@ -426,32 +424,10 @@ LocationAccountOverridesDecode decodeLocationAccountOverridesPatchBody(
   }
 
   if (body.containsKey('businessDayRolloverHour')) {
-    final raw = body['businessDayRolloverHour'];
-    if (raw == null) {
-      clearRolloverHour = true;
-    } else if (raw is int) {
-      if (raw < 0 || raw > 23) {
-        return _failure(
-          'invalid_rollover_hour',
-          'businessDayRolloverHour must be between 0 and 23.',
-        );
-      }
-      rolloverHour = raw;
-    } else if (raw is num) {
-      final asInt = raw.toInt();
-      if (asInt != raw || asInt < 0 || asInt > 23) {
-        return _failure(
-          'invalid_rollover_hour',
-          'businessDayRolloverHour must be an integer between 0 and 23.',
-        );
-      }
-      rolloverHour = asInt;
-    } else {
-      return _failure(
-        'invalid_rollover_hour',
-        'businessDayRolloverHour must be an integer or null.',
-      );
-    }
+    return _failure(
+      'unsupported_location_account_field',
+      'businessDayRolloverHour is edited in Business Timing, not Account.',
+    );
   }
 
   if (body.containsKey('contactEmail')) {
@@ -518,8 +494,6 @@ LocationAccountOverridesDecode decodeLocationAccountOverridesPatchBody(
     clearLocaleCode: clearLocaleCode,
     currencyCode: currencyCode,
     clearCurrencyCode: clearCurrencyCode,
-    businessDayRolloverHour: rolloverHour,
-    clearBusinessDayRolloverHour: clearRolloverHour,
     contactEmail: contactEmail,
     clearContactEmail: clearContactEmail,
     contactPhone: contactPhone,
@@ -530,7 +504,7 @@ LocationAccountOverridesDecode decodeLocationAccountOverridesPatchBody(
       'no_fields_to_update',
       'request body must include at least one editable field '
           '(ianaTimezone, localeCode, currencyCode, '
-          'businessDayRolloverHour, contactEmail, contactPhone).',
+          'contactEmail, contactPhone).',
     );
   }
   return LocationAccountOverridesDecode.success(patch);

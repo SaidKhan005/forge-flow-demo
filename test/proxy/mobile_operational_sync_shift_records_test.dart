@@ -62,6 +62,7 @@ void main() {
           expect(open.body, contains('business_timing_profile_id'));
           expect(open.body, contains('business_timing_profile_version_id'));
           expect(open.body, contains('service_period_key'));
+          expect(open.body, contains('provenance'));
 
           final timing = await httpGet(
             ctx.client,

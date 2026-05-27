@@ -112,9 +112,16 @@
     document.dispatchEvent(new KeyboardEvent('keyup',   { key: 'Escape', bubbles: true }));
   }
 
-  async function nav(label) {
-    clickLabel(label);
+  async function nav(route, labels) {
+    var candidates = Array.isArray(labels) ? labels : [labels];
+    var clicked = clickAnyLabel(candidates);
+    if (clicked) {
+      pass(route, 'navigation: clicked "' + clicked + '"');
+    } else {
+      fail(route, 'navigation: clicked ' + candidates.join(' / '), 'button not found');
+    }
     await wait(800);
+    return clicked;
   }
 
   // ─── BOOT SEQUENCE ────────────────────────────────────────────────────────
@@ -167,7 +174,7 @@
   // ─── OPERATIONS PLAN ──────────────────────────────────────────────────────
 
   var R_OPS = 'Operations Plan';
-  await nav('Operations Plan');
+  await nav(R_OPS, ['Plan', 'Operations Plan']);
 
   assertText(R_OPS, 'Daily plan');
   assertTextRe(R_OPS, /Week of/, '"Week of" header present');
@@ -180,7 +187,7 @@
   // ─── BUSINESS ACCOUNT ─────────────────────────────────────────────────────
 
   var R_BIZ = 'Business account';
-  await nav('Business Business account');
+  await nav(R_BIZ, ['Business account', 'Business Business account']);
 
   assertText(R_BIZ, 'Business identity');
   assertText(R_BIZ, 'Logo');
@@ -191,7 +198,7 @@
   // ─── SERVICE PERIODS ──────────────────────────────────────────────────────
 
   var R_SVC = 'Service periods';
-  await nav('Service periods');
+  await nav(R_SVC, 'Service periods');
 
   assertText(R_SVC, 'Edit service periods');
   assertText(R_SVC, 'Timezone');
@@ -218,7 +225,7 @@
   // ─── TEAM MEMBERS ─────────────────────────────────────────────────────────
 
   var R_TEAM = 'Team members';
-  await nav('Team members');
+  await nav(R_TEAM, 'Team members');
 
   assertText(R_TEAM, 'Invite member');
   assertText(R_TEAM, 'Status');
@@ -230,7 +237,7 @@
   // ─── ROLES & PERMISSIONS ──────────────────────────────────────────────────
 
   var R_ROLES = 'Roles & permissions';
-  await nav('Access Roles');
+  await nav(R_ROLES, ['Roles & permissions', 'Access Roles']);
 
   assertText(R_ROLES, 'New role');
   assertText(R_ROLES, 'Custom roles');
@@ -241,7 +248,7 @@
   // ─── ACTIVE SESSIONS ──────────────────────────────────────────────────────
 
   var R_SESS = 'Active sessions';
-  await nav('Active sessions');
+  await nav(R_SESS, 'Active sessions');
 
   assertText(R_SESS, 'Your sessions');
   assertText(R_SESS, '(this session)');
@@ -251,7 +258,7 @@
   // ─── AUDIT LOG ────────────────────────────────────────────────────────────
 
   var R_AUDIT = 'Audit log';
-  await nav('Audit log');
+  await nav(R_AUDIT, 'Audit log');
 
   assertText(R_AUDIT, 'Export CSV');
   assertText(R_AUDIT, 'Last 7 days');
@@ -277,7 +284,7 @@
   // ─── VENDOR INTEGRATIONS ──────────────────────────────────────────────────
 
   var R_VENDOR = 'Vendor integrations';
-  await nav('Data & integrations Vendor');
+  await nav(R_VENDOR, ['Vendor integrations', 'Data & integrations Vendor']);
 
   assertText(R_VENDOR, 'Point-of-sale');
   assertText(R_VENDOR, 'Scheduling and labor');
@@ -312,7 +319,7 @@
   // ─── DATA ACCURACY ────────────────────────────────────────────────────────
 
   var R_DATA = 'Data accuracy';
-  await nav('Data accuracy');
+  await nav(R_DATA, 'Data accuracy');
 
   assertText(R_DATA, 'Labor');
   assertText(R_DATA, 'Covers');
@@ -322,7 +329,7 @@
   // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
 
   var R_NOTIF = 'Notifications';
-  await nav('People & access Notifications');
+  await nav(R_NOTIF, ['Notifications', 'People & access Notifications']);
 
   assertText(R_NOTIF, 'Notifications');
   assertText(R_NOTIF, 'Email');
@@ -335,7 +342,7 @@
   // ─── MY ACCOUNT ───────────────────────────────────────────────────────────
 
   var R_ACCT = 'My account';
-  await nav('People My account');
+  await nav(R_ACCT, ['My account', 'People My account']);
 
   assertText(R_ACCT, 'Profile');
   assertText(R_ACCT, 'Display name');

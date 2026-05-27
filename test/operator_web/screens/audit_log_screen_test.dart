@@ -29,6 +29,7 @@ import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/audit_log_screen.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_audit_log_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_fixtures.dart';
+import 'package:forge_and_flow/operator_web/services/web_audit_log_hierarchy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_audit_log_gateway.dart';
 import 'package:forge_and_flow/widgets/console/console_surface.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -96,6 +97,7 @@ void main() {
     WidgetTester tester, {
     required OperatorWebSession session,
     WebTeamAuditLogGateway? gateway,
+    WebAuditLogHierarchyGateway? hierarchyGateway,
     String Function()? idempotencyKeyFactory,
     Future<void> Function(String value)? copyToClipboard,
     Future<void> Function(WebAuditLogCsvExport export)? onCsvReady,
@@ -106,6 +108,7 @@ void main() {
         AuditLogScreen(
           session: session,
           gateway: resolved,
+          hierarchyGateway: hierarchyGateway,
           idempotencyKeyFactory: idempotencyKeyFactory,
           copyToClipboard: copyToClipboard,
           onCsvReady: onCsvReady,
@@ -142,6 +145,50 @@ void main() {
       );
     });
 
+    testWidgets('operator-wide load falls back to hierarchy route when '
+        'legacy audit route is unavailable', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final hierarchyGateway = InMemoryWebAuditLogHierarchyGateway(
+        rows: <WebAuditLogHierarchyRow>[
+          WebAuditLogHierarchyRow(
+            id: 'hierarchy-audit-001',
+            operatorId: kDemoOperatorIdFixture,
+            locationId: 'demo-loc-downtown',
+            occurredAt: DateTime.utc(2026, 5, 5, 17),
+            actorKind: webAuditLogActorKindWire(
+              WebAuditLogActorKind.teamMember,
+            ),
+            actorUserId: 'demo-user-owner',
+            actorPrincipalId: 'sam.owner@demobistro.test',
+            action: WebAuditLogActions.teamUsersInvite,
+            targetKind: 'user',
+            targetId: 'team-user-1',
+          ),
+        ],
+      );
+
+      await pumpScreen(
+        tester,
+        session: sessionWithRole('operator_owner'),
+        gateway: _RouteMissingAuditLogGateway(),
+        hierarchyGateway: hierarchyGateway,
+      );
+
+      expect(
+        find.byKey(const Key('operator_web_audit_log_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_audit_log_row_hierarchy-audit-001')),
+        findsOneWidget,
+      );
+      expect(hierarchyGateway.calls, hasLength(1));
+      expect(
+        hierarchyGateway.calls.single.scopeType,
+        WebAuditLogHierarchyScopeType.operatorWide,
+      );
+    });
+
     testWidgets('operator_staff hits the forbidden surface', (tester) async {
       await sizeViewport(tester, const Size(1280, 900));
       await pumpScreen(tester, session: sessionWithRole('operator_staff'));
@@ -168,6 +215,22 @@ void main() {
       expect(
         find.byKey(const Key('operator_web_audit_log_export_button')),
         findsNothing,
+      );
+    });
+
+    testWidgets('auditor_compliance can view and export audit logs', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      await pumpScreen(tester, session: sessionWithRole('auditor_compliance'));
+
+      expect(
+        find.byKey(const Key('operator_web_audit_log_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_audit_log_export_button')),
+        findsOneWidget,
       );
     });
 
@@ -515,6 +578,29 @@ class _SmallPageGateway implements WebTeamAuditLogGateway {
     return _delegate.exportCsv(
       query.copyWith(limit: pageSize),
       idempotencyKey: idempotencyKey,
+    );
+  }
+}
+
+class _RouteMissingAuditLogGateway implements WebTeamAuditLogGateway {
+  @override
+  Future<WebAuditLogPage> listEntries(WebAuditLogQuery query) async {
+    throw const WebTeamAuditLogError(
+      code: 'route_missing',
+      message: 'audit log route not found',
+      statusCode: 404,
+    );
+  }
+
+  @override
+  Future<WebAuditLogCsvExport> exportCsv(
+    WebAuditLogQuery query, {
+    required String idempotencyKey,
+  }) async {
+    throw const WebTeamAuditLogError(
+      code: 'route_missing',
+      message: 'audit log route not found',
+      statusCode: 404,
     );
   }
 }

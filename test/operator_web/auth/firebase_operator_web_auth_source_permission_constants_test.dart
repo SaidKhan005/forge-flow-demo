@@ -17,7 +17,7 @@
 //      `PermissionKeys` constant. A future rename of the constant's
 //      *value* trips this and forces the auth-source decision to be
 //      re-examined.
-//   2. Source grep-guard — no bare literal of those four keys remains
+//   2. Source grep-guard — no bare literal of those keys remains
 //      in the auth source. A future hand-edit that reintroduces a bare
 //      literal (re-opening the desync hole) trips this.
 
@@ -34,9 +34,11 @@ void main() {
       expect('team.users.view', PermissionKeys.teamUsersView);
       expect('admin.users.view', PermissionKeys.adminUsersView);
       expect('forgeflow.settings.view', PermissionKeys.forgeflowSettingsView);
+      expect('team.audit_log.view', PermissionKeys.teamAuditLogView);
+      expect('team.audit_log.export', PermissionKeys.teamAuditLogExport);
     });
 
-    test('no bare literal of the four G30 keys remains in '
+    test('no bare literal of the G30 keys remains in '
         'firebase_operator_web_auth_source.dart', () {
       // Resolve relative to the test working directory (repo root under
       // `flutter test`).
@@ -46,7 +48,8 @@ void main() {
       expect(
         source.existsSync(),
         isTrue,
-        reason: 'Expected auth source at ${source.path} '
+        reason:
+            'Expected auth source at ${source.path} '
             '(cwd=${Directory.current.path})',
       );
       final text = source.readAsStringSync();
@@ -57,12 +60,15 @@ void main() {
         "'team.users.view'",
         "'admin.users.view'",
         "'forgeflow.settings.view'",
+        "'team.audit_log.view'",
+        "'team.audit_log.export'",
       ];
       for (final literal in bannedLiterals) {
         expect(
           text.contains(literal),
           isFalse,
-          reason: 'Bare permission literal $literal must be referenced '
+          reason:
+              'Bare permission literal $literal must be referenced '
               'via the PermissionKeys catalog constant (G30). A bare '
               'literal re-opens the catalog-rename desync the per-screen '
               'gates already avoid.',
@@ -71,16 +77,12 @@ void main() {
 
       // Sanity: the constants are actually wired in (guards against a
       // future revert that drops the references *and* the literals).
-      expect(
-        text.contains('PermissionKeys.integrationsConfigure'),
-        isTrue,
-      );
+      expect(text.contains('PermissionKeys.integrationsConfigure'), isTrue);
       expect(text.contains('PermissionKeys.teamUsersView'), isTrue);
       expect(text.contains('PermissionKeys.adminUsersView'), isTrue);
-      expect(
-        text.contains('PermissionKeys.forgeflowSettingsView'),
-        isTrue,
-      );
+      expect(text.contains('PermissionKeys.forgeflowSettingsView'), isTrue);
+      expect(text.contains('PermissionKeys.teamAuditLogView'), isTrue);
+      expect(text.contains('PermissionKeys.teamAuditLogExport'), isTrue);
     });
   });
 }

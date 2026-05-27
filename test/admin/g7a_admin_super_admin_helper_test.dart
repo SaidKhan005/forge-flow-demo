@@ -170,7 +170,7 @@ void main() {
       },
     );
 
-    test('exactly 13 _isAdminSuperAdmin(session) call sites', () {
+    test('exactly 12 _isAdminSuperAdmin(session) call sites', () {
       // UX-parity Slice E1 moved the single, non-destructive Pricing
       // editing gate from `_isAdminSuperAdmin(session)` to the new
       // capability-key helper `adminCanEdit(session, requiredKey:
@@ -180,12 +180,14 @@ void main() {
       // byte-identical for an EMPTY permissions set (it falls back to
       // the same super-admin role check), so the decision is
       // unchanged — only the call shape at that ONE site changed. The
-      // active `_isAdminSuperAdmin(session)` count therefore drops from
-      // 14 to 13. All other coarse-role sites are untouched.
+      // active `_isAdminSuperAdmin(session)` count therefore dropped from
+      // 14 to 13. The Integrations route later moved provider-key rotation
+      // to `integration.key_rotate` + fresh MFA, dropping the active count
+      // to 12.
       final calls = RegExp(
         r'_isAdminSuperAdmin\(session\)',
       ).allMatches(activeSource).length;
-      expect(calls, 13);
+      expect(calls, 12);
     });
 
     test('exactly 2 bare adminCanEdit(session, ...) call sites', () {
@@ -215,12 +217,13 @@ void main() {
       expect(calls, 2);
     });
 
-    test('exactly 2 adminCanEditDestructive(...) call sites (E4)', () {
+    test('exactly 3 adminCanEditDestructive(...) call sites (E4)', () {
       // UX-parity Slice E4 keyed the remaining live destructive per-action
       // gates via the extracted [adminCanEditDestructive] composer. Current
       // origin moved seeded-role gating behind `_canEditSeededRoles`, so the
-      // route file has TWO direct call sites in active builders:
+      // route file has THREE direct call sites in active builders:
       //   * `_canEditSeededRoles` - admin.roles.edit_seeded
+      //   * `_canRotateProviderKeys` - integration.key_rotate
       //   * `_buildAuditedSupportActions` - once inside a local
       //     `canDestructive(key)` closure that reset_mfa_factors and
       //     erase_pii forward to
@@ -233,7 +236,7 @@ void main() {
       final calls = RegExp(
         r'(?<![\w_])adminCanEditDestructive\(',
       ).allMatches(activeSource).length;
-      expect(calls, 2);
+      expect(calls, 3);
     });
 
     test('admin_destructive_gate import is present (E4 extraction)', () {

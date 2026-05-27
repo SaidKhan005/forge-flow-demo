@@ -53,108 +53,102 @@ void main() {
     expect(bundle.demoFlags.values, everyElement(isTrue));
   });
 
-  test(
-    'startConnect / test-connection / disconnect target the operator-facing '
-    'PR #283 routes',
-    () async {
-      final captured = <http.Request>[];
-      final gateway = OperatorWebHttpVendorConnectionsGateway(
-        proxyClient: OperatorWebProxyClient(
-          baseUri: Uri.parse(proxyBase),
-          httpClient: MockClient((request) async {
-            captured.add(request);
-            if (request.url.path.endsWith('/begin')) {
-              return http.Response(
-                jsonEncode(<String, Object?>{
-                  'authorization_url': 'https://vendor.example/oauth/consent',
-                  'state_token': 'state-stub',
-                  'vendor_id': 'square',
-                }),
-                200,
-              );
-            }
-            if (request.url.path.endsWith('/connect')) {
-              return http.Response(
-                jsonEncode(<String, Object?>{
-                  'connection_id': 'conn-1',
-                  'status': 'connected',
-                  'vendor_id': 'humanity',
-                }),
-                200,
-              );
-            }
-            if (request.url.path.endsWith('/test-connection')) {
-              return http.Response(
-                jsonEncode(<String, Object?>{
-                  'ok': true,
-                  'auth_valid': true,
-                  'elapsed_ms': 10,
-                  'message': 'ok',
-                  'sample_summary': 'ok',
-                  'field_mapping': const <String, Object?>{},
-                }),
-                200,
-              );
-            }
+  test('startConnect / test-connection / disconnect target the operator-facing '
+      'PR #283 routes', () async {
+    final captured = <http.Request>[];
+    final gateway = OperatorWebHttpVendorConnectionsGateway(
+      proxyClient: OperatorWebProxyClient(
+        baseUri: Uri.parse(proxyBase),
+        httpClient: MockClient((request) async {
+          captured.add(request);
+          if (request.url.path.endsWith('/begin')) {
             return http.Response(
-              jsonEncode(<String, Object?>{'ok': true}),
+              jsonEncode(<String, Object?>{
+                'authorization_url': 'https://vendor.example/oauth/consent',
+                'state_token': 'state-stub',
+                'vendor_id': 'square',
+              }),
               200,
             );
-          }),
-        ),
-        idTokenProvider: tokenProvider,
-      );
+          }
+          if (request.url.path.endsWith('/connect')) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'connection_id': 'conn-1',
+                'status': 'connected',
+                'vendor_id': 'humanity',
+              }),
+              200,
+            );
+          }
+          if (request.url.path.endsWith('/test-connection')) {
+            return http.Response(
+              jsonEncode(<String, Object?>{
+                'ok': true,
+                'auth_valid': true,
+                'elapsed_ms': 10,
+                'message': 'ok',
+                'sample_summary': 'ok',
+                'field_mapping': const <String, Object?>{},
+              }),
+              200,
+            );
+          }
+          return http.Response(jsonEncode(<String, Object?>{'ok': true}), 200);
+        }),
+      ),
+      idTokenProvider: tokenProvider,
+    );
 
-      final oauthFlow = await gateway.startConnect(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-        vendorId: 'square',
-      );
-      expect(
-        oauthFlow.redirectUrl,
-        equals('https://vendor.example/oauth/consent'),
-      );
+    final oauthFlow = await gateway.startConnect(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+      vendorId: 'square',
+    );
+    expect(
+      oauthFlow.redirectUrl,
+      equals('https://vendor.example/oauth/consent'),
+    );
 
-      final keyPasteFlow = await gateway.startConnect(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-        vendorId: 'humanity',
-      );
-      // api-key connect routes do not return a redirect URL; the
-      // gateway returns an empty string so the widget renders the
-      // local key-paste form rather than navigating away.
-      expect(keyPasteFlow.redirectUrl, isEmpty);
+    final keyPasteFlow = await gateway.startConnect(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+      vendorId: 'humanity',
+    );
+    // api-key connect routes do not return a redirect URL; the
+    // gateway returns an empty string so the widget renders the
+    // local key-paste form rather than navigating away.
+    expect(keyPasteFlow.redirectUrl, isEmpty);
 
-      await gateway.testConnection(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-        vendorId: 'square',
-      );
-      await gateway.disconnect(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-        vendorId: 'square',
-        reason: 'qa',
-      );
+    await gateway.testConnection(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+      vendorId: 'square',
+    );
+    await gateway.disconnect(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+      vendorId: 'square',
+      reason: 'qa',
+    );
 
-      expect(
-        captured.map((request) => request.url.path),
-        containsAllInOrder(<String>[
-          '/v1/integrations/oauth/square/begin',
-          '/v1/integrations/api-key/humanity/connect',
-          '/v1/integrations/square/test-connection',
-          '/v1/integrations/square/disconnect',
-        ]),
-      );
-      for (final request in captured) {
-        if (request.method == 'POST') {
-          final body = jsonDecode(request.body) as Map<String, Object?>;
-          expect(body['operator_id'], isNull);
-          expect(body['location_id'], 'loc-1');
-        }
+    expect(
+      captured.map((request) => request.url.path),
+      containsAllInOrder(<String>[
+        '/v1/integrations/oauth/square/begin',
+        '/v1/integrations/api-key/humanity/connect',
+        '/v1/integrations/square/test-connection',
+        '/v1/integrations/square/disconnect',
+      ]),
+    );
+    for (final request in captured) {
+      if (request.method == 'POST') {
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        expect(body['operator_id'], isNull);
+        expect(body['location_id'], 'loc-1');
       }
-    },
-  );
+    }
+  });
 
   test(
     'connectWithApiKey POSTs to api-key/{vendor}/connect with the credentials '
@@ -198,8 +192,10 @@ void main() {
       expect(body.containsKey('module'), isFalse);
       expect(result.connectionId, 'conn-77');
       expect(result.firstBackfillStarted, isTrue);
-      expect(result.connectedAt.toUtc(),
-          equals(DateTime.utc(2026, 5, 7, 12, 34, 56)));
+      expect(
+        result.connectedAt.toUtc(),
+        equals(DateTime.utc(2026, 5, 7, 12, 34, 56)),
+      );
     },
   );
 
@@ -268,163 +264,151 @@ void main() {
     },
   );
 
-  test(
-    'loadBundle parses the first_backfill object on each connection row '
-    'and translates the wire status into the typed enum',
-    () async {
-      final gateway = OperatorWebHttpVendorConnectionsGateway(
-        proxyClient: OperatorWebProxyClient(
-          baseUri: Uri.parse(proxyBase),
-          httpClient: MockClient((request) async {
-            return http.Response(
-              jsonEncode(<String, Object?>{
-                'operator_id': 'op-1',
-                'location_id': 'loc-1',
-                'connections': <Object?>[
-                  <String, Object?>{
-                    'connection_id': 'cnx-running',
-                    'vendor_id': 'toast',
-                    'category': 'pos',
-                    'status': 'connected',
-                    'first_backfill': <String, Object?>{
-                      'status': 'running',
-                      'started_at': '2026-05-07T11:00:00.000Z',
-                      'completed_at': null,
-                      'failure_reason': null,
-                      'processed_days': 12,
-                      'total_days': 60,
-                    },
+  test('loadBundle parses the first_backfill object on each connection row '
+      'and translates the wire status into the typed enum', () async {
+    final gateway = OperatorWebHttpVendorConnectionsGateway(
+      proxyClient: OperatorWebProxyClient(
+        baseUri: Uri.parse(proxyBase),
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'operator_id': 'op-1',
+              'location_id': 'loc-1',
+              'connections': <Object?>[
+                <String, Object?>{
+                  'connection_id': 'cnx-running',
+                  'vendor_id': 'toast',
+                  'category': 'pos',
+                  'status': 'connected',
+                  'first_backfill': <String, Object?>{
+                    'status': 'running',
+                    'started_at': '2026-05-07T11:00:00.000Z',
+                    'completed_at': null,
+                    'failure_reason': null,
+                    'processed_days': 12,
+                    'total_days': 60,
                   },
-                  <String, Object?>{
-                    'connection_id': 'cnx-done',
-                    'vendor_id': 'humanity',
-                    'category': 'labor',
-                    'status': 'connected',
-                    'first_backfill': <String, Object?>{
-                      'status': 'succeeded',
-                      'started_at': '2026-05-06T22:00:00.000Z',
-                      'completed_at': '2026-05-06T22:22:00.000Z',
-                    },
-                  },
-                  <String, Object?>{
-                    'connection_id': 'cnx-fail',
-                    'vendor_id': 'square',
-                    'category': 'pos',
-                    'status': 'connected',
-                    'first_backfill': <String, Object?>{
-                      'status': 'failed',
-                      'failure_reason': 'token revoked mid-pull',
-                    },
-                  },
-                  <String, Object?>{
-                    'connection_id': 'cnx-dl',
-                    'vendor_id': 'opentable',
-                    'category': 'reservation',
-                    'status': 'connected',
-                    'first_backfill': <String, Object?>{
-                      'status': 'dead_lettered',
-                      'failure_reason': 'attempts exhausted',
-                    },
-                  },
-                  <String, Object?>{
-                    'connection_id': 'cnx-legacy',
-                    'vendor_id': '7shifts',
-                    'category': 'labor',
-                    'status': 'connected',
-                  },
-                ],
-                'demo_flags': const <String, Object?>{
-                  'pos': false,
-                  'labor': false,
-                  'reservation': false,
                 },
-              }),
-              200,
-            );
-          }),
-        ),
-        idTokenProvider: tokenProvider,
-      );
-
-      final bundle = await gateway.loadBundle(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-      );
-
-      // Pos slot picks up the first POS connection encountered (toast).
-      final pos = bundle.posConnection!;
-      expect(pos.firstBackfill, isNotNull);
-      expect(
-        pos.firstBackfill!.status,
-        VendorConnectionFirstBackfillStatus.running,
-      );
-      expect(pos.firstBackfill!.processedDays, 12);
-      expect(pos.firstBackfill!.totalDays, 60);
-      expect(
-        pos.firstBackfill!.startedAt,
-        equals(DateTime.utc(2026, 5, 7, 11)),
-      );
-      expect(pos.firstBackfill!.completedAt, isNull);
-
-      final labor = bundle.laborConnection!;
-      expect(
-        labor.firstBackfill!.status,
-        VendorConnectionFirstBackfillStatus.succeeded,
-      );
-      expect(
-        labor.firstBackfill!.completedAt,
-        equals(DateTime.utc(2026, 5, 6, 22, 22)),
-      );
-
-      final reservation = bundle.reservationConnection!;
-      expect(
-        reservation.firstBackfill!.status,
-        VendorConnectionFirstBackfillStatus.deadLettered,
-      );
-      expect(
-        reservation.firstBackfill!.failureReason,
-        'attempts exhausted',
-      );
-    },
-  );
-
-  test(
-    'loadBundle returns null firstBackfill when the connection JSON omits '
-    'the field',
-    () async {
-      final gateway = OperatorWebHttpVendorConnectionsGateway(
-        proxyClient: OperatorWebProxyClient(
-          baseUri: Uri.parse(proxyBase),
-          httpClient: MockClient((request) async {
-            return http.Response(
-              jsonEncode(<String, Object?>{
-                'operator_id': 'op-1',
-                'location_id': 'loc-1',
-                'connections': <Object?>[
-                  <String, Object?>{
-                    'connection_id': 'cnx',
-                    'vendor_id': '7shifts',
-                    'category': 'labor',
-                    'status': 'connected',
+                <String, Object?>{
+                  'connection_id': 'cnx-done',
+                  'vendor_id': 'humanity',
+                  'category': 'labor',
+                  'status': 'connected',
+                  'first_backfill': <String, Object?>{
+                    'status': 'succeeded',
+                    'started_at': '2026-05-06T22:00:00.000Z',
+                    'completed_at': '2026-05-06T22:22:00.000Z',
                   },
-                ],
-                'demo_flags': const <String, Object?>{},
-              }),
-              200,
-            );
-          }),
-        ),
-        idTokenProvider: tokenProvider,
-      );
+                },
+                <String, Object?>{
+                  'connection_id': 'cnx-fail',
+                  'vendor_id': 'square',
+                  'category': 'pos',
+                  'status': 'connected',
+                  'first_backfill': <String, Object?>{
+                    'status': 'failed',
+                    'failure_reason': 'token revoked mid-pull',
+                  },
+                },
+                <String, Object?>{
+                  'connection_id': 'cnx-dl',
+                  'vendor_id': 'opentable',
+                  'category': 'reservation',
+                  'status': 'connected',
+                  'first_backfill': <String, Object?>{
+                    'status': 'dead_lettered',
+                    'failure_reason': 'attempts exhausted',
+                  },
+                },
+                <String, Object?>{
+                  'connection_id': 'cnx-legacy',
+                  'vendor_id': '7shifts',
+                  'category': 'labor',
+                  'status': 'connected',
+                },
+              ],
+              'demo_flags': const <String, Object?>{
+                'pos': false,
+                'labor': false,
+                'reservation': false,
+              },
+            }),
+            200,
+          );
+        }),
+      ),
+      idTokenProvider: tokenProvider,
+    );
 
-      final bundle = await gateway.loadBundle(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-      );
+    final bundle = await gateway.loadBundle(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+    );
 
-      expect(bundle.laborConnection!.firstBackfill, isNull);
-    },
-  );
+    // Pos slot picks up the first POS connection encountered (toast).
+    final pos = bundle.posConnection!;
+    expect(pos.firstBackfill, isNotNull);
+    expect(
+      pos.firstBackfill!.status,
+      VendorConnectionFirstBackfillStatus.running,
+    );
+    expect(pos.firstBackfill!.processedDays, 12);
+    expect(pos.firstBackfill!.totalDays, 60);
+    expect(pos.firstBackfill!.startedAt, equals(DateTime.utc(2026, 5, 7, 11)));
+    expect(pos.firstBackfill!.completedAt, isNull);
+
+    final labor = bundle.laborConnection!;
+    expect(
+      labor.firstBackfill!.status,
+      VendorConnectionFirstBackfillStatus.succeeded,
+    );
+    expect(
+      labor.firstBackfill!.completedAt,
+      equals(DateTime.utc(2026, 5, 6, 22, 22)),
+    );
+
+    final reservation = bundle.reservationConnection!;
+    expect(
+      reservation.firstBackfill!.status,
+      VendorConnectionFirstBackfillStatus.deadLettered,
+    );
+    expect(reservation.firstBackfill!.failureReason, 'attempts exhausted');
+  });
+
+  test('loadBundle returns null firstBackfill when the connection JSON omits '
+      'the field', () async {
+    final gateway = OperatorWebHttpVendorConnectionsGateway(
+      proxyClient: OperatorWebProxyClient(
+        baseUri: Uri.parse(proxyBase),
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'operator_id': 'op-1',
+              'location_id': 'loc-1',
+              'connections': <Object?>[
+                <String, Object?>{
+                  'connection_id': 'cnx',
+                  'vendor_id': '7shifts',
+                  'category': 'labor',
+                  'status': 'connected',
+                },
+              ],
+              'demo_flags': const <String, Object?>{},
+            }),
+            200,
+          );
+        }),
+      ),
+      idTokenProvider: tokenProvider,
+    );
+
+    final bundle = await gateway.loadBundle(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+    );
+
+    expect(bundle.laborConnection!.firstBackfill, isNull);
+  });
 
   test(
     'loadBundle ignores an unknown first_backfill status without throwing',
@@ -468,25 +452,55 @@ void main() {
     },
   );
 
-  test('loadLogs throws a typed error so the UI can surface gracefully',
-      () async {
+  test('loadLogs calls operator logs route and parses entries', () async {
+    late http.Request captured;
     final gateway = OperatorWebHttpVendorConnectionsGateway(
       proxyClient: OperatorWebProxyClient(
         baseUri: Uri.parse(proxyBase),
         httpClient: MockClient((request) async {
-          throw StateError('logs route should not be invoked');
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'logs': <Map<String, Object?>>[
+                <String, Object?>{
+                  'log_id': 'log-1',
+                  'connection_id': 'connection-1',
+                  'event_kind': 'pull.succeeded',
+                  'records_count': 12,
+                  'occurred_at': '2026-05-04T12:34:56Z',
+                },
+                <String, Object?>{
+                  'log_id': 'log-2',
+                  'connection_id': 'connection-1',
+                  'event_kind': 'pull.failed',
+                  'error_message': 'token expired',
+                  'occurred_at': '2026-05-04T12:35:56Z',
+                },
+              ],
+            }),
+            200,
+          );
         }),
       ),
       idTokenProvider: tokenProvider,
     );
 
-    await expectLater(
-      gateway.loadLogs(
-        operatorId: 'op-1',
-        locationId: 'loc-1',
-        vendorId: 'toast',
-      ),
-      throwsA(isA<VendorConnectionsGatewayError>()),
+    final logs = await gateway.loadLogs(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+      vendorId: 'toast',
+      limit: 25,
     );
+
+    expect(captured.method, 'GET');
+    expect(
+      captured.url.path,
+      '/v1/auth/locations/loc-1/integrations/toast/logs',
+    );
+    expect(captured.url.queryParameters['limit'], '25');
+    expect(logs, hasLength(2));
+    expect(logs.first.eventKind, 'pull.succeeded');
+    expect(logs.first.recordsCount, 12);
+    expect(logs.last.errorMessage, 'token expired');
   });
 }

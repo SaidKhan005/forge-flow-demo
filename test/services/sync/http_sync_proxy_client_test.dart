@@ -522,6 +522,11 @@ void main() {
     expect(open.snapshots.single.businessTimingProfileId, 'profile-1');
     expect(open.snapshots.single.businessTimingProfileVersionId, 'profile-1');
     expect(open.snapshots.single.servicePeriodKey, 'lunch');
+    expect(open.snapshots.single.blendedWageAvailable, isTrue);
+    expect(
+      open.snapshots.single.provenance['blended_wage_provenance'],
+      'canonical_labor_wage',
+    );
     expect(timing!.businessDayStartLocalTime, '05:00');
     expect(timing.businessTimezone, 'America/St_Johns');
     expect(timing.selectedScopeType, 'location');
@@ -1117,6 +1122,12 @@ Map<String, Object?> _openSnapshotRow() => <String, Object?>{
   'current_cplh': 12.0,
   'current_splh': 140.0,
   'blended_wage': 22.0,
+  'blended_wage_available': true,
+  'provenance': <String, Object?>{
+    'projection': 'open_shift_snapshot_projector',
+    'blended_wage_available': true,
+    'blended_wage_provenance': 'canonical_labor_wage',
+  },
   'updated_at': '2026-05-06T12:00:00Z',
 };
 
@@ -1125,6 +1136,8 @@ Map<String, Object?> _legacyOpenSnapshotRow() {
   row.remove('business_timing_profile_id');
   row.remove('business_timing_profile_version_id');
   row.remove('service_period_key');
+  row.remove('blended_wage_available');
+  row.remove('provenance');
   return row;
 }
 

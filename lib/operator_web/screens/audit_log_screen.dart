@@ -77,19 +77,24 @@ const String kAuditLogExportPermissionKey = PermissionKeys.teamAuditLogExport;
 /// `'operator_admin'` dropped (folded into `operator_owner`); v1
 /// soft-deleted `'operator_manager'` mapped to its v2 constant
 /// `roleOperatorGeneralManager` (map, don't drop — migration-window
-/// robustness). `location_manager` kept (REAL v2 role).
+/// robustness). `location_manager` kept (REAL v2 role);
+/// `auditor_compliance` admitted for compliance review.
 const Set<String> kAuditLogViewAdmittedRoles = <String>{
   PermissionKeys.roleOperatorOwner,
   PermissionKeys.roleOperatorGeneralManager,
   PermissionKeys.roleLocationManager,
+  PermissionKeys.roleAuditorCompliance,
 };
 
 /// Roles admitted to the CSV export action when the snapshot is
 /// empty. Authoritative gate is `team.audit_log.export`.
 ///
 /// G7d (spec §2.B/§3): phantom `'operator_admin'` dropped.
+/// `auditor_compliance` is the read-only compliance role, and the
+/// default catalog grants it `team.audit_log.export`.
 const Set<String> kAuditLogExportAdmittedRoles = <String>{
   PermissionKeys.roleOperatorOwner,
+  PermissionKeys.roleAuditorCompliance,
 };
 
 /// Per-page size pinned by the parity contract (Performance Framework).
@@ -121,20 +126,17 @@ class AuditLogScreen extends StatefulWidget {
   /// Lane B B8.b — hierarchy-filtered audit-log gateway. Optional so
   /// router builds that have not yet wired the gateway (or screens
   /// constructed in isolation by widget tests) keep rendering the
-  /// legacy unfiltered surface; when both this and
-  /// [teamHierarchyGateway] are non-null the screen renders the
-  /// [AuditLogHierarchyFilterPane] sibling alongside the existing
-  /// filters.
+  /// legacy unfiltered surface. The visible scope is owned by the
+  /// Operator Web shell selector and passed through the selected
+  /// hierarchy fields below.
   final WebAuditLogHierarchyGateway? hierarchyGateway;
 
-  /// Lane B B8.b — team hierarchy gateway used to fetch the
-  /// org-unit + location tree the hierarchy pane visualizes. Paired
-  /// with [hierarchyGateway] — both required for the pane to render
-  /// so the parent screen does not show a half-wired surface.
+  /// Lane B B8.b — team hierarchy gateway used to fetch the org-unit +
+  /// location tree for shell-selected hierarchy scopes.
   final WebTeamHierarchyGateway? teamHierarchyGateway;
 
-  /// Optional clock override for the hierarchy pane (tests pin it so
-  /// the default time window is deterministic).
+  /// Optional clock override for hierarchy tests so the default time
+  /// window is deterministic.
   final DateTime Function()? hierarchyPaneClock;
 
   /// Scope selected by the Operator Web shell's top dropdown. When
@@ -318,6 +320,45 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
     );
   }
 
+  Future<WebAuditLogPage> _listCurrentAuditLogPage(
+    WebAuditLogQuery query,
+  ) async {
+    if (_usesSelectedHierarchyScope) {
+      return _pageFromHierarchyResult(
+        await widget.hierarchyGateway!.listByHierarchy(
+          _hierarchyCommand(cursor: query.cursor, limit: query.limit),
+        ),
+      );
+    }
+    try {
+      return await widget.gateway.listEntries(query);
+    } catch (error) {
+      if (!_shouldFallbackToOperatorWideHierarchy(error)) rethrow;
+      return _pageFromHierarchyResult(
+        await widget.hierarchyGateway!.listByHierarchy(
+          _hierarchyCommand(cursor: query.cursor, limit: query.limit),
+        ),
+      );
+    }
+  }
+
+  bool _shouldFallbackToOperatorWideHierarchy(Object error) {
+    if (widget.hierarchyGateway == null || _usesSelectedHierarchyScope) {
+      return false;
+    }
+    if (error is! WebTeamAuditLogError || error.isForbidden) return false;
+    final code = error.code.toLowerCase();
+    if (code.contains('route') ||
+        code.contains('not_found') ||
+        code.contains('unavailable')) {
+      return true;
+    }
+    return switch (error.statusCode) {
+      404 || 501 || 502 || 503 || 504 => true,
+      _ => false,
+    };
+  }
+
   WebAuditLogPage _pageFromHierarchyResult(
     WebAuditLogHierarchyListResult result,
   ) {
@@ -412,13 +453,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         actions: _selectedActions.toList(),
         actorUserIds: _selectedActors.toList(),
       );
-      final page = _usesSelectedHierarchyScope
-          ? _pageFromHierarchyResult(
-              await widget.hierarchyGateway!.listByHierarchy(
-                _hierarchyCommand(limit: query.limit),
-              ),
-            )
-          : await widget.gateway.listEntries(query);
+      final page = await _listCurrentAuditLogPage(query);
       if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _entries = page.entries;
@@ -448,13 +483,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         actions: _selectedActions.toList(),
         actorUserIds: _selectedActors.toList(),
       );
-      final page = _usesSelectedHierarchyScope
-          ? _pageFromHierarchyResult(
-              await widget.hierarchyGateway!.listByHierarchy(
-                _hierarchyCommand(cursor: _nextCursor, limit: query.limit),
-              ),
-            )
-          : await widget.gateway.listEntries(query);
+      final page = await _listCurrentAuditLogPage(query);
       if (!mounted || generation != _refreshGeneration) return;
       setState(() {
         _entries = List<WebAuditLogEntry>.unmodifiable(<WebAuditLogEntry>[

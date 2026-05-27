@@ -264,10 +264,12 @@ Future<void> _createAllTables(Database db) async {
       current_cplh            REAL NOT NULL,
       current_splh            REAL NOT NULL,
       blended_wage            REAL NOT NULL,
+      blended_wage_available  INTEGER NOT NULL DEFAULT 0,
       time_label              TEXT NOT NULL DEFAULT '',
       service_elapsed_label   TEXT NOT NULL DEFAULT '',
       source_system           TEXT,
       source_shift_id         TEXT,
+      provenance              TEXT NOT NULL DEFAULT '{}',
       last_event_at           TEXT,
       updated_at              TEXT NOT NULL,
       UNIQUE(restaurant_id, week_id, day_label, daypart)

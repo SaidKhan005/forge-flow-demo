@@ -135,9 +135,7 @@ class DaypartTargetContext {
 
   /// Honest empty context — no per-period target available for the
   /// period. Every field null so the card shows "—" (Design Rule 2).
-  static const DaypartTargetContext none = DaypartTargetContext(
-    source: 'none',
-  );
+  static const DaypartTargetContext none = DaypartTargetContext(source: 'none');
 
   /// True only when the full OPZ band + target CPLH are present, so the
   /// FOH Productivity zone gauge can render. A partial stamp (some
@@ -233,13 +231,12 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
   ServicePeriodPhase servicePeriodPhase({
     required String periodId,
     required DateTime localNow,
-  }) =>
-      resolveServicePeriodPhase(
-        localNow: localNow,
-        businessDayStartLocalTime: businessDayStartLocalTime,
-        definitions: _definitions,
-        periodId: periodId,
-      );
+  }) => resolveServicePeriodPhase(
+    localNow: localNow,
+    businessDayStartLocalTime: businessDayStartLocalTime,
+    definitions: _definitions,
+    periodId: periodId,
+  );
 
   ShiftServicePeriodNotifier({
     ShiftServicePeriodReadService readService =
@@ -258,17 +255,17 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
     String businessDayStartLocalTime = _defaultBusinessDayStartLocalTime,
     Map<String, String?> primaryLeverIds = const {},
     Map<String, DaypartTargetContext> daypartTargets = const {},
-  })  : _readService = const ShiftServicePeriodReadService(),
-        _buckets = buckets,
-        _primaryLeverIds = primaryLeverIds,
-        _daypartTargets = daypartTargets,
-        _definitions = definitions ??
-            ServicePeriodDefinitionResolver.demoDefinitions,
-        _businessDate = businessDate,
-        _iana = iana,
-        _businessDayStartLocalTime = businessDayStartLocalTime,
-        _isLoading = false,
-        _missingTimezone = iana == null || iana.trim().isEmpty;
+  }) : _readService = const ShiftServicePeriodReadService(),
+       _buckets = buckets,
+       _primaryLeverIds = primaryLeverIds,
+       _daypartTargets = daypartTargets,
+       _definitions =
+           definitions ?? ServicePeriodDefinitionResolver.demoDefinitions,
+       _businessDate = businessDate,
+       _iana = iana,
+       _businessDayStartLocalTime = businessDayStartLocalTime,
+       _isLoading = false,
+       _missingTimezone = iana == null || iana.trim().isEmpty;
 
   @override
   void dispose() {
@@ -328,8 +325,9 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
 
     final snapshots = await SqliteOpenShiftSnapshotRepository.instance
         .getSnapshotsForDay(restaurantId, _businessDate!);
-    final relevant =
-        snapshots.where((s) => s.status == 'closed' || s.status == 'open').toList();
+    final relevant = snapshots
+        .where((s) => s.status == 'closed' || s.status == 'open')
+        .toList();
 
     final synth = synthesizeCanonicalFactsFromSnapshots(
       snapshots: relevant,
@@ -563,10 +561,12 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
   }
 
   Future<ActiveTargetProfile?> _safeLoadActiveTargetProfile(
-      String restaurantId) async {
+    String restaurantId,
+  ) async {
     try {
-      return await WageStandardContextService.instance
-          .loadOrBootstrapProfile(restaurantId);
+      return await WageStandardContextService.instance.loadOrBootstrapProfile(
+        restaurantId,
+      );
     } catch (_) {
       return null;
     }
@@ -689,35 +689,42 @@ SynthesizedDaypartFacts synthesizeCanonicalFactsFromSnapshots({
     final periodMinutes = interval.end.difference(interval.start).inMinutes;
     if (periodMinutes <= 0) continue;
 
-    final midpoint = interval.start
-        .add(Duration(minutes: (periodMinutes / 2).floor()));
+    final midpoint = interval.start.add(
+      Duration(minutes: (periodMinutes / 2).floor()),
+    );
     final sales = s.currentCovers * s.currentPPA;
-    posLines.add(CanonicalPosLine(
-      sourceId: 'snap_pos_${s.dayLabel}_${s.daypart}',
-      eventLocalTimestamp: midpoint,
-      covers: s.currentCovers,
-      sales: sales,
-    ));
+    posLines.add(
+      CanonicalPosLine(
+        sourceId: 'snap_pos_${s.dayLabel}_${s.daypart}',
+        eventLocalTimestamp: midpoint,
+        covers: s.currentCovers,
+        sales: sales,
+      ),
+    );
 
     final fohMinutes = (s.scheduledFohHours * 60).clamp(0, periodMinutes);
-    if (fohMinutes > 0) {
-      laborPunches.add(CanonicalLaborPunch(
-        sourceId: 'snap_foh_${s.dayLabel}_${s.daypart}',
-        clockedInLocal: interval.start,
-        clockedOutLocal: interval.start.add(Duration(minutes: fohMinutes)),
-        role: 'foh',
-        hourlyWage: s.blendedWage,
-      ));
+    if (fohMinutes > 0 && s.blendedWageAvailable) {
+      laborPunches.add(
+        CanonicalLaborPunch(
+          sourceId: 'snap_foh_${s.dayLabel}_${s.daypart}',
+          clockedInLocal: interval.start,
+          clockedOutLocal: interval.start.add(Duration(minutes: fohMinutes)),
+          role: 'foh',
+          hourlyWage: s.blendedWage,
+        ),
+      );
     }
     final bohMinutes = (s.scheduledBohHours * 60).clamp(0, periodMinutes);
-    if (bohMinutes > 0) {
-      laborPunches.add(CanonicalLaborPunch(
-        sourceId: 'snap_boh_${s.dayLabel}_${s.daypart}',
-        clockedInLocal: interval.start,
-        clockedOutLocal: interval.start.add(Duration(minutes: bohMinutes)),
-        role: 'boh',
-        hourlyWage: s.blendedWage,
-      ));
+    if (bohMinutes > 0 && s.blendedWageAvailable) {
+      laborPunches.add(
+        CanonicalLaborPunch(
+          sourceId: 'snap_boh_${s.dayLabel}_${s.daypart}',
+          clockedInLocal: interval.start,
+          clockedOutLocal: interval.start.add(Duration(minutes: bohMinutes)),
+          role: 'boh',
+          hourlyWage: s.blendedWage,
+        ),
+      );
     }
   }
 
@@ -815,7 +822,7 @@ String? resolveActiveServicePeriodId({
 /// computing time-into-service. Returns null when no period is active
 /// or when business-date math fails.
 ({DateTime start, DateTime end, ServicePeriodDefinition definition})?
-    resolveActiveServicePeriodInterval({
+resolveActiveServicePeriodInterval({
   required DateTime localNow,
   required String businessDayStartLocalTime,
   required List<ServicePeriodDefinition> definitions,

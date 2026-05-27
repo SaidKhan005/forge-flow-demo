@@ -36,6 +36,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../services/auth/account_info_gateway.dart';
 
 // Per-Daypart Targets V1 / Slice 2 (Gap 35): operator-web Benchmarks
 // override gateway import removed; surface cut entirely.
@@ -66,6 +67,7 @@ class OperatorWebSession {
     this.subscriptionTier,
     this.trialMode = false,
     this.trialExpiresAt,
+    this.planSnapshot,
   });
 
   /// Firebase user UID (or a synthetic id under demo mode).
@@ -187,6 +189,12 @@ class OperatorWebSession {
   /// only when [trialMode] is true AND this is non-null and in the
   /// future; otherwise it falls back to an honest empty state.
   final DateTime? trialExpiresAt;
+
+  /// Effective live plan snapshot from `/v1/auth/account`, when the
+  /// proxy has pricing repositories wired. This lets the display-only
+  /// "Your plan" surface render scoped contract price text and the live
+  /// editable entitlement matrix instead of relying on demo constants.
+  final AccountPlanSnapshot? planSnapshot;
 }
 
 /// Auth stage the screen-router keys off. The invitee onboarding
@@ -322,7 +330,8 @@ class OperatorWebSignedOut extends OperatorWebAuthState {
 /// role catalog (`202605150000_phase_r2l_default_role_catalog_v2.sql`):
 /// `operator_owner` gets full access, `operator_general_manager`
 /// (v1 soft-deleted `operator_manager` → mapped per spec §3) and
-/// `location_manager` (REAL v2 role) get read-only console access.
+/// `location_manager` (REAL v2 role) get read-only console access;
+/// `auditor_compliance` gets audit/compliance console admission.
 /// All other roles fail-close.
 ///
 /// G7d (spec §2.B/§3): the phantom `'operator_admin'` literal is
@@ -336,6 +345,7 @@ const Set<String> kOperatorWebAdmittedRoles = <String>{
   PermissionKeys.roleOperatorOwner,
   PermissionKeys.roleOperatorGeneralManager,
   PermissionKeys.roleLocationManager,
+  PermissionKeys.roleAuditorCompliance,
 };
 
 /// Source of the operator-web auth state machine. Both demo and live

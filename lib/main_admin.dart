@@ -45,6 +45,7 @@ import 'package:flutter/material.dart';
 
 import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
+import 'admin/admin_capability_gate.dart';
 import 'admin/admin_routes.dart';
 import 'admin/services/admin_account_gateway.dart';
 import 'admin/services/admin_audit_chain_anchors_gateway.dart';
@@ -295,7 +296,7 @@ Future<void> main() async {
         : _resolveCorpusAdminGateway(authBinding.authClient);
     final integrationGateway = gateway == null
         ? null
-        : _resolveIntegrationAdminGateway(authBinding.authClient);
+        : _resolveIntegrationAdminGateway(authBinding.authClient, source);
     final vendorConnectionsGateway = _resolveVendorConnectionsGateway(
       authBinding.authClient,
     );
@@ -642,6 +643,7 @@ CorpusAdminGateway? _resolveCorpusAdminGateway(FirebaseAuthClient? authClient) {
 /// in-memory gateway in `admin_routes.dart`.
 IntegrationAdminGateway? _resolveIntegrationAdminGateway(
   FirebaseAuthClient? authClient,
+  AdminAuthSource source,
 ) {
   if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
@@ -652,6 +654,14 @@ IntegrationAdminGateway? _resolveIntegrationAdminGateway(
   return HttpIntegrationAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+    roleResolver: () async {
+      final session = adminSessionOf(source.current);
+      return session?.roles.toList(growable: false) ?? const <String>[];
+    },
+    permissionResolver: () async {
+      final session = adminSessionOf(source.current);
+      return session?.permissions ?? const <String>{};
+    },
   );
 }
 

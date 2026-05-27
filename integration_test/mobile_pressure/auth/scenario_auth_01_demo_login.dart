@@ -10,11 +10,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/forge_flow_app.dart';
 import 'package:forge_and_flow/main_forgeflow.dart' as ff_app;
 import 'package:forge_and_flow/screens/shift_dashboard.dart';
 import 'package:forge_and_flow/screens/auth/login_screen.dart';
-import 'package:forge_and_flow/widgets/demo_mode_banner.dart';
 
 import '../_harness.dart';
 

@@ -1312,6 +1312,53 @@ class AccountingPostgresTransaction implements PostgresTransaction {
         },
       ];
     }
+    if (sql.contains('from public.business_timing_profiles p')) {
+      final operatorId =
+          parameters['operator_id']?.toString() ??
+          '11111111-1111-4111-8111-111111111111';
+      return <PostgresRow>[
+        <String, Object?>{
+          'profile_id': 'profile-1',
+          'operator_id': operatorId,
+          'scope_type': 'operator',
+          'scope_id': operatorId,
+          'display_name': 'Default',
+          'business_day_start_local_time': '04:30',
+          'week_start_day': 1,
+          'close_authority': 'app_local_cutoff_fallback',
+          'local_close_fallback_time': null,
+          'effective_from_business_date': '2026-01-01',
+          'effective_until_business_date': null,
+          'supersedes_profile_id': null,
+          'created_by': null,
+          'updated_by': null,
+          'created_at': DateTime.utc(2026, 1, 1),
+          'updated_at': DateTime.utc(2026, 1, 1),
+          'location_timezone': 'America/Toronto',
+          'service_periods': <Map<String, Object?>>[
+            <String, Object?>{
+              'service_period_id': 'service-period-1',
+              'operator_id': operatorId,
+              'profile_id': 'profile-1',
+              'service_period_key': 'lunch',
+              'label': 'Lunch',
+              'short_label': 'L',
+              'sort_order': 1,
+              'start_local_time': '11:00',
+              'end_local_time': '15:00',
+              'rolls_past_midnight': false,
+              'applicable_weekdays': <int>[1, 2, 3, 4, 5, 6, 7],
+            },
+          ],
+        },
+      ];
+    }
+    if (sql.contains('location_timezone') &&
+        sql.contains('from public.locations loc')) {
+      return const <PostgresRow>[
+        <String, Object?>{'location_timezone': 'America/Toronto'},
+      ];
+    }
     if (sql.contains('insert into public.proxy_requests')) {
       return const <PostgresRow>[
         <String, Object?>{

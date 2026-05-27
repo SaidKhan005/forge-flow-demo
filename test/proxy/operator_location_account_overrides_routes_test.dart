@@ -233,7 +233,7 @@ void main() {
       });
     });
 
-    test('400 invalid_rollover_hour on out-of-range value', () async {
+    test('400 unsupported field when Account tries timing ownership', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
         try {
@@ -246,7 +246,10 @@ void main() {
           );
           expect(response.statusCode, equals(400));
           final decoded = jsonDecode(response.body) as Map<String, Object?>;
-          expect(decoded['error'], equals('invalid_rollover_hour'));
+          expect(
+            decoded['error'],
+            equals('unsupported_location_account_field'),
+          );
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -481,12 +484,15 @@ void main() {
       expect(decode.body?['error'], equals('invalid_iana_timezone'));
     });
 
-    test('rejects rollover hour out of range', () {
+    test('rejects businessDayRolloverHour because Business Timing owns it', () {
       final decode = decodeLocationAccountOverridesPatchBody(
         const <String, Object?>{'businessDayRolloverHour': 24},
       );
       expect(decode.ok, isFalse);
-      expect(decode.body?['error'], equals('invalid_rollover_hour'));
+      expect(
+        decode.body?['error'],
+        equals('unsupported_location_account_field'),
+      );
     });
 
     test('rejects contactEmail without @', () {
@@ -511,7 +517,6 @@ void main() {
             'ianaTimezone': 'Europe/London',
             'localeCode': 'en-GB',
             'currencyCode': 'GBP',
-            'businessDayRolloverHour': 4,
             'contactEmail': 'ops@example.com',
             'contactPhone': '+44 20 7000 0000',
           });
@@ -520,10 +525,10 @@ void main() {
       expect(patch.ianaTimezone, equals('Europe/London'));
       expect(patch.localeCode, equals('en-GB'));
       expect(patch.currencyCode, equals('GBP'));
-      expect(patch.businessDayRolloverHour, equals(4));
+      expect(patch.businessDayRolloverHour, isNull);
       expect(patch.contactEmail, equals('ops@example.com'));
       expect(patch.contactPhone, equals('+44 20 7000 0000'));
-      expect(patch.changedFieldNames.length, equals(6));
+      expect(patch.changedFieldNames.length, equals(5));
     });
   });
 
