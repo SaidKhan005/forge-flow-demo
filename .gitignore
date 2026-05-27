@@ -146,9 +146,15 @@ Selling.md
 # untracked; durable harness documentation (one summary per harness,
 # checked in via `git add -f` after intentional review) lives in the
 # repo. The patterns below ignore per-run outputs by default;
-# durable docs are force-added and tracked manually.
+# durable docs are force-added and tracked manually. Files already in
+# the index (e.g., canonical baselines committed before the patterns
+# landed) stay tracked — `git rm --cached <file>` only if intentionally
+# untracking. Suite re-runs that dirty these files: `git restore <file>`
+# to discard the run output, do NOT commit.
 test/integration/pressure/*_findings.jsonl
 test/integration/pressure/*_summary.md
+test/integration/pressure/*_summary.txt
 test/pressure/*_findings.jsonl
 test/pressure/*_summary.md
+test/pressure/*_summary.txt
 test/pressure/*_raw.jsonl
