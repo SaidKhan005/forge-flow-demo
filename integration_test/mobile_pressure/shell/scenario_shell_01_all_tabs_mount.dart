@@ -7,6 +7,7 @@
 //   1 = Variance   → VarianceReport
 //   2 = Plan       → ScheduleBuilder
 //   3 = Benchmark  → BaselineTracker
+//   4 = Advisor    → AdvisorMobileChatScreen   (Slice D2 mobile, commit abc4da72)
 //
 // The AppShell uses an IndexedStack, so all widgets are built once and
 // shown/hidden via visibility. We tap each tab and verify the expected
@@ -18,6 +19,7 @@ import 'package:forge_and_flow/screens/shift_dashboard.dart';
 import 'package:forge_and_flow/screens/variance_report.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';
 import 'package:forge_and_flow/screens/baseline_tracker.dart';
+import 'package:forge_and_flow/screens/advisor/advisor_mobile_chat_screen.dart';
 
 import '../_harness.dart';
 
@@ -25,7 +27,7 @@ void main() {
   bootstrapBinding();
 
   testWidgets(
-    'Shell-01: all 4 bottom-nav tabs mount their expected screen widget',
+    'Shell-01: all 5 bottom-nav tabs mount their expected screen widget',
     (tester) async {
       final errorTap = FlutterErrorTap.install();
       addTearDown(errorTap.restore);
@@ -63,6 +65,14 @@ void main() {
         find.byType(BaselineTracker),
         findsOneWidget,
         reason: 'Tab 3 (Benchmark) should show BaselineTracker.',
+      );
+
+      // Tab 4 — Advisor → AdvisorMobileChatScreen (added Slice D2 mobile).
+      await tapTab(tester, 4);
+      expect(
+        find.byType(AdvisorMobileChatScreen),
+        findsOneWidget,
+        reason: 'Tab 4 (Advisor) should show AdvisorMobileChatScreen.',
       );
 
       // Round-trip back to Shift (tab 0) — must be non-destructive.
