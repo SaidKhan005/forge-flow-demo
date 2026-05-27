@@ -4,8 +4,9 @@
 //
 // Verifies: login screen is displayed on cold boot, demo-operator button
 // is tappable, AppShell mounts, DemoModeBanner is in tree, BottomNav
-// has 4 items, no RenderFlex overflows, and ShiftDashboard is the
-// active tab on index 0 after login.
+// has 5 items (Shift, Variance, Plan, Benchmark, Advisor — the 5th was
+// added by Slice D2 mobile, commit abc4da72), no RenderFlex overflows,
+// and ShiftDashboard is the active tab on index 0 after login.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -67,15 +68,19 @@ void main() {
       // Assertion 3: DemoModeBanner is in the tree.
       expectDemoBanner();
 
-      // Assertion 4: BottomNavigationBar with 4 items.
+      // Assertion 4: BottomNavigationBar with 5 items.
+      // The 5th tab (Advisor) was added by Slice D2 mobile in
+      // commit abc4da72; see lib/screens/advisor/advisor_mobile_chat_nav.dart
+      // (`kAdvisorMobileNavItem`) and lib/forge_flow_app.dart:1727-1748.
       final bars = find.byType(BottomNavigationBar);
       expect(bars, findsAtLeast(1), reason: 'BottomNavigationBar not mounted.');
       final bar = tester.widget<BottomNavigationBar>(bars.first);
       expect(
         bar.items.length,
-        equals(4),
+        equals(5),
         reason:
-            'Expected 4 bottom nav items (Shift, Variance, Plan, Benchmark).',
+            'Expected 5 bottom nav items '
+            '(Shift, Variance, Plan, Benchmark, Advisor).',
       );
 
       // Assertion 5: ShiftDashboard is visible (index 0 is active by default).
