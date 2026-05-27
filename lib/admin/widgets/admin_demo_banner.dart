@@ -48,25 +48,21 @@ class AdminDemoBanner extends StatelessWidget {
             ),
           ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: const Row(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            Icon(
+            const Icon(
               Icons.science_outlined,
               color: AppColors.sunsetDark,
-              size: 18,
+              size: 20,
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'Demo data. This is a sample walkthrough, not your real '
                 'data.',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 12,
-                ),
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),
             ),
           ],

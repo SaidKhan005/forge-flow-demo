@@ -30,7 +30,7 @@ void main() {
     );
     expect(
       MediaQuery.of(shellContext).textScaler.scale(100),
-      closeTo(112, 0.01),
+      closeTo(116, 0.01),
     );
     expect(find.byKey(const Key('admin_header_bar')), findsOneWidget);
     expect(tester.takeException(), isNull);

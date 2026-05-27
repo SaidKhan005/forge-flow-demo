@@ -89,6 +89,7 @@ import '../../services/auth/role_key_generator.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/role_permission_picker.dart';
 import '../admin_human_labels.dart';
+import '../admin_visual_system.dart';
 import '../services/default_role_catalog_admin_gateway.dart';
 import '../widgets/admin_action_controls.dart';
 import 'default_role_catalog_publish_dialog.dart';
@@ -379,7 +380,7 @@ class _DefaultRoleCatalogAdminScreenState
       child: OperatorWebScreenBody(
         scrollKey: const Key('admin_default_role_catalog_scroll'),
         maxContentWidth: 1120,
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        padding: AdminVisualSystem.screenPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[

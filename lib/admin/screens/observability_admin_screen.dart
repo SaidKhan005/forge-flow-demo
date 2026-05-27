@@ -56,6 +56,7 @@ import '../../theme/app_theme.dart';
 import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
 import '../admin_routes.dart' show kAdminOperatorsRouteId;
+import '../admin_visual_system.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../services/realtime_tripwire_admin_gateway.dart';
@@ -285,7 +286,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       color: AppColors.backgroundDeep,
       type: MaterialType.canvas,
       child: OperatorWebScreenFrame(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        padding: AdminVisualSystem.screenPadding,
         child: Builder(
           builder: (context) {
             final showManualPrompt =
@@ -351,7 +352,7 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
       _HeroCards(envelope: envelope, useCase: _useCase),
       const SizedBox(height: 18),
       _ObservabilityTabBar(controller: _tabs),
-      const SizedBox(height: 16),
+      const SizedBox(height: 18),
       // Only the active tab body is built, so the page height matches the
       // visible tab (mirrors the mockup's hidden panels) and the single page
       // scroll owns all vertical overflow.
@@ -404,33 +405,35 @@ class _ObservabilityTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
-      child: AnimatedBuilder(
-        animation: controller,
-        builder: (context, _) {
-          return Container(
-            key: const Key('admin_observability_tabs'),
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundMid,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                for (var i = 0; i < _kTabs.length; i++) ...<Widget>[
-                  if (i > 0) const SizedBox(width: 4),
-                  _ObservabilityPillTab(
-                    keySuffix: _kTabs[i].keySuffix,
-                    icon: _kTabs[i].icon,
-                    label: _kTabs[i].label,
-                    selected: controller.index == i,
-                    onTap: () => controller.animateTo(i),
-                  ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            return Container(
+              key: const Key('admin_observability_tabs'),
+              padding: AdminVisualSystem.tabStripPadding,
+              decoration: AdminVisualSystem.tabStripDecoration(
+                color: AppColors.backgroundMid,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  for (var i = 0; i < _kTabs.length; i++) ...<Widget>[
+                    if (i > 0) const SizedBox(width: AdminVisualSystem.tabGap),
+                    _ObservabilityPillTab(
+                      keySuffix: _kTabs[i].keySuffix,
+                      icon: _kTabs[i].icon,
+                      label: _kTabs[i].label,
+                      selected: controller.index == i,
+                      onTap: () => controller.animateTo(i),
+                    ),
+                  ],
                 ],
-              ],
-            ),
-          );
-        },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -455,21 +458,27 @@ class _ObservabilityPillTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color fg = selected ? AppColors.textPrimary : AppColors.textSecondary;
     return Material(
-      color: selected ? AppColors.backgroundSurface : Colors.transparent,
-      borderRadius: BorderRadius.circular(9),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
       child: InkWell(
         key: Key('admin_observability_tab_$keySuffix'),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(icon, size: 16, color: fg),
-              const SizedBox(width: 8),
-              Text(label, style: AppTextStyles.uiLabel(color: fg)),
-            ],
+        child: DecoratedBox(
+          decoration: AdminVisualSystem.tabDecoration(selected: selected),
+          child: Padding(
+            padding: AdminVisualSystem.tabPadding,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(icon, size: AdminVisualSystem.tabIconSize, color: fg),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: AdminVisualSystem.tabTextStyle(selected: selected),
+                ),
+              ],
+            ),
           ),
         ),
       ),

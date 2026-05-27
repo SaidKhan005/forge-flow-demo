@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/scope_icons.dart';
 import '../admin_route_handoff.dart';
+import '../admin_visual_system.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -141,21 +142,21 @@ class AdminScopeTreePane extends StatelessWidget {
         );
       },
       child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        padding: AdminVisualSystem.compactPanelPadding,
+        child: ListView(
+          padding: EdgeInsets.zero,
           children: [
-            if (header != null) ...[header!, const SizedBox(height: 12)],
+            if (header != null) ...[header!, const SizedBox(height: 14)],
             Text(
               'Scope',
               style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               'Choose a business, org unit, or location.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             TextField(
               key: const Key('admin_setup_scope_search'),
               controller: searchController,
@@ -165,47 +166,45 @@ class AdminScopeTreePane extends StatelessWidget {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             if (showAllBusinesses) ...[
               AdminAllBusinessesScopeButton(
                 key: const Key('admin_setup_scope_all_businesses'),
                 selected: allBusinessesSelected,
                 onTap: onSelectAllBusinesses ?? () {},
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               const Divider(height: 1),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
             ],
             if (loading) const LinearProgressIndicator(minHeight: 2),
-            if (loading) const SizedBox(height: 12),
-            Expanded(
-              child: trees.isEmpty && !loading
-                  ? const AdminScopeEmptyState()
-                  : ListView.separated(
-                      itemCount: trees.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final tree = trees[index];
-                        final expanded =
-                            forceExpanded ||
-                            expandedOperatorIds.contains(
-                              tree.operator.operatorId,
-                            );
-                        return AdminScopeBusinessTreeCard(
-                          tree: tree,
-                          selectedScope: selectedScope,
-                          expanded: expanded,
-                          onToggleExpanded: () =>
-                              onToggleExpanded(tree.operator.operatorId),
-                          onSelectScope: onSelectScope,
-                        );
-                      },
-                    ),
-            ),
+            if (loading) const SizedBox(height: 14),
+            ..._buildTreeItems(),
           ],
         ),
       ),
     );
+  }
+
+  List<Widget> _buildTreeItems() {
+    if (trees.isEmpty && !loading) {
+      return const <Widget>[AdminScopeEmptyState()];
+    }
+    return <Widget>[
+      for (var index = 0; index < trees.length; index++) ...[
+        if (index > 0) const SizedBox(height: 10),
+        AdminScopeBusinessTreeCard(
+          tree: trees[index],
+          selectedScope: selectedScope,
+          expanded:
+              forceExpanded ||
+              expandedOperatorIds.contains(trees[index].operator.operatorId),
+          onToggleExpanded: () =>
+              onToggleExpanded(trees[index].operator.operatorId),
+          onSelectScope: onSelectScope,
+        ),
+      ],
+    ];
   }
 }
 
@@ -268,24 +267,26 @@ class AdminAllBusinessesScopeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.sunset,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(
+              AdminVisualSystem.surfaceRadius,
+            ),
             border: Border.all(color: AppColors.sunset, width: 1),
           ),
           child: Row(
             children: [
               const Icon(
                 Icons.public_outlined,
-                size: 18,
+                size: 20,
                 color: AppColors.backgroundSurface,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -299,7 +300,7 @@ class AdminAllBusinessesScopeButton extends StatelessWidget {
                         color: AppColors.backgroundSurface,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       'Every business on the platform',
                       maxLines: 1,
@@ -314,7 +315,7 @@ class AdminAllBusinessesScopeButton extends StatelessWidget {
               if (selected)
                 const Icon(
                   Icons.check_circle,
-                  size: 17,
+                  size: 18,
                   color: AppColors.backgroundSurface,
                 ),
             ],
@@ -474,7 +475,7 @@ class AdminScopeRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: EdgeInsets.fromLTRB(12 + depth * 16, 10, 8, 10),
+          padding: EdgeInsets.fromLTRB(14 + depth * 18, 12, 10, 12),
           decoration: BoxDecoration(
             border: Border(
               left: BorderSide(
@@ -487,10 +488,10 @@ class AdminScopeRow extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                size: 18,
+                size: 20,
                 color: selected ? AppColors.sunsetDark : AppColors.textMuted,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -506,7 +507,7 @@ class AdminScopeRow extends StatelessWidget {
                             : AppColors.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       detail,
                       maxLines: 1,
@@ -519,7 +520,7 @@ class AdminScopeRow extends StatelessWidget {
               if (selected)
                 const Icon(
                   Icons.check_circle,
-                  size: 17,
+                  size: 18,
                   color: AppColors.sunsetDark,
                 ),
               if (trailing != null) trailing!,

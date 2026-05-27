@@ -34,6 +34,7 @@ import '../../widgets/console/console_screen_header.dart';
 import '../../widgets/console/console_surface.dart';
 
 import '../admin_human_labels.dart';
+import '../admin_visual_system.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
 import '../widgets/admin_action_controls.dart';
@@ -303,18 +304,18 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
           key: const Key('admin_corpus_screen'),
           color: AppColors.backgroundDeep,
           child: OperatorWebScreenFrame(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+            padding: AdminVisualSystem.screenPadding,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _Header(),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 _TechDetailsToggle(
                   value: _showTechDetails,
                   onChanged: (value) =>
                       setState(() => _showTechDetails = value),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 if (!widget.editingEnabled)
                   const _ReadOnlyBanner(
                     key: Key('admin_corpus_readonly_banner'),
@@ -324,13 +325,20 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                     key: const Key('admin_corpus_action_error'),
                     message: _actionError!,
                   ),
-                const TabBar(
-                  key: Key('admin_corpus_tab_bar'),
+                TabBar(
+                  key: const Key('admin_corpus_tab_bar'),
                   isScrollable: true,
                   indicatorColor: AppColors.sunset,
                   labelColor: AppColors.textPrimary,
                   unselectedLabelColor: AppColors.textSecondary,
-                  tabs: <Widget>[
+                  labelStyle: AppTextStyles.body15Bold(
+                    color: AppColors.textPrimary,
+                  ),
+                  unselectedLabelStyle: AppTextStyles.body14(
+                    color: AppColors.textSecondary,
+                  ),
+                  labelPadding: AdminVisualSystem.tabPadding,
+                  tabs: const <Widget>[
                     Tab(
                       key: Key('admin_corpus_versions_tab'),
                       text: 'Knowledge',
@@ -341,7 +349,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 Expanded(
                   child: TabBarView(
                     children: <Widget>[

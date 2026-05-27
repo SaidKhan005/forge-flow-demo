@@ -5,10 +5,11 @@ import 'package:forge_and_flow/widgets/console/console_action_bar.dart';
 import 'package:forge_and_flow/widgets/console/console_header_visibility.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_visual_system.dart';
 
 const double kAdminMasterDetailBreakpoint = 720;
-const double kAdminDefaultMasterWidth = 280;
-const double kAdminDefaultCompactMasterHeight = 220;
+const double kAdminDefaultMasterWidth = 304;
+const double kAdminDefaultCompactMasterHeight = 248;
 
 class AdminMasterDetailLayout extends StatelessWidget {
   const AdminMasterDetailLayout({
@@ -18,7 +19,7 @@ class AdminMasterDetailLayout extends StatelessWidget {
     this.masterWidth = kAdminDefaultMasterWidth,
     this.compactMasterHeight = kAdminDefaultCompactMasterHeight,
     this.breakpoint = kAdminMasterDetailBreakpoint,
-    this.gap = 16,
+    this.gap = 20,
   });
 
   final Widget master;
@@ -103,7 +104,7 @@ class AdminPageHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               leading!,
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Flexible(child: titleText),
             ],
           );
@@ -112,7 +113,7 @@ class AdminPageHeader extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         titleRow,
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           subtitle,
           style: AppTextStyles.body13(color: AppColors.textSecondary),
@@ -129,7 +130,7 @@ class AdminPageHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               titleBlock,
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
               Align(alignment: Alignment.centerRight, child: action),
             ],
           );
@@ -138,7 +139,7 @@ class AdminPageHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(child: titleBlock),
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
             action,
           ],
         );
@@ -151,7 +152,7 @@ class AdminCard extends StatelessWidget {
   const AdminCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = AdminVisualSystem.surfacePadding,
   });
 
   final Widget child;
@@ -164,7 +165,7 @@ class AdminCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.surfaceRadius),
         boxShadow: [
           BoxShadow(
             color: AppColors.textPrimary.withValues(alpha: 0.035),
@@ -203,10 +204,10 @@ class AdminStatStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     return AdminCard(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
+        spacing: 12,
+        runSpacing: 12,
         children: <Widget>[
           for (final item in items)
             _AdminStatTile(
@@ -227,8 +228,8 @@ class _AdminStatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 132, maxWidth: 220),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      constraints: const BoxConstraints(minWidth: 150, maxWidth: 240),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: item.tone.withValues(alpha: 0.07),
         border: Border.all(color: item.tone.withValues(alpha: 0.22), width: 1),
@@ -238,8 +239,8 @@ class _AdminStatTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           if (item.icon != null) ...<Widget>[
-            Icon(item.icon, size: 16, color: item.tone),
-            const SizedBox(width: 8),
+            Icon(item.icon, size: 18, color: item.tone),
+            const SizedBox(width: 10),
           ],
           Flexible(
             child: Column(
@@ -253,7 +254,7 @@ class _AdminStatTile extends StatelessWidget {
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   item.label,
                   overflow: TextOverflow.ellipsis,
@@ -285,7 +286,7 @@ class AdminDetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final row = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < labelWidth + 220;

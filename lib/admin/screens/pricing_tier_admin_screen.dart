@@ -71,6 +71,7 @@ import '../../widgets/console/console_surface.dart';
 import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../admin_route_handoff.dart';
+import '../admin_visual_system.dart';
 import '../models/observability_admin_models.dart';
 import '../models/pricing_tier_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
@@ -525,9 +526,11 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       color: AppColors.backgroundDeep,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1120),
+          constraints: const BoxConstraints(
+            maxWidth: AdminVisualSystem.screenMaxWidth,
+          ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+            padding: AdminVisualSystem.screenPadding,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -536,7 +539,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
                   title: 'Plans and limits',
                   collapseBelowWidth: 0,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 if (!widget.editingEnabled)
                   const _ReadOnlyBanner(
                     key: Key('admin_pricing_readonly_banner'),
@@ -550,7 +553,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
                   selected: _view,
                   onSelect: (view) => setState(() => _view = view),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 // Every view (Plans map, Features matrix, and the now
                 // single-pane Businesses detail / empty state) is its own
                 // scroll view, so the body needs no master/detail floor.
@@ -1049,12 +1052,8 @@ class _ViewTabs extends StatelessWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSurface,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          padding: const EdgeInsets.all(4),
+          decoration: AdminVisualSystem.tabStripDecoration(),
+          padding: AdminVisualSystem.tabStripPadding,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
@@ -1064,14 +1063,14 @@ class _ViewTabs extends StatelessWidget {
                 selected: selected == _PricingView.plans,
                 onTap: () => onSelect(_PricingView.plans),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: AdminVisualSystem.tabGap),
               _Tab(
                 label: 'Features',
                 tabKey: const Key('admin_pricing_tab_features'),
                 selected: selected == _PricingView.features,
                 onTap: () => onSelect(_PricingView.features),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: AdminVisualSystem.tabGap),
               _Tab(
                 label: 'Businesses',
                 tabKey: const Key('admin_pricing_tab_businesses'),
@@ -1102,21 +1101,20 @@ class _Tab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected
-          ? AppColors.sunset.withValues(alpha: 0.13)
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(999),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
       child: InkWell(
         key: tabKey,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AdminVisualSystem.tabRadius),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          child: Text(
-            label,
-            style: AppTextStyles.body13(
-              color: selected ? AppColors.sunsetDark : AppColors.textMuted,
-            ).copyWith(fontWeight: FontWeight.w600),
+        child: DecoratedBox(
+          decoration: AdminVisualSystem.tabDecoration(selected: selected),
+          child: Padding(
+            padding: AdminVisualSystem.tabPadding,
+            child: Text(
+              label,
+              style: AdminVisualSystem.tabTextStyle(selected: selected),
+            ),
           ),
         ),
       ),

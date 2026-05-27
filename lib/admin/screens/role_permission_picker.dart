@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
+import '../admin_visual_system.dart';
 
 enum RoleEditorProduct {
   forgeFlow(label: 'Forge & Flow'),
@@ -300,11 +301,7 @@ class _AdminProductPermissionPickerState
         product == RoleEditorProduct.barrio && !widget.barrioPlanIncluded;
     return Container(
       key: const Key('admin_rhs_role_editor_permission_picker'),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: AdminVisualSystem.surfaceDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -314,6 +311,11 @@ class _AdminProductPermissionPickerState
             labelColor: AppColors.textPrimary,
             unselectedLabelColor: AppColors.textMuted,
             indicatorColor: AppColors.sunset,
+            labelStyle: AppTextStyles.body15Bold(color: AppColors.textPrimary),
+            unselectedLabelStyle: AppTextStyles.body14(
+              color: AppColors.textMuted,
+            ),
+            labelPadding: AdminVisualSystem.tabPadding,
             onTap: (index) {
               setState(() => _activeProduct = RoleEditorProduct.values[index]);
             },
