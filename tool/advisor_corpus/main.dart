@@ -278,13 +278,82 @@ Future<void> main(List<String> args) async {
           'no DB mutation by this command.',
         );
         break;
+      case 'prepare-semantic-candidates':
+        // G4 C3: semantic extraction of typed graph candidates.
+        // OP-GATED: this command makes PAID LLM API calls.
+        // Do NOT run without explicit operator spend approval.
+        // Requires ANTHROPIC_API_KEY in the environment.
+        //
+        // Reads: build/advisor_corpus/source_chunks.jsonl (materialize first).
+        // Writes:
+        //   tool/advisor_proxy/graphify_candidates/semantic/
+        //     semantic_node_candidates.jsonl
+        //     semantic_edge_candidates.jsonl
+        //     semantic_extraction_manifest.json (includes HP#9 cost records)
+        //
+        // Idempotent: skips chunks whose idempotency key is already present
+        // in the output JSONL from a prior run.
+        //
+        // Follow-up: a new proxy endpoint is needed for server-side cost
+        // metering (HP#7 server-side keys + HP#9 metered by class).
+        final semanticMaterializationDirectory =
+            _option(args, 'materialized') ?? 'build/advisor_corpus';
+        final semanticOutputDirectory =
+            _option(args, 'output') ??
+            semanticExtractionOutputDirectory;
+        final semanticGraphScope =
+            _option(args, 'graph-scope') ?? 'methodology';
+        final semanticGraphVersion =
+            _option(args, 'graph-version') ?? '1';
+        stderr.writeln(
+          'WARNING: prepare-semantic-candidates makes PAID API calls. '
+          'Ensure operator approval before running. '
+          'Press Ctrl-C to abort.',
+        );
+        final semanticExtractor = CorpusSemanticExtractor(repoRoot: repoRoot);
+        final semanticResult = await semanticExtractor.extract(
+          materializationDirectory: semanticMaterializationDirectory,
+          outputDirectory: semanticOutputDirectory,
+          graphScope: semanticGraphScope,
+          graphVersion: semanticGraphVersion,
+          onChunkComplete: (processed, total, chunkId) {
+            stdout.writeln(
+              'Semantic extraction $processed/$total: $chunkId',
+            );
+          },
+        );
+        stdout.writeln(
+          'Advisor corpus semantic extraction OK: '
+          '${semanticResult.processedChunkCount} chunks processed, '
+          '${semanticResult.skippedChunkCount} skipped (idempotent).',
+        );
+        stdout.writeln(
+          'Candidates: '
+          '${semanticResult.nodeCandidateCount} nodes '
+          '(${semanticResult.ambiguousNodeCount} AMBIGUOUS), '
+          '${semanticResult.edgeCandidateCount} edges '
+          '(${semanticResult.ambiguousEdgeCount} AMBIGUOUS).',
+        );
+        stdout.writeln(
+          'HP#9 tokens: '
+          '${semanticResult.totalEstimatedInputTokens} in, '
+          '${semanticResult.totalEstimatedOutputTokens} out.',
+        );
+        stdout.writeln('Execution ID: ${semanticResult.executionId}');
+        stdout.writeln('Output: ${semanticResult.outputDirectory}');
+        stdout.writeln(
+          'Proxy endpoint needed for server-side cost metering. '
+          'See semantic_extraction_manifest.json proxy_endpoint_note.',
+        );
+        break;
       default:
         stderr.writeln('Unknown command: $command');
         stderr.writeln(
           'Usage: dart run tool/advisor_corpus/main.dart '
           '[validate|plan-chunks|materialize|prepare-load|'
           'prepare-embeddings|execute-embeddings|execute-contexts|'
-          'prepare-age-projection|prepare-graphify-candidates]',
+          'prepare-age-projection|prepare-graphify-candidates|'
+          'prepare-semantic-candidates]',
         );
         exitCode = 64;
     }
