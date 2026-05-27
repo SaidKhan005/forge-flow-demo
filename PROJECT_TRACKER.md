@@ -161,10 +161,9 @@ Resume notes: `memory/project_phase_pause_2026_05_03.md`,
 2026-05-25 active carve-out). The advisor "brain" (Workstream A), the
 operator-facing chat UI (D web + mobile), the admin Knowledge +
 Connections tabs (B + C2), and the knowledge-graph activation
-(G1/G2/G4/G4b/G5a) are all built and on `master`, inert until deploy.
-Three audited held PRs await operator merge: #1429 (F1 tool re-point),
-#1430 (F2 extract metering + idempotency), #1428 (F3 AGE DML grant,
-schema). The full phased resume sequence, remaining engineering (G5b
+(G1/G2/G4/G4b/G5a) plus the follow-ups F1/F2/F3 (#1429, #1430, #1428;
+merged 2026-05-27) are all built and on `master`, inert until deploy.
+The full phased resume sequence, remaining engineering (G5b
 advisor-reads-graph + the other HP#7 re-points), open decisions, the
 documented-gaps reference, and the go-live action list are in
 `docs/phases/advisor_knowledge_activation/advisor_graph_activation_resume_plan.md`.

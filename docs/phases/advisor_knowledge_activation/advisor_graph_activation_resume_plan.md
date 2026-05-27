@@ -32,11 +32,11 @@ below is live; nothing below spends money until the operator acts.
 | Advisor chat UI (Workstream D) | D1, D2-web, D2-mobile | Operator can ask + get a recommendation |
 | Graph activation (sub-plan) | G1 (#1420), G2 (#1421), G4 (#1422), G4b (#1423), G5a (#1427) | Both-brands candidate bundle; C3 typed vocabulary; extraction tool; server-side extract endpoint; AGE rebuild 501 to real |
 
-## What is HELD (built + audited CLEAN, awaiting operator merge)
+## Now MERGED (was held; landed 2026-05-27)
 
-These three are runtime-inert until deploy. The auto-merge guardrail
-correctly blocked merging them on a build directive; they need an
-explicit operator merge go-ahead (the schema one especially).
+These three were built, audited clean, and held for explicit operator
+approval, then merged 2026-05-27 on the operator's "merge everything".
+They are on `master` and runtime-inert until deploy.
 
 | PR | Slice | What | Gate |
 |---|---|---|---|
@@ -54,7 +54,7 @@ explicit operator merge go-ahead (the schema one especially).
 
 ## What is OPERATOR-ONLY (go-live; no engineering)
 
-1. **Merge the 3 held PRs** (#1429, #1430, #1428).
+1. **Merge the 3 follow-up PRs** (#1429, #1430, #1428). DONE 2026-05-27.
 2. **Apply the migration queue** (incl. F3 grant + the G2 vocabulary), per the production1 migration-apply runbook.
 3. **Deploy the proxy**: ships the candidate JSONL + `corpus_manifest.yaml` to the runtime path; exposes `/v1/admin/graph/extract` + `/v1/admin/age/rebuild`; injects the graph gateways (graph-candidates, extract, age-rebuild).
 4. **Provision `ADVISOR_CONVERSATION_CMK`** (E1) and confirm `conversation_cmk_loaded: true`.
@@ -85,7 +85,7 @@ into the phases above:
 Run in order on resume. Phases R0/R1 are operator/ops; R2 to R5 interleave
 operator gates with orchestrator builds.
 
-- **R0 — Land the held code.** Operator merges F1 #1429, F2 #1430, F3 #1428 (still inert).
+- **R0 — Land the held code. DONE 2026-05-27:** F1 #1429, F2 #1430, F3 #1428 merged to `master` (still inert until deploy).
 - **R1 — Deploy + secret + migrations.** Apply migrations (incl. F3 grant); deploy the proxy with candidate artifacts + the new endpoints + injected gateways; provision the CMK (E1); confirm startup logs.
 - **R2 — Activate C1 (candidates to canonical).** Un-pause decision (content = BOTH brands, already staged by G1); orchestrator verifies GET-diff + commit-batch + audit at runtime; the Connections review surface goes live.
 - **R3 — Populate the rich graph (C3).** Operator OKs spend; run the extraction tool (now proxy-brokered + metered) over the corpus; review/approve typed nodes/edges in the Connections tab.

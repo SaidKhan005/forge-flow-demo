@@ -6,10 +6,14 @@
 > session) drives slicing, prompt emission, audit, merge. Worker agents
 > execute in isolated worktrees per CLAUDE.md "Agent-led slices".
 >
-> **Status:** Active. Workstream A (advisor uses the knowledge) shipped
-> end-to-end and is fail-closed pending one secret. Remaining work is the
-> two operator-facing UX surfaces (the advisor chat screen and the admin
-> Knowledge base redesign) plus go-live.
+> **Status:** PAUSED 2026-05-27. Workstreams A, B, C2, and D shipped +
+> merged; the knowledge-graph activation (G1/G2/G4/G4b/G5a + follow-ups
+> F1/F2/F3) is built + on `master`, inert until deploy. The lane is paused
+> with the canonical phased resume plan, the remaining engineering (G5b
+> advisor-reads-graph + the other HP#7 re-points), the open decisions, the
+> documented-gaps reference, and the go-live action list in
+> `advisor_graph_activation_resume_plan.md`. Resume after the refactor lane
+> (R-1/R-2/R-3) and Per-Daypart Targets V1.
 
 **Locked UX target for the admin surface:**
 `docs/_mockups/knowledge_base_redesign_preview.html` (the agreed
