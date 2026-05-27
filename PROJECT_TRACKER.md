@@ -61,8 +61,6 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 | `docs/phases/plans_and_limits_v1/scoped_custom_contracts_plan.md` | Reference | Scoped Enterprise/custom-contract closeout: business/org-unit/location overrides, inheritance resolver, admin edit/clear/inherit flow, Operator Web display-only behavior, and non-goals. |
 | `docs/_indices/WAVE_2_LEDGER.md` | Reference | Wave 2's slice ledger. Operator-web + admin lanes CLOSED 2026-05-14; mobile lane closed for walkthrough 2026-05-15 (transitioned to Per-Daypart Targets V1). |
 | `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth on every brain-dump ask from `debug.md` mapped to ✅/🚧/❌/🔍 with citations. |
-| `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | General Claude executor handoff. |
-| `docs/_indices/CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex (dormant; out of quota). |
 | `docs/_indices/README.md` | All | Explains the index pattern + when to read which doc. |
 
 **Archived indices** (closed-wave artifacts retired 2026-05-15):

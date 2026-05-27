@@ -12,7 +12,7 @@ picking work. Pick the first slice with `state = assigned` on your lane.
 Lock it by opening the PR (you don't edit this file).
 
 Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md` (the 6-phase pipeline).
-Second-Claude paste-ready prompt: `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`.
+Second-Claude paste-ready prompt: `docs/archive/_indices/wave_2_closeout_2026_05_15/WAVE_2_PARALLEL_LANE_HANDOFF.md` (archived 2026-05-15).
 
 ## How this works
 
@@ -207,7 +207,7 @@ mega-PR or split into per-screen PRs.
 ## Authority anchors
 
 - Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md` (the 6-phase pipeline).
-- Second-Claude handoff prompt: `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`.
+- Second-Claude handoff prompt: `docs/archive/_indices/wave_2_closeout_2026_05_15/WAVE_2_PARALLEL_LANE_HANDOFF.md` (archived 2026-05-15).
 - Debug-md source-of-truth: `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md`.
 - Wave 1 closeout: `docs/archive/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`.
 - Workflow doctrine (executor-agnostic): `CLAUDE.md` "Workflow".

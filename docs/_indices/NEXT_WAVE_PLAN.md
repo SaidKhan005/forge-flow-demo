@@ -26,11 +26,12 @@
 > **Owner:** Operator drives sequencing; main orchestrator + second
 > Claude lane execute.
 
-Companion to `docs/_indices/WAVE_EXECUTION_LEDGER.md` (Wave 1's slice
-ledger; CLOSED 2026-05-13) and `docs/_indices/WAVE_2_LEDGER.md` (Wave 2's
-slice ledger; the canonical source for who-does-what across the 33 Wave 2
-slices). Second-Claude handoff prompt persists at
-`docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`.
+Companion to `docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md`
+(Wave 1's slice ledger; CLOSED 2026-05-13) and `docs/_indices/WAVE_2_LEDGER.md`
+(Wave 2's slice ledger; the canonical source for who-does-what across the 33
+Wave 2 slices). Second-Claude handoff prompt persists at
+`docs/archive/_indices/wave_2_closeout_2026_05_15/WAVE_2_PARALLEL_LANE_HANDOFF.md`
+(archived 2026-05-15; Wave 2 closed).
 
 ## The 6-phase pipeline
 
@@ -504,9 +505,9 @@ merges when it's back. **Use sparingly** — safety valve, not habit.
 ## Cross-references
 
 - Wave 1 closeout: `docs/archive/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`
-- Wave 1 ledger (closed): `docs/_indices/WAVE_EXECUTION_LEDGER.md`
+- Wave 1 ledger (closed): `docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md`
 - Wave 2 ledger: `docs/_indices/WAVE_2_LEDGER.md`
-- Wave 2 parallel-lane handoff prompt: `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`
+- Wave 2 parallel-lane handoff prompt: `docs/archive/_indices/wave_2_closeout_2026_05_15/WAVE_2_PARALLEL_LANE_HANDOFF.md` (archived 2026-05-15; Wave 2 closed)
 - debug.md implementation status: `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md`
 - Refactor scope (R-1 + R-2): `docs/POST_HARDENING_FOLLOWUPS.md` "Refactor phase scope"
 - Bug ledger (W-1, W-2): `docs/POST_HARDENING_FOLLOWUPS.md` "Wave bugs surfaced 2026-05-13 by local apply"
