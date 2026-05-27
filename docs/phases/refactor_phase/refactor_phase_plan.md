@@ -63,19 +63,21 @@ Phase A closes all four **before** a single file moves.
 
 | Target | Size / metric | Phase B slice | Gate |
 |---|---|---|---|
-| `admin/screens/operator_location_admin_screen.dart` | 5,162 lines | B2 | happy-state |
-| `admin/admin_routes.dart` | 4,078 lines | B2 | happy-state |
-| `admin/screens/roles_hierarchy_sessions_admin_screen.dart` | 3,255 lines | B2 | happy-state |
-| `admin/screens/observability_admin_screen.dart` | 3,152 lines | B6 (after split) | happy-state |
-| `operator_web/router/operator_web_router.dart` | 2,911 lines; `_buildPostOnboardingShell` 478 SLOC / CC 57 | B2 | happy-state |
-| `operator_web/screens/my_account_screen.dart` | ~2,051+ lines; god-screen | B1 (R-1) | happy-state |
+| `admin/screens/operator_location_admin_screen.dart` | 4,308 lines | B2 | happy-state |
+| `admin/admin_routes.dart` | 3,313 lines | B2 | happy-state |
+| `admin/screens/roles_hierarchy_sessions_admin_screen.dart` | 1,610 lines (already nearly halved since the 2026-05-22 plan capture; remains a Phase B target) | B2 | happy-state |
+| `admin/screens/observability_admin_screen.dart` | 2,745 lines | B6 (after split) | happy-state |
+| `operator_web/router/operator_web_router.dart` | 2,949 lines; `_buildPostOnboardingShell` 478 SLOC / CC 57 | B2 | happy-state |
+| `operator_web/screens/my_account_screen.dart` | 1,884 lines; god-screen | B1 (R-1) | happy-state |
 | `operator_web/screens/account_screen.dart` | `build()` CC **67** (worst) | B2 | happy-state |
 | `tool/advisor_proxy/**` | monolith; 3 hybrid dispatchers | B3 (R-2) → B4 | proxy happy-state |
-| `operator_web/screens/audit_log_hierarchy_filter_pane.dart` | 693 lines, **orphaned dead code** | B0 | none (dead) |
+| ~~`operator_web/screens/audit_log_hierarchy_filter_pane.dart`~~ | **DELETED 2026-05-26 (B0 closed)** — file removed; see B0 row in Section 4. | B0 | none (dead) |
 
-Whole-codebase debt baseline to ratchet down (never up): **340**
-long methods (>80 SLOC), **261** complex (>CC 12), **122** over-param
-(>7), **4** deep-nest (>5). Source: `runbooks/dart_code_metrics_runbook.md`.
+Whole-codebase debt baseline to ratchet down (never up): **324**
+long methods (>80 SLOC), **261** complex (>CC 12), **123** over-param
+(>7), **4** deep-nest (>5). Source: `tool/metrics_ratchet_baseline.json`
+(which has the per-reconciliation history); see also
+`runbooks/dart_code_metrics_runbook.md`.
 
 ---
 
@@ -87,16 +89,16 @@ Each is an independent worker-agent slice; A1–A6 can fan out in parallel.
 
 | Slice | Scope | Effort | Output |
 |---|---|---|---|
-| **A1 — Test baseline + flake pin** | Capture the current full-suite result (11,484 pass / 0 fail / 8 skip on master @ 2026-05-22) as a committed regression reference. Multi-seed run of `test/operator_web` + `test/admin` widget tests to confirm only the one quarantined router test flakes. Build `tool/flake_counter.dart` (§8 gap) to parse multi-seed JSON. | S | `docs/_audits/code_health/test_baseline_2026_05_22.md` + `tool/flake_counter.dart` |
+| **A1 — Test baseline + flake pin** | Capture the current full-suite result (10,449 pass / 0 fail / 2 error / 8 skipped on master @ 2026-05-22) as a committed regression reference. Multi-seed run of `test/operator_web` + `test/admin` widget tests to confirm only the one quarantined router test flakes. Build `tool/flake_counter.dart` (§8 gap) to parse multi-seed JSON. | S | `docs/_audits/code_health/test_baseline_2026_05_22.md` + `tool/flake_counter.dart` |
 | **A2 — Characterization tests for refactor targets** | **DEFERRED to each B slice's start (post-happy-state) — see "A2 timing" note below.** Add behavior-pinning tests **only where coverage is thin**, for the exact files Phase B moves: (a) `my_account_screen` panes (MFA / sessions / profile / security); (b) the 3 proxy hybrid dispatchers (B2.1, B11.2, C-4) — route tests pinning request/response envelope, auth guard, idempotency key, error shape **before** helper extraction; (c) `operator_location_admin`, `admin_routes`, `roles_hierarchy_sessions`, `operator_web_router` — smoke/widget tests pinning the key render + scope paths. Satisfies the contract's "Proof Required". | L | New `*_characterization_test.dart` files, per B slice |
 | **A3 — Size-ceiling lints (anti-regrowth)** | Build `tool/operator_web_size_lint.dart` (R-1 #1) mirroring `advisor_proxy_size_lint.dart`. Generalize to a per-file ceiling map covering the admin god-screens too (`tool/screen_size_lint.dart` or extend). Set each ceiling at **current** size (freeze — they cannot grow during the phase); lowered per file as B1/B2 land. | M | `tool/operator_web_size_lint.dart` (+ admin coverage); pre-push wire |
-| **A4 — Metrics ratchet check (core "do not regress" gate)** | `tool/metrics_ratchet_check.dart`: run `dart_code_linter` JSON, count warning/alarm per metric, compare to the committed baseline (340 / 261 / 122 / 4), **fail if any count grows**. Wire into pre-push (advisory → ratchet). Per the runbook, per-metric promotion to *blocking* happens later (B5) once counts drop; this is the intermediate guardrail that guarantees cleanup only reduces debt. | M | `tool/metrics_ratchet_check.dart` + committed baseline JSON |
+| **A4 — Metrics ratchet check (core "do not regress" gate)** | `tool/metrics_ratchet_check.dart`: run `dart_code_linter` JSON, count warning/alarm per metric, compare to the committed baseline (324 / 261 / 123 / 4 per `tool/metrics_ratchet_baseline.json`), **fail if any count grows**. Wire into pre-push (advisory → ratchet). Per the runbook, per-metric promotion to *blocking* happens later (B5) once counts drop; this is the intermediate guardrail that guarantees cleanup only reduces debt. | M | `tool/metrics_ratchet_check.dart` + committed baseline JSON |
 | **A5 — Skip-quarantine lint** | `tool/skip_quarantine_lint.dart` (§8 gap): fail if any `skip:` / `.skip(` in `test/` lacks a matching row in `docs/KNOWN_FAILING_TESTS.md`. Stops silent test-skipping during the churn. | S | `tool/skip_quarantine_lint.dart` + pre-push wire |
 | **A6 — Test-output hygiene** | Gitignore the two tracked files that running the suite rewrites (`test/integration/pressure/p2c_spine_findings.jsonl`, `p2d_mobile_sync_findings_summary.txt`) so refactor PRs don't carry spurious diffs / dirty the worktree. | S | `.gitignore` patterns + force-keep the canonical committed copy if needed |
 | **A7 — (optional) TODO age lint** | `tool/todo_age_lint.dart` (§8 gap) — `git blame` TODOs, warn > 90 days. Low priority; keeps debt visible. | S | `tool/todo_age_lint.dart` |
 
 **Phase A exit:** A1 + A3 + A4 + A5 + A6 lints/tools green on master;
-ratchet baseline frozen; full suite still ~11,485 pass. **This is the
+ratchet baseline frozen; full suite still ~10,449 pass. **This is the
 gate that lets Phase B start safely.**
 
 **A2 timing (refinement 2026-05-22):** characterization tests pin a
