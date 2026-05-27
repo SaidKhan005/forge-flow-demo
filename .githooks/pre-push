@@ -143,6 +143,21 @@ if has_changed '^lib/admin/screens/|^lib/admin/admin_routes\.dart$|^lib/operator
   run_lint dart run tool/operator_web_size_lint.dart
 fi
 
+# Refactor-phase metrics ratchet: function-count warnings/alarms (SLOC,
+# complexity, params, nesting) only ever go DOWN. Baseline in
+# tool/metrics_ratchet_baseline.json; raising any number needs operator
+# approval (CLAUDE.md Ceiling-raise rule R-2).
+if has_changed '^lib/.*\.dart$|^tool/metrics_ratchet_check\.dart$|^tool/metrics_ratchet_baseline\.json$|^analysis_options\.yaml$'; then
+  run_lint dart run tool/metrics_ratchet_check.dart
+fi
+
+# Bleed-stop ceiling for the advisor proxy monolith. The kAdvisorProxyMaxLines
+# constant is a freeze (CLAUDE.md "Ceiling-raise rule R-2") — raising needs
+# explicit operator approval, same gate as auth/RLS/schema/proxy slices.
+if has_changed '^tool/advisor_proxy/.*\.dart$|^tool/advisor_proxy_size_lint\.dart$'; then
+  run_lint dart run tool/advisor_proxy_size_lint.dart
+fi
+
 # Skip-quarantine bar: every skipped test is self-documenting (env gate)
 # or has a docs/KNOWN_FAILING_TESTS.md row. Fast: scans test/ skip sites.
 if has_changed '^test/.*\.dart$|^docs/KNOWN_FAILING_TESTS\.md$|^tool/skip_quarantine_lint\.dart$'; then
