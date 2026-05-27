@@ -524,164 +524,180 @@ ChunkPreview _demoChunk({
 /// beyond being demo data. `from_node_type` / `to_node_type` let each
 /// flow row show the right kind icon per node.
 GraphCandidateDiff _demoKnowledgeGraphCandidates() {
-  GraphCandidate edge({
-    required String id,
-    required String from,
-    required String to,
-    required String type,
-    required GraphCandidateLabel label,
-    required double score,
-    required String fromType,
-    required String toType,
-    required String sentence,
-  }) {
-    return GraphCandidate(
-      candidateId: id,
-      kind: GraphCandidateKind.edge,
-      candidateKey: 'graphify:$id',
-      candidateType: type,
-      label: label,
-      confidenceScore: score,
-      sourceFile: 'food_safety_manual.md',
-      sourceRef: null,
-      fromNodeKey: 'graphify:$from',
-      toNodeKey: 'graphify:$to',
-      payload: <String, Object?>{
-        'graphify_relation': type,
-        'label': sentence,
-        'from_node_type': fromType,
-        'to_node_type': toType,
-      },
-    );
-  }
-
   return GraphCandidateDiff(
     graphScope: 'methodology',
     graphVersion: '1',
     graphifyVersion: 'v5',
     graphifySourceCommit: 'demo-seed',
-    // Clear, high-confidence "includes" edges: the manual contains its
-    // SOPs and concepts.
-    extracted: <GraphCandidate>[
-      edge(
-        id: 'edge:manual:fifo:contains',
-        from: 'food_safety_manual',
-        to: 'fifo',
-        type: 'CONTAINS',
-        label: GraphCandidateLabel.extracted,
-        score: 0.96,
-        fromType: 'MANUAL',
-        toType: 'SOP',
-        sentence: 'manual contains fifo',
-      ),
-      edge(
-        id: 'edge:manual:haccp:contains',
-        from: 'food_safety_manual',
-        to: 'haccp',
-        type: 'CONTAINS',
-        label: GraphCandidateLabel.extracted,
-        score: 0.94,
-        fromType: 'MANUAL',
-        toType: 'SOP',
-        sentence: 'manual contains haccp',
-      ),
-      edge(
-        id: 'edge:manual:fourcs:contains',
-        from: 'food_safety_manual',
-        to: 'the_four_cs',
-        type: 'CONTAINS',
-        label: GraphCandidateLabel.extracted,
-        score: 0.90,
-        fromType: 'MANUAL',
-        toType: 'CONCEPT',
-        sentence: 'manual contains the four cs',
-      ),
-      edge(
-        id: 'edge:handbook:harassment:contains',
-        from: 'company_handbook',
-        to: 'workplace_harassment_policy',
-        type: 'CONTAINS',
-        label: GraphCandidateLabel.extracted,
-        score: 0.93,
-        fromType: 'DOCUMENT',
-        toType: 'POLICY',
-        sentence: 'handbook contains harassment policy',
-      ),
-      edge(
-        id: 'edge:equation:cplh:calculates',
-        from: 'the_core_labor_equation',
-        to: 'cost_per_labor_hour',
-        type: 'CALCULATES',
-        label: GraphCandidateLabel.extracted,
-        score: 0.91,
-        fromType: 'FORMULA',
-        toType: 'METRIC',
-        sentence: 'the core labor equation calculates cplh',
-      ),
-    ],
-    // Worth-checking, mid-confidence edges: plausible but not obvious.
-    inferred: <GraphCandidate>[
-      edge(
-        id: 'edge:fourcs:contamination:reduces',
-        from: 'the_four_cs',
-        to: 'cross_contamination',
-        type: 'REDUCES_RISK_OF',
-        label: GraphCandidateLabel.inferred,
-        score: 0.80,
-        fromType: 'CONCEPT',
-        toType: 'RISK',
-        sentence: 'the four cs reduce the risk of cross contamination',
-      ),
-      edge(
-        id: 'edge:fifo:danger_zone:reduces',
-        from: 'fifo',
-        to: 'temperature_danger_zone',
-        type: 'REDUCES_RISK_OF',
-        label: GraphCandidateLabel.inferred,
-        score: 0.74,
-        fromType: 'SOP',
-        toType: 'RISK',
-        sentence: 'fifo reduces the risk of the temperature danger zone',
-      ),
-      edge(
-        id: 'edge:opz:cplh:informs',
-        from: 'optimal_productivity_zone',
-        to: 'cost_per_labor_hour',
-        type: 'INFORMS',
-        label: GraphCandidateLabel.inferred,
-        score: 0.77,
-        fromType: 'CONCEPT',
-        toType: 'METRIC',
-        sentence: 'the optimal productivity zone informs cplh',
-      ),
-    ],
-    // Not-sure: the producer could not pin the relationship. These read
-    // "Not sure" and must be edited before they can be approved.
-    ambiguous: <GraphCandidate>[
-      edge(
-        id: 'edge:whmis:danger_zone:relates',
-        from: 'whmis_labelling',
-        to: 'temperature_danger_zone',
-        type: 'RELATES_TO',
-        label: GraphCandidateLabel.ambiguous,
-        score: 0.42,
-        fromType: 'POLICY',
-        toType: 'RISK',
-        sentence: 'whmis labelling near the temperature danger zone',
-      ),
-      edge(
-        id: 'edge:expo:fourcs:relates',
-        from: 'expo_role',
-        to: 'the_four_cs',
-        type: 'RELATES_TO',
-        label: GraphCandidateLabel.ambiguous,
-        score: 0.38,
-        fromType: 'ROLE',
-        toType: 'CONCEPT',
-        sentence: 'expo role near the four cs',
-      ),
-    ],
+    extracted: _demoExtractedGraphCandidates(),
+    inferred: _demoInferredGraphCandidates(),
+    ambiguous: _demoAmbiguousGraphCandidates(),
   );
+}
+
+/// Shared edge builder for the demo knowledge-graph candidate buckets.
+/// `sourceFile` is fixed to `food_safety_manual.md` because the seeded
+/// corpus is rooted in that manual; per-bucket helpers pass everything
+/// else through verbatim.
+GraphCandidate _demoKnowledgeGraphEdge({
+  required String id,
+  required String from,
+  required String to,
+  required String type,
+  required GraphCandidateLabel label,
+  required double score,
+  required String fromType,
+  required String toType,
+  required String sentence,
+}) {
+  return GraphCandidate(
+    candidateId: id,
+    kind: GraphCandidateKind.edge,
+    candidateKey: 'graphify:$id',
+    candidateType: type,
+    label: label,
+    confidenceScore: score,
+    sourceFile: 'food_safety_manual.md',
+    sourceRef: null,
+    fromNodeKey: 'graphify:$from',
+    toNodeKey: 'graphify:$to',
+    payload: <String, Object?>{
+      'graphify_relation': type,
+      'label': sentence,
+      'from_node_type': fromType,
+      'to_node_type': toType,
+    },
+  );
+}
+
+/// Clear, high-confidence "includes" edges: the manual contains its
+/// SOPs and concepts.
+List<GraphCandidate> _demoExtractedGraphCandidates() {
+  return <GraphCandidate>[
+    _demoKnowledgeGraphEdge(
+      id: 'edge:manual:fifo:contains',
+      from: 'food_safety_manual',
+      to: 'fifo',
+      type: 'CONTAINS',
+      label: GraphCandidateLabel.extracted,
+      score: 0.96,
+      fromType: 'MANUAL',
+      toType: 'SOP',
+      sentence: 'manual contains fifo',
+    ),
+    _demoKnowledgeGraphEdge(
+      id: 'edge:manual:haccp:contains',
+      from: 'food_safety_manual',
+      to: 'haccp',
+      type: 'CONTAINS',
+      label: GraphCandidateLabel.extracted,
+      score: 0.94,
+      fromType: 'MANUAL',
+      toType: 'SOP',
+      sentence: 'manual contains haccp',
+    ),
+    _demoKnowledgeGraphEdge(
+      id: 'edge:manual:fourcs:contains',
+      from: 'food_safety_manual',
+      to: 'the_four_cs',
+      type: 'CONTAINS',
+      label: GraphCandidateLabel.extracted,
+      score: 0.90,
+      fromType: 'MANUAL',
+      toType: 'CONCEPT',
+      sentence: 'manual contains the four cs',
+    ),
+    _demoKnowledgeGraphEdge(
+      id: 'edge:handbook:harassment:contains',
+      from: 'company_handbook',
+      to: 'workplace_harassment_policy',
+      type: 'CONTAINS',
+      label: GraphCandidateLabel.extracted,
+      score: 0.93,
+      fromType: 'DOCUMENT',
+      toType: 'POLICY',
+      sentence: 'handbook contains harassment policy',
+    ),
+    _demoKnowledgeGraphEdge(
+      id: 'edge:equation:cplh:calculates',
+      from: 'the_core_labor_equation',
+      to: 'cost_per_labor_hour',
+      type: 'CALCULATES',
+      label: GraphCandidateLabel.extracted,
+      score: 0.91,
+      fromType: 'FORMULA',
+      toType: 'METRIC',
+      sentence: 'the core labor equation calculates cplh',
+    ),
+  ];
+}
+
+/// Worth-checking, mid-confidence edges: plausible but not obvious.
+List<GraphCandidate> _demoInferredGraphCandidates() {
+  return <GraphCandidate>[
+    _demoKnowledgeGraphEdge(
+      id: 'edge:fourcs:contamination:reduces',
+      from: 'the_four_cs',
+      to: 'cross_contamination',
+      type: 'REDUCES_RISK_OF',
+      label: GraphCandidateLabel.inferred,
+      score: 0.80,
+      fromType: 'CONCEPT',
+      toType: 'RISK',
+      sentence: 'the four cs reduce the risk of cross contamination',
+    ),
+    _demoKnowledgeGraphEdge(
+      id: 'edge:fifo:danger_zone:reduces',
+      from: 'fifo',
+      to: 'temperature_danger_zone',
+      type: 'REDUCES_RISK_OF',
+      label: GraphCandidateLabel.inferred,
+      score: 0.74,
+      fromType: 'SOP',
+      toType: 'RISK',
+      sentence: 'fifo reduces the risk of the temperature danger zone',
+    ),
+    _demoKnowledgeGraphEdge(
+      id: 'edge:opz:cplh:informs',
+      from: 'optimal_productivity_zone',
+      to: 'cost_per_labor_hour',
+      type: 'INFORMS',
+      label: GraphCandidateLabel.inferred,
+      score: 0.77,
+      fromType: 'CONCEPT',
+      toType: 'METRIC',
+      sentence: 'the optimal productivity zone informs cplh',
+    ),
+  ];
+}
+
+/// Not-sure: the producer could not pin the relationship. These read
+/// "Not sure" and must be edited before they can be approved.
+List<GraphCandidate> _demoAmbiguousGraphCandidates() {
+  return <GraphCandidate>[
+    _demoKnowledgeGraphEdge(
+      id: 'edge:whmis:danger_zone:relates',
+      from: 'whmis_labelling',
+      to: 'temperature_danger_zone',
+      type: 'RELATES_TO',
+      label: GraphCandidateLabel.ambiguous,
+      score: 0.42,
+      fromType: 'POLICY',
+      toType: 'RISK',
+      sentence: 'whmis labelling near the temperature danger zone',
+    ),
+    _demoKnowledgeGraphEdge(
+      id: 'edge:expo:fourcs:relates',
+      from: 'expo_role',
+      to: 'the_four_cs',
+      type: 'RELATES_TO',
+      label: GraphCandidateLabel.ambiguous,
+      score: 0.38,
+      fromType: 'ROLE',
+      toType: 'CONCEPT',
+      sentence: 'expo role near the four cs',
+    ),
+  ];
 }
 
 /// 11A.4 fallback integration gateway. Seeds Anthropic + Voyage with
