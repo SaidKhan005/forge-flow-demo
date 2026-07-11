@@ -32,6 +32,20 @@ import 'admin_http_timeout.dart';
 /// tests pin a synthetic value.
 typedef AdminBearerTokenProvider = Future<String> Function();
 
+/// Demo-only notification fired by [InMemoryOperatorLocationAdminGateway]
+/// after a location is added, so the admin console can mirror the new
+/// location into the separately-seeded in-memory hierarchy gateway
+/// (which owns delete / move / suspend). Production never wires this:
+/// the proxy is the single writer and both admin reads re-fetch from it.
+typedef DemoLocationAddedCallback = void Function(LocationAdminRecord location);
+
+/// Demo-only notification fired after a location is removed through the
+/// operator gateway, so the hierarchy gateway's mirror can be kept
+/// consistent. Same production-never-wired rationale as
+/// [DemoLocationAddedCallback].
+typedef DemoLocationRemovedCallback =
+    void Function({required String operatorId, required String locationId});
+
 void _validateParentOrgUnitId(String? value) {
   if (value == null || value.trim().isEmpty) {
     throw const OperatorLocationAdminGatewayError(
@@ -320,6 +334,8 @@ class InMemoryOperatorLocationAdminGateway
     Iterable<OperatorAdminBundle> seed = const <OperatorAdminBundle>[],
     DateTime Function()? now,
     String Function()? idGenerator,
+    this.onLocationAdded,
+    this.onLocationRemoved,
   }) : _now = now ?? DateTime.now,
        _idGenerator = idGenerator ?? _randomId,
        _bundles = <String, _MutableBundle>{
@@ -330,6 +346,16 @@ class InMemoryOperatorLocationAdminGateway
   final DateTime Function() _now;
   final String Function() _idGenerator;
   final Map<String, _MutableBundle> _bundles;
+
+  /// Demo-only sink invoked after [addLocation] succeeds (see
+  /// [DemoLocationAddedCallback]). Null in production and in tests that
+  /// do not wire the hierarchy mirror, so the default behaviour is
+  /// byte-identical.
+  final DemoLocationAddedCallback? onLocationAdded;
+
+  /// Demo-only sink invoked after [removeLocation] succeeds (see
+  /// [DemoLocationRemovedCallback]). Null by default.
+  final DemoLocationRemovedCallback? onLocationRemoved;
 
   /// Per-key cache so a retried mutation on the in-memory gateway
   /// returns the prior result instead of mutating again - mirrors the
@@ -499,6 +525,11 @@ class InMemoryOperatorLocationAdminGateway
     );
     bundle.locations.add(location);
     _idempotentResults[command.idempotencyKey] = location;
+    // Demo-only: mirror the new location into the hierarchy gateway so
+    // delete / move / suspend find it (the two demo stores are otherwise
+    // separate). Fired only on a fresh add — a retried idempotent call
+    // returns above without re-firing.
+    onLocationAdded?.call(location);
     return location;
   }
 
@@ -563,6 +594,9 @@ class InMemoryOperatorLocationAdminGateway
     // Sentinel value - `removeLocation` returns void so any non-null
     // marker suffices for the cache hit branch above.
     _idempotentResults[idempotencyKey] = const Object();
+    // Demo-only: keep the hierarchy gateway's mirror consistent. Fired
+    // only on a fresh removal (a retried idempotent call returns above).
+    onLocationRemoved?.call(operatorId: operatorId, locationId: locationId);
   }
 
   _MutableBundle _bundleOrThrow(String operatorId) {
