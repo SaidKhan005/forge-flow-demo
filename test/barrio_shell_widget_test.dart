@@ -106,8 +106,9 @@ void main() {
 
       // The wordmark is a RichText with "Barrio " + "Legado" spans
       expect(find.byType(RichText), findsWidgets);
-      // El Podio button should be visible
-      expect(find.text('EL PODIO'), findsOneWidget);
+      // BSP.2: the El Podio pill is hidden while
+      // kBarrioShowElPodioEntry is false (hide-only; flag flip restores it).
+      expect(find.text('EL PODIO'), findsNothing);
     });
 
     testWidgets('shows Coming Soon for Preston Lee Model', (tester) async {
@@ -122,13 +123,16 @@ void main() {
       expect(preston.comingSoon, isTrue);
     });
 
-    testWidgets('role preview chips are visible', (tester) async {
+    testWidgets('role preview switcher is hidden (BSP.2)', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: BarrioHomeScreen()),
       );
       await tester.pump(const Duration(milliseconds: 500));
 
-      expect(find.text('PREVIEW'), findsOneWidget);
+      // BSP.2: the PREVIEW row is hidden while
+      // kBarrioShowRolePreviewChips is false (hide-only; flag flip
+      // restores it).
+      expect(find.text('PREVIEW'), findsNothing);
     });
   });
 }

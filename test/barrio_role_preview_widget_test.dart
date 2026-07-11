@@ -5,43 +5,50 @@ import 'package:forge_and_flow/internal/barrio/routes/barrio_preview_role.dart';
 import 'package:forge_and_flow/internal/barrio/routes/barrio_route_map.dart';
 import 'package:forge_and_flow/internal/barrio/screens/barrio_home_screen.dart';
 import 'package:forge_and_flow/internal/barrio/screens/forge_and_flow_destination_screen.dart';
+import 'package:forge_and_flow/internal/barrio/widgets/barrio_bubble_hub.dart';
 
 void main() {
   Widget buildTestApp() {
     return const MaterialApp(home: BarrioHomeScreen());
   }
 
-  // A. Default preview role is Admin
-  // Note: the wordmark 'Barrio Legado' is rendered as a RichText with two
-  // TextSpan children. We verify the PREVIEW row (a plain Text widget) which
-  // is a reliable indicator the header rendered correctly.
-  group('Default preview role', () {
-    testWidgets('defaults to Admin', (tester) async {
+  // A. Preview switcher hidden (BSP.2) — kBarrioShowRolePreviewChips is
+  // false, so the PREVIEW row and all four role chips are not rendered.
+  // Hide-only: flipping the flag restores the switcher and the original
+  // assertions verbatim.
+  group('Preview switcher hidden (BSP.2)', () {
+    testWidgets('PREVIEW row and role chips are not rendered',
+        (tester) async {
       await tester.pumpWidget(buildTestApp());
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Role preview row is visible with all four chips
-      expect(find.text('PREVIEW'), findsOneWidget);
-      expect(find.text('Admin'), findsWidgets);
-      expect(find.text('Staff'), findsWidgets);
-      expect(find.text('Supervisor'), findsWidgets);
-      expect(find.text('Manager'), findsWidgets);
+      expect(find.text('PREVIEW'), findsNothing);
+      expect(find.text('Admin'), findsNothing);
+      expect(find.text('Staff'), findsNothing);
+      expect(find.text('Supervisor'), findsNothing);
+      expect(find.text('Manager'), findsNothing);
     });
   });
 
-  // B. Switching preview role updates display
-  group('Role switching', () {
-    testWidgets('tapping Staff chip updates selection', (tester) async {
+  // B. Preview role pinned to Admin (BSP.2) — with the switcher hidden,
+  // _resolvePreviewRole returns Admin unconditionally on the fallback
+  // path, so no hub bubble is role-dimmed. The hub's role-dim opacity is
+  // exactly 0.38 (coming-soon uses 0.30 and stays regardless of role).
+  group('Preview role pinned to Admin (BSP.2)', () {
+    testWidgets('hub renders with no role-dimmed bubbles', (tester) async {
       await tester.pumpWidget(buildTestApp());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 600));
 
-      final staffChip = find.text('Staff');
-      expect(staffChip, findsWidgets);
-      await tester.tap(staffChip.first);
-      await tester.pump(const Duration(milliseconds: 300));
-
-      // Staff chip remains present after tap
-      expect(find.text('Staff'), findsWidgets);
+      final roleDimmed = tester
+          .widgetList<Opacity>(
+            find.descendant(
+              of: find.byType(BarrioBubbleHub),
+              matching: find.byType(Opacity),
+            ),
+          )
+          .where((o) => o.opacity == 0.38);
+      expect(roleDimmed, isEmpty,
+          reason: 'Admin sees everything; no bubble should be role-dimmed');
     });
   });
 

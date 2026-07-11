@@ -17,3 +17,27 @@
 ///
 /// Flip to true to restore the full orbital motion verbatim.
 const bool kBarrioBubbleOrbitEnabled = false;
+
+/// BSP.2: gates the gold "EL PODIO" entry pill on the Barrio home screen.
+///
+/// When false (the shipped default), the pill is not rendered. Nothing
+/// else changes: `_ElPodioButton`, `ElPodioScreen`, its route-map entry,
+/// destination manifest, and demo content all stay in the tree.
+///
+/// Flip to true to restore the El Podio home entry verbatim.
+const bool kBarrioShowElPodioEntry = false;
+
+/// BSP.2: gates the role PREVIEW switcher row in the Barrio home header
+/// (gold dot + `PREVIEW` label + Staff / Supervisor / Manager / Admin
+/// chips) AND pins the preview-role fallback to
+/// `BarrioPreviewRole.admin` while hidden.
+///
+/// When false (the shipped default), the row is not rendered and
+/// `_resolvePreviewRole` short-circuits to Admin before the
+/// override / session-role mapping (which stays in place, unexecuted).
+/// The production `PermissionContext` visibility resolver (B18) is
+/// independent of this flag and still wins whenever a
+/// `PermissionContext` is present.
+///
+/// Flip to true to restore the switcher and session-role mapping verbatim.
+const bool kBarrioShowRolePreviewChips = false;
