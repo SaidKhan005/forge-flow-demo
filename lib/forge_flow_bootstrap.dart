@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import 'domain/constants/app_defaults.dart';
@@ -55,6 +57,15 @@ Future<void> bootstrapAndRunApp(
   CrossTenantWipe? crossTenantWipe,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Bundled Google Fonts (offline-correct first launch): every
+  // Playfair Display / IBM Plex Sans / IBM Plex Mono variant the app
+  // requests ships in the `google_fonts/` asset folder, so runtime
+  // fetching stays off and a first launch with no network renders the
+  // brand typography correctly instead of falling back until the
+  // download completes. The bundled families' OFL licenses surface
+  // through the standard LicenseRegistry (google_fonts README pattern).
+  GoogleFonts.config.allowRuntimeFetching = false;
+  _registerBundledGoogleFontsLicenses();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -149,6 +160,24 @@ Future<void> bootstrapAndRunApp(
   unawaited(authNotifier.rehydrate());
   unawaited(mobilePush.start());
   unawaited(_warmUpPersistedState());
+}
+
+/// Surfaces the bundled font families' OFL licenses on the standard
+/// Flutter license page (google_fonts README pattern for bundled
+/// fonts). One license file per family ships in `google_fonts/`
+/// alongside the TTFs.
+void _registerBundledGoogleFontsLicenses() {
+  LicenseRegistry.addLicense(() async* {
+    const licenseAssetsByFamily = <String, String>{
+      'Playfair Display': 'google_fonts/OFL_PlayfairDisplay.txt',
+      'IBM Plex Sans': 'google_fonts/OFL_IBMPlexSans.txt',
+      'IBM Plex Mono': 'google_fonts/OFL_IBMPlexMono.txt',
+    };
+    for (final entry in licenseAssetsByFamily.entries) {
+      final license = await rootBundle.loadString(entry.value);
+      yield LicenseEntryWithLineBreaks(<String>[entry.key], license);
+    }
+  });
 }
 
 void _bindMobilePushRegistrationToAuth(

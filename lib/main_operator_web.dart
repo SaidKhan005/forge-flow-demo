@@ -37,6 +37,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'operator_web/auth/operator_web_auth_source.dart';
@@ -171,6 +173,26 @@ Future<void> main() async {
     return true;
   }());
   WidgetsFlutterBinding.ensureInitialized();
+  // Bundled Google Fonts policy (parity with the mobile bootstrap in
+  // `forge_flow_bootstrap.dart`, which this web target cannot import
+  // because that file is dart:io-transitive): this console's theme
+  // never calls GoogleFonts on web (AppTextStyles falls back to
+  // Arial), so nothing is fetched today; the flag makes any future
+  // accidental GoogleFonts use fail loudly instead of silently
+  // downloading fonts at runtime. The bundled families' OFL licenses
+  // surface on the standard license page.
+  GoogleFonts.config.allowRuntimeFetching = false;
+  LicenseRegistry.addLicense(() async* {
+    const licenseAssetsByFamily = <String, String>{
+      'Playfair Display': 'google_fonts/OFL_PlayfairDisplay.txt',
+      'IBM Plex Sans': 'google_fonts/OFL_IBMPlexSans.txt',
+      'IBM Plex Mono': 'google_fonts/OFL_IBMPlexMono.txt',
+    };
+    for (final entry in licenseAssetsByFamily.entries) {
+      final license = await rootBundle.loadString(entry.value);
+      yield LicenseEntryWithLineBreaks(<String>[entry.key], license);
+    }
+  });
   if (operatorWebDemoAuthBlockedInRelease(
     isDebugMode: kDebugMode,
     isProfileMode: kProfileMode,

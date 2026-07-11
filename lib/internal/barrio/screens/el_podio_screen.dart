@@ -654,7 +654,7 @@ class _ElPodioPremiumBackground extends StatelessWidget {
         // Layer 1: Full-bleed photo (reuse home background)
         Positioned.fill(
           child: Image.asset(
-            'assets/internal/barrio/home_bg.png',
+            'assets/internal/barrio/home_bg.webp',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.4),
             errorBuilder: (_, __, ___) => const ColoredBox(

@@ -98,6 +98,16 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // R8 code shrinking + resource shrinking for release
+            // binaries. The Flutter Gradle plugin injects the Flutter
+            // engine/embedding keep rules; app-specific keeps live in
+            // proguard-rules.pro (Crashlytics line-number attributes).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

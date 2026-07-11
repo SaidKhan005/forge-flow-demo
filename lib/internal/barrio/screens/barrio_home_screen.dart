@@ -56,6 +56,13 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   bool _motionDecided = false;
   bool _reduceMotion = false;
 
+  // Battery: while another screen is pushed on top of home (reading a
+  // manual), the covered home must not keep running its looping
+  // effects. `ModalRoute.of` in `didChangeDependencies` registers a
+  // dependency on the route's status, so this flips on push/pop above
+  // and re-gates both the TickerMode subtree and the scrim loop.
+  bool _routeIsCurrent = true;
+
   // Wave B (training search): trimmed, debounced query from the glass
   // search field. While it meets the minimum length, the shelf shows
   // the results sliver instead of the center bubble + sections.
@@ -84,14 +91,20 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_motionDecided) return;
-    _motionDecided = true;
-    _reduceMotion = MediaQuery.of(context).disableAnimations;
-    if (!_reduceMotion) {
-      // Accessibility: with disableAnimations the loop never starts, so
-      // the scrim holds its resting warm-golden bottom stop.
-      _scrimCtrl.repeat(reverse: true);
+    if (!_motionDecided) {
+      // One-shot accessibility decision: with disableAnimations the
+      // loops never start, so the scrim holds its resting warm-golden
+      // bottom stop.
+      _motionDecided = true;
+      _reduceMotion = MediaQuery.of(context).disableAnimations;
     }
+    // Route currency is deliberately NOT behind the one-shot guard:
+    // pushing a manual on top of home (and popping back) must keep
+    // updating state after the first motion decision. No setState
+    // needed: a dependency change already schedules a rebuild for
+    // this element before didChangeDependencies runs.
+    _routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    _syncScrimMotion();
   }
 
   @override
@@ -99,14 +112,26 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     final shouldAnimate = state == AppLifecycleState.resumed;
     if (shouldAnimate == _animationsEnabled) return;
 
-    if (shouldAnimate && !_reduceMotion) {
-      _scrimCtrl.repeat(reverse: true);
-    } else {
-      _scrimCtrl.stop(canceled: false);
-    }
+    _animationsEnabled = shouldAnimate;
+    _syncScrimMotion();
 
     if (!mounted) return;
-    setState(() => _animationsEnabled = shouldAnimate);
+    setState(() {});
+  }
+
+  /// Single decision point for the 12s scrim colour-breathing loop:
+  /// it runs only while the app is foregrounded, home is the top-most
+  /// (current) route, and reduce-motion is off. The scrim controller
+  /// is vsync'd on this State ABOVE the TickerMode that gates the
+  /// leaves + shelf subtree, so TickerMode does not mute it; it has to
+  /// be started/stopped explicitly here.
+  void _syncScrimMotion() {
+    final shouldRun = _animationsEnabled && _routeIsCurrent && !_reduceMotion;
+    if (shouldRun && !_scrimCtrl.isAnimating) {
+      _scrimCtrl.repeat(reverse: true);
+    } else if (!shouldRun && _scrimCtrl.isAnimating) {
+      _scrimCtrl.stop(canceled: false);
+    }
   }
 
   @override
@@ -187,11 +212,12 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
           // (IgnorePointer inside the widget keeps taps passing
           // through), restored from the pre-shelf composition
           // (c712461b). TickerMode pauses all looping motion while the
-          // app is backgrounded, and keeps it frozen entirely under
+          // app is backgrounded OR while another screen is pushed on
+          // top of home, and keeps it frozen entirely under
           // MediaQuery.disableAnimations.
           SafeArea(
             child: TickerMode(
-              enabled: _animationsEnabled && !_reduceMotion,
+              enabled: _animationsEnabled && _routeIsCurrent && !_reduceMotion,
               child: BarrioAmbientLeaves(
                 child: _buildShelf(homeDestinations),
               ),
@@ -354,7 +380,7 @@ class _BarrioHomeBackdrop extends StatelessWidget {
         const Positioned.fill(
           child: RepaintBoundary(
             child: _ViewportAssetFill(
-              assetPath: 'assets/internal/barrio/home_bg.png',
+              assetPath: 'assets/internal/barrio/home_bg.webp',
             ),
           ),
         ),
