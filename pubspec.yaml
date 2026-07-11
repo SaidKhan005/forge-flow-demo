@@ -142,18 +142,18 @@ flutter_launcher_icons:
   android: true
   ios: true
   remove_alpha_ios: true
-  image_path: "assets/images/logo.png"
+  image_path: "assets_src/logo.png"
   adaptive_icon_background: "#3DCFCF"
-  adaptive_icon_foreground: "assets/images/logo.png"
+  adaptive_icon_foreground: "assets_src/logo.png"
 
 flutter_native_splash:
   # Match the in-app loading screen: centered Forge & Flow logo lockup.
   # This avoids the old Android icon-only splash and keeps cold starts branded.
   color: "#F8EDE6"
-  image: "assets/images/forge_flow_splash_lockup.png"
+  image: "assets_src/forge_flow_splash_lockup.png"
   android_12:
     color: "#F8EDE6"
-    image: "assets/images/forge_flow_splash_lockup.png"
+    image: "assets_src/forge_flow_splash_lockup.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -169,6 +169,12 @@ flutter:
 
   assets:
     - assets/images/
+    # Bundled Google Fonts (offline-correct first launch): the exact
+    # Playfair Display / IBM Plex Sans / IBM Plex Mono static variants
+    # the app requests, named per the google_fonts package's bundled
+    # matching convention, plus each family's OFL license. Runtime
+    # fetching is disabled in the app entrypoints.
+    - google_fonts/
     - assets/internal/barrio/
     # Training content pictures (asset dirs are not recursive; one entry
     # per doc_id folder written by tool/barrio_training_image_extractor.py).

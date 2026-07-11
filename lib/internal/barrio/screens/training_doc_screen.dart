@@ -156,11 +156,11 @@ const Map<String, String> _kDocBackdrops = <String, String>{
   'training_suggestive_selling': 'assets/internal/barrio/interview_bg.jpg',
   'training_general_words': 'assets/internal/barrio/interview_bg.jpg',
   // Food & Drink
-  'training_tequila': 'assets/internal/barrio/home_bg.png',
-  'training_coffee': 'assets/internal/barrio/home_bg.png',
-  'training_latin_dishes': 'assets/internal/barrio/home_bg.png',
-  'training_latin_ingredients': 'assets/internal/barrio/home_bg.png',
-  'training_menu_concept': 'assets/internal/barrio/home_bg.png',
+  'training_tequila': 'assets/internal/barrio/home_bg.webp',
+  'training_coffee': 'assets/internal/barrio/home_bg.webp',
+  'training_latin_dishes': 'assets/internal/barrio/home_bg.webp',
+  'training_latin_ingredients': 'assets/internal/barrio/home_bg.webp',
+  'training_menu_concept': 'assets/internal/barrio/home_bg.webp',
   // A Deeper Dive
   'training_labour_cost': 'assets/internal/barrio/jim_taylor_bg.jpg',
   'training_bold_by_design': 'assets/internal/barrio/jim_taylor_bg.jpg',

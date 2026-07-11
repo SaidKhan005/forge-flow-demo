@@ -3,6 +3,6 @@ flutter_launcher_icons:
   ios: true
   flavor: barrio
   remove_alpha_ios: true
-  image_path: "assets/images/logo.png"
+  image_path: "assets_src/logo.png"
   adaptive_icon_background: "#3DCFCF"
-  adaptive_icon_foreground: "assets/images/logo.png"
+  adaptive_icon_foreground: "assets_src/logo.png"

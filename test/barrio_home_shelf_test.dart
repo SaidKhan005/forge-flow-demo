@@ -269,4 +269,53 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('(h) all home motion pauses while another route covers home '
+      'and resumes on pop', (tester) async {
+    await pumpHome(tester);
+
+    // Home's motion gate: the TickerMode wrapping the leaves + shelf
+    // subtree (first TickerMode under BarrioHomeScreen). While the home
+    // route is covered by an opaque pushed route it goes offstage, so
+    // the finder must not skip offstage widgets.
+    TickerMode homeTickerMode() => tester.widget<TickerMode>(
+          find
+              .descendant(
+                of: find.byType(BarrioHomeScreen, skipOffstage: false),
+                matching: find.byType(TickerMode, skipOffstage: false),
+              )
+              .first,
+        );
+
+    expect(homeTickerMode().enabled, isTrue,
+        reason: 'home motion runs while home is the current route');
+    expect(tester.hasRunningAnimations, isTrue,
+        reason: 'the looping ambient effects run on the current home');
+
+    // Push a screen on top, like opening a manual from the shelf.
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox.expand()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(homeTickerMode().enabled, isFalse,
+        reason: 'the covered home must stop all TickerMode-gated motion');
+    expect(tester.hasRunningAnimations, isFalse,
+        reason: 'nothing keeps animating while home is covered: the scrim '
+            'controller (vsync above TickerMode) must be stopped too');
+
+    navigator.pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(homeTickerMode().enabled, isTrue,
+        reason: 'home motion resumes when home becomes current again');
+    expect(tester.hasRunningAnimations, isTrue,
+        reason: 'the scrim colour loop restarts after pop');
+    expect(tester.takeException(), isNull);
+  });
 }
