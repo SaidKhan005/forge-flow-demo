@@ -1,5 +1,5 @@
 manifest_version: 1
-updated: "2026-04-25"
+updated: "2026-07-11"
 corpus_root: "docs/Knowledge_graph_docs"
 default_scope: "global_shared_methodology"
 default_restaurant_id: null
@@ -22,6 +22,38 @@ excluded_sources:
     reintroduction_policy: "requires_explicit_manifest_update_before_ingest"
 
 documents:
+  - doc_id: "barrio_building_a_strong_foundation"
+    file_name: "Barrio Building A Strong Foundation.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio Building A Strong Foundation.md"
+    title: "Building A Strong Foundation"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "standards_consistency_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "managers"
+      - "staff"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Policy"
+      - "Procedure"
+      - "CoachingMove"
+    tags:
+      - "standards"
+      - "consistency"
+      - "brand"
+      - "training"
+      - "operations"
+    word_count_estimate: 2206
+    heading_count: 15
+    line_count: 92
+    sha256: "5498a62de6b5f9bf765c93c08c775ddcdb83fa3e27635e4ac454c04f143cbe5a"
+
   - doc_id: "barrio_company_handbook"
     file_name: "Barrio_company_handbook.md"
     source_path: "docs/Knowledge_graph_docs/Barrio_company_handbook.md"
@@ -84,6 +116,95 @@ documents:
     line_count: 297
     sha256: "ab3ba86075aeb0c130154c3d8bc7879a63d800581ea04fa2ad9a793ab4fe10f9"
 
+  - doc_id: "barrio_legado_menu_concept_slides"
+    file_name: "Barrio_Legado_Menu_Concept_Slides_4.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio_Legado_Menu_Concept_Slides_4.md"
+    title: "Barrio Legado Menu Concept Slides"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "menu_concept_planning_notes"
+    authority_tier: "founder_working_draft"
+    risk_level: "medium"
+    audience:
+      - "founder_ops"
+      - "managers"
+    chunk_profile: "slide_per_section"
+    graph_profiles:
+      - "Concept"
+      - "Term"
+    tags:
+      - "menu"
+      - "concept"
+      - "barrio_legado"
+      - "planning"
+    word_count_estimate: 1451
+    heading_count: 26
+    line_count: 227
+    sha256: "43fc1c0822624cca56f943bd63caf28c0268d98388638c2812b9357f51f3a53e"
+
+  - doc_id: "barrio_table_maintenance_and_manicuring"
+    file_name: "Barrio Table Maintenance and Manicuring.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio Table Maintenance and Manicuring.md"
+    title: "Elevate Your Table Maintenance To Table Manicuring"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "service_technique_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Procedure"
+      - "CoachingMove"
+      - "Concept"
+    tags:
+      - "service"
+      - "table_maintenance"
+      - "table_manicuring"
+      - "training"
+    word_count_estimate: 1955
+    heading_count: 19
+    line_count: 108
+    sha256: "16c3082c03ba383f8e8b4c493d9cc6c838b3afb3336b0be87e2defc9d5391f2c"
+
+  - doc_id: "barrio_three_pillars_of_hospitality"
+    file_name: "Barrio The Three Pillars of Hospitality.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio The Three Pillars of Hospitality.md"
+    title: "The Three Pillars Of Hospitality"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "hospitality_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Procedure"
+      - "CoachingMove"
+    tags:
+      - "hospitality"
+      - "service"
+      - "food"
+      - "atmosphere"
+      - "training"
+    word_count_estimate: 2022
+    heading_count: 20
+    line_count: 103
+    sha256: "3d7f820d5ec27627c4d805a4c334a3ac3c9b33c34ab4e86d264db54d1d6f1f72"
+
   - doc_id: "bold_by_design"
     file_name: "Bold By Design.md"
     source_path: "docs/Knowledge_graph_docs/Bold By Design.md"
@@ -118,6 +239,37 @@ documents:
     heading_count: 228
     line_count: 3295
     sha256: "d5466ea000414ff6a19ccf5c437a7a02c2576683e0804cee002465c7a6a42f4f"
+
+  - doc_id: "coffee_training"
+    file_name: "Coffee Training.md"
+    source_path: "docs/Knowledge_graph_docs/Coffee Training.md"
+    title: "Coffee Training"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "beverage_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Procedure"
+      - "Term"
+      - "Concept"
+    tags:
+      - "coffee"
+      - "espresso"
+      - "beverage"
+      - "training"
+      - "equipment"
+    word_count_estimate: 4091
+    heading_count: 16
+    line_count: 145
+    sha256: "25358cadb9b3f3284421f67d68486acc125bdf332e9fbd15d31635f2e5dd5e9c"
 
   - doc_id: "food_safety_manual"
     file_name: "food safety manual.md"
@@ -213,6 +365,103 @@ documents:
     line_count: 1041
     sha256: "62f67562bd2ab733284f274eb4e67ae3bc90a390cc765147755f95543f57d469"
 
+  - doc_id: "labour_cost_understanding_the_levers"
+    file_name: "Labour Cost - understanding the levers.md"
+    source_path: "docs/Knowledge_graph_docs/Labour Cost - understanding the levers.md"
+    title: "Understanding Labour Cost & Operational Balance"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "shared_labor_methodology"
+    content_role: "labor_methodology_training"
+    authority_tier: "primary_founder_methodology"
+    risk_level: "medium"
+    audience:
+      - "operators"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_methodology_formula"
+    graph_profiles:
+      - "Concept"
+      - "Metric"
+      - "Formula"
+      - "CoachingMove"
+      - "Procedure"
+    tags:
+      - "labor"
+      - "metrics"
+      - "cplh"
+      - "splh"
+      - "agc"
+      - "productivity"
+      - "jim_taylor"
+    word_count_estimate: 5503
+    heading_count: 48
+    line_count: 231
+    sha256: "15631ad910cdedab83579a7e9962435cf738cce5ca3dbcb4e494b04bff4ebeec"
+
+  - doc_id: "latin_american_dishes"
+    file_name: "Latin American Dishes.md"
+    source_path: "docs/Knowledge_graph_docs/Latin American Dishes.md"
+    title: "Latin American Words To Know: Dishes"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "glossary"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "glossary_entry_per_term"
+    graph_profiles:
+      - "Term"
+      - "Alias"
+      - "Concept"
+    tags:
+      - "glossary"
+      - "latin_american"
+      - "dishes"
+      - "menu_knowledge"
+      - "training"
+    word_count_estimate: 2968
+    heading_count: 1
+    line_count: 80
+    sha256: "25df27995531602b87289e29c2a5bd93c00b61a0536a666941dffe14a8581efa"
+
+  - doc_id: "latin_american_ingredients"
+    file_name: "Latin American Ingredients.md"
+    source_path: "docs/Knowledge_graph_docs/Latin American Ingredients.md"
+    title: "Latin American Words To Know: Ingredients"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "glossary"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "glossary_entry_per_term"
+    graph_profiles:
+      - "Term"
+      - "Alias"
+      - "Concept"
+    tags:
+      - "glossary"
+      - "latin_american"
+      - "ingredients"
+      - "menu_knowledge"
+      - "training"
+    word_count_estimate: 2442
+    heading_count: 1
+    line_count: 64
+    sha256: "02f82f1448254aa4597b099613242fd6007dbc62777954e07b27c0e631a274cc"
+
   - doc_id: "oe_cheers_to_responsibility"
     file_name: "OE Cheers to Responsibility.md"
     source_path: "docs/Knowledge_graph_docs/OE Cheers to Responsibility.md"
@@ -244,6 +493,38 @@ documents:
     line_count: 307
     sha256: "44c5ed33b20db62986d06795411331b59ca1a0193c3658320706e379763e85a1"
 
+  - doc_id: "oe_leveraging_suggestive_selling"
+    file_name: "OE Leveraging Suggestive Selling Techniques.md"
+    source_path: "docs/Knowledge_graph_docs/OE Leveraging Suggestive Selling Techniques.md"
+    title: "Leveraging Suggestive Selling Techniques"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "sales_technique_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "managers"
+      - "staff"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Procedure"
+      - "CoachingMove"
+      - "Concept"
+      - "Metric"
+    tags:
+      - "suggestive_selling"
+      - "upselling"
+      - "cross_selling"
+      - "agc"
+      - "training"
+    word_count_estimate: 2557
+    heading_count: 16
+    line_count: 95
+    sha256: "20d37cd222faf60354181c5c0b03b8fb556d4e9efbf0b7098302a53f7328f0e6"
+
   - doc_id: "oe_mastering_the_metrics"
     file_name: "OE MASTERING THE METRICS.md"
     source_path: "docs/Knowledge_graph_docs/OE MASTERING THE METRICS.md"
@@ -273,3 +554,33 @@ documents:
     heading_count: 9
     line_count: 91
     sha256: "c9d6394451fbd7da2e861436447a8bf44b0cfdc5b72ca23d1087dd3cc8ba315d"
+
+  - doc_id: "tequila_training"
+    file_name: "Tequila Training.md"
+    source_path: "docs/Knowledge_graph_docs/Tequila Training.md"
+    title: "Tequila Training"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "beverage_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Term"
+      - "Procedure"
+    tags:
+      - "tequila"
+      - "mezcal"
+      - "beverage"
+      - "training"
+    word_count_estimate: 2107
+    heading_count: 12
+    line_count: 83
+    sha256: "65f009de10700484b2a52cd3e4afaedd64502cecb576ccc8367a14e0926a8066"
