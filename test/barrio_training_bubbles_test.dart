@@ -50,6 +50,27 @@ void main() {
           isNot(isA<TrainingDocScreen>()));
     });
 
+    test('every destination has a category; only forge_and_flow is product',
+        () {
+      // `category` is a required non-nullable field, so every entry carries
+      // one by construction; pin it against regressions to nullable anyway.
+      for (final dest in barrioDestinations) {
+        expect(BarrioCategory.values, contains(dest.category),
+            reason: '${dest.id} must carry a category');
+      }
+      final productIds = barrioDestinations
+          .where((d) => d.category == BarrioCategory.product)
+          .map((d) => d.id)
+          .toList();
+      expect(productIds, ['forge_and_flow'],
+          reason: 'forge_and_flow is the only product-category destination');
+      for (final id in kBarrioTrainingDocs.keys) {
+        final dest = barrioDestinations.firstWhere((d) => d.id == id);
+        expect(dest.category, isNot(BarrioCategory.product),
+            reason: 'training doc $id must not map to the product category');
+      }
+    });
+
     test('verbatim docs are explainer-only with non-empty titles and bodies',
         () {
       for (final doc in kBarrioTrainingDocs.values) {

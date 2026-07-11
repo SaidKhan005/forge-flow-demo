@@ -31,6 +31,8 @@ class BarrioColors {
   static const Color accentPlum    = Color(0xFFB06AC9); // plum — three pillars
   static const Color accentCoffee  = Color(0xFF9A6B4F); // roasted brown — coffee
   static const Color accentHerb    = Color(0xFF7FA84C); // herb green — ingredients
+  static const Color accentSteel   = Color(0xFF5A7BD8); // steel blue: bold by design
+  static const Color accentFresh   = Color(0xFF52B788); // fresh green: food safety
 
   // Brand teal
   static const Color tealWarm  = Color(0xFF40CFCF); // slightly brighter/more saturated
