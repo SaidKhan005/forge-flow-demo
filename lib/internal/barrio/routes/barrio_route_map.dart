@@ -57,9 +57,16 @@ class BarrioRouteMap {
   ///
   /// [previewRole] defaults to [BarrioPreviewRole.admin] so direct
   /// construction in tests remains safe.
+  ///
+  /// [initialChapterIndex] (Wave B training search) deep-links a
+  /// training document to a specific section. It threads to
+  /// [TrainingDocScreen] ONLY; every other destination ignores it, and
+  /// the null default keeps all existing call sites and route behavior
+  /// identical.
   static Widget screenFor(
     String destinationId, {
     BarrioPreviewRole previewRole = BarrioPreviewRole.admin,
+    int? initialChapterIndex,
   }) {
     switch (destinationId) {
       case 'forge_and_flow':
@@ -80,6 +87,7 @@ class BarrioRouteMap {
             accent: kBarrioTrainingAccents[destinationId] ??
                 BarrioColors.tealWarm,
             previewRole: previewRole,
+            initialChapterIndex: initialChapterIndex ?? 0,
           );
         }
         return const BarrioHomeScreen();
@@ -87,15 +95,22 @@ class BarrioRouteMap {
   }
 
   /// Pushes the destination screen for [destination] onto the navigator.
+  ///
+  /// [initialChapterIndex] threads through [screenFor] to
+  /// [TrainingDocScreen] only (see [screenFor]).
   static void navigateTo(
     BuildContext context,
     BarrioDestination destination, {
     BarrioPreviewRole previewRole = BarrioPreviewRole.admin,
+    int? initialChapterIndex,
   }) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            screenFor(destination.id, previewRole: previewRole),
+        builder: (_) => screenFor(
+          destination.id,
+          previewRole: previewRole,
+          initialChapterIndex: initialChapterIndex,
+        ),
       ),
     );
   }
