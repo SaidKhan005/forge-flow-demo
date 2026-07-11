@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -373,9 +372,10 @@ class _ViewportAssetFill extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Header — frosted glass card with wordmark + role preview. Compact
-// Editorial Shelf treatment: same brand wordmark and gold rule, sized
-// so the header lands near 96px including the safe area.
+// Header: plain centered wordmark + gold rule, no card background
+// (2026-07-11 operator request: text only, centered; the dark top stop
+// of the scrim keeps it legible over the photo). The flag-gated role
+// PREVIEW row stays wired beneath it for BSP.2 reversal.
 // ---------------------------------------------------------------------------
 
 class _BarrioHeader extends StatefulWidget {
@@ -432,45 +432,28 @@ class _BarrioHeaderState extends State<_BarrioHeader>
       animation: _ctrl,
       builder: (context, _) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0x18FFFFFF),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0x28FFFFFF),
-                    width: 1.0,
-                  ),
-                ),
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _wordmark(),
-                    const SizedBox(height: 6),
-                    const _GoldRule(),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _wordmark(),
+              const SizedBox(height: 6),
+              const _GoldRule(),
 
-                    // BSP.2: role PREVIEW switcher hidden while
-                    // kBarrioShowRolePreviewChips is false; the spacing
-                    // above it goes with it so the header keeps no empty
-                    // gap. Flipping the flag restores the row verbatim.
-                    if (kBarrioShowRolePreviewChips) ...[
-                      const SizedBox(height: 14),
+              // BSP.2: role PREVIEW switcher hidden while
+              // kBarrioShowRolePreviewChips is false; the spacing
+              // above it goes with it so the header keeps no empty
+              // gap. Flipping the flag restores the row verbatim.
+              if (kBarrioShowRolePreviewChips) ...[
+                const SizedBox(height: 14),
 
-                      // Role preview row
-                      _RolePreviewRow(
-                        current: widget.previewRole,
-                        onChanged: widget.onRoleChanged,
-                      ),
-                    ],
-                  ],
+                // Role preview row
+                _RolePreviewRow(
+                  current: widget.previewRole,
+                  onChanged: widget.onRoleChanged,
                 ),
-              ),
-            ),
+              ],
+            ],
           ),
         );
       },
@@ -523,14 +506,15 @@ class _BarrioHeaderState extends State<_BarrioHeader>
   }
 }
 
-/// Refined gold rule — longer, thinner, double-line.
+/// Refined gold rule — longer, thinner, double-line. Centered under the
+/// wordmark, so both lines fade out symmetrically at their edges.
 class _GoldRule extends StatelessWidget {
   const _GoldRule();
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
           width: 88,
@@ -538,10 +522,11 @@ class _GoldRule extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
+                BarrioColors.gold.withValues(alpha: 0.0),
                 BarrioColors.gold,
                 BarrioColors.gold.withValues(alpha: 0.0),
               ],
-              stops: const [0.0, 1.0],
+              stops: const [0.0, 0.5, 1.0],
             ),
             borderRadius: BorderRadius.circular(1),
           ),
@@ -553,9 +538,11 @@ class _GoldRule extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
+                BarrioColors.gold.withValues(alpha: 0.0),
                 BarrioColors.gold.withValues(alpha: 0.5),
                 BarrioColors.gold.withValues(alpha: 0.0),
               ],
+              stops: const [0.0, 0.5, 1.0],
             ),
             borderRadius: BorderRadius.circular(1),
           ),
