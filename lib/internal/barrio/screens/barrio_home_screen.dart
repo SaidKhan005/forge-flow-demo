@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../state/auth_session_notifier.dart';
+import '../barrio_surface_flags.dart';
 import '../routes/barrio_destination_visibility_resolver.dart';
 import '../routes/barrio_destinations.dart';
 import '../routes/barrio_preview_role.dart';
@@ -43,6 +44,13 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   bool _animationsEnabled = true;
 
   BarrioPreviewRole _resolvePreviewRole(BuildContext context) {
+    // BSP.2: while the preview switcher is hidden, the preview-role
+    // fallback is pinned to Admin. The override / session-role mapping
+    // below stays in place (unexecuted) so flipping
+    // kBarrioShowRolePreviewChips restores it verbatim. Production
+    // permission gating via PermissionContext (B18, wired in build)
+    // is independent of this and still wins when present.
+    if (!kBarrioShowRolePreviewChips) return BarrioPreviewRole.admin;
     final override = _previewRoleOverride;
     if (override != null) return override;
     AuthSessionNotifier? notifier;
@@ -218,18 +226,23 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
                             setState(() => _previewRoleOverride = r),
                       ),
                     ),
-                    RepaintBoundary(
-                      child: _ElPodioButton(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ElPodioScreen(),
-                            ),
-                          );
-                        },
+                    // BSP.2: El Podio entry hidden while
+                    // kBarrioShowElPodioEntry is false. The widget,
+                    // screen, and route stay in the tree; flipping the
+                    // flag restores the pill verbatim.
+                    if (kBarrioShowElPodioEntry)
+                      RepaintBoundary(
+                        child: _ElPodioButton(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const ElPodioScreen(),
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                    ),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -457,13 +470,19 @@ class _BarrioHeaderState extends State<_BarrioHeader>
                       ],
                     ),
 
-                    const SizedBox(height: 14),
+                    // BSP.2: role PREVIEW switcher hidden while
+                    // kBarrioShowRolePreviewChips is false; the spacing
+                    // above it goes with it so the header keeps no empty
+                    // gap. Flipping the flag restores the row verbatim.
+                    if (kBarrioShowRolePreviewChips) ...[
+                      const SizedBox(height: 14),
 
-                    // Role preview row
-                    _RolePreviewRow(
-                      current: widget.previewRole,
-                      onChanged: widget.onRoleChanged,
-                    ),
+                      // Role preview row
+                      _RolePreviewRow(
+                        current: widget.previewRole,
+                        onChanged: widget.onRoleChanged,
+                      ),
+                    ],
                   ],
                 ),
               ),
