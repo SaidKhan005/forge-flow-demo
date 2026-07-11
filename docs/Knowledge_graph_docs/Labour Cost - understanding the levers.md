@@ -2,7 +2,7 @@
 source_pdf: Labour Cost - understanding the levers (1).pdf
 title: Understanding Labour Cost & Operational Balance
 pages: 14
-conversion_notes: Selectable text extracted with pdftotext; Canva line wrapping reflowed into Markdown paragraphs; stacked formula graphics rewritten as single-line formulas with the same words; source spelling (including the heading "Signs of Inbalance") preserved; curly quotes normalized to ASCII.
+conversion_notes: Selectable text extracted with pdftotext; Canva line wrapping reflowed into Markdown paragraphs; stacked formula graphics rewritten as single-line formulas with the same words; source spelling (including the heading "Signs of Inbalance") preserved; curly quotes normalized to ASCII.; content pictures from the source file extracted to assets/internal/barrio/training/ and referenced with image markers at their source positions (2026-07-11); markers are formatting, not words
 ---
 
 # Understanding Labour Cost & Operational Balance
@@ -95,6 +95,8 @@ An effective operation thrives on maintaining a consistent level of productivity
 ## Days and Day Parts
 
 Breaking down restaurant statistics into distinct day parts - lunch, dinner, and late night - alongside days of the week offers invaluable insights into guest behavior and spending patterns. By examining these segments individually, restaurant operators can tailor their menus, optimize staffing, and refine marketing strategies to align closely with the unique preferences and expectations of their guests during each time frame. By understanding the nuances of each day and day part, operators can better meet the specific needs of their clientele, ultimately driving satisfaction and profitability.
+
+![](assets/internal/barrio/training/labour_cost_understanding_the_levers/01.webp)
 
 ## Contributing Factors
 

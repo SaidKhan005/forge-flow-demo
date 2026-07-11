@@ -203,6 +203,12 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- Garbage can.\n'
               '\n'
               '- Handwashing poster.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/01.webp',
+              afterParagraph: 6,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c2_u2',
@@ -465,6 +471,12 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'there is physical contact between a hazardous source and food, '
               'while indirect cross-contamination occurs through a vehicle '
               'that transfers contaminants from the source to the food.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/02.webp',
+              afterParagraph: 1,
+            ),
+          ],
         ),
       ],
     ),
@@ -710,6 +722,12 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'questionable items to prevent foodborne illnesses.\n'
               '\n'
               '"When in doubt, throw it out!"',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/03.webp',
+              afterParagraph: 13,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c6_u2',
@@ -1109,6 +1127,16 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'may notice that consuming small amounts of a troublesome food '
               'can sometimes evade symptoms so they may be ok with potential '
               'cross-contamination.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/04.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/05.webp',
+              afterParagraph: 6,
+            ),
+          ],
         ),
       ],
     ),
@@ -1278,6 +1306,12 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'calibrating them at least once a week and after any drops, '
               'while also maintaining equipment with built-in temperature '
               'sensors or probes to guarantee accurate readings.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/06.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c9_u3',
@@ -1486,6 +1520,12 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'calibrating a digital, instant-read thermometer, verify that '
               'the reading falls within the manufacturer\'s accuracy range. If '
               'it does, adjustment isn\'t needed.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/07.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -1698,6 +1738,12 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'behind new stock. Finally, neglecting to check for spoilage, '
               'even when items are within their expiration dates, can '
               'compromise food safety.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/08.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -1789,6 +1835,20 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'counters with bleach water or use hot water at 82 degrees C '
               'for sanitation. 5. Air-dry. Allow the sanitized surface to air '
               'dry.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/09.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/10.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/food_safety_manual/11.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_food_safety_c17_u2',

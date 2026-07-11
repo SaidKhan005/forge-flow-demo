@@ -36,6 +36,29 @@ class HandbookOption {
   });
 }
 
+/// A content picture carried from a training source document, rendered
+/// inline inside a unit's body at its source position.
+class HandbookUnitImage {
+  /// Bundled asset path, e.g.
+  /// 'assets/internal/barrio/training/coffee_training/01.webp'.
+  final String assetPath;
+
+  /// Literal caption from the source document, when one exists. Never
+  /// invented; null renders no caption.
+  final String? caption;
+
+  /// 0-based index of the blank-line-separated paragraph in [HandbookUnit.body]
+  /// after which this image renders. -1 renders the image before the first
+  /// paragraph.
+  final int afterParagraph;
+
+  const HandbookUnitImage({
+    required this.assetPath,
+    this.caption,
+    required this.afterParagraph,
+  });
+}
+
 /// A single learning unit inside a handbook chapter.
 ///
 /// Can be an explainer, a decision prompt, or a checkpoint quiz.
@@ -58,6 +81,10 @@ class HandbookUnit {
   /// the generic 'LEARN'). Falls back to the type-based default when null.
   final String? badgeHint;
 
+  /// Content pictures rendered inside the body at their source positions.
+  /// Empty for units without pictures (the default; rendering is unchanged).
+  final List<HandbookUnitImage> images;
+
   const HandbookUnit({
     required this.id,
     required this.type,
@@ -65,6 +92,7 @@ class HandbookUnit {
     required this.body,
     this.options = const [],
     this.badgeHint,
+    this.images = const [],
   });
 }
 

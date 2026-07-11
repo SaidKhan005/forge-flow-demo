@@ -43,6 +43,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
           title: 'Slide 2',
           body: 'THE CIVILIZATIONS\n'
               'The INCA:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/01.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c1_u1',
@@ -51,6 +57,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
           title: 'Slide 3',
           body: 'THE CIVILIZATIONS\n'
               'The Maya:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/02.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -71,6 +83,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Shrimp Cocktail - Tomato, Mint, Salsa Inglesa, Saltine '
               'Crackers -> Mexican Style Ceviche\n'
               '-> Salsa Inglesa = Worchestire Sauce:',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/03.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c2_u1',
@@ -87,6 +105,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'from Andean.\n'
               'The Andes is the longest Continental Mountain Range across '
               'Chile Peru Bolivia Argentina',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/04.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c2_u2',
@@ -98,6 +122,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               '-> Lava Salt = In Latin called Salnegra: This is an Ancestral '
               'Mayan Salt cooked for hours in clay pots over wood fire from '
               'Volcanic fed Saline Springs',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/05.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c2_u3',
@@ -111,6 +141,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'featuring quicker marinated fish for a more firm texture. See '
               'Latin dishes to know for deeper dive: This dish is from '
               'Sinoaloa Mexico',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/06.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -153,6 +189,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'from the Mixtera region in Mexico\n'
               'Belongs to the Masa family of foods; Same Family as a '
               'Quesedilla',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/07.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c3_u2',
@@ -169,6 +211,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Tenochtilian which is now Mexico City; The first Settlers saw '
               'an Eagle perched on a Nopal which is why there is a Nopal in '
               'the middle of the Mexican flag today.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/08.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -232,6 +280,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Bologna, Italy where it\'s taken so seriously that a golden '
               'ruler defining the official ribbon width is kept at the city\'s '
               'Chamber of Commerce.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/09.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u3',
@@ -282,6 +336,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'skill is patience slowly tending the fire. Likewise, '
               'chimichurri tastes even better after resting, allowing its '
               'flavors to fully develop.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/10.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c4_u6',
@@ -310,6 +370,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Meaning: Gallo Pinto translates to "Spotted Rooster," named '
               'for the speckled appearance created by mixing rice and black '
               'beans.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/11.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -353,6 +419,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'stacked in a bun, and he served it under the name she\'d asked '
               'for. The improvisation outlived the request and became the '
               'country\'s signature.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/12.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c5_u2',
@@ -364,6 +436,12 @@ const BarrioTrainingDoc kTrainingMenuConcept = BarrioTrainingDoc(
               'Huevos rancheros means "ranch-style eggs," and it\'s the hearty '
               'mid-morning meal of Mexican farm life, the almuerzo, eaten '
               'after several hours of work rather than before.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_legado_menu_concept_slides/13.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_menu_concept_c5_u3',

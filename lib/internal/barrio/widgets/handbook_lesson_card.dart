@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'barrio_celebration_overlay.dart';
 import 'barrio_destination_scaffold.dart';
+import 'barrio_training_image_viewer.dart';
 import '../content/company_handbook_content.dart';
 
 final _whitespaceRegExp = RegExp(r'\s+');
@@ -221,14 +222,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               // Carousel mode: show full body + "Tap to begin" for interactive cards
               if (carousel && _isInteractive && !_expanded) ...[
                 const SizedBox(height: 14),
-                Text(
-                  unit.body,
-                  style: GoogleFonts.ibmPlexSans(
-                    fontSize: 13,
-                    height: 1.8,
-                    color: BarrioColors.textSecondary,
-                  ),
-                ),
+                _UnitBody(unit: unit),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -256,14 +250,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               // carousel mode: shown when expanded since pre-expand body is in the carousel block above)
               if (!_isInteractive || _expanded) ...[
                 const SizedBox(height: 14),
-                Text(
-                  unit.body,
-                  style: GoogleFonts.ibmPlexSans(
-                    fontSize: 13,
-                    height: 1.8,
-                    color: BarrioColors.textSecondary,
-                  ),
-                ),
+                _UnitBody(unit: unit),
               ],
 
               if (_isInteractive && _expanded && unit.options.isNotEmpty) ...[
@@ -478,6 +465,116 @@ class _OptionTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Full unit body. Units without images render the exact single-Text path
+/// the card always used (zero visual diff). Units with images split the
+/// body on blank-line paragraphs and insert each image after its
+/// [HandbookUnitImage.afterParagraph] index (-1 = before the first
+/// paragraph); paragraph runs between images stay joined so their text
+/// renders identically to the no-image path.
+class _UnitBody extends StatelessWidget {
+  final HandbookUnit unit;
+  const _UnitBody({required this.unit});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = GoogleFonts.ibmPlexSans(
+      fontSize: 13,
+      height: 1.8,
+      color: BarrioColors.textSecondary,
+    );
+    if (unit.images.isEmpty) {
+      return Text(unit.body, style: style);
+    }
+
+    final paragraphs = unit.body.split('\n\n');
+    final byBoundary = <int, List<HandbookUnitImage>>{};
+    for (final image in unit.images) {
+      final boundary = image.afterParagraph.clamp(-1, paragraphs.length - 1);
+      byBoundary.putIfAbsent(boundary, () => []).add(image);
+    }
+
+    final children = <Widget>[];
+    for (final image in byBoundary[-1] ?? const <HandbookUnitImage>[]) {
+      children.add(_UnitImage(image: image));
+    }
+    var runStart = 0;
+    for (var p = 0; p < paragraphs.length; p++) {
+      final imagesAfter = byBoundary[p];
+      if (imagesAfter == null) continue;
+      children.add(
+        Text(paragraphs.sublist(runStart, p + 1).join('\n\n'), style: style),
+      );
+      children.addAll(imagesAfter.map((image) => _UnitImage(image: image)));
+      runStart = p + 1;
+    }
+    if (runStart < paragraphs.length) {
+      children.add(
+        Text(paragraphs.sublist(runStart).join('\n\n'), style: style),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+}
+
+/// One content picture inside a unit body: rounded corners, full card
+/// width, tap to open the full-screen viewer. The [Image.asset]
+/// errorBuilder keeps widget tests (no bundled assets) from throwing.
+class _UnitImage extends StatelessWidget {
+  final HandbookUnitImage image;
+  const _UnitImage({required this.image});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => BarrioTrainingImageViewer.open(
+              context,
+              assetPath: image.assetPath,
+              caption: image.caption,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                image.assetPath,
+                width: double.infinity,
+                fit: BoxFit.fitWidth,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  width: double.infinity,
+                  height: 120,
+                  color: const Color(0x14FFFFFF),
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    size: 28,
+                    color: BarrioColors.textMuted.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (image.caption != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              image.caption!,
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 11,
+                fontStyle: FontStyle.italic,
+                color: BarrioColors.textMuted,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

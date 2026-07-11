@@ -27,6 +27,11 @@ def dart_titles_and_bodies(path):
 def norm(text, is_md=False):
     if is_md:
         text = re.sub(r'\A---\n.*?\n---\n', '', text, flags=re.S)
+        # Image markers (tool/barrio_training_image_extractor.py) are
+        # formatting, not words: the generator turns them into
+        # HandbookUnitImage entries, so strip them before comparing.
+        text = re.sub(r'^!\[[^\]]*\]\(assets/internal/barrio/training/[^)]+\)[ \t]*$',
+                      '', text, flags=re.M)
         text = re.sub(r'^## Table of Contents\n(?:[ \t]*- .*\n|\n)*', '', text, flags=re.M)
         text = re.sub(r'^\s{0,3}#{1,6}\s*', '', text, flags=re.M)
         text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.M)
@@ -37,6 +42,12 @@ def norm(text, is_md=False):
         text = re.sub(r'^\s*- ', ' ', text, flags=re.M)
     words = re.findall(r'[^\s|]+', text)
     return [w.strip('.,;:!?()"\'').lower() for w in words if w.strip('.,;:!?()"\'-=*_`>')]
+
+def contains_contiguous(haystack, needle):
+    """True when needle appears as a contiguous word run inside haystack."""
+    n = len(needle)
+    return any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
+
 
 PAIRS = [
     ('company_handbook_verbatim', 'Barrio_company_handbook.md'),
@@ -64,15 +75,31 @@ for doc_id, md_name in PAIRS:
     md = norm(open(f'docs/Knowledge_graph_docs/{md_name}', encoding='utf-8').read(), is_md=True)
     sm = difflib.SequenceMatcher(None, md, dart, autojunk=False)
     lost, gained = [], []
+    moved = []
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag in ('delete', 'replace') and i2 > i1:
+            # SequenceMatcher alignment artifact, not a loss: the md words
+            # appear contiguously in the dart within a tight window around
+            # the deletion point (e.g. the doc H1 rendered on the hero above
+            # a preface line the source puts first). A real drop leaves the
+            # window without them; distant duplicates stay counted as lost.
+            window = dart[max(0, j1 - 60):j2 + 60]
+            if contains_contiguous(window, md[i1:i2]):
+                moved.append(' '.join(md[i1:i2]))
+                if tag == 'replace' and j2 > j1:
+                    gained.append(' '.join(dart[j1:j2]))
+                continue
             lost.append(' '.join(md[i1:i2]))
         if tag in ('insert', 'replace') and j2 > j1:
             gained.append(' '.join(dart[j1:j2]))
     n_lost = sum(len(c.split()) for c in lost)
     n_gained = sum(len(c.split()) for c in gained)
-    print(f'== {doc_id}: md={len(md)}w dart={len(dart)}w ratio={sm.ratio():.4f} lost={n_lost}w gained={n_gained}w')
+    n_moved = sum(len(c.split()) for c in moved)
+    moved_note = f' moved={n_moved}w' if n_moved else ''
+    print(f'== {doc_id}: md={len(md)}w dart={len(dart)}w ratio={sm.ratio():.4f} lost={n_lost}w gained={n_gained}w{moved_note}')
     for c in lost[:8]:
         print(f'   LOST : {c[:140]}')
+    for c in moved[:8]:
+        print(f'   MOVED: {c[:140]}')
     for c in gained[:8]:
         print(f'   GAIN : {c[:140]}')

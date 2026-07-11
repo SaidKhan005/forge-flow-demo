@@ -1,7 +1,7 @@
 ---
 source_pdf: food safety manual.pdf
 pages: 39
-conversion_notes: Selectable text extracted with PyMuPDF; image-only infographic pages were transcribed into Markdown; text normalized to ASCII.
+conversion_notes: Selectable text extracted with PyMuPDF; image-only infographic pages were transcribed into Markdown; text normalized to ASCII.; content pictures from the source file extracted to assets/internal/barrio/training/ and referenced with image markers at their source positions (2026-07-11); markers are formatting, not words
 ---
 
 # Food Safety Manual
@@ -117,6 +117,8 @@ To ensure hygienic practices and prevent the spread of germs, it's essential to 
 - Rinse hands thoroughly under running water.
 - Dry hands using a clean paper towel or air dryer.
 - Turn off taps using a paper towel to prevent re-contamination.
+
+![](assets/internal/barrio/training/food_safety_manual/01.webp)
 
 Handwashing stations must have:
 
@@ -252,6 +254,8 @@ Contamination is the unwanted presence or introduction of microbial, physical, c
 
 Cross-contamination is a critical food safety concern that can occur in two key ways: direct cross-contamination happens when there is physical contact between a hazardous source and food, while indirect cross-contamination occurs through a vehicle that transfers contaminants from the source to the food.
 
+![](assets/internal/barrio/training/food_safety_manual/02.webp)
+
 ## Categories of Hazards
 
 The following are considered to be international best practices to identify food hazards. A hazard is anything present in food with the potential to harm someone, either by causing illness or injury.
@@ -342,6 +346,8 @@ Foods high in protein and carbohydrates, including meat, dairy, cooked beans, an
 
 "When in doubt, throw it out!"
 
+![](assets/internal/barrio/training/food_safety_manual/03.webp)
+
 ### Chemical Hazards
 
 Chemical hazards in food safety encompass a wide range of risks that can seriously impact health, often without any visible or detectable signs. These hazards arise from cleaning, sanitizing, and disinfecting supplies, as well as the presence of toxic metals from utensils and cookware, and pesticides. Safe food handling practices are essential in preventing these dangers, which can include naturally occurring toxins from plants, animals, and microorganisms, as well as chemicals intentionally or unintentionally added to food.
@@ -430,6 +436,8 @@ Wheat and triticale, a hybrid of wheat and rye, are recognized as priority food 
 
 Food intolerance, often referred to as food sensitivity, occurs when your digestive system struggles to break down specific foods, leading to a range of uncomfortable symptoms. Unlike food allergies, which can provoke severe immune responses, food intolerances primarily affect the digestive system, manifesting in issues such as gas, diarrhea, and abdominal pain within a few hours of consumption.
 
+![](assets/internal/barrio/training/food_safety_manual/04.webp)
+
 The most common culprits include:
 
 - **Lactose:** insufficient levels of the lactase enzyme hinder the breakdown of dairy sugars.
@@ -439,6 +447,8 @@ The most common culprits include:
 Gluten sensitivity is different from celiac disease, which is an autoimmune disease where gluten damages the small intestines.
 
 While the exact causes of food intolerances remain unclear, factors such as certain gastrointestinal conditions - including celiac disease and inflammatory bowel disease - may increase susceptibility. Individuals with food intolerances may notice that consuming small amounts of a troublesome food can sometimes evade symptoms so they may be ok with potential cross-contamination.
+
+![](assets/internal/barrio/training/food_safety_manual/05.webp)
 
 ## Food Allergies: Keep Your Guests Safe
 
@@ -492,6 +502,8 @@ Time temperature abuse is a significant health code violation which occurs when 
 
 Kitchen thermometers are the key to keeping foods out of the temperature danger zone. It's crucial to continuously monitor your dishes with a probe thermometer, keeping a close eye on recommended temperatures throughout the cooking process, calibrating them at least once a week and after any drops, while also maintaining equipment with built-in temperature sensors or probes to guarantee accurate readings. 
 
+![](assets/internal/barrio/training/food_safety_manual/06.webp)
+
 ### Controlling Time and Temperature
 
 To maintain food safety and effectively control time and temperature, it is essential to stir frequently, cook in small batches when feasible, ensure thorough cooking, and minimize open doors to keep food out of the temperature danger zone, while also being mindful that freezing does not kill bacteria and viruses.
@@ -540,6 +552,8 @@ Controlling temperature in the kitchen is paramount to achieving culinary succes
 2. Add water to the container until the water reaches about 1/2 inch below the top of the ice. Let the ice slurry sit for a minute to allow the temperature to even out. If the ice rises from the bottom of the container, remove some water and add more ice. The water beneath the ice will have a temperature above 32 degrees F.
 3. Place your probe or thermometer tip into the center of the ice slurry and mix gently. Stirring helps spread heat evenly and prevents your thermometer from touching ice, the container walls, or the bottom (which will give you inaccurate temperature readings).
 4. In an ice bath, your thermometer should read 32 degrees F (0 degrees C). If it doesn't, follow the manufacturer's adjustment instructions. However, before calibrating a digital, instant-read thermometer, verify that the reading falls within the manufacturer's accuracy range. If it does, adjustment isn't needed.
+
+![](assets/internal/barrio/training/food_safety_manual/07.webp)
 
 ## Thermometer Ice Bath Calibration
 
@@ -600,6 +614,8 @@ Implementing FIFO yields a variety of benefits that can positively impact any fo
 
 Implementing FIFO can come with its challenges. One common pitfall is the failure to label items accurately, which can lead to confusion and the inadvertent use of expired products. Another mistake is restocking without proper rotation, where new items are placed in front of older ones, potentially resulting in wasted inventory. Overcrowding of storage spaces is also detrimental; a cluttered environment makes it difficult to see and retrieve older items that are hidden behind new stock. Finally, neglecting to check for spoilage, even when items are within their expiration dates, can compromise food safety.
 
+![](assets/internal/barrio/training/food_safety_manual/08.webp)
+
 ## Labelling
 
 Labeling is an essential practice in any food preparation environment, serving as a critical way to ensure safety and efficiency within the kitchen. Anytime a product is defrosted, prepared in-house, removed from its original packaging, or transferred to a different container, it is important to apply a label. This simple step not only communicates vital information but also contributes to a well-organized workflow, allowing kitchen staff to easily identify ingredients and manage inventory effectively.
@@ -623,6 +639,12 @@ Cleaning is defined as the removal of dirt, food, grease, or any debris from a s
 3. **Rinse the surface.** Rinse the surface with clean water, making sure that there is no soap residue.
 4. **Soak in sanitizer.** Soak the surface in your chosen sanitizer following the manufacturer's instructions. You can wash counters with bleach water or use hot water at 82 degrees C for sanitation.
 5. **Air-dry.** Allow the sanitized surface to air dry.
+
+![](assets/internal/barrio/training/food_safety_manual/09.webp)
+
+![](assets/internal/barrio/training/food_safety_manual/10.webp)
+
+![](assets/internal/barrio/training/food_safety_manual/11.webp)
 
 ### Important Things To Consider In Sanitation
 

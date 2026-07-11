@@ -1,7 +1,7 @@
 ---
 source_pdf: Barrio_company_handbook.pdf
 pages: 66
-conversion_notes: Selectable text extracted with PyMuPDF; image-only pages were transcribed into Markdown where visible.
+conversion_notes: Selectable text extracted with PyMuPDF; image-only pages were transcribed into Markdown where visible.; content pictures from the source file extracted to assets/internal/barrio/training/ and referenced with image markers at their source positions (2026-07-11); markers are formatting, not words
 ---
 
 # Barrio Company Handbook
@@ -178,6 +178,8 @@ Blending a warm ambiance with exquisite flavors, we strive to provide an unforge
 
 No matter if you're gathering for a relaxed dinner with friends or marking a momentous occasion, our mission is to surround you with a warm and inviting ambiance, ensuring that every meal becomes a cherished celebration.
 
+![](assets/internal/barrio/training/barrio_company_handbook/01.webp)
+
 ## 95 Water Street
 
 Constructed in 1915 and officially opened in the spring of 1916, this striking structure was originally known as The Commercial Cable Company Building. Officially opened in the spring of 1916, it originally served as a vital hub for Newfoundland’s telecommunications. At a time when telegraph lines were the lifeline for long-distance communication, this building stood tall and proud as one of the main telegraph offices in the region. However, as technology advanced and the demand for telegraph services dwindled, the building ceased operations in 1961.
@@ -187,6 +189,8 @@ Following its closure, 95 Water Street took on a new chapter in its life when it
 In 1987, the importance of 95 Water Street was officially recognized when it was designated a registered heritage structure. This two-storey classical revival masterpiece, designed by the esteemed architect William F. Butler, stands out among the remains of downtown St. John’s architecture. Constructed from a mix of concrete, stone, steel, and brick, it boasts fireproof qualities that many of its contemporaries do not share. The building is a stunning example of Classical Revival style, with its flat roof, ornamental eaves, and impressive pilasters giving it a distinguished presence. Notable original features, such as arched windows and intricate decorative stonework, showcase the craftsmanship of the time and offer a window into the past.
 
 Today, 95 Water Street remains a highly distinguishable landmark, one of the few classical buildings still standing in the heart of the city.
+
+![](assets/internal/barrio/training/barrio_company_handbook/02.webp)
 
 ## Raymonds Legacy
 
@@ -198,6 +202,10 @@ The restaurant’s impressive reputation extended beyond just food; Bonia's expe
 
 2019. Dining at Raymonds was not merely a meal; it was an unforgettable experience, offering a unique blend of rustic Atlantic Canadian flavors and innovative haute cuisine techniques.
 In every sense, Raymonds embodied the culinary spirit of Newfoundland and Labrador. With its unwavering commitment to sustainability, local sourcing, and fostering relationships with independent purveyors, it redefined what fine dining could mean in Canada’s easterly city. The restaurant was more than a place to eat; it was a celebration of place, taste, and tradition. For those seeking a culinary adventure, Raymonds stood as a must-visit destination, inviting guests to indulge in a truly exceptional dining experience right in the heart of downtown St. John’s.
+
+![](assets/internal/barrio/training/barrio_company_handbook/03.webp)
+
+![](assets/internal/barrio/training/barrio_company_handbook/04.webp)
 
 ## LATIN AMERICA
 
@@ -233,6 +241,8 @@ Steeped in a delightful mix of European, indigenous, and African cultures, Latin
 - Uruguay
 - Venezuela
 
+![](assets/internal/barrio/training/barrio_company_handbook/05.webp)
+
 **North America**
 
 - Mexico
@@ -253,9 +263,13 @@ Map labels include Mexico, Cuba, Dominican Republic, Puerto Rico, Haiti, Guatema
 
 Here at Barrio Legado, our passion for creating unforgettable guest experiences is at the core of everything we do! We believe that hospitality is so much more than just a transaction; it’s about the connections we build and the emotions we share. When we serve our guests with genuine warmth, we hope is to leave them with lasting memories that linger long after you've enjoyed your meal.
 
+![](assets/internal/barrio/training/barrio_company_handbook/06.webp)
+
 We embrace the philosophy that how we make people feel is what truly counts and our passion for authentic hospitality shines through in every interaction we have. We love adding thoughtful little surprises that transform a regular meal into an extraordinary experience and make every moment memorable.
 
 At Barrio Legado we’re not just here to serve delicious food; our goal is to foster connections, spark joy, and create heartwarming memories with every meal. After all, it’s about more than just food; it’s about the love, laughter, and stories shared around the table. We pride ourselves on creating a welcoming and cozy atmosphere where every guest leaves not just satisfied, but enriched by their time spent with us.
+
+![](assets/internal/barrio/training/barrio_company_handbook/07.webp)
 
 ## Core Values
 
@@ -355,6 +369,8 @@ Please remember that all shift changes must be submitted through the Push Operat
 ### STATUTORY HOLIDAYS
 
 Newfoundland has six public holidays:
+
+![](assets/internal/barrio/training/barrio_company_handbook/08.webp)
 
 1. New Year's Day
 4. Labour Day
@@ -653,6 +669,8 @@ The right to participate ensures that employees are actively engaged in identify
 
 Employees have the right to decline tasks they perceive as hazardous to their own health and safety, or to that of others in the workplace. It's important to exercise this right responsibly and not to misuse it without valid justification.
 
+![](assets/internal/barrio/training/barrio_company_handbook/09.webp)
+
 ## Basic Rights of Workers in Canada
 
 - **Know:** You have the right to know what hazards are present in your workplace.
@@ -671,6 +689,8 @@ the refusal is resolved to the employee’s satisfaction, the employee must retu
 
 3. The employer or employee must immediately report the unresolved work refusal to OHS Division for investigation and resolution. When the report is made orally, it must be followed up in writing within five
 days.
+
+![](assets/internal/barrio/training/barrio_company_handbook/10.webp)
 
 Where there has been a refusal to work by one employee, that same work cannot be reassigned to another employee unless the other employee has been informed of the refusal and the reason for that refusal.
 
@@ -714,6 +734,7 @@ Several key factors can put mental health at risk within the workplace. Excessiv
 
 - Wake up on time and practice some deep breathing.
 - Use all of your senses to engage with an activity.
+
 - List your worries down onto paper.
 - Eat a balanced diet of fruit and vegetables between services.
 - Get a good night's sleep; aim for 8 hours.
@@ -730,6 +751,8 @@ Several key factors can put mental health at risk within the workplace. Excessiv
 - Get active for 20 minutes a day.
 - Catch up with friends or family on days off.
 - Make some time for self-care.
+
+![](assets/internal/barrio/training/barrio_company_handbook/11.webp)
 
 Source: www.theburntchefproject.com
 
@@ -856,6 +879,8 @@ Most foodborne illnesses are preventable with the right safety measures in place
 As food allergies become more prevalent, restaurant staff must be vigilant in preventing life-threatening allergic reactions. Ignorance of food safety measures, especially regarding allergens, is not an acceptable excuse for any establishment.
 
 Regular handwashing with soap and water, particularly before handling food and after touching raw meats or using the restroom, is essential. Cleaning cutting boards, utensils, and countertops after contact with raw meat is also vital to avoid cross-contamination. Cooking all meats, poultry, and eggs to the correct internal temperatures, ensuring hot foods remain above 60°C (140°F), and properly chilling leftovers are key practices that every employee should consistently adhere to. By using separate cutting boards for raw meats and fruits or vegetables, and by storing raw meats below ready-to-eat foods in the refrigerator, we can further safeguard our guests' health and well-being.
+
+![](assets/internal/barrio/training/barrio_company_handbook/12.webp)
 
 ## Food Handler Practices: Good vs. Bad
 
@@ -1025,6 +1050,8 @@ Barrio Legado will follow up with the complainant with the results of the invest
 
 This policy will be reviewed on an annual basis to ensure it conforms with any changes to the Occupational Health and Safety Act, Code, and Regulations and that it continues to address the needs of Barrio Legado regarding workplace harassment.
 
+![](assets/internal/barrio/training/barrio_company_handbook/13.webp)
+
 ## WORKPLACE VIOLENCE POLICY
 
 ### PURPOSE
@@ -1118,6 +1145,10 @@ Barrio Legado will follow up with the complainant with the results of the invest
 
 This policy will be reviewed on an annual basis to ensure it conforms with any changes to the Occupational Health and Safety Act, Code, and Regulations and that it continues to address the needs of Barrio Legado regarding workplace violence.
 
+![](assets/internal/barrio/training/barrio_company_handbook/14.webp)
+
+![](assets/internal/barrio/training/barrio_company_handbook/15.webp)
+
 ## Respect
 
 Everyone deserves it.
@@ -1200,6 +1231,8 @@ Examples of precautionary statements are:
 ### SIGNAL WORD
 
 A signal word is a prompt that alerts you about the degree or level of hazard of the product. There are only two signal words used. "Danger" is used for high-risk hazards, while "Warning" is used for less severe hazards. If a signal word is assigned to a hazard class and category, it must be shown on the label and listed in section 2 (Hazards Identification) of the safety data sheet.
+
+![](assets/internal/barrio/training/barrio_company_handbook/16.webp)
 
 ## WHMIS Labels
 
@@ -1294,6 +1327,8 @@ SDSs will have the following information:
 
 Pictograms are graphic images that immediately show the user of a hazardous product what type of hazard is present. With a quick glance, you can see, for example, that the product is flammable or that it might be a health hazard. Most pictograms have a distinctive red "square set on one of its points" border. Inside this border is a symbol that represents the potential hazard. Together, the symbol and the border are referred to as a pictogram. Pictograms are assigned to specific hazard classes or categories.
 
+![](assets/internal/barrio/training/barrio_company_handbook/17.webp)
+
 ### WHMIS Pictograms
 
 - **Flame:** Aerosols; chemicals under pressure (flammable); flammable; in contact with water, emits flammable gases; organic peroxide; pyrophoric; self-heating; self-reactive.
@@ -1326,6 +1361,8 @@ Chemicals pose a risk to human health through various exposure routes, including
 Key Mechanisms of Harm Target Organ Damage: Chemicals can poison specific organs, such as the liver, kidneys, brain, and lungs. Endocrine Disruption: Substances like phthalates and PFAS interfere with natural hormones, causing reproductive issues, diabetes, and developmental delays. Irritation and Corrosion: Acids, bases, and solvents can cause immediate tissue destruction, including skin burns, eye damage, and lung inflammation. Carcinogenesis and Mutagenesis: Chemicals like asbestos and benzene can cause cancer and damage DNA over long-term exposure. Asphyxiation: Some compounds restrict oxygen supply to tissues.
 
 The extent of damage is influenced by the dose, duration of exposure, and the specific toxicity of the chemical involved. Although the liver functions to detoxify these substances, excessive or prolonged exposure may surpass its natural protective capabilities.
+
+![](assets/internal/barrio/training/barrio_company_handbook/18.webp)
 
 ## How Chemicals Enter the Body
 

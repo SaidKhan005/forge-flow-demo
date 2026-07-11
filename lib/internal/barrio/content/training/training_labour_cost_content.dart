@@ -355,6 +355,12 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'frame. By understanding the nuances of each day and day part, '
               'operators can better meet the specific needs of their '
               'clientele, ultimately driving satisfaction and profitability.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/labour_cost_understanding_the_levers/01.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
