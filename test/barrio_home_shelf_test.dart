@@ -44,12 +44,13 @@ class _RecordingNavigatorObserver extends NavigatorObserver {
 void main() {
   const phoneSize = Size(390, 844);
 
-  /// The four category sections in their fixed order.
+  /// The four category sections in their fixed order (2026-07-11
+  /// operator revision: Company & Compliance leads).
   const sectionCategories = [
+    BarrioCategory.companyAndCompliance,
     BarrioCategory.serviceHospitality,
     BarrioCategory.foodAndDrink,
     BarrioCategory.numbersAndLabor,
-    BarrioCategory.companyAndCompliance,
   ];
 
   void usePhoneViewport(WidgetTester tester) {
@@ -99,10 +100,10 @@ void main() {
     await pumpHome(tester);
 
     const titles = [
+      'Company & Compliance',
       'Service & Hospitality',
       'Food & Drink',
-      'Running the Numbers',
-      'Company & Compliance',
+      'A Deeper Dive',
     ];
     for (final title in titles) {
       await scrollTo(tester, find.text(title));
