@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'barrio_destination_scaffold.dart';
+import '../barrio_surface_flags.dart';
 import '../routes/barrio_destination_visibility_resolver.dart';
 import '../routes/barrio_destinations.dart';
 import '../routes/barrio_preview_role.dart';
@@ -187,7 +188,13 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
     _orbitController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),
-    )..repeat();
+    );
+    // BSP.1: the orbit ticker only drives positional bubble motion; leave it
+    // idle while orbit is disabled. `_shimmerController` still repeats inside
+    // `_animationTick`, so shimmer/center-arc rebuilds continue every frame.
+    if (kBarrioBubbleOrbitEnabled) {
+      _orbitController.repeat();
+    }
 
     _centerController = AnimationController(
       vsync: this,
@@ -241,7 +248,11 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
         duration: Duration(milliseconds: ms),
         value: initialPhase,
       );
-      ctrl.repeat(reverse: true);
+      // BSP.1: float controllers exist only for positional drift; keep them
+      // created (and disposed) as usual but idle while orbit is disabled.
+      if (kBarrioBubbleOrbitEnabled) {
+        ctrl.repeat(reverse: true);
+      }
       return ctrl;
     });
 
@@ -376,16 +387,24 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
 
       // Continuous time — all bubbles orbit at identical speed (speedFactor=1.0
       // for every personality), permanently preserving the 72° spacing.
-      final orbitAngle =
-          baseAngle +
-          (time / 28000.0) * 2 * pi +
-          sin((time / 28000.0) * 2 * pi + i * 1.7) * p.swayAmp;
+      // BSP.1: while orbit is disabled, bubbles pin to their base angles
+      // (no rotation, no sway) for stable tap targets.
+      final orbitAngle = kBarrioBubbleOrbitEnabled
+          ? baseAngle +
+                (time / 28000.0) * 2 * pi +
+                sin((time / 28000.0) * 2 * pi + i * 1.7) * p.swayAmp
+          : baseAngle;
       // Breathe: ±5 px so radius variation can't cause overlap.
-      final breathe = sin((time / 8000.0) * 2 * pi + i * 1.1) * 5.0;
+      // BSP.1: no radius wobble while orbit is disabled.
+      final breathe = kBarrioBubbleOrbitEnabled
+          ? sin((time / 8000.0) * 2 * pi + i * 1.1) * 5.0
+          : 0.0;
       final orbitR = baseOrbitRadius * p.radiusFactor + breathe;
 
       // Apply per-bubble float offset.
-      final floatOffset = i < _floatControllers.length
+      // BSP.1: no float drift while orbit is disabled.
+      final floatOffset =
+          kBarrioBubbleOrbitEnabled && i < _floatControllers.length
           ? _floatAnimations[i].value
           : Offset.zero;
 
