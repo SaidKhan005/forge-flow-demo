@@ -14,7 +14,10 @@ with disclosed local `dart analyze`/`flutter test`.
 
 **Operator carve-out 2026-07-11:** Barrio Surface Polish V1 (`BSP.*`) —
 hide-only Barrio shell changes (static hub bubbles; hide El Podio entry +
-role-preview switcher, Admin pinned). Plan:
+role-preview switcher, Admin pinned). **LANDED same day** (#1445 plan +
+tracker, #1446 BSP.1, #1447 BSP.2; content verified on `origin/master`).
+Remaining: optional operator visual pass, then the plan retires to
+archive. Plan:
 `docs/phases/barrio_surface_polish_v1/barrio_surface_polish_v1_plan.md`.
 The wider Barrio freeze stays in force (see Paused).
 
@@ -162,7 +165,7 @@ and `*.live.prod` slice fires only when vendor credentials arrive. Tracker:
 | `12.0`–`12.5`, `11A.11`, `9.8` advisor portion, `10b` | AI freeze (persistent) |
 | `11b` / `.1` / `.2`, `11A.3` + `11A.3.x` | AI freeze with active carve-outs — see Advisor Knowledge + Graph Activation block below (`11b/.1/.2` paused 2026-05-27 after build; `11A.3.x` resolved per the 2026-05-27 audit, deploy-time only). |
 | `8.5`, `11W.9` | Outward-vendor freeze |
-| `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze. Carve-out 2026-07-11: `BSP.*` hide-only surface polish (`docs/phases/barrio_surface_polish_v1/barrio_surface_polish_v1_plan.md`); freeze holds for everything else |
+| `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze. Carve-out 2026-07-11: `BSP.*` hide-only surface polish LANDED same day (#1446/#1447; plan `docs/phases/barrio_surface_polish_v1/barrio_surface_polish_v1_plan.md`); freeze holds for everything else |
 
 **Advisor Knowledge + Graph Activation — PAUSED 2026-05-27** (was the
 2026-05-25 active carve-out). The advisor "brain" (Workstream A), the
@@ -220,11 +223,11 @@ Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may
 run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 "Parallel Worktrees".
 
-**Currently running**: Barrio Surface Polish V1 (`BSP.1` → `BSP.2`,
-serialized — same screen surface; agent-led, orchestrator-audited). The
-remaining engineering slices (11A.8/.9/.10, business-timing-live
-extensions, Doc 1 items 7/9) are queued behind operator-blocked items
-above and have no active worktree.
+**Currently running**: nothing engineering-blocked. Barrio Surface
+Polish V1 (`BSP.1`/`BSP.2`) ran serialized and LANDED 2026-07-11
+(#1446/#1447). The remaining engineering slices (11A.8/.9/.10,
+business-timing-live extensions, Doc 1 items 7/9) are queued behind
+operator-blocked items above and have no active worktree.
 
 **Wave D — rolling `*.live.*` slices** fire individually as credentials
 arrive.
@@ -283,11 +286,18 @@ arrive.
 - **Notify before** any live Firebase mutation, key/account request,
   billing setup, provider call, or product decision.
 
-## Recently landed (through 2026-05-27)
+## Recently landed (through 2026-07-11)
 
 Themed digest of what landed since the last tracker refresh (commit
 `54dbd2f5`). None of this changes the V1 launch path above; it is
 feature build-out, doc alignment, and repo hygiene.
+
+**2026-07-11:** Barrio Surface Polish V1 (`BSP.*`) — operator-directed,
+hide-only, flag-gated (`lib/internal/barrio/barrio_surface_flags.dart`):
+#1445 plan + tracker carve-out, #1446 static home-hub bubbles (background
+shimmer/arcs keep animating), #1447 hide El Podio entry + role-preview
+switcher with Admin pinned (production `PermissionContext` gating
+untouched).
 
 **2026-05-16 to 2026-05-18:** retired to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md` 2026-05-27 (49 entries covering Per-Daypart Slices 0 to 5, doc-alignment audit Phases 1 to 4, Choose Star Shifts R1 to R10, Variance Coaching V2 Lanes A to G, mobile UX polish, advisor-proxy size discipline, repo hygiene, misc fixes).
 
