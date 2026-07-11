@@ -1,10 +1,13 @@
 # Barrio Surface Polish V1 (BSP)
 
 Updated: 2026-07-11
-Status: Active. Operator-directed carve-out from the Barrio freeze
-(directed 2026-07-11). Hide-only surface changes to the Barrio Legado
-internal shell. The freeze on all other Barrio work (`9.5.UX.*`, `9.75`,
-everything else under `lib/internal/barrio/**`) stays in force.
+Status: CODE-COMPLETE 2026-07-11, same day as directed. BSP.1 merged
+(#1446), BSP.2 merged (#1447), plan + tracker carve-out landed (#1445);
+all content verified on `origin/master`. Remaining before close: optional
+operator on-device visual pass (advisory, not a blocker), then retire
+this doc to `docs/archive/phases/` and restore the tracker Paused row to
+a plain freeze entry. The freeze on all other Barrio work (`9.5.UX.*`,
+`9.75`, everything else under `lib/internal/barrio/**`) stays in force.
 Owner: Orchestrator (agent-led slices per CLAUDE.md "Agent-led slices")
 
 ## Operator direction (2026-07-11)
@@ -76,12 +79,12 @@ Owner: Orchestrator (agent-led slices per CLAUDE.md "Agent-led slices")
 - `dart analyze` clean; `flutter test test/barrio_bubble_hub_static_test.dart
   test/barrio_shell_widget_test.dart` green.
 
-**Acceptance criteria**
-- [ ] Bubble positions constant over time with flag false.
-- [ ] Ring shimmer + center arcs still animate.
-- [ ] Flag flip to true restores orbital motion (code inspection is
+**Acceptance criteria** (all verified in PR #1446 audit, merged 2026-07-11)
+- [x] Bubble positions constant over time with flag false.
+- [x] Ring shimmer + center arcs still animate.
+- [x] Flag flip to true restores orbital motion (code inspection is
       sufficient; no test required for the true path).
-- [ ] No deletions; diff limited to the three files above.
+- [x] No deletions; diff limited to the three files above.
 
 ### BSP.2 — Hide El Podio entry + hide PREVIEW switcher; pin Admin
 
@@ -119,21 +122,23 @@ Owner: Orchestrator (agent-led slices per CLAUDE.md "Agent-led slices")
   test/barrio_bubble_hub_static_test.dart` green (the last one guards
   BSP.1 against regression).
 
-**Acceptance criteria**
-- [ ] Home screen shows neither the El Podio pill nor the preview row.
-- [ ] Preview role is pinned to Admin everywhere the fallback path is
+**Acceptance criteria** (all verified in PR #1447 audit, merged 2026-07-11)
+- [x] Home screen shows neither the El Podio pill nor the preview row.
+- [x] Preview role is pinned to Admin everywhere the fallback path is
       used; production `PermissionContext` path untouched.
-- [ ] Flag flips restore both surfaces (code inspection).
-- [ ] No deletions; hides only.
+- [x] Flag flips restore both surfaces (code inspection).
+- [x] No deletions; hides only.
 
 ### BSP.3 — Tracker + docs (orchestrator-owned, no agent)
 
 - `PROJECT_TRACKER.md`: Paused-table Barrio row gains the BSP
   carve-out note; Prompt Fetch Map gains `BSP.*` → this plan; Active
-  Lanes notes the serialized BSP run. (Landed with this plan's PR.)
-- On close: mark this plan's slices done, then retire the plan to
-  `docs/archive/phases/` per Phase Doc Hygiene; restore the Paused row
-  to a plain freeze entry.
+  Lanes notes the serialized BSP run. (Landed with this plan's PR,
+  #1445; settled to "landed" state in the closeout PR.)
+- On close: mark this plan's slices done (DONE 2026-07-11), then retire
+  the plan to `docs/archive/phases/` per Phase Doc Hygiene; restore the
+  Paused row to a plain freeze entry. Retirement waits on the optional
+  operator visual pass.
 
 ## Runtime acceptance (advisory)
 
