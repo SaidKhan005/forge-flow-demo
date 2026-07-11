@@ -5,7 +5,7 @@ import 'package:forge_and_flow/internal/barrio/routes/barrio_preview_role.dart';
 import 'package:forge_and_flow/internal/barrio/routes/barrio_route_map.dart';
 import 'package:forge_and_flow/internal/barrio/screens/barrio_home_screen.dart';
 import 'package:forge_and_flow/internal/barrio/screens/forge_and_flow_destination_screen.dart';
-import 'package:forge_and_flow/internal/barrio/widgets/barrio_bubble_hub.dart';
+import 'package:forge_and_flow/internal/barrio/widgets/home/barrio_home_shelf.dart';
 
 void main() {
   Widget buildTestApp() {
@@ -32,23 +32,24 @@ void main() {
 
   // B. Preview role pinned to Admin (BSP.2) — with the switcher hidden,
   // _resolvePreviewRole returns Admin unconditionally on the fallback
-  // path, so no hub bubble is role-dimmed. The hub's role-dim opacity is
-  // exactly 0.38 (coming-soon uses 0.30 and stays regardless of role).
+  // path, so no shelf card is role-dimmed. The shelf keeps the hub's
+  // role-dim opacity of exactly 0.38 (coming-soon uses 0.45 and stays
+  // regardless of role).
   group('Preview role pinned to Admin (BSP.2)', () {
-    testWidgets('hub renders with no role-dimmed bubbles', (tester) async {
+    testWidgets('shelf renders with no role-dimmed cards', (tester) async {
       await tester.pumpWidget(buildTestApp());
-      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 1000));
 
       final roleDimmed = tester
           .widgetList<Opacity>(
             find.descendant(
-              of: find.byType(BarrioBubbleHub),
+              of: find.byType(BarrioHomeShelf),
               matching: find.byType(Opacity),
             ),
           )
           .where((o) => o.opacity == 0.38);
       expect(roleDimmed, isEmpty,
-          reason: 'Admin sees everything; no bubble should be role-dimmed');
+          reason: 'Admin sees everything; no card should be role-dimmed');
     });
   });
 
