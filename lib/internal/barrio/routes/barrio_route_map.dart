@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'barrio_destinations.dart';
 import 'barrio_preview_role.dart';
+import '../content/training/training_docs.dart';
 import '../screens/barrio_home_screen.dart';
 import '../screens/forge_and_flow_destination_screen.dart';
 import '../screens/company_handbook_screen.dart';
@@ -8,6 +9,8 @@ import '../screens/interview_playbook_screen.dart';
 import '../screens/jim_taylor_model_screen.dart';
 import '../screens/preston_lee_model_coming_soon_screen.dart';
 import '../screens/supervisor_content_screen_placeholder.dart';
+import '../screens/training_doc_screen.dart';
+import '../widgets/barrio_destination_scaffold.dart';
 
 /// Typed route map for the Barrio internal shell.
 ///
@@ -31,6 +34,16 @@ class BarrioRouteMap {
     'jim_taylor_labor_model': '/barrio/jim-taylor-labor-model',
     'preston_lee_model': '/barrio/preston-lee-model',
     'supervisor_content': '/barrio/supervisor-content',
+    'training_strong_foundation': '/barrio/training/strong-foundation',
+    'training_table_manicuring': '/barrio/training/table-manicuring',
+    'training_three_pillars': '/barrio/training/three-pillars',
+    'training_suggestive_selling': '/barrio/training/suggestive-selling',
+    'training_tequila': '/barrio/training/tequila',
+    'training_coffee': '/barrio/training/coffee',
+    'training_latin_dishes': '/barrio/training/latin-dishes',
+    'training_latin_ingredients': '/barrio/training/latin-ingredients',
+    'training_labour_cost': '/barrio/training/labour-cost',
+    'training_menu_concept': '/barrio/training/menu-concept',
   };
 
   /// Returns the route path for a [BarrioDestination] by its id.
@@ -60,6 +73,15 @@ class BarrioRouteMap {
       case 'supervisor_content':
         return SupervisorContentScreenPlaceholder(previewRole: previewRole);
       default:
+        final trainingDoc = kBarrioTrainingDocs[destinationId];
+        if (trainingDoc != null) {
+          return TrainingDocScreen(
+            doc: trainingDoc,
+            accent: kBarrioTrainingAccents[destinationId] ??
+                BarrioColors.tealWarm,
+            previewRole: previewRole,
+          );
+        }
         return const BarrioHomeScreen();
     }
   }

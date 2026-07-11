@@ -26,6 +26,12 @@ class BarrioColors {
   static const Color accentPreston   = Color(0xFFCC8A3A); // warm amber — matches photo
   static const Color accentForge     = Color(0xFF3A82FF); // electric blue
 
+  // Training-bubble accent identities (2026-07-11 training-drop slice)
+  static const Color accentSeafoam = Color(0xFF5FB8A6); // seafoam — table manicuring
+  static const Color accentPlum    = Color(0xFFB06AC9); // plum — three pillars
+  static const Color accentCoffee  = Color(0xFF9A6B4F); // roasted brown — coffee
+  static const Color accentHerb    = Color(0xFF7FA84C); // herb green — ingredients
+
   // Brand teal
   static const Color tealWarm  = Color(0xFF40CFCF); // slightly brighter/more saturated
   static const Color tealGlow  = Color(0xFF2CBCBC);

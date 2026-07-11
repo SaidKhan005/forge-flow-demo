@@ -169,4 +169,141 @@ const List<BarrioDestination> barrioDestinations = [
     showOnHomeHub: false,
     iconCodePoint: 0xef52, // Icons.supervisor_account
   ),
+
+  // -- Verbatim training bubbles (2026-07-11 training-drop slice) ----------
+  // One bubble per converted knowledge-graph training document. Content is
+  // word-for-word source text rendered by TrainingDocScreen.
+  BarrioDestination(
+    id: 'training_strong_foundation',
+    label: 'Strong Foundation',
+    description:
+        'Building A Strong Foundation: consistency and standards training.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_table_manicuring',
+    label: 'Table Manicuring',
+    description:
+        'Elevate Your Table Maintenance To Table Manicuring: service training.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_three_pillars',
+    label: 'Three Pillars',
+    description:
+        'The Three Pillars Of Hospitality: food, service, and atmosphere.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_suggestive_selling',
+    label: 'Suggestive Selling',
+    description:
+        'Leveraging Suggestive Selling Techniques: upselling and cross-selling.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_tequila',
+    label: 'Tequila',
+    description: 'Tequila Training: production, classes, cocktails, mezcal.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_coffee',
+    label: 'Coffee',
+    description:
+        'Coffee Training: beans, espresso, drinks, equipment, glossary.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_latin_dishes',
+    label: 'Latin Dishes',
+    description: 'Latin American Words To Know: dishes glossary.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_latin_ingredients',
+    label: 'Latin Ingredients',
+    description: 'Latin American Words To Know: ingredients glossary.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_labour_cost',
+    label: 'Labour Cost',
+    description:
+        'Understanding Labour Cost & Operational Balance: the three levers.',
+    audiences: {
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_menu_concept',
+    label: 'Menu Concept',
+    description:
+        'Barrio Legado Menu Concept Slides: working draft, decisions in flux.',
+    audiences: {
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
 ];
