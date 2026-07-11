@@ -70,6 +70,73 @@ double _diameterFor(BarrioDestination dest) {
   return 120.0;
 }
 
+/// Orbit-ring geometry for the home hub (training-drop slice).
+///
+/// The classic catalog of up to 5 orbit bubbles keeps the original fixed
+/// circle at 44% of the hub's short side with per-bubble radius
+/// personality. Larger catalogs size bubbles from the available ring
+/// circumference and stretch the ring into an ellipse that uses the full
+/// hub box, so every bubble keeps a readable label and clear separation
+/// from its neighbors and the center bubble.
+class _OrbitGeometry {
+  final double axisX;
+  final double axisY;
+  final double orbitBubbleDiameter;
+  final bool dense;
+
+  const _OrbitGeometry({
+    required this.axisX,
+    required this.axisY,
+    required this.orbitBubbleDiameter,
+    required this.dense,
+  });
+
+  factory _OrbitGeometry.forCatalog(Size hubSize, int orbitCount) {
+    final baseOrbitRadius = min(hubSize.width, hubSize.height) * 0.44;
+    if (orbitCount <= 5) {
+      return _OrbitGeometry(
+        axisX: baseOrbitRadius,
+        axisY: baseOrbitRadius,
+        orbitBubbleDiameter: 120.0,
+        dense: false,
+      );
+    }
+    var diameter = 120.0;
+    var axisX = baseOrbitRadius;
+    var axisY = baseOrbitRadius;
+    for (var pass = 0; pass < 3; pass++) {
+      axisX = hubSize.width / 2 - diameter / 2 - 4;
+      axisY = hubSize.height / 2 - diameter / 2 - 12;
+      // Ramanujan ellipse perimeter approximation.
+      final perimeter = pi *
+          (3 * (axisX + axisY) -
+              sqrt((3 * axisX + axisY) * (axisX + 3 * axisY)));
+      diameter = (perimeter / orbitCount - 8).clamp(60.0, 120.0);
+    }
+    return _OrbitGeometry(
+      // Never let the ring collapse into the center bubble.
+      axisX: max(axisX, 75.0 + diameter / 2 + 6),
+      axisY: max(axisY, 75.0 + diameter / 2 + 6),
+      orbitBubbleDiameter: diameter,
+      dense: true,
+    );
+  }
+
+  /// Horizontal orbit radius for one bubble. Dense catalogs pin the
+  /// per-bubble radius personality to the shared ellipse so computed
+  /// spacing holds; the classic circle keeps the original spread.
+  double rx(double personalityFactor, double breathe) =>
+      dense ? axisX + breathe : axisX * personalityFactor + breathe;
+
+  /// Vertical orbit radius for one bubble.
+  double ry(double personalityFactor, double breathe) =>
+      dense ? axisY + breathe : axisY * personalityFactor + breathe;
+
+  /// Bubble diameter: fixed classic sizes, or the computed dense size.
+  double diameterFor(BarrioDestination dest) =>
+      dense ? orbitBubbleDiameter : _diameterFor(dest);
+}
+
 /// Returns the correct icon/image widget for a destination bubble.
 ///
 /// Image.asset calls include an errorBuilder so that test environments (which
@@ -369,33 +436,7 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
 
     final widgets = <Widget>[];
 
-    final baseOrbitRadius = min(hubSize.width, hubSize.height) * 0.44;
-
-    // Adaptive orbit geometry (training-drop slice): the classic catalog of
-    // up to 5 orbit bubbles keeps the original fixed circle. Larger catalogs
-    // size bubbles from the available ring circumference and stretch the
-    // ring into an ellipse that uses the full hub box, so every bubble keeps
-    // a readable label and clear separation from its neighbors and the
-    // center bubble.
-    final dense = secondary.length > 5;
-    var orbitDiameter = 120.0;
-    var axisX = baseOrbitRadius;
-    var axisY = baseOrbitRadius;
-    if (dense) {
-      for (var pass = 0; pass < 3; pass++) {
-        axisX = hubSize.width / 2 - orbitDiameter / 2 - 4;
-        axisY = hubSize.height / 2 - orbitDiameter / 2 - 12;
-        // Ramanujan ellipse perimeter approximation.
-        final h3 = 3 * (axisX + axisY);
-        final perimeter =
-            pi * (h3 - sqrt((3 * axisX + axisY) * (axisX + 3 * axisY)));
-        orbitDiameter =
-            (perimeter / secondary.length - 8).clamp(60.0, 120.0);
-      }
-      // Never let the ring collapse into the center bubble.
-      axisX = max(axisX, 75.0 + orbitDiameter / 2 + 6);
-      axisY = max(axisY, 75.0 + orbitDiameter / 2 + 6);
-    }
+    final geometry = _OrbitGeometry.forCatalog(hubSize, secondary.length);
 
     // Orbit ring track — drawn first so it sits behind all bubbles.
     if (secondary.isNotEmpty) {
@@ -405,8 +446,8 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
             child: CustomPaint(
               painter: _OrbitRingPainter(
                 center: center,
-                orbitRadius: dense ? axisX : baseOrbitRadius,
-                orbitRadiusY: dense ? axisY : baseOrbitRadius,
+                orbitRadius: geometry.axisX,
+                orbitRadiusY: geometry.axisY,
                 shimmerAngle: _shimmerAngle.value,
               ),
             ),
@@ -459,13 +500,8 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
       final breathe = kBarrioBubbleOrbitEnabled
           ? sin((time / 8000.0) * 2 * pi + i * 1.1) * 5.0
           : 0.0;
-      // Dense catalogs pin the per-bubble radius personality to the shared
-      // ellipse so computed spacing holds; the classic circle keeps the
-      // original per-bubble radius spread.
-      final orbitRx =
-          dense ? axisX + breathe : baseOrbitRadius * p.radiusFactor + breathe;
-      final orbitRy =
-          dense ? axisY + breathe : baseOrbitRadius * p.radiusFactor + breathe;
+      final orbitRx = geometry.rx(p.radiusFactor, breathe);
+      final orbitRy = geometry.ry(p.radiusFactor, breathe);
 
       // Apply per-bubble float offset.
       // BSP.1: no float drift while orbit is disabled.
@@ -493,7 +529,7 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
         ),
       ).value;
 
-      final radius = (dense ? orbitDiameter : _diameterFor(dest)) / 2;
+      final radius = geometry.diameterFor(dest) / 2;
       widgets.add(
         _buildBubbleAt(
           dest,
