@@ -4,7 +4,9 @@
 // into native structured data. This is a professional, book-like,
 // scenario-driven learning surface for managers and admins.
 //
-// Source: docs/internal/barrio/jim_taylor_labor_model_deep_dive.html
+// Source: docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md
+// (originally docs/internal/barrio/jim_taylor_labor_model_deep_dive.html;
+// converted to founder-authored Markdown April 2026)
 // Original: Jim Taylor / Benchmark Sixty / Bold Operations (2024)
 
 // ---------------------------------------------------------------------------

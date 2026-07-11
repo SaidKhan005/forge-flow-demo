@@ -4,7 +4,9 @@
 // playbook PDF into native structured data. This is a guided,
 // visual, step-by-step learning surface for managers and supervisors.
 //
-// Source: docs/internal/barrio/interview_playbook.pdf
+// Source: docs/Knowledge_graph_docs/Barrio_interview_playbook.md
+// (originally docs/internal/barrio/interview_playbook.pdf; converted to
+// founder-authored Markdown April 2026)
 
 // ---------------------------------------------------------------------------
 // Content model
