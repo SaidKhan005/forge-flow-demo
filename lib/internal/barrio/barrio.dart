@@ -52,3 +52,9 @@ export 'screens/barrio_home_screen.dart';
 export 'widgets/barrio_destination_scaffold.dart';
 export 'widgets/barrio_bubble_hub.dart';
 export 'widgets/barrio_ambient_leaves.dart';
+
+// Editorial Shelf home composition (Barrio Home Redesign V1)
+export 'widgets/home/barrio_home_shelf.dart';
+export 'widgets/home/barrio_home_hero_card.dart';
+export 'widgets/home/barrio_home_topic_card.dart';
+export 'widgets/home/barrio_home_destination_visuals.dart';
