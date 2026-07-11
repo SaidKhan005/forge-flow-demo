@@ -93,9 +93,10 @@ void main() {
 
   // Widget tests
   //
-  // The home screen uses repeating AnimationControllers (bubble hub, ambient
-  // leaves, colour-temperature scrim), so pumpAndSettle will never complete.
-  // Use pump() with explicit durations instead.
+  // The Editorial Shelf home screen runs one-shot entrance animations
+  // (shelf stagger, header wordmark). Keep pumping explicit durations
+  // rather than pumpAndSettle so these tests stay robust if ambient
+  // motion ever returns.
 
   group('Barrio home screen widget', () {
     testWidgets('builds and shows the Barrio Legado wordmark', (tester) async {
