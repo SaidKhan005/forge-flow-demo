@@ -93,10 +93,10 @@ void main() {
 
   // Widget tests
   //
-  // The Editorial Shelf home screen runs one-shot entrance animations
-  // (shelf stagger, header wordmark). Keep pumping explicit durations
-  // rather than pumpAndSettle so these tests stay robust if ambient
-  // motion ever returns.
+  // The round-bubble home screen runs looping ambient motion (falling
+  // leaves, scrim colour breathing, center-bubble arc + glow pulse) on
+  // top of the one-shot entrance animations. NEVER pumpAndSettle here;
+  // pump explicit durations only.
 
   group('Barrio home screen widget', () {
     testWidgets('builds and shows the Barrio Legado wordmark', (tester) async {

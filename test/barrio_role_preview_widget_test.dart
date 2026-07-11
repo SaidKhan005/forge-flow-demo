@@ -32,11 +32,11 @@ void main() {
 
   // B. Preview role pinned to Admin (BSP.2) — with the switcher hidden,
   // _resolvePreviewRole returns Admin unconditionally on the fallback
-  // path, so no shelf card is role-dimmed. The shelf keeps the hub's
-  // role-dim opacity of exactly 0.38 (coming-soon uses 0.45 and stays
-  // regardless of role).
+  // path, so no home bubble is role-dimmed. The round-bubble shelf keeps
+  // the hub's role-dim opacity of exactly 0.38 (coming-soon uses the
+  // hub's 0.30 and stays regardless of role).
   group('Preview role pinned to Admin (BSP.2)', () {
-    testWidgets('shelf renders with no role-dimmed cards', (tester) async {
+    testWidgets('shelf renders with no role-dimmed bubbles', (tester) async {
       await tester.pumpWidget(buildTestApp());
       await tester.pump(const Duration(milliseconds: 1000));
 
@@ -49,7 +49,7 @@ void main() {
           )
           .where((o) => o.opacity == 0.38);
       expect(roleDimmed, isEmpty,
-          reason: 'Admin sees everything; no card should be role-dimmed');
+          reason: 'Admin sees everything; no bubble should be role-dimmed');
     });
   });
 
