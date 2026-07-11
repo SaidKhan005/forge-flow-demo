@@ -55,6 +55,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'friends or marking a momentous occasion, our mission is to '
               'surround you with a warm and inviting ambiance, ensuring that '
               'every meal becomes a cherished celebration.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/01.webp',
+              afterParagraph: 3,
+            ),
+          ],
         ),
       ],
     ),
@@ -110,6 +116,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Today, 95 Water Street remains a highly distinguishable '
               'landmark, one of the few classical buildings still standing in '
               'the heart of the city.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/02.webp',
+              afterParagraph: 3,
+            ),
+          ],
         ),
       ],
     ),
@@ -171,6 +183,16 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'adventure, Raymonds stood as a must-visit destination, '
               'inviting guests to indulge in a truly exceptional dining '
               'experience right in the heart of downtown St. John’s.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/03.webp',
+              afterParagraph: 3,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/04.webp',
+              afterParagraph: 3,
+            ),
+          ],
         ),
       ],
     ),
@@ -277,6 +299,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '- Dominican Republic\n'
               '\n'
               '- Puerto Rico',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/05.webp',
+              afterParagraph: 17,
+            ),
+          ],
         ),
       ],
     ),
@@ -334,6 +362,16 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'creating a welcoming and cozy atmosphere where every guest '
               'leaves not just satisfied, but enriched by their time spent '
               'with us.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/06.webp',
+              afterParagraph: 1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/07.webp',
+              afterParagraph: 3,
+            ),
+          ],
         ),
       ],
     ),
@@ -741,6 +779,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'public holiday than they would typically be scheduled for, '
               'employees will receive their regular pay for the actual hours '
               'worked, in addition to a regular day\'s pay.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/08.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c8_u9',
@@ -1815,6 +1859,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'hazardous to their own health and safety, or to that of others '
               'in the workplace. It\'s important to exercise this right '
               'responsibly and not to misuse it without valid justification.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/09.webp',
+              afterParagraph: 3,
+            ),
+          ],
         ),
       ],
     ),
@@ -1890,6 +1940,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'disciplinary action is taken against workers, that action or '
               'dismissal will be considered discriminatory, unless there is '
               'evidence to show otherwise.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/10.webp',
+              afterParagraph: 3,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u2',
@@ -2074,6 +2130,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'We understand that when we prioritize mental well-being it can '
               'lead to increased productivity, improved employee retention, '
               'and a more positive workplace culture.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/11.webp',
+              afterParagraph: 17,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c16_u8',
@@ -2392,6 +2454,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'vegetables, and by storing raw meats below ready-to-eat foods '
               'in the refrigerator, we can further safeguard our guests\' '
               'health and well-being.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/12.webp',
+              afterParagraph: 4,
+            ),
+          ],
         ),
       ],
     ),
@@ -2974,6 +3042,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Safety Act, Code, and Regulations and that it continues to '
               'address the needs of Barrio Legado regarding workplace '
               'harassment.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/13.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -3236,6 +3310,16 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Safety Act, Code, and Regulations and that it continues to '
               'address the needs of Barrio Legado regarding workplace '
               'violence.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/14.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/15.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -3473,6 +3557,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'assigned to a hazard class and category, it must be shown on '
               'the label and listed in section 2 (Hazards Identification) of '
               'the safety data sheet.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/16.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -3664,6 +3754,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'potential hazard. Together, the symbol and the border are '
               'referred to as a pictogram. Pictograms are assigned to '
               'specific hazard classes or categories.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/17.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'company_handbook_c23_u6',
@@ -3763,6 +3859,12 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Although the liver functions to detoxify these substances, '
               'excessive or prolonged exposure may surpass its natural '
               'protective capabilities.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/18.webp',
+              afterParagraph: 2,
+            ),
+          ],
         ),
       ],
     ),

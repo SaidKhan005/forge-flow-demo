@@ -8,6 +8,12 @@ word-for-word fidelity afterwards with `python tool/barrio_training_verbatim_che
 Body text is carried word-for-word from the source markdown. Markdown syntax
 markers (heading #, bold **, italic wrappers, code fences, list dashes kept)
 are formatting, not words; headings become card/chapter titles.
+
+Image markers (`![optional caption](assets/internal/barrio/training/...)`,
+inserted by tool/barrio_training_image_extractor.py) are formatting too, not
+words: each becomes a HandbookUnitImage on its unit with `afterParagraph` =
+the 0-based index of the blank-line-separated paragraph of the emitted unit
+body after which the image sits (-1 = before the first paragraph).
 """
 import re, os, textwrap
 
@@ -65,6 +71,30 @@ DOCS = [
 ]
 
 CHAPTER_ICON = '0xe865'  # Icons.menu_book glyph, used by the chapter rail
+
+# Image markers inserted by tool/barrio_training_image_extractor.py.
+IMG_MARKER_RE = re.compile(
+    r'^!\[([^\]]*)\]\((assets/internal/barrio/training/[^)]+)\)$')
+
+
+def body_and_images(lines):
+    """Split image markers out of raw unit lines.
+
+    Returns (body_text, images) with images = [(asset_path, caption, after)].
+    `after` is the afterParagraph index: the number of blank-line-separated
+    paragraphs the emitted body has above the marker, minus 1. So -1 means
+    the image renders before the first paragraph, 0 after the first, etc.
+    """
+    clean, images = [], []
+    for ln in lines:
+        m = IMG_MARKER_RE.match(ln.strip())
+        if m:
+            before = blocks_to_body(clean)
+            n = len([p for p in before.split('\n\n') if p.strip()]) if before.strip() else 0
+            images.append((m.group(2), m.group(1).strip() or None, n - 1))
+            continue
+        clean.append(ln)
+    return blocks_to_body(clean), images
 
 
 def load_md(name):
@@ -181,15 +211,22 @@ def parse_prose(text, doc_title):
 
 def parse_glossary(text):
     """One unit per '- **TERM:** definition' bullet; nested lines appended."""
-    entries = []   # (term, body_text)
+    entries = []   # [term, body_lines, images]
     cur = None
     for ln in text.split('\n'):
+        mi = IMG_MARKER_RE.match(ln.strip())
+        if mi:
+            if cur:
+                # Glossary bodies render as one paragraph (single newlines).
+                after = 0 if any(l for l in cur[1] if l) else -1
+                cur[2].append((mi.group(2), mi.group(1).strip() or None, after))
+            continue
         m = re.match(r'^- \*\*(.+?):?\*\*:?\s*(.*)', ln)
         if m:
             if cur:
                 entries.append(cur)
             term = m.group(1).rstrip(':')
-            cur = [term, [m.group(2).strip()]]
+            cur = [term, [m.group(2).strip()], []]
             continue
         m_sub = re.match(r'^  - (.*)', ln)
         if m_sub and cur:
@@ -209,9 +246,9 @@ def parse_glossary(text):
         first, last = group[0][0], group[-1][0]
         title = f'{first[0].upper()} to {last[0].upper()}'
         units = []
-        for term, body_lines in group:
+        for term, body_lines, images in group:
             body = '\n'.join(l for l in body_lines if l)
-            units.append((term, body))
+            units.append((term, body, images))
         chapters.append((title, units, f'{len(units)} terms'))
     return chapters
 
@@ -219,6 +256,7 @@ def parse_glossary(text):
 def parse_slides(text):
     """Unit per '## Slide N' section; grouped into menu-section chapters."""
     slides = {}
+    slide_images = {}
     cur_n = None
     for ln in text.split('\n'):
         m = re.match(r'^## Slide (\d+)', ln)
@@ -227,6 +265,13 @@ def parse_slides(text):
             slides[cur_n] = []
             continue
         if cur_n is None:
+            continue
+        mi = IMG_MARKER_RE.match(ln.strip())
+        if mi:
+            # Slide bodies render as one paragraph (single newlines).
+            after = 0 if slides[cur_n] else -1
+            slide_images.setdefault(cur_n, []).append(
+                (mi.group(2), mi.group(1).strip() or None, after))
             continue
         m_item = re.match(r'^- (.*)', ln)
         if m_item:
@@ -248,7 +293,7 @@ def parse_slides(text):
             if n not in slides:
                 continue
             body = '\n'.join(slides[n])
-            units.append((f'Slide {n}', body))
+            units.append((f'Slide {n}', body, slide_images.get(n, [])))
         subtitle = f'Slide {lo}' if lo == hi else f'Slides {lo} to {hi}'
         chapters.append((title, units, subtitle))
     return chapters
@@ -306,9 +351,14 @@ def emit(doc, chapters):
         a(f"      subtitle: '{esc(subtitle)}',")
         a(f'      iconCodePoint: {CHAPTER_ICON},')
         a('      units: [')
-        for ui, (u_title, u_body) in enumerate(units):
+        for ui, unit in enumerate(units):
+            if len(unit) == 3:
+                u_title, u_body, u_images = unit
+            else:
+                u_title, u_body = unit
+                u_images = []
             if isinstance(u_body, list):
-                u_body = blocks_to_body(u_body)
+                u_body, u_images = body_and_images(u_body)
             badge = {'prose': 'READ', 'glossary': 'TERM', 'slides': 'SLIDE'}[doc['kind']]
             a('        HandbookUnit(')
             a(f"          id: '{doc['id']}_c{ci}_u{ui}',")
@@ -316,6 +366,16 @@ def emit(doc, chapters):
             a(f"          badgeHint: '{badge}',")
             a(f"          title: '{esc(u_title)}',")
             a(f'          body: {dart_string(u_body, 14)},')
+            if u_images:
+                a('          images: [')
+                for img_path, img_caption, img_after in u_images:
+                    a('            HandbookUnitImage(')
+                    a(f"              assetPath: '{esc(img_path)}',")
+                    if img_caption:
+                        a(f"              caption: '{esc(img_caption)}',")
+                    a(f'              afterParagraph: {img_after},')
+                    a('            ),')
+                a('          ],')
             a('        ),')
         a('      ],')
         a('    ),')

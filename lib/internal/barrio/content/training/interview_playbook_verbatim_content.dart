@@ -42,6 +42,12 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               'ensuring we look beyond the surface. This approach transforms '
               'the interview into a meaningful exchange, allowing both '
               'parties to connect on a deeper level.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_interview_playbook/01.webp',
+              afterParagraph: 1,
+            ),
+          ],
         ),
       ],
     ),
@@ -661,6 +667,12 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
               'nurturing their skills and creating a supportive environment, '
               'we can cultivate a strong culture that thrives on purpose and '
               'passion.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_interview_playbook/02.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),

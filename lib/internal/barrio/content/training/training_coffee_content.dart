@@ -511,6 +511,20 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'flavors and delightful layers of sweetness, it\'s the ideal cup '
               'to savor as you unwind, all without the worry of keeping you '
               'awake.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/01.webp',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/02.webp',
+              afterParagraph: 1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/04.webp',
+              afterParagraph: 2,
+            ),
+          ],
         ),
       ],
     ),
@@ -532,6 +546,20 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               '- CAPPUCCINO CUP\n'
               '\n'
               '- COFFEE MUG',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/03.webp',
+              afterParagraph: 3,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/05.webp',
+              afterParagraph: 3,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/06.webp',
+              afterParagraph: 3,
+            ),
+          ],
         ),
       ],
     ),

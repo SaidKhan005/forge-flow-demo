@@ -170,6 +170,14 @@ flutter:
   assets:
     - assets/images/
     - assets/internal/barrio/
+    # Training content pictures (asset dirs are not recursive; one entry
+    # per doc_id folder written by tool/barrio_training_image_extractor.py).
+    - assets/internal/barrio/training/barrio_company_handbook/
+    - assets/internal/barrio/training/barrio_interview_playbook/
+    - assets/internal/barrio/training/barrio_legado_menu_concept_slides/
+    - assets/internal/barrio/training/coffee_training/
+    - assets/internal/barrio/training/food_safety_manual/
+    - assets/internal/barrio/training/labour_cost_understanding_the_levers/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -1,7 +1,7 @@
 ---
 source_pdf: Barrio_interview_playbook.pdf
 pages: 14
-conversion_notes: Selectable text extracted from the PDF and formatted into Markdown sections, tables, and worksheet-style question lists.
+conversion_notes: Selectable text extracted from the PDF and formatted into Markdown sections, tables, and worksheet-style question lists.; content pictures from the source file extracted to assets/internal/barrio/training/ and referenced with image markers at their source positions (2026-07-11); markers are formatting, not words
 ---
 
 # Barrio Interview Playbook
@@ -11,6 +11,8 @@ conversion_notes: Selectable text extracted from the PDF and formatted into Mark
 Interviewing candidates can be an exciting but often stressful experience, with the undeniable pressure of making the right choice. The prospect of welcoming fresh talent into the team brings a powerful energy, as each new hire has the potential to contribute unique perspectives, diverse insights, and a wealth of experiences. They can help reinvigorate our workplace culture and drive innovation, enhancing our collective success.
 
 Yet, with that excitement comes the undeniable pressure of making the right choice. Interviews provide just a snapshot of a candidate's skills and potential, leaving us to sift through their resumes and responses to find the perfect match. To navigate this, we've crafted a thoughtful system of tailored questions that align with our core values and mission, ensuring we look beyond the surface. This approach transforms the interview into a meaningful exchange, allowing both parties to connect on a deeper level.
+
+![](assets/internal/barrio/training/barrio_interview_playbook/01.webp)
 
 ## Building Our Dream Team
 
@@ -295,3 +297,5 @@ Have we vetted them on social media for professionalism?
 ## Final Thought
 
 When it comes to building our dream team, we are crafting a vibrant culture that reflects our vision and values. Our ideal team doesn't simply appear out of nowhere; it's a masterpiece that together we design with intention and care. Once we have brought talented people on board, the real magic happens as you nurture and develop their skills and strengths. A thriving culture isn't just a happy accident; it's something we cultivate purposefully, creating an environment where everyone feels valued and inspired to contribute their best. By nurturing their skills and creating a supportive environment, we can cultivate a strong culture that thrives on purpose and passion.
+
+![](assets/internal/barrio/training/barrio_interview_playbook/02.webp)

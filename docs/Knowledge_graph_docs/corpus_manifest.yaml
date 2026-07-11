@@ -83,8 +83,8 @@ documents:
       - "culture"
     word_count_estimate: 21598
     heading_count: 171
-    line_count: 1344
-    sha256: "579cd5623cfcb4b828397df61b6d18ab29f63f8d803377ea8383e972708ab431"
+    line_count: 1381
+    sha256: "fa8542948c049b3880bc46b5ef5e9e4d84d69c529134bd02ea28a517ea67a413"
 
   - doc_id: "barrio_interview_playbook"
     file_name: "Barrio_interview_playbook.md"
@@ -113,8 +113,8 @@ documents:
       - "standards"
     word_count_estimate: 2227
     heading_count: 44
-    line_count: 297
-    sha256: "ab3ba86075aeb0c130154c3d8bc7879a63d800581ea04fa2ad9a793ab4fe10f9"
+    line_count: 301
+    sha256: "c3eab0893209f5c61c5c6f8cd9861f483e645b185a66e78814860e0f8d5b84b9"
 
   - doc_id: "barrio_legado_menu_concept_slides"
     file_name: "Barrio_Legado_Menu_Concept_Slides_4.md"
@@ -141,8 +141,8 @@ documents:
       - "planning"
     word_count_estimate: 1451
     heading_count: 26
-    line_count: 227
-    sha256: "43fc1c0822624cca56f943bd63caf28c0268d98388638c2812b9357f51f3a53e"
+    line_count: 253
+    sha256: "05c4d2f9b748d3bcc6e14150367d2c3f0e1130efdad1c7872f3471e18b7b31a1"
 
   - doc_id: "barrio_table_maintenance_and_manicuring"
     file_name: "Barrio Table Maintenance and Manicuring.md"
@@ -268,8 +268,8 @@ documents:
       - "equipment"
     word_count_estimate: 4091
     heading_count: 16
-    line_count: 145
-    sha256: "25358cadb9b3f3284421f67d68486acc125bdf332e9fbd15d31635f2e5dd5e9c"
+    line_count: 158
+    sha256: "8a2e5b1d639c824d9c2349c361e96f40ba231c19238242a756c9dd09bc9c5ced"
 
   - doc_id: "food_safety_manual"
     file_name: "food safety manual.md"
@@ -299,8 +299,8 @@ documents:
       - "risk"
     word_count_estimate: 10801
     heading_count: 86
-    line_count: 703
-    sha256: "fe2860cef5548fa043ec9ec5f79b3a2793b68fc44be9333c745d63fa94ae53d6"
+    line_count: 725
+    sha256: "f1a1f5ab14e1c700bae2e98e9308b2dbea5f0c4b7082f0fac252b33a0166952d"
 
   - doc_id: "general_words_to_know"
     file_name: "GENERAL WORDS TO KNOW.md"
@@ -397,8 +397,8 @@ documents:
       - "jim_taylor"
     word_count_estimate: 5503
     heading_count: 48
-    line_count: 231
-    sha256: "15631ad910cdedab83579a7e9962435cf738cce5ca3dbcb4e494b04bff4ebeec"
+    line_count: 233
+    sha256: "585d38ab2a14158ecca9eee9caa300b6f9cebeb92f37e8d7111607b4aa8ce65a"
 
   - doc_id: "latin_american_dishes"
     file_name: "Latin American Dishes.md"

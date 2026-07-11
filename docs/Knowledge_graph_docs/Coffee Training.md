@@ -2,7 +2,7 @@
 source_pdf: Coffee Training.pdf
 title: Coffee Training
 pages: 11
-conversion_notes: Selectable text extracted with pdftotext; Canva line wrapping reflowed into Markdown paragraphs; labeled list content (troubleshooting, cleaning, drinks, glossary) formatted as Markdown bullets; the cup-type page carries only three image captions, preserved as a list; the Instant Coffee glossary entry ends mid-sentence in the source and is preserved as extracted; curly quotes normalized to ASCII; accented characters preserved for fidelity.
+conversion_notes: Selectable text extracted with pdftotext; Canva line wrapping reflowed into Markdown paragraphs; labeled list content (troubleshooting, cleaning, drinks, glossary) formatted as Markdown bullets; the cup-type page carries only three image captions, preserved as a list; the Instant Coffee glossary entry ends mid-sentence in the source and is preserved as extracted; curly quotes normalized to ASCII; accented characters preserved for fidelity.; content pictures from the source file extracted to assets/internal/barrio/training/ and referenced with image markers at their source positions (2026-07-11); markers are formatting, not words
 ---
 
 # Coffee Training
@@ -94,8 +94,15 @@ Proper maintenance of your espresso machine is essential for ensuring optimal pe
 ## Our Coffee
 
 - **BASE CAMP - ESPRESSO WHOLE BEAN:** Base Camp is a distinguished Colombian coffee that captivates coffee enthusiasts with its sweet, full-bodied profile, making it an exceptional choice for both espresso and milk-based drinks. Sourced from the renowned Las Rosas Women's Coffee Project, this coffee not only delights the palate but also plays a vital role in driving meaningful change in the lives of women and their families in La Plata, Colombia. The initiative champions the empowerment of over 400 female coffee producers by fostering cooperatives that prioritize gender equality and elevate the contributions of women in the coffee industry. Each cup of Base Camp offers a sensory journey with delightful impressions of cacao, crème brûlée, and cherry, reflecting not only the rich flavors of the beans but also the commitment to sustainability and social impact at its core.
+
+![](assets/internal/barrio/training/coffee_training/01.webp)
 - **BIRD WITH NO NAME - DRIP COFFEE GRIND:** Introducing the "Bird with No Name," a Brazilian coffee expertly ground for drip brewing, perfect for your daily cup. This delightful blend features tasting notes of chocolate, apple, and nougat, evoking the comforting essence of your favorite chocolate bar. Its harmonious flavor makes it an ideal companion for milk, ensuring a rich and satisfying experience. Whether you're an early riser or in need of an afternoon boost, this versatile coffee promises to deliver the perfect brew every time.
+
+![](assets/internal/barrio/training/coffee_training/02.webp)
+
 - **SLEEPER CABIN - DECAF:** A delightful Colombian coffee that enchants the senses with notes of brownie, candied pecan, and honey. This exquisite brew evokes the charm of warm Canadian summer nights spent by the bonfire. With its rich roasted flavors and delightful layers of sweetness, it's the ideal cup to savor as you unwind, all without the worry of keeping you awake.
+
+![](assets/internal/barrio/training/coffee_training/04.webp)
 
 ## Cup Types
 
@@ -104,6 +111,12 @@ Image captions on the cup-reference page:
 - ESPRESSO CUP
 - CAPPUCCINO CUP
 - COFFEE MUG
+
+![](assets/internal/barrio/training/coffee_training/03.webp)
+
+![](assets/internal/barrio/training/coffee_training/05.webp)
+
+![](assets/internal/barrio/training/coffee_training/06.webp)
 
 ## Words to Know
 
