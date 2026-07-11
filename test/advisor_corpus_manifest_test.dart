@@ -18,8 +18,10 @@ void main() {
         final result = await validator.validate();
 
         expect(result.errors, isEmpty);
-        expect(result.manifest.documents, hasLength(8));
-        expect(result.activeMarkdownFiles, hasLength(8));
+        // Count guard: bump deliberately when the approved corpus in
+        // docs/Knowledge_graph_docs/corpus_manifest.yaml changes.
+        expect(result.manifest.documents, hasLength(18));
+        expect(result.activeMarkdownFiles, hasLength(18));
         expect(
           result.activeMarkdownFiles,
           isNot(contains(excludedEmptyApronFileName)),
