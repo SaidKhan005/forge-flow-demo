@@ -1,22 +1,29 @@
-// Editorial Shelf home redesign (2026-07-11 Barrio Home Redesign V1).
-// Plan: docs/phases/barrio_home_redesign_v1/barrio_home_redesign_v1_plan.md
+// Barrio home revision (2026-07-11, operator decision): one-scroll
+// round-bubble layout. Original Editorial Shelf helpers (Barrio Home
+// Redesign V1, plan:
+// docs/phases/barrio_home_redesign_v1/barrio_home_redesign_v1_plan.md)
+// extended with the hub-faithful icon widget the round bubbles need.
 //
-// Per-destination visual identity helpers for the home shelf cards.
+// Per-destination visual identity helpers for the home surface.
 //
-// Icons mirror the per-id `Icons` choices in `barrio_bubble_hub.dart`'s
-// `_iconWidgetFor` switch (for `forge_and_flow` / `company_handbook`,
-// which render `Image.asset` art in the hub, the shelf uses the hub's
-// icon fallbacks). Accents come from `kBarrioTrainingAccents` for every
-// training-registry id; non-training ids map to their matching
-// `BarrioColors` constants.
+// [barrioHomeIconWidgetFor] mirrors `barrio_bubble_hub.dart`'s
+// `_iconWidgetFor` verbatim, including the two `Image.asset` cases
+// (`forge_and_flow` and `company_handbook`) with icon errorBuilder
+// fallbacks so widget tests (which load no real asset bytes) never
+// throw. [barrioHomeAccentFor] mirrors the hub's `_destinationAccents`
+// resolution: hub-exact overrides first, then `kBarrioTrainingAccents`,
+// then the teal brand fallback.
+//
+// The retired shelf cards' [barrioHomeIconFor] IconData lookup stays in
+// place because the parked card widgets still compile against it
+// (hide-only doctrine: the cards are no longer composed, not deleted).
 
 import 'package:flutter/material.dart';
 
 import '../../content/training/training_docs.dart';
 import '../barrio_destination_scaffold.dart';
 
-/// Forge & Flow logo blue: the hero card accent (mirrors the hub's
-/// `_logoBlue`).
+/// Forge & Flow logo blue (mirrors the hub's `_logoBlue`).
 const Color kBarrioHomeForgeAccent = Color(0xFF2E6EE0);
 
 /// Per-id icon choices, mirroring `barrio_bubble_hub.dart`.
@@ -43,12 +50,18 @@ const Map<String, IconData> _kBarrioHomeIcons = <String, IconData>{
   'training_general_words': Icons.translate_rounded,
 };
 
-/// Non-training accent identities (the training ids resolve through
-/// `kBarrioTrainingAccents` first, so these cover only the ids that are
-/// absent from the verbatim training registry).
-const Map<String, Color> _kBarrioHomeNonTrainingAccents = <String, Color>{
+/// Hub-exact accent overrides, mirroring `barrio_bubble_hub.dart`'s
+/// `_destinationAccents` for the ids that are absent from (or differ
+/// from) the verbatim training registry:
+///   * `interview_playbook` uses the hub's forest green (0xFF1EA870),
+///     which is more vivid than the registry's emerald identity.
+///   * `forge_and_flow` / `preston_lee_model` / `supervisor_content`
+///     have no training-registry entry at all.
+const Map<String, Color> _kBarrioHomeHubAccentOverrides = <String, Color>{
   'forge_and_flow': kBarrioHomeForgeAccent,
+  'interview_playbook': Color(0xFF1EA870), // forest green (hub value)
   'preston_lee_model': BarrioColors.accentPreston,
+  'supervisor_content': Color(0xFF6080A8),
 };
 
 /// Icon for a destination card. Falls back to [Icons.circle_outlined]
@@ -57,11 +70,65 @@ IconData barrioHomeIconFor(String id) {
   return _kBarrioHomeIcons[id] ?? Icons.circle_outlined;
 }
 
-/// Accent color for a destination card. Training-registry ids use
-/// `kBarrioTrainingAccents`; non-training ids use their matching
-/// `BarrioColors` constants; unknown ids fall back to the teal brand.
+/// Accent color for a destination bubble. Hub-exact overrides first,
+/// then `kBarrioTrainingAccents` for training-registry ids, then the
+/// teal brand fallback (same resolution as the hub).
 Color barrioHomeAccentFor(String id) {
+  final override = _kBarrioHomeHubAccentOverrides[id];
+  if (override != null) return override;
   final trainingAccent = kBarrioTrainingAccents[id];
   if (trainingAccent != null) return trainingAccent;
-  return _kBarrioHomeNonTrainingAccents[id] ?? BarrioColors.tealWarm;
+  return BarrioColors.tealWarm;
+}
+
+/// The correct icon/image widget for a destination bubble, mirroring
+/// the hub's `_iconWidgetFor` verbatim: `forge_and_flow` renders the
+/// Forge & Flow logo asset at [size] and `company_handbook` renders the
+/// decorative handbook leaf at `size * 2.4`; both carry errorBuilder
+/// icon fallbacks so test environments (which don't load real asset
+/// bytes) fall back to an icon rather than throwing. Every other id
+/// resolves through the shared per-id icon map.
+Widget barrioHomeIconWidgetFor(
+  BuildContext context,
+  String id,
+  double size,
+  Color accent,
+  bool isDimmed,
+) {
+  final color = isDimmed
+      ? BarrioColors.textMuted.withValues(alpha: 0.4)
+      : accent;
+  final dpr = MediaQuery.devicePixelRatioOf(context);
+
+  int? cacheDimension(double logicalSize) {
+    final px = (logicalSize * dpr).round();
+    return px > 0 ? px : null;
+  }
+
+  switch (id) {
+    case 'forge_and_flow':
+      return Image.asset(
+        'assets/images/forge_flow_new_icon.png',
+        width: size,
+        height: size,
+        cacheWidth: cacheDimension(size),
+        cacheHeight: cacheDimension(size),
+        color: isDimmed ? color : null,
+        errorBuilder: (_, __, ___) =>
+            Icon(Icons.show_chart_rounded, size: size, color: color),
+      );
+    case 'company_handbook':
+      return Image.asset(
+        'assets/internal/barrio/handbook_icon.png',
+        width: size * 2.4,
+        height: size * 2.4,
+        cacheWidth: cacheDimension(size * 2.4),
+        cacheHeight: cacheDimension(size * 2.4),
+        color: isDimmed ? color : null,
+        errorBuilder: (_, __, ___) =>
+            Icon(Icons.menu_book_rounded, size: size, color: color),
+      );
+    default:
+      return Icon(barrioHomeIconFor(id), size: size, color: color);
+  }
 }

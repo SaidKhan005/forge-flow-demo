@@ -1,34 +1,37 @@
-// Editorial Shelf home redesign (2026-07-11 Barrio Home Redesign V1).
-// Plan: docs/phases/barrio_home_redesign_v1/barrio_home_redesign_v1_plan.md
-//
-// Replaces the orbit-bubble hub COMPOSITION on the Barrio home screen.
-// The `BarrioBubbleHub` widget itself stays on disk per the plan's
-// reversal doctrine (hide-only, never delete); the home screen simply
-// stops composing it.
+// Barrio home revision (2026-07-11, operator decision): one-scroll
+// round-bubble layout. Keeps the Editorial Shelf's single-vertical-
+// scroll organization (Barrio Home Redesign V1, plan:
+// docs/phases/barrio_home_redesign_v1/barrio_home_redesign_v1_plan.md)
+// but composes the parked orbit hub's round glass bubbles instead of
+// the rectangular hero/topic cards (which stay on disk, hide-only).
 //
 // Layout (single vertical scroll, no horizontal scrolling, no tabs):
 //   1. Caller-provided leading widgets (brand header, gated El Podio).
-//   2. Forge & Flow hero card (the one product-category destination).
-//   3. Four fixed-order category sections, each a 2-column 4:5 card
-//      grid built by filtering on `BarrioDestination.category`.
+//   2. Forge & Flow as the hub's center bubble (160px, centered, with
+//      the rotating arc + glow pulse + 'Dashboard' label).
+//   3. Four fixed-order category sections, each rendering its
+//      destinations as round hub-style bubbles, 3 per row with the last
+//      partial row centered, built by filtering on
+//      `BarrioDestination.category`.
 //   4. 40px footer padding.
 //
-// Motion: a single one-time entrance (staggered fade + slide per
-// element, ~280ms each). `MediaQuery.disableAnimations` skips the
-// entrance entirely. No looping/ambient animation lives here.
+// Motion: a single one-time entrance (staggered fade + slide) plus the
+// bubbles' own looping glow/arc effects (operator decision overriding
+// the redesign plan's motion rule). `MediaQuery.disableAnimations`
+// skips the entrance and freezes the bubble loops.
+
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../content/training/training_docs.dart';
 import '../../routes/barrio_destination_visibility_resolver.dart';
 import '../../routes/barrio_destinations.dart';
 import '../../routes/barrio_preview_role.dart';
 import '../barrio_destination_scaffold.dart';
-import 'barrio_home_hero_card.dart';
-import 'barrio_home_topic_card.dart';
+import 'barrio_home_bubble.dart';
 
-/// One category shelf: operator-facing title + section accent +
+/// One category section: operator-facing title + section accent +
 /// category filter. Section membership is driven by the
 /// `BarrioDestination.category` field, never by hardcoded id lists.
 class _ShelfSection {
@@ -64,14 +67,21 @@ const List<_ShelfSection> _kShelfSections = <_ShelfSection>[
   ),
 ];
 
-/// The Editorial Shelf home composition.
+/// Center-bubble diameter (the hub's primary node was 150; the operator
+/// spec allows 150-170 for the scrolling composition).
+const double _kCenterBubbleDiameter = 160.0;
+
+/// Section bubbles render 3 per row.
+const int _kBubblesPerRow = 3;
+
+/// The one-scroll round-bubble home composition.
 ///
 /// Mirrors the retired hub's contract: destinations in, taps out via
 /// [onDestinationTap] (the home screen wires `BarrioRouteMap.navigateTo`),
 /// with B18 visibility resolved through [visibilityResolver] when the
 /// production permission runtime is present, else the [previewRole]
 /// tier. Not-visible destinations render at 0.38 opacity and are
-/// non-interactive, exactly like the hub.
+/// non-interactive, exactly like the hub (center bubble included).
 class BarrioHomeShelf extends StatefulWidget {
   final List<BarrioDestination> destinations;
   final ValueChanged<BarrioDestination> onDestinationTap;
@@ -82,9 +92,9 @@ class BarrioHomeShelf extends StatefulWidget {
   /// `previewRole.isIntendedFor(dest)` decision per destination.
   final BarrioDestinationVisibilityResolver? visibilityResolver;
 
-  /// Widgets rendered above the hero (brand header, gated El Podio
-  /// pill). They scroll with the shelf and are not entrance-staggered
-  /// here (the header owns its own one-shot entrance).
+  /// Widgets rendered above the center bubble (brand header, gated El
+  /// Podio pill). They scroll with the shelf and are not
+  /// entrance-staggered here (the header owns its own one-shot entrance).
   final List<Widget> leading;
 
   const BarrioHomeShelf({
@@ -163,7 +173,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
           ),
         ),
       );
-      slivers.add(_sectionGrid(section, dests, slot));
+      slivers.add(_sectionBubbles(dests, slot));
       slot++;
     }
     slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 40)));
@@ -180,11 +190,16 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
         child: _reveal(
           0,
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: BarrioHomeHeroCard(
-              destination: hero,
-              dimmed: !_isDestVisible(hero) && !hero.comingSoon,
-              onTap: () => widget.onDestinationTap(hero),
+            // Extra top room so the rotating arcs + glow halo have space
+            // to breathe below the header.
+            padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+            child: Center(
+              child: BarrioHomeCenterBubble(
+                destination: hero,
+                diameter: _kCenterBubbleDiameter,
+                dimmed: !_isDestVisible(hero) && !hero.comingSoon,
+                onTap: () => widget.onDestinationTap(hero),
+              ),
             ),
           ),
         ),
@@ -192,27 +207,59 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
     ];
   }
 
-  Widget _sectionGrid(
-    _ShelfSection section,
-    List<BarrioDestination> dests,
+  /// One section body: rows of up to [_kBubblesPerRow] fixed-width cells
+  /// so columns line up between rows and the last partial row centers.
+  Widget _sectionBubbles(List<BarrioDestination> dests, int slot) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final cellWidth = constraints.maxWidth / _kBubblesPerRow;
+            // 100px bubbles at phone widths; shrink on very narrow cells
+            // so a bubble can never overflow its own column.
+            final diameter = min(100.0, cellWidth - 10);
+            return Column(
+              children: [
+                for (var i = 0; i < dests.length; i += _kBubblesPerRow)
+                  _bubbleRow(
+                    dests.skip(i).take(_kBubblesPerRow).toList(),
+                    cellWidth,
+                    diameter,
+                    slot,
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _bubbleRow(
+    List<BarrioDestination> rowDests,
+    double cellWidth,
+    double diameter,
     int slot,
   ) {
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      sliver: SliverGrid.count(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 4 / 5,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          for (final dest in dests)
-            _reveal(
-              slot,
-              BarrioHomeTopicCard(
-                destination: dest,
-                dimmed: !_isDestVisible(dest) && !dest.comingSoon,
-                sectionCount: kBarrioTrainingDocs[dest.id]?.chapters.length,
-                onTap: () => widget.onDestinationTap(dest),
+          for (final dest in rowDests)
+            SizedBox(
+              width: cellWidth,
+              child: Center(
+                child: _reveal(
+                  slot,
+                  BarrioHomeOrbitBubble(
+                    destination: dest,
+                    diameter: diameter,
+                    dimmed: !_isDestVisible(dest) && !dest.comingSoon,
+                    onTap: () => widget.onDestinationTap(dest),
+                  ),
+                ),
               ),
             ),
         ],

@@ -10,23 +10,26 @@ import '../routes/barrio_destinations.dart';
 import '../routes/barrio_preview_role.dart';
 import '../routes/barrio_route_map.dart';
 import '../../../state/permission_context.dart';
+import '../widgets/barrio_ambient_leaves.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/home/barrio_home_shelf.dart';
 import 'el_podio_screen.dart';
 
 /// The Barrio Legado internal shell home screen.
 ///
-/// Editorial Shelf composition (2026-07-11 Barrio Home Redesign V1,
-/// plan: docs/phases/barrio_home_redesign_v1/barrio_home_redesign_v1_plan.md):
+/// One-scroll round-bubble composition (2026-07-11 operator decision,
+/// revising the Editorial Shelf of Barrio Home Redesign V1, plan:
+/// docs/phases/barrio_home_redesign_v1/barrio_home_redesign_v1_plan.md):
 /// full-bleed photo background with gradient scrim + colour blooms +
 /// vignette sits fixed behind a single vertical scroll of brand header,
-/// Forge & Flow hero card, and four category card shelves. The former
-/// orbit-bubble hub widget stays on disk but is no longer composed here
-/// (reversal doctrine: hide-only, never delete). Per the redesign's
-/// motion rules there is no looping/ambient animation on this screen,
-/// so the previous scrim colour-breathing loop and ambient falling
-/// leaves are not composed either; the scrim renders its resting warm
-/// gradient statically.
+/// the Forge & Flow center bubble, and four category sections of round
+/// glass bubbles (recipes mirrored from the parked orbit hub, which
+/// stays on disk byte-identical; reversal doctrine: hide-only, never
+/// delete). The operator decision explicitly restores the premium
+/// ambient effects the shelf removed: the falling leaves, the rotating
+/// dual-color center arc, and the scrim colour-breathing loop, which
+/// overrides the redesign plan's "no looping/ambient animation" rule.
+/// `MediaQuery.disableAnimations` keeps everything static.
 class BarrioHomeScreen extends StatefulWidget {
   const BarrioHomeScreen({super.key});
 
@@ -34,7 +37,8 @@ class BarrioHomeScreen extends StatefulWidget {
   State<BarrioHomeScreen> createState() => _BarrioHomeScreenState();
 }
 
-class _BarrioHomeScreenState extends State<BarrioHomeScreen> {
+class _BarrioHomeScreenState extends State<BarrioHomeScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // Phase 9.3: when an auth session is live, the preview role is
   // derived from `BarrioPreviewRole.fromAuthRoles(session.roles)`.
   // This local override is used in two cases:
@@ -47,6 +51,64 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen> {
   // in 9.7. 9.3 only wires the read direction so authenticated
   // sessions feed the existing preview surface.
   BarrioPreviewRole? _previewRoleOverride;
+  bool _animationsEnabled = true;
+  bool _motionDecided = false;
+  bool _reduceMotion = false;
+
+  // Colour-temperature scrim breathing: 12s loop shifting the bottom
+  // gradient between warm golden (#1A0A00) and cool midnight (#0A0A1A).
+  // Restored from the pre-shelf home (c712461b) per the operator's
+  // 2026-07-11 home-revision decision.
+  late final AnimationController _scrimCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 12),
+  );
+
+  late final Animation<Color?> _scrimColour = ColorTween(
+    begin: const Color(0xCC1A0A00), // warm golden
+    end: const Color(0xCC0A0A1A), // cool midnight
+  ).animate(CurvedAnimation(parent: _scrimCtrl, curve: Curves.easeInOut));
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionDecided) return;
+    _motionDecided = true;
+    _reduceMotion = MediaQuery.of(context).disableAnimations;
+    if (!_reduceMotion) {
+      // Accessibility: with disableAnimations the loop never starts, so
+      // the scrim holds its resting warm-golden bottom stop.
+      _scrimCtrl.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final shouldAnimate = state == AppLifecycleState.resumed;
+    if (shouldAnimate == _animationsEnabled) return;
+
+    if (shouldAnimate && !_reduceMotion) {
+      _scrimCtrl.repeat(reverse: true);
+    } else {
+      _scrimCtrl.stop(canceled: false);
+    }
+
+    if (!mounted) return;
+    setState(() => _animationsEnabled = shouldAnimate);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _scrimCtrl.dispose();
+    super.dispose();
+  }
 
   BarrioPreviewRole _resolvePreviewRole(BuildContext context) {
     // BSP.2: while the preview switcher is hidden, the preview-role
@@ -91,8 +153,21 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          const _BarrioHomeBackdrop(),
-          SafeArea(child: _buildShelf(homeDestinations)),
+          _BarrioHomeBackdrop(scrimColour: _scrimColour),
+          // Ambient falling leaves overlay the scrolling content
+          // (IgnorePointer inside the widget keeps taps passing
+          // through), restored from the pre-shelf composition
+          // (c712461b). TickerMode pauses all looping motion while the
+          // app is backgrounded, and keeps it frozen entirely under
+          // MediaQuery.disableAnimations.
+          SafeArea(
+            child: TickerMode(
+              enabled: _animationsEnabled && !_reduceMotion,
+              child: BarrioAmbientLeaves(
+                child: _buildShelf(homeDestinations),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -152,41 +227,18 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// Backdrop — full-bleed photo → static gradient scrim → colour blooms →
-// vignette. All layers are pointer-transparent and static (the redesign
-// removed the scrim colour-breathing loop; the scrim holds its resting
-// warm-golden bottom stop).
+// Backdrop: full-bleed photo, then the colour-breathing gradient scrim,
+// then colour blooms and vignette. All layers are pointer-transparent.
+// The scrim's bottom stop breathes warm-to-cool on the 12s loop
+// (restored from c712461b); the blooms and vignette stay static.
 // ---------------------------------------------------------------------------
 
 class _BarrioHomeBackdrop extends StatelessWidget {
-  const _BarrioHomeBackdrop();
+  final Animation<Color?> scrimColour;
 
-  static const List<Widget> _overlayLayers = [
-    // 2 — Editorial gradient scrim: dark at top (header legibility) →
-    //     transparent in the shelf area (photo breathes) → warm bottom.
-    Positioned.fill(
-      child: RepaintBoundary(
-        child: IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xF0070D1A), // 94% — header zone
-                  Color(0xBB070D1A), // 73% — below header
-                  Color(0x44070D1A), // 27% — shelf: photo shows
-                  Color(0x66070D1A), // 40% — below shelf
-                  Color(0xCC1A0A00), // warm golden footer (static)
-                ],
-                stops: [0.0, 0.20, 0.52, 0.75, 1.0],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
+  const _BarrioHomeBackdrop({required this.scrimColour});
 
+  static const List<Widget> _staticOverlayLayers = [
     // 3 — Teal bloom — top-centre brand anchor
     Positioned.fill(
       child: RepaintBoundary(
@@ -252,7 +304,39 @@ class _BarrioHomeBackdrop extends StatelessWidget {
             ),
           ),
         ),
-        ..._overlayLayers,
+
+        // 2: editorial gradient scrim with colour-temperature breathing.
+        //    Dark at top (header legibility), transparent in the bubble
+        //    area (photo breathes), animated warm-to-cool at the bottom.
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: scrimColour,
+                builder: (context, _) {
+                  return DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          const Color(0xF0070D1A), // 94%: header zone
+                          const Color(0xBB070D1A), // 73%: below header
+                          const Color(0x44070D1A), // 27%: photo shows
+                          const Color(0x66070D1A), // 40%: below bubbles
+                          scrimColour.value!, // animated warm-to-cool
+                        ],
+                        stops: const [0.0, 0.20, 0.52, 0.75, 1.0],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+
+        ..._staticOverlayLayers,
       ],
     );
   }
