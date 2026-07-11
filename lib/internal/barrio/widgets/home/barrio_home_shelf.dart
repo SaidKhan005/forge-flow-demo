@@ -20,8 +20,6 @@
 // the redesign plan's motion rule). `MediaQuery.disableAnimations`
 // skips the entrance and freezes the bubble loops.
 
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -74,8 +72,10 @@ const List<_ShelfSection> _kShelfSections = <_ShelfSection>[
 /// spec allows 150-170 for the scrolling composition).
 const double _kCenterBubbleDiameter = 160.0;
 
-/// Section bubbles render 3 per row.
-const int _kBubblesPerRow = 3;
+/// Section bubble diameter and swipe-row height (glow halos need the
+/// extra vertical room so they never clip against the row bounds).
+const double _kBubbleDiameter = 100.0;
+const double _kSectionRowHeight = 150.0;
 
 /// The one-scroll round-bubble home composition.
 ///
@@ -191,10 +191,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
       if (dests.isEmpty) continue;
       slivers.add(
         SliverToBoxAdapter(
-          child: _reveal(
-            slot,
-            _SectionHeader(section: section, count: dests.length),
-          ),
+          child: _reveal(slot, _SectionHeader(section: section)),
         ),
       );
       slivers.add(_sectionBubbles(dests, slot));
@@ -230,74 +227,46 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
     ];
   }
 
-  /// One section body: rows of up to [_kBubblesPerRow] fixed-width cells
-  /// so columns line up between rows and the last partial row centers.
+  /// One section body: a single horizontal swipe row of bubbles
+  /// (2026-07-11 operator decision: sections scroll left and right).
+  /// Fixed row height leaves room above and below the 100px bubbles so
+  /// their glow halos never clip; only the row scrolls horizontally,
+  /// never the page.
   Widget _sectionBubbles(List<BarrioDestination> dests, int slot) {
     return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final cellWidth = constraints.maxWidth / _kBubblesPerRow;
-            // 100px bubbles at phone widths; shrink on very narrow cells
-            // so a bubble can never overflow its own column.
-            final diameter = min(100.0, cellWidth - 10);
-            return Column(
-              children: [
-                for (var i = 0; i < dests.length; i += _kBubblesPerRow)
-                  _bubbleRow(
-                    dests.skip(i).take(_kBubblesPerRow).toList(),
-                    cellWidth,
-                    diameter,
-                    slot,
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _bubbleRow(
-    List<BarrioDestination> rowDests,
-    double cellWidth,
-    double diameter,
-    int slot,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          for (final dest in rowDests)
-            SizedBox(
-              width: cellWidth,
-              child: Center(
-                child: _reveal(
-                  slot,
-                  BarrioHomeOrbitBubble(
-                    destination: dest,
-                    diameter: diameter,
-                    dimmed: !_isDestVisible(dest) && !dest.comingSoon,
-                    onTap: () => widget.onDestinationTap(dest),
-                  ),
+      child: _reveal(
+        slot,
+        SizedBox(
+          height: _kSectionRowHeight,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            scrollDirection: Axis.horizontal,
+            itemCount: dests.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (context, i) {
+              final dest = dests[i];
+              return Center(
+                child: BarrioHomeOrbitBubble(
+                  destination: dest,
+                  diameter: _kBubbleDiameter,
+                  dimmed: !_isDestVisible(dest) && !dest.comingSoon,
+                  onTap: () => widget.onDestinationTap(dest),
                 ),
-              ),
-            ),
-        ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 }
 
-/// Section header: accent tick + Playfair title + right-aligned honest
-/// topic count. ~32px above, ~12px below.
+/// Section header: accent tick + Playfair title. ~32px above, ~12px
+/// below. (The topic count was removed 2026-07-11 by operator request.)
 class _SectionHeader extends StatelessWidget {
   final _ShelfSection section;
-  final int count;
 
-  const _SectionHeader({required this.section, required this.count});
+  const _SectionHeader({required this.section});
 
   @override
   Widget build(BuildContext context) {
@@ -324,13 +293,6 @@ class _SectionHeader extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: BarrioColors.textPrimary,
               ),
-            ),
-          ),
-          Text(
-            count == 1 ? '1 topic' : '$count topics',
-            style: GoogleFonts.ibmPlexMono(
-              fontSize: 12,
-              color: BarrioColors.textMuted,
             ),
           ),
         ],
