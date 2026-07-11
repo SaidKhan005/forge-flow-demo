@@ -44,7 +44,15 @@ class _ShelfSection {
 
 /// Fixed section order with the operator-facing titles and section
 /// accents from the redesign plan's category model.
+/// 2026-07-11 operator revision: Company & Compliance leads, and the
+/// numbers section's display title is 'A Deeper Dive' (the
+/// BarrioCategory.numbersAndLabor identifier is unchanged).
 const List<_ShelfSection> _kShelfSections = <_ShelfSection>[
+  _ShelfSection(
+    'Company & Compliance',
+    BarrioCategory.companyAndCompliance,
+    BarrioColors.accentHandbook,
+  ),
   _ShelfSection(
     'Service & Hospitality',
     BarrioCategory.serviceHospitality,
@@ -56,14 +64,9 @@ const List<_ShelfSection> _kShelfSections = <_ShelfSection>[
     BarrioColors.gold,
   ),
   _ShelfSection(
-    'Running the Numbers',
+    'A Deeper Dive',
     BarrioCategory.numbersAndLabor,
     BarrioColors.accentJimTaylor,
-  ),
-  _ShelfSection(
-    'Company & Compliance',
-    BarrioCategory.companyAndCompliance,
-    BarrioColors.accentHandbook,
   ),
 ];
 

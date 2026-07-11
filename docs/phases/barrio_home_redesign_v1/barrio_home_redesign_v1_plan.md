@@ -27,15 +27,21 @@ do not change.
 | category | destinations |
 |---|---|
 | `product` | forge_and_flow |
-| `serviceHospitality` | training_strong_foundation, training_table_manicuring, training_three_pillars, training_suggestive_selling |
+| `serviceHospitality` | training_strong_foundation, training_table_manicuring, training_three_pillars, training_suggestive_selling, training_general_words |
 | `foodAndDrink` | training_tequila, training_coffee, training_latin_dishes, training_latin_ingredients, training_menu_concept |
 | `numbersAndLabor` | jim_taylor_labor_model, training_labour_cost, training_bold_by_design, training_mastering_metrics, preston_lee_model |
-| `companyAndCompliance` | company_handbook, interview_playbook, training_food_safety, training_cheers_responsibility, training_general_words, supervisor_content |
+| `companyAndCompliance` | company_handbook, interview_playbook, training_food_safety, training_cheers_responsibility, supervisor_content |
 
-Operator-facing section titles (no em dash law):
-Service & Hospitality / Food & Drink / Running the Numbers /
-Company & Compliance. Forge & Flow renders as the primary product
-entry, not inside a training section.
+Operator-facing section titles (no em dash law), in shelf order:
+Company & Compliance / Service & Hospitality / Food & Drink /
+A Deeper Dive. Forge & Flow renders as the primary product entry, not
+inside a training section.
+
+2026-07-11 operator revision: `training_general_words` moved from
+`companyAndCompliance` to `serviceHospitality`; `numbersAndLabor`'s
+display title renamed from "Running the Numbers" to "A Deeper Dive"
+(enum identifiers unchanged); Company & Compliance moved to first in
+the section order.
 
 ## New verbatim destinations (Wave 1 content lane)
 

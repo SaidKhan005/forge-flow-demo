@@ -420,7 +420,9 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
-    category: BarrioCategory.companyAndCompliance,
+    // 2026-07-11 operator revision: moved from companyAndCompliance so
+    // the vocabulary glossary sits with the service training.
+    category: BarrioCategory.serviceHospitality,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
