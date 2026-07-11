@@ -7,6 +7,9 @@ import 'dart:ui';
 
 import '../../widgets/barrio_destination_scaffold.dart';
 import 'barrio_training_doc.dart';
+import 'company_handbook_verbatim_content.dart';
+import 'interview_playbook_verbatim_content.dart';
+import 'jim_taylor_verbatim_content.dart';
 import 'training_coffee_content.dart';
 import 'training_labour_cost_content.dart';
 import 'training_latin_dishes_content.dart';
@@ -19,7 +22,15 @@ import 'training_tequila_content.dart';
 import 'training_three_pillars_content.dart';
 
 /// All verbatim training docs, keyed by destination id.
+///
+/// Includes the verbatim rebuilds of the three original learning bubbles
+/// (operator directive 2026-07-11: everything word-for-word). Their curated
+/// interactive content files remain on disk; reversal = restoring the
+/// screen cases in `barrio_route_map.dart`.
 const Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
+  'company_handbook': kTrainingCompanyHandbook,
+  'interview_playbook': kTrainingInterviewPlaybook,
+  'jim_taylor_labor_model': kTrainingJimTaylor,
   'training_strong_foundation': kTrainingStrongFoundation,
   'training_table_manicuring': kTrainingTableManicuring,
   'training_three_pillars': kTrainingThreePillars,
@@ -35,6 +46,9 @@ const Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
 /// Per-destination accent bloom color (same convention as the
 /// `BarrioColors.accent*` identities owned by the original bubbles).
 const Map<String, Color> kBarrioTrainingAccents = {
+  'company_handbook': BarrioColors.accentHandbook, // brick red identity
+  'interview_playbook': BarrioColors.accentPlaybook, // emerald identity
+  'jim_taylor_labor_model': BarrioColors.accentJimTaylor, // royal blue
   'training_strong_foundation': BarrioColors.accentPreston, // warm amber
   'training_table_manicuring': BarrioColors.accentSeafoam,
   'training_three_pillars': BarrioColors.accentPlum,

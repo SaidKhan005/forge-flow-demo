@@ -4,10 +4,8 @@ import 'package:forge_and_flow/internal/barrio/routes/barrio_destinations.dart';
 import 'package:forge_and_flow/internal/barrio/routes/barrio_route_map.dart';
 import 'package:forge_and_flow/internal/barrio/screens/barrio_home_screen.dart';
 import 'package:forge_and_flow/internal/barrio/screens/forge_and_flow_destination_screen.dart';
-import 'package:forge_and_flow/internal/barrio/screens/company_handbook_screen.dart';
-import 'package:forge_and_flow/internal/barrio/screens/interview_playbook_screen.dart';
-import 'package:forge_and_flow/internal/barrio/screens/jim_taylor_model_screen.dart';
 import 'package:forge_and_flow/internal/barrio/screens/preston_lee_model_coming_soon_screen.dart';
+import 'package:forge_and_flow/internal/barrio/screens/training_doc_screen.dart';
 import 'package:forge_and_flow/internal/barrio/screens/supervisor_content_screen_placeholder.dart';
 
 void main() {
@@ -73,12 +71,14 @@ void main() {
     test('screenFor returns the correct widget type for each destination', () {
       expect(BarrioRouteMap.screenFor('forge_and_flow'),
           isA<ForgeAndFlowDestinationScreen>());
+      // 2026-07-11 word-for-word directive: the three original learning
+      // destinations now render the verbatim training surface.
       expect(BarrioRouteMap.screenFor('company_handbook'),
-          isA<CompanyHandbookScreen>());
+          isA<TrainingDocScreen>());
       expect(BarrioRouteMap.screenFor('interview_playbook'),
-          isA<InterviewPlaybookScreen>());
+          isA<TrainingDocScreen>());
       expect(BarrioRouteMap.screenFor('jim_taylor_labor_model'),
-          isA<JimTaylorModelScreen>());
+          isA<TrainingDocScreen>());
       expect(BarrioRouteMap.screenFor('preston_lee_model'),
           isA<PrestonLeeModelComingSoonScreen>());
       expect(BarrioRouteMap.screenFor('supervisor_content'),
