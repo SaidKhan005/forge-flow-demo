@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-27. Routing map only: shows **only what is left**.
+Updated: 2026-07-11. Routing map only: shows **only what is left**.
 Completed phases/slices: `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 Stale sprint-execution docs: `docs/archive/_execution/`. `docs/archive/**`
 is history; ignore unless explicitly named.
@@ -11,6 +11,12 @@ is history; ignore unless explicitly named.
 Workflow is executor-agnostic per CLAUDE.md "Workflow". CI is intentionally
 dark until 2026-06-01 (workflow_dispatch only) — verify high-risk slices
 with disclosed local `dart analyze`/`flutter test`.
+
+**Operator carve-out 2026-07-11:** Barrio Surface Polish V1 (`BSP.*`) —
+hide-only Barrio shell changes (static hub bubbles; hide El Podio entry +
+role-preview switcher, Admin pinned). Plan:
+`docs/phases/barrio_surface_polish_v1/barrio_surface_polish_v1_plan.md`.
+The wider Barrio freeze stays in force (see Paused).
 
 Owner: You · Execution: We think, agents code (orchestrator-audited).
 
@@ -156,7 +162,7 @@ and `*.live.prod` slice fires only when vendor credentials arrive. Tracker:
 | `12.0`–`12.5`, `11A.11`, `9.8` advisor portion, `10b` | AI freeze (persistent) |
 | `11b` / `.1` / `.2`, `11A.3` + `11A.3.x` | AI freeze with active carve-outs — see Advisor Knowledge + Graph Activation block below (`11b/.1/.2` paused 2026-05-27 after build; `11A.3.x` resolved per the 2026-05-27 audit, deploy-time only). |
 | `8.5`, `11W.9` | Outward-vendor freeze |
-| `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze |
+| `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`, `lib/main_barrio.dart` | Barrio freeze. Carve-out 2026-07-11: `BSP.*` hide-only surface polish (`docs/phases/barrio_surface_polish_v1/barrio_surface_polish_v1_plan.md`); freeze holds for everything else |
 
 **Advisor Knowledge + Graph Activation — PAUSED 2026-05-27** (was the
 2026-05-25 active carve-out). The advisor "brain" (Workstream A), the
@@ -199,6 +205,7 @@ cleanup, and the AI/corpus/pricing/observability admin-pressure placeholders.
 | `9.8` | `phase_9_8/*` |
 | `*.live.*` | `phase_8_live_rollout/phase_8_live_rollout_plan.md` |
 | `8.5`, `9.5`/`9.75`, `11b*`, `11W.9`, `12.*` | matching `docs/phases/**` doc |
+| `BSP.*` | `barrio_surface_polish_v1/barrio_surface_polish_v1_plan.md` |
 | Advisor knowledge / chat UI / graph candidates | `advisor_knowledge_activation/advisor_knowledge_activation_plan.md` |
 
 ## North Star
@@ -213,9 +220,11 @@ Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may
 run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 "Parallel Worktrees".
 
-**Currently running**: nothing engineering-blocked. The remaining engineering
-slices (11A.8/.9/.10, business-timing-live extensions, Doc 1 items 7/9)
-are queued behind operator-blocked items above and have no active worktree.
+**Currently running**: Barrio Surface Polish V1 (`BSP.1` → `BSP.2`,
+serialized — same screen surface; agent-led, orchestrator-audited). The
+remaining engineering slices (11A.8/.9/.10, business-timing-live
+extensions, Doc 1 items 7/9) are queued behind operator-blocked items
+above and have no active worktree.
 
 **Wave D — rolling `*.live.*` slices** fire individually as credentials
 arrive.
