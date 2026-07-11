@@ -21,11 +21,17 @@ class TrainingDocScreen extends StatefulWidget {
   final Color accent;
   final BarrioPreviewRole previewRole;
 
+  /// Section to open first (Wave B training search deep link). Clamped
+  /// to the valid chapter range; the default 0 keeps every existing
+  /// call site's behavior identical.
+  final int initialChapterIndex;
+
   const TrainingDocScreen({
     super.key,
     required this.doc,
     this.accent = BarrioColors.tealWarm,
     this.previewRole = BarrioPreviewRole.admin,
+    this.initialChapterIndex = 0,
   });
 
   @override
@@ -47,8 +53,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   @override
   void initState() {
     super.initState();
-    if (widget.doc.chapters.isNotEmpty) {
-      _viewedChapterIds.add(widget.doc.chapters.first.id);
+    final chapters = widget.doc.chapters;
+    if (chapters.isNotEmpty) {
+      _activeChapter =
+          widget.initialChapterIndex.clamp(0, chapters.length - 1);
+      _viewedChapterIds.add(chapters[_activeChapter].id);
     }
   }
 

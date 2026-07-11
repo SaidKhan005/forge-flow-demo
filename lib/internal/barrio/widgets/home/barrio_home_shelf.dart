@@ -100,6 +100,14 @@ class BarrioHomeShelf extends StatefulWidget {
   /// entrance-staggered here (the header owns its own one-shot entrance).
   final List<Widget> leading;
 
+  /// Wave B (training search): when non-null, this single sliver
+  /// replaces the center bubble + category sections while a query is
+  /// active. The [leading] widgets and footer padding stay, and the
+  /// shelf state (entrance controller) is preserved, so clearing the
+  /// override brings the sections back exactly as before with no
+  /// entrance replay. Default null keeps the shelf unchanged.
+  final Widget? bodyOverride;
+
   const BarrioHomeShelf({
     super.key,
     required this.destinations,
@@ -107,6 +115,7 @@ class BarrioHomeShelf extends StatefulWidget {
     this.previewRole = BarrioPreviewRole.admin,
     this.visibilityResolver,
     this.leading = const <Widget>[],
+    this.bodyOverride,
   });
 
   @override
@@ -156,13 +165,25 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
   }
 
   List<Widget> _buildSlivers() {
-    final visible =
-        widget.destinations.where((d) => d.showOnHomeHub).toList();
     final slivers = <Widget>[
       for (final leading in widget.leading)
         SliverToBoxAdapter(child: leading),
-      ..._heroSlivers(visible),
     ];
+    final override = widget.bodyOverride;
+    if (override != null) {
+      // Wave B: an active search replaces the center bubble + sections.
+      slivers.add(override);
+    } else {
+      slivers.addAll(_shelfBodySlivers());
+    }
+    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 40)));
+    return slivers;
+  }
+
+  List<Widget> _shelfBodySlivers() {
+    final visible =
+        widget.destinations.where((d) => d.showOnHomeHub).toList();
+    final slivers = <Widget>[..._heroSlivers(visible)];
     var slot = 1;
     for (final section in _kShelfSections) {
       final dests =
@@ -179,7 +200,6 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
       slivers.add(_sectionBubbles(dests, slot));
       slot++;
     }
-    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 40)));
     return slivers;
   }
 

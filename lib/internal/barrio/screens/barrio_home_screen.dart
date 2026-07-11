@@ -9,8 +9,10 @@ import '../routes/barrio_destinations.dart';
 import '../routes/barrio_preview_role.dart';
 import '../routes/barrio_route_map.dart';
 import '../../../state/permission_context.dart';
+import '../search/barrio_training_search.dart';
 import '../widgets/barrio_ambient_leaves.dart';
 import '../widgets/barrio_destination_scaffold.dart';
+import '../widgets/home/barrio_home_search.dart';
 import '../widgets/home/barrio_home_shelf.dart';
 import 'el_podio_screen.dart';
 
@@ -53,6 +55,11 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   bool _animationsEnabled = true;
   bool _motionDecided = false;
   bool _reduceMotion = false;
+
+  // Wave B (training search): trimmed, debounced query from the glass
+  // search field. While it meets the minimum length, the shelf shows
+  // the results sliver instead of the center bubble + sections.
+  String _searchQuery = '';
 
   // Colour-temperature scrim breathing: 12s loop shifting the bottom
   // gradient between warm golden (#1A0A00) and cool midnight (#0A0A1A).
@@ -142,6 +149,29 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     );
   }
 
+  void _onSearchQueryChanged(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed == _searchQuery) return;
+    setState(() => _searchQuery = trimmed);
+  }
+
+  void _openSearchResult(
+    BuildContext context,
+    BarrioTrainingSearchResult result,
+    BarrioDestination destination,
+    BarrioPreviewRole role,
+  ) {
+    // Dismiss the keyboard before navigating to the matched section.
+    FocusManager.instance.primaryFocus?.unfocus();
+    HapticFeedback.lightImpact();
+    BarrioRouteMap.navigateTo(
+      context,
+      destination,
+      previewRole: role,
+      initialChapterIndex: result.chapterIndex,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final homeDestinations = barrioDestinations
@@ -194,6 +224,11 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
                 context: permissionContext,
               )
             : null;
+        // Wave B: an active query swaps the shelf body for the results
+        // sliver; the same resolver-first / preview-role visibility the
+        // bubbles use filters the results (B18).
+        final searchActive =
+            _searchQuery.length >= BarrioTrainingSearch.kMinQueryLength;
         return BarrioHomeShelf(
           destinations: homeDestinations,
           previewRole: role,
@@ -203,12 +238,32 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
             dest,
             previewRole: role,
           ),
+          bodyOverride: searchActive
+              ? BarrioHomeSearchResults(
+                  query: _searchQuery,
+                  previewRole: role,
+                  visibilityResolver: resolver,
+                  onResultTap: (result, destination) => _openSearchResult(
+                    innerCtx,
+                    result,
+                    destination,
+                    role,
+                  ),
+                )
+              : null,
           leading: [
             RepaintBoundary(
               child: _BarrioHeader(
                 previewRole: role,
                 onRoleChanged: (r) =>
                     setState(() => _previewRoleOverride = r),
+              ),
+            ),
+            // Wave B: glass training search under the brand header,
+            // above the Forge & Flow center bubble.
+            RepaintBoundary(
+              child: BarrioHomeSearchField(
+                onQueryChanged: _onSearchQueryChanged,
               ),
             ),
             // BSP.2: El Podio entry hidden while kBarrioShowElPodioEntry
