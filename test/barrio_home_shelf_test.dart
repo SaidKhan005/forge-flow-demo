@@ -117,24 +117,48 @@ void main() {
       'with no overflow errors', (tester) async {
     await pumpHome(tester);
 
-    final orderedLabels = <String>[
-      // The center bubble renders the hub's 'Dashboard' label, so the
-      // product-category destination is asserted via that text.
-      for (final _ in barrioDestinations.where(
-          (d) => d.showOnHomeHub && d.category == BarrioCategory.product))
-        'Dashboard',
-      for (final category in sectionCategories)
-        ...barrioDestinations
-            .where((d) => d.showOnHomeHub && d.category == category)
-            .map((d) => d.label),
-    ];
+    // The center bubble renders the hub's 'Dashboard' label, so the
+    // product-category destination is asserted via that text.
+    expect(find.text('Dashboard'), findsOneWidget);
+    expect(tester.takeException(), isNull);
 
-    for (final label in orderedLabels) {
-      await scrollTo(tester, find.text(label));
-      expect(find.text(label), findsOneWidget,
-          reason: '$label must render exactly once');
-      expect(tester.takeException(), isNull,
-          reason: 'no layout exception while scrolling to $label');
+    const sectionTitles = {
+      BarrioCategory.companyAndCompliance: 'Company & Compliance',
+      BarrioCategory.serviceHospitality: 'Service & Hospitality',
+      BarrioCategory.foodAndDrink: 'Food & Drink',
+      BarrioCategory.numbersAndLabor: 'A Deeper Dive',
+    };
+
+    // Sections are horizontal swipe rows now: scroll the page to the
+    // section header, park it at a known height, then drag the row
+    // leftward until each label in the section has rendered.
+    for (final category in sectionCategories) {
+      final title = sectionTitles[category]!;
+      final labels = barrioDestinations
+          .where((d) => d.showOnHomeHub && d.category == category)
+          .map((d) => d.label)
+          .toList();
+
+      await scrollTo(tester, find.text(title));
+      final headerY = tester.getCenter(find.text(title)).dy;
+      await tester.drag(
+          find.byType(CustomScrollView), Offset(0, 300.0 - headerY));
+      await tester.pump(const Duration(milliseconds: 60));
+
+      for (final label in labels) {
+        var attempts = 0;
+        while (find.text(label).evaluate().isEmpty && attempts < 12) {
+          final rowPoint = Offset(
+              195, tester.getCenter(find.text(title)).dy + 88);
+          await tester.dragFrom(rowPoint, const Offset(-240, 0));
+          await tester.pump(const Duration(milliseconds: 60));
+          attempts++;
+        }
+        expect(find.text(label), findsOneWidget,
+            reason: '$label must render exactly once in the $title row');
+        expect(tester.takeException(), isNull,
+            reason: 'no layout exception while revealing $label');
+      }
     }
 
     // Scroll past the last row into the footer to cover the whole extent.

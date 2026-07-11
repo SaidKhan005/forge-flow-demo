@@ -80,8 +80,9 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         title: widget.doc.title,
         accentColor: accent,
       ),
-      body: BarrioPremiumBackground(
-        accentColor: accent,
+      body: _TrainingDocBackground(
+        docId: widget.doc.id,
+        accent: accent,
         child: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,6 +134,106 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Per-doc photo backdrop (2026-07-11 operator decision: every manual
+/// gets a photo behind the dark scrim). The three rebuilt manuals get
+/// their original curated photos back; every other doc uses the
+/// category-matched photo from the existing set. The docs' own
+/// extracted training images were reviewed and rejected as backdrops:
+/// they are posters, diagrams, and product shots, not photography.
+const Map<String, String> _kDocBackdrops = <String, String>{
+  // Originals restored
+  'company_handbook': 'assets/internal/barrio/handbook_bg.jpg',
+  'interview_playbook': 'assets/internal/barrio/interview_bg.jpg',
+  'jim_taylor_labor_model': 'assets/internal/barrio/jim_taylor_bg.jpg',
+  // Service & Hospitality
+  'training_strong_foundation': 'assets/internal/barrio/interview_bg.jpg',
+  'training_table_manicuring': 'assets/internal/barrio/interview_bg.jpg',
+  'training_three_pillars': 'assets/internal/barrio/interview_bg.jpg',
+  'training_suggestive_selling': 'assets/internal/barrio/interview_bg.jpg',
+  'training_general_words': 'assets/internal/barrio/interview_bg.jpg',
+  // Food & Drink
+  'training_tequila': 'assets/internal/barrio/home_bg.png',
+  'training_coffee': 'assets/internal/barrio/home_bg.png',
+  'training_latin_dishes': 'assets/internal/barrio/home_bg.png',
+  'training_latin_ingredients': 'assets/internal/barrio/home_bg.png',
+  'training_menu_concept': 'assets/internal/barrio/home_bg.png',
+  // A Deeper Dive
+  'training_labour_cost': 'assets/internal/barrio/jim_taylor_bg.jpg',
+  'training_bold_by_design': 'assets/internal/barrio/jim_taylor_bg.jpg',
+  'training_mastering_metrics': 'assets/internal/barrio/jim_taylor_bg.jpg',
+  // Company & Compliance
+  'training_food_safety': 'assets/internal/barrio/handbook_bg.jpg',
+  'training_cheers_responsibility': 'assets/internal/barrio/handbook_bg.jpg',
+};
+
+/// Full-bleed photo + heavy dark scrim + the standard accent blooms.
+/// Mirrors the parked curated screens' backdrop recipe (see
+/// `_HandbookPremiumBackground` in company_handbook_screen.dart) so
+/// body text keeps the same legibility it had on those surfaces. Docs
+/// without a mapped photo, and test environments (errorBuilder), fall
+/// back to the plain premium background unchanged.
+class _TrainingDocBackground extends StatelessWidget {
+  final String docId;
+  final Color accent;
+  final Widget child;
+
+  const _TrainingDocBackground({
+    required this.docId,
+    required this.accent,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = _kDocBackdrops[docId];
+    if (photo == null) {
+      return BarrioPremiumBackground(accentColor: accent, child: child);
+    }
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final cacheWidth = (width * dpr).round();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(
+          child: Image.asset(
+            photo,
+            fit: BoxFit.cover,
+            cacheWidth: cacheWidth > 0 ? cacheWidth : null,
+            errorBuilder: (_, __, ___) => const ColoredBox(
+              color: BarrioColors.shellDeep,
+            ),
+          ),
+        ),
+        // Dark scrim for text legibility: heavy at top (AppBar/hero) and
+        // bottom, lighter in the center (curated-screen stops).
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0.0, 0.15, 0.35, 0.65, 0.85, 1.0],
+                  colors: [
+                    BarrioColors.shellDeep.withValues(alpha: 0.95),
+                    BarrioColors.shellDeep.withValues(alpha: 0.88),
+                    BarrioColors.shellDeep.withValues(alpha: 0.78),
+                    BarrioColors.shellDeep.withValues(alpha: 0.82),
+                    BarrioColors.shellDeep.withValues(alpha: 0.90),
+                    BarrioColors.shellDeep.withValues(alpha: 0.96),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        BarrioPremiumBackground(accentColor: accent, child: child),
+      ],
     );
   }
 }
