@@ -41,6 +41,11 @@ class BarrioRouteMap {
     'training_latin_ingredients': '/barrio/training/latin-ingredients',
     'training_labour_cost': '/barrio/training/labour-cost',
     'training_menu_concept': '/barrio/training/menu-concept',
+    'training_bold_by_design': '/barrio/training/bold-by-design',
+    'training_food_safety': '/barrio/training/food-safety',
+    'training_cheers_responsibility': '/barrio/training/responsible-service',
+    'training_mastering_metrics': '/barrio/training/mastering-metrics',
+    'training_general_words': '/barrio/training/general-words',
   };
 
   /// Returns the route path for a [BarrioDestination] by its id.

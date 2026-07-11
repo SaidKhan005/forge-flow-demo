@@ -33,6 +33,27 @@ enum BarrioProminence {
   tertiary,
 }
 
+/// Thematic grouping for Barrio destinations.
+///
+/// Used to organize the training corpus by subject area. Informational
+/// structure only; visibility is still driven by audiences/prominence.
+enum BarrioCategory {
+  /// The Forge & Flow product itself (dashboard entry point).
+  product,
+
+  /// Service standards and hospitality training.
+  serviceHospitality,
+
+  /// Food, drink, and menu knowledge.
+  foodAndDrink,
+
+  /// Labor metrics, cost, and productivity training.
+  numbersAndLabor,
+
+  /// Company policy, compliance, and internal reference material.
+  companyAndCompliance,
+}
+
 /// A single destination inside the Barrio internal shell.
 class BarrioDestination {
   /// Stable identifier used for route matching and metadata lookups.
@@ -47,6 +68,9 @@ class BarrioDestination {
   /// Future audience tiers for this destination.
   /// Displayed as preview labels only -- no enforcement in 7.52.
   final Set<BarrioAudience> audiences;
+
+  /// Thematic grouping for the destination (see [BarrioCategory]).
+  final BarrioCategory category;
 
   /// If true, the destination is not yet available and renders
   /// as "Coming Soon" in the shell UI.
@@ -66,6 +90,7 @@ class BarrioDestination {
     required this.label,
     required this.description,
     required this.audiences,
+    required this.category,
     this.comingSoon = false,
     this.prominence = BarrioProminence.secondary,
     this.showOnHomeHub = true,
@@ -101,6 +126,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.product,
     prominence: BarrioProminence.primary,
     showOnHomeHub: true,
     iconCodePoint: 0xe6e1, // Icons.show_chart
@@ -115,6 +141,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.companyAndCompliance,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
     iconCodePoint: 0xe865, // Icons.menu_book
@@ -127,6 +154,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.companyAndCompliance,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
     iconCodePoint: 0xef65, // Icons.people_outline
@@ -139,6 +167,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.numbersAndLabor,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
     iconCodePoint: 0xe263, // Icons.insights
@@ -151,6 +180,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.numbersAndLabor,
     comingSoon: true,
     prominence: BarrioProminence.tertiary,
     showOnHomeHub: true,
@@ -165,6 +195,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.companyAndCompliance,
     prominence: BarrioProminence.tertiary,
     showOnHomeHub: false,
     iconCodePoint: 0xef52, // Icons.supervisor_account
@@ -184,6 +215,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.serviceHospitality,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -198,6 +230,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.serviceHospitality,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -212,6 +245,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.serviceHospitality,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -226,6 +260,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.serviceHospitality,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -239,6 +274,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.foodAndDrink,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -253,6 +289,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.foodAndDrink,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -266,6 +303,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.foodAndDrink,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -279,6 +317,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.foodAndDrink,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -291,6 +330,7 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.numbersAndLabor,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
@@ -303,6 +343,84 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.foodAndDrink,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+
+  // -- Corpus-complete training bubbles (2026-07-11 slice) ------------------
+  // The remaining 5 knowledge-graph documents, rendered word-for-word by
+  // TrainingDocScreen like the training-drop bubbles above.
+  BarrioDestination(
+    id: 'training_bold_by_design',
+    label: 'Bold By Design',
+    description:
+        'BOLD By Design: Jim Taylor\'s Benchmark Sixty labor engineering book.',
+    audiences: {
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.numbersAndLabor,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_food_safety',
+    label: 'Food Safety',
+    description:
+        'Food Safety Manual: hygiene, hazards, allergies, and temperatures.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.companyAndCompliance,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_cheers_responsibility',
+    label: 'Responsible Service',
+    description:
+        'Cheers to Responsibility: responsible alcohol service in NL.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.companyAndCompliance,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_mastering_metrics',
+    label: 'Mastering Metrics',
+    description:
+        'Mastering The Metrics: average guest check and covers explained.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.numbersAndLabor,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
+  BarrioDestination(
+    id: 'training_general_words',
+    label: 'Words To Know',
+    description:
+        'General Words To Know: the 92-term restaurant vocabulary glossary.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.companyAndCompliance,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),

@@ -29,12 +29,14 @@ void main() {
       BarrioAudience.manager,
       BarrioAudience.admin,
     },
+    category: BarrioCategory.product,
   );
   final allStaffDest = BarrioDestination(
     id: 'company_handbook',
     label: 'Handbook',
     description: 'd',
     audiences: const <BarrioAudience>{BarrioAudience.allStaff},
+    category: BarrioCategory.companyAndCompliance,
   );
 
   group('AlwaysVisibleBarrioDestinationResolver', () {

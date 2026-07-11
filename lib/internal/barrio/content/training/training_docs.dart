@@ -10,10 +10,15 @@ import 'barrio_training_doc.dart';
 import 'company_handbook_verbatim_content.dart';
 import 'interview_playbook_verbatim_content.dart';
 import 'jim_taylor_verbatim_content.dart';
+import 'training_bold_by_design_content.dart';
+import 'training_cheers_responsibility_content.dart';
 import 'training_coffee_content.dart';
+import 'training_food_safety_content.dart';
+import 'training_general_words_content.dart';
 import 'training_labour_cost_content.dart';
 import 'training_latin_dishes_content.dart';
 import 'training_latin_ingredients_content.dart';
+import 'training_mastering_metrics_content.dart';
 import 'training_menu_concept_content.dart';
 import 'training_strong_foundation_content.dart';
 import 'training_suggestive_selling_content.dart';
@@ -41,6 +46,12 @@ const Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
   'training_latin_ingredients': kTrainingLatinIngredients,
   'training_labour_cost': kTrainingLabourCost,
   'training_menu_concept': kTrainingMenuConcept,
+  // Corpus-complete slice (2026-07-11): the remaining 5 knowledge-graph docs.
+  'training_bold_by_design': kTrainingBoldByDesign,
+  'training_food_safety': kTrainingFoodSafety,
+  'training_cheers_responsibility': kTrainingCheersResponsibility,
+  'training_mastering_metrics': kTrainingMasteringMetrics,
+  'training_general_words': kTrainingGeneralWords,
 };
 
 /// Per-destination accent bloom color (same convention as the
@@ -59,4 +70,10 @@ const Map<String, Color> kBarrioTrainingAccents = {
   'training_latin_ingredients': BarrioColors.accentHerb,
   'training_labour_cost': BarrioColors.accentJimTaylor, // royal blue
   'training_menu_concept': BarrioColors.tealWarm,
+  // Corpus-complete slice (2026-07-11): the remaining 5 knowledge-graph docs.
+  'training_bold_by_design': BarrioColors.accentSteel, // steel blue
+  'training_food_safety': BarrioColors.accentFresh, // fresh green
+  'training_cheers_responsibility': BarrioColors.gold,
+  'training_mastering_metrics': BarrioColors.accentJimTaylor, // royal blue
+  'training_general_words': BarrioColors.tealWarm,
 };

@@ -60,6 +60,12 @@ const _destinationAccents = {
   'training_latin_ingredients': Color(0xFF7FA84C), // herb green
   'training_labour_cost': Color(0xFF3A6ED0), // royal blue
   'training_menu_concept': Color(0xFF40CFCF), // warm teal
+  // Corpus-complete training bubbles (2026-07-11 slice)
+  'training_bold_by_design': Color(0xFF5A7BD8), // steel blue
+  'training_food_safety': Color(0xFF52B788), // fresh green
+  'training_cheers_responsibility': Color(0xFFDFAA40), // gold
+  'training_mastering_metrics': Color(0xFF3A6ED0), // royal blue
+  'training_general_words': Color(0xFF40CFCF), // warm teal
 };
 
 Color _accentFor(String id) => _destinationAccents[id] ?? BarrioColors.tealWarm;
@@ -208,6 +214,17 @@ Widget _iconWidgetFor(
       return Icon(Icons.insights_rounded, size: size, color: color);
     case 'training_menu_concept':
       return Icon(Icons.restaurant_menu_rounded, size: size, color: color);
+    // Corpus-complete training bubbles (2026-07-11 slice)
+    case 'training_bold_by_design':
+      return Icon(Icons.auto_stories_rounded, size: size, color: color);
+    case 'training_food_safety':
+      return Icon(Icons.health_and_safety_rounded, size: size, color: color);
+    case 'training_cheers_responsibility':
+      return Icon(Icons.wine_bar_rounded, size: size, color: color);
+    case 'training_mastering_metrics':
+      return Icon(Icons.query_stats_rounded, size: size, color: color);
+    case 'training_general_words':
+      return Icon(Icons.translate_rounded, size: size, color: color);
     default:
       return Icon(Icons.circle_outlined, size: size, color: color);
   }
@@ -984,12 +1001,21 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
                             ),
                             if (dest.comingSoon) ...[
                               SizedBox(height: diameter * 0.03),
-                              Text(
-                                'Coming Soon',
-                                style: GoogleFonts.ibmPlexMono(
-                                  fontSize: max(diameter * 0.080, 11),
-                                  color: BarrioColors.gold,
-                                  letterSpacing: 0.5,
+                              // Corpus-complete slice (2026-07-11): at dense
+                              // catalog diameters this tag used to wrap to two
+                              // lines and overflow the bubble by ~4px. Scale
+                              // down instead of wrapping; single line always
+                              // fits any diameter >= the 60px clamp floor.
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'Coming Soon',
+                                  maxLines: 1,
+                                  style: GoogleFonts.ibmPlexMono(
+                                    fontSize: max(diameter * 0.080, 11),
+                                    color: BarrioColors.gold,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
                               ),
                             ],
