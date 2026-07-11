@@ -4,9 +4,6 @@ import 'barrio_preview_role.dart';
 import '../content/training/training_docs.dart';
 import '../screens/barrio_home_screen.dart';
 import '../screens/forge_and_flow_destination_screen.dart';
-import '../screens/company_handbook_screen.dart';
-import '../screens/interview_playbook_screen.dart';
-import '../screens/jim_taylor_model_screen.dart';
 import '../screens/preston_lee_model_coming_soon_screen.dart';
 import '../screens/supervisor_content_screen_placeholder.dart';
 import '../screens/training_doc_screen.dart';
@@ -62,12 +59,10 @@ class BarrioRouteMap {
     switch (destinationId) {
       case 'forge_and_flow':
         return ForgeAndFlowDestinationScreen(previewRole: previewRole);
-      case 'company_handbook':
-        return CompanyHandbookScreen(previewRole: previewRole);
-      case 'interview_playbook':
-        return InterviewPlaybookScreen(previewRole: previewRole);
-      case 'jim_taylor_labor_model':
-        return JimTaylorModelScreen(previewRole: previewRole);
+      // 2026-07-11 word-for-word directive: company_handbook,
+      // interview_playbook, and jim_taylor_labor_model now resolve through
+      // the verbatim training registry in the default branch below. Their
+      // curated screens remain on disk; reversal = restoring their cases.
       case 'preston_lee_model':
         return PrestonLeeModelComingSoonScreen(previewRole: previewRole);
       case 'supervisor_content':
