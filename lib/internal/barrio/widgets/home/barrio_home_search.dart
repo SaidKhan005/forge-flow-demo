@@ -104,33 +104,35 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
   @override
   Widget build(BuildContext context) {
     final focused = _focusNode.hasFocus;
-    final accent = focused ? BarrioColors.tealWarm : BarrioColors.textMuted;
+    // Visually prominent at rest (operator request 2026-07-11): dark
+    // card base, teal border and glow always on, brighter when focused.
+    final accent =
+        BarrioColors.tealWarm.withValues(alpha: focused ? 1.0 : 0.75);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          color: const Color(0x14FFFFFF),
+          color: BarrioColors.shellMid.withValues(alpha: 0.80),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: focused
-                ? BarrioColors.tealWarm.withValues(alpha: 0.55)
-                : const Color(0x2EFFFFFF),
+            color: BarrioColors.tealWarm
+                .withValues(alpha: focused ? 0.65 : 0.35),
+            width: 1.2,
           ),
-          boxShadow: focused
-              ? [
-                  BoxShadow(
-                    color: BarrioColors.tealWarm.withValues(alpha: 0.18),
-                    blurRadius: 14,
-                  ),
-                ]
-              : null,
+          boxShadow: [
+            BoxShadow(
+              color: BarrioColors.tealWarm
+                  .withValues(alpha: focused ? 0.22 : 0.10),
+              blurRadius: focused ? 16 : 12,
+            ),
+          ],
         ),
         child: Row(
           children: [
             const SizedBox(width: 14),
-            Icon(Icons.search_rounded, size: 20, color: accent),
+            Icon(Icons.search_rounded, size: 21, color: accent),
             const SizedBox(width: 10),
             Expanded(child: _buildTextField()),
             if (_controller.text.isNotEmpty)
@@ -168,11 +170,11 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
       decoration: InputDecoration(
         isDense: true,
         border: InputBorder.none,
-        contentPadding: const EdgeInsets.symmetric(vertical: 13),
+        contentPadding: const EdgeInsets.symmetric(vertical: 15),
         hintText: 'Search the training library',
         hintStyle: GoogleFonts.ibmPlexSans(
           fontSize: 14.5,
-          color: BarrioColors.textMuted.withValues(alpha: 0.8),
+          color: BarrioColors.textSecondary.withValues(alpha: 0.9),
         ),
       ),
     );
