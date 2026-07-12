@@ -111,7 +111,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '\n'
               'Gallo Pinto ( Red pepper, Onion, Black Bean)\n'
               '\n'
-              'Salad - Grilled Pineapple, Grilled Jalapeño , Cactus , Vegan '
+              'Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan '
               'Green Goddess',
         ),
       ],

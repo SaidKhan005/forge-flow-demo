@@ -279,10 +279,15 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Questions',
-          body: '1. What do you look for in a good employer? 2. What kind of '
-              'environment brings out your best work? 3. Do you have any '
-              'questions about the position or the company? 4. What is your '
-              'availability? How many shifts are you looking for?',
+          body: '1. What do you look for in a good employer?\n'
+              '\n'
+              '2. What kind of environment brings out your best work?\n'
+              '\n'
+              '3. Do you have any questions about the position or the '
+              'company?\n'
+              '\n'
+              '4. What is your availability? How many shifts are you looking '
+              'for?',
         ),
         HandbookUnit(
           id: 'interview_playbook_c5_u2',
@@ -362,16 +367,22 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Questions',
-          body: '1. What is your interest in coming to work with us? 2. What is '
-              'your favourite quality about yourself? 3. Which of our core '
-              'values resonates the most with you? Why? 4. Walk me through '
-              'the last time you completely screwed something up. What '
-              'happened and what did you do about it? Follow up: what would '
-              'you do differently now? 5. If you could only be known for one '
-              'thing by your co-workers, what would it be? Follow up: why is '
-              'that important to you? Give an example of when you '
-              'demonstrated that. 6. What is the hardest piece of feedback '
-              'you have ever received? How did you overcome it?',
+          body: '1. What is your interest in coming to work with us?\n'
+              '\n'
+              '2. What is your favourite quality about yourself?\n'
+              '\n'
+              '3. Which of our core values resonates the most with you? Why?\n'
+              '\n'
+              '4. Walk me through the last time you completely screwed '
+              'something up. What happened and what did you do about it? '
+              'Follow up: what would you do differently now?\n'
+              '\n'
+              '5. If you could only be known for one thing by your '
+              'co-workers, what would it be? Follow up: why is that important '
+              'to you? Give an example of when you demonstrated that.\n'
+              '\n'
+              '6. What is the hardest piece of feedback you have ever '
+              'received? How did you overcome it?',
         ),
       ],
     ),
@@ -400,14 +411,21 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Questions',
           body: '1. What is something that you are proud of that won\'t show up '
-              'on a resume? 2. Who is someone that you admire? Why? 3. Can '
-              'you tell me about a time where your communication skills '
-              'solved a conflict? 4. How would you handle a situation where a '
-              'guest demands to be seated right away even though there is a '
-              'one hour wait? 5. A table arrives 30 minutes late for their '
-              'reservation, but you have already given the table away. What '
-              'do you do? 6. A guest calls you over to complain about their '
-              'experience. What do you do?',
+              'on a resume?\n'
+              '\n'
+              '2. Who is someone that you admire? Why?\n'
+              '\n'
+              '3. Can you tell me about a time where your communication '
+              'skills solved a conflict?\n'
+              '\n'
+              '4. How would you handle a situation where a guest demands to '
+              'be seated right away even though there is a one hour wait?\n'
+              '\n'
+              '5. A table arrives 30 minutes late for their reservation, but '
+              'you have already given the table away. What do you do?\n'
+              '\n'
+              '6. A guest calls you over to complain about their experience. '
+              'What do you do?',
         ),
         HandbookUnit(
           id: 'interview_playbook_c7_u2',
@@ -443,13 +461,22 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Questions',
           body: '1. What is something that you are proud of that won\'t show up '
-              'on a resume? 2. Who is someone that you admire? Why? 3. Tell '
-              'me about a time when you had to follow strict guidelines or '
-              'procedures. How did you ensure you were following them '
-              'correctly? 4. How do you decide what to prioritize when you '
-              'have multiple tasks? 5. Tell me about a time when you kept '
-              'going even though you were overwhelmed. 6. A guest calls you '
-              'over to complain about their experience. What do you do?',
+              'on a resume?\n'
+              '\n'
+              '2. Who is someone that you admire? Why?\n'
+              '\n'
+              '3. Tell me about a time when you had to follow strict '
+              'guidelines or procedures. How did you ensure you were '
+              'following them correctly?\n'
+              '\n'
+              '4. How do you decide what to prioritize when you have multiple '
+              'tasks?\n'
+              '\n'
+              '5. Tell me about a time when you kept going even though you '
+              'were overwhelmed.\n'
+              '\n'
+              '6. A guest calls you over to complain about their experience. '
+              'What do you do?',
         ),
         HandbookUnit(
           id: 'interview_playbook_c8_u2',
@@ -487,17 +514,23 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           body: '1. You notice a regular looks upset but they haven\'t '
               'complained. You are slammed. What do you do? Follow up: what '
               'if your manager told you to focus other tables? How do you '
-              'decide what to prioritize? 2. What was the best dining '
-              'experience you ever had? What did they do differently than '
-              'other restaurants? 3. Our busiest, most chaotic shift is '
-              'happening/ Everything is going wrong. What do you need from me '
-              'as your manager in that moment? Follow up: What if I can\'t '
-              'give you that in the moment? What if I wasn\'t there? 4. Food, '
-              'service, and atmosphere are the three pillars of hospitality. '
-              'What do you think is the most important? why? 5. Tell me about '
-              'your previous manager. What made them great and what made them '
-              'difficult? What did you learn from them? 6. What is your '
-              'favourite classic cocktail?',
+              'decide what to prioritize?\n'
+              '\n'
+              '2. What was the best dining experience you ever had? What did '
+              'they do differently than other restaurants?\n'
+              '\n'
+              '3. Our busiest, most chaotic shift is happening/ Everything is '
+              'going wrong. What do you need from me as your manager in that '
+              'moment? Follow up: What if I can\'t give you that in the '
+              'moment? What if I wasn\'t there?\n'
+              '\n'
+              '4. Food, service, and atmosphere are the three pillars of '
+              'hospitality. What do you think is the most important? why?\n'
+              '\n'
+              '5. Tell me about your previous manager. What made them great '
+              'and what made them difficult? What did you learn from them?\n'
+              '\n'
+              '6. What is your favourite classic cocktail?',
         ),
         HandbookUnit(
           id: 'interview_playbook_c9_u2',
@@ -532,19 +565,25 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Questions',
-          body: '1. What is the difference between service and hospitality? 2. '
-              'What is the best dining experience you ever had? What did the '
-              'restaurant do differently than others? 3. Tell me about your '
-              'previous manager. What made them great and what made them '
-              'difficult? What did you learn from them? 4. Our busiest, most '
-              'chaotic shift is happening/ Everything is going wrong. What do '
-              'you need from me as your manager in that moment? Follow up: '
-              'What if I can\'t give you that in the moment? What if I wasn\'t '
-              'there? 5. You have food at the pass, a table that needs to be '
-              'greeted, and a table waiting to pay. What do you do? 6. Tell '
-              'me about a time when you went above and beyond for a guest. '
-              'Follow up: What was their reaction? What was your manager\'s '
-              'reaction?',
+          body: '1. What is the difference between service and hospitality?\n'
+              '\n'
+              '2. What is the best dining experience you ever had? What did '
+              'the restaurant do differently than others?\n'
+              '\n'
+              '3. Tell me about your previous manager. What made them great '
+              'and what made them difficult? What did you learn from them?\n'
+              '\n'
+              '4. Our busiest, most chaotic shift is happening/ Everything is '
+              'going wrong. What do you need from me as your manager in that '
+              'moment? Follow up: What if I can\'t give you that in the '
+              'moment? What if I wasn\'t there?\n'
+              '\n'
+              '5. You have food at the pass, a table that needs to be '
+              'greeted, and a table waiting to pay. What do you do?\n'
+              '\n'
+              '6. Tell me about a time when you went above and beyond for a '
+              'guest. Follow up: What was their reaction? What was your '
+              'manager\'s reaction?',
         ),
         HandbookUnit(
           id: 'interview_playbook_c10_u2',
@@ -580,14 +619,22 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Questions',
           body: '1. What is something that you are proud of that won\'t show up '
-              'on a resume? 2. Who is someone that you admire? Why? 3. Tell '
-              'me about a time when you had to follow strict guidelines or '
-              'procedures. How did you ensure you were following them '
-              'correctly? 4. How do you decide what to prioritize when you '
-              'have multiple tasks? 5. How do you stay focused and careful '
-              'while maintaining efficiency? 6. Tell me about a time a '
-              'coworker took their frustrations out on you? How did you '
-              'handle it?',
+              'on a resume?\n'
+              '\n'
+              '2. Who is someone that you admire? Why?\n'
+              '\n'
+              '3. Tell me about a time when you had to follow strict '
+              'guidelines or procedures. How did you ensure you were '
+              'following them correctly?\n'
+              '\n'
+              '4. How do you decide what to prioritize when you have multiple '
+              'tasks?\n'
+              '\n'
+              '5. How do you stay focused and careful while maintaining '
+              'efficiency?\n'
+              '\n'
+              '6. Tell me about a time a coworker took their frustrations out '
+              'on you? How did you handle it?',
         ),
         HandbookUnit(
           id: 'interview_playbook_c11_u2',
@@ -622,18 +669,24 @@ const BarrioTrainingDoc kTrainingInterviewPlaybook = BarrioTrainingDoc(
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Questions',
-          body: '1. What is your favourite station to work? Why 2. What do you '
-              'do when you run out of the ingredients for a dish that has '
-              'already been ordered? 3. How do you maintain a positive '
-              'attitude and motivate yourself when confronting challenging '
-              'situations such as long days, menu changes, or unexpected '
-              'delays? 4. What is your process for an order with an allergy? '
+          body: '1. What is your favourite station to work? Why\n'
+              '\n'
+              '2. What do you do when you run out of the ingredients for a '
+              'dish that has already been ordered?\n'
+              '\n'
+              '3. How do you maintain a positive attitude and motivate '
+              'yourself when confronting challenging situations such as long '
+              'days, menu changes, or unexpected delays?\n'
+              '\n'
+              '4. What is your process for an order with an allergy?\n'
+              '\n'
               '5. Our busiest, most chaotic shift is happening/ Everything is '
               'going wrong. What do you need from me as your manager in that '
               'moment? Follow up: What if I can\'t give you that in the '
-              'moment? What if I wasn\'t there? 6. What chefs do you look to '
-              'for inspiration? Who is the most influential chef you worked '
-              'for?',
+              'moment? What if I wasn\'t there?\n'
+              '\n'
+              '6. What chefs do you look to for inspiration? Who is the most '
+              'influential chef you worked for?',
         ),
         HandbookUnit(
           id: 'interview_playbook_c12_u2',

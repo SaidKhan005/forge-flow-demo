@@ -41,7 +41,10 @@ def norm(text, is_md=False):
     else:
         text = re.sub(r'^\s*- ', ' ', text, flags=re.M)
     words = re.findall(r'[^\s|]+', text)
-    return [w.strip('.,;:!?()"\'').lower() for w in words if w.strip('.,;:!?()"\'-=*_`>')]
+    # Strip a trailing/leading '*' from the compared token too: the md side
+    # removes every '*' above, so a literal lone asterisk the generator now
+    # preserves verbatim (e.g. 'importer*.') must not read as a lost word.
+    return [w.strip('.,;:!?()"\'*').lower() for w in words if w.strip('.,;:!?()"\'-=*_`>')]
 
 def contains_contiguous(haystack, needle):
     """True when needle appears as a contiguous word run inside haystack."""
