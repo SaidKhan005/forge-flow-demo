@@ -113,7 +113,13 @@ def load_md(name):
 
 
 def clean_inline(s):
-    s = s.replace('**', '').replace('*', '').replace('`', '')
+    # Strip paired emphasis markers only. Bold (**...**) markers come in
+    # pairs, so removing every '**' is safe. Italic uses single '*', but a
+    # lone unpaired '*' is a literal glyph the source author typed (a footnote
+    # marker, or 'Cactus *' on the dinner menu) and MUST survive verbatim, so
+    # we strip only *paired* single asterisks and leave any lone '*' in place.
+    s = s.replace('**', '').replace('`', '')
+    s = re.sub(r'\*([^*\n]+)\*', r'\1', s)
     m = re.fullmatch(r'_(.+)_', s.strip())
     if m:
         s = m.group(1)
@@ -157,7 +163,10 @@ def blocks_to_body(lines):
             flush()
             out.append(clean_inline(m4.group(1)).strip())
             continue
-        if re.match(r'^\s*- ', ln):
+        # List item: dash bullets and numbered steps ('1. ', '2. ', ...) each
+        # keep their own line so numbered procedures ('1. Call 911' ...) render
+        # as discrete steps instead of collapsing into one run-on paragraph.
+        if re.match(r'^\s*(?:- |\d+\. )', ln):
             flush()
             out.append(clean_inline(ln.rstrip()))
             continue

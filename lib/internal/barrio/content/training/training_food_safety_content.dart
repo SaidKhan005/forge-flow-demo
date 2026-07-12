@@ -1504,26 +1504,31 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           title: 'Four Steps For Creating An Ice Bath',
           body: '1. Fill your container to the top with ice. Crushed ice is '
               'ideal, because it creates a denser environment and a more '
-              'consistent temperature throughout the bath. 2. Add water to '
-              'the container until the water reaches about 1/2 inch below the '
-              'top of the ice. Let the ice slurry sit for a minute to allow '
-              'the temperature to even out. If the ice rises from the bottom '
-              'of the container, remove some water and add more ice. The '
-              'water beneath the ice will have a temperature above 32 degrees '
-              'F. 3. Place your probe or thermometer tip into the center of '
-              'the ice slurry and mix gently. Stirring helps spread heat '
-              'evenly and prevents your thermometer from touching ice, the '
-              'container walls, or the bottom (which will give you inaccurate '
-              'temperature readings). 4. In an ice bath, your thermometer '
-              'should read 32 degrees F (0 degrees C). If it doesn\'t, follow '
-              'the manufacturer\'s adjustment instructions. However, before '
-              'calibrating a digital, instant-read thermometer, verify that '
-              'the reading falls within the manufacturer\'s accuracy range. If '
-              'it does, adjustment isn\'t needed.',
+              'consistent temperature throughout the bath.\n'
+              '\n'
+              '2. Add water to the container until the water reaches about '
+              '1/2 inch below the top of the ice. Let the ice slurry sit for '
+              'a minute to allow the temperature to even out. If the ice '
+              'rises from the bottom of the container, remove some water and '
+              'add more ice. The water beneath the ice will have a '
+              'temperature above 32 degrees F.\n'
+              '\n'
+              '3. Place your probe or thermometer tip into the center of the '
+              'ice slurry and mix gently. Stirring helps spread heat evenly '
+              'and prevents your thermometer from touching ice, the container '
+              'walls, or the bottom (which will give you inaccurate '
+              'temperature readings).\n'
+              '\n'
+              '4. In an ice bath, your thermometer should read 32 degrees F '
+              '(0 degrees C). If it doesn\'t, follow the manufacturer\'s '
+              'adjustment instructions. However, before calibrating a '
+              'digital, instant-read thermometer, verify that the reading '
+              'falls within the manufacturer\'s accuracy range. If it does, '
+              'adjustment isn\'t needed.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/07.webp',
-              afterParagraph: 0,
+              afterParagraph: 3,
             ),
           ],
         ),
@@ -1542,23 +1547,28 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           title: 'Critical Steps To Creating A Proper Ice Bath',
           body: '1. Fill vessel with ice. Fill the vessel all the way to the '
               'top with ice. Crushed ice is preferred because there are fewer '
-              'gaps between the ice. 2. Add correct amount of water. Fill to '
-              'about 1/2 inch below the top of the ice. Ice should not be '
-              'floating off the bottom. If you see the ice starting to float '
-              'off the bottom of the vessel, pour off some water and add more '
-              'ice. Water below the ice will not be at 32 degrees F (0 '
-              'degrees C). 3. Insert probe, gently stir. Stir the probe in '
-              'the vertical center of the ice. Allow sufficient time for the '
-              'thermometer reading to stabilize. Stirring the probe keeps the '
-              'sensor from resting against an ice cube, which will affect the '
-              'reading. Keep the probe tip away from the side walls and do '
-              'not allow it to rest against the bottom of the vessel. Keep '
-              'stirring the probe. 4. Calibrate. Your thermometer should read '
-              '32 degrees F (0 degrees C) in the ice bath. Adjust your dial '
-              'thermometer as directed by the manufacturer. Before adjusting '
-              'a digital instant-read thermometer, check that the readings '
-              'are within the manufacturer\'s accuracy specifications. If it '
-              'is within the specified tolerance, do not adjust.',
+              'gaps between the ice.\n'
+              '\n'
+              '2. Add correct amount of water. Fill to about 1/2 inch below '
+              'the top of the ice. Ice should not be floating off the bottom. '
+              'If you see the ice starting to float off the bottom of the '
+              'vessel, pour off some water and add more ice. Water below the '
+              'ice will not be at 32 degrees F (0 degrees C).\n'
+              '\n'
+              '3. Insert probe, gently stir. Stir the probe in the vertical '
+              'center of the ice. Allow sufficient time for the thermometer '
+              'reading to stabilize. Stirring the probe keeps the sensor from '
+              'resting against an ice cube, which will affect the reading. '
+              'Keep the probe tip away from the side walls and do not allow '
+              'it to rest against the bottom of the vessel. Keep stirring the '
+              'probe.\n'
+              '\n'
+              '4. Calibrate. Your thermometer should read 32 degrees F (0 '
+              'degrees C) in the ice bath. Adjust your dial thermometer as '
+              'directed by the manufacturer. Before adjusting a digital '
+              'instant-read thermometer, check that the readings are within '
+              'the manufacturer\'s accuracy specifications. If it is within '
+              'the specified tolerance, do not adjust.',
         ),
       ],
     ),
@@ -1826,27 +1836,32 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'Five Step Process For Cleaning And Sanitation',
           body: '1. Scrape food. Manually remove all excess food waste and '
-              'obstacles on the surface. 2. Wash the surface. Wash the '
-              'surface with warm, soapy water at 43 degrees C to remove any '
-              'oil residue. 3. Rinse the surface. Rinse the surface with '
-              'clean water, making sure that there is no soap residue. 4. '
-              'Soak in sanitizer. Soak the surface in your chosen sanitizer '
-              'following the manufacturer\'s instructions. You can wash '
-              'counters with bleach water or use hot water at 82 degrees C '
-              'for sanitation. 5. Air-dry. Allow the sanitized surface to air '
-              'dry.',
+              'obstacles on the surface.\n'
+              '\n'
+              '2. Wash the surface. Wash the surface with warm, soapy water '
+              'at 43 degrees C to remove any oil residue.\n'
+              '\n'
+              '3. Rinse the surface. Rinse the surface with clean water, '
+              'making sure that there is no soap residue.\n'
+              '\n'
+              '4. Soak in sanitizer. Soak the surface in your chosen '
+              'sanitizer following the manufacturer\'s instructions. You can '
+              'wash counters with bleach water or use hot water at 82 degrees '
+              'C for sanitation.\n'
+              '\n'
+              '5. Air-dry. Allow the sanitized surface to air dry.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/09.webp',
-              afterParagraph: 0,
+              afterParagraph: 4,
             ),
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/10.webp',
-              afterParagraph: 0,
+              afterParagraph: 4,
             ),
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/11.webp',
-              afterParagraph: 0,
+              afterParagraph: 4,
             ),
           ],
         ),
@@ -1974,15 +1989,25 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           badgeHint: 'READ',
           title: 'The 7 Principles of HACCP',
           body: '1. Conduct a Hazard Analysis: Identify potential food safety '
-              'hazards. 2. Identify Critical Control Points (CCPs): Determine '
-              'points where hazards can be prevented or reduced. 3. Establish '
-              'Critical Limits: Set thresholds (e.g., time, temperature) that '
-              'must be met to ensure safety. 4. Establish Monitoring '
-              'Procedures: Set up techniques to track CCPs. 5. Establish '
-              'Corrective Actions: Determine actions to take when a deviation '
-              'occurs. 6. Establish Verification Procedures: Validate that '
-              'the system works effectively. 7. Establish Record-Keeping '
-              'Procedures: Maintain documentation for the HACCP plan.',
+              'hazards.\n'
+              '\n'
+              '2. Identify Critical Control Points (CCPs): Determine points '
+              'where hazards can be prevented or reduced.\n'
+              '\n'
+              '3. Establish Critical Limits: Set thresholds (e.g., time, '
+              'temperature) that must be met to ensure safety.\n'
+              '\n'
+              '4. Establish Monitoring Procedures: Set up techniques to track '
+              'CCPs.\n'
+              '\n'
+              '5. Establish Corrective Actions: Determine actions to take '
+              'when a deviation occurs.\n'
+              '\n'
+              '6. Establish Verification Procedures: Validate that the system '
+              'works effectively.\n'
+              '\n'
+              '7. Establish Record-Keeping Procedures: Maintain documentation '
+              'for the HACCP plan.',
         ),
       ],
     ),
