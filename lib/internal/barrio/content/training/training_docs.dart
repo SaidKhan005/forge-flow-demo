@@ -19,7 +19,7 @@ import 'training_labour_cost_content.dart';
 import 'training_latin_dishes_content.dart';
 import 'training_latin_ingredients_content.dart';
 import 'training_mastering_metrics_content.dart';
-import 'training_menu_concept_content.dart';
+import 'training_menu_content.dart';
 import 'training_strong_foundation_content.dart';
 import 'training_suggestive_selling_content.dart';
 import 'training_table_manicuring_content.dart';
@@ -45,7 +45,9 @@ const Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
   'training_latin_dishes': kTrainingLatinDishes,
   'training_latin_ingredients': kTrainingLatinIngredients,
   'training_labour_cost': kTrainingLabourCost,
-  'training_menu_concept': kTrainingMenuConcept,
+  // Operator curation 2026-07-11: MENU (dinner menu + history) replaces
+  // the full deck; kTrainingMenuConcept stays on disk, parked unrouted.
+  'training_menu_concept': kTrainingMenu,
   // Corpus-complete slice (2026-07-11): the remaining 5 knowledge-graph docs.
   'training_bold_by_design': kTrainingBoldByDesign,
   'training_food_safety': kTrainingFoodSafety,

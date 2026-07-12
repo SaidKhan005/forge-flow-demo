@@ -264,6 +264,20 @@ const List<BarrioDestination> barrioDestinations = [
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
+  // Operator curation 2026-07-11: renamed MENU, first in Food & Drink;
+  // renders the dinner menu plus the deck's history and info slides.
+  BarrioDestination(
+    id: 'training_menu_concept',
+    label: 'MENU',
+    description: 'MENU: the dinner menu and the story behind it.',
+    audiences: {
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.foodAndDrink,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+  ),
   BarrioDestination(
     id: 'training_tequila',
     label: 'Tequila',
@@ -331,19 +345,6 @@ const List<BarrioDestination> barrioDestinations = [
       BarrioAudience.admin,
     },
     category: BarrioCategory.numbersAndLabor,
-    prominence: BarrioProminence.secondary,
-    showOnHomeHub: true,
-  ),
-  BarrioDestination(
-    id: 'training_menu_concept',
-    label: 'Menu Concept',
-    description:
-        'Barrio Legado Menu Concept Slides: working draft, decisions in flux.',
-    audiences: {
-      BarrioAudience.manager,
-      BarrioAudience.admin,
-    },
-    category: BarrioCategory.foodAndDrink,
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),

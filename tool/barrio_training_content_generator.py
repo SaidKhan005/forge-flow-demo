@@ -41,6 +41,13 @@ DOCS = [
          const='kTrainingLabourCost', title='Understanding Labour Cost & Operational Balance', kind='prose'),
     dict(md='Barrio_Legado_Menu_Concept_Slides_4.md', id='training_menu_concept',
          const='kTrainingMenuConcept', title='Barrio Legado Menu Concept Slides', kind='slides'),
+    # Operator curation 2026-07-11: the routed MENU doc is the operator's
+    # dinner menu plus the deck's history/info slides (1-18, 25); the
+    # full deck above stays generated but is parked unrouted (slides
+    # 19-24, lunch/bar/desserts, hidden per directive).
+    dict(md='Barrio_Menu.md', id='training_menu_concept',
+         const='kTrainingMenu', title='MENU', kind='prose',
+         out='training_menu_content.dart'),
     # Verbatim rebuilds of the legacy curated bubbles (operator directive
     # 2026-07-11: everything word-for-word). Ids match the existing
     # destinations; out-file names avoid the curated content file names.

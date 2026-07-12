@@ -63,6 +63,7 @@ PAIRS = [
     ('training_latin_ingredients', 'Latin American Ingredients.md'),
     ('training_labour_cost', 'Labour Cost - understanding the levers.md'),
     ('training_menu_concept', 'Barrio_Legado_Menu_Concept_Slides_4.md'),
+    ('training_menu', 'Barrio_Menu.md'),
     ('training_bold_by_design', 'Bold By Design.md'),
     ('training_food_safety', 'food safety manual.md'),
     ('training_cheers_responsibility', 'OE Cheers to Responsibility.md'),

@@ -20,8 +20,10 @@ void main() {
         expect(result.errors, isEmpty);
         // Count guard: bump deliberately when the approved corpus in
         // docs/Knowledge_graph_docs/corpus_manifest.yaml changes.
-        expect(result.manifest.documents, hasLength(18));
-        expect(result.activeMarkdownFiles, hasLength(18));
+        // 19 as of 2026-07-11: barrio_menu added (operator-authored
+        // dinner menu + concept history, curated from the slide deck).
+        expect(result.manifest.documents, hasLength(19));
+        expect(result.activeMarkdownFiles, hasLength(19));
         expect(
           result.activeMarkdownFiles,
           isNot(contains(excludedEmptyApronFileName)),
