@@ -165,10 +165,10 @@ documents:
       - "menu"
       - "dinner"
       - "barrio_legado"
-    word_count_estimate: 1453
-    heading_count: 34
-    line_count: 266
-    sha256: "bd07b9c33b2226b39284bc2abca99a04f13b55a7d7ab2dabc30fe14041847687"
+    word_count_estimate: 1433
+    heading_count: 32
+    line_count: 259
+    sha256: "6e1278f5c6cc98e1445976bd7ad0ab3fd51661025fd76012bd1d1e55ef6db494"
 
   - doc_id: "barrio_table_maintenance_and_manicuring"
     file_name: "Barrio Table Maintenance and Manicuring.md"
@@ -576,10 +576,10 @@ documents:
       - "metrics"
       - "training"
       - "restaurant_operations"
-    word_count_estimate: 1979
+    word_count_estimate: 1853
     heading_count: 9
-    line_count: 91
-    sha256: "c9d6394451fbd7da2e861436447a8bf44b0cfdc5b72ca23d1087dd3cc8ba315d"
+    line_count: 88
+    sha256: "a50fc0baac43e39d59fc4462c34153b4934dda488ebd70bf2a64d3b4ddf4e2a7"
 
   - doc_id: "tequila_training"
     file_name: "Tequila Training.md"

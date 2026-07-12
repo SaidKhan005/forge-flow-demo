@@ -118,31 +118,12 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
     ),
     HandbookChapter(
       id: 'training_menu_concept_c1',
-      title: 'The Concept',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
-        HandbookUnit(
-          id: 'training_menu_concept_c1_u0',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'Slide 1',
-          body: '- BARRIO LEGADO\n'
-              '\n'
-              '- Menu Concept\n'
-              '\n'
-              '- 95 Water Street · St. John\'s, Newfoundland',
-        ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_menu_concept_c2',
       title: 'The Civilizations',
       subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_menu_concept_c2_u0',
+          id: 'training_menu_concept_c1_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 2',
@@ -157,7 +138,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c2_u1',
+          id: 'training_menu_concept_c1_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 3',
@@ -174,13 +155,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
       ],
     ),
     HandbookChapter(
-      id: 'training_menu_concept_c3',
+      id: 'training_menu_concept_c2',
       title: 'Ceviches: The Story',
       subtitle: '4 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_menu_concept_c3_u0',
+          id: 'training_menu_concept_c2_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 4',
@@ -202,7 +183,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c3_u1',
+          id: 'training_menu_concept_c2_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 5',
@@ -229,7 +210,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c3_u2',
+          id: 'training_menu_concept_c2_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 6',
@@ -248,7 +229,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c3_u3',
+          id: 'training_menu_concept_c2_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 7',
@@ -271,13 +252,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
       ],
     ),
     HandbookChapter(
-      id: 'training_menu_concept_c4',
+      id: 'training_menu_concept_c3',
       title: 'Shareables: The Story',
       subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_menu_concept_c4_u0',
+          id: 'training_menu_concept_c3_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 8',
@@ -304,7 +285,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '- Oyster Flight 9 piece - 3 of each flavor',
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c4_u1',
+          id: 'training_menu_concept_c3_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 9',
@@ -331,7 +312,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c4_u2',
+          id: 'training_menu_concept_c3_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 10',
@@ -360,13 +341,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
       ],
     ),
     HandbookChapter(
-      id: 'training_menu_concept_c5',
+      id: 'training_menu_concept_c4',
       title: 'Mains: The Story',
       subtitle: '7 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_menu_concept_c5_u0',
+          id: 'training_menu_concept_c4_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 11',
@@ -383,7 +364,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '- Saltado = Stir-fried',
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c5_u1',
+          id: 'training_menu_concept_c4_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 12',
@@ -414,7 +395,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'multicultural culinary heritage.',
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c5_u2',
+          id: 'training_menu_concept_c4_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 13',
@@ -444,7 +425,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c5_u3',
+          id: 'training_menu_concept_c4_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 14',
@@ -464,7 +445,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               '- Crema -> Mexican table cream. Lighter than sour cream',
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c5_u4',
+          id: 'training_menu_concept_c4_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 15',
@@ -484,7 +465,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
               'own holiday every 3rd Sunday of July',
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c5_u5',
+          id: 'training_menu_concept_c4_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 16',
@@ -513,7 +494,7 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'training_menu_concept_c5_u6',
+          id: 'training_menu_concept_c4_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 17',
@@ -537,13 +518,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
       ],
     ),
     HandbookChapter(
-      id: 'training_menu_concept_c6',
+      id: 'training_menu_concept_c5',
       title: 'Sides: The Story',
       subtitle: '1 card',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_menu_concept_c6_u0',
+          id: 'training_menu_concept_c5_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 18',
@@ -567,13 +548,13 @@ const BarrioTrainingDoc kTrainingMenu = BarrioTrainingDoc(
       ],
     ),
     HandbookChapter(
-      id: 'training_menu_concept_c7',
+      id: 'training_menu_concept_c6',
       title: 'Legacy',
       subtitle: '1 card',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_menu_concept_c7_u0',
+          id: 'training_menu_concept_c6_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Slide 25',
