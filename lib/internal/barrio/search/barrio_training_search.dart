@@ -82,6 +82,10 @@ class BarrioTrainingSearchResult {
 
   final String unitTitle;
 
+  /// Position of the matched unit within its chapter, so the UI can
+  /// deep-link the exact card, not just the section.
+  final int unitIndex;
+
   final BarrioSearchSnippet snippet;
 
   /// Total occurrences of all query words in this unit's searchable
@@ -93,6 +97,7 @@ class BarrioTrainingSearchResult {
     required this.docTitle,
     required this.chapter,
     required this.unitTitle,
+    required this.unitIndex,
     required this.snippet,
     required this.hitCount,
   });
@@ -108,6 +113,7 @@ class _IndexedUnit {
   final String destinationId;
   final BarrioTrainingDoc doc;
   final int chapterIndex;
+  final int unitIndex;
   final HandbookUnit unit;
 
   /// Folded doc title + chapter title + unit title, newline-joined.
@@ -119,6 +125,7 @@ class _IndexedUnit {
     required this.destinationId,
     required this.doc,
     required this.chapterIndex,
+    required this.unitIndex,
     required this.unit,
     required this.foldedScope,
     required this.foldedBody,
@@ -272,6 +279,7 @@ class BarrioTrainingSearch {
         entry.doc.chapters[entry.chapterIndex].title,
       ),
       unitTitle: entry.unit.title,
+      unitIndex: entry.unitIndex,
       snippet: _buildSnippet(entry, words),
       hitCount: hitCount,
     );
@@ -409,12 +417,14 @@ class BarrioTrainingSearch {
     kBarrioTrainingDocs.forEach((destinationId, doc) {
       for (var c = 0; c < doc.chapters.length; c++) {
         final chapter = doc.chapters[c];
-        for (final unit in chapter.units) {
+        for (var u = 0; u < chapter.units.length; u++) {
+          final unit = chapter.units[u];
           built.add(
             _IndexedUnit(
               destinationId: destinationId,
               doc: doc,
               chapterIndex: c,
+              unitIndex: u,
               unit: unit,
               foldedScope:
                   fold('${doc.title}\n${chapter.title}\n${unit.title}'),

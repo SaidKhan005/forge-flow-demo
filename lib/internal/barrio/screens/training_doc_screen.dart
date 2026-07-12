@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
+import '../search/barrio_training_search.dart';
 import '../routes/barrio_preview_role.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/handbook_chapter_rail.dart';
@@ -26,12 +27,22 @@ class TrainingDocScreen extends StatefulWidget {
   /// call site's behavior identical.
   final int initialChapterIndex;
 
+  /// Card to open first within [initialChapterIndex] (search deep link,
+  /// 2026-07-11 operator request). Clamped to the section's card range.
+  final int initialUnitInChapter;
+
+  /// The search query whose words get highlighted inside card bodies
+  /// (case- and diacritic-insensitive). Null = no highlighting.
+  final String? highlightQuery;
+
   const TrainingDocScreen({
     super.key,
     required this.doc,
     this.accent = BarrioColors.tealWarm,
     this.previewRole = BarrioPreviewRole.admin,
     this.initialChapterIndex = 0,
+    this.initialUnitInChapter = 0,
+    this.highlightQuery,
   });
 
   @override
@@ -49,8 +60,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   // follow the visible card's section. A rail tap jumps by re-mounting
   // the carousel at the target section's first card (bumping _epoch),
   // which is why swipe-driven section changes must NOT touch _epoch.
+  static final RegExp _whitespace = RegExp(r'\s+');
+
   late final List<HandbookUnit> _flatUnits;
   late final List<int> _chapterStarts;
+  late final List<String> _highlightTerms;
   int _epoch = 0;
   int _initialPage = 0;
 
@@ -76,8 +90,19 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       _activeChapter =
           widget.initialChapterIndex.clamp(0, chapters.length - 1);
       _viewedChapterIds.add(chapters[_activeChapter].id);
-      _initialPage = _chapterStarts[_activeChapter];
+      final unitCount = chapters[_activeChapter].units.length;
+      final unitInChapter = unitCount == 0
+          ? 0
+          : widget.initialUnitInChapter.clamp(0, unitCount - 1);
+      _initialPage = _chapterStarts[_activeChapter] + unitInChapter;
     }
+    final query = widget.highlightQuery?.trim();
+    _highlightTerms = query == null || query.isEmpty
+        ? const []
+        : BarrioTrainingSearch.fold(query)
+            .split(_whitespace)
+            .where((w) => w.isNotEmpty)
+            .toList();
   }
 
   /// Section that owns the card at flat-deck [page].
@@ -169,6 +194,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                       key: ValueKey(_flatUnits[index].id),
                       unit: _flatUnits[index],
                       isCarouselMode: true,
+                      highlightTerms: _highlightTerms,
                     );
                   },
                 ),
