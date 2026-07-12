@@ -480,57 +480,234 @@ class _OptionTile extends StatelessWidget {
   }
 }
 
-/// Full unit body. Units without images render the exact single-Text path
-/// the card always used (zero visual diff). Units with images split the
-/// body on blank-line paragraphs and insert each image after its
-/// [HandbookUnitImage.afterParagraph] index (-1 = before the first
-/// paragraph); paragraph runs between images stay joined so their text
-/// renders identically to the no-image path.
+/// One parsed body block. The generator joins body paragraphs with a
+/// blank line; a paragraph beginning '- ' is a bullet, one beginning
+/// 'N. ' is a numbered step, and one containing ' | ' is a table row.
+/// Everything else is prose. Consecutive same-kind paragraphs group into
+/// one list/table block so they render with real structure and tight,
+/// even spacing instead of one flat run of text.
+enum _BlockKind { prose, bullet, numbered, table }
+
+final _numberedItem = RegExp(r'^(\d+)\.\s+(.*)$', dotAll: true);
+
+_BlockKind _classifyPara(String para) {
+  final t = para.trimLeft();
+  if (t.startsWith('- ')) return _BlockKind.bullet;
+  if (_numberedItem.hasMatch(t)) return _BlockKind.numbered;
+  if (para.contains(' | ')) return _BlockKind.table;
+  return _BlockKind.prose;
+}
+
+class _BodyBlock {
+  final _BlockKind kind;
+  final List<String> items; // prose: one entry; list/table: one per line
+  const _BodyBlock(this.kind, this.items);
+}
+
+/// Groups a paragraph slice into ordered blocks, merging runs of
+/// same-kind list/table paragraphs.
+List<_BodyBlock> _parseBlocks(List<String> paras) {
+  final blocks = <_BodyBlock>[];
+  var i = 0;
+  while (i < paras.length) {
+    final kind = _classifyPara(paras[i]);
+    if (kind == _BlockKind.prose) {
+      blocks.add(_BodyBlock(kind, [paras[i]]));
+      i++;
+      continue;
+    }
+    final items = <String>[];
+    while (i < paras.length && _classifyPara(paras[i]) == kind) {
+      items.add(paras[i]);
+      i++;
+    }
+    blocks.add(_BodyBlock(kind, items));
+  }
+  return blocks;
+}
+
+/// Full unit body, rendered as typed blocks (prose, bullet list,
+/// numbered list, table) with consistent spacing so every slide reads
+/// the same way. Words are the verbatim body string, unchanged; only the
+/// layout is structured. Units with images keep the same interleaving:
+/// each image is inserted after its [HandbookUnitImage.afterParagraph]
+/// blank-line-paragraph index (-1 = before the first paragraph).
 class _UnitBody extends StatelessWidget {
   final HandbookUnit unit;
   final List<String> highlightTerms;
   const _UnitBody({required this.unit, this.highlightTerms = const []});
 
+  static const double _blockGap = 12;
+  static const double _itemGap = 7;
+
+  TextStyle get _style => GoogleFonts.ibmPlexSans(
+        fontSize: 13.5,
+        height: 1.62,
+        color: BarrioColors.textSecondary,
+      );
+
   @override
   Widget build(BuildContext context) {
-    final style = GoogleFonts.ibmPlexSans(
-      fontSize: 13,
-      height: 1.8,
-      color: BarrioColors.textSecondary,
-    );
-    if (unit.images.isEmpty) {
-      return _bodyText(unit.body, style);
-    }
-
     final paragraphs = unit.body.split('\n\n');
+    if (unit.images.isEmpty) {
+      return _renderRun(paragraphs);
+    }
     final byBoundary = <int, List<HandbookUnitImage>>{};
     for (final image in unit.images) {
       final boundary = image.afterParagraph.clamp(-1, paragraphs.length - 1);
       byBoundary.putIfAbsent(boundary, () => []).add(image);
     }
-
     final children = <Widget>[];
-    for (final image in byBoundary[-1] ?? const <HandbookUnitImage>[]) {
-      children.add(_UnitImage(image: image));
-    }
+    _addImages(children, byBoundary[-1]);
     var runStart = 0;
     for (var p = 0; p < paragraphs.length; p++) {
       final imagesAfter = byBoundary[p];
       if (imagesAfter == null) continue;
-      children.add(
-        _bodyText(paragraphs.sublist(runStart, p + 1).join('\n\n'), style),
-      );
-      children.addAll(imagesAfter.map((image) => _UnitImage(image: image)));
+      children.add(_renderRun(paragraphs.sublist(runStart, p + 1)));
+      _addImages(children, imagesAfter);
       runStart = p + 1;
     }
     if (runStart < paragraphs.length) {
-      children.add(
-        _bodyText(paragraphs.sublist(runStart).join('\n\n'), style),
-      );
+      children.add(_renderRun(paragraphs.sublist(runStart)));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: children,
+    );
+  }
+
+  void _addImages(List<Widget> out, List<HandbookUnitImage>? images) {
+    if (images == null) return;
+    for (final image in images) {
+      out.add(_UnitImage(image: image));
+    }
+  }
+
+  /// Renders a contiguous paragraph slice. A lone prose paragraph renders
+  /// as a single Text; anything else stacks typed blocks with even gaps.
+  Widget _renderRun(List<String> paras) {
+    final blocks = _parseBlocks(paras);
+    if (blocks.length == 1 && blocks.first.kind == _BlockKind.prose) {
+      return _bodyText(blocks.first.items.first, _style);
+    }
+    final children = <Widget>[];
+    for (var b = 0; b < blocks.length; b++) {
+      if (b > 0) children.add(const SizedBox(height: _blockGap));
+      children.add(_renderBlock(blocks[b]));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _renderBlock(_BodyBlock block) {
+    switch (block.kind) {
+      case _BlockKind.prose:
+        return _bodyText(block.items.first, _style);
+      case _BlockKind.bullet:
+        return _spacedColumn([
+          for (final item in block.items)
+            _bulletRow(item.trimLeft().substring(2)),
+        ]);
+      case _BlockKind.numbered:
+        return _spacedColumn([
+          for (final item in block.items) _numberedRow(item.trimLeft()),
+        ]);
+      case _BlockKind.table:
+        return _table(block.items);
+    }
+  }
+
+  /// A column of list rows separated by [_itemGap].
+  Widget _spacedColumn(List<Widget> rows) {
+    final children = <Widget>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (i > 0) children.add(const SizedBox(height: _itemGap));
+      children.add(rows[i]);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _bulletRow(String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(top: 8, left: 2, right: 10),
+          width: 5,
+          height: 5,
+          decoration: BoxDecoration(
+            color: BarrioColors.tealWarm.withValues(alpha: 0.85),
+            shape: BoxShape.circle,
+          ),
+        ),
+        Expanded(child: _bodyText(text, _style)),
+      ],
+    );
+  }
+
+  Widget _numberedRow(String text) {
+    final match = _numberedItem.firstMatch(text);
+    final marker = match != null ? '${match.group(1)}.' : '•';
+    final body = match != null ? match.group(2)! : text;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Text(
+            marker,
+            style: GoogleFonts.ibmPlexMono(
+              fontSize: 13,
+              height: 1.62,
+              fontWeight: FontWeight.w700,
+              color: BarrioColors.tealWarm.withValues(alpha: 0.85),
+            ),
+          ),
+        ),
+        Expanded(child: _bodyText(body, _style)),
+      ],
+    );
+  }
+
+  Widget _table(List<String> rows) {
+    final children = <Widget>[];
+    for (var r = 0; r < rows.length; r++) {
+      children.add(_tableRow(rows[r].split(' | '), r == 0));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _tableRow(List<String> cells, bool header) {
+    final cellStyle = _style.copyWith(
+      fontSize: 12.5,
+      fontWeight: header ? FontWeight.w700 : FontWeight.w400,
+      color: header ? BarrioColors.textPrimary : BarrioColors.textSecondary,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0x14FFFFFF))),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final cell in cells)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(cell.trim(), style: cellStyle),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
