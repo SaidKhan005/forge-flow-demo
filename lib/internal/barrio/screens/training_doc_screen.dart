@@ -43,6 +43,17 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   int _activeChapter = 0;
   final Set<String> _viewedChapterIds = {};
 
+  // Continuous swiping (2026-07-11 operator request): the carousel
+  // holds EVERY unit of EVERY section as one flat deck, so swiping past
+  // a section's last card lands on the next section. The hero and rail
+  // follow the visible card's section. A rail tap jumps by re-mounting
+  // the carousel at the target section's first card (bumping _epoch),
+  // which is why swipe-driven section changes must NOT touch _epoch.
+  late final List<HandbookUnit> _flatUnits;
+  late final List<int> _chapterStarts;
+  int _epoch = 0;
+  int _initialPage = 0;
+
   late final AnimationController _heroController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
@@ -54,11 +65,38 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   void initState() {
     super.initState();
     final chapters = widget.doc.chapters;
+    _flatUnits = [for (final c in chapters) ...c.units];
+    _chapterStarts = [];
+    var start = 0;
+    for (final c in chapters) {
+      _chapterStarts.add(start);
+      start += c.units.length;
+    }
     if (chapters.isNotEmpty) {
       _activeChapter =
           widget.initialChapterIndex.clamp(0, chapters.length - 1);
       _viewedChapterIds.add(chapters[_activeChapter].id);
+      _initialPage = _chapterStarts[_activeChapter];
     }
+  }
+
+  /// Section that owns the card at flat-deck [page].
+  int _chapterOf(int page) {
+    var chapter = 0;
+    for (var i = 0; i < _chapterStarts.length; i++) {
+      if (_chapterStarts[i] > page) break;
+      chapter = i;
+    }
+    return chapter;
+  }
+
+  void _onCardPageChanged(int page) {
+    final chapter = _chapterOf(page);
+    if (chapter == _activeChapter) return;
+    setState(() {
+      _activeChapter = chapter;
+      _viewedChapterIds.add(widget.doc.chapters[chapter].id);
+    });
   }
 
   @override
@@ -107,24 +145,29 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                   setState(() {
                     _activeChapter = i;
                     _viewedChapterIds.add(chapters[i].id);
+                    // Jump the flat deck to the section's first card.
+                    _epoch++;
+                    _initialPage = _chapterStarts[i];
                   });
                 },
               ),
               const SizedBox(height: 12),
               Expanded(
                 child: LearningCarousel(
-                  key: ValueKey(chapter.id),
-                  cardCount: chapter.units.length,
+                  key: ValueKey('${widget.doc.id}-$_epoch'),
+                  cardCount: _flatUnits.length,
+                  initialPage: _initialPage,
+                  onPageChanged: _onCardPageChanged,
                   accent: accent,
-                  // Verbatim docs are explainer-only; every card counts as
-                  // read once the chapter is open.
+                  // Verbatim docs are explainer-only; every card counts
+                  // as read.
                   completedIndices: {
-                    for (var i = 0; i < chapter.units.length; i++) i,
+                    for (var i = 0; i < _flatUnits.length; i++) i,
                   },
                   cardBuilder: (context, index) {
                     return HandbookLessonCard(
-                      key: ValueKey(chapter.units[index].id),
-                      unit: chapter.units[index],
+                      key: ValueKey(_flatUnits[index].id),
+                      unit: _flatUnits[index],
                       isCarouselMode: true,
                     );
                   },

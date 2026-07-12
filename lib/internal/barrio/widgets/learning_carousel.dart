@@ -24,6 +24,11 @@ class LearningCarousel extends StatefulWidget {
   final Set<int> completedIndices;
   final ValueChanged<int>? onPageChanged;
 
+  /// Page the carousel opens on. Only read when the State mounts, so
+  /// callers that need a programmatic jump re-mount with a new [key]
+  /// (the training screen's chapter-rail taps do exactly that).
+  final int initialPage;
+
   const LearningCarousel({
     super.key,
     required this.cardCount,
@@ -31,6 +36,7 @@ class LearningCarousel extends StatefulWidget {
     required this.accent,
     this.completedIndices = const {},
     this.onPageChanged,
+    this.initialPage = 0,
   });
 
   @override
@@ -51,7 +57,11 @@ class LearningCarouselState extends State<LearningCarousel>
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 0.88);
+    _currentPage = widget.initialPage;
+    _pageController = PageController(
+      viewportFraction: 0.88,
+      initialPage: widget.initialPage,
+    );
 
     _entranceCtrl = AnimationController(
       vsync: this,
@@ -229,14 +239,21 @@ class _CarouselPositionIndicator extends StatelessWidget {
                 ),
               ),
             ),
-            // Worm dots
-            CustomPaint(
-              size: Size(count * 12.0, 6),
-              painter: _WormDotPainter(
-                page: page,
-                count: count,
-                accent: accent,
-                completedIndices: completedIndices,
+            // Worm dots. Whole-document swiping can put dozens of cards
+            // in one carousel, so the dot strip scales down instead of
+            // overflowing the row on phone widths.
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: CustomPaint(
+                  size: Size(count * 12.0, 6),
+                  painter: _WormDotPainter(
+                    page: page,
+                    count: count,
+                    accent: accent,
+                    completedIndices: completedIndices,
+                  ),
+                ),
               ),
             ),
           ],
