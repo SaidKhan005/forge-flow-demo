@@ -1712,4 +1712,346 @@ void main() {
       );
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // Location-ops-on-freshly-added fix (sync the operator + hierarchy demo
+  // stores).
+  //
+  // Before the fix the demo operator gateway and the demo hierarchy gateway
+  // kept SEPARATE in-memory location stores. Adding a location went through
+  // the operator gateway only, so the hierarchy gateway never learned about
+  // it, and every hierarchy-tree action (Delete / Move / Suspend /
+  // Reactivate) routed through the hierarchy gateway and 404'd with
+  // `unknown_location`. The fix wires the operator gateway's add/remove sync
+  // hooks into the hierarchy gateway (exactly as `_defaultDemoGateway` does)
+  // so the two stores stay in lockstep.
+  //
+  // `wireSyncedDemoGateways` mirrors that production demo wiring so these
+  // tests exercise the real fix, not a bespoke arrangement.
+  // ---------------------------------------------------------------------------
+  ({
+    InMemoryOperatorLocationAdminGateway operator,
+    InMemoryRolesHierarchySessionsAdminGateway hierarchy,
+  })
+  wireSyncedDemoGateways({
+    required List<OperatorAdminBundle> seed,
+    required Map<String, List<OrgUnitAdminNode>> orgUnitsByOperator,
+    required Map<String, List<HierarchyLocationLeaf>> locationsByOperator,
+  }) {
+    final hierarchy = InMemoryRolesHierarchySessionsAdminGateway(
+      orgUnitsByOperator: orgUnitsByOperator,
+      locationsByOperator: locationsByOperator,
+    );
+    final operator = InMemoryOperatorLocationAdminGateway(
+      seed: seed,
+      onLocationAdded: (location) {
+        final orgUnitId = location.parentOrgUnitId?.trim();
+        if (orgUnitId == null || orgUnitId.isEmpty) return;
+        hierarchy.registerDemoLocation(
+          operatorId: location.operatorId,
+          locationId: location.locationId,
+          name: location.name,
+          orgUnitId: orgUnitId,
+        );
+      },
+      onLocationRemoved: (operatorId, locationId) {
+        hierarchy.removeDemoLocation(
+          operatorId: operatorId,
+          locationId: locationId,
+        );
+      },
+    );
+    return (operator: operator, hierarchy: hierarchy);
+  }
+
+  testWidgets(
+    'a freshly-added location can be deleted from the hierarchy tree with no '
+    'error and the row disappears (synced demo stores)',
+    (tester) async {
+      useWideSurface(tester);
+      // Operator gateway seeded with only the primary location; the
+      // hierarchy gateway knows the org units + the primary leaf. The add
+      // sync hook is what registers the new leaf in the hierarchy store.
+      final wiring = wireSyncedDemoGateways(
+        seed: <OperatorAdminBundle>[
+          seedBundle(operatorId: 'op-add', primaryLocationId: 'loc-add-hq'),
+        ],
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-add': const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'Demo Diner Co.',
+              operatorId: 'op-add',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: 'org-east',
+              name: 'East district',
+              operatorId: 'op-add',
+              parentOrgUnitId: 'org-root',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-add': const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: 'loc-add-hq',
+              name: 'HQ',
+              operatorId: 'op-add',
+              orgUnitId: 'org-root',
+            ),
+          ],
+        },
+      );
+      var idempotency = 0;
+      await tester.pumpWidget(
+        wrap(
+          OperatorLocationAdminScreen(
+            gateway: wiring.operator,
+            hierarchyGateway: wiring.hierarchy,
+            actorUserId: 'demo-super-admin',
+            idempotencyKeyFactory: () => 'idem-add-del-${idempotency++}',
+          ),
+        ),
+      );
+      await pumpEventually(tester);
+
+      await selectBusinessScope(tester, 'op-add');
+
+      // Pick the East district org unit so Add location is enabled.
+      final orgUnitRow = find.byKey(
+        const Key('admin_setup_scope_org_unit_org-east'),
+      );
+      await tester.ensureVisible(orgUnitRow);
+      await pumpEventually(tester);
+      await tester.tap(orgUnitRow);
+      await pumpEventually(tester);
+
+      await tester.tap(
+        find.byKey(const Key('admin_operator_add_location_button')),
+      );
+      await pumpEventually(tester);
+      await tester.enterText(
+        find.byKey(const Key('admin_location_name_field')),
+        'East Annex',
+      );
+      await chooseTimezone(
+        tester,
+        const Key('admin_location_timezone_field'),
+        'America/Toronto',
+      );
+      await tester.tap(find.byKey(const Key('admin_location_submit_button')));
+      await pumpEventually(tester);
+
+      final added = (await wiring.operator.listOperators()).single.locations
+          .firstWhere((l) => l.name == 'East Annex');
+      // Guard the id-collision half: the minted id must be unique, never
+      // the operator id (the pre-fix bug minted `...000000000001`, the
+      // operator id, which is what produced the
+      // `unknown_location: <op-id> not found for operator <op-id>` 404).
+      expect(added.locationId, isNot(equals('op-add')));
+      expect(
+        added.locationId,
+        isNot(equals('00000000-0000-4000-8000-000000000001')),
+      );
+
+      // The added row is in the tree (display half), AND the hierarchy
+      // gateway now knows it (sync half).
+      expect(
+        find.byKey(Key('admin_hierarchy_location_${added.locationId}')),
+        findsOneWidget,
+      );
+      expect(
+        (await wiring.hierarchy.listHierarchyLocations(operatorId: 'op-add'))
+            .any((l) => l.locationId == added.locationId),
+        isTrue,
+        reason: 'the add sync hook must register the new hierarchy leaf',
+      );
+
+      // Delete the freshly-added location from the hierarchy tree. Pre-fix
+      // this threw `RolesHierarchySessionsGatewayError(404/unknown_location)`
+      // and surfaced a red "Could not delete location" snackbar.
+      final deleteButton = find.byKey(
+        Key('admin_location_remove_${added.locationId}'),
+      );
+      await tester.ensureVisible(deleteButton);
+      await pumpEventually(tester);
+      await tester.tap(deleteButton);
+      await pumpEventually(tester);
+      await tester.enterText(
+        find.byKey(const Key('admin_hierarchy_location_delete_reason')),
+        'closing the annex',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_hierarchy_location_delete_submit')),
+      );
+      await pumpEventually(tester);
+
+      // No error toast, the delete was audited, and the row is gone.
+      expect(find.textContaining('Could not delete location'), findsNothing);
+      expect(
+        wiring.hierarchy.capturedAuditEvents.last.action,
+        equals('team.location.delete'),
+      );
+      expect(
+        find.byKey(Key('admin_hierarchy_location_${added.locationId}')),
+        findsNothing,
+        reason: 'the deleted location must drop out of the tree',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  group('synced demo gateways: actions on a freshly-added location', () {
+    // Gateway-level round-trip: add a location through the operator gateway
+    // (which fires the sync hook) and then exercise each hierarchy action
+    // directly. Every one of these threw 404/unknown_location before the
+    // fix because the hierarchy store never learned about the new leaf.
+    late InMemoryOperatorLocationAdminGateway operator;
+    late InMemoryRolesHierarchySessionsAdminGateway hierarchy;
+
+    setUp(() {
+      final wiring = wireSyncedDemoGateways(
+        seed: <OperatorAdminBundle>[
+          seedBundle(operatorId: 'op-1', primaryLocationId: 'loc-primary'),
+        ],
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          'op-1': const <OrgUnitAdminNode>[
+            OrgUnitAdminNode(
+              orgUnitId: 'org-root',
+              name: 'Root',
+              operatorId: 'op-1',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: 'org-east',
+              name: 'East',
+              operatorId: 'op-1',
+              parentOrgUnitId: 'org-root',
+            ),
+            OrgUnitAdminNode(
+              orgUnitId: 'org-west',
+              name: 'West',
+              operatorId: 'op-1',
+              parentOrgUnitId: 'org-root',
+            ),
+          ],
+        },
+        locationsByOperator: <String, List<HierarchyLocationLeaf>>{
+          'op-1': const <HierarchyLocationLeaf>[
+            HierarchyLocationLeaf(
+              locationId: 'loc-primary',
+              name: 'HQ',
+              operatorId: 'op-1',
+              orgUnitId: 'org-root',
+            ),
+          ],
+        },
+      );
+      operator = wiring.operator;
+      hierarchy = wiring.hierarchy;
+    });
+
+    Future<LocationAdminRecord> addLocation({String key = 'add'}) {
+      return operator.addLocation(
+        LocationCreateCommand(
+          operatorId: 'op-1',
+          parentOrgUnitId: 'org-east',
+          name: 'Annex',
+          timezone: 'America/Toronto',
+          businessDayRolloverHour: 4,
+          idempotencyKey: 'idem-$key',
+        ),
+      );
+    }
+
+    test('the minted location id is unique, never the operator id', () async {
+      final added = await addLocation();
+      expect(added.locationId, isNot(equals('op-1')));
+      expect(
+        added.locationId,
+        isNot(equals('00000000-0000-4000-8000-000000000001')),
+        reason: 'the pre-fix static counter minted the operator id first',
+      );
+      // It is now an active hierarchy leaf under the chosen org unit.
+      final leaf = (await hierarchy.listHierarchyLocations(operatorId: 'op-1'))
+          .firstWhere((l) => l.locationId == added.locationId);
+      expect(leaf.orgUnitId, equals('org-east'));
+    });
+
+    test('delete succeeds (no 404) and the leaf drops out', () async {
+      final added = await addLocation();
+      await hierarchy.deleteLocation(
+        operatorId: 'op-1',
+        locationId: added.locationId,
+        idempotencyKey: 'idem-del',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'closing the annex',
+      );
+      final locations = await hierarchy.listHierarchyLocations(
+        operatorId: 'op-1',
+      );
+      expect(
+        locations.any((l) => l.locationId == added.locationId),
+        isFalse,
+      );
+      expect(
+        hierarchy.capturedAuditEvents.last.action,
+        equals('team.location.delete'),
+      );
+    });
+
+    test('move succeeds (no 404) and re-parents the leaf', () async {
+      final added = await addLocation();
+      final moved = await hierarchy.moveLocation(
+        operatorId: 'op-1',
+        locationId: added.locationId,
+        newOrgUnitId: 'org-west',
+        idempotencyKey: 'idem-move',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'rebalance',
+      );
+      expect(moved.orgUnitId, equals('org-west'));
+    });
+
+    test('suspend then reactivate succeeds (no 404)', () async {
+      final added = await addLocation();
+      final suspended = await hierarchy.suspendLocation(
+        operatorId: 'op-1',
+        locationId: added.locationId,
+        idempotencyKey: 'idem-suspend',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'temporary pause',
+      );
+      expect(suspended.isSuspended, isTrue);
+      final reactivated = await hierarchy.reactivateLocation(
+        operatorId: 'op-1',
+        locationId: added.locationId,
+        idempotencyKey: 'idem-reactivate',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'back in service',
+      );
+      expect(reactivated.isSuspended, isFalse);
+    });
+
+    test('removing via the operator gateway also drops the hierarchy leaf',
+        () async {
+      final added = await addLocation();
+      await operator.removeLocation(
+        operatorId: 'op-1',
+        locationId: added.locationId,
+        idempotencyKey: 'idem-remove',
+      );
+      final locations = await hierarchy.listHierarchyLocations(
+        operatorId: 'op-1',
+      );
+      expect(
+        locations.any((l) => l.locationId == added.locationId),
+        isFalse,
+        reason: 'the remove sync hook must soft-delete the hierarchy leaf',
+      );
+    });
+  });
 }
