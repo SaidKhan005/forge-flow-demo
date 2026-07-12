@@ -4,8 +4,10 @@
 // Covers: a unit with images renders its paragraphs and image widgets in
 // order (through the Image.asset errorBuilder path, since widget tests have
 // no bundled assets); tapping an image opens the full-screen viewer and the
-// viewer closes; a unit without images renders the legacy single-Text body
-// unchanged; no exceptions at the 390x844 mobile surface.
+// viewer closes; a unit without images renders each blank-line paragraph as
+// its own structured Text block; bullet / numbered / table paragraphs render
+// with real list structure (no literal '- ' or ' | ' markers); no exceptions
+// at the 390x844 mobile surface.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -76,11 +78,12 @@ void main() {
     expect(find.byType(Image), findsNWidgets(2));
     expect(find.byIcon(Icons.image_not_supported_outlined), findsNWidgets(2));
 
-    // Body split into two runs around the afterParagraph: 1 image:
-    // paragraphs 0..1 joined, then paragraph 2.
+    // Structured rendering: each blank-line paragraph is its own Text
+    // block (even spacing), and the image sits at its afterParagraph
+    // boundary between paragraph 1 and paragraph 2.
+    expect(find.text('First paragraph of the fixture body.'), findsOneWidget);
     expect(
-      find.text('First paragraph of the fixture body.\n\n'
-          'Second paragraph, which carries the picture.'),
+      find.text('Second paragraph, which carries the picture.'),
       findsOneWidget,
     );
     expect(find.text('Third paragraph after the picture.'), findsOneWidget);
@@ -127,7 +130,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('unit without images keeps the legacy single-text body path',
+  testWidgets('unit without images renders each paragraph as its own block',
       (tester) async {
     await _setMobileSurface(tester);
     await tester.pumpWidget(
@@ -135,10 +138,59 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // One Text carrying the whole body, exactly as before this slice.
-    expect(find.text(_kBodyWithImages), findsOneWidget);
+    // Structured body: every blank-line paragraph renders as a separate
+    // Text block (consistent spacing), not one flat run.
+    expect(find.text('First paragraph of the fixture body.'), findsOneWidget);
+    expect(
+      find.text('Second paragraph, which carries the picture.'),
+      findsOneWidget,
+    );
+    expect(find.text('Third paragraph after the picture.'), findsOneWidget);
+    expect(find.text(_kBodyWithImages), findsNothing);
     expect(find.byType(Image), findsNothing);
     expect(find.byIcon(Icons.image_not_supported_outlined), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bullet, numbered and table paragraphs render as real '
+      'structure without their literal markers', (tester) async {
+    await _setMobileSurface(tester);
+    const unit = HandbookUnit(
+      id: 'fixture_structured_unit',
+      type: HandbookUnitType.explainer,
+      badgeHint: 'READ',
+      title: 'Structured Fixture',
+      body: 'Intro paragraph before the list.\n\n'
+          '- First bullet point\n\n'
+          '- Second bullet point\n\n'
+          '1. Call the manager\n\n'
+          '2. Log the incident\n\n'
+          'Metric | Value\n\n'
+          'CPLH | 4.2',
+    );
+    await tester.pumpWidget(_host(const HandbookLessonCard(unit: unit)));
+    await tester.pumpAndSettle();
+
+    // Bullet items render their text without the literal '- ' prefix.
+    expect(find.text('First bullet point'), findsOneWidget);
+    expect(find.text('Second bullet point'), findsOneWidget);
+    expect(find.text('- First bullet point'), findsNothing);
+
+    // Numbered steps split the marker from the body; the body text is
+    // findable on its own and the '1.'/'2.' markers render separately.
+    expect(find.text('Call the manager'), findsOneWidget);
+    expect(find.text('Log the incident'), findsOneWidget);
+    expect(find.text('1. Call the manager'), findsNothing);
+    expect(find.text('1.'), findsOneWidget);
+    expect(find.text('2.'), findsOneWidget);
+
+    // Table cells render individually (no literal ' | ' run).
+    expect(find.text('Metric'), findsOneWidget);
+    expect(find.text('Value'), findsOneWidget);
+    expect(find.text('CPLH'), findsOneWidget);
+    expect(find.text('4.2'), findsOneWidget);
+    expect(find.text('Metric | Value'), findsNothing);
+
     expect(tester.takeException(), isNull);
   });
 }
