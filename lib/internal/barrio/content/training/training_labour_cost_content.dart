@@ -118,7 +118,7 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_labour_cost_c4',
       title: 'Average Wage',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -139,9 +139,14 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'productivity, elevated wages may be more sustainable. This '
               'perspective shifts the discourse from merely questioning '
               'whether wages are excessive to evaluating if the operational '
-              'system can effectively support those wage levels.\n'
-              '\n'
-              'The average wage is intricately linked to the broader context '
+              'system can effectively support those wage levels.',
+        ),
+        HandbookUnit(
+          id: 'training_labour_cost_c4_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Average Wage (cont.)',
+          body: 'The average wage is intricately linked to the broader context '
               'of operational dynamics and market competitiveness. It is '
               'often the least flexible variable, primarily influenced by '
               'factors such as minimum wage regulations and prevailing '
@@ -222,7 +227,7 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_labour_cost_c6',
       title: 'Productivity',
-      subtitle: '4 cards',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -314,9 +319,14 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'workplace. Recognizing the precise moment when further '
               'increases in productivity cease to benefit the business is a '
               'critical insight for managers, as changes in workload can '
-              'accumulate subtly yet significantly over time.\n'
-              '\n'
-              'An effective operation thrives on maintaining a consistent '
+              'accumulate subtly yet significantly over time.',
+        ),
+        HandbookUnit(
+          id: 'training_labour_cost_c6_u4',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Productivity Goal (cont.)',
+          body: 'An effective operation thrives on maintaining a consistent '
               'level of productivity that is sensitive to fluctuations in '
               'volume, staffing, and guest behavior. The challenge lies in '
               'keeping the system functioning within an optimal band, where '
@@ -884,7 +894,7 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_labour_cost_c10',
       title: 'Signs of Inbalance',
-      subtitle: '2 cards',
+      subtitle: '4 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -907,9 +917,14 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'shift their roles from strategic leaders to reactive problem '
               'solvers, increasingly absorbed in addressing immediate issues '
               'rather than fostering team cohesion and performance '
-              'improvement.\n'
-              '\n'
-              'The repercussions of heightened productivity do not merely '
+              'improvement.',
+        ),
+        HandbookUnit(
+          id: 'training_labour_cost_c10_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Productivity Too High (cont.)',
+          body: 'The repercussions of heightened productivity do not merely '
               'impact workplace dynamics; they also have tangible financial '
               'consequences that can be overlooked. Frequent employee '
               'turnover, a common outcome of heightened stress and burnout, '
@@ -925,7 +940,7 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'without compromising the stability and well-being of the team.',
         ),
         HandbookUnit(
-          id: 'training_labour_cost_c10_u1',
+          id: 'training_labour_cost_c10_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Productivity Too Low',
@@ -941,9 +956,14 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'actual demand, a noticeable gap emerges between effort and '
               'output. The business may continue to function, yet it does so '
               'at an inflated cost, as resources are not being utilized '
-              'effectively.\n'
-              '\n'
-              'This underutilization, while seemingly stable, can instill a '
+              'effectively.',
+        ),
+        HandbookUnit(
+          id: 'training_labour_cost_c10_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Productivity Too Low (cont.)',
+          body: 'This underutilization, while seemingly stable, can instill a '
               'false sense of security. The operation appears to be running '
               'smoothly, but it is not achieving its full potential, leading '
               'to a different form of disengagement. With lower demands on '

@@ -52,7 +52,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_cheers_responsibility_c1',
       title: 'Governing Bodies',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -80,9 +80,14 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'refusing, or suspending liquor licenses and permits, the '
               'Liquor Control Act ensures that establishments such as bars, '
               'restaurants, and retail stores adhere to strict guidelines '
-              'that promote responsible service and consumption.\n'
-              '\n'
-              'The Liquor Corporation Act establishes the NLC and its powers '
+              'that promote responsible service and consumption.',
+        ),
+        HandbookUnit(
+          id: 'training_cheers_responsibility_c1_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Governing Bodies (cont.)',
+          body: 'The Liquor Corporation Act establishes the NLC and its powers '
               'while also reinforcing the importance of social responsibility '
               'in the management of alcohol sales. The accompanying Liquor '
               'Licensing Regulations detail specific rules that govern the '
@@ -133,7 +138,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_cheers_responsibility_c3',
       title: 'Licenses',
-      subtitle: '1 card',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -156,9 +161,14 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'payment, alcoholic liquor is served for consumption. A Lounge '
               'operates solely for the sale of alcoholic liquor to the '
               'public, where food and entertainment may or may not be '
-              'available.\n'
-              '\n'
-              '- Restaurant/Lounge: A Restaurant/Lounge License authorizes '
+              'available.',
+        ),
+        HandbookUnit(
+          id: 'training_cheers_responsibility_c3_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Licenses (cont.)',
+          body: '- Restaurant/Lounge: A Restaurant/Lounge License authorizes '
               'the licensee to sell to guests at meals, for consumption on '
               'the licensed premises, spirits by the glass and wine and beer '
               'by the glass or opened bottle during the hours of 9:00 a.m. to '
@@ -174,9 +184,14 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'prepared by a licensed establishment.\n'
               '\n'
               '- Hotel: An establishment where temporary lodging is regularly '
-              'provided to the public in consideration of payment.\n'
-              '\n'
-              '- Special Events: A Special Event License may be issued '
+              'provided to the public in consideration of payment.',
+        ),
+        HandbookUnit(
+          id: 'training_cheers_responsibility_c3_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Licenses (cont.)',
+          body: '- Special Events: A Special Event License may be issued '
               'authorizing any charitable or non-profit organization raising '
               'funds for charitable purposes that does not hold a subsisting '
               'license issued by the board, to sell spirits, beers and wines '
@@ -274,7 +289,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_cheers_responsibility_c7',
       title: 'Signs of Intoxication',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -334,9 +349,14 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '\n'
               '- Aggressive or belligerent\n'
               '\n'
-              '- Obnoxious or mean\n'
-              '\n'
-              '- Inappropriate sexual advances\n'
+              '- Obnoxious or mean',
+        ),
+        HandbookUnit(
+          id: 'training_cheers_responsibility_c7_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Signs of Intoxication (cont.)',
+          body: '- Inappropriate sexual advances\n'
               '\n'
               '- Boisterious\n'
               '\n'
@@ -427,7 +447,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_cheers_responsibility_c9',
       title: 'Valid Forms of ID',
-      subtitle: '1 card',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -471,9 +491,14 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'to the ID that you were unable to detect when it was in the '
               'guests wallet.\n'
               '\n'
-              'Use the acronym FLAG when examining identification:\n'
-              '\n'
-              '- FEEL: When evaluating the authenticity of identification '
+              'Use the acronym FLAG when examining identification:',
+        ),
+        HandbookUnit(
+          id: 'training_cheers_responsibility_c9_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Valid Forms of ID (cont.)',
+          body: '- FEEL: When evaluating the authenticity of identification '
               'cards, it is essential to be vigilant for telltale signs of '
               'low-quality manufacturing, including imperfections like '
               'bubbles, pin holes, rough edges, and excessive lamination, '
@@ -494,9 +519,14 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'of high school graduation, or horoscope - particularly when '
               'they may have memorized their personal information; '
               'additionally, requesting a secondary form of identification '
-              'can further enhance the confirmation process.\n'
-              '\n'
-              '- GIVE BACK: If you discover that a guest is using a fake ID, '
+              'can further enhance the confirmation process.',
+        ),
+        HandbookUnit(
+          id: 'training_cheers_responsibility_c9_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Valid Forms of ID (cont.)',
+          body: '- GIVE BACK: If you discover that a guest is using a fake ID, '
               'it is your responsibility to deny them service, inform your '
               'fellow staff members, and document the incident accordingly; '
               'please remember that only police officers in Canada are '
@@ -733,7 +763,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_cheers_responsibility_c17',
       title: 'Drinking and Driving',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -775,9 +805,14 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'description of driver.\n'
               '\n'
               '3. Do not put yourself in danger. Observe from a safe distance '
-              'and allow the police to handle the stop.\n'
-              '\n'
-              '- Do not take someone\'s keys. This puts you in a '
+              'and allow the police to handle the stop.',
+        ),
+        HandbookUnit(
+          id: 'training_cheers_responsibility_c17_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Drinking and Driving (cont.)',
+          body: '- Do not take someone\'s keys. This puts you in a '
               'confrontational position with potential risk to you or the '
               'guest. Taking someone\'s keys is classified as theft under the '
               'law.\n'
@@ -792,7 +827,7 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_cheers_responsibility_c18',
       title: 'Liability',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -822,9 +857,14 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '- Whether the patron showed visible signs of intoxication.\n'
               '\n'
               '- Whether the bar had a system for monitoring alcohol '
-              'consumption.\n'
-              '\n'
-              '- Whether staff attempted to find safe transportation for the '
+              'consumption.',
+        ),
+        HandbookUnit(
+          id: 'training_cheers_responsibility_c18_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Liability (cont.)',
+          body: '- Whether staff attempted to find safe transportation for the '
               'patron (e.g., calling a taxi).\n'
               '\n'
               '- Whether the bar knew the patron would be driving after '

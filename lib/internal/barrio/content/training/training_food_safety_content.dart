@@ -78,7 +78,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c1',
       title: 'Governing Laws And Regulations',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -110,9 +110,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'rigorous sanitation standards, control food temperatures, and '
               'implement measures to protect food from contamination. These '
               'regulations are critical in ensuring that food businesses '
-              'operate safely and responsibly.\n'
-              '\n'
-              'Local municipalities and public health units enforce these '
+              'operate safely and responsibly.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c1_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Governing Laws And Regulations (cont.)',
+          body: 'Local municipalities and public health units enforce these '
               'provincial standards through the work of public health '
               'inspectors. They conduct regular inspections and ensure '
               'compliance with food safety regulations, thereby protecting '
@@ -581,7 +586,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c6',
       title: 'Hazards In Food',
-      subtitle: '4 cards',
+      subtitle: '11 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -622,9 +627,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'that prevention through proper food handling and sanitation is '
               'vital.\n'
               '\n'
-              'Viruses\n'
-              '\n'
-              'Virus hazards in food present a considerable risk for '
+              'Viruses',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Biological Hazards (cont.)',
+          body: 'Virus hazards in food present a considerable risk for '
               'foodborne illness, largely stemming from contamination by '
               'infected food handlers or polluted water sources. Among the '
               'culprits, Norovirus and Hepatitis A are the most prevalent, '
@@ -640,9 +650,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'maintaining personal hygiene to thwart the spread of these '
               'harmful viruses in our food supply.\n'
               '\n'
-              'Parasites\n'
-              '\n'
-              'Foodborne parasites, including various worms and protozoa, are '
+              'Parasites',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Biological Hazards (cont.)',
+          body: 'Foodborne parasites, including various worms and protozoa, are '
               'a significant concern as they can lead to infections when '
               'individuals consume raw or undercooked food and contaminated '
               'water. These parasites not only pose immediate health risks - '
@@ -662,9 +677,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'vegetables, and avoiding unpasteurized products can help '
               'significantly reduce the likelihood of infection. By staying '
               'vigilant and informed, we can protect ourselves from the '
-              'potential dangers posed by foodborne parasites.\n'
-              '\n'
-              'Fungi And Mold\n'
+              'potential dangers posed by foodborne parasites.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u4',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Biological Hazards (cont.)',
+          body: 'Fungi And Mold\n'
               '\n'
               'Fungi are ubiquitous microorganisms that primarily lead to '
               'food spoilage rather than illness, thriving on plant or animal '
@@ -689,9 +709,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Interestingly, while hard and firm foods like parmesan cheese, '
               'carrots, and bell peppers are less prone to deep mold '
               'penetration, careful handling is essential: when removing '
-              'moldy\n'
-              '\n'
-              'sections, it\'s important to cut at least one inch around and '
+              'moldy',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u5',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Biological Hazards (cont.)',
+          body: 'sections, it\'s important to cut at least one inch around and '
               'below the affected area while avoiding cross-contamination. '
               'Engaging in these practices can significantly mitigate the '
               'risks associated with mold in our food supply.\n'
@@ -710,9 +735,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'jams. Freezing also plays a role by transforming water into '
               'ice, thus inhibiting microbial activity. Additionally, '
               'combining approaches - such as salting and drying fish - can '
-              'further enhance preservation.\n'
-              '\n'
-              'Foods high in protein and carbohydrates, including meat, '
+              'further enhance preservation.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u6',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Biological Hazards (cont.)',
+          body: 'Foods high in protein and carbohydrates, including meat, '
               'dairy, cooked beans, and various vegetables, are particularly '
               'susceptible to microbial growth and should be handled with '
               'care. Inspect food for signs of spoilage, including bulging '
@@ -725,12 +755,12 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/food_safety_manual/03.webp',
-              afterParagraph: 13,
+              afterParagraph: 1,
             ),
           ],
         ),
         HandbookUnit(
-          id: 'training_food_safety_c6_u2',
+          id: 'training_food_safety_c6_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Chemical Hazards',
@@ -762,9 +792,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'after use. Utilizing food-safe utensils, such as stainless '
               'steel, further reduces contamination risks. Acidic foods can '
               'dissolve lead-containing or galvanized dishes, leaching '
-              'harmful metals into the food, causing metal poisoning.\n'
-              '\n'
-              'It is crucial to source materials from reputable suppliers who '
+              'harmful metals into the food, causing metal poisoning.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u8',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chemical Hazards (cont.)',
+          body: 'It is crucial to source materials from reputable suppliers who '
               'prioritize effective chemical hazard control and to always '
               'store chemicals in clearly labeled containers, separate from '
               'food items. Following manufacturers\' guidelines on chemical '
@@ -780,7 +815,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'environment.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c6_u3',
+          id: 'training_food_safety_c6_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Physical Hazards',
@@ -809,9 +844,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'potential contaminants. Utilizing suitable hair restraints, '
               'such as hats or hairnets, while preparing food helps prevent '
               'hair from falling into dishes, while covering food items '
-              'protects them from external contaminants.\n'
-              '\n'
-              'Maintain cleanliness in food preparation areas by keeping '
+              'protects them from external contaminants.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u10',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Physical Hazards (cont.)',
+          body: 'Maintain cleanliness in food preparation areas by keeping '
               'surfaces free from objects that might accidentally fall into '
               'food minimizes risks. In cases where glass breakage occurs, it '
               'is vital to meticulously clean up all fragments to avoid any '
@@ -835,7 +875,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c7',
       title: 'Food Allergies',
-      subtitle: '4 cards',
+      subtitle: '13 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -882,9 +922,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'pressure and a rapid heartbeat. Symptoms can escalate quickly, '
               'resulting in dizziness or loss of consciousness. Because '
               'anaphylaxis can progress rapidly and become fatal if left '
-              'untreated, immediate medical attention is essential.\n'
-              '\n'
-              'Many people who have a history of anaphylaxis reactions carry '
+              'untreated, immediate medical attention is essential.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Symptoms (cont.)',
+          body: 'Many people who have a history of anaphylaxis reactions carry '
               'an epinephrine auto-injector. Being educated on the signs of '
               'anaphylaxis can mean the difference between life and death for '
               'those at risk. Often the friends and family of someone with a '
@@ -892,7 +937,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'is and are informed on how to use it.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c7_u2',
+          id: 'training_food_safety_c7_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Common Food Allergies',
@@ -921,9 +966,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'without direct consumption; exposure to cooking vapors, such '
               'as those from boiling lobster, or residue on utensils and '
               'serving dishes can trigger allergic responses in sensitive '
-              'individuals.\n'
-              '\n'
-              'Fish\n'
+              'individuals.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u4',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'Fish\n'
               '\n'
               'An important note is that while fish, crustaceans, and '
               'mollusks are often referred to collectively as seafood, people '
@@ -941,9 +991,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'with crustaceans and mollusks, individuals with fish allergies '
               'can trigger reactions even without direct consumption. Some '
               'common culprits you may see include anchovies, salmon, tuna, '
-              'haddock, halibut, and cod, among others.\n'
-              '\n'
-              'Egg\n'
+              'haddock, halibut, and cod, among others.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u5',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'Egg\n'
               '\n'
               'Eggs possess two allergenic components - the yolk and the '
               'white - that can trigger allergic reactions in sensitive '
@@ -956,9 +1011,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'with an egg allergy can tolerate extensively heated or baked '
               'goods that contain egg.\n'
               '\n'
-              'Milk\n'
-              '\n'
-              'Milk allergy is primarily triggered by an abnormal immune '
+              'Milk',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u6',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'Milk allergy is primarily triggered by an abnormal immune '
               'response to the proteins found in cow\'s milk. The proteins '
               'found in cow\'s milk are like those present in the milk of '
               'other mammals, including goats, sheep, and even deer and '
@@ -975,9 +1035,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'lactose intolerance. Lactose intolerance involves difficulty '
               'digesting the milk sugar lactose whereas a milk allergy '
               'involves a potentially severe immune reaction to milk '
-              'proteins, which can be life-threatening.\n'
-              '\n'
-              'Mustard\n'
+              'proteins, which can be life-threatening.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u7',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'Mustard\n'
               '\n'
               'Mustard is a member of the Brassicaceae family, which includes '
               'vegetables like broccoli, cauliflower, and Brussels sprouts. '
@@ -996,9 +1061,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'to take the time to go through any questions or concerns they '
               'may have with them.\n'
               '\n'
-              'Peanut\n'
-              '\n'
-              'Peanut allergy is one of the most prevalent food allergies, '
+              'Peanut',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u8',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'Peanut allergy is one of the most prevalent food allergies, '
               'affecting individuals across various age groups and '
               'demographics. As members of the legume family, peanuts are '
               'distinct from tree nuts, meaning that a person may be allergic '
@@ -1017,9 +1087,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'sensitivities over time. Given the integral role of peanuts in '
               'many international cuisines, awareness and management of this '
               'allergy are vital for those affected, ensuring safe dining '
-              'experiences.\n'
-              '\n'
-              'Tree Nuts\n'
+              'experiences.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u9',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'Tree Nuts\n'
               '\n'
               'Tree nuts include a variety of nuts such as almonds, Brazil '
               'nuts, cashews, hazelnuts, macadamia nuts, pecans, pine nuts, '
@@ -1045,9 +1120,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'a staple in many Asian cuisines. It\'s important to note that '
               'allergic reactions can occur swiftly, often within minutes of '
               'exposure to sesame, but in some cases, they may arise several '
-              'hours later with the most\n'
-              '\n'
-              'severe response being anaphylaxis, Given the widespread use of '
+              'hours later with the most',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u10',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'severe response being anaphylaxis, Given the widespread use of '
               'sesame in baked goods such as hamburger buns, breads, and '
               'cookies, as well as in dressings, sauces, and even processed '
               'meats, awareness of this allergen is vital to avoid '
@@ -1072,9 +1152,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'individuals may still react. Allergic reactions can occur '
               'swiftly, often within minutes, but can occasionally manifest '
               'several hours post-exposure, with anaphylaxis representing the '
-              'most severe response to this allergen.\n'
-              '\n'
-              'Wheat And Triticale\n'
+              'most severe response to this allergen.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u11',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'Wheat And Triticale\n'
               '\n'
               'Wheat and triticale, a hybrid of wheat and rye, are recognized '
               'as priority food allergens, warranting caution for those with '
@@ -1094,7 +1179,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'although delaying exercise can mitigate these risks.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c7_u3',
+          id: 'training_food_safety_c7_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Food Intolerance',
@@ -1143,7 +1228,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c8',
       title: 'Food Allergies: Keep Your Guests Safe',
-      subtitle: '2 cards',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1215,9 +1300,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'can be life-saving. According to the Canadian Institute of '
               'Food Safety, swiftly locating the EpiPen is essential, and if '
               'the person is dining with companions, enlist their help in '
-              'finding it quickly.\n'
-              '\n'
-              'While awaiting emergency services, keep the person calm and '
+              'finding it quickly.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c8_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'What To Do If Someone Has A Reaction (cont.)',
+          body: 'While awaiting emergency services, keep the person calm and '
               'comfortable. If they are coherent, keep them seated or lying '
               'on their back. If they\'re experiencing vomiting or breathing '
               'difficulties, position them on their side, and elevate their '
@@ -1244,7 +1334,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c9',
       title: 'Temperature Danger Zone',
-      subtitle: '4 cards',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1271,9 +1361,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'potentially leading to severe health consequences for guests. '
               'Perishable items should never be left out of refrigeration for '
               'longer than two hours; after that, the risk of bacterial '
-              'growth increases significantly.\n'
-              '\n'
-              'What is particularly alarming about this danger zone is that '
+              'growth increases significantly.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c9_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Temperature Danger Zone (cont.)',
+          body: 'What is particularly alarming about this danger zone is that '
               'harmful bacteria can grow to dangerous levels without any '
               'visible signs of spoilage. Foods may smell and look perfectly '
               'fine, yet they can still harbor harmful levels of bacteria '
@@ -1283,7 +1378,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'successful kitchen operation.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c9_u1',
+          id: 'training_food_safety_c9_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Time Temperature Abuse',
@@ -1295,7 +1390,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'improper cooling of hot foods before refrigeration.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c9_u2',
+          id: 'training_food_safety_c9_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Monitor Temperatures',
@@ -1314,7 +1409,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'training_food_safety_c9_u3',
+          id: 'training_food_safety_c9_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Controlling Time and Temperature',
@@ -1537,7 +1632,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c13',
       title: 'Thermometer Ice Bath Calibration',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1561,9 +1656,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'resting against an ice cube, which will affect the reading. '
               'Keep the probe tip away from the side walls and do not allow '
               'it to rest against the bottom of the vessel. Keep stirring the '
-              'probe.\n'
-              '\n'
-              '4. Calibrate. Your thermometer should read 32 degrees F (0 '
+              'probe.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c13_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Critical Steps To Creating A Proper Ice Bath (cont.)',
+          body: '4. Calibrate. Your thermometer should read 32 degrees F (0 '
               'degrees C) in the ice bath. Adjust your dial thermometer as '
               'directed by the manufacturer. Before adjusting a digital '
               'instant-read thermometer, check that the readings are within '
@@ -1575,7 +1675,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c14',
       title: 'Safe Storage',
-      subtitle: '2 cards',
+      subtitle: '4 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1622,9 +1722,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '\n'
               'Second Shelf: 135 degrees F (57 degrees C). This category '
               'includes foods that will be hot-held that are not included in '
-              'other categories.\n'
-              '\n'
-              'Third Shelf: 145 degrees F (63 degrees C). Foods that should '
+              'other categories.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c14_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Refrigerator Storage (cont.)',
+          body: 'Third Shelf: 145 degrees F (63 degrees C). Foods that should '
               'be cooked to 145 degrees F include whole seafood; whole cuts '
               'of beef, pork, veal, lamb; roasts; and eggs that will be '
               'served immediately.\n'
@@ -1644,9 +1749,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'pathogens, it\'s essential to remember that they do not halt '
               'the spoiling process; thus, knowing when to throw out food, '
               'despite the feeling of waste, is crucial for ensuring the '
-              'safety and health of you and your guests.\n'
-              '\n'
-              'Up to 2 days: Ground beef, turkey, veal, pork, lamb; stew '
+              'safety and health of you and your guests.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c14_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Refrigerator Storage (cont.)',
+          body: 'Up to 2 days: Ground beef, turkey, veal, pork, lamb; stew '
               'meats; variety meats; whole chicken or turkey; giblets; raw or '
               'poultry sausage; fresh fish and shellfish.\n'
               '\n'

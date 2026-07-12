@@ -48,7 +48,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_suggestive_selling_c1',
       title: 'Selling Strategies',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -71,9 +71,14 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'income streams, traditional restaurant operations typically '
               'demand a high level of effort and engagement, primarily '
               'centered around managing food costs, labor, and maintaining '
-              'quality control.\n'
-              '\n'
-              'Active selling is characterized by a proactive approach where '
+              'quality control.',
+        ),
+        HandbookUnit(
+          id: 'training_suggestive_selling_c1_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Selling Strategies (cont.)',
+          body: 'Active selling is characterized by a proactive approach where '
               'the seller actively engages with guests, seeking out sales '
               'opportunities through direct interaction. This method is '
               'particularly effective in building meaningful connections with '
@@ -91,7 +96,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_suggestive_selling_c2',
       title: 'Suggestive Selling',
-      subtitle: '3 cards',
+      subtitle: '4 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -108,9 +113,14 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'additional items can elevate the dining experience. When '
               'recommendations are framed in a way that highlights their '
               'value, it can subtly encourage guests to indulge in '
-              'higher-value options without feeling coerced.\n'
-              '\n'
-              'Effective suggestive selling lies in its ability to create a '
+              'higher-value options without feeling coerced.',
+        ),
+        HandbookUnit(
+          id: 'training_suggestive_selling_c2_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Suggestive Selling (cont.)',
+          body: 'Effective suggestive selling lies in its ability to create a '
               'tailored, personalized experience for each guest. Rather than '
               'employing high-pressure techniques, servers must utilize '
               'timing and descriptive language to present suggestions as a '
@@ -127,7 +137,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'upselling serve as powerful sales tactics.',
         ),
         HandbookUnit(
-          id: 'training_suggestive_selling_c2_u1',
+          id: 'training_suggestive_selling_c2_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Upselling',
@@ -144,7 +154,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'both natural and advantageous.',
         ),
         HandbookUnit(
-          id: 'training_suggestive_selling_c2_u2',
+          id: 'training_suggestive_selling_c2_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Cross-Selling',
@@ -167,7 +177,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_suggestive_selling_c3',
       title: 'Managing Improper Execution',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -183,9 +193,14 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'feelings of pressure and manipulation, tarnishing the guest '
               'experience. When guests are bombarded with excessive options '
               'or feel pushed toward high-margin items that do not align with '
-              'their needs, it may lead to confusion and irritation.\n'
-              '\n'
-              'Poorly executed selling techniques can introduce significant '
+              'their needs, it may lead to confusion and irritation.',
+        ),
+        HandbookUnit(
+          id: 'training_suggestive_selling_c3_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Managing Improper Execution (cont.)',
+          body: 'Poorly executed selling techniques can introduce significant '
               'risks, including damaged trust, decreased satisfaction, and a '
               'decline in repeat business. When guests feel that their '
               'preferences are overlooked or that they are being pressured '
@@ -415,7 +430,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_suggestive_selling_c5',
       title: 'Setting Goals',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -435,9 +450,14 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'as increasing average check averages, higher-margin items, and '
               'beverage sales, can be monitored closely, while motivating '
               'employees with bonuses for hitting these benchmarks creates a '
-              'sense of shared purpose and achievement.\n'
-              '\n'
-              'Aligning these sales goals with the broader objectives of the '
+              'sense of shared purpose and achievement.',
+        ),
+        HandbookUnit(
+          id: 'training_suggestive_selling_c5_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Setting Goals (cont.)',
+          body: 'Aligning these sales goals with the broader objectives of the '
               'restaurant is crucial for overall success. For instance, if '
               'the restaurant aims to boost beverage sales, this goal should '
               'seamlessly integrate with its marketing and service '
