@@ -174,5 +174,44 @@ void main() {
       await tester.pump(const Duration(milliseconds: 800));
       expect(find.text('SECTION 2 OF ${doc.chapters.length}'), findsOneWidget);
     });
+
+    testWidgets('swiping past a section boundary advances to the next '
+        'section and back', (tester) async {
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      // The manual is one continuous deck (2026-07-11 operator request):
+      // swiping past the last card of section 1 lands on section 2.
+      final doc = kBarrioTrainingDocs['training_menu_concept']!;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TrainingDocScreen(
+            doc: doc,
+            accent: kBarrioTrainingAccents['training_menu_concept']!,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 800));
+
+      final total = doc.chapters.length;
+      expect(find.text('SECTION 1 OF $total'), findsOneWidget);
+
+      // Swipe left through every card of section 1; the last swipe
+      // crosses into section 2 and the hero follows.
+      final firstSectionCards = doc.chapters.first.units.length;
+      for (var i = 0; i < firstSectionCards; i++) {
+        await tester.drag(find.byType(PageView), const Offset(-400, 0));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      expect(find.text('SECTION 2 OF $total'), findsOneWidget);
+
+      // One swipe right crosses back into section 1.
+      await tester.drag(find.byType(PageView), const Offset(400, 0));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('SECTION 1 OF $total'), findsOneWidget);
+    });
   });
 }
