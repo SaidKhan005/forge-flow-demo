@@ -143,6 +143,32 @@ documents:
     heading_count: 26
     line_count: 253
     sha256: "05c4d2f9b748d3bcc6e14150367d2c3f0e1130efdad1c7872f3471e18b7b31a1"
+  - doc_id: "barrio_menu"
+    file_name: "Barrio_Menu.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio_Menu.md"
+    title: "MENU"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "dinner_menu_with_concept_history"
+    authority_tier: "founder_authored"
+    risk_level: "low"
+    audience:
+      - "founder_ops"
+      - "managers"
+    chunk_profile: "section_per_heading"
+    graph_profiles:
+      - "Concept"
+      - "Term"
+    tags:
+      - "menu"
+      - "dinner"
+      - "barrio_legado"
+    word_count_estimate: 1453
+    heading_count: 34
+    line_count: 266
+    sha256: "bd07b9c33b2226b39284bc2abca99a04f13b55a7d7ab2dabc30fe14041847687"
 
   - doc_id: "barrio_table_maintenance_and_manicuring"
     file_name: "Barrio Table Maintenance and Manicuring.md"
