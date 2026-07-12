@@ -163,5 +163,22 @@ void main() {
         {'training_coffee'},
       );
     });
+
+    test('every result carries the exact card position within its section',
+        () {
+      // 2026-07-11 operator request: opening a result lands on the
+      // matched card, so unitIndex must address the unit whose title
+      // the result reports.
+      final results = BarrioTrainingSearch.search('marinade');
+      expect(results, isNotEmpty);
+      for (final r in results) {
+        final chapter =
+            kBarrioTrainingDocs[r.destinationId]!.chapters[r.chapterIndex];
+        expect(r.unitIndex, inInclusiveRange(0, chapter.units.length - 1),
+            reason: '${r.destinationId} unitIndex in range');
+        expect(chapter.units[r.unitIndex].title, r.unitTitle,
+            reason: 'unitIndex must address the reported unit');
+      }
+    });
   });
 }

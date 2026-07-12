@@ -5,6 +5,7 @@ import 'barrio_celebration_overlay.dart';
 import 'barrio_destination_scaffold.dart';
 import 'barrio_training_image_viewer.dart';
 import '../content/company_handbook_content.dart';
+import '../search/barrio_training_search.dart';
 
 final _whitespaceRegExp = RegExp(r'\s+');
 
@@ -22,6 +23,14 @@ class HandbookLessonCard extends StatefulWidget {
   final String? cardPosition;
   final VoidCallback? onRequestAdvance;
 
+  /// Search deep-link highlighting (2026-07-11 operator request): folded
+  /// query words to mark inside the body text. Matching is
+  /// case- and diacritic-insensitive via the search service's
+  /// length-preserving fold, so span offsets apply to the original
+  /// text directly. Empty = no highlighting (the default everywhere
+  /// outside a search deep link).
+  final List<String> highlightTerms;
+
   const HandbookLessonCard({
     super.key,
     required this.unit,
@@ -29,6 +38,7 @@ class HandbookLessonCard extends StatefulWidget {
     this.isCarouselMode = false,
     this.cardPosition,
     this.onRequestAdvance,
+    this.highlightTerms = const [],
   });
 
   @override
@@ -222,7 +232,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               // Carousel mode: show full body + "Tap to begin" for interactive cards
               if (carousel && _isInteractive && !_expanded) ...[
                 const SizedBox(height: 14),
-                _UnitBody(unit: unit),
+                _UnitBody(unit: unit, highlightTerms: widget.highlightTerms),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -250,7 +260,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               // carousel mode: shown when expanded since pre-expand body is in the carousel block above)
               if (!_isInteractive || _expanded) ...[
                 const SizedBox(height: 14),
-                _UnitBody(unit: unit),
+                _UnitBody(unit: unit, highlightTerms: widget.highlightTerms),
               ],
 
               if (_isInteractive && _expanded && unit.options.isNotEmpty) ...[
@@ -478,7 +488,8 @@ class _OptionTile extends StatelessWidget {
 /// renders identically to the no-image path.
 class _UnitBody extends StatelessWidget {
   final HandbookUnit unit;
-  const _UnitBody({required this.unit});
+  final List<String> highlightTerms;
+  const _UnitBody({required this.unit, this.highlightTerms = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -488,7 +499,7 @@ class _UnitBody extends StatelessWidget {
       color: BarrioColors.textSecondary,
     );
     if (unit.images.isEmpty) {
-      return Text(unit.body, style: style);
+      return _bodyText(unit.body, style);
     }
 
     final paragraphs = unit.body.split('\n\n');
@@ -507,20 +518,91 @@ class _UnitBody extends StatelessWidget {
       final imagesAfter = byBoundary[p];
       if (imagesAfter == null) continue;
       children.add(
-        Text(paragraphs.sublist(runStart, p + 1).join('\n\n'), style: style),
+        _bodyText(paragraphs.sublist(runStart, p + 1).join('\n\n'), style),
       );
       children.addAll(imagesAfter.map((image) => _UnitImage(image: image)));
       runStart = p + 1;
     }
     if (runStart < paragraphs.length) {
       children.add(
-        Text(paragraphs.sublist(runStart).join('\n\n'), style: style),
+        _bodyText(paragraphs.sublist(runStart).join('\n\n'), style),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: children,
     );
+  }
+
+  /// Plain body text, or highlighted runs when search deep-link terms
+  /// are present. The search fold is length-preserving per code unit,
+  /// so fold-space match offsets index the original string directly.
+  Widget _bodyText(String text, TextStyle style) {
+    if (highlightTerms.isEmpty) {
+      return Text(text, style: style);
+    }
+    final ranges =
+        _mergeRanges(_rawMatchRanges(BarrioTrainingSearch.fold(text)));
+    if (ranges.isEmpty) {
+      return Text(text, style: style);
+    }
+    return Text.rich(
+      TextSpan(style: style, children: _highlightSpans(text, ranges, style)),
+    );
+  }
+
+  /// All [start, end) fold-space match ranges of every term, unsorted.
+  List<List<int>> _rawMatchRanges(String folded) {
+    final ranges = <List<int>>[];
+    for (final term in highlightTerms) {
+      if (term.isEmpty) continue;
+      var idx = folded.indexOf(term);
+      while (idx >= 0) {
+        ranges.add([idx, idx + term.length]);
+        idx = folded.indexOf(term, idx + term.length);
+      }
+    }
+    return ranges;
+  }
+
+  /// Sorts ranges and merges overlaps so span runs never intersect.
+  List<List<int>> _mergeRanges(List<List<int>> ranges) {
+    if (ranges.isEmpty) return ranges;
+    ranges.sort((a, b) => a[0].compareTo(b[0]));
+    final merged = <List<int>>[ranges.first];
+    for (final r in ranges.skip(1)) {
+      if (r[0] > merged.last[1]) {
+        merged.add(r);
+      } else if (r[1] > merged.last[1]) {
+        merged.last[1] = r[1];
+      }
+    }
+    return merged;
+  }
+
+  List<TextSpan> _highlightSpans(
+    String text,
+    List<List<int>> merged,
+    TextStyle style,
+  ) {
+    final mark = style.copyWith(
+      color: BarrioColors.textPrimary,
+      fontWeight: FontWeight.w700,
+      backgroundColor: BarrioColors.tealWarm.withValues(alpha: 0.28),
+    );
+    final spans = <TextSpan>[];
+    var cursor = 0;
+    for (final r in merged) {
+      if (r[0] > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, r[0])));
+      }
+      spans.add(TextSpan(text: text.substring(r[0], r[1]), style: mark));
+      cursor = r[1];
+    }
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor)));
+    }
+    return spans;
   }
 }
 

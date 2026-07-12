@@ -67,6 +67,8 @@ class BarrioRouteMap {
     String destinationId, {
     BarrioPreviewRole previewRole = BarrioPreviewRole.admin,
     int? initialChapterIndex,
+    int? initialUnitInChapter,
+    String? highlightQuery,
   }) {
     switch (destinationId) {
       case 'forge_and_flow':
@@ -88,6 +90,8 @@ class BarrioRouteMap {
                 BarrioColors.tealWarm,
             previewRole: previewRole,
             initialChapterIndex: initialChapterIndex ?? 0,
+            initialUnitInChapter: initialUnitInChapter ?? 0,
+            highlightQuery: highlightQuery,
           );
         }
         return const BarrioHomeScreen();
@@ -103,6 +107,8 @@ class BarrioRouteMap {
     BarrioDestination destination, {
     BarrioPreviewRole previewRole = BarrioPreviewRole.admin,
     int? initialChapterIndex,
+    int? initialUnitInChapter,
+    String? highlightQuery,
   }) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -110,6 +116,8 @@ class BarrioRouteMap {
           destination.id,
           previewRole: previewRole,
           initialChapterIndex: initialChapterIndex,
+          initialUnitInChapter: initialUnitInChapter,
+          highlightQuery: highlightQuery,
         ),
       ),
     );

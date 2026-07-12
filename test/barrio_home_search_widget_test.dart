@@ -100,6 +100,30 @@ void main() {
       findsOneWidget,
       reason: 'the deep link must open the matched section',
     );
+
+    // 2026-07-11 operator request: the searched word is highlighted on
+    // the opened card. The landed card body must carry at least one
+    // span whose text matches the query and whose style paints the
+    // highlight background.
+    bool spanIsHighlightedMatch(InlineSpan span) {
+      var found = false;
+      span.visitChildren((child) {
+        if (child is TextSpan &&
+            (child.text ?? '').toLowerCase().contains('mezcal') &&
+            child.style?.backgroundColor != null) {
+          found = true;
+          return false;
+        }
+        return true;
+      });
+      return found;
+    }
+
+    final highlighted = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .any((rt) => spanIsHighlightedMatch(rt.text));
+    expect(highlighted, isTrue,
+        reason: "the query word must render highlighted on the card");
     expect(tester.takeException(), isNull);
 
     // Dispose the pushed screen's animations cleanly.

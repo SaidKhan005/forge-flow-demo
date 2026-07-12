@@ -194,6 +194,10 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
       destination,
       previewRole: role,
       initialChapterIndex: result.chapterIndex,
+      initialUnitInChapter: result.unitIndex,
+      // Highlight the searched words on the opened card (2026-07-11
+      // operator request).
+      highlightQuery: _searchQuery,
     );
   }
 
