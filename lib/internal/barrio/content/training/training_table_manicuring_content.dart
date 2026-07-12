@@ -228,7 +228,7 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_table_manicuring_c3',
       title: 'Table Manicuring',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -254,9 +254,14 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'By implementing this subtle yet impactful approach, '
               'restaurants not only enhance the perceived value of each meal '
               'but also increase guest satisfaction, leading to better tips '
-              'and more efficient table turns.\n'
-              '\n'
-              'Table manicuring stands out for its seamless execution, a '
+              'and more efficient table turns.',
+        ),
+        HandbookUnit(
+          id: 'training_table_manicuring_c3_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Table Manicuring (cont.)',
+          body: 'Table manicuring stands out for its seamless execution, a '
               'testament to the collaborative spirit of the dining staff. '
               'Rather than resting solely on the shoulders of the assigned '
               'server, any staff member who passes by is encouraged to '
@@ -335,7 +340,7 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_table_manicuring_c5',
       title: 'Benefits of High-Level Execution',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -356,9 +361,14 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'quietly removing items, waitstaff can facilitate quicker table '
               'turns while maintaining a comfortable atmosphere, avoiding any '
               'sense of being rushed that might detract from the overall '
-              'enjoyment of the meal.\n'
-              '\n'
-              'A well-executed table manicuring process promotes a sense of '
+              'enjoyment of the meal.',
+        ),
+        HandbookUnit(
+          id: 'training_table_manicuring_c5_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Benefits of High-Level Execution (cont.)',
+          body: 'A well-executed table manicuring process promotes a sense of '
               'care and respect for guests, directly impacting gratuity and '
               'guest feedback. Guests are more likely to appreciate the '
               'attention to detail, leading to increased tips and positive '

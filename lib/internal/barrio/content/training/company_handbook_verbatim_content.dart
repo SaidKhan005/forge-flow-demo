@@ -16,7 +16,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c0',
       title: 'OUR CONCEPT',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -49,16 +49,21 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'greenery infuse the space with a sense of life and energy. Our '
               'thoughtfully curated environment is designed to transport '
               'guests into a vacation-like atmosphere embodies the spirit of '
-              'the dishes served.\n'
-              '\n'
-              'No matter if you\'re gathering for a relaxed dinner with '
+              'the dishes served.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c0_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'OUR CONCEPT (cont.)',
+          body: 'No matter if you\'re gathering for a relaxed dinner with '
               'friends or marking a momentous occasion, our mission is to '
               'surround you with a warm and inviting ambiance, ensuring that '
               'every meal becomes a cherished celebration.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/01.webp',
-              afterParagraph: 3,
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -67,7 +72,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c1',
       title: '95 Water Street',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -97,9 +102,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Brother T.I. Murphy Centre, a trade school that aimed to help '
               'those who had struggled to complete high school. This shift in '
               'purpose highlighted the building\'s enduring legacy in the '
-              'community.\n'
-              '\n'
-              'In 1987, the importance of 95 Water Street was officially '
+              'community.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c1_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: '95 Water Street (cont.)',
+          body: 'In 1987, the importance of 95 Water Street was officially '
               'recognized when it was designated a registered heritage '
               'structure. This two-storey classical revival masterpiece, '
               'designed by the esteemed architect William F. Butler, stands '
@@ -119,7 +129,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/02.webp',
-              afterParagraph: 3,
+              afterParagraph: 1,
             ),
           ],
         ),
@@ -128,7 +138,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c2',
       title: 'Raymonds Legacy',
-      subtitle: '1 card',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -147,9 +157,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'meal was a tribute to the bountiful larder right at their '
               'doorstep. It’s no surprise that EnRoute magazine named '
               'Raymonds Canada’s Best New Restaurant just a year after its '
-              'inception, setting the stage for its rapid rise to prominence.\n'
-              '\n'
-              'Emphasizing a "farm-to-table" or "sea-to-table" philosophy, '
+              'inception, setting the stage for its rapid rise to prominence.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c2_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Raymonds Legacy (cont.)',
+          body: 'Emphasizing a "farm-to-table" or "sea-to-table" philosophy, '
               'Raymonds showcased the best of Atlantic Canada, featuring '
               'authentic dishes that highlighted the region’s rich culinary '
               'heritage. Diners could savor delicacies like Atlantic cod, '
@@ -168,9 +183,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'restaurant outside of Canada’s major urban centers. The '
               'accolades kept coming, including the title of #1 Restaurant in '
               'Canada from Vacay.ca in both 2014 and 2015, and the '
-              'recognition of Celeste Mah as Canada’s Best Pastry Chef in\n'
-              '\n'
-              '2019. Dining at Raymonds was not merely a meal; it was an '
+              'recognition of Celeste Mah as Canada’s Best Pastry Chef in',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c2_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Raymonds Legacy (cont.)',
+          body: '2019. Dining at Raymonds was not merely a meal; it was an '
               'unforgettable experience, offering a unique blend of rustic '
               'Atlantic Canadian flavors and innovative haute cuisine '
               'techniques.\n'
@@ -188,11 +208,11 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/03.webp',
-              afterParagraph: 4,
+              afterParagraph: 1,
             ),
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/04.webp',
-              afterParagraph: 4,
+              afterParagraph: 1,
             ),
           ],
         ),
@@ -201,7 +221,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c3',
       title: 'LATIN AMERICA',
-      subtitle: '2 cards',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -227,9 +247,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'remarkable civilizations like the Maya, Aztecs, and Incas. '
               'These ancient cultures laid the groundwork for the vibrant '
               'societies we see today, leaving behind an indelible legacy '
-              'that continues to shape the region’s identity.\n'
-              '\n'
-              'The impact of colonialism by Spain and Portugal was profound, '
+              'that continues to shape the region’s identity.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c3_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'LATIN AMERICA (cont.)',
+          body: 'The impact of colonialism by Spain and Portugal was profound, '
               'resulting in a unique blend of influences that can be seen in '
               'everything from the rhythm of its music to the pages of its '
               'literature, the strokes of its artistic traditions, and, of '
@@ -250,7 +275,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'part of the world.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c3_u1',
+          id: 'company_handbook_c3_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Latin American Countries',
@@ -411,7 +436,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c7',
       title: 'EMPLOYMENT BASICS',
-      subtitle: '8 cards',
+      subtitle: '9 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -558,9 +583,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'alternative employment should be disclosed during the '
               'onboarding process, and we encourage employees to discuss '
               'potential secondary employment with their managers to ensure '
-              'there are no conflicts of interest.\n'
-              '\n'
-              'Personal relationships should not influence business '
+              'there are no conflicts of interest.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c7_u6',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'CONFLICT OF INTEREST (cont.)',
+          body: 'Personal relationships should not influence business '
               'decisions. This means being cautious about hiring family '
               'members or showing favoritism towards specific vendors. '
               'Maintaining professionalism in all interactions is crucial for '
@@ -573,7 +603,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'commitment to ethical practices.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c7_u6',
+          id: 'company_handbook_c7_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'COMMUNICATION BOARD',
@@ -585,7 +615,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'announcements, reservation details, and our company goals.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c7_u7',
+          id: 'company_handbook_c7_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'WORK WEEK',
@@ -599,7 +629,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c8',
       title: 'REPORTING TO WORK',
-      subtitle: '11 cards',
+      subtitle: '12 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -776,9 +806,20 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'public holiday, employees who are scheduled to work will be '
               'expected to fulfill their shifts and will receive premium pay '
               'at a rate of 2x their regular hourly wage for the hours they '
-              'complete.\n'
-              '\n'
-              'For employees who do not work on a paid public holiday, '
+              'complete.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/08.webp',
+              afterParagraph: 0,
+            ),
+          ],
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c8_u9',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'STATUTORY HOLIDAYS (cont.)',
+          body: 'For employees who do not work on a paid public holiday, '
               'employees will receive a regular day\'s pay, provided they have '
               'been employed with us for at least 30 days and have completed '
               'their scheduled shifts both prior to and following the '
@@ -790,15 +831,9 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'public holiday than they would typically be scheduled for, '
               'employees will receive their regular pay for the actual hours '
               'worked, in addition to a regular day\'s pay.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/08.webp',
-              afterParagraph: 0,
-            ),
-          ],
         ),
         HandbookUnit(
-          id: 'company_handbook_c8_u9',
+          id: 'company_handbook_c8_u10',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'FLEXIBILITY OF HOURS',
@@ -814,7 +849,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'establishment.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c8_u10',
+          id: 'company_handbook_c8_u11',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'ADVERSE WEATHER CONDITIONS',
@@ -1148,7 +1183,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c11',
       title: 'EMPLOYEE CONDUCT',
-      subtitle: '9 cards',
+      subtitle: '10 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1175,9 +1210,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'morale and the quality of service we provide.\n'
               '\n'
               'Employees are expected to avoid any of the following '
-              'infractions:\n'
-              '\n'
-              '- Use of profane or abusive language\n'
+              'infractions:',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c11_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'CODE OF CONDUCT (cont.)',
+          body: '- Use of profane or abusive language\n'
               '\n'
               '- Willful wasting of company time or supplies\n'
               '\n'
@@ -1211,7 +1251,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'issues that may arise.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c11_u1',
+          id: 'company_handbook_c11_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EMPLOYEE BEHAVIOUR',
@@ -1227,7 +1267,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'disciplinary action, which could include termination.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c11_u2',
+          id: 'company_handbook_c11_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'TEAMWORK',
@@ -1243,7 +1283,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'contributes to a more efficient service.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c11_u3',
+          id: 'company_handbook_c11_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'COMMUNICATION',
@@ -1258,7 +1298,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'civility and professionalism.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c11_u4',
+          id: 'company_handbook_c11_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'SUBSTANCE ABUSE, DRUGS, AND ALCOHOL',
@@ -1284,7 +1324,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'prescription and non-prescription medications.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c11_u5',
+          id: 'company_handbook_c11_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'PERFORMANCE',
@@ -1298,7 +1338,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'of Barrio Legado.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c11_u6',
+          id: 'company_handbook_c11_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'MEETINGS',
@@ -1322,7 +1362,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'invest time in studying and learning.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c11_u7',
+          id: 'company_handbook_c11_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'PRODUCT KNOWLEDGE',
@@ -1338,7 +1378,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'with our products and services.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c11_u8',
+          id: 'company_handbook_c11_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'SOLICITATION',
@@ -1458,7 +1498,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c13',
       title: 'SECURITY & TECHNOLOGY',
-      subtitle: '6 cards',
+      subtitle: '7 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1521,9 +1561,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               'share. Regardless of an employee’s belief that their comments '
               'are private, the reality is that the public nature of social '
-              'media can lead to unforeseen consequences.\n'
-              '\n'
-              'Given this context, we expect our employees to exercise sound '
+              'media can lead to unforeseen consequences.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c13_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'SOCIAL MEDIA (cont.)',
+          body: 'Given this context, we expect our employees to exercise sound '
               'judgment when posting on social media, both during and outside '
               'of work hours. It is crucial for all interactions to uphold '
               'the reputation and values of Barrio Legado. Communications '
@@ -1535,7 +1580,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'and respectful online environment.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c13_u3',
+          id: 'company_handbook_c13_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'COMPANY PROPERTY',
@@ -1548,7 +1593,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'at the conclusion of your employment.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c13_u4',
+          id: 'company_handbook_c13_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'INTELLECTUAL PROPERTY',
@@ -1576,7 +1621,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'uncertainties regarding disclosure with diligence and care.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c13_u5',
+          id: 'company_handbook_c13_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'MEDIA AND PUBLIC COMMUNICATION',
@@ -1604,7 +1649,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c14',
       title: 'PERFORMANCE MANAGEMENT',
-      subtitle: '6 cards',
+      subtitle: '8 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1660,9 +1705,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'incident and providing an opportunity for the employee to '
               'share their perspective. This interaction not only clarifies '
               'expectations moving forward but also ensures that the employee '
-              'understands the necessity of adhering to company standards.\n'
-              '\n'
-              'Should a situation necessitate further action, or if the '
+              'understands the necessity of adhering to company standards.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c14_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'DISCIPLINARY PROCEDURE (cont.)',
+          body: 'Should a situation necessitate further action, or if the '
               'infraction is deemed more severe, a written warning may be '
               'issued. This formalized document outlines the nature of the '
               'violation, the agreed-upon action plan for improvement, and '
@@ -1688,7 +1738,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'context and severity of each infraction.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c14_u3',
+          id: 'company_handbook_c14_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'TERMINATION',
@@ -1715,9 +1765,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'may affect entitlement to termination notice and severance '
               'pay. Employees who reject reasonable alternative employment '
               'offers or have engaged in willful misconduct or neglect of '
-              'duty may not be eligible for these benefits.\n'
-              '\n'
-              'For employees who choose to resign, Barrio Legado fully '
+              'duty may not be eligible for these benefits.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c14_u5',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'TERMINATION (cont.)',
+          body: 'For employees who choose to resign, Barrio Legado fully '
               'respects their decision and wishes them success in future '
               'endeavors. We kindly ask for a written notice of at least two '
               'weeks to be provided to a manager, allowing for a smoother '
@@ -1729,7 +1784,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'hospitality service.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c14_u4',
+          id: 'company_handbook_c14_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'LETTER OF EMPLOYMENT',
@@ -1740,7 +1795,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'included, kindly inform your manager in advance.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c14_u5',
+          id: 'company_handbook_c14_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'REFERENCES',
@@ -1753,7 +1808,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c15',
       title: 'HEALTH AND SAFETY',
-      subtitle: '3 cards',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1782,9 +1837,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'measures. The overarching goal is to establish an injury and '
               'accidentfree workplace, a target that can be accomplished '
               'through dedicated efforts in continuous safety and loss '
-              'control initiatives.\n'
-              '\n'
-              'Barrio Legado is fully committed to implementing every '
+              'control initiatives.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c15_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'HEALTH AND SAFETY STATEMENT (cont.)',
+          body: 'Barrio Legado is fully committed to implementing every '
               'reasonable precaution to protect all workers, in accordance '
               'with Occupational Health and Safety legislation. This '
               'commitment involves maintaining a safe and healthy workplace '
@@ -1808,7 +1868,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'culture of safety and respect in the workplace.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c15_u1',
+          id: 'company_handbook_c15_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'RESPONSIBILITIES',
@@ -1837,7 +1897,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'offered',
         ),
         HandbookUnit(
-          id: 'company_handbook_c15_u2',
+          id: 'company_handbook_c15_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EMPLOYEE RIGHTS',
@@ -1868,16 +1928,21 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Committee, or the Workplace Health and Safety Representative. '
               'Additionally, joining the OHS Committee or serving as a WHS '
               'Representative are also great ways to contribute positively to '
-              'the safety culture of Barrio Legado.\n'
-              '\n'
-              'Employees have the right to decline tasks they perceive as '
+              'the safety culture of Barrio Legado.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c15_u4',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'EMPLOYEE RIGHTS (cont.)',
+          body: 'Employees have the right to decline tasks they perceive as '
               'hazardous to their own health and safety, or to that of others '
               'in the workplace. It\'s important to exercise this right '
               'responsibly and not to misuse it without valid justification.',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/09.webp',
-              afterParagraph: 6,
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -1886,7 +1951,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c16',
       title: 'Basic Rights of Workers in Canada',
-      subtitle: '23 cards',
+      subtitle: '31 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1930,9 +1995,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '3. The employer or employee must immediately report the '
               'unresolved work refusal to OHS Division for investigation and '
               'resolution. When the report is made orally, it must be '
-              'followed up in writing within five\n'
-              '\n'
-              'days.\n'
+              'followed up in writing within five',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c16_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'RIGHT TO REFUSE UNSAFE WORK (cont.)',
+          body: 'days.\n'
               '\n'
               'Where there has been a refusal to work by one employee, that '
               'same work cannot be reassigned to another employee unless the '
@@ -1952,24 +2022,29 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'must pay the same wages or salary and grant the same benefits '
               'as if the employee had continued to do work. Reassignment of '
               'work in this situation is not considered to be discriminatory '
-              'action.\n'
-              '\n'
-              'The employer may not take discriminatory actions against '
+              'action.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/10.webp',
+              afterParagraph: 0,
+            ),
+          ],
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c16_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'RIGHT TO REFUSE UNSAFE WORK (cont.)',
+          body: 'The employer may not take discriminatory actions against '
               'employees by dismissing them, deducting wages, salary or other '
               'benefits, or by through other disciplinary actions against '
               'them for reasonably refusing work under their rights. Where '
               'disciplinary action is taken against workers, that action or '
               'dismissal will be considered discriminatory, unless there is '
               'evidence to show otherwise.',
-          images: [
-            HandbookUnitImage(
-              assetPath: 'assets/internal/barrio/training/barrio_company_handbook/10.webp',
-              afterParagraph: 6,
-            ),
-          ],
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u2',
+          id: 'company_handbook_c16_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'OCCUPATIONAL HEALTH AND SAFETY COMMITTEE',
@@ -1983,9 +2058,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'comprising a minimum of two and a maximum of twelve members, '
               'with at least half of these members representing the workers, '
               'thereby ensuring that the voices of those directly affected by '
-              'workplace conditions are heard and considered.\n'
-              '\n'
-              'The OHS Committee is tasked with a range of responsibilities '
+              'workplace conditions are heard and considered.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c16_u5',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'OCCUPATIONAL HEALTH AND SAFETY COMMITTEE (cont.)',
+          body: 'The OHS Committee is tasked with a range of responsibilities '
               'to identify and address potential hazards within the '
               'workplace. This includes conducting regular workplace '
               'inspections as required by regulations, where the committee '
@@ -2011,7 +2091,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'uphold the health, safety, and welfare of all employees.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u3',
+          id: 'company_handbook_c16_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'REPORTING AN INJURY AT WORK',
@@ -2035,7 +2115,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Adjudicator will review the claim.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u4',
+          id: 'company_handbook_c16_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'WORKPLACE COMPENSATION INSURANCE',
@@ -2051,7 +2131,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'challenging times.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u5',
+          id: 'company_handbook_c16_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EARLY AND SAFE RETURN TO WORK',
@@ -2069,7 +2149,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'available employment opportunities.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u6',
+          id: 'company_handbook_c16_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'MENTAL HEALTH IN THE WORKPLACE',
@@ -2100,7 +2180,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'take proactive steps to mitigate them.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u7',
+          id: 'company_handbook_c16_u10',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Practical Ways to Look After Your Mental Health Each Day',
@@ -2141,16 +2221,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '\n'
               '- Make some time for self-care.\n'
               '\n'
-              'Source: www.theburntchefproject.com\n'
-              '\n'
-              'Our leadership team is dedicated to ensuring clear job roles, '
-              'offering flexible scheduling options, and prioritizing mental '
-              'health training and awareness. We also equip our managers with '
-              'the skills to recognize signs of emotional distress within '
-              'their teams, fostering a culture of care and responsiveness. '
-              'We understand that when we prioritize mental well-being it can '
-              'lead to increased productivity, improved employee retention, '
-              'and a more positive workplace culture.',
+              'Source: www.theburntchefproject.com',
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/11.webp',
@@ -2159,7 +2230,21 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           ],
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u8',
+          id: 'company_handbook_c16_u11',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Practical Ways to Look After Your Mental Health Each Day (cont.)',
+          body: 'Our leadership team is dedicated to ensuring clear job roles, '
+              'offering flexible scheduling options, and prioritizing mental '
+              'health training and awareness. We also equip our managers with '
+              'the skills to recognize signs of emotional distress within '
+              'their teams, fostering a culture of care and responsiveness. '
+              'We understand that when we prioritize mental well-being it can '
+              'lead to increased productivity, improved employee retention, '
+              'and a more positive workplace culture.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c16_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'INCIDENT REPORTS',
@@ -2188,7 +2273,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'occurrences, and notify a supervisor or manager.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u9',
+          id: 'company_handbook_c16_u13',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'ANONYMOUS COMPLAINTS AND REPORTING',
@@ -2215,9 +2300,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'identification of patterns and the collection of available '
               'evidence. Our commitment to resolving these issues reflects '
               'our dedication to fostering a safe and respectful workplace '
-              'for all.\n'
-              '\n'
-              'For employees considering making an anonymous complaint, we '
+              'for all.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c16_u14',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'ANONYMOUS COMPLAINTS AND REPORTING (cont.)',
+          body: 'For employees considering making an anonymous complaint, we '
               'encourage you to be as specific as possible. Providing '
               'detailed descriptions of the incidents including dates, times, '
               'and potential witnesses can significantly aid in our '
@@ -2231,7 +2321,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'to ensure a safe and supportive work environment for everyone.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u10',
+          id: 'company_handbook_c16_u15',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'HEALTH AND SAFETY BOARD',
@@ -2243,7 +2333,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'and informative posters.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u11',
+          id: 'company_handbook_c16_u16',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'FIRST AID',
@@ -2255,7 +2345,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'alcohol swabs, and safety pins, for minor everyday incidents.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u12',
+          id: 'company_handbook_c16_u17',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EVACUATION PLANS',
@@ -2267,7 +2357,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'paths in case any route is blocked.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u13',
+          id: 'company_handbook_c16_u18',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EMERGENCY CONTACTS',
@@ -2289,7 +2379,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Mental Health Crisis Support - 811',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u14',
+          id: 'company_handbook_c16_u19',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'IN CASE OF FIRE',
@@ -2323,9 +2413,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'What to do if you hear the fire alarm?\n'
               '\n'
               '1. Turn off all equipment, make effort to secure valuable '
-              'and/or confidential information if possible, however,\n'
-              '\n'
-              'life safety is the number one priority. Call 911.\n'
+              'and/or confidential information if possible, however,',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c16_u20',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'IN CASE OF FIRE (cont.)',
+          body: 'life safety is the number one priority. Call 911.\n'
               '\n'
               '2. Make sure doors close behind you – walk quickly but do not '
               'run.\n'
@@ -2356,7 +2451,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'all doors closed.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u15',
+          id: 'company_handbook_c16_u21',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EMERGENCY LIGHTING',
@@ -2365,7 +2460,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'the event electrical power is lost.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u16',
+          id: 'company_handbook_c16_u22',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EXIT SIGNS',
@@ -2374,7 +2469,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'is lost/reduced.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u17',
+          id: 'company_handbook_c16_u23',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'FIRE ALARM SYSTEM',
@@ -2385,7 +2480,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'health and safety manual and on the health and safety board.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u18',
+          id: 'company_handbook_c16_u24',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'PORTABLE FIRE EXTINGUISHERS',
@@ -2406,7 +2501,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'completely out',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u19',
+          id: 'company_handbook_c16_u25',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'KITCHEN FIRE SUPPRESSION SYSTEM AND KITCHEN EXHAUST',
@@ -2422,7 +2517,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'expels cooking vapours from the building.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u20',
+          id: 'company_handbook_c16_u26',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'PREVENTATIVE MEASURES',
@@ -2438,7 +2533,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'Keep electrical room doors closed Keep up with all inspections',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u21',
+          id: 'company_handbook_c16_u27',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'MUSTER STATION',
@@ -2453,7 +2548,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'safety manual as well as on the health and safety board.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c16_u22',
+          id: 'company_handbook_c16_u28',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'FOOD SAFETY',
@@ -2475,9 +2570,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'may often perform these fundamental tasks without fully '
               'understanding their significance. This lack of awareness can '
               'cause these essential practices to become mundane, leading to '
-              'neglect and, ultimately, potential health risks for guests.\n'
-              '\n'
-              'Most foodborne illnesses are preventable with the right safety '
+              'neglect and, ultimately, potential health risks for guests.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c16_u29',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'FOOD SAFETY (cont.)',
+          body: 'Most foodborne illnesses are preventable with the right safety '
               'measures in place. By prioritizing practices that prevent '
               'cross-contamination and other food-related issues, we can '
               'ensure guest safety and protect our operation. In Canada, '
@@ -2491,9 +2591,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'As food allergies become more prevalent, restaurant staff must '
               'be vigilant in preventing life-threatening allergic reactions. '
               'Ignorance of food safety measures, especially regarding '
-              'allergens, is not an acceptable excuse for any establishment.\n'
-              '\n'
-              'Regular handwashing with soap and water, particularly before '
+              'allergens, is not an acceptable excuse for any establishment.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c16_u30',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'FOOD SAFETY (cont.)',
+          body: 'Regular handwashing with soap and water, particularly before '
               'handling food and after touching raw meats or using the '
               'restroom, is essential. Cleaning cutting boards, utensils, and '
               'countertops after contact with raw meat is also vital to avoid '
@@ -2508,7 +2613,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/barrio_company_handbook/12.webp',
-              afterParagraph: 4,
+              afterParagraph: 0,
             ),
           ],
         ),
@@ -2571,7 +2676,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c18',
       title: 'LEAVE OF ABSENCE',
-      subtitle: '11 cards',
+      subtitle: '14 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -2761,9 +2866,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'harm to the individual or their child Conduct that controls, '
               'exploits, or limits ab individual access to financial '
               'resources The deprivation of food, clothing. Medical '
-              'attention, shelter, transportation, or necessities of life\n'
-              '\n'
-              'An employee can use family violence leave for either '
+              'attention, shelter, transportation, or necessities of life',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c18_u9',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'FAMILY VIOLENCE LEAVE (cont.)',
+          body: 'An employee can use family violence leave for either '
               'themselves or a person for whom the employee is a parent or '
               'caregiver to seek and receive: Medical attention, counselling, '
               'or other service from a health professional for physical, '
@@ -2777,9 +2887,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'witnessed family violence. Legal services or assistance '
               'including services or assistance with respect to his or her '
               'participation in or the enforcement of a legal proceeding '
-              'relating to or as a result of family violence.\n'
-              '\n'
-              'An employee who has been employed with Barrio Legado for a '
+              'relating to or as a result of family violence.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c18_u10',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'FAMILY VIOLENCE LEAVE (cont.)',
+          body: 'An employee who has been employed with Barrio Legado for a '
               'minimum of 30 days and where the employee or a person whom the '
               'employee is a parent or caregiver has been directly or '
               'indirectly subjected to family violence. The employee can use '
@@ -2797,7 +2912,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'they had before their leave.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u9',
+          id: 'company_handbook_c18_u11',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'COMMUNICABLE DISEASE EMERGENCY LEAVE',
@@ -2830,9 +2945,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '- The employee is providing care or support to a qualifying '
               'individual for a reason related to a designated communicable '
               'disease that concerns the individual including a school or '
-              'child care service closure\n'
-              '\n'
-              '- The employee is directly affected by travel restrictions '
+              'child care service closure',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c18_u12',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'COMMUNICABLE DISEASE EMERGENCY LEAVE (cont.)',
+          body: '- The employee is directly affected by travel restrictions '
               'related to a designated communicable disease and, under the '
               'circumstances, cannot reasonable be expected to travel back to '
               'the province\n'
@@ -2856,7 +2976,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'daughter-in-law of the employee or employee’s spouse.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u10',
+          id: 'company_handbook_c18_u13',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'JURY DUTY',
@@ -2877,7 +2997,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c19',
       title: 'WORKPLACE HARASSMENT POLICY',
-      subtitle: '14 cards',
+      subtitle: '15 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -2937,9 +3057,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'environment. This may manifest as a single egregious incident '
               'or as a pattern of behavior, encompassing bullying, sexual '
               'harassment, and discrimination based on protected '
-              'characteristics.\n'
-              '\n'
-              'Some common examples of workplace harassment include, but are '
+              'characteristics.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c19_u4',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'DEFINITION (cont.)',
+          body: 'Some common examples of workplace harassment include, but are '
               'not limited to: Verbal abuse and bullying including yelling, '
               'swearing, spreading rumors, name calling, or making demeaning '
               'comments about an employee’s appearance or beliefs. Sexual '
@@ -2962,7 +3087,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'personal property. Leering or other offensive gesture.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u4',
+          id: 'company_handbook_c19_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'PROHIBITED CONDUCT',
@@ -2982,7 +3107,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'complaint cannot be proven, has not violated this policy.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u5',
+          id: 'company_handbook_c19_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'MANAGER RESPONSIBILITIES',
@@ -2998,7 +3123,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'incident.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u6',
+          id: 'company_handbook_c19_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EMPLOYEE RESPONSIBILITIES',
@@ -3014,7 +3139,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'matters arising under this policy.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u7',
+          id: 'company_handbook_c19_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'COMPLAINT PROCEDURE',
@@ -3037,7 +3162,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'please seek the assistance of your manager.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u8',
+          id: 'company_handbook_c19_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'CONFIDENTIALITY',
@@ -3053,7 +3178,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'about an incident, speak with HR directly.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u9',
+          id: 'company_handbook_c19_u10',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'NON-RETALIATION',
@@ -3065,7 +3190,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'workplace harassment.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u10',
+          id: 'company_handbook_c19_u11',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'INVESTIGATION',
@@ -3089,7 +3214,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'each affecting employee’s personal employee file.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u11',
+          id: 'company_handbook_c19_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'CORRECTIVE ACTION AND DISCIPLINE',
@@ -3105,7 +3230,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'referral to an assistance program termination legal action',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u12',
+          id: 'company_handbook_c19_u13',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'FOLLOW UP',
@@ -3115,7 +3240,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'email, or phone call.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c19_u13',
+          id: 'company_handbook_c19_u14',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'EVALUATION',
@@ -3435,7 +3560,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c22',
       title: 'WHIMIS',
-      subtitle: '8 cards',
+      subtitle: '9 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -3560,9 +3685,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '6. Precautionary statement(s) – standardized phrases that '
               'describe measures to be taken to minimize or prevent adverse '
               'effects resulting from exposure to a hazardous product or '
-              'resulting from improper handling or storage\n'
-              '\n'
-              'of a hazardous product.\n'
+              'resulting from improper handling or storage',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c22_u4',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'SUPPLIER LABEL REQUIREMENTS (cont.)',
+          body: 'of a hazardous product.\n'
               '\n'
               '7. Supplemental label information – some supplemental label '
               'information is required based on the classification of the '
@@ -3578,7 +3708,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'information.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c22_u4',
+          id: 'company_handbook_c22_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'WORKPLACE LABEL REQUIREMENTS',
@@ -3588,7 +3718,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'supplier label information. A reference to the SDS',
         ),
         HandbookUnit(
-          id: 'company_handbook_c22_u5',
+          id: 'company_handbook_c22_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'HAZARD STATEMENT',
@@ -3610,7 +3740,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '- May cause cancer.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c22_u6',
+          id: 'company_handbook_c22_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'PRECAUTIONARY STATEMENT',
@@ -3650,7 +3780,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               '- Protect from sunlight.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c22_u7',
+          id: 'company_handbook_c22_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'SIGNAL WORD',

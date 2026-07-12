@@ -54,7 +54,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_mastering_metrics_c1',
       title: 'Average Guest Check',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -82,9 +82,14 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'and dinner - can further illuminate guest behavior during '
               'different times of the day. Additionally, analyzing AGC by '
               'individual servers can highlight performance variances, '
-              'offering targeted insights for staff development.\n'
-              '\n'
-              'The insights gained from tracking AGC are invaluable; '
+              'offering targeted insights for staff development.',
+        ),
+        HandbookUnit(
+          id: 'training_mastering_metrics_c1_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Average Guest Check (cont.)',
+          body: 'The insights gained from tracking AGC are invaluable; '
               'revealing ways to enhance the dining experience. For example, '
               'if data shows that guests tend to spend significantly more on '
               'weekends, restaurant managers can tailor promotions or menu '
@@ -101,7 +106,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_mastering_metrics_c2',
       title: 'Covers',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -126,9 +131,14 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'patterns, we gain a clearer understanding of our revenue '
               'potential. This insight empowers us to make informed '
               'decisions, ensuring we maximize our profitability while '
-              'maintaining an exceptional dining experience for our guests.\n'
-              '\n'
-              'Staffing is another area affected by cover counts. Having a '
+              'maintaining an exceptional dining experience for our guests.',
+        ),
+        HandbookUnit(
+          id: 'training_mastering_metrics_c2_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Covers (cont.)',
+          body: 'Staffing is another area affected by cover counts. Having a '
               'reliable indicator of expected guest numbers enables '
               'restaurant operators to determine the appropriate staffing '
               'levels necessary to execute smooth service. This is key to '
@@ -152,7 +162,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_mastering_metrics_c3',
       title: 'Covers Per Labour Hour',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -178,9 +188,14 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'understanding of operations. If AGC is declining while CPLH is '
               'on the rise, it raises a red flag: they might be understaffed. '
               'When the team is stretched too thin, it can lead to service '
-              'quality that suffers, impacting the overall guest experience.\n'
-              '\n'
-              'The ultimate goal is to find the sweet spot to achieve the '
+              'quality that suffers, impacting the overall guest experience.',
+        ),
+        HandbookUnit(
+          id: 'training_mastering_metrics_c3_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Covers Per Labour Hour (cont.)',
+          body: 'The ultimate goal is to find the sweet spot to achieve the '
               'highest productivity score without negatively impacting guest '
               'satisfaction. This means maximizing sales while ensuring staff '
               'are not overburdened. CPLH serves as a pivotal productivity '
@@ -223,7 +238,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_mastering_metrics_c5',
       title: 'Increasing AGC',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -248,9 +263,14 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'might not have considered otherwise.\n'
               '\n'
               'Equally important is mastering your menu knowledge and '
-              'suggestive selling skills.\n'
-              '\n'
-              'Being well-versed in the ingredients, preparation methods, and '
+              'suggestive selling skills.',
+        ),
+        HandbookUnit(
+          id: 'training_mastering_metrics_c5_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Increasing AGC (cont.)',
+          body: 'Being well-versed in the ingredients, preparation methods, and '
               'unique flavors of each dish enables you to communicate '
               'passionately about the menu. When guests hear you '
               'enthusiastically rave about a seasonal special or a house '
@@ -270,7 +290,7 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_mastering_metrics_c6',
       title: 'Factors That AGC',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -302,9 +322,14 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'goal is not just to draw in more guests with lower prices but '
               'also to encourage them to spend more during their visit. This '
               'requires a delicate balance - ensuring that promotions are '
-              'enticing without significantly undermining profit margins.\n'
-              '\n'
-              'Being understaffed can hinder your team\'s ability to provide '
+              'enticing without significantly undermining profit margins.',
+        ),
+        HandbookUnit(
+          id: 'training_mastering_metrics_c6_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Factors That AGC (cont.)',
+          body: 'Being understaffed can hinder your team\'s ability to provide '
               'the exceptional service that guests expect so it is important '
               'to maintain optimal staffing levels. If servers are stretched '
               'thin, they may miss opportunities to engage with customers, '

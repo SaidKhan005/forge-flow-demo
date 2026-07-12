@@ -16,7 +16,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_tequila_c0',
       title: 'Tequila Training',
-      subtitle: '1 card',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -35,9 +35,14 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'highlighted its origins, leading to the term "mezcal de '
               'tequila." Over time, as the beverage gained popularity, the '
               'mezcal descriptor was dropped altogether, giving rise to the '
-              'spirit we now know simply as tequila.\n'
-              '\n'
-              'To be legally recognized as tequila, a spirit must adhere to '
+              'spirit we now know simply as tequila.',
+        ),
+        HandbookUnit(
+          id: 'training_tequila_c0_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Tequila Training (cont.)',
+          body: 'To be legally recognized as tequila, a spirit must adhere to '
               'stringent production regulations. Primarily, it must be '
               'distilled from the blue weber agave (Agave tequilana), a plant '
               'that thrives in the specific climates found in designated '
@@ -48,9 +53,14 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'tequila, which must contain a minimum of 51% agave, with the '
               'remaining components derived from other sugars. This careful '
               'regulation ensures quality and authenticity, preserving the '
-              'integrity of tequila as a unique Mexican spirit.\n'
-              '\n'
-              'The governance of tequila is further enhanced by its '
+              'integrity of tequila as a unique Mexican spirit.',
+        ),
+        HandbookUnit(
+          id: 'training_tequila_c0_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Tequila Training (cont.)',
+          body: 'The governance of tequila is further enhanced by its '
               'Denomination of Origin status, granted in 1974, which legally '
               'protects the production of tequila to certain regions of '
               'Mexico. This means that only the spirits produced within these '
@@ -73,7 +83,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_tequila_c1',
       title: 'How Tequila Is Made',
-      subtitle: '1 card',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -94,9 +104,14 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'agave, weighing anywhere from 50 to 150 pounds and resembles a '
               'giant pineapple. This labor-intensive method reflects not only '
               'skill but also a deep respect for the plant and the tradition '
-              'surrounding tequila production.\n'
-              '\n'
-              'Once harvested, the piñas are chopped and then slow-baked in '
+              'surrounding tequila production.',
+        ),
+        HandbookUnit(
+          id: 'training_tequila_c1_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'How Tequila Is Made (cont.)',
+          body: 'Once harvested, the piñas are chopped and then slow-baked in '
               'large steam ovens, known as hornos, or in autoclaves for a '
               'duration of 24 to 48 hours. This step converts the complex '
               'carbohydrates within the agave into fermentable sugars. The '
@@ -115,9 +130,14 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'stainless steel stills. This separates the alcohol from water '
               'and impurities and elevates the ABV to around 55%. To achieve '
               'a drinkable strength, pure water is then added, commonly '
-              'resulting in a final ABV of approximately 40%.\n'
-              '\n'
-              'The final stages of tequila production allow for variations in '
+              'resulting in a final ABV of approximately 40%.',
+        ),
+        HandbookUnit(
+          id: 'training_tequila_c1_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'How Tequila Is Made (cont.)',
+          body: 'The final stages of tequila production allow for variations in '
               'flavor and character. While some tequila is bottled '
               'immediately or within a couple of months to produce a clear '
               '"Blanco" (Silver) tequila, others are aged in oak barrels for '
@@ -233,7 +253,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_tequila_c3',
       title: 'Popular Tequila Cocktails',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -264,9 +284,14 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'added last to the combination of tequila and orange juice, '
               'allowing the syrup to gracefully sink and create a stunning '
               'layered appearance that is as delightful to look at as it is '
-              'to sip.\n'
-              '\n'
-              '- TEQUILA MOCKINGBIRD: A Spicy Margarita riff that combines '
+              'to sip.',
+        ),
+        HandbookUnit(
+          id: 'training_tequila_c3_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Popular Tequila Cocktails (cont.)',
+          body: '- TEQUILA MOCKINGBIRD: A Spicy Margarita riff that combines '
               'muddled jalapeño and refreshing watermelon cubes to Blanco '
               'tequila, zesty lime juice, and agave syrup for a delightful '
               'kick.\n'
@@ -285,7 +310,7 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_tequila_c4',
       title: 'Mezcal',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -315,9 +340,14 @@ const BarrioTrainingDoc kTrainingTequila = BarrioTrainingDoc(
               'well-rounded, smoky profile. Yet, rarer varieties like Tobalá '
               'and Tepextate, which grow wild in mountainous regions and take '
               'decades to mature, bring forth extraordinary floral and herbal '
-              'flavors that enhance the drinking experience.\n'
-              '\n'
-              'In addition to the individual characteristics of the agave, '
+              'flavors that enhance the drinking experience.',
+        ),
+        HandbookUnit(
+          id: 'training_tequila_c4_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Mezcal (cont.)',
+          body: 'In addition to the individual characteristics of the agave, '
               'mezcal also reflects its terroir as each bottle represents the '
               'unique attributes of its environment. This means that beyond '
               'the familiar smoky notes, tasters may discover a variety of '

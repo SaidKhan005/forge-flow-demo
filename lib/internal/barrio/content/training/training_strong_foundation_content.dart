@@ -157,7 +157,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_strong_foundation_c4',
       title: 'Key Areas',
-      subtitle: '5 cards',
+      subtitle: '6 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -185,9 +185,14 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'recipes, restaurants ensure that every bite delivers that '
               'familiar taste. From the first mouthful to the last, attention '
               'to texture and aroma creates a symphony of flavors where '
-              'guests savour the nuances of each dish.\n'
-              '\n'
-              'Consistency extends beyond just flavors; it encompasses every '
+              'guests savour the nuances of each dish.',
+        ),
+        HandbookUnit(
+          id: 'training_strong_foundation_c4_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Food (cont.)',
+          body: 'Consistency extends beyond just flavors; it encompasses every '
               'element of the meal, from portion sizes to presentation. '
               'Uniform portion sizes help manage costs while meeting guests\' '
               'expectations, eliminating any surprises regarding serving '
@@ -203,7 +208,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'meals without fear of disappointment.',
         ),
         HandbookUnit(
-          id: 'training_strong_foundation_c4_u2',
+          id: 'training_strong_foundation_c4_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Service',
@@ -229,7 +234,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'regardless of when they return.',
         ),
         HandbookUnit(
-          id: 'training_strong_foundation_c4_u3',
+          id: 'training_strong_foundation_c4_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Atmosphere',
@@ -259,7 +264,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'ensure that every detail feels intentional.',
         ),
         HandbookUnit(
-          id: 'training_strong_foundation_c4_u4',
+          id: 'training_strong_foundation_c4_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Predictable Hours of Operation',
@@ -315,7 +320,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_strong_foundation_c6',
       title: 'How to Create Standards and Consistency',
-      subtitle: '3 cards',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -335,9 +340,14 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'to one of enthusiasm characterized by "I want to." This '
               'emotional investment is not just a personal evolution; it '
               'cultivates a workforce that is motivated to surpass '
-              'expectations.\n'
-              '\n'
-              'To achieve this transformative level of buy-in, it is crucial '
+              'expectations.',
+        ),
+        HandbookUnit(
+          id: 'training_strong_foundation_c6_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Buy In (cont.)',
+          body: 'To achieve this transformative level of buy-in, it is crucial '
               'for leaders and managers to nurture an environment that '
               'encourages emotional investment among their teams. Transparent '
               'communication and ongoing guidance are key components in this '
@@ -352,7 +362,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'harmonious and successful atmosphere.',
         ),
         HandbookUnit(
-          id: 'training_strong_foundation_c6_u1',
+          id: 'training_strong_foundation_c6_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Systems and Training',
@@ -364,9 +374,14 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'staff can feel secure in their roles, knowing that there is a '
               'clear path to follow. When employees can rely on established '
               'protocols, they experience a sense of stability and confidence '
-              'that translates into improved service for guests.\n'
-              '\n'
-              'Training stands as a pivotal element that transforms a diverse '
+              'that translates into improved service for guests.',
+        ),
+        HandbookUnit(
+          id: 'training_strong_foundation_c6_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Systems and Training (cont.)',
+          body: 'Training stands as a pivotal element that transforms a diverse '
               'group of individuals into a cohesive team, encouraging '
               'collaboration and enhancing interpersonal relationships that '
               'drive collective success. It is within the training process '
@@ -384,7 +399,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'and accountability within the team.',
         ),
         HandbookUnit(
-          id: 'training_strong_foundation_c6_u2',
+          id: 'training_strong_foundation_c6_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Team Success Through Defined Expectations',

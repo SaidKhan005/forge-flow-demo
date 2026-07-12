@@ -34,7 +34,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c1',
       title: 'Introduction',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -67,9 +67,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'than a series of disconnected problems. It will help you '
               'separate what is driven by guest behavior from what is driven '
               'by operations. And it will give you a framework for expanding '
-              'margin without damaging the team or the guest experience.\n'
-              '\n'
-              'Along the way, you will see why many common assumptions about '
+              'margin without damaging the team or the guest experience.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c1_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Why Most Restaurants Are Chasing the Wrong Number (cont.)',
+          body: 'Along the way, you will see why many common assumptions about '
               'labor are wrong. Wage increases do not automatically destroy '
               'profitability. Declining guest spend can quietly destabilize '
               'an otherwise well-run operation. High productivity, when '
@@ -89,7 +94,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c2',
       title: 'Chapter 1: The Labor Illusion',
-      subtitle: '1 card',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -120,9 +125,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'that emerges from the interaction of other variables. And when '
               'operators attempt to control an outcome instead of the forces '
               'that produce it, they begin making reactive decisions that '
-              'destabilize the system.\n'
-              '\n'
-              'This is the labor illusion.\n'
+              'destabilize the system.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c2_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 1: The Labor Illusion (cont.)',
+          body: 'This is the labor illusion.\n'
               '\n'
               'In many restaurants, this illusion creates a predictable '
               'cycle. A slight dip in sales leads to concern about labor. The '
@@ -144,9 +154,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'at 25 percent. If sales decline to \$46,000 while labor remains '
               'unchanged, labor percentage rises to over 27 percent. Nothing '
               'about the operation has changed. The same team worked the same '
-              'hours. The only difference is guest behavior.\n'
-              '\n'
-              'Yet the number now signals a problem.\n'
+              'hours. The only difference is guest behavior.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c2_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 1: The Labor Illusion (cont.)',
+          body: 'Yet the number now signals a problem.\n'
               '\n'
               'When that signal is misinterpreted, the response creates new '
               'issues. Labor is cut in an attempt to correct the percentage. '
@@ -163,7 +178,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c3',
       title: 'Chapter 2: The Three Levers of Labor Performance',
-      subtitle: '8 cards',
+      subtitle: '9 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -224,9 +239,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'When we combine these relationships, the structure becomes '
               'much clearer. Labor percentage is determined by hours and wage '
-              'on one side, and covers and guest spend on the other.\n'
-              '\n'
-              'When we simplify the equation further, something more useful '
+              'on one side, and covers and guest spend on the other.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c3_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'The Equation Beneath the Business (cont.)',
+          body: 'When we simplify the equation further, something more useful '
               'appears.\n'
               '\n'
               'Labor percentage can be understood as wage divided by the '
@@ -243,7 +263,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'This is the operating engine of the restaurant.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c3_u2',
+          id: 'training_bold_by_design_c3_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Why This Changes How You Manage',
@@ -268,7 +288,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'diagnosed.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c3_u3',
+          id: 'training_bold_by_design_c3_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Lever One: Average Wage',
@@ -296,7 +316,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'enough to absorb it.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c3_u4',
+          id: 'training_bold_by_design_c3_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Lever Two: Average Guest Spend (PPA)',
@@ -334,7 +354,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'decline.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c3_u5',
+          id: 'training_bold_by_design_c3_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Lever Three: Productivity',
@@ -375,7 +395,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Optimal Productivity Zone.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c3_u6',
+          id: 'training_bold_by_design_c3_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'How the Levers Interact',
@@ -405,7 +425,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'labor management becomes disciplined instead of emotional.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c3_u7',
+          id: 'training_bold_by_design_c3_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'The Foundation for Everything That Follows',
@@ -432,7 +452,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c4',
       title: 'Chapter 3: Best Version vs. Convergence',
-      subtitle: '8 cards',
+      subtitle: '9 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -538,9 +558,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'once. Kitchen configuration changes the flow of production. '
               'Team experience affects speed and consistency. Menu complexity '
               'influences ticket times. Technology, training, and leadership '
-              'all play a role.\n'
-              '\n'
-              'These variables interact in ways that cannot be standardized.\n'
+              'all play a role.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c4_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'The Myth of Universal Productivity Targets (cont.)',
+          body: 'These variables interact in ways that cannot be standardized.\n'
               '\n'
               'As a result, two restaurants with similar concepts can operate '
               'at very different productivity levels and both be performing '
@@ -551,7 +576,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'system to function properly.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c4_u3',
+          id: 'training_bold_by_design_c4_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'The Best Version of the Business',
@@ -582,7 +607,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'version of the system that is already there.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c4_u4',
+          id: 'training_bold_by_design_c4_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Why Identical Concepts Produce Different Results',
@@ -619,7 +644,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'underlying system that produced them.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c4_u5',
+          id: 'training_bold_by_design_c4_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Discovering Your Performance Range',
@@ -648,7 +673,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'insights an operator can have.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c4_u6',
+          id: 'training_bold_by_design_c4_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'The Advantage of Not Following the Crowd',
@@ -678,7 +703,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'forward.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c4_u7',
+          id: 'training_bold_by_design_c4_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'The Philosophy Behind This Book',
@@ -2745,7 +2770,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c13',
       title: 'Chapter 12: The Productivity Balance',
-      subtitle: '1 card',
+      subtitle: '6 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -2771,9 +2796,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Per Labor Hour, which reflects how effectively labor is being '
               'converted into food production. Together, these two '
               'measurements form the operational heartbeat of the restaurant. '
-              'They show how labor hours translate into service and revenue.\n'
-              '\n'
-              'But numbers alone do not tell the full story.\n'
+              'They show how labor hours translate into service and revenue.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c13_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 12: The Productivity Balance (cont.)',
+          body: 'But numbers alone do not tell the full story.\n'
               '\n'
               'Productivity does not operate in isolation. It interacts '
               'constantly with the human capacity of the team. Every employee '
@@ -2802,9 +2832,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'the other side lies overload, where labor hours fall too low '
               'relative to demand and employees are stretched beyond their '
               'capacity. In that state, service quality declines and tu '
-              'rnover increases.\n'
-              '\n'
-              'Between these two extremes lies the most powerful operating '
+              'rnover increases.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c13_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 12: The Productivity Balance (cont.)',
+          body: 'Between these two extremes lies the most powerful operating '
               'position a restaurant can achieve.\n'
               '\n'
               'The Optimal Productivity Zone.\n'
@@ -2832,9 +2867,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'restaurant flows smoothly, where employees are engaged but not '
               'overwhelmed, and where service quality remains strong. These '
               'moments reveal where the system is operating inside its '
-              'optimal range.\n'
-              '\n'
-              'Numbers alone cannot fully define this range. Observation is '
+              'optimal range.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c13_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 12: The Productivity Balance (cont.)',
+          body: 'Numbers alone cannot fully define this range. Observation is '
               'equally important.\n'
               '\n'
               'When productivity is too low, certain patterns appear. '
@@ -2863,9 +2903,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'productivity rises above the zone, it indicates that workload '
               'pressure may be approaching an unsustainable level. With this '
               'understanding, operators can begin to adjust proactively '
-              'rather than reacting after the fact.\n'
-              '\n'
-              'Scheduling becomes an act of system control.\n'
+              'rather than reacting after the fact.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c13_u4',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 12: The Productivity Balance (cont.)',
+          body: 'Scheduling becomes an act of system control.\n'
               '\n'
               'Restaurants that discover their Optimal Productivity Zone gain '
               'a significant advantage. The business becomes more '
@@ -2895,9 +2940,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'and guide the system back toward balance. Sometimes that '
               'requires adjusting schedules. Sometimes it requires retraining '
               'the team. In other cases, it may require redesigning '
-              'operational systems.\n'
-              '\n'
-              'The objective, however, remains the same.\n'
+              'operational systems.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c13_u5',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 12: The Productivity Balance (cont.)',
+          body: 'The objective, however, remains the same.\n'
               '\n'
               'Protect the zone.\n'
               '\n'
@@ -3086,7 +3136,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c15',
       title: 'Chapter 14: The Optimal Productivity Zone',
-      subtitle: '8 cards',
+      subtitle: '9 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -3146,9 +3196,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'rather than control.\n'
               '\n'
               'At this stage, productivity may still appear strong, but the '
-              'system is becoming less stable.\n'
-              '\n'
-              'If productivity continues to increase, the effects become more '
+              'system is becoming less stable.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c15_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'The Shape of Operational Performance (cont.)',
+          body: 'If productivity continues to increase, the effects become more '
               'pronounced. Employees feel rushed. Mistakes begin to appear '
               'more frequently. Service becomes less consistent. The '
               'experience for both the team and the guest begins to '
@@ -3158,7 +3213,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'performance. It reduces it.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c15_u2',
+          id: 'training_bold_by_design_c15_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'The Middle of the Curve',
@@ -3189,7 +3244,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'balanced.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c15_u3',
+          id: 'training_bold_by_design_c15_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Why the Zone Matters',
@@ -3220,7 +3275,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'that struggle with constant volatility.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c15_u4',
+          id: 'training_bold_by_design_c15_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Discovering the Zone',
@@ -3249,7 +3304,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'strongest.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c15_u5',
+          id: 'training_bold_by_design_c15_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Operating Inside the Zone',
@@ -3276,7 +3331,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'together.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c15_u6',
+          id: 'training_bold_by_design_c15_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'A Different Standard of Performance',
@@ -3298,7 +3353,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'within a defined range of performance.',
         ),
         HandbookUnit(
-          id: 'training_bold_by_design_c15_u7',
+          id: 'training_bold_by_design_c15_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'The Transition to System Design',
@@ -4437,7 +4492,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c21',
       title: 'Chapter 20: The Psychology of Understaffing',
-      subtitle: '1 card',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4470,9 +4525,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'pressure rather than structure. Employees must move faster, '
               'coordinate more tightly, and operate with less margin for '
               'error. What initially felt like focus begins to feel like '
-              'strain.\n'
-              '\n'
-              'As staffing falls below the level required to support demand, '
+              'strain.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c21_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 20: The Psychology of Understaffing (cont.)',
+          body: 'As staffing falls below the level required to support demand, '
               'the nature of the operation changes. The system no longer runs '
               'with control. It runs on reaction. Recovery time disappears, '
               'and small delays begin to create larger problems. '
@@ -4493,9 +4553,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'is still being delivered. But the experience begins to shift '
               'in subtle ways. Attention to detail decreases, pacing becomes '
               'inconsistent, and the overall interaction feels less '
-              'controlled.\n'
-              '\n'
-              'Over time, these changes influence behavior. Guests may spend '
+              'controlled.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c21_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 20: The Psychology of Understaffing (cont.)',
+          body: 'Over time, these changes influence behavior. Guests may spend '
               'slightly less because there is less engagement. They may skip '
               'additional items or shorten their visit. They may choose not '
               'to return as frequently. These shifts are not dramatic, but '
@@ -4520,9 +4585,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'leave, and new team members take their place. Training becomes '
               'more demanding, and the remaining team must carry additional '
               'workload during the transition. Productivity may decline, but '
-              'now for reasons that are harder to control.\n'
-              '\n'
-              'The tendency to understaff is often rooted in financial '
+              'now for reasons that are harder to control.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c21_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 20: The Psychology of Understaffing (cont.)',
+          body: 'The tendency to understaff is often rooted in financial '
               'pressure. Labor is one of the largest expenses in a '
               'restaurant, and reducing it feels like the most direct way to '
               'improve profitability. When labor percentage rises, the '
@@ -4546,9 +4616,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'quickly can push the system back toward inefficiency. The '
               'objective is to bring the operation back into the Optimal '
               'Productivity Zone, where productivity supports both '
-              'performance and stability.\n'
-              '\n'
-              'When staffing is aligned with demand, the system begins to '
+              'performance and stability.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c21_u4',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 20: The Psychology of Understaffing (cont.)',
+          body: 'When staffing is aligned with demand, the system begins to '
               'regain control. The pace of the shift becomes more '
               'intentional, employees are able to execute consistently, and '
               'the guest experience stabilizes. Financial performance '
@@ -4749,7 +4824,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c23',
       title: 'Chapter 22: From Understanding to Execution',
-      subtitle: '1 card',
+      subtitle: '4 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4779,9 +4854,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'decisions are made in response to pressure rather than '
               'planning, and productivity moves outside its optimal range not '
               'because it is misunderstood, but because it is not '
-              'consistently managed.\n'
-              '\n'
-              'This is the gap between understanding and execution. Knowing '
+              'consistently managed.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c23_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 22: From Understanding to Execution (cont.)',
+          body: 'This is the gap between understanding and execution. Knowing '
               'what the system requires is one thing. Building an operation '
               'that consistently delivers on those requirements is something '
               'else entirely.\n'
@@ -4803,9 +4883,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'shift becomes. Management routines create accountability, '
               'reinforcing expectations and ensuring that the system is '
               'followed day after day. Each of these elements plays a role in '
-              'keeping the restaurant within its optimal range.\n'
-              '\n'
-              'The true test of these systems is not how they perform under '
+              'keeping the restaurant within its optimal range.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c23_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 22: From Understanding to Execution (cont.)',
+          body: 'The true test of these systems is not how they perform under '
               'ideal conditions, but how they hold under pressure. During '
               'peak periods, when demand is high and the pace accelerates, '
               'the system must remain intact. Without structure, these '
@@ -4824,9 +4909,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'maintaining balance. This creates consistency, and consistency '
               'is what drives long-term performance. Guests receive a '
               'reliable experience, employees understand expectations, and '
-              'managers are able to lead rather than constantly react.\n'
-              '\n'
-              'This level of consistency does not happen by accident. It '
+              'managers are able to lead rather than constantly react.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c23_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 22: From Understanding to Execution (cont.)',
+          body: 'This level of consistency does not happen by accident. It '
               'requires discipline. Operators must follow systems even when '
               'it feels easier not to. Managers must make decisions based on '
               'data and observation rather than habit or assumption. '
@@ -4853,7 +4943,7 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_bold_by_design_c24',
       title: 'Chapter 23: Designing for Consistency',
-      subtitle: '1 card',
+      subtitle: '4 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4882,9 +4972,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'difficult shift. But this approach is not sustainable. As soon '
               'as conditions change, or key people are not present, '
               'performance begins to vary. What was once controlled becomes '
-              'inconsistent.\n'
-              '\n'
-              'Design removes that dependency.\n'
+              'inconsistent.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c24_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 23: Designing for Consistency (cont.)',
+          body: 'Design removes that dependency.\n'
               '\n'
               'A well-designed operation creates repeatable conditions. It '
               'ensures that the system functions the same way regardless of '
@@ -4908,9 +5003,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'designed to function. They need to recognize the pace that '
               'represents balance and the signals that indicate when the '
               'system is drifting. Without this understanding, even a '
-              'well-built schedule can break down during execution.\n'
-              '\n'
-              'Management routines also play a critical role. Managers must '
+              'well-built schedule can break down during execution.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c24_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 23: Designing for Consistency (cont.)',
+          body: 'Management routines also play a critical role. Managers must '
               'consistently observe the system, identify deviations, and make '
               'adjustments in real time. This is not about reacting to '
               'problems after they occur. It is about recognizing patterns as '
@@ -4934,9 +5034,14 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'supports them. Managers spend less time solving problems and '
               'more time improving performance. Over time, the operation '
               'becomes easier to run, not because it requires less effort, '
-              'but because that effort is directed within a clear structure.\n'
-              '\n'
-              'Without design, the opposite occurs.\n'
+              'but because that effort is directed within a clear structure.',
+        ),
+        HandbookUnit(
+          id: 'training_bold_by_design_c24_u3',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chapter 23: Designing for Consistency (cont.)',
+          body: 'Without design, the opposite occurs.\n'
               '\n'
               'Performance fluctuates. Productivity moves in and out of '
               'range. Managers rely on instinct instead of structure. '

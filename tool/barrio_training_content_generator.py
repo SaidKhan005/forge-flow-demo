@@ -401,6 +401,89 @@ def emit(doc, chapters):
     return '\n'.join(lines)
 
 
+# --- Digestible-card splitting -------------------------------------------
+# A single card carrying 400+ words is a wall of text to swipe through. Any
+# over-long unit is split into multiple cards at blank-line paragraph
+# boundaries (never mid-paragraph, so words stay verbatim and in order),
+# aiming for ~SPLIT_WORD_TARGET words per card. Images ride along to the
+# card that holds the paragraph they were anchored to. Continuation cards
+# reuse the source title with a ' (cont.)' suffix.
+SPLIT_WORD_MIN = 200     # units at or below this are never split
+SPLIT_WORD_TARGET = 150  # target words per card once splitting
+SPLIT_WORD_MAX = 210     # close a card before a paragraph that would overflow
+
+
+def word_count(s):
+    return len(re.findall(r'[A-Za-z0-9]+', s))
+
+
+def normalize_unit(unit):
+    """Coerce any unit shape into (title, body_str, images)."""
+    if len(unit) == 3:
+        u_title, u_body, u_images = unit
+    else:
+        u_title, u_body = unit
+        u_images = []
+    if isinstance(u_body, list):
+        u_body, u_images = body_and_images(u_body)
+    return u_title, u_body, u_images
+
+
+def split_unit(u_title, u_body, u_images):
+    """Return [(title, body, images)] — one card if short, else several."""
+    paras = u_body.split('\n\n')
+    if word_count(u_body) <= SPLIT_WORD_MIN or len(paras) < 2:
+        return [(u_title, u_body, u_images)]
+    # Group paragraphs into contiguous chunks by a word budget: close the
+    # current card when it reaches the target, or before adding a paragraph
+    # that would push it past the max (so two mid-size paragraphs split
+    # rather than pile into one over-long card).
+    chunks = []  # (start_idx, end_idx_inclusive)
+    start, acc = 0, 0
+    for i, p in enumerate(paras):
+        w = word_count(p)
+        if i > start and acc + w > SPLIT_WORD_MAX:
+            chunks.append((start, i - 1))
+            start, acc = i, 0
+        acc += w
+        if acc >= SPLIT_WORD_TARGET and i < len(paras) - 1:
+            chunks.append((start, i))
+            start, acc = i + 1, 0
+    chunks.append((start, len(paras) - 1))
+    if len(chunks) < 2:
+        return [(u_title, u_body, u_images)]
+    result = []
+    for ci, (s, e) in enumerate(chunks):
+        body = '\n\n'.join(paras[s:e + 1])
+        imgs = []
+        for img_path, img_caption, img_after in u_images:
+            if ci == 0 and img_after < 0:
+                imgs.append((img_path, img_caption, -1))
+            elif s <= img_after <= e:
+                imgs.append((img_path, img_caption, img_after - s))
+        title = u_title if ci == 0 else f'{u_title} (cont.)'
+        result.append((title, body, imgs))
+    return result
+
+
+def split_chapters(chapters):
+    """Normalize + split every unit; refresh any 'N cards' subtitle."""
+    out = []
+    for chap in chapters:
+        if len(chap) == 3:
+            ch_title, units, subtitle = chap
+        else:
+            ch_title, units, subtitle = chap[0], chap[1], None
+        new_units = []
+        for unit in units:
+            new_units.extend(split_unit(*normalize_unit(unit)))
+        if subtitle is None or re.fullmatch(r'\d+ cards?', subtitle or ''):
+            n = len(new_units)
+            subtitle = f'{n} card{"" if n == 1 else "s"}'
+        out.append((ch_title, new_units, subtitle))
+    return out
+
+
 os.makedirs(OUT, exist_ok=True)
 for doc in DOCS:
     text = load_md(doc['md'])
@@ -410,6 +493,7 @@ for doc in DOCS:
         chapters = parse_glossary(text)
     else:
         chapters = parse_slides(text)
+    chapters = split_chapters(chapters)
     out_path = os.path.join(OUT, doc.get('out', doc['id'] + '_content.dart'))
     with open(out_path, 'w', encoding='utf-8', newline='\n') as f:
         f.write(emit(doc, chapters))
