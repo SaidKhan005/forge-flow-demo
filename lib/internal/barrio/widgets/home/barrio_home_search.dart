@@ -255,23 +255,33 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 56, 20, 0),
-      child: Column(
-        children: [
-          Icon(
-            Icons.search_off_rounded,
-            size: 36,
-            color: BarrioColors.textMuted.withValues(alpha: 0.7),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            "No matches for '$query'",
-            textAlign: TextAlign.center,
-            style: GoogleFonts.ibmPlexSans(
-              fontSize: 14,
-              color: BarrioColors.textSecondary,
+      child: Container(
+        // Same near-opaque dark card as the result rows: the empty
+        // state also sits over the photo's lightest scrim zone.
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+        decoration: BoxDecoration(
+          color: BarrioColors.shellMid.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0x24FFFFFF)),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.search_off_rounded,
+              size: 36,
+              color: BarrioColors.textMuted.withValues(alpha: 0.7),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              "No matches for '$query'",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 14,
+                color: BarrioColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -300,7 +310,10 @@ class _SearchResultRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0x12FFFFFF),
+            // Near-opaque dark card: the rows sit over the home photo,
+            // whose scrim is lightest mid-screen, so a translucent wash
+            // is unreadable there (operator report 2026-07-11).
+            color: BarrioColors.shellMid.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0x24FFFFFF)),
           ),

@@ -69,6 +69,21 @@ void main() {
     expect(find.text(expected.chapterTitle), findsWidgets,
         reason: 'result rows carry the section title');
 
+    // Legibility pin (operator report 2026-07-11): result rows sit over
+    // the home photo, so their card must be near-opaque, not a wash.
+    final rowBox = tester.widget<Container>(
+      find
+          .ancestor(
+            of: find.text(expected.docTitle).first,
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    final rowColor = (rowBox.decoration as BoxDecoration?)?.color;
+    expect(rowColor, isNotNull, reason: 'result row has a card fill');
+    expect(rowColor!.a, greaterThan(0.85),
+        reason: 'result card must be near-opaque for legibility');
+
     // The center bubble and category sections are replaced while active.
     expect(find.byType(BarrioHomeCenterBubble), findsNothing);
     expect(find.text('Company & Compliance'), findsNothing);
