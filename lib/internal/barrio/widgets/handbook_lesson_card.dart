@@ -541,30 +541,50 @@ class _UnitBody extends StatelessWidget {
     if (highlightTerms.isEmpty) {
       return Text(text, style: style);
     }
-    final folded = BarrioTrainingSearch.fold(text);
-    final ranges = <List<int>>[];
-    for (final term in highlightTerms) {
-      if (term.isEmpty) continue;
-      var from = 0;
-      while (true) {
-        final idx = folded.indexOf(term, from);
-        if (idx < 0) break;
-        ranges.add([idx, idx + term.length]);
-        from = idx + term.length;
-      }
-    }
+    final ranges =
+        _mergeRanges(_rawMatchRanges(BarrioTrainingSearch.fold(text)));
     if (ranges.isEmpty) {
       return Text(text, style: style);
     }
+    return Text.rich(
+      TextSpan(style: style, children: _highlightSpans(text, ranges, style)),
+    );
+  }
+
+  /// All [start, end) fold-space match ranges of every term, unsorted.
+  List<List<int>> _rawMatchRanges(String folded) {
+    final ranges = <List<int>>[];
+    for (final term in highlightTerms) {
+      if (term.isEmpty) continue;
+      var idx = folded.indexOf(term);
+      while (idx >= 0) {
+        ranges.add([idx, idx + term.length]);
+        idx = folded.indexOf(term, idx + term.length);
+      }
+    }
+    return ranges;
+  }
+
+  /// Sorts ranges and merges overlaps so span runs never intersect.
+  List<List<int>> _mergeRanges(List<List<int>> ranges) {
+    if (ranges.isEmpty) return ranges;
     ranges.sort((a, b) => a[0].compareTo(b[0]));
     final merged = <List<int>>[ranges.first];
     for (final r in ranges.skip(1)) {
-      if (r[0] <= merged.last[1]) {
-        merged.last[1] = r[1] > merged.last[1] ? r[1] : merged.last[1];
-      } else {
+      if (r[0] > merged.last[1]) {
         merged.add(r);
+      } else if (r[1] > merged.last[1]) {
+        merged.last[1] = r[1];
       }
     }
+    return merged;
+  }
+
+  List<TextSpan> _highlightSpans(
+    String text,
+    List<List<int>> merged,
+    TextStyle style,
+  ) {
     final mark = style.copyWith(
       color: BarrioColors.textPrimary,
       fontWeight: FontWeight.w700,
@@ -582,7 +602,7 @@ class _UnitBody extends StatelessWidget {
     if (cursor < text.length) {
       spans.add(TextSpan(text: text.substring(cursor)));
     }
-    return Text.rich(TextSpan(style: style, children: spans));
+    return spans;
   }
 }
 
