@@ -315,36 +315,20 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'upsell items, and provide personalized recommendations, all of '
               'which can significantly impact your AGC.\n'
               '\n'
-              'Understanding the factors that can influence Average Guest '
-              'Check is can help maximize both guest satisfaction and '
-              'revenue. Promotions and discounts can be an effective strategy '
-              'to attract guests, but they must be carefully managed. The '
-              'goal is not just to draw in more guests with lower prices but '
-              'also to encourage them to spend more during their visit. This '
-              'requires a delicate balance - ensuring that promotions are '
-              'enticing without significantly undermining profit margins.',
-        ),
-        HandbookUnit(
-          id: 'training_mastering_metrics_c6_u1',
-          type: HandbookUnitType.explainer,
-          badgeHint: 'READ',
-          title: 'Factors That AGC (cont.)',
-          body: 'Being understaffed can hinder your team\'s ability to provide '
-              'the exceptional service that guests expect so it is important '
-              'to maintain optimal staffing levels. If servers are stretched '
-              'thin, they may miss opportunities to engage with customers, '
-              'upsell items, and provide personalized recommendations, all of '
-              'which can significantly impact your AGC.\n'
-              '\n'
               'Every interaction with a table presents a chance for servers '
               'to check in, answer questions, and recommend additional items. '
               'Equally important is the demeanor of servers during these '
               'interactions; being friendly and welcoming creates a positive '
               'atmosphere where guests feel appreciated. A smile and a warm '
               'greeting can go a long way towards enhancing their experience '
-              'and the AGC.\n'
-              '\n'
-              'While it is important to keep things clean and tidy, cleaning '
+              'and the AGC.',
+        ),
+        HandbookUnit(
+          id: 'training_mastering_metrics_c6_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Factors That AGC (cont.)',
+          body: 'While it is important to keep things clean and tidy, cleaning '
               'around guests or rushing them can create an uncomfortable '
               'atmosphere. When you sweep, mop, put the chairs up around '
               'tables, it makes guests feel rushed and like they are an '

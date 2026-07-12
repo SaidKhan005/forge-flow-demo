@@ -76,14 +76,6 @@ Gallo Pinto ( Red pepper, Onion, Black Bean)
 
 Salad - Grilled Pineapple, Grilled Jalapeño , Cactus *, Vegan Green Goddess
 
-## The Concept
-
-### Slide 1
-
-- BARRIO LEGADO
-- Menu Concept
-- 95 Water Street · St. John's, Newfoundland
-
 ## The Civilizations
 
 ### Slide 2
