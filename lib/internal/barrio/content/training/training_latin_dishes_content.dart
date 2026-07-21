@@ -170,8 +170,14 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'tigre. It is accompanied by sweet potato and Andean corn.\n'
               '- MEXICAN: Finely minced raw fish or shrimp marinated in lime '
               'with cilantro, onions, tomatoes, and chiles, often featuring '
-              'cucumber. It is commonly served on crispy tostadas or with '
-              'crackers.\n'
+              'cucumber.',
+        ),
+        HandbookUnit(
+          id: 'training_latin_dishes_c0_u12',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'TERM',
+          title: 'CEVICHE (cont.)',
+          body: 'It is commonly served on crispy tostadas or with crackers.\n'
               '- ECUADOR: Features cooked shrimp served in a soup-like bowl '
               'with generous citrus juices, often featuring onion, tomato '
               'sauce, mustard, or cilantro and typically served with plantain '
@@ -334,8 +340,14 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               '- CHILE: Made with mostly wheat flour-based dough that is '
               'often flaky and buttery and are typically baked. filled with a '
               'mixture of ground beef, onions, raisins, black olives, and '
-              'hard-boiled eggs. They are generally larger than Argentinian '
-              'ones.\n'
+              'hard-boiled eggs.',
+        ),
+        HandbookUnit(
+          id: 'training_latin_dishes_c1_u12',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'TERM',
+          title: 'EMPANADAS (cont.)',
+          body: 'They are generally larger than Argentinian ones.\n'
               '- BOLIVIA: A sweet, baked, soup-filled empanada containing '
               'meat, eggs, potatoes, and olives.\n'
               '- ECUADOR: Airy, cheese-filled, and fried, sprinkled with '

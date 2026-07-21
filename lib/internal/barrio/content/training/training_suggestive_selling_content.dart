@@ -227,7 +227,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_suggestive_selling_c4',
       title: 'Tools for Effective Strategies',
-      subtitle: '8 cards',
+      subtitle: '9 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -357,24 +357,30 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'becomes the ideal moment to introduce a "premium modifier" or '
               'a complementary side dish, employing techniques like the '
               '"Assumption Close" where the server suggests upgrades with the '
-              'expectation that the guest is already on board. The optimal '
-              'timing for dessert or coffee recommendations is just after '
-              'main plates are cleared, ensuring that the suggestions feel '
-              'timely and relevant. It\'s important to match the timing of '
-              'suggestions to the guests\' pace, allowing leisurely diners to '
-              'savor their experience while providing quick add-ons for those '
-              'in a hurry. By leveraging the rhythm of the dining experience '
-              '- especially during moments when the kitchen may be backed up '
-              '- servers can offer well-timed suggestions that keep guests '
-              'content and engaged. By limiting suggestions to one or two '
-              'impactful items, servers can avoid making the experience feel '
-              'overly sales-oriented. The goal is to elevate the dining '
-              'experience, creating memorable moments that lead to an '
-              'increased check amount as an organic outcome rather than the '
-              'primary objective.',
+              'expectation that the guest is already on board.',
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u6',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Pick Your Moments (cont.)',
+          body: 'The optimal timing for dessert or coffee recommendations is '
+              'just after main plates are cleared, ensuring that the '
+              'suggestions feel timely and relevant. It\'s important to match '
+              'the timing of suggestions to the guests\' pace, allowing '
+              'leisurely diners to savor their experience while providing '
+              'quick add-ons for those in a hurry. By leveraging the rhythm '
+              'of the dining experience - especially during moments when the '
+              'kitchen may be backed up - servers can offer well-timed '
+              'suggestions that keep guests content and engaged. By limiting '
+              'suggestions to one or two impactful items, servers can avoid '
+              'making the experience feel overly sales-oriented. The goal is '
+              'to elevate the dining experience, creating memorable moments '
+              'that lead to an increased check amount as an organic outcome '
+              'rather than the primary objective.',
+        ),
+        HandbookUnit(
+          id: 'training_suggestive_selling_c4_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Power of Language',
@@ -401,7 +407,7 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'reinforcing the importance of thoughtful communication.',
         ),
         HandbookUnit(
-          id: 'training_suggestive_selling_c4_u7',
+          id: 'training_suggestive_selling_c4_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Use in Combination',

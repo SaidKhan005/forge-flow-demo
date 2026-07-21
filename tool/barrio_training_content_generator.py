@@ -405,16 +405,98 @@ def emit(doc, chapters):
 # A single card carrying 400+ words is a wall of text to swipe through. Any
 # over-long unit is split into multiple cards at blank-line paragraph
 # boundaries (never mid-paragraph, so words stay verbatim and in order),
-# aiming for ~SPLIT_WORD_TARGET words per card. Images ride along to the
-# card that holds the paragraph they were anchored to. Continuation cards
-# reuse the source title with a ' (cont.)' suffix.
+# aiming for ~SPLIT_WORD_TARGET words per card. On top of that budget, a
+# hard cap holds: no emitted card may exceed SPLIT_CARD_HARD_MAX
+# whitespace-separated words. A card still over the cap splits further at
+# paragraph boundaries; a single over-cap paragraph splits at sentence
+# boundaries into balanced pieces (operator-authorized 2026-07-21) — every
+# word kept, original order, only break points chosen. Images ride along to
+# the card that holds the paragraph they were anchored to. Continuation
+# cards reuse the source title with a ' (cont.)' suffix (never doubled).
 SPLIT_WORD_MIN = 200     # units at or below this are never split
 SPLIT_WORD_TARGET = 150  # target words per card once splitting
 SPLIT_WORD_MAX = 210     # close a card before a paragraph that would overflow
+SPLIT_CARD_HARD_MAX = 200  # absolute per-card cap in whitespace-separated words
 
 
 def word_count(s):
     return len(re.findall(r'[A-Za-z0-9]+', s))
+
+
+def audit_word_count(s):
+    """Whitespace-token count — the measure card-length audits use."""
+    return len(s.split())
+
+
+# A sentence ends at '.', '!' or '?' (plus any closing quote/paren), then
+# whitespace, then an uppercase letter, digit, or opening quote. Common
+# abbreviations (Mr., Dr., e.g., a.m., single initials like 'J.') do not
+# end a sentence; skipping a real boundary is safe (fewer break points),
+# inventing one inside an abbreviation is not.
+_SENT_BOUNDARY_RE = re.compile(r'''[.!?]['")\]”]*\s+''')
+_SENT_NEXT_RE = re.compile(r'''[A-Z0-9"'(“‘]''')
+_SENT_ABBREV_RE = re.compile(
+    r'\b(?:Mr|Mrs|Ms|Dr|St|No|vs|etc|approx|Inc|Ltd|Co|'
+    r'e\.g|i\.e|a\.m|p\.m|U\.S|[A-Z])\.$')
+
+
+def sentence_starts(text):
+    """Offsets where a new sentence starts inside a paragraph."""
+    starts = []
+    for m in _SENT_BOUNDARY_RE.finditer(text):
+        if not _SENT_NEXT_RE.match(text[m.end():m.end() + 1]):
+            continue
+        if _SENT_ABBREV_RE.search(text[:m.start() + 1]):
+            continue
+        starts.append(m.end())
+    return starts
+
+
+def balanced_groups(weights, cap):
+    """Split a weight list into contiguous runs: the fewest roughly-even
+    groups whose sums stay at or under cap (when item sizes allow)."""
+    total = sum(weights)
+    n_items = len(weights)
+    prefix, cum = [], 0
+    for w in weights:
+        cum += w
+        prefix.append(cum)
+    n_groups = max(2, -(-total // cap))
+    while True:
+        cuts = sorted({min(range(n_items - 1),
+                           key=lambda i: abs(prefix[i] - total * k / n_groups))
+                       for k in range(1, n_groups)})
+        runs, prev = [], 0
+        for c in cuts:
+            runs.append((prev, c))
+            prev = c + 1
+        runs.append((prev, n_items - 1))
+        worst = max(sum(weights[gs:ge + 1]) for gs, ge in runs)
+        if worst <= cap or n_groups >= n_items:
+            if worst > cap:
+                print(f'  !! balanced_groups: a single item exceeds the '
+                      f'{cap}-word cap (worst run {worst}w)')
+            return runs
+        n_groups += 1
+
+
+def split_long_paragraph(para):
+    """Sentence-split one over-cap paragraph into balanced <= cap pieces,
+    every word kept in order. Returns [para] (and reports) when no sentence
+    boundary can be found."""
+    starts = sentence_starts(para)
+    if not starts:
+        print(f'  !! no sentence boundary in {audit_word_count(para)}-word '
+              f'paragraph; left whole: {para[:70]!r}')
+        return [para]
+    bounds = [0] + starts + [len(para)]
+    sents = [para[bounds[i]:bounds[i + 1]] for i in range(len(bounds) - 1)]
+    groups = balanced_groups([audit_word_count(x) for x in sents],
+                             SPLIT_CARD_HARD_MAX)
+    # Slicing at sentence-start offsets keeps every internal character
+    # (including single-newline line breaks); only the whitespace at the
+    # chosen cut is trimmed from each piece's tail.
+    return [''.join(sents[gs:ge + 1]).rstrip() for gs, ge in groups]
 
 
 def normalize_unit(unit):
@@ -432,36 +514,88 @@ def normalize_unit(unit):
 def split_unit(u_title, u_body, u_images):
     """Return [(title, body, images)] — one card if short, else several."""
     paras = u_body.split('\n\n')
-    if word_count(u_body) <= SPLIT_WORD_MIN or len(paras) < 2:
-        return [(u_title, u_body, u_images)]
     # Group paragraphs into contiguous chunks by a word budget: close the
     # current card when it reaches the target, or before adding a paragraph
     # that would push it past the max (so two mid-size paragraphs split
     # rather than pile into one over-long card).
-    chunks = []  # (start_idx, end_idx_inclusive)
-    start, acc = 0, 0
-    for i, p in enumerate(paras):
-        w = word_count(p)
-        if i > start and acc + w > SPLIT_WORD_MAX:
-            chunks.append((start, i - 1))
-            start, acc = i, 0
-        acc += w
-        if acc >= SPLIT_WORD_TARGET and i < len(paras) - 1:
-            chunks.append((start, i))
-            start, acc = i + 1, 0
-    chunks.append((start, len(paras) - 1))
-    if len(chunks) < 2:
+    if word_count(u_body) <= SPLIT_WORD_MIN or len(paras) < 2:
+        chunks = [(0, len(paras) - 1)]
+    else:
+        chunks = []  # (start_idx, end_idx_inclusive)
+        start, acc = 0, 0
+        for i, p in enumerate(paras):
+            w = word_count(p)
+            if i > start and acc + w > SPLIT_WORD_MAX:
+                chunks.append((start, i - 1))
+                start, acc = i, 0
+            acc += w
+            if acc >= SPLIT_WORD_TARGET and i < len(paras) - 1:
+                chunks.append((start, i))
+                start, acc = i + 1, 0
+        chunks.append((start, len(paras) - 1))
+
+    # Hard-cap pass: any chunk over SPLIT_CARD_HARD_MAX audit words splits
+    # further — at paragraph boundaries when it has several paragraphs, at
+    # sentence boundaries when a single paragraph itself exceeds the cap.
+    # Sentence pieces are atomic: each is emitted as its own card, so the
+    # grouping below can never re-merge them into an over-cap card. Chunks
+    # already at or under the cap pass through byte-identical.
+    cards = []  # each card: [(orig_para_idx, text), ...]
+    for s, e in chunks:
+        if audit_word_count('\n\n'.join(paras[s:e + 1])) <= SPLIT_CARD_HARD_MAX:
+            cards.append([(pi, paras[pi]) for pi in range(s, e + 1)])
+            continue
+        run = []  # consecutive under-cap (orig_para_idx, text) items
+
+        def flush_run():
+            if not run:
+                return
+            weights = [audit_word_count(t) for _pi, t in run]
+            if sum(weights) <= SPLIT_CARD_HARD_MAX or len(run) < 2:
+                cards.append(list(run))
+            else:
+                for gs, ge in balanced_groups(weights, SPLIT_CARD_HARD_MAX):
+                    cards.append(run[gs:ge + 1])
+            run.clear()
+
+        for pi in range(s, e + 1):
+            p = paras[pi]
+            if audit_word_count(p) > SPLIT_CARD_HARD_MAX:
+                pieces = split_long_paragraph(p)
+                if len(pieces) == 1:
+                    run.append((pi, p))  # unsplittable: kept whole, reported
+                    continue
+                flush_run()
+                for piece in pieces:
+                    cards.append([(pi, piece)])
+                continue
+            run.append((pi, p))
+        flush_run()
+
+    if len(cards) < 2:
         return [(u_title, u_body, u_images)]
+
+    # Images anchored after paragraph k render after that paragraph's final
+    # piece, on whichever card holds it (afterParagraph re-based per card).
+    last_card_of_para, last_pos_in_card = {}, {}
+    for ci, card in enumerate(cards):
+        for pos, (pi, _t) in enumerate(card):
+            last_card_of_para[pi] = ci
+            last_pos_in_card[pi] = pos
     result = []
-    for ci, (s, e) in enumerate(chunks):
-        body = '\n\n'.join(paras[s:e + 1])
+    for ci, card in enumerate(cards):
+        body = '\n\n'.join(t for _pi, t in card)
         imgs = []
         for img_path, img_caption, img_after in u_images:
-            if ci == 0 and img_after < 0:
-                imgs.append((img_path, img_caption, -1))
-            elif s <= img_after <= e:
-                imgs.append((img_path, img_caption, img_after - s))
-        title = u_title if ci == 0 else f'{u_title} (cont.)'
+            if img_after < 0:
+                if ci == 0:
+                    imgs.append((img_path, img_caption, -1))
+            elif last_card_of_para.get(img_after) == ci:
+                imgs.append((img_path, img_caption, last_pos_in_card[img_after]))
+        if ci == 0 or u_title.endswith(' (cont.)'):
+            title = u_title  # first card, or already suffixed: never doubled
+        else:
+            title = f'{u_title} (cont.)'
         result.append((title, body, imgs))
     return result
 

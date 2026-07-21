@@ -586,7 +586,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c6',
       title: 'Hazards In Food',
-      subtitle: '11 cards',
+      subtitle: '13 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -779,9 +779,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'glutamate, often exceed the acceptable limits set by food '
               'safety regulations, while unintentional additives can stem '
               'from contamination during food preparation - often due to '
-              'cleaning agents, pesticides, or environmental pollutants.\n'
-              '\n'
-              'The symptoms of chemical poisoning can manifest quickly, '
+              'cleaning agents, pesticides, or environmental pollutants.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u8',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Chemical Hazards (cont.)',
+          body: 'The symptoms of chemical poisoning can manifest quickly, '
               'ranging from nausea and stomach pain to dizziness and '
               'confusion, underscoring the critical importance of adhering to '
               'food safety protocols to safeguard public health.\n'
@@ -795,7 +800,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'harmful metals into the food, causing metal poisoning.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c6_u8',
+          id: 'training_food_safety_c6_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Chemical Hazards (cont.)',
@@ -815,7 +820,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'environment.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c6_u9',
+          id: 'training_food_safety_c6_u10',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Physical Hazards',
@@ -826,9 +831,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'measures throughout the entire food chain - from the field to '
               'the plate. These hazards can be introduced at any stage, '
               'whether from the origin of the product, raw materials, '
-              'packaging, or during processing.\n'
-              '\n'
-              'Common examples of physical hazards include bone or shell '
+              'packaging, or during processing.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c6_u11',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Physical Hazards (cont.)',
+          body: 'Common examples of physical hazards include bone or shell '
               'fragments from animal products, dirt and stones found in '
               'fruits and vegetables, and metal shards that can occur during '
               'processing activities involving cutting or grinding. '
@@ -847,7 +857,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'protects them from external contaminants.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c6_u10',
+          id: 'training_food_safety_c6_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Physical Hazards (cont.)',
@@ -875,7 +885,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c7',
       title: 'Food Allergies',
-      subtitle: '13 cards',
+      subtitle: '14 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1107,9 +1117,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'exposure to the allergen, though they can sometimes manifest '
               'several hours later. The most severe form of an allergic '
               'response is anaphylaxis highlighting the importance of the '
-              'management of tree nut allergies.\n'
-              '\n'
-              'Sesame\n'
+              'management of tree nut allergies.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c7_u10',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Common Food Allergies (cont.)',
+          body: 'Sesame\n'
               '\n'
               'Sesame, a flowering plant known for its edible seeds, has been '
               'recognized as a common allergen that poses significant health '
@@ -1123,7 +1138,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'hours later with the most',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c7_u10',
+          id: 'training_food_safety_c7_u11',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Common Food Allergies (cont.)',
@@ -1155,7 +1170,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'most severe response to this allergen.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c7_u11',
+          id: 'training_food_safety_c7_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Common Food Allergies (cont.)',
@@ -1179,7 +1194,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'although delaying exercise can mitigate these risks.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c7_u12',
+          id: 'training_food_safety_c7_u13',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Food Intolerance',
@@ -1228,7 +1243,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c8',
       title: 'Food Allergies: Keep Your Guests Safe',
-      subtitle: '3 cards',
+      subtitle: '4 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1266,9 +1281,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '\n'
               '- Make sure you understand the allergy. Write down the guest\'s '
               'allergy to record the conversation. If you have questions, ask '
-              'the guest.\n'
-              '\n'
-              '- Take all food allergy requests seriously. Refer the allergy '
+              'the guest.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c8_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Food Allergies: Keep Your Guests Safe (cont.)',
+          body: '- Take all food allergy requests seriously. Refer the allergy '
               'to the chef, manager, or person in charge.\n'
               '\n'
               '- Use only fresh ingredients, including cooking oil.\n'
@@ -1287,7 +1307,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'Call 911 at the first sign of a reaction.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c8_u1',
+          id: 'training_food_safety_c8_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'What To Do If Someone Has A Reaction',
@@ -1303,7 +1323,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'finding it quickly.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c8_u2',
+          id: 'training_food_safety_c8_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'What To Do If Someone Has A Reaction (cont.)',
@@ -1453,7 +1473,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_food_safety_c11',
       title: 'Cooling And Reheating',
-      subtitle: '4 cards',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1471,8 +1491,14 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'containers in a sink filled with ice and water, and stirring '
               'frequently, the heat is rapidly drawn out. For substantial '
               'items like roasts or turkeys, cutting them into smaller, '
-              'thinner pieces can significantly speed up the cooling process. '
-              'Additionally, regularly stirring liquids helps release trapped '
+              'thinner pieces can significantly speed up the cooling process.',
+        ),
+        HandbookUnit(
+          id: 'training_food_safety_c11_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Safe Cooling Practices (cont.)',
+          body: 'Additionally, regularly stirring liquids helps release trapped '
               'heat, further quickening the cooling timeline. To enhance '
               'ventilation, it\'s advisable to leave lids slightly cracked '
               'while cooling in the fridge, sealing them only once the food '
@@ -1487,7 +1513,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'crucial to maintaining food safety and quality.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c11_u1',
+          id: 'training_food_safety_c11_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Two Step Cooling Method',
@@ -1511,7 +1537,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               '- Keep all cooled foods in the refrigerator or freezer.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c11_u2',
+          id: 'training_food_safety_c11_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Safe Reheating Practices',
@@ -1536,7 +1562,7 @@ const BarrioTrainingDoc kTrainingFoodSafety = BarrioTrainingDoc(
               'leftovers safely and deliciously.',
         ),
         HandbookUnit(
-          id: 'training_food_safety_c11_u3',
+          id: 'training_food_safety_c11_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Defrosting Food',

@@ -16,7 +16,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c0',
       title: 'OUR CONCEPT',
-      subtitle: '2 cards',
+      subtitle: '3 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -40,9 +40,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'presented with creativity and flair. Each dish is artfully '
               'prepared with bright, colorful ingredients that sing with '
               'freshness and flavor, reflecting the culinary traditions of '
-              'Latin America.\n'
-              '\n'
-              'Blending a warm ambiance with exquisite flavors, we strive to '
+              'Latin America.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c0_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'OUR CONCEPT (cont.)',
+          body: 'Blending a warm ambiance with exquisite flavors, we strive to '
               'provide an unforgettable experience for those in search of a '
               'remarkable night out. Light wood and soft grey tones create a '
               'soothing backdrop, while vibrant turquoise accents and lush '
@@ -52,7 +57,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'the dishes served.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c0_u1',
+          id: 'company_handbook_c0_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'OUR CONCEPT (cont.)',
@@ -976,7 +981,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c10',
       title: 'WORKPLACE POLICIES',
-      subtitle: '9 cards',
+      subtitle: '10 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1102,9 +1107,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'safety and security of our workplace. Additionally, we '
               'recommend that you refrain from bringing in or storing '
               'documents containing personal information, as this is another '
-              'way to protect your privacy and security.\n'
-              '\n'
-              'For those moments when an item is unintentionally left behind, '
+              'way to protect your privacy and security.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c10_u6',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'LOST OR STOLEN PROPERTY (cont.)',
+          body: 'For those moments when an item is unintentionally left behind, '
               'we have implemented a lost and found system. A designated bin '
               'is available in coat check at the host stand for any '
               'belongings found on the premises. If you discover an item that '
@@ -1115,7 +1125,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'lost indefinitely.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c10_u6',
+          id: 'company_handbook_c10_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'RINGING IN PRODUCT',
@@ -1126,7 +1136,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'recorded and the corresponding chit has been printed.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c10_u7',
+          id: 'company_handbook_c10_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'ALCOHOL SERVICE',
@@ -1157,7 +1167,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'alcoholic beverages for off-premises consumption after hours.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c10_u8',
+          id: 'company_handbook_c10_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'CHECKLISTS AND DEPARTMENT GUIDELINES',
@@ -2676,7 +2686,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
     HandbookChapter(
       id: 'company_handbook_c18',
       title: 'LEAVE OF ABSENCE',
-      subtitle: '14 cards',
+      subtitle: '16 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -2764,20 +2774,26 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'will begin, unless there is a valid reason why that notice '
               'cannot be given. The employee will be entitled to up to 28 '
               'weeks of unpaid leave to be taken within 52 weeks to provide '
-              'care or support to a family member. The leave does not have to '
-              'be taken all together, it may be broken up, but must consist '
-              'of blocks of a minimum of one week. Leave can be taken to care '
-              'for family members of the employee’s family, their spouse’s '
-              'family, or co-habiting partner’s family. It can also be taken '
-              'for someone who is not related by blood, adoption, marriage, '
-              'or co-habiting partnership but for someone who the employee '
-              'considers to be like a close relative. Upon returning to work, '
-              'the employee will be placed in the same or a similar position '
-              'with the same duties, benefits, and wages they had before '
-              'their leave.',
+              'care or support to a family member.',
         ),
         HandbookUnit(
           id: 'company_handbook_c18_u5',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'COMPASSIONATE CARE LEAVE (cont.)',
+          body: 'The leave does not have to be taken all together, it may be '
+              'broken up, but must consist of blocks of a minimum of one '
+              'week. Leave can be taken to care for family members of the '
+              'employee’s family, their spouse’s family, or co-habiting '
+              'partner’s family. It can also be taken for someone who is not '
+              'related by blood, adoption, marriage, or co-habiting '
+              'partnership but for someone who the employee considers to be '
+              'like a close relative. Upon returning to work, the employee '
+              'will be placed in the same or a similar position with the same '
+              'duties, benefits, and wages they had before their leave.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c18_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'CRITICAL ILLNESS LEAVE',
@@ -2792,8 +2808,14 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'reason why that notice cannot be given. The employee will be '
               'entitled to up to 37 weeks of unpaid leave to provide care or '
               'support for a critically ill child or up to 17 weeks of unpaid '
-              'leave to provide care or support for a critically ill adult. '
-              'The employee must limit the duration of the leave to that '
+              'leave to provide care or support for a critically ill adult.',
+        ),
+        HandbookUnit(
+          id: 'company_handbook_c18_u7',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'CRITICAL ILLNESS LEAVE (cont.)',
+          body: 'The employee must limit the duration of the leave to that '
               'which is reasonably necessary in the circumstances. Leave can '
               'be taken to care for family members of the employee’s family, '
               'their spouse’s family, or co-habiting partner’s family. It can '
@@ -2805,7 +2827,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'they had before their leave.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u6',
+          id: 'company_handbook_c18_u8',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'RESERVIST LEAVE',
@@ -2823,7 +2845,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'returned to work from the most recent service leave.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u7',
+          id: 'company_handbook_c18_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'CRIME RELATED CHILD DEATH OR DISAPPEARANCE LEAVE',
@@ -2847,7 +2869,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'before their leave.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u8',
+          id: 'company_handbook_c18_u10',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'FAMILY VIOLENCE LEAVE',
@@ -2869,7 +2891,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'attention, shelter, transportation, or necessities of life',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u9',
+          id: 'company_handbook_c18_u11',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'FAMILY VIOLENCE LEAVE (cont.)',
@@ -2890,7 +2912,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'relating to or as a result of family violence.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u10',
+          id: 'company_handbook_c18_u12',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'FAMILY VIOLENCE LEAVE (cont.)',
@@ -2912,7 +2934,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'they had before their leave.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u11',
+          id: 'company_handbook_c18_u13',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'COMMUNICABLE DISEASE EMERGENCY LEAVE',
@@ -2948,7 +2970,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'child care service closure',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u12',
+          id: 'company_handbook_c18_u14',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'COMMUNICABLE DISEASE EMERGENCY LEAVE (cont.)',
@@ -2976,7 +2998,7 @@ const BarrioTrainingDoc kTrainingCompanyHandbook = BarrioTrainingDoc(
               'daughter-in-law of the employee or employee’s spouse.',
         ),
         HandbookUnit(
-          id: 'company_handbook_c18_u13',
+          id: 'company_handbook_c18_u15',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'JURY DUTY',

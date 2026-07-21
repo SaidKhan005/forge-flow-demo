@@ -164,7 +164,7 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
     HandbookChapter(
       id: 'jim_taylor_labor_model_c2',
       title: 'Chapter 02: Labor % - What It Is and Why It Lies',
-      subtitle: '3 cards',
+      subtitle: '4 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -204,9 +204,14 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               'Total Sales = Covers x PPA\n'
               '\n'
-              'Labor % = (Hours x Wage) / (Covers x PPA)\n'
-              '\n'
-              'Now you can see what is actually inside the number. Four '
+              'Labor % = (Hours x Wage) / (Covers x PPA)',
+        ),
+        HandbookUnit(
+          id: 'jim_taylor_labor_model_c2_u2',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'What it calculates (cont.)',
+          body: 'Now you can see what is actually inside the number. Four '
               'variables. Look at who controls each one:\n'
               '\n'
               'Input | Who controls it\n'
@@ -226,7 +231,7 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'hands.',
         ),
         HandbookUnit(
-          id: 'jim_taylor_labor_model_c2_u2',
+          id: 'jim_taylor_labor_model_c2_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Why cutting labor % rarely fixes labor %',
@@ -915,7 +920,7 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
     HandbookChapter(
       id: 'jim_taylor_labor_model_c9',
       title: 'Chapter 09: The 60-Day Tracking Discipline',
-      subtitle: '9 cards',
+      subtitle: '10 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1107,9 +1112,14 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               '280 x \$21.35 = \$5,978 (BOH)\n'
               '\n'
-              'Total theoretical labor \$: \$4,405 + \$5,978 = \$10,383\n'
-              '\n'
-              'Step 4: Theoretical Labor % - FOH, BOH, and Total\n'
+              'Total theoretical labor \$: \$4,405 + \$5,978 = \$10,383',
+        ),
+        HandbookUnit(
+          id: 'jim_taylor_labor_model_c9_u8',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'How it assembles into your theoretical labor % (cont.)',
+          body: 'Step 4: Theoretical Labor % - FOH, BOH, and Total\n'
               '\n'
               'FOH Labor \$ / Forecasted Sales - BOH Labor \$ / Forecasted '
               'Sales\n'
@@ -1128,7 +1138,7 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'immediately which side of the house to look at first.',
         ),
         HandbookUnit(
-          id: 'jim_taylor_labor_model_c9_u8',
+          id: 'jim_taylor_labor_model_c9_u9',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'What this looks like tracked across 60 days',
