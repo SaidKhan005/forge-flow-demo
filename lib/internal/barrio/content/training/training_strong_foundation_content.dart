@@ -78,7 +78,7 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
     HandbookChapter(
       id: 'training_strong_foundation_c2',
       title: 'Brand Strength',
-      subtitle: '1 card',
+      subtitle: '2 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -97,9 +97,14 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'crowded marketplace. Standardized procedures play a major part '
               'in delivering consistent and efficient service, reducing the '
               'potential for errors, controlling costs, and ultimately '
-              'ensuring guest enjoyment.\n'
-              '\n'
-              'As guests learn they can depend on a uniform level of '
+              'ensuring guest enjoyment.',
+        ),
+        HandbookUnit(
+          id: 'training_strong_foundation_c2_u1',
+          type: HandbookUnitType.explainer,
+          badgeHint: 'READ',
+          title: 'Brand Strength (cont.)',
+          body: 'As guests learn they can depend on a uniform level of '
               'excellence with each visit, a positive reputation begins to '
               'spread organically, fueling both repeat business and '
               'referrals. People enjoy sharing exceptional experiences, and '
