@@ -53,87 +53,117 @@ class HandbookChapterRail extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final chapter = chapters[index];
-          final isActive = index == activeIndex;
-          final isCompleted = completedChapterIds.contains(chapter.id);
-
-          return GestureDetector(
+          return _ChapterRailTile(
+            chapter: chapter,
+            isActive: index == activeIndex,
+            isCompleted: completedChapterIds.contains(chapter.id),
+            activeAccent: activeAccent,
+            minutes: minutes != null && index < minutes.length
+                ? minutes[index]
+                : null,
             onTap: () => onChapterTap(index),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? activeAccent.withValues(alpha: 0.15)
-                    : const Color(0x0FFFFFFF),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isActive
-                      ? activeAccent.withValues(alpha: 0.50)
-                      : const Color(0x1AFFFFFF),
-                ),
-                boxShadow: isActive
-                    ? [
-                        BoxShadow(
-                          color: activeAccent.withValues(alpha: 0.20),
-                          blurRadius: 10,
-                          spreadRadius: 0,
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _chapterIcons[chapter.iconCodePoint] ??
-                            Icons.circle_outlined,
-                        size: 16,
-                        color: isActive ? activeAccent : BarrioColors.textMuted,
-                      ),
-                      if (isCompleted) ...[
-                        const SizedBox(width: 4),
-                        const Icon(Icons.check_circle,
-                            size: 12, color: Color(0xFF2ECC71)),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    chapter.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.ibmPlexSans(
-                      fontSize: 12,
-                      fontWeight:
-                          isActive ? FontWeight.w600 : FontWeight.w400,
-                      color: isActive
-                          ? BarrioColors.textPrimary
-                          : BarrioColors.textMuted,
-                    ),
-                  ),
-                  if (minutes != null && index < minutes.length) ...[
-                    const SizedBox(height: 2),
-                    // Quiet reading-time estimate; small muted text so
-                    // the dense rail stays calm.
-                    Text(
-                      'about ${minutes[index]} min',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.ibmPlexSans(
-                        fontSize: 9.5,
-                        color: BarrioColors.textMuted.withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// One rail tile: icon (+ persisted all-cards-read check), title, and
+/// an optional quiet 'about N min' reading-time line.
+class _ChapterRailTile extends StatelessWidget {
+  final HandbookChapter chapter;
+  final bool isActive;
+  final bool isCompleted;
+  final Color activeAccent;
+  final int? minutes;
+  final VoidCallback onTap;
+
+  const _ChapterRailTile({
+    required this.chapter,
+    required this.isActive,
+    required this.isCompleted,
+    required this.activeAccent,
+    required this.minutes,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive
+              ? activeAccent.withValues(alpha: 0.15)
+              : const Color(0x0FFFFFFF),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive
+                ? activeAccent.withValues(alpha: 0.50)
+                : const Color(0x1AFFFFFF),
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: activeAccent.withValues(alpha: 0.20),
+                    blurRadius: 10,
+                    spreadRadius: 0,
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _chapterIcons[chapter.iconCodePoint] ??
+                      Icons.circle_outlined,
+                  size: 16,
+                  color: isActive ? activeAccent : BarrioColors.textMuted,
+                ),
+                if (isCompleted) ...[
+                  const SizedBox(width: 4),
+                  const Icon(Icons.check_circle,
+                      size: 12, color: Color(0xFF2ECC71)),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              chapter.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 12,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                color: isActive
+                    ? BarrioColors.textPrimary
+                    : BarrioColors.textMuted,
+              ),
+            ),
+            if (minutes != null) ...[
+              const SizedBox(height: 2),
+              // Quiet reading-time estimate; small muted text so the
+              // dense rail stays calm.
+              Text(
+                'about $minutes min',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.ibmPlexSans(
+                  fontSize: 9.5,
+                  color: BarrioColors.textMuted.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

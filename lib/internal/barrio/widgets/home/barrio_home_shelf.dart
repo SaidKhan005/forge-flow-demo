@@ -233,54 +233,78 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
   }
 
   /// The Continue Reading card at the top of the shelf ("the app
-  /// remembers you", 2026-07-22). Renders ONLY when: something has
-  /// actually been read (position + at least one read card recorded),
-  /// the manual still exists on the shelf, a tap handler is wired, and
-  /// the manual passes the same B18 visibility resolution as the
-  /// bubbles (resolver first, preview-role fallback): a hidden manual
-  /// never appears here.
+  /// remembers you", 2026-07-22). Renders ONLY when
+  /// [_resolveContinueReading] yields a target: something has actually
+  /// been read, the manual still exists on the shelf, a tap handler is
+  /// wired, and the manual passes the same B18 visibility resolution
+  /// as the bubbles (resolver first, preview-role fallback): a hidden
+  /// manual never appears here.
   List<Widget> _continueReadingSlivers(List<BarrioDestination> visible) {
-    final progress = widget.readingProgress;
+    final resolved = _resolveContinueReading(visible);
     final onTap = widget.onContinueReading;
-    final docId = progress?.lastDocId;
-    final position = progress?.lastPosition;
-    if (progress == null || onTap == null || docId == null ||
-        position == null) {
-      return const <Widget>[];
-    }
-    // No card unless at least one card of that manual was read.
-    if (!(progress.readUnitIds[docId]?.isNotEmpty ?? false)) {
-      return const <Widget>[];
-    }
-    final doc = kBarrioTrainingDocs[docId];
-    if (doc == null || doc.chapters.isEmpty) return const <Widget>[];
-    BarrioDestination? dest;
-    for (final d in visible) {
-      if (d.id == docId) {
-        dest = d;
-        break;
-      }
-    }
-    if (dest == null || !_isDestVisible(dest)) return const <Widget>[];
-    final chapterIndex =
-        position.chapterIndex.clamp(0, doc.chapters.length - 1);
-    final destination = dest;
+    if (resolved == null || onTap == null) return const <Widget>[];
     return <Widget>[
       SliverToBoxAdapter(
         child: _reveal(
           0,
           _ContinueReadingCard(
-            destination: destination,
-            chapterIndex: chapterIndex,
-            chapterTitle: doc.chapters[chapterIndex].title,
+            destination: resolved.destination,
+            chapterIndex: resolved.chapterIndex,
+            chapterTitle: resolved.chapterTitle,
             onTap: () {
               HapticFeedback.lightImpact();
-              onTap(destination, chapterIndex, position.unitInChapter);
+              onTap(
+                resolved.destination,
+                resolved.chapterIndex,
+                resolved.unitInChapter,
+              );
             },
           ),
         ),
       ),
     ];
+  }
+
+  /// Resolves the Continue Reading target, or null when no card should
+  /// render (nothing read yet, manual gone, handler missing, or the
+  /// manual is hidden for this viewer).
+  _ContinueReadingTarget? _resolveContinueReading(
+    List<BarrioDestination> visible,
+  ) {
+    final progress = widget.readingProgress;
+    if (progress == null || widget.onContinueReading == null) return null;
+    final docId = progress.lastDocId;
+    final position = progress.lastPosition;
+    if (docId == null || position == null) return null;
+    // No card unless at least one card of that manual was read.
+    final readIds = progress.readUnitIds[docId];
+    if (readIds == null || readIds.isEmpty) return null;
+    final doc = kBarrioTrainingDocs[docId];
+    if (doc == null || doc.chapters.isEmpty) return null;
+    final dest = _findVisibleDestination(visible, docId);
+    if (dest == null) return null;
+    final chapterIndex =
+        position.chapterIndex.clamp(0, doc.chapters.length - 1);
+    return _ContinueReadingTarget(
+      destination: dest,
+      chapterIndex: chapterIndex,
+      chapterTitle: doc.chapters[chapterIndex].title,
+      unitInChapter: position.unitInChapter,
+    );
+  }
+
+  /// The shelf destination for [docId], but only when it passes the
+  /// resolver-first / preview-role-fallback visibility check.
+  BarrioDestination? _findVisibleDestination(
+    List<BarrioDestination> visible,
+    String docId,
+  ) {
+    for (final dest in visible) {
+      if (dest.id == docId) {
+        return _isDestVisible(dest) ? dest : null;
+      }
+    }
+    return null;
   }
 
   List<Widget> _heroSlivers(List<BarrioDestination> visible) {
@@ -432,6 +456,21 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+/// Everything the Continue Reading card needs, resolved once.
+class _ContinueReadingTarget {
+  final BarrioDestination destination;
+  final int chapterIndex;
+  final String chapterTitle;
+  final int unitInChapter;
+
+  const _ContinueReadingTarget({
+    required this.destination,
+    required this.chapterIndex,
+    required this.chapterTitle,
+    required this.unitInChapter,
+  });
+}
+
 /// The Continue Reading card: near-opaque dark card (same legibility
 /// recipe as the search result rows, which sit over the same photo),
 /// accent icon chip, and the honest position line
@@ -466,62 +505,9 @@ class _ContinueReadingCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: accent.withValues(alpha: 0.40)),
-                ),
-                child: Center(
-                  child: barrioHomeIconWidgetFor(
-                    context,
-                    destination.id,
-                    22,
-                    accent,
-                    false,
-                  ),
-                ),
-              ),
+              _iconChip(context, accent),
               const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'CONTINUE READING',
-                      style: GoogleFonts.ibmPlexMono(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.2,
-                        color: accent.withValues(alpha: 0.85),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      destination.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.playfairDisplay(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: BarrioColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Pick up at Section ${chapterIndex + 1}: $chapterTitle',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.ibmPlexSans(
-                        fontSize: 12,
-                        color: BarrioColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              Expanded(child: _texts(accent)),
               const SizedBox(width: 8),
               Icon(
                 Icons.arrow_forward_ios_rounded,
@@ -532,6 +518,65 @@ class _ContinueReadingCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _iconChip(BuildContext context, Color accent) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.40)),
+      ),
+      child: Center(
+        child: barrioHomeIconWidgetFor(
+          context,
+          destination.id,
+          22,
+          accent,
+          false,
+        ),
+      ),
+    );
+  }
+
+  Widget _texts(Color accent) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'CONTINUE READING',
+          style: GoogleFonts.ibmPlexMono(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+            color: accent.withValues(alpha: 0.85),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          destination.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: BarrioColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          'Pick up at Section ${chapterIndex + 1}: $chapterTitle',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.ibmPlexSans(
+            fontSize: 12,
+            color: BarrioColors.textSecondary,
+          ),
+        ),
+      ],
     );
   }
 }
