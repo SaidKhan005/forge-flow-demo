@@ -184,6 +184,8 @@ flutter:
     - assets/internal/barrio/training/coffee_training/
     - assets/internal/barrio/training/food_safety_manual/
     - assets/internal/barrio/training/labour_cost_understanding_the_levers/
+    - assets/internal/barrio/training/latin_american_dishes/
+    - assets/internal/barrio/training/latin_american_ingredients/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

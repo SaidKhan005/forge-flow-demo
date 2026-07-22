@@ -32,6 +32,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'While the green version is traditional, there are red and '
               'black variations, all commonly served alongside tostadas, '
               'tortilla chips, or crackers.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/01.webp',
+              caption: 'Photo: Pequeño mar, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u1',
@@ -44,6 +51,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'combination of cilantro, garlic, lime, and chili peppers '
               '(typically jalapeños or the authentic aji amarillo) often '
               'emulsified with mayo and cheese.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/02.webp',
+              caption: 'Photo: F Delventhal, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u2',
@@ -56,6 +70,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'de leche and often dusted with powdered sugar, rolled in '
               'coconut, or elegantly coated in chocolate. They are considered '
               'an iconic comfort food across South America.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/03.webp',
+              caption: 'Photo: Aylin Oporto, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u3',
@@ -69,6 +90,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'juice, salsa, and roasted pineapple, it embodies a culinary '
               'fusion inspired by Lebanese immigrants who brought the art of '
               'spit-grilling lamb to Mexico.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/04.webp',
+              caption: 'Photo: T.Tseng, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u4',
@@ -81,6 +109,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'is commonly eaten plain or as a side dish, it is also the '
               'ideal canvas for savory fillings such as avocado, cheese, or '
               'meat.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/05.webp',
+              caption: 'Photo: Andreji, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u5',
@@ -93,6 +128,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'saffron and paprika, with vegetables such as peas, onions, and '
               'peppers, making it a versatile dish that showcases regional '
               'flavors while typically using hearty chicken thighs or legs.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/06.webp',
+              caption: 'Photo: Jdvillalobos, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u6',
@@ -106,6 +148,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'Ancho, and Arbol are served alongside its consomé, the '
               'braising liquid used as a dipping broth that showcases the '
               'essence of the meat.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/07.webp',
+              caption: 'Photo: B.jars, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u7',
@@ -117,6 +166,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'made by combining sweetened condensed milk, cocoa powder, and '
               'butter into a fudge-like delicacy that is typically rolled '
               'into small balls and generously coated in chocolate sprinkles.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/08.webp',
+              caption: 'Photo: Rodrigo Senna, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u8',
@@ -127,6 +183,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'fresh ground corn to create a unique, thick batter. They are a '
               'popular street food that is typically cooked on a hot griddle, '
               'folded over, and filled with soft, salty cheese and butter.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/09.webp',
+              caption: 'Photo: Jonathan de Almeida, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u9',
@@ -138,6 +201,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'process in lard, that is then shredded and either roasted or '
               'fried to achieve its signature crispy edges, delivering a '
               'contrast of savory, tender meat with a satisfying crunch.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/10.webp',
+              caption: 'Photo: ProtoplasmaKid, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u10',
@@ -151,6 +221,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'and is best enjoyed when cooked over high heat to achieve that '
               'perfect charred exterior while remaining tender and juicy '
               'inside.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/11.webp',
+              caption: 'Photo: Sarah Stierch, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u11',
@@ -190,6 +267,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'mahi-mahi, or tilapia marinated in lime juice and white '
               'vinegar with cilantro and bell peppers. Served with crackers '
               'or tortilla chips.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/12.webp',
+              caption: 'Photo: Manuel González Olaechea y Franco, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -208,6 +292,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'achieve an irresistible crunch, making it a deliciously salty '
               'and savory snack or a delectable main dish featuring the '
               'perfect balance of crispy skin and tender meat.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/13.webp',
+              caption: 'Photo: Russ Bowling, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u1',
@@ -219,6 +310,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'olive oil, oregano, and red wine vinegar to create a tangy and '
               'garlicky flavor profile, making it the perfect topping or '
               'marinade for grilled meats, particularly steak.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/14.webp',
+              caption: 'Photo: Dominic Lockyer, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u2',
@@ -230,6 +328,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'loaded with ham, bacon, melted mozzarella, fresh lettuce, ripe '
               'tomato, creamy mayonnaise, and often topped with a fried or '
               'hard-boiled egg, all served on a perfectly toasted bun.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/15.webp',
+              caption: 'Photo: Ed Kohler, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u3',
@@ -239,6 +344,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           body: 'an Argentinian street food sandwich, with grilled chorizo '
               'sausage nestled in crusty bread, typically baguette, often '
               'topped with chimichurri sauce or salsa criolla.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/16.webp',
+              caption: 'Photo: David, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u4',
@@ -247,6 +359,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           title: 'CHORITOS',
           body: 'the small black or blue mussels native to the coasts of Chile, '
               'Argentina, and Peru.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/17.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u5',
@@ -258,6 +376,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'perfection; typically served warm with sour cream, popularly '
               'served for breakfast or afternoon snack, best enjoyed '
               'alongside a cup of coffee.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/18.webp',
+              caption: 'Photo: Aleat88, CC BY-SA 4.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u6',
@@ -270,6 +395,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'served hot and dusted with cinnamon sugar. Typically served as '
               'a snack or breakfast with chocolate sauce or dulce de leche '
               'for dipping.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/19.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u7',
@@ -281,6 +412,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'and deep-fried to achieve a satisfying crunch. A savory snack '
               'which is a staple at festive gatherings and a popular choice '
               'for a quick treat on the go.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/20.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u8',
@@ -296,6 +433,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'marination in high-acid citrus juice while crudo highlights '
               'the freshness of raw fish, dressed in oil and acid right '
               'before serving.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/21.webp',
+              caption: 'Photo: T.Tseng, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u9',
@@ -306,6 +450,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'sweetened condensed milk until it turns into a thick, creamy, '
               'smooth caramel-like spread, often used for topping desserts or '
               'filling cookies, cakes, and ice cream.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/22.webp',
+              caption: 'Photo: audinou, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u10',
@@ -317,6 +468,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'with a blend of mayonnaise, Mexican crema, chili powder, lime '
               'juice, and cotija cheese that has become a staple at summer '
               'BBQs and a cherished part of Mexican street food culture.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/23.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u11',
@@ -362,6 +519,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'uses wheat flour, while southern Mexico uses corn masa. '
               'Fillings include mole, cheese, rajas, or sweet fillings like '
               'pineapple and cajeta.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/24.webp',
+              caption: 'Photo: Horacio Cambeiro, CC BY 4.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -377,6 +541,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'ENSALADA',
           body: 'Spanish word for salad.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/25.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u1',
@@ -387,6 +557,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'from sliced tomatoes, thinly sliced white onions, oil, and '
               'cilantro, is an essential component of summer meals in Chile, '
               'perfectly complementing grilled meats and fried fish.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/26.webp',
+              caption: 'Photo: Carlos Varela, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u2',
@@ -398,6 +575,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'and bell peppers. Often served sizzling on a hot skillet with '
               'common toppings including shredded cheese, sour cream, '
               'guacamole, and salsa.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/27.webp',
+              caption: 'Photo: jeffreyw, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u3',
@@ -410,6 +594,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'Lizano. It is the national dish of Costa Rica and Nicaragua '
               'where it is a staple breakfast often accompanied by eggs, '
               'plantains, cheese, and warm tortillas.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/28.webp',
+              caption: 'Photo: Legendre17, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u4',
@@ -421,6 +612,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'Their plump shape makes them perfect for stuffing with a '
               'variety of savory ingredients such as meats, cheese, and '
               'beans.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/29.webp',
+              caption: 'Photo: Nicholas Lundgaard, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u5',
@@ -432,6 +630,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'lime juice, often enhanced with onions, cilantro, and chilies, '
               'resulting in a creamy texture that perfectly complements '
               'tortilla chips.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/30.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u6',
@@ -441,6 +645,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           body: 'the Spanish word for ice cream or frozen treats. These dairy '
               'or water-based desserts are often enjoyed as cream-based '
               'scoops or refreshing, fruit-filled popsicles.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/31.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u7',
@@ -449,6 +659,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           title: 'HORCHATA',
           body: 'a creamy, sweet, and typically non-alcoholic beverage often '
               'described as having a cinnamon-rice flavor profile.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/32.webp',
+              caption: 'Photo: Sharon Hahn Darlin, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u8',
@@ -460,6 +677,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'in a warm and spicy tomato-chili salsa, making it a hearty '
               'brunch option often complemented by refried beans, fresh '
               'avocado slices, and crumbled queso fresco.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/33.webp',
+              caption: 'Photo: jeffreyw, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u9',
@@ -469,6 +693,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           body: 'the bright, spicy, and tangy citrus-based marinade used to '
               'cure fish in Peruvian ceviche typically made by mixing lime '
               'juice, fish trimmings, onions, chilies, garlic, and cilantro.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/34.webp',
+              caption: 'Photo: Carlos Varela, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u10',
@@ -482,6 +713,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'served alongside crispy French fries and rice, expertly '
               'showcasing the culinary fusion created by Chinese immigrants '
               'in Peru.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/35.webp',
+              caption: 'Photo: HugoMon, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c2_u11',
@@ -492,6 +730,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'featuring a thin, breaded, and fried cutlet of beef, chicken, '
               'or pork, often served with a squeeze of lemon and accompanied '
               'by potatoes, or topped with ham and cheese.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/36.webp',
+              caption: 'Photo: Ben Tavener, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -511,6 +756,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'of dried chiles, spices, nuts, seeds, and occasionally hints '
               'of fruit or chocolate, often made with 20 or more ingredients '
               'and require hours of preparation.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/37.webp',
+              caption: 'Photo: Laurie Avocado, CC BY 2.0, via Flickr',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u1',
@@ -522,6 +774,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'crafted from pepitas, sesame seeds, tomatoes, tomatillos, and '
               'chiles, and is typically enjoyed with chicken, beef, or pork '
               'alongside rice and corn tortillas.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/38.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u2',
@@ -535,6 +793,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'consistency relies on salt to enhance the flavors and draw out '
               'moisture, making it a perfect topping for tacos or grilled '
               'meats.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/39.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u3',
@@ -546,6 +810,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'is richly seasoned with chili peppers, garlic, and onions, '
               'making it a flavorful meal often garnished with fresh toppings '
               'like shredded cabbage, radishes, lime, and avocado.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/40.webp',
+              caption: 'Photo: Meutia Chaerani / Indradi Soemardjan, CC BY 2.5',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u4',
@@ -557,6 +828,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'creating a crispy, golden crust while maintaining a '
               'deliciously gooey interior, often enhanced with oregano and '
               'chili flakes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/41.webp',
+              caption: 'Photo: Horacio Cambeiro, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u5',
@@ -567,6 +845,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'corn or rice flour flatbread filled with savory ingredients '
               'such as creamy quesillo, refried beans, succulent chicharrón, '
               'or fresh squash, and is typically enjoyed by hand.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/42.webp',
+              caption: 'Photo: Roland Tanglao, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u6',
@@ -578,6 +863,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'assortment of fillings such as meats, spices, and vegetables, '
               'and is best enjoyed crispy and accompanied by salsa, '
               'guacamole, or sour cream.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/43.webp',
+              caption: 'Photo: Ruth Hartnup, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u7',
@@ -590,6 +882,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'rich caramel syrup. Crafted primarily from sweetened condensed '
               'milk, whole milk, eggs, sugar, and vanilla, it occasionally '
               'features rum or coconut for an extra touch of flavor.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/44.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u8',
@@ -601,6 +899,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'from a delightful blend of tomatoes, chili peppers, onions, '
               'garlic, and cilantro, making it the perfect accompaniment for '
               'chips, tacos, meats, and even stews.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/45.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u9',
@@ -608,6 +912,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'SALSA INGLESA',
           body: 'the Spanish term for Worcestershire sauce.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/46.webp',
+              caption: 'Photo: Dimitri Torterat, CC BY 2.0 FR, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u10',
@@ -619,6 +930,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'chicken, or pork - with starchy tubers like yuca, plantains, '
               'and potatoes, all simmered together in a rich and flavorful '
               'broth.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/47.webp',
+              caption: 'Photo: Jdvillalobos, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c3_u11',
@@ -631,6 +949,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'of herbs and vegetables such as garlic, onions, peppers, and '
               'tomatoes, either pureed into a raw paste or slowly sautéed in '
               'olive oil for enhanced depth.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/48.webp',
+              caption: 'Photo: Javier Lastras, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -646,6 +971,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'SOPA',
           body: 'the Spanish word for soup.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/49.webp',
+              caption: 'Photo: camposart, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c4_u1',
@@ -658,6 +990,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'refried beans, savory meats, fresh lettuce, onions, crumbled '
               'queso fresco, and zesty salsa, resulting in a deliciously '
               'crispy exterior and a tender interior.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/50.webp',
+              caption: 'Photo: Sarah Stierch, CC BY 4.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c4_u2',
@@ -668,6 +1007,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'of masa filled with an array of ingredients such as meats, '
               'cheeses, fruits, or vegetables, all expertly wrapped in a corn '
               'husk or banana leaf and steamed to perfection.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/51.webp',
+              caption: 'Photo: Sharon Hahn Darlin, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c4_u3',
@@ -678,6 +1024,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'small tortilla expertly rolled around a savory filling - '
               'ranging from beef and chicken to cheese - then deep-fried or '
               'baked for a crispy texture.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/52.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c4_u4',
@@ -689,6 +1041,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'perfection. An irresistible staple at gatherings and '
               'celebrations, often accompanied by dipping sauces such as '
               'guasacaca, garlic mayo, or salsa rosada.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/53.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c4_u5',
@@ -699,6 +1057,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'tender shredded chicken, sautéed onions, and garlic, all '
               'simmered to perfection in a rich tomato-based sauce infused '
               'with the bold flavors of chipotle chilis in adobo.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/54.webp',
+              caption: 'Photo: Jennifer Woodard Maderazo, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c4_u6',
@@ -710,6 +1075,12 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'drizzled with a vibrant and spicy citrus sauce that enhances '
               'its fresh flavors, all served immediately to preserve its '
               'tender texture.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/55.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c4_u7',
@@ -721,6 +1092,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'or breaded chicken, complemented by layers of beans, creamy '
               'avocado, queso fresco, and jalapeños, often served hot and '
               'pressed.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/56.webp',
+              caption: 'Photo: Hungry Dudes, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c4_u8',
@@ -731,6 +1109,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'serving as a base for an array of toppings, typically '
               'beginning with beans, cheese, or meat, and layered with fresh '
               'lettuce, zesty salsa, and creamy avocado.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes/57.webp',
+              caption: 'Photo: pointnshoot, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),

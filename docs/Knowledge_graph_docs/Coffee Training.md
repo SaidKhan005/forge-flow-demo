@@ -2,7 +2,7 @@
 source_pdf: Coffee Training.pdf
 title: Coffee Training
 pages: 11
-conversion_notes: Selectable text extracted with pdftotext; Canva line wrapping reflowed into Markdown paragraphs; labeled list content (troubleshooting, cleaning, drinks, glossary) formatted as Markdown bullets; the cup-type page carries only three image captions, preserved as a list; the Instant Coffee glossary entry ends mid-sentence in the source and is preserved as extracted; curly quotes normalized to ASCII; accented characters preserved for fidelity.; content pictures from the source file extracted to assets/internal/barrio/training/ and referenced with image markers at their source positions (2026-07-11); markers are formatting, not words
+conversion_notes: Selectable text extracted with pdftotext; Canva line wrapping reflowed into Markdown paragraphs; labeled list content (troubleshooting, cleaning, drinks, glossary) formatted as Markdown bullets; the cup-type page carries only three image captions, preserved as a list; the Instant Coffee glossary entry ends mid-sentence in the source and is preserved as extracted; curly quotes normalized to ASCII; accented characters preserved for fidelity.; content pictures from the source file extracted to assets/internal/barrio/training/ and referenced with image markers at their source positions (2026-07-11); markers are formatting, not words; openly licensed item photos (operator-approved) added to assets/internal/barrio/training/ and referenced with image markers carrying license-credit captions (2026-07-21); markers are formatting, not words
 ---
 
 # Coffee Training
@@ -28,9 +28,13 @@ conversion_notes: Selectable text extracted with pdftotext; Canva line wrapping 
 
 Coffee is crafted from the roasted and ground seeds, commonly referred to as beans, of the Coffea plant. Primarily cultivated in tropical regions, these beans originate from coffee cherries, vibrant fruits that house the seeds. The journey from cherry to cup begins with the handpicking or machine-harvesting of ripe coffee cherries, which contain the precious seeds that are then separated from the fruit pulp and dried. Once processed, these green beans undergo roasting at high temperatures, where they transform into the aromatic brown beans we know and love, developing rich flavors that can be enjoyed in various forms. While native to Africa, coffee farming has expanded across the globe with the two most prized species for consumption being Arabica and Robusta. Beyond its delightful taste, coffee serves as a central nervous system stimulant, enhancing mental alertness due to its caffeine content. It is also rich in antioxidants known as polyphenols, which have been linked to potential health benefits, particularly when consumed black. As one of the world's most beloved beverages, alongside water and tea, coffee is a highly profitable international commodity, making it a significant cultural and economic staple.
 
+![Photo: Brian Smith / USFWS Northeast Region, CC BY 2.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/07.webp)
+
 ## Roasting
 
 The roasting process of coffee beans is a transformative journey that begins with the raw, green beans enhancing their flavour and aroma. As the beans are subjected to heat, they expand and release their natural oils, transitioning through a spectrum of colors from light to dark roast. As the beans are roasted, the caffeine content gradually decreases.
+
+![Photo: Jkafader, CC BY-SA 3.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/08.webp)
 
 Blonde roast coffee, often referred to as pale or light brown roast, offers a delightful exploration of the coffee bean's intrinsic characteristics. Blonde roasts showcase the natural notes of fruits, berries, and citrus, along with subtle hints of acidity and even nutty undertones like peanuts. Because these beans are roasted for a shorter duration, the inherent qualities of the coffee fruit are preserved, resulting in a cup that emphasizes the bean's unique origin and terroir rather than the influence of the roasting process itself.
 
@@ -42,17 +46,25 @@ Dark roast coffee is characterized by its deep, robust flavor profile, achieved 
 
 The freshness of coffee is heavily influenced by four main adversaries: oxygen, moisture, heat, and light, each playing a significant role in its degradation. Oxygen is the most notorious culprit; as its exposure to coffee beans leads to oxidation, a process that quickly turns vibrant flavors into stale remnants. Additionally, humidity poses its own threats, degrading the quality of coffee and potentially introducing mildew or unwanted odors. Heat creates issues by accelerating chemical reactions within the beans, making storage near stoves, ovens, or sunny windows a surefire way to compromise delicate flavours. Lastly, exposure to direct sunlight or strong indoor lighting speeds up the breakdown of organic compounds in the beans, altering their taste and accelerating the staling process. It is essential to note that coffee is at its prime immediately after grinding. The act of grinding releases volatile oils that were once protected inside the bean, exposing them to air causing oxidization to begin and loss of freshness.
 
+![](assets/internal/barrio/training/coffee_training/09.webp)
+
 ## Proper Storage
 
 For optimal coffee storage, it is highly recommended to purchase whole beans instead of pre-ground varieties, as this ensures maximum freshness and flavor retention. Avoid storing coffee in the fridge; the fluctuating temperatures and high humidity can negatively affect its delicate profile. To preserve the vibrant taste of your brew, grind your coffee just before use, as ground coffee loses its vitality rapidly. Store your beans in a cool, dry, and dark environment, ideally in an airtight container away from direct sunlight, to maintain their freshness and aromatic qualities.
+
+![](assets/internal/barrio/training/coffee_training/10.webp)
 
 ## Brazilian Coffee
 
 Brazil stands as the world's leading coffee producer, a title it has held since 1840, primarily cultivating both Arabica and Robusta varieties. The country's coffee-producing regions benefit from nearly ideal climatic conditions, with temperatures ranging from 59 to 77 degrees Fahrenheit for Arabica and 68 to 86 degrees Fahrenheit for Robusta. However, recent climatic variations have posed challenges that may affect production consistency. With hundreds of thousands of coffee plantations sprawling across vast flat terrains in the southeastern states, Brazil's coffee industry is a significant employer, engaging a substantial workforce to meet the global demand. Typically harvested from May through September, Brazilian coffee beans are often grown at elevations averaging around 1,100 meters above sea level, which classifies them as high-grown. The resulting brews display floral notes and a bright acidity that renders a refreshing taste. The unique profile of Brazilian coffee is characterized by its clear, sweet, medium-bodied nature, and low acidity, making it a favorite among coffee enthusiasts. To highlight these unique flavor characteristics, Brazilian coffee is often roasted to a light-medium profile. By highlighting these inherent flavors through careful roasting, Brazilian coffee cultivators ensure that their beans remain sought after in global markets.
 
+![Photo: Knase, CC BY 3.0 DE, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/11.webp)
+
 ## Colombian Coffee
 
 Colombia's unique topography, characterized by its rugged mountains and diverse ecosystems, provides an ideal environment for coffee cultivation. Renowned for its consistently mild and well-balanced coffees, Colombia ranks third globally in annual production, largely due to its unique geographical advantages. Nestled near the equator, Colombian coffee benefits from two distinct harvest seasons each year. The climate and altitude contribute to the coffee's signature smoothness, rich flavor profile, and aromatic sweetness, featuring delightful notes of citrus, caramel, and chocolate. The cultivation process is often carried out on small, family-run farms, where more than 95% of the farmers manage plots smaller than five hectares. The challenges posed by the steep terrain necessitate the use of traditional transportation methods like mules and jeeps to transport the harvested beans to processing centers, underscoring the labor-intensive nature of this agricultural practice.
+
+![Photo: Shaun McRae, CC BY 2.5, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/12.webp)
 
 The labor-intensive practices of Colombian coffee cultivation are integral to its premium quality, distinguishing it from other coffee-producing regions that often incorporate Robusta beans. Farmers meticulously hand-pick the cherries, a method that guarantees the selection of only the best fruit, resulting in a superior final product. After harvesting, the beans undergo a distinctive wet-washing method that enhances their clean and bright acidity. This dedication to quality has not gone unnoticed; in 2011, UNESCO recognized Colombia's Coffee Cultural Landscape in the Andean foothills as a World Heritage Site. The combination of ideal equatorial microclimates, strict adherence to growing high-grade Arabica, and skilled manual labor allows Colombian coffee to continue to stand out in the global market.
 
@@ -60,11 +72,17 @@ The labor-intensive practices of Colombian coffee cultivation are integral to it
 
 The espresso shot extraction is often considered the cornerstone of all coffee beverages, and mastering it can elevate your coffee-making skills to new heights. To create the perfect espresso, begin by ensuring the basket inside the group handle is thoroughly dried, as moisture can compromise extraction. Next, carefully dose the basket with freshly ground coffee, paying attention to the grind size and distribution. Tamping is a crucial step apply firm and even pressure to form a solid, flat surface that ensures uniform extraction. After tamping, make sure to clean any loose grounds off the rim of the handle for a proper seal. Once secured into the preheated group head, position your desired cup underneath the spout and initiate the shot extraction. A brief pause, ideally lasting between 3 to 6 seconds, will precede the emergence of the first drops of rich crema. As the extraction progresses, observe the flow as it transitions to a "mouse tail" appearance with a lighter color, culminating in a total extraction time of around 25 seconds resulting in a well-balanced espresso that forms the backbone of coffee drinks.
 
+![Photo: Sander van der Wel, CC BY-SA 2.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/13.webp)
+
 ## Milk
 
 Foaming and steaming milk is an essential technique in coffee preparation, particularly for espresso, as it significantly enhances the sensory experience of the drink. While hot milk can add warmth, it simply cannot match the luxurious texture and richness that expertly steamed and foamed milk provides. Mastering this skill is often one of the more challenging aspects of coffee-making, but with practice, it becomes second nature. Start by selecting the right jug, filling it to about one-third to ensure optimal frothing. Before steaming, purge the steam valve to eliminate any water, ensuring your milk remains concentrated and rich. Position the steam nozzle just beneath the milk's surface to avoid large bubbles, and maintain a central hold to create a smooth whirlpool motion. As you heat the milk - aiming for a temperature of 65-70 degrees Celsius - listen for a quiet process, steering clear of high-pitched sounds that indicate improper positioning. After steaming, wipe the steam arm clean and gently tap the jug to remove any large bubbles, then swirl the milk to combine it with the micro-foam for a glossy finish.
 
+![Photo: Tijuana Brass, CC BY-SA 3.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/14.webp)
+
 ## Troubleshooting
+
+![](assets/internal/barrio/training/coffee_training/15.webp)
 
 - **Under-Extracted Espresso:** Can occur if you run out of coffee or if the grind is too course. The espresso with flow very quickly. Its colour will become pale to almost white very quickly, in less than 15 seconds. The espresso will taste sharp.
 - **Over-Extracted Espresso:** Can occur if the basket is over filled or if the grind is too fine. The espresso will drip slowly and will be very dark with almost no coffee coming out of the spout and no crema. The espresso will taste sharp and burnt.
@@ -73,6 +91,8 @@ Foaming and steaming milk is an essential technique in coffee preparation, parti
 ## Cleaning & Maintenance
 
 Proper maintenance of your espresso machine is essential for ensuring optimal performance and longevity.
+
+![](assets/internal/barrio/training/coffee_training/16.webp)
 
 - **HANDLES:** regularly remove the filter baskets from the group handles and soak them in hot, soapy water, followed by a thorough scrubbing of the interior of the handles.
 - **STEAM ARMS:** After each use, take a moment to wipe the steam arms clean to prevent milk residue buildup. Every few days, immerse the steam arms in warm water for no longer than 10 minutes to soften any stubborn milk residue, and remember to never soak them overnight. For a thorough clean, detach the screw-on steam arm head and use a pin to clear out any accumulated residue from the holes.
@@ -84,12 +104,26 @@ Proper maintenance of your espresso machine is essential for ensuring optimal pe
 ## Drinks
 
 - **SHORT BLACK:** extract double shot of espresso into an espresso cup.
+
+![Photo: Lemone, CC BY-SA 4.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/17.webp)
 - **LONG BLACK:** To ensure the crema remains undisturbed, carefully pour the espresso extraction over the hot water. Begin by filling your espresso cup slightly beyond halfway with hot water then position the cup beneath the group head and extract a double shot of espresso directly onto the hot water.
+
+![Photo: 책읽는달팽, CC BY-SA 4.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/18.webp)
 - **AMERICANO:** Similar to the Long Black, the extraction process involves pouring the shot over the hot water. Due to the increased surface area, achieving a rich crema can be more challenging. To prepare, position the cappuccino cup beneath the machine's head and extract the double shot over the hot water. Keep in mind that the crema should form fully on the surface of the hot water, and the cup should not be filled to the brim.
+
+![](assets/internal/barrio/training/coffee_training/19.webp)
 - **MACCHIATO:** A short black coffee with a touch of hot milk. Begin by placing an espresso cup beneath the espresso machine's head to extract a double shot. Once the espresso is ready, gently add a spoonful of hot milk
+
+![Photo: Jonathan McIntosh, CC BY-SA 3.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/20.webp)
 - **FLAT WHITE:** To create the perfect flat white, it's essential that the milk is textured just right - smooth and velvety with minimal froth, allowing for a secure pour without any spills. Begin by extracting a double shot of espresso into your cappuccino cup. Then, gently pour the silky steamed milk into the center of the coffee, using a spoon to hold back most of the froth. Alternatively, you can scoop off the excess froth from the milk jug before pouring to achieve the desired consistency.
+
+![Photo: GeorgeMichaelFarewell, CC BY-SA 4.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/21.webp)
 - **LATTE:** The milk texture in a latte tends to be slightly creamier compared to that of a flat white. Begin by extracting a double shot of espresso into your cappuccino cup. Next, gently pour in the thicker, lightly textured milk, allowing it to seamlessly blend with the rich espresso beneath.
+
+![Photo: Takeaway, CC BY-SA 3.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/22.webp)
 - **CAPPUCCINO:** Begin by gently spooning the thick, textured top milk into your cappuccino cup. Next, pour the hot, lightly textured milk through the center of the frothed milk, or you can opt to set aside the heavily textured milk and pour about half a cup of the lighter milk directly into the double shot. Use the spoon to carefully incorporate the remaining thick milk into the cup, creating a delightful dome of foam that rises above the rim.
+
+![Photo: Vee Satayamas, CC BY 2.0, via Wikimedia Commons](assets/internal/barrio/training/coffee_training/23.webp)
 
 ## Our Coffee
 

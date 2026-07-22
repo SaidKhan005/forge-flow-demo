@@ -294,8 +294,8 @@ documents:
       - "equipment"
     word_count_estimate: 4091
     heading_count: 16
-    line_count: 158
-    sha256: "8a2e5b1d639c824d9c2349c361e96f40ba231c19238242a756c9dd09bc9c5ced"
+    line_count: 192
+    sha256: "24043963c84ede33ceb796064e39340f2f5708117fd1f0662ba94d2ff73bf55e"
 
   - doc_id: "food_safety_manual"
     file_name: "food safety manual.md"
@@ -454,8 +454,8 @@ documents:
       - "training"
     word_count_estimate: 2968
     heading_count: 1
-    line_count: 80
-    sha256: "25df27995531602b87289e29c2a5bd93c00b61a0536a666941dffe14a8581efa"
+    line_count: 194
+    sha256: "8314d7c5dd730d528e97fc6d045dd8bc11359c7997251289ed82aa5529faa2c3"
 
   - doc_id: "latin_american_ingredients"
     file_name: "Latin American Ingredients.md"
@@ -485,8 +485,8 @@ documents:
       - "training"
     word_count_estimate: 2442
     heading_count: 1
-    line_count: 64
-    sha256: "02f82f1448254aa4597b099613242fd6007dbc62777954e07b27c0e631a274cc"
+    line_count: 170
+    sha256: "43a590ab5200de58c076e07d8d1a13372cf1200181325abe1529f0faa2f19899"
 
   - doc_id: "oe_cheers_to_responsibility"
     file_name: "OE Cheers to Responsibility.md"
