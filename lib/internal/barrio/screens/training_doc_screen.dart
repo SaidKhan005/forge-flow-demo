@@ -5,6 +5,8 @@ import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
 import '../search/barrio_training_search.dart';
 import '../routes/barrio_preview_role.dart';
+import '../services/barrio_reading_progress_service.dart';
+import '../services/barrio_reading_time.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/handbook_chapter_rail.dart';
 import '../widgets/handbook_lesson_card.dart';
@@ -23,13 +25,16 @@ class TrainingDocScreen extends StatefulWidget {
   final BarrioPreviewRole previewRole;
 
   /// Section to open first (Wave B training search deep link). Clamped
-  /// to the valid chapter range; the default 0 keeps every existing
-  /// call site's behavior identical.
-  final int initialChapterIndex;
+  /// to the valid chapter range. Null (the default) means "no explicit
+  /// deep link": the screen restores the locally saved reading position
+  /// instead ("the app remembers you", 2026-07-22). Any non-null value,
+  /// including 0, is an explicit deep link and always wins over resume.
+  final int? initialChapterIndex;
 
   /// Card to open first within [initialChapterIndex] (search deep link,
   /// 2026-07-11 operator request). Clamped to the section's card range.
-  final int initialUnitInChapter;
+  /// Null follows the same resume rule as [initialChapterIndex].
+  final int? initialUnitInChapter;
 
   /// The search query whose words get highlighted inside card bodies
   /// (case- and diacritic-insensitive). Null = no highlighting.
@@ -40,8 +45,8 @@ class TrainingDocScreen extends StatefulWidget {
     required this.doc,
     this.accent = BarrioColors.tealWarm,
     this.previewRole = BarrioPreviewRole.admin,
-    this.initialChapterIndex = 0,
-    this.initialUnitInChapter = 0,
+    this.initialChapterIndex,
+    this.initialUnitInChapter,
     this.highlightQuery,
   });
 
@@ -52,7 +57,16 @@ class TrainingDocScreen extends StatefulWidget {
 class _TrainingDocScreenState extends State<TrainingDocScreen>
     with TickerProviderStateMixin {
   int _activeChapter = 0;
-  final Set<String> _viewedChapterIds = {};
+
+  /// Cards read on THIS device, persisted across sessions ("the app
+  /// remembers you", 2026-07-22). A card counts as read when it settles
+  /// on screen: a fact, not a mastery claim (Metric Honesty).
+  final Set<String> _readUnitIds = {};
+
+  /// True once the user moved the deck themselves (swipe or rail tap).
+  /// The async position restore then stands down: the user's own
+  /// position is fresher truth than the saved one.
+  bool _pageTouched = false;
 
   // Continuous swiping (2026-07-11 operator request): the carousel
   // holds EVERY unit of EVERY section as one flat deck, so swiping past
@@ -75,6 +89,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   late final Animation<double> _heroFade =
       CurvedAnimation(parent: _heroController, curve: Curves.easeOutCubic);
 
+  /// True when the caller supplied an explicit deep link (search or the
+  /// home Continue Reading card). Deep links always win over resume.
+  bool get _hasDeepLink =>
+      widget.initialChapterIndex != null || widget.initialUnitInChapter != null;
+
   @override
   void initState() {
     super.initState();
@@ -86,16 +105,13 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       _chapterStarts.add(start);
       start += c.units.length;
     }
-    if (chapters.isNotEmpty) {
-      _activeChapter =
-          widget.initialChapterIndex.clamp(0, chapters.length - 1);
-      _viewedChapterIds.add(chapters[_activeChapter].id);
-      final unitCount = chapters[_activeChapter].units.length;
-      final unitInChapter = unitCount == 0
-          ? 0
-          : widget.initialUnitInChapter.clamp(0, unitCount - 1);
-      _initialPage = _chapterStarts[_activeChapter] + unitInChapter;
+    if (chapters.isNotEmpty && _hasDeepLink) {
+      _applyPosition(
+        widget.initialChapterIndex ?? 0,
+        widget.initialUnitInChapter ?? 0,
+      );
     }
+    _loadPersistedState();
     final query = widget.highlightQuery?.trim();
     _highlightTerms = query == null || query.isEmpty
         ? const []
@@ -103,6 +119,79 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
             .split(_whitespace)
             .where((w) => w.isNotEmpty)
             .toList();
+  }
+
+  /// Clamps and applies a (chapter, unit-in-chapter) position to
+  /// [_activeChapter] and [_initialPage].
+  void _applyPosition(int chapterIndex, int unitInChapter) {
+    final chapters = widget.doc.chapters;
+    if (chapters.isEmpty) return;
+    _activeChapter = chapterIndex.clamp(0, chapters.length - 1);
+    final unitCount = chapters[_activeChapter].units.length;
+    final unit = unitCount == 0 ? 0 : unitInChapter.clamp(0, unitCount - 1);
+    _initialPage = _chapterStarts[_activeChapter] + unit;
+  }
+
+  /// Loads the saved read marks (always) and, when the caller supplied
+  /// no deep link, the saved reading position. Non-blocking: the
+  /// carousel mounts immediately (first-ever open keeps section 0 card
+  /// 0, deep links keep their target) and re-mounts at the saved card
+  /// when the restore lands, unless the user already moved the deck.
+  /// A platform without a working preferences store simply never
+  /// resolves or returns empty: the screen behaves exactly as before
+  /// this slice.
+  Future<void> _loadPersistedState() async {
+    final docId = widget.doc.id;
+    final position = _hasDeepLink
+        ? null
+        : await BarrioReadingProgressService.getPosition(docId);
+    final readIds = await BarrioReadingProgressService.getReadUnitIds(docId);
+    if (!mounted) return;
+    setState(() {
+      _readUnitIds.addAll(readIds);
+      if (position != null && !_pageTouched) {
+        final pageBefore = _initialPage;
+        _applyPosition(position.chapterIndex, position.unitInChapter);
+        // Re-mount the carousel only when the restored card differs
+        // from where the deck already sits (card 0 on first open).
+        if (_initialPage != pageBefore) _epoch++;
+      }
+    });
+    // Record the landing card as read + current position, unless the
+    // user already swiped somewhere else (their card was recorded by
+    // _onCardPageChanged and is the fresher truth).
+    if (_flatUnits.isNotEmpty && !_pageTouched) {
+      _recordCardOnScreen(_initialPage);
+    }
+  }
+
+  /// Records that the card at flat-deck [page] settled on screen:
+  /// remembers it as the reading position and marks it read.
+  void _recordCardOnScreen(int page) {
+    if (page < 0 || page >= _flatUnits.length) return;
+    final chapter = _chapterOf(page);
+    final unit = _flatUnits[page];
+    if (!_readUnitIds.contains(unit.id)) {
+      setState(() => _readUnitIds.add(unit.id));
+      BarrioReadingProgressService.markCardRead(widget.doc.id, unit.id);
+    }
+    BarrioReadingProgressService.savePosition(
+      widget.doc.id,
+      chapter,
+      page - _chapterStarts[chapter],
+    );
+  }
+
+  /// Chapters whose EVERY card has been read: only these show the rail
+  /// check mark (persisted, honest; replaces the session-only "viewed"
+  /// check that died with the screen).
+  Set<String> _fullyReadChapterIds() {
+    return {
+      for (final chapter in widget.doc.chapters)
+        if (chapter.units.isNotEmpty &&
+            chapter.units.every((u) => _readUnitIds.contains(u.id)))
+          chapter.id,
+    };
   }
 
   /// Section that owns the card at flat-deck [page].
@@ -116,12 +205,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   }
 
   void _onCardPageChanged(int page) {
+    _pageTouched = true;
+    _recordCardOnScreen(page);
     final chapter = _chapterOf(page);
     if (chapter == _activeChapter) return;
-    setState(() {
-      _activeChapter = chapter;
-      _viewedChapterIds.add(widget.doc.chapters[chapter].id);
-    });
+    setState(() => _activeChapter = chapter);
   }
 
   @override
@@ -163,17 +251,23 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
               HandbookChapterRail(
                 chapters: chapters,
                 activeIndex: _activeChapter,
-                completedChapterIds: _viewedChapterIds,
+                completedChapterIds: _fullyReadChapterIds(),
                 activeAccent: accent,
+                chapterMinutes: [
+                  for (var i = 0; i < chapters.length; i++)
+                    BarrioReadingTime.chapterMinutes(widget.doc, i),
+                ],
                 onChapterTap: (i) {
                   HapticFeedback.lightImpact();
+                  _pageTouched = true;
                   setState(() {
                     _activeChapter = i;
-                    _viewedChapterIds.add(chapters[i].id);
                     // Jump the flat deck to the section's first card.
                     _epoch++;
                     _initialPage = _chapterStarts[i];
                   });
+                  // The jumped-to card settles on screen: remember it.
+                  _recordCardOnScreen(_chapterStarts[i]);
                 },
               ),
               const SizedBox(height: 12),
@@ -184,10 +278,12 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                   initialPage: _initialPage,
                   onPageChanged: _onCardPageChanged,
                   accent: accent,
-                  // Verbatim docs are explainer-only; every card counts
-                  // as read.
+                  // Honest footer dots: only cards actually read on
+                  // this device count (persisted read marks), not
+                  // "every card" as before.
                   completedIndices: {
-                    for (var i = 0; i < _flatUnits.length; i++) i,
+                    for (var i = 0; i < _flatUnits.length; i++)
+                      if (_readUnitIds.contains(_flatUnits[i].id)) i,
                   },
                   cardBuilder: (context, index) {
                     return HandbookLessonCard(

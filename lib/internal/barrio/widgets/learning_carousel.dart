@@ -184,6 +184,7 @@ class LearningCarouselState extends State<LearningCarousel>
               accent: widget.accent,
               completedIndices: widget.completedIndices,
               pageController: _pageController,
+              fallbackPage: _currentPage,
             ),
             const SizedBox(height: 12),
           ],
@@ -205,11 +206,18 @@ class _CarouselPositionIndicator extends StatelessWidget {
   final Set<int> completedIndices;
   final PageController pageController;
 
+  /// Page shown before the controller has laid out (it does not notify
+  /// on its initial layout). The carousel passes its tracked current
+  /// page so a non-zero initialPage (deep link or resume) reads
+  /// correctly from the first frame instead of a stale '1 of N'.
+  final int fallbackPage;
+
   const _CarouselPositionIndicator({
     required this.count,
     required this.accent,
     required this.completedIndices,
     required this.pageController,
+    this.fallbackPage = 0,
   });
 
   @override
@@ -219,8 +227,8 @@ class _CarouselPositionIndicator extends StatelessWidget {
       builder: (context, _) {
         final page = pageController.hasClients &&
                 pageController.position.haveDimensions
-            ? (pageController.page ?? 0.0)
-            : 0.0;
+            ? (pageController.page ?? fallbackPage.toDouble())
+            : fallbackPage.toDouble();
         final currentPage = page.round();
 
         return Row(
