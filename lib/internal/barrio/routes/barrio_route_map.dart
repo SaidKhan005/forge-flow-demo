@@ -60,9 +60,11 @@ class BarrioRouteMap {
   ///
   /// [initialChapterIndex] (Wave B training search) deep-links a
   /// training document to a specific section. It threads to
-  /// [TrainingDocScreen] ONLY; every other destination ignores it, and
-  /// the null default keeps all existing call sites and route behavior
-  /// identical.
+  /// [TrainingDocScreen] ONLY; every other destination ignores it.
+  /// Null now means "no explicit deep link", which lets the training
+  /// screen resume the locally saved reading position ("the app
+  /// remembers you", 2026-07-22); any non-null value, including 0, is
+  /// an explicit deep link and always wins over resume.
   static Widget screenFor(
     String destinationId, {
     BarrioPreviewRole previewRole = BarrioPreviewRole.admin,
@@ -89,8 +91,8 @@ class BarrioRouteMap {
             accent: kBarrioTrainingAccents[destinationId] ??
                 BarrioColors.tealWarm,
             previewRole: previewRole,
-            initialChapterIndex: initialChapterIndex ?? 0,
-            initialUnitInChapter: initialUnitInChapter ?? 0,
+            initialChapterIndex: initialChapterIndex,
+            initialUnitInChapter: initialUnitInChapter,
             highlightQuery: highlightQuery,
           );
         }

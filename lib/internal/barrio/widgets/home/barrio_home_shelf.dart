@@ -21,13 +21,19 @@
 // skips the entrance and freezes the bubble loops.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../content/training/barrio_training_doc.dart';
+import '../../content/training/training_docs.dart';
 import '../../routes/barrio_destination_visibility_resolver.dart';
 import '../../routes/barrio_destinations.dart';
 import '../../routes/barrio_preview_role.dart';
+import '../../services/barrio_reading_progress_service.dart';
+import '../../services/barrio_reading_time.dart';
 import '../barrio_destination_scaffold.dart';
 import 'barrio_home_bubble.dart';
+import 'barrio_home_destination_visuals.dart';
 
 /// One category section: operator-facing title + section accent +
 /// category filter. Section membership is driven by the
@@ -77,6 +83,12 @@ const double _kCenterBubbleDiameter = 160.0;
 const double _kBubbleDiameter = 100.0;
 const double _kSectionRowHeight = 150.0;
 
+/// Quiet metadata zone under each bubble ("the app remembers you",
+/// 2026-07-22): reading time, and honest read progress when at least
+/// one card has been read. Sits below the 150px bubble zone so the
+/// glow halos keep their full breathing room.
+const double _kBubbleMetaHeight = 40.0;
+
 /// The one-scroll round-bubble home composition.
 ///
 /// Mirrors the retired hub's contract: destinations in, taps out via
@@ -108,6 +120,21 @@ class BarrioHomeShelf extends StatefulWidget {
   /// entrance replay. Default null keeps the shelf unchanged.
   final Widget? bodyOverride;
 
+  /// Local reading memory ("the app remembers you", 2026-07-22):
+  /// drives the Continue Reading card and the honest per-manual
+  /// progress rows. Null (the default) renders neither, so existing
+  /// call sites and fresh installs look exactly like before.
+  final BarrioReadingSnapshot? readingProgress;
+
+  /// Tap handler for the Continue Reading card: deep-links into the
+  /// manual at the remembered position. When null the card does not
+  /// render (there is nowhere for it to go).
+  final void Function(
+    BarrioDestination destination,
+    int chapterIndex,
+    int unitInChapter,
+  )? onContinueReading;
+
   const BarrioHomeShelf({
     super.key,
     required this.destinations,
@@ -116,6 +143,8 @@ class BarrioHomeShelf extends StatefulWidget {
     this.visibilityResolver,
     this.leading = const <Widget>[],
     this.bodyOverride,
+    this.readingProgress,
+    this.onContinueReading,
   });
 
   @override
@@ -183,7 +212,10 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
   List<Widget> _shelfBodySlivers() {
     final visible =
         widget.destinations.where((d) => d.showOnHomeHub).toList();
-    final slivers = <Widget>[..._heroSlivers(visible)];
+    final slivers = <Widget>[
+      ..._continueReadingSlivers(visible),
+      ..._heroSlivers(visible),
+    ];
     var slot = 1;
     for (final section in _kShelfSections) {
       final dests =
@@ -198,6 +230,57 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
       slot++;
     }
     return slivers;
+  }
+
+  /// The Continue Reading card at the top of the shelf ("the app
+  /// remembers you", 2026-07-22). Renders ONLY when: something has
+  /// actually been read (position + at least one read card recorded),
+  /// the manual still exists on the shelf, a tap handler is wired, and
+  /// the manual passes the same B18 visibility resolution as the
+  /// bubbles (resolver first, preview-role fallback): a hidden manual
+  /// never appears here.
+  List<Widget> _continueReadingSlivers(List<BarrioDestination> visible) {
+    final progress = widget.readingProgress;
+    final onTap = widget.onContinueReading;
+    final docId = progress?.lastDocId;
+    final position = progress?.lastPosition;
+    if (progress == null || onTap == null || docId == null ||
+        position == null) {
+      return const <Widget>[];
+    }
+    // No card unless at least one card of that manual was read.
+    if (!(progress.readUnitIds[docId]?.isNotEmpty ?? false)) {
+      return const <Widget>[];
+    }
+    final doc = kBarrioTrainingDocs[docId];
+    if (doc == null || doc.chapters.isEmpty) return const <Widget>[];
+    BarrioDestination? dest;
+    for (final d in visible) {
+      if (d.id == docId) {
+        dest = d;
+        break;
+      }
+    }
+    if (dest == null || !_isDestVisible(dest)) return const <Widget>[];
+    final chapterIndex =
+        position.chapterIndex.clamp(0, doc.chapters.length - 1);
+    final destination = dest;
+    return <Widget>[
+      SliverToBoxAdapter(
+        child: _reveal(
+          0,
+          _ContinueReadingCard(
+            destination: destination,
+            chapterIndex: chapterIndex,
+            chapterTitle: doc.chapters[chapterIndex].title,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              onTap(destination, chapterIndex, position.unitInChapter);
+            },
+          ),
+        ),
+      ),
+    ];
   }
 
   List<Widget> _heroSlivers(List<BarrioDestination> visible) {
@@ -229,15 +312,16 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
 
   /// One section body: a single horizontal swipe row of bubbles
   /// (2026-07-11 operator decision: sections scroll left and right).
-  /// Fixed row height leaves room above and below the 100px bubbles so
-  /// their glow halos never clip; only the row scrolls horizontally,
-  /// never the page.
+  /// The bubble zone keeps its fixed 150px height so the glow halos
+  /// never clip; a quiet metadata zone (reading time + honest read
+  /// progress) sits below each bubble. Only the row scrolls
+  /// horizontally, never the page.
   Widget _sectionBubbles(List<BarrioDestination> dests, int slot) {
     return SliverToBoxAdapter(
       child: _reveal(
         slot,
         SizedBox(
-          height: _kSectionRowHeight,
+          height: _kSectionRowHeight + _kBubbleMetaHeight,
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
@@ -245,19 +329,66 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (context, i) {
               final dest = dests[i];
-              return Center(
-                child: BarrioHomeOrbitBubble(
-                  destination: dest,
-                  diameter: _kBubbleDiameter,
-                  dimmed: !_isDestVisible(dest) && !dest.comingSoon,
-                  onTap: () => widget.onDestinationTap(dest),
-                ),
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: _kSectionRowHeight,
+                    child: Center(
+                      child: BarrioHomeOrbitBubble(
+                        destination: dest,
+                        diameter: _kBubbleDiameter,
+                        dimmed: !_isDestVisible(dest) && !dest.comingSoon,
+                        onTap: () => widget.onDestinationTap(dest),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: _kBubbleDiameter + 8,
+                    height: _kBubbleMetaHeight,
+                    child: _bubbleMeta(dest),
+                  ),
+                ],
               );
             },
           ),
         ),
       ),
     );
+  }
+
+  /// Quiet under-bubble metadata for manuals: the reading-time estimate
+  /// always, plus 'N of M cards read' + a thin progress bar ONLY once
+  /// at least one card has been read (Metric Honesty: untouched manuals
+  /// show no progress row at all; no phantom zeroes). Non-manual
+  /// destinations render nothing here.
+  Widget _bubbleMeta(BarrioDestination dest) {
+    final doc = kBarrioTrainingDocs[dest.id];
+    if (doc == null) return const SizedBox.shrink();
+    final readIds = widget.readingProgress?.readUnitIds[dest.id];
+    var readCount = 0;
+    final totalCards = _cardCountOf(doc);
+    if (readIds != null && readIds.isNotEmpty) {
+      for (final chapter in doc.chapters) {
+        for (final unit in chapter.units) {
+          if (readIds.contains(unit.id)) readCount++;
+        }
+      }
+    }
+    return _BubbleMeta(
+      minutes: BarrioReadingTime.docMinutes(doc),
+      readCount: readCount,
+      totalCards: totalCards,
+      accent: barrioHomeAccentFor(dest.id),
+    );
+  }
+
+  static int _cardCountOf(BarrioTrainingDoc doc) {
+    var count = 0;
+    for (final chapter in doc.chapters) {
+      count += chapter.units.length;
+    }
+    return count;
   }
 }
 
@@ -297,6 +428,172 @@ class _SectionHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The Continue Reading card: near-opaque dark card (same legibility
+/// recipe as the search result rows, which sit over the same photo),
+/// accent icon chip, and the honest position line
+/// ('Pick up at Section N: Title').
+class _ContinueReadingCard extends StatelessWidget {
+  final BarrioDestination destination;
+  final int chapterIndex;
+  final String chapterTitle;
+  final VoidCallback onTap;
+
+  const _ContinueReadingCard({
+    required this.destination,
+    required this.chapterIndex,
+    required this.chapterTitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = barrioHomeAccentFor(destination.id);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: BarrioColors.shellMid.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: accent.withValues(alpha: 0.40)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: accent.withValues(alpha: 0.40)),
+                ),
+                child: Center(
+                  child: barrioHomeIconWidgetFor(
+                    context,
+                    destination.id,
+                    22,
+                    accent,
+                    false,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CONTINUE READING',
+                      style: GoogleFonts.ibmPlexMono(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.2,
+                        color: accent.withValues(alpha: 0.85),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      destination.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.playfairDisplay(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: BarrioColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Pick up at Section ${chapterIndex + 1}: $chapterTitle',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.ibmPlexSans(
+                        fontSize: 12,
+                        color: BarrioColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: accent.withValues(alpha: 0.7),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Quiet under-bubble metadata: 'about N min' always; the read line +
+/// thin bar only when [readCount] is at least 1 (no phantom zeroes).
+class _BubbleMeta extends StatelessWidget {
+  final int minutes;
+  final int readCount;
+  final int totalCards;
+  final Color accent;
+
+  const _BubbleMeta({
+    required this.minutes,
+    required this.readCount,
+    required this.totalCards,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          BarrioReadingTime.label(minutes),
+          maxLines: 1,
+          style: GoogleFonts.ibmPlexSans(
+            fontSize: 9.5,
+            color: BarrioColors.textMuted.withValues(alpha: 0.85),
+          ),
+        ),
+        if (readCount >= 1 && totalCards > 0) ...[
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '$readCount of $totalCards cards read',
+              maxLines: 1,
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 9.5,
+                color: BarrioColors.textMuted,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: 64,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: (readCount / totalCards).clamp(0.0, 1.0),
+                minHeight: 2.5,
+                backgroundColor: BarrioColors.shellSurface,
+                valueColor: AlwaysStoppedAnimation(
+                  accent.withValues(alpha: 0.85),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

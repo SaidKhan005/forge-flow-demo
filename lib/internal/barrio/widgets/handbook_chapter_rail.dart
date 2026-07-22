@@ -25,6 +25,12 @@ class HandbookChapterRail extends StatelessWidget {
   final Color activeAccent;
   final ValueChanged<int> onChapterTap;
 
+  /// Optional per-chapter reading-time estimates in minutes, parallel
+  /// to [chapters]. When provided, each tile appends a quiet
+  /// 'about N min' line and the rail grows to fit it. Null (the
+  /// default) keeps the rail exactly as before.
+  final List<int>? chapterMinutes;
+
   const HandbookChapterRail({
     super.key,
     required this.chapters,
@@ -32,12 +38,14 @@ class HandbookChapterRail extends StatelessWidget {
     required this.completedChapterIds,
     required this.activeAccent,
     required this.onChapterTap,
+    this.chapterMinutes,
   });
 
   @override
   Widget build(BuildContext context) {
+    final minutes = chapterMinutes;
     return SizedBox(
-      height: 72,
+      height: minutes == null ? 72 : 86,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -107,6 +115,20 @@ class HandbookChapterRail extends StatelessWidget {
                           : BarrioColors.textMuted,
                     ),
                   ),
+                  if (minutes != null && index < minutes.length) ...[
+                    const SizedBox(height: 2),
+                    // Quiet reading-time estimate; small muted text so
+                    // the dense rail stays calm.
+                    Text(
+                      'about ${minutes[index]} min',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.ibmPlexSans(
+                        fontSize: 9.5,
+                        color: BarrioColors.textMuted.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
