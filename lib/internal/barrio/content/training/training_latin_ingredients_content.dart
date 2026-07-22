@@ -29,6 +29,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'and slightly peppery flavor. It gives vibrant orange-red hue '
               'to food and is used as a staple ingredient in many dishes '
               'including meats, stews, and rice.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/01.webp',
+              caption: 'Photo: Ryan Snyder, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u1',
@@ -40,6 +47,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'but also serves as a preservative, with regional variations '
               'that highlight its global appeal - ranging from aromatic dry '
               'rubs in the Caribbean to rich red chili pastes in Mexico.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/02.webp',
+              caption: 'Photo: Badagnani, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u2',
@@ -52,6 +66,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'flavor reminiscent of passion fruit; whether used fresh, '
               'dried, or as a blended paste with oils, cream, or cheese, it '
               'elevates dishes with its sunny zest and slight sweetness.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/03.webp',
+              caption: 'Photo: Frozenmadness, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u3',
@@ -63,6 +84,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'profile that combines the warmth of clove, cinnamon, and '
               'nutmeg with a subtle peppery kick, making it a versatile '
               'ingredient in both sweet and savory dishes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/04.webp',
+              caption: 'Photo: Ryan Snyder, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u4',
@@ -75,6 +103,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'cocoa, and tobacco to sauces, soups, and stews. It is '
               'available both whole and in powder form for versatile culinary '
               'use.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/05.webp',
+              caption: 'Photo: Carstor, CC BY-SA 2.5, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u5',
@@ -87,6 +122,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'in baking, cooking, and even flavoring alcohols. While often '
               'confused with licorice root and star anise, they are all '
               'separate plants.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/06.webp',
+              caption: 'Photo: OttawaAC, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u6',
@@ -94,6 +136,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'ARROZ',
           body: 'Spanish word for rice.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/07.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u7',
@@ -105,6 +153,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'crunchy texture. Widely grown in Latin America - particularly '
               'in Brazil, Colombia, Mexico, and the Caribbean - it is often '
               'enjoyed in refreshing juices, salads, and jams.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/08.webp',
+              caption: 'Photo: SMasters, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u8',
@@ -113,6 +168,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           title: 'CARAOTAS NEGRAS',
           body: 'Venezuelan-style black beans that have are creamy and often '
               'slightly sweet that are typically soaked and slow-cooked..',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/09.webp',
+              caption: 'Photo: Juan Emilio Prades Bel, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u9',
@@ -122,6 +184,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           body: 'broadly translates to meat and encompasses all types of edible '
               'animal flesh; however, in many Spanish-speaking regions, it is '
               'predominantly understood to refer specifically to beef.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/10.webp',
+              caption: 'Photo: Oliver Hallmann, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u10',
@@ -138,6 +207,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'variety of dishes such as flour, cakes, stews, and even '
               'tapioca pearls, which can be boiled, mashed, roasted, or '
               'fried.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/11.webp',
+              caption: 'Photo: David Monniaux, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c0_u11',
@@ -145,6 +221,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'CERDO',
           body: 'a Spanish noun meaning pig commonly used in cooking..',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/12.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -163,6 +245,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'color, grassy flavor, and intense, clean heat. It is long, '
               'thin, and bright red, and often retains its vibrant color even '
               'when dried.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/13.webp',
+              caption: 'Photo: Gloria Cabada-Leman, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u1',
@@ -175,6 +264,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'the vine until turning red and are then carefully smoked for '
               'several hours, resulting in a medium, manageable heat that '
               'enhances a variety of culinary dishes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/14.webp',
+              caption: 'Photo: Badagnani, CC BY 3.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u2',
@@ -187,6 +283,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'firm texture, and the fresh Mexican chorizo, which is '
               'typically removed from its casing and fried to deliver a rich, '
               'savory taste.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/15.webp',
+              caption: 'Photo: Tamorlan, CC BY 3.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u3',
@@ -198,6 +301,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'traditions, enhancing dishes like salsas, tacos, and curries; '
               'however, due to a genetic trait affecting taste perception, '
               'some individuals experience a soaplike or metallic flavor.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/16.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u4',
@@ -211,6 +320,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'addition to various culinary creations. Note: coriander and '
               'cilantro are the same plant, cilantro is the leaves and '
               'coriander is the seeds.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/17.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u5',
@@ -222,6 +337,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'flavor; while it softens when heated, it retains its crumbly '
               'texture, making it an ideal topping for a variety of hot, '
               'finished dishes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/18.webp',
+              caption: 'Photo: Leslie Seaton, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u6',
@@ -233,6 +355,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'hand. It is the oblong-shaped fruit of the plant, showcasing '
               'yellow-brown to grey seeds that bear a resemblance to caraway '
               'or fennel, with distinctive fine longitudinal ridges.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/19.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u7',
@@ -244,6 +372,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'distinctive profile that intriguingly blends notes of oregano, '
               'anise, mint, and citrus, while sometimes evoking hints of '
               'petroleum or camphor.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/20.webp',
+              caption: 'Photo: Jonny Hunter, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u8',
@@ -252,6 +387,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           title: 'FRIJOLES',
           body: 'Spanish word for beans. While it refers generally to beans, it '
               'often describes seasoned, stewed pinto or black beans.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/21.webp',
+              caption: 'Photo: Drywontonmee, CC BY 2.5',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u9',
@@ -263,6 +405,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'offers a mildly spicy flavor profile that is both bright and '
               'fruity, making it an essential ingredient in pastes, moles, '
               'and salsas that boast a rich, deep red color.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/22.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u10',
@@ -277,6 +425,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'also come in red, white, yellow, brown, and green (unripe), '
               'offering a versatile ingredient that pairs beautifully with '
               'tropical fruits like mango, pineapple, and citrus.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/23.webp',
+              caption: 'Photo: Ryan Bushby, CC BY 2.5',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c1_u11',
@@ -287,6 +442,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'native to the Andean mountains of Peru, it has a complex '
               'flavor profile that intertwines notes of mint, basil, '
               'tarragon, lime, and cilantro.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/24.webp',
+              caption: 'Photo: Forest and Kim Starr, CC BY 3.0 US',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -306,6 +468,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'that remains intact even when cooked, making it a delightful '
               'alternative to potatoes. The brown skin is papery and inedible '
               'but the white flesh can be eaten raw or cooked.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/25.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u1',
@@ -318,6 +486,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'acidic flavor, utilized in various dishes such as creamy '
               'sauces, fresh salads, and as a primary filling for traditional '
               'pupusas.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/26.webp',
+              caption: 'Photo: Luismariomorales, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u2',
@@ -325,6 +500,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'MAIZE/EL MAIZ',
           body: 'Spanish for corn.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/27.webp',
+              caption: 'Photo: Darwin Bell, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u3',
@@ -332,6 +514,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'MANTECA',
           body: 'a Spanish term for lard.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/28.webp',
+              caption: 'Photo: Peter G Werner, CC BY 2.5, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u4',
@@ -339,6 +528,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'MARACUYA',
           body: 'the Spanish name for passionfruit.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/29.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u5',
@@ -362,6 +557,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'mild flavor that enhances arepas, and is produced through a '
               'meticulous process of cooking, drying, and grinding '
               'non-nixtamalized corn kernels.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/30.webp',
+              caption: 'Photo: Emmanuel Sosa, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u7',
@@ -374,6 +576,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'essential vitamins, they can be enjoyed grilled, sautéed, or '
               'boiled and are recognized for their potential benefits in '
               'managing diabetes, high cholesterol, and obesity.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/31.webp',
+              caption: 'Photo: Andrea Mayerly Niño Hernández, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u8',
@@ -384,6 +593,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'America with soft, sweet, orangecolored flesh and unique black '
               'seeds; with a buttery texture and flavor profile reminiscent '
               'of both cantaloupe and mango.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/32.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u9',
@@ -395,6 +610,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'appearance and a mild, nutty flavor with a hint of sweetness, '
               'making them a versatile addition to dishes and can be enjoyed '
               'raw, roasted, or salted.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/33.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u10',
@@ -403,6 +624,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           title: 'PESCADO',
           body: 'the Spanish term for fish that has been freshly caught and is '
               'ready for consumption or sale.,',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/34.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u11',
@@ -415,6 +642,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'before consumption. They function similarly to potatoes in '
               'their starchy and savory green state and develop a richer, '
               'sweeter flavor profile as they ripen from yellow to black.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/35.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -435,6 +668,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'flavor combination of smoky and slightly sweet flavors, '
               'particularly when roasted, and transforms into a rich dark red '
               'or brown as it reaches full ripeness.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/36.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u1',
@@ -442,6 +681,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'POLLO',
           body: 'the Spanish word for chicken.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/37.webp',
+              caption: 'Photo: Nesnad, CC BY 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u2',
@@ -449,6 +695,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'PULPO',
           body: 'the Spanish word for octopus.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/38.webp',
+              caption: 'Photo: Thomas Quine, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u3',
@@ -460,6 +713,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'mozzarella and goat cheese. It is an ideal topping for spicy '
               'dishes like tacos, enchiladas, and salads, where it adds a '
               'refreshing balance without melting or becoming gooey.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/39.webp',
+              caption: 'Photo: GraceMarcellaNorman, CC BY 2.0, via Flickr',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u4',
@@ -473,6 +733,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'vegetarian and vegan diets. Available in varieties like white, '
               'red, and black, quinoa has a mild, earthy, and slightly nutty '
               'flavor that enhances a wide range of dishes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/40.webp',
+              caption: 'Photo: nerissa\'s ring, CC BY 2.0, via Flickr',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u5',
@@ -483,6 +750,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'slightly salty flavor profile, making it the perfect addition '
               'to toast, crackers, and a variety of savory dishes with its '
               'thick, spreadable consistency.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/41.webp',
+              caption: 'Photo: Glopesmartins, CC BY 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u6',
@@ -493,6 +767,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'shape and meaty flesh, making it the ideal choice for creating '
               'flavorful sauces, canning, and salsas, thanks to its low '
               'moisture content and thick skin.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/42.webp',
+              caption: 'Photo: Choo Yut Shing, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u7',
@@ -504,6 +785,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'red-orange hue and an earthy, umami-packed flavor. Crafted '
               'from ingredients like coriander, cumin, garlic powder, '
               'oregano, salt, and achiote.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/43.webp',
+              caption: 'Photo: Mike Mozart (JeepersMedia), CC BY 2.0, via Flickr',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u8',
@@ -518,6 +806,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'mature to vibrant shades of red, yellow, or orange, and it '
               'shines in dishes like pico de gallo, sauces, and ceviche, '
               'often serving as a hotter substitute for jalapeños.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/44.webp',
+              caption: 'Photo: HaJunkiyada, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u9',
@@ -531,6 +826,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'unexpected spiciness. They are often utilized in modern '
               'Latin-fusion cuisine, even though they are not traditionally '
               'found in Latin culinary practices.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/45.webp',
+              caption: 'Photo: orchidgalore, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u10',
@@ -539,6 +841,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           title: 'TALLARINES',
           body: 'the Spanish term for long, thin pasta noodles such as '
               'spaghetti or linguine, most commonly used in Peruvian cuisine.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/46.webp',
+              caption: 'Photo: Jenn Durfey, CC BY 2.0, via Flickr',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c3_u11',
@@ -554,6 +863,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'American cuisine, thanks in part to its high concentration of '
               'tartaric acid, which contributes to its unique sour-sweet '
               'profile.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/47.webp',
+              caption: 'Photo: Sonja Pauen, CC BY 2.0 DE, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -575,6 +891,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'Typically used as thickener for soups, sauces, and pie '
               'fillings where it enhances texture with a glossy finish, '
               'boasting a higher thickening power than cornstarch.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/48.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c4_u1',
@@ -592,6 +914,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'various culinary applications, whether raw, boiled, roasted, '
               'or grilled, offering a vibrant and acidic alternative to green '
               'tomatoes.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/49.webp',
+              caption: 'Photo: Ruth Hartnup, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c4_u2',
@@ -602,6 +931,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'Mesoamerica, serving as a staple in Latin American cuisine. '
               'Traditionally made from masa harina, they are now also made '
               'from wheat flour.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/50.webp',
+              caption: 'Photo: David Boté Estrada, CC BY-SA 2.0 (share-alike applies to derivatives of the photo)',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c4_u3',
@@ -613,6 +949,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'unripe, starchy green plantains, frying them until soft, '
               'smashing them flat and frying them again until crispy and '
               'golden. Known as patacones in Costa Rica.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/51.webp',
+              caption: 'Photo: Hungry Dudes, CC BY 2.0',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c4_u4',
@@ -626,6 +969,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'associated with green tea. It\'s particularly popular in '
               'Paraguay, Uruguay, Brazil, and Argentina, where it is '
               'traditionally enjoyed through a metal straw.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/52.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c4_u5',
@@ -633,6 +982,12 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
           badgeHint: 'TERM',
           title: 'YUCA',
           body: 'a starchy root vegetable native to South America. SEE CASSAVA.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients/53.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),

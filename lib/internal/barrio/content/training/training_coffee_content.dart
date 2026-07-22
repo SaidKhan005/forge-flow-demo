@@ -45,6 +45,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'beloved beverages, alongside water and tea, coffee is a highly '
               'profitable international commodity, making it a significant '
               'cultural and economic staple.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/07.webp',
+              caption: 'Photo: Brian Smith / USFWS Northeast Region, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -75,6 +82,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'qualities of the coffee fruit are preserved, resulting in a '
               'cup that emphasizes the bean\'s unique origin and terroir '
               'rather than the influence of the roasting process itself.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/08.webp',
+              caption: 'Photo: Jkafader, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c1_u1',
@@ -134,6 +148,12 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'releases volatile oils that were once protected inside the '
               'bean, exposing them to air causing oxidization to begin and '
               'loss of freshness.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/09.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -158,6 +178,12 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'Store your beans in a cool, dry, and dark environment, ideally '
               'in an airtight container away from direct sunlight, to '
               'maintain their freshness and aromatic qualities.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/10.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -195,6 +221,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'light-medium profile. By highlighting these inherent flavors '
               'through careful roasting, Brazilian coffee cultivators ensure '
               'that their beans remain sought after in global markets.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/11.webp',
+              caption: 'Photo: Knase, CC BY 3.0 DE, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -226,6 +259,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'transportation methods like mules and jeeps to transport the '
               'harvested beans to processing centers, underscoring the '
               'labor-intensive nature of this agricultural practice.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/12.webp',
+              caption: 'Photo: Shaun McRae, CC BY 2.5, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c5_u1',
@@ -280,6 +320,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'total extraction time of around 25 seconds resulting in a '
               'well-balanced espresso that forms the backbone of coffee '
               'drinks.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/13.webp',
+              caption: 'Photo: Sander van der Wel, CC BY-SA 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -313,6 +360,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'After steaming, wipe the steam arm clean and gently tap the '
               'jug to remove any large bubbles, then swirl the milk to '
               'combine it with the micro-foam for a glossy finish.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/14.webp',
+              caption: 'Photo: Tijuana Brass, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
@@ -344,6 +398,12 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'pressure you will need to wait for several minutes for the '
               'machine to refill and for the water to reach optimum '
               'temperature.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/15.webp',
+              afterParagraph: -1,
+            ),
+          ],
         ),
       ],
     ),
@@ -376,6 +436,12 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               '- DRIP TRAY AND RACK: Periodically, you should also remove the '
               'drip tray and rack, rinsing them before wiping clean with a '
               'soft cloth.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/16.webp',
+              afterParagraph: 0,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c9_u1',
@@ -464,6 +530,27 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'Begin by placing an espresso cup beneath the espresso '
               'machine\'s head to extract a double shot. Once the espresso is '
               'ready, gently add a spoonful of hot milk',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/17.webp',
+              caption: 'Photo: Lemone, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/18.webp',
+              caption: 'Photo: 책읽는달팽, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 1,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/19.webp',
+              afterParagraph: 2,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/20.webp',
+              caption: 'Photo: Jonathan McIntosh, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 3,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c10_u1',
@@ -485,6 +572,18 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'a double shot of espresso into your cappuccino cup. Next, '
               'gently pour in the thicker, lightly textured milk, allowing it '
               'to seamlessly blend with the rich espresso beneath.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/21.webp',
+              caption: 'Photo: GeorgeMichaelFarewell, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/22.webp',
+              caption: 'Photo: Takeaway, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: 1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_coffee_c10_u2',
@@ -499,6 +598,13 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'Use the spoon to carefully incorporate the remaining thick '
               'milk into the cup, creating a delightful dome of foam that '
               'rises above the rim.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/coffee_training/23.webp',
+              caption: 'Photo: Vee Satayamas, CC BY 2.0, via Wikimedia Commons',
+              afterParagraph: 0,
+            ),
+          ],
         ),
       ],
     ),
