@@ -24,16 +24,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../content/quiz/barrio_quiz_models.dart';
 import '../../content/training/barrio_training_doc.dart';
 import '../../content/training/training_docs.dart';
 import '../../routes/barrio_destination_visibility_resolver.dart';
 import '../../routes/barrio_destinations.dart';
 import '../../routes/barrio_preview_role.dart';
 import '../../screens/barrio_flashcard_review_screen.dart';
+import '../../screens/barrio_quiz_refresher_screen.dart';
 import '../../services/barrio_bookmarks_service.dart';
 import '../../services/barrio_flashcard_deck.dart';
 import '../../services/barrio_reading_progress_service.dart';
 import '../../services/barrio_reading_time.dart';
+import '../../services/barrio_refresher_scheduler.dart';
 import '../barrio_destination_scaffold.dart';
 import 'barrio_home_bubble.dart';
 import 'barrio_home_destination_visuals.dart';
@@ -157,6 +160,14 @@ class BarrioHomeShelf extends StatefulWidget {
   /// Remove handler for a Saved row's small x.
   final void Function(BarrioBookmark bookmark)? onBookmarkRemove;
 
+  /// Refresh-due manuals (spaced refresher, rec #11), longest overdue
+  /// first as computed by [BarrioRefresherScheduler.dueDocIds] (the
+  /// home screen derives this from real recorded timestamps at read
+  /// time). Empty (the default) renders no card: fresh installs and
+  /// up-to-date readers see nothing. A B18-hidden manual is filtered
+  /// out here at render time only; its stored schedule is untouched.
+  final List<String> refresherDueDocIds;
+
   const BarrioHomeShelf({
     super.key,
     required this.destinations,
@@ -170,6 +181,7 @@ class BarrioHomeShelf extends StatefulWidget {
     this.bookmarks = const <BarrioBookmark>[],
     this.onBookmarkOpen,
     this.onBookmarkRemove,
+    this.refresherDueDocIds = const <String>[],
   });
 
   @override
@@ -245,6 +257,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
         widget.destinations.where((d) => d.showOnHomeHub).toList();
     final slivers = <Widget>[
       ..._continueReadingSlivers(visible),
+      ..._refresherSlivers(visible),
       ..._savedSlivers(visible),
       ..._heroSlivers(visible),
     ];
@@ -388,6 +401,106 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
       }
     }
     return null;
+  }
+
+  /// The Quick refresher card (spaced refresher, rec #11): ONE quiet
+  /// card, rendered only when at least one refresh-due manual survives
+  /// the same B18 visibility resolution as the bubbles (no phantom
+  /// card, no guilt copy). It shows the longest-overdue manual plus an
+  /// honest 'and N more due' when others are waiting.
+  List<Widget> _refresherSlivers(List<BarrioDestination> visible) {
+    final entries = _resolveRefresherEntries(visible);
+    if (entries.isEmpty) return const <Widget>[];
+    final first = entries.first;
+    return <Widget>[
+      SliverToBoxAdapter(
+        child: _reveal(
+          0,
+          _QuickRefresherCard(
+            destination: first.destination,
+            detailLine: _refresherDetailLine(first),
+            moreDueCount: entries.length - 1,
+            onTap: () => _openRefresher(first),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  /// Resolves the renderable refresh-due manuals, preserving the
+  /// longest-overdue-first order computed upstream. A due manual is
+  /// skipped (its stored schedule untouched) when it is off the shelf,
+  /// hidden for this viewer (B18), or has no refresh material.
+  List<_RefresherEntry> _resolveRefresherEntries(
+    List<BarrioDestination> visible,
+  ) {
+    final entries = <_RefresherEntry>[];
+    for (final docId in widget.refresherDueDocIds) {
+      final kind = barrioRefresherKindFor(docId);
+      if (kind == null) continue;
+      final dest = _findVisibleDestination(visible, docId);
+      if (dest == null) continue;
+      if (kind == BarrioRefresherKind.quiz &&
+          (kBarrioQuizBanks[docId]?.questions.isEmpty ?? true)) {
+        continue;
+      }
+      if (kind == BarrioRefresherKind.flashcards &&
+          barrioFlashcardDeckForManual(docId, title: dest.label) == null) {
+        continue;
+      }
+      entries.add(_RefresherEntry(destination: dest, kind: kind));
+    }
+    return entries;
+  }
+
+  /// Honest detail line: a real question count for a quiz refresher,
+  /// or the flashcard round for a glossary deck.
+  String _refresherDetailLine(_RefresherEntry entry) {
+    if (entry.kind == BarrioRefresherKind.quiz) {
+      final count = kBarrioQuizBanks[entry.destination.id]!.questions.length;
+      return count == 1 ? '1 quick question' : '$count quick questions';
+    }
+    return 'flashcard round';
+  }
+
+  /// Opens the refresher for [entry]: the manual's quiz cards in
+  /// sequence, or its shuffled flashcard deck. Completion (and only
+  /// completion) records lastRefreshedAt through the reading progress
+  /// service; the home screen reloads on return, so the card updates
+  /// or disappears honestly.
+  void _openRefresher(_RefresherEntry entry) {
+    HapticFeedback.lightImpact();
+    final docId = entry.destination.id;
+    final accent = barrioHomeAccentFor(docId);
+    if (entry.kind == BarrioRefresherKind.quiz) {
+      final bank = kBarrioQuizBanks[docId]!;
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => BarrioQuizRefresherScreen(
+            bank: bank,
+            title: entry.destination.label,
+            accent: accent,
+            onCompleted: () =>
+                BarrioReadingProgressService.recordRefreshCompleted(docId),
+          ),
+        ),
+      );
+      return;
+    }
+    final deck = barrioFlashcardDeckForManual(
+      docId,
+      title: entry.destination.label,
+    )!;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BarrioFlashcardReviewScreen(
+          deck: deck,
+          accent: accent,
+          onDeckFinished: () =>
+              BarrioReadingProgressService.recordRefreshCompleted(docId),
+        ),
+      ),
+    );
   }
 
   /// The Saved section (rec #8): bookmarked cards, newest saved first.
@@ -760,6 +873,129 @@ class _ContinueReadingCard extends StatelessWidget {
             color: BarrioColors.textSecondary,
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// One resolved refresh-due manual: its shelf destination + material.
+class _RefresherEntry {
+  final BarrioDestination destination;
+  final BarrioRefresherKind kind;
+
+  const _RefresherEntry({required this.destination, required this.kind});
+}
+
+/// The Quick refresher card: same quiet near-opaque dark recipe as the
+/// Continue Reading card. Copy pattern (operator-approved): 'Refresh
+/// Food Safety' + '12 quick questions' / 'flashcard round', plus the
+/// honest 'and N more due' only when more manuals are waiting.
+class _QuickRefresherCard extends StatelessWidget {
+  final BarrioDestination destination;
+  final String detailLine;
+  final int moreDueCount;
+  final VoidCallback onTap;
+
+  const _QuickRefresherCard({
+    required this.destination,
+    required this.detailLine,
+    required this.moreDueCount,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = barrioHomeAccentFor(destination.id);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: GestureDetector(
+        key: const Key('barrio_refresher_card'),
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: BarrioColors.shellMid.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: accent.withValues(alpha: 0.40)),
+          ),
+          child: Row(
+            children: [
+              _iconChip(accent),
+              const SizedBox(width: 12),
+              Expanded(child: _texts(accent)),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: accent.withValues(alpha: 0.7),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _iconChip(Color accent) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.40)),
+      ),
+      child: Icon(Icons.refresh_rounded, size: 22, color: accent),
+    );
+  }
+
+  Widget _texts(Color accent) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'QUICK REFRESHER',
+          style: GoogleFonts.ibmPlexMono(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+            color: accent.withValues(alpha: 0.85),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          'Refresh ${destination.label}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: BarrioColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          detailLine,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.ibmPlexSans(
+            fontSize: 12,
+            color: BarrioColors.textSecondary,
+          ),
+        ),
+        if (moreDueCount > 0) ...[
+          const SizedBox(height: 3),
+          Text(
+            moreDueCount == 1 ? 'and 1 more due' : 'and $moreDueCount more due',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.ibmPlexSans(
+              fontSize: 11,
+              color: BarrioColors.textMuted,
+            ),
+          ),
+        ],
       ],
     );
   }

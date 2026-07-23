@@ -31,11 +31,21 @@ class BarrioFlashcardReviewScreen extends StatefulWidget {
   /// time-based seed, so every real session gets a fresh order.
   final int? shuffleSeed;
 
+  /// Fires ONCE per screen visit, the first time the whole deck is
+  /// finished (spaced refresher, rec #11: the shelf wires the
+  /// lastRefreshedAt recording here). Reshuffle-and-finish-again in
+  /// the same visit deliberately does not re-fire, so one sitting
+  /// never skips a spacing stage. Null (the default, used by the
+  /// REVIEW pills) keeps the screen exactly as before: session-only,
+  /// nothing recorded.
+  final VoidCallback? onDeckFinished;
+
   const BarrioFlashcardReviewScreen({
     super.key,
     required this.deck,
     this.accent = BarrioColors.tealWarm,
     this.shuffleSeed,
+    this.onDeckFinished,
   });
 
   @override
@@ -52,6 +62,10 @@ class _BarrioFlashcardReviewScreenState
   /// Bumped on every card advance and reshuffle: keys each card
   /// appearance so a recycled card always starts front-side up.
   int _appearance = 0;
+
+  /// Whether [BarrioFlashcardReviewScreen.onDeckFinished] already
+  /// fired this visit (once per screen instance, never per reshuffle).
+  bool _finishNotified = false;
 
   @override
   void initState() {
@@ -74,6 +88,10 @@ class _BarrioFlashcardReviewScreenState
       _session.markGotIt();
       _appearance++;
     });
+    if (_session.isFinished && !_finishNotified) {
+      _finishNotified = true;
+      widget.onDeckFinished?.call();
+    }
   }
 
   void _markSeeAgain() {

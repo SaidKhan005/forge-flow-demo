@@ -210,6 +210,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     if (_deck.entries.isNotEmpty && !_pageTouched) {
       _recordCardOnScreen(_initialPage);
     }
+    // Upgrade path (spaced refresher, rec #11): a manual fully read
+    // before finish tracking existed gets its finishedAt recorded on
+    // the next open, from the persisted read marks just loaded.
+    _maybeRecordFinished();
   }
 
   /// Records that the card at flat-deck [page] settled on screen:
@@ -231,6 +235,24 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       chapter,
       page - _chapterStarts[chapter],
     );
+    _maybeRecordFinished();
+  }
+
+  /// Finish tracking (spaced refresher, rec #11): once the read-mark
+  /// set covers EVERY content card of this manual, record finishedAt.
+  /// The service write is write-once, so calling this on every settle
+  /// is safe: re-reading never resets the recorded fact. Quiz cards
+  /// are not content cards and play no part in coverage.
+  void _maybeRecordFinished() {
+    var hasUnits = false;
+    for (final chapter in widget.doc.chapters) {
+      for (final unit in chapter.units) {
+        hasUnits = true;
+        if (!_readUnitIds.contains(unit.id)) return;
+      }
+    }
+    if (!hasUnits) return;
+    BarrioReadingProgressService.recordFinished(widget.doc.id);
   }
 
   /// Chapters whose EVERY card has been read: only these show the rail

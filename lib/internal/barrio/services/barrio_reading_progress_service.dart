@@ -23,6 +23,8 @@
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'barrio_refresher_scheduler.dart';
+
 /// A saved reading position inside one training doc.
 class BarrioReadingPosition {
   /// 0-based chapter (section) index. Consumers clamp against the
@@ -67,6 +69,21 @@ class BarrioReadingProgressService {
 
   /// Preference key holding the read-card unit-id list for [docId].
   static String readCardsKeyFor(String docId) => 'barrio_reading_read_$docId';
+
+  /// Preference key holding the finishedAt epoch-millis for [docId]
+  /// (spaced refresher, rec #11): when the read-mark set first covered
+  /// ALL content cards. Write-once; re-reading never resets it.
+  static String finishedKeyFor(String docId) =>
+      'barrio_reading_finished_$docId';
+
+  /// Preference key holding the lastRefreshedAt epoch-millis for
+  /// [docId]: when a refresher for the manual was last completed.
+  static String refreshedAtKeyFor(String docId) =>
+      'barrio_refresher_last_$docId';
+
+  /// Preference key holding the completed-refresher count for [docId].
+  static String refreshCountKeyFor(String docId) =>
+      'barrio_refresher_count_$docId';
 
   /// Saves the last settled position for [docId] and marks it the most
   /// recently read doc.
@@ -120,6 +137,97 @@ class BarrioReadingProgressService {
       return list == null ? <String>{} : list.toSet();
     } catch (_) {
       return <String>{};
+    }
+  }
+
+  /// Records that [docId]'s read-mark set first covered ALL content
+  /// cards (spaced refresher, rec #11). Write-once: an existing
+  /// finishedAt is NEVER overwritten, so re-reading a finished manual
+  /// does not reset its refresher schedule. [now] is injectable for
+  /// tests; production callers omit it.
+  static Future<void> recordFinished(String docId, {DateTime? now}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = finishedKeyFor(docId);
+      if (prefs.getInt(key) != null) return;
+      await prefs.setInt(
+        key,
+        (now ?? DateTime.now()).millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      // Persistence unavailable: writes are no-ops.
+    }
+  }
+
+  /// Records that a refresher for [docId] was completed: stamps
+  /// lastRefreshedAt and advances the completed count (which moves the
+  /// spacing from 3 to 10 to 30 days). Records a fact only; no mastery
+  /// claim. [now] is injectable for tests.
+  static Future<void> recordRefreshCompleted(
+    String docId, {
+    DateTime? now,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        refreshedAtKeyFor(docId),
+        (now ?? DateTime.now()).millisecondsSinceEpoch,
+      );
+      final count = prefs.getInt(refreshCountKeyFor(docId)) ?? 0;
+      await prefs.setInt(refreshCountKeyFor(docId), count + 1);
+    } catch (_) {
+      // Persistence unavailable: writes are no-ops.
+    }
+  }
+
+  /// The recorded refresher facts for [docId]. Fresh or unreadable
+  /// state reads as [BarrioRefresherState.empty] (never due).
+  static Future<BarrioRefresherState> getRefresherState(String docId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return _refresherStateOf(prefs, docId);
+    } catch (_) {
+      return BarrioRefresherState.empty;
+    }
+  }
+
+  /// Refresher facts for every doc in [docIds] (the caller passes the
+  /// training-doc registry keys; the service stays content-agnostic).
+  /// Only docs with a recorded finishedAt carry a non-empty state.
+  static Future<Map<String, BarrioRefresherState>> loadRefresherStates(
+    Iterable<String> docIds,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return <String, BarrioRefresherState>{
+        for (final docId in docIds) docId: _refresherStateOf(prefs, docId),
+      };
+    } catch (_) {
+      return const <String, BarrioRefresherState>{};
+    }
+  }
+
+  static BarrioRefresherState _refresherStateOf(
+    SharedPreferences prefs,
+    String docId,
+  ) {
+    final count = prefs.getInt(refreshCountKeyFor(docId)) ?? 0;
+    return BarrioRefresherState(
+      finishedAt: _readMillis(prefs, finishedKeyFor(docId)),
+      lastRefreshedAt: _readMillis(prefs, refreshedAtKeyFor(docId)),
+      completedRefreshers: count < 0 ? 0 : count,
+    );
+  }
+
+  /// Parses a stored epoch-millis int; null on any malformation so a
+  /// corrupt value reads as "never recorded" instead of crashing.
+  static DateTime? _readMillis(SharedPreferences prefs, String key) {
+    try {
+      final value = prefs.getInt(key);
+      if (value == null || value <= 0) return null;
+      return DateTime.fromMillisecondsSinceEpoch(value);
+    } catch (_) {
+      return null;
     }
   }
 

@@ -13,6 +13,7 @@ import '../../../state/permission_context.dart';
 import '../search/barrio_training_search.dart';
 import '../services/barrio_bookmarks_service.dart';
 import '../services/barrio_reading_progress_service.dart';
+import '../services/barrio_refresher_scheduler.dart';
 import '../widgets/barrio_ambient_leaves.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/barrio_streak_tracker.dart';
@@ -90,6 +91,13 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   // zero-day streak).
   StreakInfo? _streakInfo;
 
+  // Spaced refresher (rec #11): the refresh-due manuals, longest
+  // overdue first, derived from real recorded timestamps with
+  // DateTime.now() read exactly once per reload (no timers, no
+  // notifications). Empty = no card, which is also the honest
+  // fresh-install state (nothing finished, never due).
+  List<String> _refresherDue = const <String>[];
+
   // Colour-temperature scrim breathing: 12s loop shifting the bottom
   // gradient between warm golden (#1A0A00) and cool midnight (#0A0A1A).
   // Restored from the pre-shelf home (c712461b) per the operator's
@@ -150,6 +158,14 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     });
     BarrioStreakService.getStreak().then((info) {
       if (mounted) setState(() => _streakInfo = info);
+    });
+    BarrioReadingProgressService.loadRefresherStates(kBarrioTrainingDocs.keys)
+        .then((states) {
+      if (!mounted) return;
+      setState(() {
+        _refresherDue =
+            BarrioRefresherScheduler.dueDocIds(states, DateTime.now());
+      });
     });
   }
 
@@ -323,6 +339,7 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
           visibilityResolver: resolver,
           readingProgress: _readingSnapshot,
           bookmarks: _bookmarks,
+          refresherDueDocIds: _refresherDue,
           // Saved rows and Continue Reading deep-link to the exact
           // card via the same navigation params the search results use.
           onBookmarkOpen: (dest, chapter, unit) =>
