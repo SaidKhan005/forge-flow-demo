@@ -15,8 +15,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
   chapters: [
     HandbookChapter(
       id: 'training_cheers_responsibility_c0',
-      title: 'Responsible Alcohol Service In NL',
-      subtitle: '1 card',
+      title: 'Governing Bodies and Licenses',
+      subtitle: '8 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -47,16 +47,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'skills to make responsible decisions, the entire establishment '
               'benefits from a reputation built on care and diligence.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c1',
-      title: 'Governing Bodies',
-      subtitle: '2 cards',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c1_u0',
+          id: 'training_cheers_responsibility_c0_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Governing Bodies',
@@ -81,9 +73,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'Liquor Control Act ensures that establishments such as bars, '
               'restaurants, and retail stores adhere to strict guidelines '
               'that promote responsible service and consumption.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
-          id: 'training_cheers_responsibility_c1_u1',
+          id: 'training_cheers_responsibility_c0_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Governing Bodies (cont.)',
@@ -105,17 +99,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'Labrador\'s commitment to responsible alcohol management and '
               'public health, creating a balanced approach that benefits '
               'everyone in the community.',
+          runIndex: 2,
+          runLength: 2,
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c2',
-      title: 'Newfoundland and Labrador Liquor Corporation',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c2_u0',
+          id: 'training_cheers_responsibility_c0_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Newfoundland and Labrador Liquor Corporation',
@@ -133,16 +121,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'but will also show up unannounced to monitor compliance or to '
               'investigate any complaints.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c3',
-      title: 'Licenses',
-      subtitle: '3 cards',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c3_u0',
+          id: 'training_cheers_responsibility_c0_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Licenses',
@@ -162,9 +142,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'operates solely for the sale of alcoholic liquor to the '
               'public, where food and entertainment may or may not be '
               'available.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
-          id: 'training_cheers_responsibility_c3_u1',
+          id: 'training_cheers_responsibility_c0_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Licenses (cont.)',
@@ -185,9 +167,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '\n'
               '- Hotel: An establishment where temporary lodging is regularly '
               'provided to the public in consideration of payment.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
-          id: 'training_cheers_responsibility_c3_u2',
+          id: 'training_cheers_responsibility_c0_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Licenses (cont.)',
@@ -197,17 +181,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'license issued by the board, to sell spirits, beers and wines '
               'at a function on the premises and on the date or dates to be '
               'prescribed in the license.',
+          runIndex: 3,
+          runLength: 3,
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c4',
-      title: 'Secondary Licenses',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c4_u0',
+          id: 'training_cheers_responsibility_c0_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Secondary Licenses',
@@ -230,13 +208,13 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
       ],
     ),
     HandbookChapter(
-      id: 'training_cheers_responsibility_c5',
-      title: 'Standard Drink Size',
-      subtitle: '1 card',
+      id: 'training_cheers_responsibility_c1',
+      title: 'Drinks, Intoxication, and ID',
+      subtitle: '8 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c5_u0',
+          id: 'training_cheers_responsibility_c1_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Standard Drink Size',
@@ -264,16 +242,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '\n'
               '- 1.5oz Liquor/Spirit at 40% ABV',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c6',
-      title: 'BAC Chart',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c6_u0',
+          id: 'training_cheers_responsibility_c1_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'BAC Chart',
@@ -284,16 +254,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'consumed. BAC is a measure of the amount of alcohol in a '
               'person\'s bloodstream, expressed as a percentage.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c7',
-      title: 'Signs of Intoxication',
-      subtitle: '2 cards',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c7_u0',
+          id: 'training_cheers_responsibility_c1_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Signs of Intoxication',
@@ -350,9 +312,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '- Aggressive or belligerent\n'
               '\n'
               '- Obnoxious or mean',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
-          id: 'training_cheers_responsibility_c7_u1',
+          id: 'training_cheers_responsibility_c1_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Signs of Intoxication (cont.)',
@@ -417,17 +381,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '- Excessive perspiration\n'
               '\n'
               '- Repeated trips to the washroom or outside',
+          runIndex: 2,
+          runLength: 2,
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c8',
-      title: 'Identification',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c8_u0',
+          id: 'training_cheers_responsibility_c1_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Identification',
@@ -442,16 +400,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'for key features such as the photo, description, and security '
               'elements.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c9',
-      title: 'Valid Forms of ID',
-      subtitle: '3 cards',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c9_u0',
+          id: 'training_cheers_responsibility_c1_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Valid Forms of ID',
@@ -492,9 +442,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'guests wallet.\n'
               '\n'
               'Use the acronym FLAG when examining identification:',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
-          id: 'training_cheers_responsibility_c9_u1',
+          id: 'training_cheers_responsibility_c1_u6',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Valid Forms of ID (cont.)',
@@ -520,9 +472,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'they may have memorized their personal information; '
               'additionally, requesting a secondary form of identification '
               'can further enhance the confirmation process.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
-          id: 'training_cheers_responsibility_c9_u2',
+          id: 'training_cheers_responsibility_c1_u7',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Valid Forms of ID (cont.)',
@@ -531,17 +485,19 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'fellow staff members, and document the incident accordingly; '
               'please remember that only police officers in Canada are '
               'authorized to confiscate fake IDs.',
+          runIndex: 3,
+          runLength: 3,
         ),
       ],
     ),
     HandbookChapter(
-      id: 'training_cheers_responsibility_c10',
-      title: 'Alcohol Combination',
-      subtitle: '1 card',
+      id: 'training_cheers_responsibility_c2',
+      title: 'Alcohol Combinations and Binge Drinking',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c10_u0',
+          id: 'training_cheers_responsibility_c2_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Alcohol Combination',
@@ -556,16 +512,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'health, allowing us to create a welcoming atmosphere where '
               'everyone can have a good time responsibly.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c11',
-      title: 'Alcohol and Energy Drinks',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c11_u0',
+          id: 'training_cheers_responsibility_c2_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Alcohol and Energy Drinks',
@@ -586,16 +534,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'your health and safety, it\'s wise to avoid mixing alcohol with '
               'energy drinks altogether and to enjoy each responsibly!',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c12',
-      title: 'Alcohol and Cannabis',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c12_u0',
+          id: 'training_cheers_responsibility_c2_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Alcohol and Cannabis',
@@ -620,16 +560,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'safe on its own, mixing it with alcohol demands a more '
               'cautious approach.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c13',
-      title: 'Alcohol and Other Drugs',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c13_u0',
+          id: 'training_cheers_responsibility_c2_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Alcohol and Other Drugs',
@@ -655,16 +587,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'comes to substance use. By being aware of these risks, we '
               'empower ourselves to make safer decisions.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c14',
-      title: 'Binge Drinking',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c14_u0',
+          id: 'training_cheers_responsibility_c2_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Binge Drinking',
@@ -690,13 +614,13 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
       ],
     ),
     HandbookChapter(
-      id: 'training_cheers_responsibility_c15',
-      title: 'Monitor Intoxication',
-      subtitle: '1 card',
+      id: 'training_cheers_responsibility_c3',
+      title: 'Serving Decisions and Liability',
+      subtitle: '6 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c15_u0',
+          id: 'training_cheers_responsibility_c3_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Monitor Intoxication',
@@ -718,16 +642,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'promotion with two-for-one snacks. Train your servers to '
               'market food: offer them incentives for increasing food sales.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c16',
-      title: 'Refusing Service',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c16_u0',
+          id: 'training_cheers_responsibility_c3_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Refusing Service',
@@ -758,16 +674,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '- Document the refused service in your log book and with an '
               'incident report.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c17',
-      title: 'Drinking and Driving',
-      subtitle: '2 cards',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c17_u0',
+          id: 'training_cheers_responsibility_c3_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Drinking and Driving',
@@ -806,9 +714,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '\n'
               '3. Do not put yourself in danger. Observe from a safe distance '
               'and allow the police to handle the stop.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
-          id: 'training_cheers_responsibility_c17_u1',
+          id: 'training_cheers_responsibility_c3_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Drinking and Driving (cont.)',
@@ -821,17 +731,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '\n'
               '- Offer to call a taxi or family/friend of the guest to try '
               'and persuade them to take an alternative action.',
+          runIndex: 2,
+          runLength: 2,
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c18',
-      title: 'Liability',
-      subtitle: '2 cards',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c18_u0',
+          id: 'training_cheers_responsibility_c3_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Liability',
@@ -858,9 +762,11 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               '\n'
               '- Whether the bar had a system for monitoring alcohol '
               'consumption.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
-          id: 'training_cheers_responsibility_c18_u1',
+          id: 'training_cheers_responsibility_c3_u5',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Liability (cont.)',
@@ -892,17 +798,19 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'settlements, and damages resulting from alcohol-related '
               'claims. General commercial liability insurance typically does '
               'not cover this exposure.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
     HandbookChapter(
-      id: 'training_cheers_responsibility_c19',
-      title: 'Alcohol Leaving the Premises',
-      subtitle: '1 card',
+      id: 'training_cheers_responsibility_c4',
+      title: 'Premises Rules, Hours, and Pricing',
+      subtitle: '5 cards',
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c19_u0',
+          id: 'training_cheers_responsibility_c4_u0',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Alcohol Leaving the Premises',
@@ -912,16 +820,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'licensed footprint, it would be considered in breach of the '
               'Licensing Regulations.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c20',
-      title: 'Overcrowding',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c20_u0',
+          id: 'training_cheers_responsibility_c4_u1',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Overcrowding',
@@ -930,16 +830,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'the license holder, does not exceed the capacity of the '
               'licensed premises as stated on the capacity card.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c21',
-      title: 'Hours of Sale and Consumption',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c21_u0',
+          id: 'training_cheers_responsibility_c4_u2',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Hours of Sale and Consumption',
@@ -949,16 +841,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'a.m. until 3:00 a.m. on Thursday, Friday, Saturday and Sunday '
               'with consumption permitted one half hour after sale.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c22',
-      title: 'Mandatory Exit',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c22_u0',
+          id: 'training_cheers_responsibility_c4_u3',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Mandatory Exit',
@@ -969,16 +853,8 @@ const BarrioTrainingDoc kTrainingCheersResponsibility = BarrioTrainingDoc(
               'applicable to licensees that offer a full service food menu 24 '
               'hours a day on a regular basis.',
         ),
-      ],
-    ),
-    HandbookChapter(
-      id: 'training_cheers_responsibility_c23',
-      title: 'Minimum Pricing',
-      subtitle: '1 card',
-      iconCodePoint: 0xe865,
-      units: [
         HandbookUnit(
-          id: 'training_cheers_responsibility_c23_u0',
+          id: 'training_cheers_responsibility_c4_u4',
           type: HandbookUnitType.explainer,
           badgeHint: 'READ',
           title: 'Minimum Pricing',

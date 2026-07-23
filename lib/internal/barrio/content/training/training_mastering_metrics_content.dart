@@ -83,6 +83,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'different times of the day. Additionally, analyzing AGC by '
               'individual servers can highlight performance variances, '
               'offering targeted insights for staff development.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c1_u1',
@@ -100,6 +102,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'higher AGC is often an indication that guests are enjoying '
               'their experience, opting to order appetizers, desserts, or '
               'indulging in a drink or two more than usual.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -132,6 +136,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'potential. This insight empowers us to make informed '
               'decisions, ensuring we maximize our profitability while '
               'maintaining an exceptional dining experience for our guests.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c2_u1',
@@ -156,6 +162,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'on average table turnover, allowing restaurants to book '
               'reservations more accurately and maximize thier seating '
               'capacity.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -189,6 +197,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'on the rise, it raises a red flag: they might be understaffed. '
               'When the team is stretched too thin, it can lead to service '
               'quality that suffers, impacting the overall guest experience.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c3_u1',
@@ -205,6 +215,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'enhance profitability, fine-tuning operations to accommodate '
               'fluctuations in guest traffic, whether during peak rushes or '
               'quieter times.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -264,6 +276,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               '\n'
               'Equally important is mastering your menu knowledge and '
               'suggestive selling skills.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c5_u1',
@@ -284,6 +298,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'ensures that they feel comfortable, making them more likely to '
               'return and indulge in more of what the restaurant has to '
               'offer.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -322,6 +338,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'atmosphere where guests feel appreciated. A smile and a warm '
               'greeting can go a long way towards enhancing their experience '
               'and the AGC.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_mastering_metrics_c6_u1',
@@ -335,6 +353,8 @@ const BarrioTrainingDoc kTrainingMasteringMetrics = BarrioTrainingDoc(
               'inconvenience. Not only will this affect the AGC, but it will '
               'deter guests from coming later in the evening in the future, '
               'dropping potential future sales.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),

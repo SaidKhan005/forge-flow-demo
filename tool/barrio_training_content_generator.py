@@ -62,8 +62,12 @@ DOCS = [
          kind='prose', out='jim_taylor_verbatim_content.dart'),
     # Corpus-complete slice (2026-07-11): the remaining 5 knowledge-graph
     # training documents, one bubble each.
+    # Structure pass (2026-07-23, operator-gated): BOLD By Design is
+    # optional-depth material, not core training; the doc carries an
+    # honest depth-framing badge (draft word, operator-reviewable).
     dict(md='Bold By Design.md', id='training_bold_by_design',
-         const='kTrainingBoldByDesign', title='BOLD By Design', kind='prose'),
+         const='kTrainingBoldByDesign', title='BOLD By Design', kind='prose',
+         depth='DEEPER DIVE'),
     dict(md='food safety manual.md', id='training_food_safety',
          const='kTrainingFoodSafety', title='Food Safety Manual', kind='prose'),
     dict(md='OE Cheers to Responsibility.md', id='training_cheers_responsibility',
@@ -78,6 +82,92 @@ DOCS = [
 ]
 
 CHAPTER_ICON = '0xe865'  # Icons.menu_book glyph, used by the chapter rail
+
+# --- Structure pass (2026-07-23, operator-gated rec #13) -------------------
+# Presentation metadata only: bodies, card order, and card titles are
+# untouched; the verbatim gate (lost=0w) still binds every doc. All
+# section/part NAMES below are operator-reviewable drafts.
+#
+# CHAPTER_MERGES: contiguous parsed-chapter ranges (0-based, inclusive)
+# merged into one rail section each. The merged section takes the drafted
+# name; the original per-chapter heading words survive verbatim as the
+# card titles inside the section. Ranges must cover every parsed chapter
+# exactly once, in order; the generator fails loudly on drift so a source
+# markdown change forces a deliberate table update.
+CHAPTER_MERGES = {
+    # OE Cheers to Responsibility: 24 parsed chapters (18 of them 1-card)
+    # fragment the rail; consolidated into 5 thematic sections.
+    'training_cheers_responsibility': [
+        (0, 4, 'Governing Bodies and Licenses'),
+        (5, 9, 'Drinks, Intoxication, and ID'),
+        (10, 14, 'Alcohol Combinations and Binge Drinking'),
+        (15, 18, 'Serving Decisions and Liability'),
+        (19, 23, 'Premises Rules, Hours, and Pricing'),
+    ],
+}
+
+# CHAPTER_PARTS: chapters stay separate; each contiguous range (0-based,
+# inclusive, over the FINAL chapter list) is annotated with an additive
+# optional partTitle/partIndex/partCount the rail can later render as
+# section separators. Same full-coverage validation as CHAPTER_MERGES.
+CHAPTER_PARTS = {
+    # BOLD By Design: 34 chapters grouped into 5 named parts.
+    'training_bold_by_design': [
+        (0, 6, 'The Foundations'),
+        (7, 13, 'Understanding Productivity'),
+        (14, 21, 'Managing Productivity'),
+        (22, 26, 'Building the Productivity System'),
+        (27, 33, 'Leading for the Long Term'),
+    ],
+}
+
+
+def _check_ranges(doc_id, table, n_chapters, what):
+    """Ranges must tile 0..n_chapters-1 exactly, in order."""
+    expect = 0
+    for lo, hi, title in table:
+        if lo != expect or hi < lo or hi >= n_chapters:
+            raise SystemExit(
+                f'{doc_id}: {what} range ({lo},{hi},{title!r}) does not fit '
+                f'{n_chapters} chapters (next uncovered index {expect}); '
+                f'update the grouping table for the changed source.')
+        expect = hi + 1
+    if expect != n_chapters:
+        raise SystemExit(
+            f'{doc_id}: {what} table covers {expect} of {n_chapters} '
+            f'chapters; update the grouping table for the changed source.')
+
+
+def apply_merges(doc_id, chapters):
+    """Merge parsed chapters per CHAPTER_MERGES; unlisted docs unchanged.
+
+    Runs BEFORE unit splitting, on parsed (title, units) chapters; the
+    merged section's subtitle is recomputed downstream ('N cards').
+    """
+    table = CHAPTER_MERGES.get(doc_id)
+    if not table:
+        return chapters
+    _check_ranges(doc_id, table, len(chapters), 'merge')
+    out = []
+    for lo, hi, title in table:
+        units = []
+        for ci in range(lo, hi + 1):
+            units.extend(chapters[ci][1])
+        out.append((title, units))
+    return out
+
+
+def parts_for(doc_id, chapters):
+    """Per-chapter (partIndex, partCount, partTitle) list, or None."""
+    table = CHAPTER_PARTS.get(doc_id)
+    if not table:
+        return None
+    _check_ranges(doc_id, table, len(chapters), 'part')
+    part_of = [None] * len(chapters)
+    for pi, (lo, hi, title) in enumerate(table, start=1):
+        for ci in range(lo, hi + 1):
+            part_of[ci] = (pi, len(table), title)
+    return part_of
 
 # Image markers inserted by tool/barrio_training_image_extractor.py.
 IMG_MARKER_RE = re.compile(
@@ -335,8 +425,12 @@ def dart_string(body, indent):
     return ('\n' + pad).join(f"'{s}'" for s in segs)
 
 
-def emit(doc, chapters):
-    """chapters: list of (title, units, subtitle?) where units = (title, body)."""
+def emit(doc, chapters, part_of=None):
+    """chapters: list of (title, units, subtitle?) where units = (title, body).
+
+    part_of: optional per-chapter (partIndex, partCount, partTitle) list
+    (see CHAPTER_PARTS); None emits no part fields.
+    """
     lines = []
     a = lines.append
     a('// GENERATED VERBATIM TRAINING CONTENT — regenerate, do not hand-edit bodies.')
@@ -353,6 +447,8 @@ def emit(doc, chapters):
     a(f"  id: '{doc['id']}',")
     a(f"  title: '{esc(doc['title'])}',")
     a(f"  sourcePath: 'docs/Knowledge_graph_docs/{esc(doc['md'])}',")
+    if doc.get('depth'):
+        a(f"  depthBadge: '{esc(doc['depth'])}',")
     a('  chapters: [')
     for ci, chap in enumerate(chapters):
         if len(chap) == 3:
@@ -365,10 +461,18 @@ def emit(doc, chapters):
         a(f"      id: '{doc['id']}_c{ci}',")
         a(f"      title: '{esc(ch_title)}',")
         a(f"      subtitle: '{esc(subtitle)}',")
+        if part_of is not None and part_of[ci] is not None:
+            p_idx, p_count, p_title = part_of[ci]
+            a(f"      partTitle: '{esc(p_title)}',")
+            a(f'      partIndex: {p_idx},')
+            a(f'      partCount: {p_count},')
         a(f'      iconCodePoint: {CHAPTER_ICON},')
         a('      units: [')
         for ui, unit in enumerate(units):
-            if len(unit) == 3:
+            run_idx, run_len = 1, 1
+            if len(unit) == 5:
+                u_title, u_body, u_images, run_idx, run_len = unit
+            elif len(unit) == 3:
                 u_title, u_body, u_images = unit
             else:
                 u_title, u_body = unit
@@ -382,6 +486,9 @@ def emit(doc, chapters):
             a(f"          badgeHint: '{badge}',")
             a(f"          title: '{esc(u_title)}',")
             a(f'          body: {dart_string(u_body, 14)},')
+            if run_len > 1:
+                a(f'          runIndex: {run_idx},')
+                a(f'          runLength: {run_len},')
             if u_images:
                 a('          images: [')
                 for img_path, img_caption, img_after in u_images:
@@ -512,7 +619,10 @@ def normalize_unit(unit):
 
 
 def split_unit(u_title, u_body, u_images):
-    """Return [(title, body, images)] — one card if short, else several."""
+    """Return [(title, body, images, runIndex, runLength)] — one card if
+    short, else several. Run metadata is honest arithmetic over the split:
+    card k of a section split into N cards carries (k, N); an unsplit card
+    carries (1, 1)."""
     paras = u_body.split('\n\n')
     # Group paragraphs into contiguous chunks by a word budget: close the
     # current card when it reaches the target, or before adding a paragraph
@@ -573,7 +683,7 @@ def split_unit(u_title, u_body, u_images):
         flush_run()
 
     if len(cards) < 2:
-        return [(u_title, u_body, u_images)]
+        return [(u_title, u_body, u_images, 1, 1)]
 
     # Images anchored after paragraph k render after that paragraph's final
     # piece, on whichever card holds it (afterParagraph re-based per card).
@@ -596,7 +706,7 @@ def split_unit(u_title, u_body, u_images):
             title = u_title  # first card, or already suffixed: never doubled
         else:
             title = f'{u_title} (cont.)'
-        result.append((title, body, imgs))
+        result.append((title, body, imgs, ci + 1, len(cards)))
     return result
 
 
@@ -627,9 +737,11 @@ for doc in DOCS:
         chapters = parse_glossary(text)
     else:
         chapters = parse_slides(text)
+    chapters = apply_merges(doc['id'], chapters)
     chapters = split_chapters(chapters)
+    part_of = parts_for(doc['id'], chapters)
     out_path = os.path.join(OUT, doc.get('out', doc['id'] + '_content.dart'))
     with open(out_path, 'w', encoding='utf-8', newline='\n') as f:
-        f.write(emit(doc, chapters))
+        f.write(emit(doc, chapters, part_of))
     n_units = sum(len(c[1]) for c in chapters)
     print(f'{doc["id"]}: {len(chapters)} chapters, {n_units} units -> {out_path}')

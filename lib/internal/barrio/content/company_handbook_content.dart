@@ -85,6 +85,17 @@ class HandbookUnit {
   /// Empty for units without pictures (the default; rendering is unchanged).
   final List<HandbookUnitImage> images;
 
+  /// 1-based position of this card inside its source-section run. A long
+  /// source section split across N cards yields runIndex 1..N in reading
+  /// order; an unsplit card is a run of one (the default). Honest
+  /// arithmetic only: no invented sub-titles. Lets the card badge row
+  /// show 'K of N' instead of a bare '(cont.)' tail.
+  final int runIndex;
+
+  /// Total cards in this card's source-section run. 1 (the default) when
+  /// the source section fit on a single card.
+  final int runLength;
+
   const HandbookUnit({
     required this.id,
     required this.type,
@@ -93,6 +104,8 @@ class HandbookUnit {
     this.options = const [],
     this.badgeHint,
     this.images = const [],
+    this.runIndex = 1,
+    this.runLength = 1,
   });
 }
 
@@ -104,12 +117,29 @@ class HandbookChapter {
   final int iconCodePoint;
   final List<HandbookUnit> units;
 
+  /// Optional part grouping for long manuals: the name of the part this
+  /// chapter belongs to. Presentation metadata only (the chapter rail can
+  /// render parts as section separators); null (the default) for manuals
+  /// without part grouping. Part names never change body words.
+  final String? partTitle;
+
+  /// 1-based index of [partTitle] among the manual's parts. Null when the
+  /// manual has no part grouping.
+  final int? partIndex;
+
+  /// Total number of parts in the manual's grouping. Null when the manual
+  /// has no part grouping.
+  final int? partCount;
+
   const HandbookChapter({
     required this.id,
     required this.title,
     required this.subtitle,
     required this.iconCodePoint,
     required this.units,
+    this.partTitle,
+    this.partIndex,
+    this.partCount,
   });
 }
 

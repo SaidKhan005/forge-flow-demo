@@ -27,10 +27,17 @@ class BarrioTrainingDoc {
   /// existing rendering widgets work unchanged.
   final List<HandbookChapter> chapters;
 
+  /// Optional honest depth-framing badge word for the home shelf and doc
+  /// header (e.g. 'DEEPER DIVE' for optional-depth material that is not
+  /// core training). Null (the default) renders no badge. Data only:
+  /// widget hookup lands separately.
+  final String? depthBadge;
+
   const BarrioTrainingDoc({
     required this.id,
     required this.title,
     required this.sourcePath,
     required this.chapters,
+    this.depthBadge,
   });
 }

@@ -12,11 +12,15 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
   id: 'training_bold_by_design',
   title: 'BOLD By Design',
   sourcePath: 'docs/Knowledge_graph_docs/Bold By Design.md',
+  depthBadge: 'DEEPER DIVE',
   chapters: [
     HandbookChapter(
       id: 'training_bold_by_design_c0',
       title: 'BOLD By Design',
       subtitle: '1 card',
+      partTitle: 'The Foundations',
+      partIndex: 1,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -35,6 +39,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c1',
       title: 'Introduction',
       subtitle: '2 cards',
+      partTitle: 'The Foundations',
+      partIndex: 1,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -68,6 +75,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'separate what is driven by guest behavior from what is driven '
               'by operations. And it will give you a framework for expanding '
               'margin without damaging the team or the guest experience.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c1_u1',
@@ -88,6 +97,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'This is not a book about cutting costs.\n'
               '\n'
               'It is a book about designing a system that works.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -95,6 +106,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c2',
       title: 'Chapter 1: The Labor Illusion',
       subtitle: '3 cards',
+      partTitle: 'The Foundations',
+      partIndex: 1,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -126,6 +140,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'operators attempt to control an outcome instead of the forces '
               'that produce it, they begin making reactive decisions that '
               'destabilize the system.',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c2_u1',
@@ -155,6 +171,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'unchanged, labor percentage rises to over 27 percent. Nothing '
               'about the operation has changed. The same team worked the same '
               'hours. The only difference is guest behavior.',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c2_u2',
@@ -172,6 +190,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'The operator believes they are controlling costs. In reality, '
               'they are introducing instability into the system.',
+          runIndex: 3,
+          runLength: 3,
         ),
       ],
     ),
@@ -179,6 +199,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c3',
       title: 'Chapter 2: The Three Levers of Labor Performance',
       subtitle: '9 cards',
+      partTitle: 'The Foundations',
+      partIndex: 1,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -240,6 +263,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'When we combine these relationships, the structure becomes '
               'much clearer. Labor percentage is determined by hours and wage '
               'on one side, and covers and guest spend on the other.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c3_u2',
@@ -261,6 +286,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'impact compounds.\n'
               '\n'
               'This is the operating engine of the restaurant.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c3_u3',
@@ -453,6 +480,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c4',
       title: 'Chapter 3: Best Version vs. Convergence',
       subtitle: '9 cards',
+      partTitle: 'The Foundations',
+      partIndex: 1,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -559,6 +589,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'Team experience affects speed and consistency. Menu complexity '
               'influences ticket times. Technology, training, and leadership '
               'all play a role.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c4_u3',
@@ -574,6 +606,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'When operators force their business to match an external '
               'target, they often disrupt the balance that allows their '
               'system to function properly.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c4_u4',
@@ -737,6 +771,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c5',
       title: 'Chapter 4: The Profit Gap',
       subtitle: '8 cards',
+      partTitle: 'The Foundations',
+      partIndex: 1,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -968,6 +1005,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c6',
       title: 'Chapter 5: The Core Labor Equation',
       subtitle: '9 cards',
+      partTitle: 'The Foundations',
+      partIndex: 1,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1203,6 +1243,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c7',
       title: 'Chapter 6: Understanding Productivity (Front of House)',
       subtitle: '9 cards',
+      partTitle: 'Understanding Productivity',
+      partIndex: 2,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1467,6 +1510,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c8',
       title: 'Chapter 7: Understanding Productivity (Back of House)',
       subtitle: '10 cards',
+      partTitle: 'Understanding Productivity',
+      partIndex: 2,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1763,6 +1809,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c9',
       title: 'Chapter 8: The Employee Workload Factor',
       subtitle: '7 cards',
+      partTitle: 'Understanding Productivity',
+      partIndex: 2,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -1985,6 +2034,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c10',
       title: 'Chapter 9: The Optimal Productivity Zone',
       subtitle: '9 cards',
+      partTitle: 'Understanding Productivity',
+      partIndex: 2,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -2252,6 +2304,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c11',
       title: 'Chapter 10: When Productivity Is Too High',
       subtitle: '10 cards',
+      partTitle: 'Understanding Productivity',
+      partIndex: 2,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -2521,6 +2576,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c12',
       title: 'Chapter 11: When Productivity Is Too Low',
       subtitle: '9 cards',
+      partTitle: 'Understanding Productivity',
+      partIndex: 2,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -2771,6 +2829,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c13',
       title: 'Chapter 12: The Productivity Balance',
       subtitle: '6 cards',
+      partTitle: 'Understanding Productivity',
+      partIndex: 2,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -2797,6 +2858,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'converted into food production. Together, these two '
               'measurements form the operational heartbeat of the restaurant. '
               'They show how labor hours translate into service and revenue.',
+          runIndex: 1,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c13_u1',
@@ -2833,6 +2896,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'relative to demand and employees are stretched beyond their '
               'capacity. In that state, service quality declines and tu '
               'rnover increases.',
+          runIndex: 2,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c13_u2',
@@ -2868,6 +2933,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'overwhelmed, and where service quality remains strong. These '
               'moments reveal where the system is operating inside its '
               'optimal range.',
+          runIndex: 3,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c13_u3',
@@ -2904,6 +2971,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'pressure may be approaching an unsustainable level. With this '
               'understanding, operators can begin to adjust proactively '
               'rather than reacting after the fact.',
+          runIndex: 4,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c13_u4',
@@ -2941,6 +3010,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'requires adjusting schedules. Sometimes it requires retraining '
               'the team. In other cases, it may require redesigning '
               'operational systems.',
+          runIndex: 5,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c13_u5',
@@ -2956,6 +3027,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'expands. Employees perform at their best. Guests return '
               'consistently. The business becomes the strongest version of '
               'what it is capable of being.',
+          runIndex: 6,
+          runLength: 6,
         ),
       ],
     ),
@@ -2963,6 +3036,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c14',
       title: 'Chapter 13: The Employee Workload Factor',
       subtitle: '6 cards',
+      partTitle: 'Managing Productivity',
+      partIndex: 3,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -3137,6 +3213,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c15',
       title: 'Chapter 14: The Optimal Productivity Zone',
       subtitle: '9 cards',
+      partTitle: 'Managing Productivity',
+      partIndex: 3,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -3197,6 +3276,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'At this stage, productivity may still appear strong, but the '
               'system is becoming less stable.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c15_u2',
@@ -3211,6 +3292,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Beyond this point, higher productivity no longer improves '
               'performance. It reduces it.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c15_u3',
@@ -3386,6 +3469,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c16',
       title: 'Chapter 15: Addressing When Productivity Is Too Low',
       subtitle: '9 cards',
+      partTitle: 'Managing Productivity',
+      partIndex: 3,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -3615,6 +3701,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c17',
       title: 'Chapter 16: Addressing When Productivity Is Too High',
       subtitle: '9 cards',
+      partTitle: 'Managing Productivity',
+      partIndex: 3,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -3837,6 +3926,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c18',
       title: 'Chapter 17: Cross-Department Balance',
       subtitle: '8 cards',
+      partTitle: 'Managing Productivity',
+      partIndex: 3,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4059,6 +4151,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c19',
       title: 'Chapter 18: Scheduling Against Volume',
       subtitle: '7 cards',
+      partTitle: 'Managing Productivity',
+      partIndex: 3,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4278,6 +4373,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c20',
       title: 'Chapter 19: The Psychology of Overstaffing',
       subtitle: '8 cards',
+      partTitle: 'Managing Productivity',
+      partIndex: 3,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4493,6 +4591,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c21',
       title: 'Chapter 20: The Psychology of Understaffing',
       subtitle: '5 cards',
+      partTitle: 'Managing Productivity',
+      partIndex: 3,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4526,6 +4627,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'coordinate more tightly, and operate with less margin for '
               'error. What initially felt like focus begins to feel like '
               'strain.',
+          runIndex: 1,
+          runLength: 5,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c21_u1',
@@ -4554,6 +4657,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'in subtle ways. Attention to detail decreases, pacing becomes '
               'inconsistent, and the overall interaction feels less '
               'controlled.',
+          runIndex: 2,
+          runLength: 5,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c21_u2',
@@ -4586,6 +4691,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'more demanding, and the remaining team must carry additional '
               'workload during the transition. Productivity may decline, but '
               'now for reasons that are harder to control.',
+          runIndex: 3,
+          runLength: 5,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c21_u3',
@@ -4617,6 +4724,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'objective is to bring the operation back into the Optimal '
               'Productivity Zone, where productivity supports both '
               'performance and stability.',
+          runIndex: 4,
+          runLength: 5,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c21_u4',
@@ -4637,6 +4746,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'with precision.\n'
               '\n'
               'And that is where real control begins.',
+          runIndex: 5,
+          runLength: 5,
         ),
       ],
     ),
@@ -4644,6 +4755,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c22',
       title: 'Chapter 21: The Productivity System',
       subtitle: '7 cards',
+      partTitle: 'Building the Productivity System',
+      partIndex: 4,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4825,6 +4939,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c23',
       title: 'Chapter 22: From Understanding to Execution',
       subtitle: '4 cards',
+      partTitle: 'Building the Productivity System',
+      partIndex: 4,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4855,6 +4972,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'planning, and productivity moves outside its optimal range not '
               'because it is misunderstood, but because it is not '
               'consistently managed.',
+          runIndex: 1,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c23_u1',
@@ -4884,6 +5003,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'reinforcing expectations and ensuring that the system is '
               'followed day after day. Each of these elements plays a role in '
               'keeping the restaurant within its optimal range.',
+          runIndex: 2,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c23_u2',
@@ -4910,6 +5031,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'is what drives long-term performance. Guests receive a '
               'reliable experience, employees understand expectations, and '
               'managers are able to lead rather than constantly react.',
+          runIndex: 3,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c23_u3',
@@ -4937,6 +5060,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               '\n'
               'Because understanding creates clarity, but execution is what '
               'turns that clarity into results.',
+          runIndex: 4,
+          runLength: 4,
         ),
       ],
     ),
@@ -4944,6 +5069,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c24',
       title: 'Chapter 23: Designing for Consistency',
       subtitle: '4 cards',
+      partTitle: 'Building the Productivity System',
+      partIndex: 4,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -4973,6 +5101,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'as conditions change, or key people are not present, '
               'performance begins to vary. What was once controlled becomes '
               'inconsistent.',
+          runIndex: 1,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c24_u1',
@@ -5004,6 +5134,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'represents balance and the signals that indicate when the '
               'system is drifting. Without this understanding, even a '
               'well-built schedule can break down during execution.',
+          runIndex: 2,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c24_u2',
@@ -5035,6 +5167,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'more time improving performance. Over time, the operation '
               'becomes easier to run, not because it requires less effort, '
               'but because that effort is directed within a clear structure.',
+          runIndex: 3,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'training_bold_by_design_c24_u3',
@@ -5066,6 +5200,8 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
               'more.\n'
               '\n'
               'Optimization.',
+          runIndex: 4,
+          runLength: 4,
         ),
       ],
     ),
@@ -5073,6 +5209,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c25',
       title: 'Chapter 24: Optimization',
       subtitle: '7 cards',
+      partTitle: 'Building the Productivity System',
+      partIndex: 4,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -5244,6 +5383,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c26',
       title: 'Chapter 25: Sustaining the System',
       subtitle: '8 cards',
+      partTitle: 'Building the Productivity System',
+      partIndex: 4,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -5432,6 +5574,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c27',
       title: 'Chapter 26: The Operator\'s Role',
       subtitle: '9 cards',
+      partTitle: 'Leading for the Long Term',
+      partIndex: 5,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -5640,6 +5785,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c28',
       title: 'Chapter 27: The Long-Term Impact',
       subtitle: '9 cards',
+      partTitle: 'Leading for the Long Term',
+      partIndex: 5,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -5838,6 +5986,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c29',
       title: 'Chapter 28: Protecting Culture While Expanding Profit',
       subtitle: '9 cards',
+      partTitle: 'Leading for the Long Term',
+      partIndex: 5,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -6059,6 +6210,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c30',
       title: 'Chapter 29: Sustaining the Best Version of Your Business',
       subtitle: '10 cards',
+      partTitle: 'Leading for the Long Term',
+      partIndex: 5,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -6266,6 +6420,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c31',
       title: 'Chapter 30: The Optimal Productivity Mindset',
       subtitle: '8 cards',
+      partTitle: 'Leading for the Long Term',
+      partIndex: 5,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -6435,6 +6592,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c32',
       title: 'Conclusion',
       subtitle: '8 cards',
+      partTitle: 'Leading for the Long Term',
+      partIndex: 5,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(
@@ -6621,6 +6781,9 @@ const BarrioTrainingDoc kTrainingBoldByDesign = BarrioTrainingDoc(
       id: 'training_bold_by_design_c33',
       title: 'Back Cover',
       subtitle: '1 card',
+      partTitle: 'Leading for the Long Term',
+      partIndex: 5,
+      partCount: 5,
       iconCodePoint: 0xe865,
       units: [
         HandbookUnit(

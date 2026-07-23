@@ -205,6 +205,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Total Sales = Covers x PPA\n'
               '\n'
               'Labor % = (Hours x Wage) / (Covers x PPA)',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c2_u2',
@@ -229,6 +231,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'accountable for the output of all four. This is why good '
               'managers get blamed for numbers that were never in their '
               'hands.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c2_u3',
@@ -320,6 +324,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               '\$19 -> \$16 | \$4,480 | \$16,800 | 26.7% down | Lower blended '
               'wage',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c3_u2',
@@ -332,6 +338,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'points through no action or fault of the manager. This is '
               'Jim\'s core argument: you cannot evaluate a manager against a '
               'number they barely control.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -417,6 +425,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               '- Sales: 800 x \$31 = \$24,800 <- \$8,800 less revenue, same '
               'guest count',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c4_u2',
@@ -437,6 +447,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'scheduling was right. Labor % tells you if guests showed up '
               'and spent money. One measures management. One measures the '
               'business."',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c4_u3',
@@ -492,6 +504,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'execution gap. Jim\'s math: a 5% improvement in productivity '
               'across both locations equals roughly \$6K per week - \$300K+ '
               'annualized.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c4_u5',
@@ -502,6 +516,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Location B\'s 24.6% isn\'t a wage problem. It is not a staffing '
               'problem. It is a productivity problem. CPLH names it. Labor % '
               'never could.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -548,6 +564,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'breaks. Night B is 15 hours over, team idle, labor bleeds. '
               'Revenue gave the wrong answer both times. Cover count gives '
               'the right answer every time.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u2',
@@ -567,6 +585,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'forecast how many guests walk through the door. That\'s it."\n'
               '\n'
               '---',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u3',
@@ -593,6 +613,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'they forecasted their covers from history, applied their CPLH '
               'target, and scheduled the right hours. When their forecast '
               'came in accurately, the model held.',
+          runIndex: 1,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u4',
@@ -628,6 +650,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'expected)\n'
               '\n'
               '- PPA: \$40 Sales: 480 x \$40 = \$19,200',
+          runIndex: 2,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u5',
@@ -661,6 +685,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '- Cover forecast: 480 for the week\n'
               '\n'
               '- Scheduled: 480 / 5.0 CPLH = 96 FOH hours - right number',
+          runIndex: 3,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c5_u6',
@@ -694,6 +720,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'sees 4.0 vs 5.0 - one team overstaffed and bailed out by lucky '
               'volume, one team right on target. One number was luck. One was '
               'design.',
+          runIndex: 4,
+          runLength: 4,
         ),
       ],
     ),
@@ -796,6 +824,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'week anomaly.\n'
               '\n'
               'Example: Reading both metrics - Wednesday dinner',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c7_u1',
@@ -815,6 +845,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'target means the restaurant was slightly overstaffed for the '
               'actual volume. The fix is in the forecast, not on the floor. '
               'The team had a good night.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -885,6 +917,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'floor. She could not hit 27%. The math made it impossible. She '
               'was being evaluated against a target that was never achievable '
               'at her wage rate.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c8_u3',
@@ -914,6 +948,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Now you know what theoretical labor is and why it matters. The '
               'question is: how do you build the data to calculate it for '
               'your restaurant? That is what Chapter 09 covers.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -1002,6 +1038,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               'Answer: When all three are high together - that is your team '
               'at their best',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u3',
@@ -1013,6 +1051,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'comfortable and productive. From that range you set your '
               'target CPLH and target SPLH. These become the inputs that '
               'build your theoretical labor %.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u4',
@@ -1035,6 +1075,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'CPLH target - they give you a false floor. You need enough '
               'days to see both ends of what your operation actually does, '
               'not just what it does when everything goes right.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u5',
@@ -1044,6 +1086,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
           body: '> Warning > > A CPLH target built from too few days is just '
               'your best Wednesday disguised as a standard. Track long enough '
               'to see the full range. Your target lives somewhere inside it.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u6',
@@ -1080,6 +1124,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'FOH Wage -> \$16.50/hr (servers, runners, host, FOH managers)\n'
               '\n'
               'Your BOH inputs',
+          runIndex: 1,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u7',
@@ -1113,6 +1159,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '280 x \$21.35 = \$5,978 (BOH)\n'
               '\n'
               'Total theoretical labor \$: \$4,405 + \$5,978 = \$10,383',
+          runIndex: 2,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u8',
@@ -1136,6 +1184,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'benchmark. Not copied from another location. Built from 60 '
               'days of your own operation. When variance appears you know '
               'immediately which side of the house to look at first.',
+          runIndex: 3,
+          runLength: 3,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c9_u9',
@@ -1278,6 +1328,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'FOH labor \$: 280 x \$16.50 = \$4,620\n'
               '\n'
               'BOH labor \$: 290 x \$21.35 = \$6,192',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u4',
@@ -1295,6 +1347,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'immediately: both FOH and BOH drifted equally - a cover '
               'shortfall hit both sides. Now the question is: which of the '
               'five levers moved, and why?',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u5',
@@ -1337,6 +1391,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Note: Hours didn\'t flex with volume. Both sides drift. '
               'Forecast or scheduling gap. Track covers mid-week and cut '
               'hours in real time.',
+          runIndex: 1,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u6',
@@ -1384,6 +1440,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'After - 231 FOH hrs x \$16.50 = \$3,812\n'
               '\n'
               'FOH 7.6% - BOH 11.9% - Total 19.5% down 1.1 pts',
+          runIndex: 2,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u7',
@@ -1426,6 +1484,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Before\n'
               '\n'
               'FOH 8.7% - BOH 11.9% - Total 20.6%',
+          runIndex: 3,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u8',
@@ -1467,6 +1527,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               '\n'
               'Note: Right FOH roles on right shifts. Note the deployment '
               'pattern and replicate it.',
+          runIndex: 4,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u9',
@@ -1510,6 +1572,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'theoretical labor cost before, you\'re not alone. Most '
               'operators haven\'t. But once you see the gap, you can\'t unsee '
               'it."',
+          runIndex: 5,
+          runLength: 6,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c10_u10',
@@ -1523,6 +1587,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'covers that system in full. > > Master the labor model first. '
               'Once you can read a shift\'s numbers in 90 seconds, the food '
               'cost layer drops in on top of a model that already works.',
+          runIndex: 6,
+          runLength: 6,
         ),
       ],
     ),
@@ -1660,6 +1726,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'Actual % - Theoretical %. If it moved, one of the five levers '
               'moved with it. Go to the lever cards in Chapter 10. Find the '
               'specific input. Fix that thing only.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c12_u2',
@@ -1671,6 +1739,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'From your 60 days of CPLH data, identify the range where labor '
               '% declines and service holds. Below it you are bleeding hours. '
               'Above it you are burning your team. Stay inside it.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c12_u3',
@@ -1737,6 +1807,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
               'making sure the people on your floor are working hard enough '
               'to be productive, but not so hard that they break. That is the '
               'OPZ. That is the whole framework.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'jim_taylor_labor_model_c12_u5',
@@ -1746,6 +1818,8 @@ const BarrioTrainingDoc kTrainingJimTaylor = BarrioTrainingDoc(
           body: 'Tags: Covers, Labor Hours, PPA, Wage Mix, CPLH - FOH, SPLH - '
               'BOH, 60-Day Tracking Discipline, Required FOH Hours, Required '
               'BOH Hours, Theoretical Labor, Variance, OPZ',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),

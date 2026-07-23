@@ -140,6 +140,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'perspective shifts the discourse from merely questioning '
               'whether wages are excessive to evaluating if the operational '
               'system can effectively support those wage levels.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_labour_cost_c4_u1',
@@ -158,6 +160,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'equipped to optimize their workforce allocation and wage '
               'structures, ultimately leading to enhanced productivity and '
               'profitability.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -320,6 +324,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'increases in productivity cease to benefit the business is a '
               'critical insight for managers, as changes in workload can '
               'accumulate subtly yet significantly over time.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_labour_cost_c6_u4',
@@ -341,6 +347,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'operation, ensuring that it serves the broader goals of '
               'stability and quality rather than merely chasing higher '
               'numbers.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -918,6 +926,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'solvers, increasingly absorbed in addressing immediate issues '
               'rather than fostering team cohesion and performance '
               'improvement.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_labour_cost_c10_u1',
@@ -938,6 +948,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'stability. Striking the right balance in productivity levels '
               'is imperative; it must be sufficient to support profitability '
               'without compromising the stability and well-being of the team.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_labour_cost_c10_u2',
@@ -957,6 +969,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'output. The business may continue to function, yet it does so '
               'at an inflated cost, as resources are not being utilized '
               'effectively.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_labour_cost_c10_u3',
@@ -977,6 +991,8 @@ const BarrioTrainingDoc kTrainingLabourCost = BarrioTrainingDoc(
               'improvement. Thus, the absence of strain can lull '
               'organizations into a complacency that stifles growth and '
               'innovation.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),

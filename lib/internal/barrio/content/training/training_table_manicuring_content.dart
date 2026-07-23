@@ -255,6 +255,8 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'restaurants not only enhance the perceived value of each meal '
               'but also increase guest satisfaction, leading to better tips '
               'and more efficient table turns.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c3_u1',
@@ -273,6 +275,8 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'contributes to a polished and inviting atmosphere. This '
               'commitment to high-level care elevates the overall dining '
               'experience, creating a subtle yet powerful impression.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -362,6 +366,8 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'turns while maintaining a comfortable atmosphere, avoiding any '
               'sense of being rushed that might detract from the overall '
               'enjoyment of the meal.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_table_manicuring_c5_u1',
@@ -383,6 +389,8 @@ const BarrioTrainingDoc kTrainingTableManicuring = BarrioTrainingDoc(
               'the overall quality but also reinforces a cohesive team '
               'approach to service excellence, making it a win-win scenario '
               'for both guests and servers alike.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),

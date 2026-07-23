@@ -98,6 +98,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'in delivering consistent and efficient service, reducing the '
               'potential for errors, controlling costs, and ultimately '
               'ensuring guest enjoyment.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c2_u1',
@@ -118,6 +120,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'branding - spanning logos, color schemes, and interior design '
               '- serves to distinguish the restaurant and resonates with '
               'guests.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -191,6 +195,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'familiar taste. From the first mouthful to the last, attention '
               'to texture and aroma creates a symphony of flavors where '
               'guests savour the nuances of each dish.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c4_u2',
@@ -211,6 +217,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'By implementing careful inventory management and contingency '
               'plans, restaurants ensure that guests can order their favorite '
               'meals without fear of disappointment.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c4_u3',
@@ -346,6 +354,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'emotional investment is not just a personal evolution; it '
               'cultivates a workforce that is motivated to surpass '
               'expectations.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c6_u1',
@@ -365,6 +375,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'responsibilities and the restaurant\'s vision creates a culture '
               'of pride and collaboration, ultimately leading to a more '
               'harmonious and successful atmosphere.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c6_u2',
@@ -380,6 +392,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'clear path to follow. When employees can rely on established '
               'protocols, they experience a sense of stability and confidence '
               'that translates into improved service for guests.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c6_u3',
@@ -402,6 +416,8 @@ const BarrioTrainingDoc kTrainingStrongFoundation = BarrioTrainingDoc(
               'diligently reviewing materials, as this proactive approach can '
               'boost their understanding and create a culture of excellence '
               'and accountability within the team.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_strong_foundation_c6_u4',
