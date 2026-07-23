@@ -7,7 +7,9 @@ import '../search/barrio_training_search.dart';
 import '../routes/barrio_preview_role.dart';
 import '../services/barrio_reading_progress_service.dart';
 import '../services/barrio_reading_time.dart';
+import '../services/barrio_training_deck.dart';
 import '../widgets/barrio_destination_scaffold.dart';
+import '../widgets/barrio_quiz_checkpoint_card.dart';
 import '../widgets/handbook_chapter_rail.dart';
 import '../widgets/handbook_lesson_card.dart';
 import '../widgets/learning_carousel.dart';
@@ -87,8 +89,19 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     'training_general_words',
   };
 
-  late final List<HandbookUnit> _flatUnits;
+  /// The flat card deck: every chapter's verbatim content cards, then
+  /// that chapter's quick-check quiz cards when the doc has a bank
+  /// (rec #4b, 2026-07-23). Quiz cards append AFTER content within a
+  /// chapter, so every pre-quiz content coordinate (search, A-Z index,
+  /// resume, read marks) still resolves to the same content card.
+  late final TrainingDeck _deck;
   late final List<int> _chapterStarts;
+
+  /// This session's first pick per quiz question id. Session-only and
+  /// honest: no scores, streaks, or mastery claims (Metric Honesty).
+  /// Held here (not in the card) so the reveal survives paging away
+  /// and back while the screen lives.
+  final Map<String, int> _quizPicks = {};
 
   /// Folded query words highlighted inside card bodies. Seeded from the
   /// home-search deep link (if any); the in-manual search sheet
@@ -114,13 +127,8 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   void initState() {
     super.initState();
     final chapters = widget.doc.chapters;
-    _flatUnits = [for (final c in chapters) ...c.units];
-    _chapterStarts = [];
-    var start = 0;
-    for (final c in chapters) {
-      _chapterStarts.add(start);
-      start += c.units.length;
-    }
+    _deck = buildTrainingDeck(widget.doc);
+    _chapterStarts = _deck.chapterStarts;
     if (chapters.isNotEmpty && _hasDeepLink) {
       _applyPosition(
         widget.initialChapterIndex ?? 0,
@@ -184,17 +192,21 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     // Record the landing card as read + current position, unless the
     // user already swiped somewhere else (their card was recorded by
     // _onCardPageChanged and is the fresher truth).
-    if (_flatUnits.isNotEmpty && !_pageTouched) {
+    if (_deck.entries.isNotEmpty && !_pageTouched) {
       _recordCardOnScreen(_initialPage);
     }
   }
 
   /// Records that the card at flat-deck [page] settled on screen:
-  /// remembers it as the reading position and marks it read.
+  /// remembers it as the reading position and marks it read. Quiz
+  /// cards record NOTHING: they are not content cards, so read-mark
+  /// totals keep meaning content cards only and the saved position
+  /// stays on the last settled content card (Metric Honesty).
   void _recordCardOnScreen(int page) {
-    if (page < 0 || page >= _flatUnits.length) return;
+    if (page < 0 || page >= _deck.length) return;
+    final unit = _deck.entries[page].unit;
+    if (unit == null) return; // Quick-check quiz card: never recorded.
     final chapter = _chapterOf(page);
-    final unit = _flatUnits[page];
     if (!_readUnitIds.contains(unit.id)) {
       setState(() => _readUnitIds.add(unit.id));
       BarrioReadingProgressService.markCardRead(widget.doc.id, unit.id);
@@ -218,15 +230,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     };
   }
 
-  /// Section that owns the card at flat-deck [page].
-  int _chapterOf(int page) {
-    var chapter = 0;
-    for (var i = 0; i < _chapterStarts.length; i++) {
-      if (_chapterStarts[i] > page) break;
-      chapter = i;
-    }
-    return chapter;
-  }
+  /// Section that owns the card at flat-deck [page]. A chapter's quiz
+  /// cards belong to their own chapter (they sit before the next
+  /// chapter's start), so the hero and rail follow them correctly.
+  int _chapterOf(int page) => _deck.chapterOf(page);
 
   void _onCardPageChanged(int page) {
     _pageTouched = true;
@@ -241,8 +248,8 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// card exactly as it does for swipes and tap-zone turns, so jumps
   /// leave the same read marks.
   void _jumpToCard(int page) {
-    if (_flatUnits.isEmpty) return;
-    final target = page.clamp(0, _flatUnits.length - 1);
+    if (_deck.entries.isEmpty) return;
+    final target = page.clamp(0, _deck.length - 1);
     HapticFeedback.lightImpact();
     _pageTouched = true;
     setState(() => _activeChapter = _chapterOf(target));
@@ -281,7 +288,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         accent: widget.accent,
         onEntryTap: (page) {
           Navigator.of(sheetContext).pop();
-          _jumpToCard(page);
+          // The index sheet emits pages in the pre-quiz content
+          // flatten; convert so entries land on the same content card
+          // with quiz cards present (identity for docs without a bank).
+          _jumpToCard(_deck.deckPageForContentPage(page));
         },
       ),
     );
@@ -291,6 +301,31 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   void dispose() {
     _heroController.dispose();
     super.dispose();
+  }
+
+  /// One deck card: a verbatim content card, or a chapter-end
+  /// quick-check quiz card (rec #4b) when the slot holds a question.
+  Widget _buildDeckCard(BuildContext context, int index) {
+    final entry = _deck.entries[index];
+    final question = entry.question;
+    if (question != null) {
+      return BarrioQuizCheckpointCard(
+        key: ValueKey('quiz_${question.id}'),
+        question: question,
+        selectedIndex: _quizPicks[question.id],
+        onOptionSelected: (option) {
+          // First pick only: options lock after reveal.
+          if (_quizPicks.containsKey(question.id)) return;
+          setState(() => _quizPicks[question.id] = option);
+        },
+      );
+    }
+    return HandbookLessonCard(
+      key: ValueKey(entry.unit!.id),
+      unit: entry.unit!,
+      isCarouselMode: true,
+      highlightTerms: _highlightTerms,
+    );
   }
 
   @override
@@ -356,18 +391,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
               Expanded(
                 child: LearningCarousel(
                   key: _carouselKey,
-                  cardCount: _flatUnits.length,
+                  cardCount: _deck.length,
                   initialPage: _initialPage,
                   onPageChanged: _onCardPageChanged,
                   accent: accent,
-                  cardBuilder: (context, index) {
-                    return HandbookLessonCard(
-                      key: ValueKey(_flatUnits[index].id),
-                      unit: _flatUnits[index],
-                      isCarouselMode: true,
-                      highlightTerms: _highlightTerms,
-                    );
-                  },
+                  cardBuilder: _buildDeckCard,
                 ),
               ),
             ],
