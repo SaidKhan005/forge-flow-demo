@@ -52,6 +52,10 @@ const List<String> kUxCopyRoots = <String>[
   'lib/dev/demo_vendor_integration_state_fixture.dart',
   'lib/internal/barrio/widgets/home',
   'lib/internal/barrio/content/quiz',
+  // Flashcard review surfaces (2026-07-23).
+  'lib/internal/barrio/screens/barrio_flashcard_review_screen.dart',
+  'lib/internal/barrio/services/barrio_flashcard_deck.dart',
+  'lib/internal/barrio/widgets/barrio_flashcard_card.dart',
 ];
 
 /// The banned code point: EM DASH (U+2014).
