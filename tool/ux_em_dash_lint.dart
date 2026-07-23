@@ -51,6 +51,7 @@ const List<String> kUxCopyRoots = <String>[
   'lib/infrastructure/persistence/sqlite/sqlite_database.dart',
   'lib/dev/demo_vendor_integration_state_fixture.dart',
   'lib/internal/barrio/widgets/home',
+  'lib/internal/barrio/content/quiz',
 ];
 
 /// The banned code point: EM DASH (U+2014).
