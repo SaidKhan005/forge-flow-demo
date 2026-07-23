@@ -5,11 +5,16 @@ import '../content/company_handbook_content.dart';
 import '../content/training/barrio_training_doc.dart';
 import '../search/barrio_training_search.dart';
 import '../routes/barrio_preview_role.dart';
+import '../routes/barrio_route_map.dart';
+import '../services/barrio_bookmarks_service.dart';
 import '../services/barrio_reading_progress_service.dart';
 import '../services/barrio_reading_time.dart';
+import '../services/barrio_term_links.dart';
 import '../services/barrio_training_deck.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/barrio_quiz_checkpoint_card.dart';
+import '../widgets/barrio_streak_tracker.dart';
+import '../widgets/barrio_term_definition_sheet.dart';
 import '../widgets/handbook_chapter_rail.dart';
 import '../widgets/handbook_lesson_card.dart';
 import '../widgets/learning_carousel.dart';
@@ -66,6 +71,11 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// remembers you", 2026-07-22). A card counts as read when it settles
   /// on screen: a fact, not a mastery claim (Metric Honesty).
   final Set<String> _readUnitIds = {};
+
+  /// Saved cards of THIS doc as 'chapter:unit' content-coordinate keys
+  /// (rec #8, 2026-07-23). Loaded with the persisted state; toggles
+  /// write through BarrioBookmarksService.
+  final Set<String> _bookmarkKeys = {};
 
   /// True once the user moved the deck themselves (swipe or rail tap).
   /// The async position restore then stands down: the user's own
@@ -137,6 +147,9 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     }
     _loadPersistedState();
     _highlightTerms = _foldQueryWords(widget.highlightQuery);
+    // Honest streak (rec #10): opening a manual is the activity fact
+    // the streak counts. Idempotent per day; fire and forget.
+    BarrioStreakService.recordActivity();
   }
 
   /// Folds a raw query into the per-word highlight terms the lesson
@@ -175,10 +188,12 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         ? null
         : await BarrioReadingProgressService.getPosition(docId);
     final readIds = await BarrioReadingProgressService.getReadUnitIds(docId);
+    final savedKeys = await BarrioBookmarksService.localKeysFor(docId);
     if (!mounted) return;
     final restore = position != null && !_pageTouched;
     setState(() {
       _readUnitIds.addAll(readIds);
+      _bookmarkKeys.addAll(savedKeys);
       if (restore) {
         _applyPosition(position.chapterIndex, position.unitInChapter);
       }
@@ -305,6 +320,9 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
 
   /// One deck card: a verbatim content card, or a chapter-end
   /// quick-check quiz card (rec #4b) when the slot holds a question.
+  /// Content cards carry the bookmark toggle (rec #8; quiz cards are
+  /// never bookmarkable) and, on the culinary host manuals only, the
+  /// tap-to-define term links (rec #9).
   Widget _buildDeckCard(BuildContext context, int index) {
     final entry = _deck.entries[index];
     final question = entry.question;
@@ -320,11 +338,71 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         },
       );
     }
+    final chapter = _chapterOf(index);
+    final unitInChapter = index - _chapterStarts[chapter];
+    final localKey = '$chapter:$unitInChapter';
     return HandbookLessonCard(
       key: ValueKey(entry.unit!.id),
       unit: entry.unit!,
       isCarouselMode: true,
       highlightTerms: _highlightTerms,
+      bookmarked: _bookmarkKeys.contains(localKey),
+      onBookmarkTap: () => _toggleBookmark(chapter, unitInChapter),
+      onTermTap: BarrioTermLinks.kHostManualIds.contains(widget.doc.id)
+          ? _openTermSheet
+          : null,
+    );
+  }
+
+  /// Saves or unsaves the content card at (chapter, unitInChapter),
+  /// content coordinates (quiz-stable per the #1483 deck contract).
+  void _toggleBookmark(int chapter, int unitInChapter) {
+    final localKey = '$chapter:$unitInChapter';
+    final saved = _bookmarkKeys.contains(localKey);
+    setState(() {
+      if (saved) {
+        _bookmarkKeys.remove(localKey);
+      } else {
+        _bookmarkKeys.add(localKey);
+      }
+    });
+    if (saved) {
+      BarrioBookmarksService.remove(widget.doc.id, chapter, unitInChapter);
+    } else {
+      BarrioBookmarksService.add(widget.doc.id, chapter, unitInChapter);
+    }
+  }
+
+  /// Opens the tap-to-define definition sheet for a linked TERM
+  /// (rec #9). 'Open in manual' closes the sheet and pushes the TERM
+  /// glossary at the term's own card.
+  void _openTermSheet(BarrioTermCard card) {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => BarrioTermDefinitionSheet(
+        card: card,
+        accent: widget.accent,
+        onOpenInManual: () {
+          Navigator.of(sheetContext).pop();
+          _openTermManual(card);
+        },
+      ),
+    );
+  }
+
+  void _openTermManual(BarrioTermCard card) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BarrioRouteMap.screenFor(
+          card.docId,
+          previewRole: widget.previewRole,
+          initialChapterIndex: card.chapterIndex,
+          initialUnitInChapter: card.unitInChapter,
+        ),
+      ),
     );
   }
 

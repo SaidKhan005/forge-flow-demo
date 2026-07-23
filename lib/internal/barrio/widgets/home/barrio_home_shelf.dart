@@ -30,6 +30,7 @@ import '../../routes/barrio_destination_visibility_resolver.dart';
 import '../../routes/barrio_destinations.dart';
 import '../../routes/barrio_preview_role.dart';
 import '../../screens/barrio_flashcard_review_screen.dart';
+import '../../services/barrio_bookmarks_service.dart';
 import '../../services/barrio_flashcard_deck.dart';
 import '../../services/barrio_reading_progress_service.dart';
 import '../../services/barrio_reading_time.dart';
@@ -138,6 +139,24 @@ class BarrioHomeShelf extends StatefulWidget {
     int unitInChapter,
   )? onContinueReading;
 
+  /// Saved cards (rec #8, 2026-07-23), oldest first as stored. The
+  /// Saved section renders ONLY when at least one entry resolves to a
+  /// visible manual and a live card (no phantom empty section). A
+  /// bookmark whose manual is resolver-hidden (B18) or whose
+  /// coordinates no longer exist is kept in storage but not rendered.
+  final List<BarrioBookmark> bookmarks;
+
+  /// Tap handler for a Saved row: deep-links to the exact saved card.
+  /// When null the section does not render.
+  final void Function(
+    BarrioDestination destination,
+    int chapterIndex,
+    int unitInChapter,
+  )? onBookmarkOpen;
+
+  /// Remove handler for a Saved row's small x.
+  final void Function(BarrioBookmark bookmark)? onBookmarkRemove;
+
   const BarrioHomeShelf({
     super.key,
     required this.destinations,
@@ -148,6 +167,9 @@ class BarrioHomeShelf extends StatefulWidget {
     this.bodyOverride,
     this.readingProgress,
     this.onContinueReading,
+    this.bookmarks = const <BarrioBookmark>[],
+    this.onBookmarkOpen,
+    this.onBookmarkRemove,
   });
 
   @override
@@ -156,11 +178,17 @@ class BarrioHomeShelf extends StatefulWidget {
 
 class _BarrioHomeShelfState extends State<BarrioHomeShelf>
     with SingleTickerProviderStateMixin {
+  /// Saved rows shown before the honest 'and N more saved' expander.
+  static const int _kSavedRowCap = 5;
+
   late final AnimationController _entrance = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
   );
   bool _entranceDecided = false;
+
+  /// Whether the Saved section shows every row (expander tapped).
+  bool _savedExpanded = false;
 
   @override
   void didChangeDependencies() {
@@ -217,6 +245,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
         widget.destinations.where((d) => d.showOnHomeHub).toList();
     final slivers = <Widget>[
       ..._continueReadingSlivers(visible),
+      ..._savedSlivers(visible),
       ..._heroSlivers(visible),
     ];
     var slot = 1;
@@ -359,6 +388,79 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
       }
     }
     return null;
+  }
+
+  /// The Saved section (rec #8): bookmarked cards, newest saved first.
+  /// Renders ONLY when at least one bookmark resolves (manual on the
+  /// shelf, visible for this viewer per the same B18 resolution as the
+  /// bubbles, coordinates still live) and a tap handler is wired: no
+  /// phantom empty section. Unresolvable bookmarks stay in storage and
+  /// reappear if visibility or content returns.
+  List<Widget> _savedSlivers(List<BarrioDestination> visible) {
+    final onOpen = widget.onBookmarkOpen;
+    if (onOpen == null) return const <Widget>[];
+    final rows = _resolveSavedRows(visible);
+    if (rows.isEmpty) return const <Widget>[];
+    final capped = !_savedExpanded && rows.length > _kSavedRowCap;
+    final shown = capped ? rows.sublist(0, _kSavedRowCap) : rows;
+    return <Widget>[
+      SliverToBoxAdapter(
+        child: _reveal(
+          0,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _SavedHeader(),
+              for (final row in shown)
+                _SavedRow(
+                  row: row,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    onOpen(
+                      row.destination,
+                      row.bookmark.chapterIndex,
+                      row.bookmark.unitInChapter,
+                    );
+                  },
+                  onRemove: widget.onBookmarkRemove == null
+                      ? null
+                      : () {
+                          HapticFeedback.selectionClick();
+                          widget.onBookmarkRemove!(row.bookmark);
+                        },
+                ),
+              if (capped)
+                _SavedExpander(
+                  hiddenCount: rows.length - _kSavedRowCap,
+                  onTap: () => setState(() => _savedExpanded = true),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  /// Resolves the renderable Saved rows, newest saved first. A
+  /// bookmark is skipped (never deleted) when its manual is off the
+  /// shelf or hidden (B18) or its coordinates no longer exist.
+  List<_SavedRowData> _resolveSavedRows(List<BarrioDestination> visible) {
+    final rows = <_SavedRowData>[];
+    for (final bookmark in widget.bookmarks.reversed) {
+      final doc = kBarrioTrainingDocs[bookmark.docId];
+      if (doc == null) continue;
+      if (bookmark.chapterIndex >= doc.chapters.length) continue;
+      final units = doc.chapters[bookmark.chapterIndex].units;
+      if (bookmark.unitInChapter >= units.length) continue;
+      final dest = _findVisibleDestination(visible, bookmark.docId);
+      if (dest == null) continue;
+      rows.add(_SavedRowData(
+        bookmark: bookmark,
+        destination: dest,
+        cardTitle: units[bookmark.unitInChapter].title,
+      ));
+    }
+    return rows;
   }
 
   List<Widget> _heroSlivers(List<BarrioDestination> visible) {
@@ -659,6 +761,181 @@ class _ContinueReadingCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Everything one Saved row needs, resolved once.
+class _SavedRowData {
+  final BarrioBookmark bookmark;
+  final BarrioDestination destination;
+  final String cardTitle;
+
+  const _SavedRowData({
+    required this.bookmark,
+    required this.destination,
+    required this.cardTitle,
+  });
+}
+
+/// Quiet 'Saved' section header: gold tick + small mono label.
+class _SavedHeader extends StatelessWidget {
+  const _SavedHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.bookmark_rounded,
+            size: 14,
+            color: BarrioColors.gold.withValues(alpha: 0.85),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Saved',
+            style: GoogleFonts.playfairDisplay(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: BarrioColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One saved card row: manual title + card title, tap to open the
+/// exact card, small x to remove. Same near-opaque dark recipe as the
+/// Continue Reading card, slimmer.
+class _SavedRow extends StatelessWidget {
+  final _SavedRowData row;
+  final VoidCallback onTap;
+  final VoidCallback? onRemove;
+
+  const _SavedRow({required this.row, required this.onTap, this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = barrioHomeAccentFor(row.destination.id);
+    final b = row.bookmark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: GestureDetector(
+        key: ValueKey<String>(
+            'barrio_saved_${b.docId}_${b.chapterIndex}_${b.unitInChapter}'),
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          decoration: BoxDecoration(
+            color: BarrioColors.shellMid.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: accent.withValues(alpha: 0.28)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.bookmark_rounded,
+                  size: 14, color: accent.withValues(alpha: 0.85)),
+              const SizedBox(width: 10),
+              Expanded(child: _texts()),
+              if (onRemove != null) _removeButton(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _texts() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          row.cardTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.ibmPlexSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: BarrioColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          row.destination.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.ibmPlexSans(
+            fontSize: 11,
+            color: BarrioColors.textMuted,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _removeButton() {
+    final b = row.bookmark;
+    return Semantics(
+      button: true,
+      label: 'Remove from saved',
+      child: GestureDetector(
+        key: ValueKey<String>('barrio_saved_remove_${b.docId}_'
+            '${b.chapterIndex}_${b.unitInChapter}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onRemove,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            Icons.close_rounded,
+            size: 16,
+            color: BarrioColors.textMuted.withValues(alpha: 0.8),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The honest cap expander: 'and N more saved'. Tapping reveals every
+/// saved row; the count is a fact, never a teaser for an empty list.
+class _SavedExpander extends StatelessWidget {
+  final int hiddenCount;
+  final VoidCallback onTap;
+
+  const _SavedExpander({required this.hiddenCount, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: const ValueKey<String>('barrio_saved_expander'),
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 2, 20, 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.expand_more_rounded,
+              size: 16,
+              color: BarrioColors.gold.withValues(alpha: 0.7),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'and $hiddenCount more saved',
+              style: GoogleFonts.ibmPlexMono(
+                fontSize: 11,
+                color: BarrioColors.gold.withValues(alpha: 0.8),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

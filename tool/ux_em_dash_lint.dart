@@ -62,6 +62,12 @@ const List<String> kUxCopyRoots = <String>[
   // Chapter-end quick-check quiz cards (2026-07-23).
   'lib/internal/barrio/services/barrio_training_deck.dart',
   'lib/internal/barrio/widgets/barrio_quiz_checkpoint_card.dart',
+  // Bookmarks, honest streak chip, tap-to-define terms (2026-07-23).
+  'lib/internal/barrio/widgets/handbook_lesson_card.dart',
+  'lib/internal/barrio/widgets/barrio_streak_tracker.dart',
+  'lib/internal/barrio/widgets/barrio_term_definition_sheet.dart',
+  'lib/internal/barrio/services/barrio_bookmarks_service.dart',
+  'lib/internal/barrio/services/barrio_term_links.dart',
 ];
 
 /// The banned code point: EM DASH (U+2014).
