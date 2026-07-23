@@ -6,6 +6,7 @@ import 'barrio_destination_scaffold.dart';
 import 'barrio_training_image_viewer.dart';
 import '../content/company_handbook_content.dart';
 import '../search/barrio_training_search.dart';
+import '../services/barrio_term_links.dart';
 
 final _whitespaceRegExp = RegExp(r'\s+');
 
@@ -31,6 +32,22 @@ class HandbookLessonCard extends StatefulWidget {
   /// outside a search deep link).
   final List<String> highlightTerms;
 
+  /// Bookmark toggle (rec #8, 2026-07-23): whether this card is
+  /// currently saved. Only meaningful when [onBookmarkTap] is wired.
+  final bool bookmarked;
+
+  /// Non-null renders the quiet bookmark toggle in the badge row. The
+  /// training reader wires this for content cards; curated screens
+  /// and quiz cards leave it null (no toggle, layout unchanged).
+  final VoidCallback? onBookmarkTap;
+
+  /// Tap-to-define term links (rec #9, 2026-07-23): non-null enables
+  /// quiet underline-dot styling on known TERM titles inside the body
+  /// and reports taps. The training reader wires this ONLY on the
+  /// culinary host manuals; null (the default) renders every body
+  /// exactly as before.
+  final void Function(BarrioTermCard card)? onTermTap;
+
   const HandbookLessonCard({
     super.key,
     required this.unit,
@@ -39,6 +56,9 @@ class HandbookLessonCard extends StatefulWidget {
     this.cardPosition,
     this.onRequestAdvance,
     this.highlightTerms = const [],
+    this.bookmarked = false,
+    this.onBookmarkTap,
+    this.onTermTap,
   });
 
   @override
@@ -93,7 +113,14 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               });
             }
           : null,
-      onTapCancel: () => setState(() => _isPressed = false),
+      // Conditional EXACTLY like onTapDown/onTapUp (#1483 audit fix):
+      // an unconditional onTapCancel registered a TapGestureRecognizer
+      // on every card, so explainer (non-interactive) cards won the
+      // gesture arena and starved the carousel's #1481 edge tap zones.
+      // Explainer cards must register NO tap recognizer at all.
+      onTapCancel: _isInteractive && !_expanded
+          ? () => setState(() => _isPressed = false)
+          : null,
       child: AnimatedScale(
         scale: _isPressed ? 0.95 : 1.0,
         duration: const Duration(milliseconds: 150),
@@ -169,6 +196,16 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               Row(
                 children: [
                   _TypeBadge(type: unit.type, badgeHint: unit.badgeHint),
+                  // Bookmark toggle (rec #8): next to the badge, well
+                  // clear of the carousel's edge tap gutters.
+                  if (widget.onBookmarkTap != null) ...[
+                    const SizedBox(width: 6),
+                    _BookmarkToggle(
+                      saved: widget.bookmarked,
+                      accent: _badgeColor,
+                      onTap: widget.onBookmarkTap!,
+                    ),
+                  ],
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -232,7 +269,11 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               // Carousel mode: show full body + "Tap to begin" for interactive cards
               if (carousel && _isInteractive && !_expanded) ...[
                 const SizedBox(height: 14),
-                _UnitBody(unit: unit, highlightTerms: widget.highlightTerms),
+                _UnitBody(
+                  unit: unit,
+                  highlightTerms: widget.highlightTerms,
+                  onTermTap: widget.onTermTap,
+                ),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -260,7 +301,11 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
               // carousel mode: shown when expanded since pre-expand body is in the carousel block above)
               if (!_isInteractive || _expanded) ...[
                 const SizedBox(height: 14),
-                _UnitBody(unit: unit, highlightTerms: widget.highlightTerms),
+                _UnitBody(
+                  unit: unit,
+                  highlightTerms: widget.highlightTerms,
+                  onTermTap: widget.onTermTap,
+                ),
               ],
 
               if (_isInteractive && _expanded && unit.options.isNotEmpty) ...[
@@ -535,7 +580,17 @@ List<_BodyBlock> _parseBlocks(List<String> paras) {
 class _UnitBody extends StatelessWidget {
   final HandbookUnit unit;
   final List<String> highlightTerms;
-  const _UnitBody({required this.unit, this.highlightTerms = const []});
+
+  /// Tap-to-define term links (rec #9): non-null styles known TERM
+  /// titles with a quiet underline-dot and reports taps. Null renders
+  /// exactly as before.
+  final void Function(BarrioTermCard card)? onTermTap;
+
+  const _UnitBody({
+    required this.unit,
+    this.highlightTerms = const [],
+    this.onTermTap,
+  });
 
   static const double _blockGap = 12;
   static const double _itemGap = 7;
@@ -548,9 +603,13 @@ class _UnitBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // First-occurrence-per-card term linking: one fresh set per build,
+    // threaded through every text chunk in reading order, so a term
+    // appearing many times on one card links only its first occurrence.
+    final linked = <String>{};
     final paragraphs = unit.body.split('\n\n');
     if (unit.images.isEmpty) {
-      return _renderRun(paragraphs);
+      return _renderRun(paragraphs, linked);
     }
     final byBoundary = <int, List<HandbookUnitImage>>{};
     for (final image in unit.images) {
@@ -563,12 +622,12 @@ class _UnitBody extends StatelessWidget {
     for (var p = 0; p < paragraphs.length; p++) {
       final imagesAfter = byBoundary[p];
       if (imagesAfter == null) continue;
-      children.add(_renderRun(paragraphs.sublist(runStart, p + 1)));
+      children.add(_renderRun(paragraphs.sublist(runStart, p + 1), linked));
       _addImages(children, imagesAfter);
       runStart = p + 1;
     }
     if (runStart < paragraphs.length) {
-      children.add(_renderRun(paragraphs.sublist(runStart)));
+      children.add(_renderRun(paragraphs.sublist(runStart), linked));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -585,15 +644,15 @@ class _UnitBody extends StatelessWidget {
 
   /// Renders a contiguous paragraph slice. A lone prose paragraph renders
   /// as a single Text; anything else stacks typed blocks with even gaps.
-  Widget _renderRun(List<String> paras) {
+  Widget _renderRun(List<String> paras, Set<String> linked) {
     final blocks = _parseBlocks(paras);
     if (blocks.length == 1 && blocks.first.kind == _BlockKind.prose) {
-      return _bodyText(blocks.first.items.first, _style);
+      return _bodyText(blocks.first.items.first, _style, linked);
     }
     final children = <Widget>[];
     for (var b = 0; b < blocks.length; b++) {
       if (b > 0) children.add(const SizedBox(height: _blockGap));
-      children.add(_renderBlock(blocks[b]));
+      children.add(_renderBlock(blocks[b], linked));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -601,21 +660,22 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _renderBlock(_BodyBlock block) {
+  Widget _renderBlock(_BodyBlock block, Set<String> linked) {
     switch (block.kind) {
       case _BlockKind.prose:
-        return _bodyText(block.items.first, _style);
+        return _bodyText(block.items.first, _style, linked);
       case _BlockKind.bullet:
         return _spacedColumn([
           for (final item in block.items)
-            _bulletRow(item.trimLeft().substring(2)),
+            _bulletRow(item.trimLeft().substring(2), linked),
         ]);
       case _BlockKind.numbered:
         return _spacedColumn([
-          for (final item in block.items) _numberedRow(item.trimLeft()),
+          for (final item in block.items)
+            _numberedRow(item.trimLeft(), linked),
         ]);
       case _BlockKind.table:
-        return _table(block.items);
+        return _table(block.items, linked);
     }
   }
 
@@ -632,7 +692,7 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _bulletRow(String text) {
+  Widget _bulletRow(String text, Set<String> linked) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -645,12 +705,12 @@ class _UnitBody extends StatelessWidget {
             shape: BoxShape.circle,
           ),
         ),
-        Expanded(child: _bodyText(text, _style)),
+        Expanded(child: _bodyText(text, _style, linked)),
       ],
     );
   }
 
-  Widget _numberedRow(String text) {
+  Widget _numberedRow(String text, Set<String> linked) {
     final match = _numberedItem.firstMatch(text);
     final marker = match != null ? '${match.group(1)}.' : '•';
     final body = match != null ? match.group(2)! : text;
@@ -669,15 +729,15 @@ class _UnitBody extends StatelessWidget {
             ),
           ),
         ),
-        Expanded(child: _bodyText(body, _style)),
+        Expanded(child: _bodyText(body, _style, linked)),
       ],
     );
   }
 
-  Widget _table(List<String> rows) {
+  Widget _table(List<String> rows, Set<String> linked) {
     final children = <Widget>[];
     for (var r = 0; r < rows.length; r++) {
-      children.add(_tableRow(rows[r].split(' | '), r == 0));
+      children.add(_tableRow(rows[r].split(' | '), r == 0, linked));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -685,7 +745,7 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  Widget _tableRow(List<String> cells, bool header) {
+  Widget _tableRow(List<String> cells, bool header, Set<String> linked) {
     final cellStyle = _style.copyWith(
       fontSize: 12.5,
       fontWeight: header ? FontWeight.w700 : FontWeight.w400,
@@ -703,7 +763,7 @@ class _UnitBody extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: Text(cell.trim(), style: cellStyle),
+                child: _bodyText(cell.trim(), cellStyle, linked),
               ),
             ),
         ],
@@ -711,20 +771,32 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  /// Plain body text, or highlighted runs when search deep-link terms
-  /// are present. The search fold is length-preserving per code unit,
-  /// so fold-space match offsets index the original string directly.
-  Widget _bodyText(String text, TextStyle style) {
-    if (highlightTerms.isEmpty) {
-      return Text(text, style: style);
-    }
-    final ranges =
-        _mergeRanges(_rawMatchRanges(BarrioTrainingSearch.fold(text)));
-    if (ranges.isEmpty) {
+  /// One text chunk: plain, search-highlighted, and/or term-linked.
+  /// The search fold is length-preserving per code unit, so fold-space
+  /// match offsets index the original string directly. Search
+  /// highlights win over term links: a term occurrence overlapping a
+  /// highlighted span is never styled as a link (the matcher drops
+  /// it via [blockedRanges]). The text itself is NEVER altered:
+  /// styling only (verbatim law).
+  Widget _bodyText(String text, TextStyle style, Set<String> linked) {
+    final highlightRanges = highlightTerms.isEmpty
+        ? const <List<int>>[]
+        : _mergeRanges(_rawMatchRanges(BarrioTrainingSearch.fold(text)));
+    final termMatches = onTermTap == null
+        ? const <BarrioTermMatch>[]
+        : BarrioTermLinks.matchesIn(
+            text,
+            alreadyLinked: linked,
+            blockedRanges: highlightRanges,
+          );
+    if (highlightRanges.isEmpty && termMatches.isEmpty) {
       return Text(text, style: style);
     }
     return Text.rich(
-      TextSpan(style: style, children: _highlightSpans(text, ranges, style)),
+      TextSpan(
+        style: style,
+        children: _composeSpans(text, highlightRanges, termMatches, style),
+      ),
     );
   }
 
@@ -757,30 +829,83 @@ class _UnitBody extends StatelessWidget {
     return merged;
   }
 
-  List<TextSpan> _highlightSpans(
+  /// Interleaves the highlight ranges and term-link matches (both
+  /// sorted, mutually non-overlapping) into one span run over [text].
+  List<InlineSpan> _composeSpans(
     String text,
-    List<List<int>> merged,
+    List<List<int>> highlights,
+    List<BarrioTermMatch> terms,
     TextStyle style,
   ) {
+    final segments = <_BodySegment>[
+      for (final r in highlights) _BodySegment(r[0], r[1], null),
+      for (final t in terms) _BodySegment(t.start, t.end, t),
+    ]..sort((a, b) => a.start.compareTo(b.start));
     final mark = style.copyWith(
       color: BarrioColors.textPrimary,
       fontWeight: FontWeight.w700,
       backgroundColor: BarrioColors.tealWarm.withValues(alpha: 0.28),
     );
-    final spans = <TextSpan>[];
+    final spans = <InlineSpan>[];
     var cursor = 0;
-    for (final r in merged) {
-      if (r[0] > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, r[0])));
+    for (final seg in segments) {
+      if (seg.start > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, seg.start)));
       }
-      spans.add(TextSpan(text: text.substring(r[0], r[1]), style: mark));
-      cursor = r[1];
+      final segText = text.substring(seg.start, seg.end);
+      final term = seg.term;
+      spans.add(term == null
+          ? TextSpan(text: segText, style: mark)
+          : _termLinkSpan(segText, term, style));
+      cursor = seg.end;
     }
     if (cursor < text.length) {
       spans.add(TextSpan(text: text.substring(cursor)));
     }
     return spans;
   }
+
+  /// One tappable term occurrence: the VERBATIM substring with a quiet
+  /// dotted underline. Rendered as an inline widget so the tap needs
+  /// no recognizer lifecycle management; baseline alignment keeps it
+  /// sitting in the text line.
+  InlineSpan _termLinkSpan(
+    String segText,
+    BarrioTermMatch match,
+    TextStyle style,
+  ) {
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.baseline,
+      baseline: TextBaseline.alphabetic,
+      child: Semantics(
+        button: true,
+        label: 'See the definition of $segText',
+        child: GestureDetector(
+          key: ValueKey<String>(
+              'barrio_term_link_${unit.id}_${match.foldedTerm}'),
+          onTap: () => onTermTap?.call(match.card),
+          child: Text(
+            segText,
+            style: style.copyWith(
+              decoration: TextDecoration.underline,
+              decorationStyle: TextDecorationStyle.dotted,
+              decorationColor: BarrioColors.tealWarm.withValues(alpha: 0.75),
+              decorationThickness: 1.6,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One styled segment inside a text chunk: a search highlight
+/// ([term] null) or a term link.
+class _BodySegment {
+  final int start;
+  final int end;
+  final BarrioTermMatch? term;
+  const _BodySegment(this.start, this.end, this.term);
 }
 
 /// One content picture inside a unit body: rounded corners, full card
@@ -834,6 +959,46 @@ class _UnitImage extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Quiet bookmark toggle in the badge row (rec #8). Small icon-only
+/// tap target next to the type badge, deliberately far from the
+/// carousel's edge tap gutters so saving never turns the page.
+class _BookmarkToggle extends StatelessWidget {
+  final bool saved;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _BookmarkToggle({
+    required this.saved,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: saved ? 'Remove from saved' : 'Save this card',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+            size: 17,
+            color: saved
+                ? accent.withValues(alpha: 0.95)
+                : BarrioColors.textMuted.withValues(alpha: 0.8),
+          ),
+        ),
       ),
     );
   }

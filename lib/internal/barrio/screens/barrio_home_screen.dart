@@ -11,9 +11,11 @@ import '../routes/barrio_preview_role.dart';
 import '../routes/barrio_route_map.dart';
 import '../../../state/permission_context.dart';
 import '../search/barrio_training_search.dart';
+import '../services/barrio_bookmarks_service.dart';
 import '../services/barrio_reading_progress_service.dart';
 import '../widgets/barrio_ambient_leaves.dart';
 import '../widgets/barrio_destination_scaffold.dart';
+import '../widgets/barrio_streak_tracker.dart';
 import '../widgets/home/barrio_home_search.dart';
 import '../widgets/home/barrio_home_shelf.dart';
 import 'el_podio_screen.dart';
@@ -79,6 +81,15 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   // is also the honest fresh-install state.
   BarrioReadingSnapshot? _readingSnapshot;
 
+  // Saved cards (rec #8, 2026-07-23): drives the shelf's Saved
+  // section. Reloaded on the same cadence as the reading memory.
+  List<BarrioBookmark> _bookmarks = const <BarrioBookmark>[];
+
+  // Honest streak (rec #10, 2026-07-23): drives the quiet chip under
+  // the brand header. Null or count 0 renders no chip (no phantom
+  // zero-day streak).
+  StreakInfo? _streakInfo;
+
   // Colour-temperature scrim breathing: 12s loop shifting the bottom
   // gradient between warm golden (#1A0A00) and cool midnight (#0A0A1A).
   // Restored from the pre-shelf home (c712461b) per the operator's
@@ -125,13 +136,32 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     _syncScrimMotion();
   }
 
-  /// Loads the local reading memory off the preferences store. Fire
-  /// and forget: the service degrades to an empty snapshot when the
-  /// store is unavailable, and the mounted guard covers late arrival.
+  /// Loads the local reading memory, saved cards, and streak snapshot
+  /// off the preferences store. Fire and forget: every service
+  /// degrades to an empty snapshot when the store is unavailable, and
+  /// the mounted guards cover late arrival.
   void _reloadReadingProgress() {
     BarrioReadingProgressService.loadSnapshot(kBarrioTrainingDocs.keys)
         .then((snapshot) {
       if (mounted) setState(() => _readingSnapshot = snapshot);
+    });
+    BarrioBookmarksService.getAll().then((bookmarks) {
+      if (mounted) setState(() => _bookmarks = bookmarks);
+    });
+    BarrioStreakService.getStreak().then((info) {
+      if (mounted) setState(() => _streakInfo = info);
+    });
+  }
+
+  /// Removes a saved card, then reloads so the Saved section reflects
+  /// the store truthfully.
+  void _removeBookmark(BarrioBookmark bookmark) {
+    BarrioBookmarksService.remove(
+      bookmark.docId,
+      bookmark.chapterIndex,
+      bookmark.unitInChapter,
+    ).then((_) {
+      if (mounted) _reloadReadingProgress();
     });
   }
 
@@ -292,17 +322,14 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
           previewRole: role,
           visibilityResolver: resolver,
           readingProgress: _readingSnapshot,
-          onContinueReading: (dest, chapterIndex, unitInChapter) {
-            // Continue Reading deep-links to the remembered card via
-            // the same navigation params the search results use.
-            BarrioRouteMap.navigateTo(
-              innerCtx,
-              dest,
-              previewRole: role,
-              initialChapterIndex: chapterIndex,
-              initialUnitInChapter: unitInChapter,
-            );
-          },
+          bookmarks: _bookmarks,
+          // Saved rows and Continue Reading deep-link to the exact
+          // card via the same navigation params the search results use.
+          onBookmarkOpen: (dest, chapter, unit) =>
+              _openManualAt(innerCtx, role, dest, chapter, unit),
+          onBookmarkRemove: _removeBookmark,
+          onContinueReading: (dest, chapter, unit) =>
+              _openManualAt(innerCtx, role, dest, chapter, unit),
           onDestinationTap: (dest) => BarrioRouteMap.navigateTo(
             innerCtx,
             dest,
@@ -321,32 +348,65 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
                   ),
                 )
               : null,
-          leading: [
-            RepaintBoundary(
-              child: _BarrioHeader(
-                previewRole: role,
-                onRoleChanged: (r) =>
-                    setState(() => _previewRoleOverride = r),
-              ),
-            ),
-            // Wave B: glass training search under the brand header,
-            // above the Forge & Flow center bubble.
-            RepaintBoundary(
-              child: BarrioHomeSearchField(
-                onQueryChanged: _onSearchQueryChanged,
-              ),
-            ),
-            // BSP.2: El Podio entry hidden while kBarrioShowElPodioEntry
-            // is false. The widget, screen, and route stay in the tree;
-            // flipping the flag restores the pill verbatim.
-            if (kBarrioShowElPodioEntry)
-              RepaintBoundary(
-                child: _ElPodioButton(onTap: () => _openElPodio(innerCtx)),
-              ),
-          ],
+          leading: _shelfLeading(innerCtx, role),
         );
       },
     );
+  }
+
+  /// Deep-links into a manual at an exact saved/remembered card.
+  void _openManualAt(
+    BuildContext ctx,
+    BarrioPreviewRole role,
+    BarrioDestination dest,
+    int chapterIndex,
+    int unitInChapter,
+  ) {
+    BarrioRouteMap.navigateTo(
+      ctx,
+      dest,
+      previewRole: role,
+      initialChapterIndex: chapterIndex,
+      initialUnitInChapter: unitInChapter,
+    );
+  }
+
+  /// The widgets above the shelf body: brand header, the honest streak
+  /// chip (rec #10; renders nothing at count 0, so fresh installs see
+  /// no change), the glass training search, and the flag-gated El
+  /// Podio pill.
+  List<Widget> _shelfLeading(BuildContext innerCtx, BarrioPreviewRole role) {
+    return [
+      RepaintBoundary(
+        child: _BarrioHeader(
+          previewRole: role,
+          onRoleChanged: (r) => setState(() => _previewRoleOverride = r),
+        ),
+      ),
+      if (_streakInfo != null && _streakInfo!.count > 0)
+        RepaintBoundary(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Center(
+              child: BarrioStreakChip(info: _streakInfo),
+            ),
+          ),
+        ),
+      // Wave B: glass training search under the brand header,
+      // above the Forge & Flow center bubble.
+      RepaintBoundary(
+        child: BarrioHomeSearchField(
+          onQueryChanged: _onSearchQueryChanged,
+        ),
+      ),
+      // BSP.2: El Podio entry hidden while kBarrioShowElPodioEntry
+      // is false. The widget, screen, and route stay in the tree;
+      // flipping the flag restores the pill verbatim.
+      if (kBarrioShowElPodioEntry)
+        RepaintBoundary(
+          child: _ElPodioButton(onTap: () => _openElPodio(innerCtx)),
+        ),
+    ];
   }
 }
 

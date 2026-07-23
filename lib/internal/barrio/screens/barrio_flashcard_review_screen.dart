@@ -21,6 +21,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../services/barrio_flashcard_deck.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/barrio_flashcard_card.dart';
+import '../widgets/barrio_streak_tracker.dart';
 
 class BarrioFlashcardReviewScreen extends StatefulWidget {
   final BarrioFlashcardDeck deck;
@@ -56,6 +57,9 @@ class _BarrioFlashcardReviewScreenState
   void initState() {
     super.initState();
     _session = _newSession();
+    // Honest streak (rec #10): opening a review deck is learning
+    // activity too. Idempotent per day; fire and forget.
+    BarrioStreakService.recordActivity();
   }
 
   BarrioFlashcardSession _newSession() {
