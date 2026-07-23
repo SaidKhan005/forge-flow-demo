@@ -108,14 +108,6 @@ class _CompanyHandbookScreenState extends State<CompanyHandbookScreen>
                   key: ValueKey(chapter.id),
                   cardCount: chapter.units.length,
                   accent: _accent,
-                  completedIndices: chapter.units
-                      .asMap()
-                      .entries
-                      .where((e) =>
-                          e.value.type == HandbookUnitType.explainer ||
-                          _completedUnits.contains(e.value.id))
-                      .map((e) => e.key)
-                      .toSet(),
                   cardBuilder: (context, index) {
                     return HandbookLessonCard(
                       key: ValueKey(chapter.units[index].id),

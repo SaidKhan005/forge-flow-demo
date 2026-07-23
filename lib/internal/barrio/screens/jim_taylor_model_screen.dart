@@ -94,14 +94,6 @@ class _JimTaylorModelScreenState extends State<JimTaylorModelScreen>
                   key: ValueKey(mod.id),
                   cardCount: mod.units.length,
                   accent: _accent,
-                  completedIndices: mod.units
-                      .asMap()
-                      .entries
-                      .where((e) =>
-                          e.value.type == JtUnitType.concept ||
-                          _completedUnits.contains(e.value.id))
-                      .map((e) => e.key)
-                      .toSet(),
                   cardBuilder: (context, index) {
                     return _buildCard(mod.units[index], context);
                   },
