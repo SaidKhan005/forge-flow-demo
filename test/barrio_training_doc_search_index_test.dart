@@ -18,6 +18,7 @@ import 'package:forge_and_flow/internal/barrio/content/training/training_docs.da
 import 'package:forge_and_flow/internal/barrio/screens/training_doc_screen.dart';
 import 'package:forge_and_flow/internal/barrio/search/barrio_training_search.dart';
 import 'package:forge_and_flow/internal/barrio/services/barrio_reading_progress_service.dart';
+import 'package:forge_and_flow/internal/barrio/services/barrio_training_deck.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/handbook_lesson_card.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/learning_carousel.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/training_doc_index_sheet.dart';
@@ -232,6 +233,10 @@ void main() {
         (tester) async {
       final doc = kBarrioTrainingDocs['training_latin_dishes']!;
       final flatUnits = _flatUnitsOf(doc);
+      // The dishes manual carries chapter-end quick-check quiz cards
+      // (rec #4b), so the footer counts the extended deck; entry pages
+      // stay in the pre-quiz content flatten and convert stably.
+      final deck = buildTrainingDeck(doc);
       final cevichePage = flatUnits.indexWhere((u) => u.title == 'CEVICHE');
       expect(cevichePage, greaterThanOrEqualTo(0));
       expect(
@@ -267,7 +272,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       expect(
-        find.text('${cevichePage + 1} of ${flatUnits.length}'),
+        find.text(
+          '${deck.deckPageForContentPage(cevichePage) + 1} of ${deck.length}',
+        ),
         findsOneWidget,
         reason: 'the jump lands on the FIRST card of the run',
       );
