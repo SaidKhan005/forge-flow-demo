@@ -11,6 +11,8 @@ import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/handbook_chapter_rail.dart';
 import '../widgets/handbook_lesson_card.dart';
 import '../widgets/learning_carousel.dart';
+import '../widgets/training_doc_index_sheet.dart';
+import '../widgets/training_doc_search_sheet.dart';
 
 /// Generic verbatim training-document surface (2026-07-11 training-drop
 /// slice). One screen renders any [BarrioTrainingDoc] with the same
@@ -77,9 +79,21 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   // animation runs once per screen open.
   static final RegExp _whitespace = RegExp(r'\s+');
 
+  /// The three TERM glossaries that get the A-Z jump index (rec #6,
+  /// 2026-07-23). Narrative manuals show no index icon.
+  static const Set<String> _kTermManualIds = <String>{
+    'training_latin_ingredients',
+    'training_latin_dishes',
+    'training_general_words',
+  };
+
   late final List<HandbookUnit> _flatUnits;
   late final List<int> _chapterStarts;
-  late final List<String> _highlightTerms;
+
+  /// Folded query words highlighted inside card bodies. Seeded from the
+  /// home-search deep link (if any); the in-manual search sheet
+  /// replaces them when a hit is opened (rec #7, 2026-07-23).
+  List<String> _highlightTerms = const [];
   final GlobalKey<LearningCarouselState> _carouselKey =
       GlobalKey<LearningCarouselState>();
   int _initialPage = 0;
@@ -114,13 +128,18 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
       );
     }
     _loadPersistedState();
-    final query = widget.highlightQuery?.trim();
-    _highlightTerms = query == null || query.isEmpty
-        ? const []
-        : BarrioTrainingSearch.fold(query)
-            .split(_whitespace)
-            .where((w) => w.isNotEmpty)
-            .toList();
+    _highlightTerms = _foldQueryWords(widget.highlightQuery);
+  }
+
+  /// Folds a raw query into the per-word highlight terms the lesson
+  /// cards mark (case- and diacritic-insensitive; empty = none).
+  static List<String> _foldQueryWords(String? query) {
+    final trimmed = query?.trim();
+    if (trimmed == null || trimmed.isEmpty) return const [];
+    return BarrioTrainingSearch.fold(trimmed)
+        .split(_whitespace)
+        .where((w) => w.isNotEmpty)
+        .toList();
   }
 
   /// Clamps and applies a (chapter, unit-in-chapter) position to
@@ -217,6 +236,57 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     setState(() => _activeChapter = chapter);
   }
 
+  /// Jumps the deck IN PLACE to flat-deck [page] (no remount: same
+  /// mechanism as rail taps). onPageChanged then records the settled
+  /// card exactly as it does for swipes and tap-zone turns, so jumps
+  /// leave the same read marks.
+  void _jumpToCard(int page) {
+    if (_flatUnits.isEmpty) return;
+    final target = page.clamp(0, _flatUnits.length - 1);
+    HapticFeedback.lightImpact();
+    _pageTouched = true;
+    setState(() => _activeChapter = _chapterOf(target));
+    _carouselKey.currentState?.moveToPage(target);
+  }
+
+  /// Opens the in-manual search sheet (rec #7). A tapped hit closes
+  /// the sheet, threads the query into the cards' highlight rendering,
+  /// and jumps to the matched card. Dismissing without a tap changes
+  /// nothing: the deck stays where the reader left it.
+  void _openSearchSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => TrainingDocSearchSheet(
+        docId: widget.doc.id,
+        accent: widget.accent,
+        onResultTap: (result, query) {
+          Navigator.of(sheetContext).pop();
+          setState(() => _highlightTerms = _foldQueryWords(query));
+          _jumpToCard(_chapterStarts[result.chapterIndex] + result.unitIndex);
+        },
+      ),
+    );
+  }
+
+  /// Opens the A-Z term index sheet (rec #6; TERM manuals only).
+  void _openIndexSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => TrainingDocIndexSheet(
+        doc: widget.doc,
+        accent: widget.accent,
+        onEntryTap: (page) {
+          Navigator.of(sheetContext).pop();
+          _jumpToCard(page);
+        },
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _heroController.dispose();
@@ -235,6 +305,15 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         context: context,
         title: widget.doc.title,
         accentColor: accent,
+        // Chrome diet holds: two quiet icons in the existing bar, no
+        // new persistent chrome. The A-Z index shows only on the three
+        // TERM glossaries.
+        trailing: _HeaderActions(
+          onSearchTap: _openSearchSheet,
+          onIndexTap: _kTermManualIds.contains(widget.doc.id)
+              ? _openIndexSheet
+              : null,
+        ),
       ),
       body: _TrainingDocBackground(
         docId: widget.doc.id,
@@ -295,6 +374,45 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The header's quiet navigation icons: search on every manual, the
+/// A-Z term index only when [onIndexTap] is provided (TERM manuals).
+class _HeaderActions extends StatelessWidget {
+  final VoidCallback onSearchTap;
+  final VoidCallback? onIndexTap;
+
+  const _HeaderActions({required this.onSearchTap, this.onIndexTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Search this manual',
+          onPressed: onSearchTap,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(
+            Icons.search_rounded,
+            size: 22,
+            color: BarrioColors.textSecondary,
+          ),
+        ),
+        if (onIndexTap != null)
+          IconButton(
+            tooltip: 'Jump to a term',
+            onPressed: onIndexTap,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(
+              Icons.sort_by_alpha_rounded,
+              size: 22,
+              color: BarrioColors.textSecondary,
+            ),
+          ),
+      ],
     );
   }
 }
