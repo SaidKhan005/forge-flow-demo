@@ -94,14 +94,6 @@ class _InterviewPlaybookScreenState extends State<InterviewPlaybookScreen>
                   key: ValueKey(section.id),
                   cardCount: section.units.length,
                   accent: _accent,
-                  completedIndices: section.units
-                      .asMap()
-                      .entries
-                      .where((e) =>
-                          e.value.type == PlaybookUnitType.guide ||
-                          _completedUnits.contains(e.value.id))
-                      .map((e) => e.key)
-                      .toSet(),
                   cardBuilder: (context, index) {
                     return _buildCard(section.units[index], context);
                   },

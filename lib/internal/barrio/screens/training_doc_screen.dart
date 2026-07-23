@@ -71,15 +71,17 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   // Continuous swiping (2026-07-11 operator request): the carousel
   // holds EVERY unit of EVERY section as one flat deck, so swiping past
   // a section's last card lands on the next section. The hero and rail
-  // follow the visible card's section. A rail tap jumps by re-mounting
-  // the carousel at the target section's first card (bumping _epoch),
-  // which is why swipe-driven section changes must NOT touch _epoch.
+  // follow the visible card's section. A rail tap jumps in place via
+  // LearningCarouselState.moveToPage (learning-screen v2, 2026-07-23):
+  // no remount, so card scroll offsets survive and the entrance
+  // animation runs once per screen open.
   static final RegExp _whitespace = RegExp(r'\s+');
 
   late final List<HandbookUnit> _flatUnits;
   late final List<int> _chapterStarts;
   late final List<String> _highlightTerms;
-  int _epoch = 0;
+  final GlobalKey<LearningCarouselState> _carouselKey =
+      GlobalKey<LearningCarouselState>();
   int _initialPage = 0;
 
   late final AnimationController _heroController = AnimationController(
@@ -135,9 +137,9 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   /// Loads the saved read marks (always) and, when the caller supplied
   /// no deep link, the saved reading position. Non-blocking: the
   /// carousel mounts immediately (first-ever open keeps section 0 card
-  /// 0, deep links keep their target) and re-mounts at the saved card
-  /// when the restore lands, unless the user already moved the deck.
-  /// A platform without a working preferences store simply never
+  /// 0, deep links keep their target) and moves in place to the saved
+  /// card when the restore lands, unless the user already moved the
+  /// deck. A platform without a working preferences store simply never
   /// resolves or returns empty: the screen behaves exactly as before
   /// this slice.
   Future<void> _loadPersistedState() async {
@@ -147,16 +149,19 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         : await BarrioReadingProgressService.getPosition(docId);
     final readIds = await BarrioReadingProgressService.getReadUnitIds(docId);
     if (!mounted) return;
+    final restore = position != null && !_pageTouched;
     setState(() {
       _readUnitIds.addAll(readIds);
-      if (position != null && !_pageTouched) {
-        final pageBefore = _initialPage;
+      if (restore) {
         _applyPosition(position.chapterIndex, position.unitInChapter);
-        // Re-mount the carousel only when the restored card differs
-        // from where the deck already sits (card 0 on first open).
-        if (_initialPage != pageBefore) _epoch++;
       }
     });
+    if (restore) {
+      // Move the mounted deck in place (no remount, offsets survive).
+      // If the carousel has not laid out yet it will mount at
+      // _initialPage, so the move is a safe no-op either way.
+      _carouselKey.currentState?.moveToPage(_initialPage);
+    }
     // Record the landing card as read + current position, unless the
     // user already swiped somewhere else (their card was recorded by
     // _onCardPageChanged and is the fresher truth).
@@ -247,7 +252,7 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                   sectionCount: chapters.length,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               HandbookChapterRail(
                 chapters: chapters,
                 activeIndex: _activeChapter,
@@ -260,31 +265,22 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                 onChapterTap: (i) {
                   HapticFeedback.lightImpact();
                   _pageTouched = true;
-                  setState(() {
-                    _activeChapter = i;
-                    // Jump the flat deck to the section's first card.
-                    _epoch++;
-                    _initialPage = _chapterStarts[i];
-                  });
-                  // The jumped-to card settles on screen: remember it.
-                  _recordCardOnScreen(_chapterStarts[i]);
+                  setState(() => _activeChapter = i);
+                  // Move the deck in place to the section's first card
+                  // (no remount: scroll offsets and the entrance
+                  // animation survive). onPageChanged records the
+                  // settled card exactly as it does for swipes.
+                  _carouselKey.currentState?.moveToPage(_chapterStarts[i]);
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Expanded(
                 child: LearningCarousel(
-                  key: ValueKey('${widget.doc.id}-$_epoch'),
+                  key: _carouselKey,
                   cardCount: _flatUnits.length,
                   initialPage: _initialPage,
                   onPageChanged: _onCardPageChanged,
                   accent: accent,
-                  // Honest footer dots: only cards actually read on
-                  // this device count (persisted read marks), not
-                  // "every card" as before.
-                  completedIndices: {
-                    for (var i = 0; i < _flatUnits.length; i++)
-                      if (_readUnitIds.contains(_flatUnits[i].id)) i,
-                  },
                   cardBuilder: (context, index) {
                     return HandbookLessonCard(
                       key: ValueKey(_flatUnits[index].id),
@@ -418,8 +414,12 @@ class _TrainingHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Learning-screen v2 chrome diet: eyebrow + one-line title + thin
+    // progress bar only. The 'N cards' subtitle went (the footer's
+    // 'X of N' already counts cards) and the title never wraps, so the
+    // card window below keeps one steady height mid-session.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -432,9 +432,11 @@ class _TrainingHero extends StatelessWidget {
               color: accent.withValues(alpha: 0.65),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             chapter.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.playfairDisplay(
               fontSize: 26,
               fontWeight: FontWeight.w700,
@@ -442,15 +444,7 @@ class _TrainingHero extends StatelessWidget {
               height: 1.15,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            chapter.subtitle,
-            style: GoogleFonts.ibmPlexSans(
-              fontSize: 13,
-              color: BarrioColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
             child: LinearProgressIndicator(
