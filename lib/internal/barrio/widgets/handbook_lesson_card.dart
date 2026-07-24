@@ -98,7 +98,12 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
 
     final carousel = widget.isCarouselMode;
 
-    return GestureDetector(
+    return Semantics(
+      // Accessibility (rec #12): collapsed interactive cards are one
+      // big tap target; give that state an honest button role. Once
+      // expanded (or for explainers) the card is plain content.
+      button: _isInteractive && !_expanded,
+      child: GestureDetector(
       onTapDown: _isInteractive && !_expanded
           ? (_) {
               HapticFeedback.lightImpact();
@@ -347,6 +352,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -457,10 +463,30 @@ class _OptionTile extends StatelessWidget {
       bgColor = const Color(0x08FFFFFF);
     }
 
+    // Accessibility (rec #12): one merged button per option, with the
+    // honest state appended after reveal.
+    final letter = String.fromCharCode(0x41 + index);
+    var semanticsLabel = '$letter: ${option.label}';
+    if (isRevealed) {
+      if (showCorrect) {
+        semanticsLabel = isSelected
+            ? '$semanticsLabel, your pick, correct answer'
+            : '$semanticsLabel, correct answer';
+      } else if (showWrong) {
+        semanticsLabel = '$semanticsLabel, your pick, not correct'
+            '. ${option.feedback}';
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: GestureDetector(
+      child: Semantics(
+        button: true,
+        selected: isSelected,
+        label: semanticsLabel,
+        child: GestureDetector(
         onTap: onTap,
+        child: ExcludeSemantics(
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -519,6 +545,8 @@ class _OptionTile extends StatelessWidget {
               ],
             ],
           ),
+        ),
+        ),
         ),
       ),
     );
@@ -638,7 +666,7 @@ class _UnitBody extends StatelessWidget {
   void _addImages(List<Widget> out, List<HandbookUnitImage>? images) {
     if (images == null) return;
     for (final image in images) {
-      out.add(_UnitImage(image: image));
+      out.add(_UnitImage(image: image, cardTitle: unit.title));
     }
   }
 
@@ -911,9 +939,17 @@ class _BodySegment {
 /// One content picture inside a unit body: rounded corners, full card
 /// width, tap to open the full-screen viewer. The [Image.asset]
 /// errorBuilder keeps widget tests (no bundled assets) from throwing.
+///
+/// Screen-reader contract (rec #12): the literal source caption when
+/// the picture has one, else 'Photo: <card title>'. Descriptions are
+/// never invented (verbatim law).
 class _UnitImage extends StatelessWidget {
   final HandbookUnitImage image;
-  const _UnitImage({required this.image});
+
+  /// Owning card title, the honest fallback when there is no caption.
+  final String cardTitle;
+
+  const _UnitImage({required this.image, required this.cardTitle});
 
   @override
   Widget build(BuildContext context) {
@@ -922,7 +958,11 @@ class _UnitImage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
+          Semantics(
+            button: true,
+            image: true,
+            label: image.caption ?? 'Photo: $cardTitle',
+            child: GestureDetector(
             onTap: () => BarrioTrainingImageViewer.open(
               context,
               assetPath: image.assetPath,
@@ -946,6 +986,7 @@ class _UnitImage extends StatelessWidget {
                 ),
               ),
             ),
+          ),
           ),
           if (image.caption != null) ...[
             const SizedBox(height: 6),
@@ -1027,9 +1068,19 @@ class _StaggeredOptionState extends State<_StaggeredOption>
     end: Offset.zero,
   ).animate(_fade);
 
+  bool _motionDecided = false;
+
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionDecided) return;
+    _motionDecided = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      // Accessibility (rec #12): reduce motion shows the options
+      // settled immediately, no stagger.
+      _ctrl.value = 1.0;
+      return;
+    }
     Future.delayed(Duration(milliseconds: 100 * widget.index), () {
       if (mounted) _ctrl.forward();
     });

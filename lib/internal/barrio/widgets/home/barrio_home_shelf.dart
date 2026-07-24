@@ -96,6 +96,15 @@ const double _kSectionRowHeight = 150.0;
 /// zone so the glow halos keep their full breathing room.
 const double _kBubbleMetaHeight = 68.0;
 
+/// Text-scale-aware meta-zone height (accessibility pass, rec #12):
+/// the zone holds up to three text lines (about 38px of text at 1.0x),
+/// so it grows by the scaled delta of that allocation. Exactly
+/// [_kBubbleMetaHeight] at 1.0x; about 108 at 2.0x.
+double _scaledBubbleMetaHeight(TextScaler textScaler) {
+  const textAllocation = 38.0;
+  return _kBubbleMetaHeight + (textScaler.scale(textAllocation) - textAllocation);
+}
+
 /// The one-scroll round-bubble home composition.
 ///
 /// Mirrors the retired hub's contract: destinations in, taps out via
@@ -305,6 +314,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
     return _ReviewPill(
       key: const Key('barrio_review_pill_combined'),
       label: 'REVIEW BOTH',
+      semanticsLabel: 'Review Dishes and Ingredients flashcards together',
       accent: section.accent,
       onTap: () => _openReviewDeck(
         barrioCombinedDishesIngredientsDeck(),
@@ -610,11 +620,15 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
   /// progress) sits below each bubble. Only the row scrolls
   /// horizontally, never the page.
   Widget _sectionBubbles(List<BarrioDestination> dests, int slot) {
+    // Accessibility (rec #12): the meta zone grows with the effective
+    // text scale so its lines never clip against the fixed row bounds.
+    final metaHeight =
+        _scaledBubbleMetaHeight(MediaQuery.textScalerOf(context));
     return SliverToBoxAdapter(
       child: _reveal(
         slot,
         SizedBox(
-          height: _kSectionRowHeight + _kBubbleMetaHeight,
+          height: _kSectionRowHeight + metaHeight,
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
@@ -638,7 +652,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
                   ),
                   SizedBox(
                     width: _kBubbleDiameter + 8,
-                    height: _kBubbleMetaHeight,
+                    height: metaHeight,
                     child: _bubbleMeta(dest),
                   ),
                 ],
@@ -692,6 +706,7 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
     return _ReviewPill(
       key: Key('barrio_review_pill_${dest.id}'),
       label: 'REVIEW',
+      semanticsLabel: 'Review ${dest.label} flashcards',
       accent: accent,
       onTap: () => _openReviewDeck(deck, accent),
     );
@@ -732,14 +747,17 @@ class _SectionHeader extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              section.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: BarrioColors.textPrimary,
+            child: Semantics(
+              header: true,
+              child: Text(
+                section.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.playfairDisplay(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: BarrioColors.textPrimary,
+                ),
               ),
             ),
           ),
@@ -788,30 +806,37 @@ class _ContinueReadingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = barrioHomeAccentFor(destination.id);
+    // Accessibility (rec #12): the card reads as ONE button (label
+    // merged from its text lines), not three separate text nodes.
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: BarrioColors.shellMid.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: accent.withValues(alpha: 0.40)),
-          ),
-          child: Row(
-            children: [
-              _iconChip(context, accent),
-              const SizedBox(width: 12),
-              Expanded(child: _texts(accent)),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 14,
-                color: accent.withValues(alpha: 0.7),
+      child: MergeSemantics(
+        child: Semantics(
+          button: true,
+          child: GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: BarrioColors.shellMid.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: accent.withValues(alpha: 0.40)),
               ),
-            ],
+              child: Row(
+                children: [
+                  _iconChip(context, accent),
+                  const SizedBox(width: 12),
+                  Expanded(child: _texts(accent)),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: accent.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -906,31 +931,38 @@ class _QuickRefresherCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = barrioHomeAccentFor(destination.id);
+    // Accessibility (rec #12): the card reads as ONE button (label
+    // merged from its text lines).
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: GestureDetector(
-        key: const Key('barrio_refresher_card'),
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: BarrioColors.shellMid.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: accent.withValues(alpha: 0.40)),
-          ),
-          child: Row(
-            children: [
-              _iconChip(accent),
-              const SizedBox(width: 12),
-              Expanded(child: _texts(accent)),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 14,
-                color: accent.withValues(alpha: 0.7),
+      child: MergeSemantics(
+        child: Semantics(
+          button: true,
+          child: GestureDetector(
+            key: const Key('barrio_refresher_card'),
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: BarrioColors.shellMid.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: accent.withValues(alpha: 0.40)),
               ),
-            ],
+              child: Row(
+                children: [
+                  _iconChip(accent),
+                  const SizedBox(width: 12),
+                  Expanded(child: _texts(accent)),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: accent.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1058,28 +1090,35 @@ class _SavedRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = barrioHomeAccentFor(row.destination.id);
     final b = row.bookmark;
+    // Accessibility (rec #12): the row is a button whose label merges
+    // the card + manual titles; the remove x stays its OWN labeled
+    // node (so it is reachable separately), outside the merge.
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-      child: GestureDetector(
-        key: ValueKey<String>(
-            'barrio_saved_${b.docId}_${b.chapterIndex}_${b.unitInChapter}'),
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-          decoration: BoxDecoration(
-            color: BarrioColors.shellMid.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: accent.withValues(alpha: 0.28)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.bookmark_rounded,
-                  size: 14, color: accent.withValues(alpha: 0.85)),
-              const SizedBox(width: 10),
-              Expanded(child: _texts()),
-              if (onRemove != null) _removeButton(),
-            ],
+      child: Semantics(
+        button: true,
+        label: 'Saved: ${row.cardTitle}, ${row.destination.label}',
+        child: GestureDetector(
+          key: ValueKey<String>(
+              'barrio_saved_${b.docId}_${b.chapterIndex}_${b.unitInChapter}'),
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+            decoration: BoxDecoration(
+              color: BarrioColors.shellMid.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: accent.withValues(alpha: 0.28)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.bookmark_rounded,
+                    size: 14, color: accent.withValues(alpha: 0.85)),
+                const SizedBox(width: 10),
+                Expanded(child: ExcludeSemantics(child: _texts())),
+                if (onRemove != null) _removeButton(),
+              ],
+            ),
           ),
         ),
       ),
@@ -1147,7 +1186,10 @@ class _SavedExpander extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return MergeSemantics(
+      child: Semantics(
+      button: true,
+      child: GestureDetector(
       key: const ValueKey<String>('barrio_saved_expander'),
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -1171,6 +1213,8 @@ class _SavedExpander extends StatelessWidget {
             ),
           ],
         ),
+      ),
+      ),
       ),
     );
   }
@@ -1254,18 +1298,28 @@ class _ReviewPill extends StatelessWidget {
   final Color accent;
   final VoidCallback onTap;
 
+  /// Screen-reader label (rec #12): plain-English action naming the
+  /// deck, e.g. 'Review Latin Dishes flashcards'. Null falls back to
+  /// the visible mono label.
+  final String? semanticsLabel;
+
   const _ReviewPill({
     super.key,
     required this.label,
     required this.accent,
     required this.onTap,
+    this.semanticsLabel,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Semantics(
+      button: true,
+      label: semanticsLabel ?? label,
+      child: GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
+      child: ExcludeSemantics(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         decoration: BoxDecoration(
@@ -1289,6 +1343,8 @@ class _ReviewPill extends StatelessWidget {
             ),
           ],
         ),
+      ),
+      ),
       ),
     );
   }

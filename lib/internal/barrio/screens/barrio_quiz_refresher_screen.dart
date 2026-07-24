@@ -230,26 +230,34 @@ class _AdvanceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: filled ? accent.withValues(alpha: 0.18) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: accent.withValues(alpha: filled ? 0.55 : 0.40),
-          ),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.ibmPlexSans(
-              fontSize: 14,
-              fontWeight: filled ? FontWeight.w700 : FontWeight.w600,
-              color: filled ? accent : BarrioColors.textSecondary,
+    // Accessibility (rec #12): a proper button role; the visible text
+    // merges in as the label.
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color:
+                  filled ? accent.withValues(alpha: 0.18) : Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: accent.withValues(alpha: filled ? 0.55 : 0.40),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: GoogleFonts.ibmPlexSans(
+                  fontSize: 14,
+                  fontWeight: filled ? FontWeight.w700 : FontWeight.w600,
+                  color: filled ? accent : BarrioColors.textSecondary,
+                ),
+              ),
             ),
           ),
         ),

@@ -6,6 +6,7 @@ import 'screens/auth/auth_permission_context_bridge.dart';
 import 'screens/auth/auth_gate.dart';
 import 'theme/app_theme.dart';
 import 'internal/barrio/screens/barrio_home_screen.dart';
+import 'internal/barrio/widgets/barrio_text_scale.dart';
 
 class BarrioApp extends StatelessWidget {
   const BarrioApp({
@@ -28,6 +29,11 @@ class BarrioApp extends StatelessWidget {
       title: 'Barrio',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.themeData,
+      // Accessibility pass (rec #12): the in-app text-size stepper
+      // composes with the system text scaler for every Barrio route.
+      // At the Standard step this is a pass-through (no override).
+      builder: (context, child) =>
+          BarrioTextScale(child: child ?? const SizedBox.shrink()),
       home: requireAuth
           ? AuthGate(
               passwordResetGateway: passwordResetGateway,

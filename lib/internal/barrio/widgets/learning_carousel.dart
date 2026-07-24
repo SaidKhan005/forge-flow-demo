@@ -74,6 +74,7 @@ class LearningCarouselState extends State<LearningCarousel>
   late final AnimationController _entranceCtrl;
   late final Animation<double> _entranceFade;
   late final Animation<Offset> _entranceSlide;
+  bool _entranceDecided = false;
 
   @override
   void initState() {
@@ -87,7 +88,7 @@ class LearningCarouselState extends State<LearningCarousel>
     _entranceCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
-    )..forward();
+    );
     _entranceFade = CurvedAnimation(
       parent: _entranceCtrl,
       curve: Curves.easeOutCubic,
@@ -96,6 +97,20 @@ class LearningCarouselState extends State<LearningCarousel>
       begin: const Offset(0.05, 0),
       end: Offset.zero,
     ).animate(_entranceFade);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_entranceDecided) return;
+    _entranceDecided = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      // Accessibility (rec #12): reduce motion skips the entrance
+      // fade + slide; the deck lands settled on the first frame.
+      _entranceCtrl.value = 1.0;
+    } else {
+      _entranceCtrl.forward();
+    }
   }
 
   @override
@@ -281,9 +296,15 @@ class LearningCarouselState extends State<LearningCarousel>
                 details.localPosition.dx,
                 constraints.maxWidth,
               ),
-              child: _CardScrollView(
-                index: index,
-                child: widget.cardBuilder(context, index),
+              // Accessibility (rec #12): the card page area announces
+              // its deck position before the card content is read.
+              child: Semantics(
+                container: true,
+                label: 'Card ${index + 1} of ${widget.cardCount}',
+                child: _CardScrollView(
+                  index: index,
+                  child: widget.cardBuilder(context, index),
+                ),
               ),
             );
           },

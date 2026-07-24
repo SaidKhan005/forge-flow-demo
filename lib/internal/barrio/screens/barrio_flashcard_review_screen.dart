@@ -177,29 +177,39 @@ class _BarrioFlashcardReviewScreenState
 
   /// Honest deck header: distinct cards shown so far out of the deck
   /// total, plus how many recycled cards are still waiting (only when
-  /// there are any; no phantom zeroes).
+  /// there are any; no phantom zeroes). Both texts sit in Flexible
+  /// slots so large text scales wrap instead of overflowing the row
+  /// (accessibility pass, rec #12).
   Widget _buildCounterRow() {
     final queued = _session.queuedRepeatCount;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Card ${_session.introducedCount} of ${_session.totalCards}',
-          style: GoogleFonts.ibmPlexMono(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.6,
-            color: BarrioColors.textSecondary,
-          ),
-        ),
-        const Spacer(),
-        if (queued > 0)
-          Text(
-            '$queued queued to repeat',
-            style: GoogleFonts.ibmPlexSans(
-              fontSize: 11.5,
-              color: BarrioColors.textMuted,
+        Flexible(
+          child: Text(
+            'Card ${_session.introducedCount} of ${_session.totalCards}',
+            style: GoogleFonts.ibmPlexMono(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.6,
+              color: BarrioColors.textSecondary,
             ),
           ),
+        ),
+        if (queued > 0) ...[
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              '$queued queued to repeat',
+              textAlign: TextAlign.right,
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 11.5,
+                color: BarrioColors.textMuted,
+              ),
+            ),
+          ),
+        ] else
+          const Spacer(),
       ],
     );
   }
@@ -282,27 +292,34 @@ class _ReviewButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: filled
-              ? accent.withValues(alpha: 0.18)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: accent.withValues(alpha: filled ? 0.55 : 0.40),
-          ),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.ibmPlexSans(
-              fontSize: 14,
-              fontWeight: filled ? FontWeight.w700 : FontWeight.w600,
-              color: filled ? accent : BarrioColors.textSecondary,
+    // Accessibility (rec #12): a proper button role; the visible text
+    // merges in as the label.
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: filled
+                  ? accent.withValues(alpha: 0.18)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: accent.withValues(alpha: filled ? 0.55 : 0.40),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: GoogleFonts.ibmPlexSans(
+                  fontSize: 14,
+                  fontWeight: filled ? FontWeight.w700 : FontWeight.w600,
+                  color: filled ? accent : BarrioColors.textSecondary,
+                ),
+              ),
             ),
           ),
         ),
