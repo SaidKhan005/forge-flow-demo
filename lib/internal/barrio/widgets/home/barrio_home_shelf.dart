@@ -37,6 +37,7 @@ import '../../services/barrio_flashcard_deck.dart';
 import '../../services/barrio_reading_progress_service.dart';
 import '../../services/barrio_reading_time.dart';
 import '../../services/barrio_refresher_scheduler.dart';
+import '../barrio_chapter_icons.dart';
 import '../barrio_destination_scaffold.dart';
 import 'barrio_home_bubble.dart';
 import 'barrio_home_destination_visuals.dart';
@@ -938,6 +939,10 @@ class _QuickRefresherCard extends StatelessWidget {
   }
 
   Widget _iconChip(Color accent) {
+    // Manual wayfinding icon (recs 2+5): the refresher shelf is a
+    // cross-manual surface, so the chip shows WHICH manual is due (the
+    // 'QUICK REFRESHER' kicker and 'Refresh <manual>' title carry the
+    // refresh semantics in text; the icon is never the only signal).
     return Container(
       width: 44,
       height: 44,
@@ -946,7 +951,11 @@ class _QuickRefresherCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: accent.withValues(alpha: 0.40)),
       ),
-      child: Icon(Icons.refresh_rounded, size: 22, color: accent),
+      child: Icon(
+        barrioManualIconOrNull(destination.id) ?? Icons.refresh_rounded,
+        size: 22,
+        color: accent,
+      ),
     );
   }
 
@@ -1074,8 +1083,18 @@ class _SavedRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(Icons.bookmark_rounded,
-                  size: 14, color: accent.withValues(alpha: 0.85)),
+              // Manual wayfinding icon (recs 2+5): the Saved section is
+              // cross-manual, so each row leads with its manual's
+              // identity icon in the manual accent. Saved-ness is
+              // carried by the section's bookmark header; the manual
+              // name text label below stays, so the icon is an added
+              // signal, never the only one.
+              Icon(
+                barrioManualIconOrNull(row.destination.id) ??
+                    Icons.bookmark_rounded,
+                size: 14,
+                color: accent.withValues(alpha: 0.85),
+              ),
               const SizedBox(width: 10),
               Expanded(child: _texts()),
               if (onRemove != null) _removeButton(),

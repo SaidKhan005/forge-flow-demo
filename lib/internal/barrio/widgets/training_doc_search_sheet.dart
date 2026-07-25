@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../search/barrio_training_search.dart';
+import 'barrio_chapter_icons.dart';
 import 'barrio_destination_scaffold.dart';
 
 /// Scoped search sheet for one open training manual.
@@ -280,15 +281,35 @@ class _ResultRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                result.chapterTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.ibmPlexMono(
-                  fontSize: 10.5,
-                  letterSpacing: 0.6,
-                  color: accent.withValues(alpha: 0.85),
-                ),
+              Row(
+                children: [
+                  // Chapter wayfinding icon (recs 2+5): search here is
+                  // in-manual, so the hit's CHAPTER icon disambiguates
+                  // (the manual icon would repeat on every row). Always
+                  // beside the chapter title, never replacing it: the
+                  // icon shape carries the signal, not color alone.
+                  Icon(
+                    barrioChapterIconAt(
+                      result.destinationId,
+                      result.chapterIndex,
+                    ),
+                    size: 14,
+                    color: accent.withValues(alpha: 0.85),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      result.chapterTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.ibmPlexMono(
+                        fontSize: 10.5,
+                        letterSpacing: 0.6,
+                        color: accent.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               Text(
