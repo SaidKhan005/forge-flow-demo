@@ -5,7 +5,9 @@ import 'barrio_celebration_overlay.dart';
 import 'barrio_destination_scaffold.dart';
 import 'barrio_training_image_viewer.dart';
 import '../content/company_handbook_content.dart';
+import '../content/training/training_docs.dart';
 import '../search/barrio_training_search.dart';
+import '../services/barrio_numeric_highlight.dart';
 import '../services/barrio_term_links.dart';
 
 final _whitespaceRegExp = RegExp(r'\s+');
@@ -273,6 +275,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                   unit: unit,
                   highlightTerms: widget.highlightTerms,
                   onTermTap: widget.onTermTap,
+                  accent: _numberAccent,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -305,6 +308,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                   unit: unit,
                   highlightTerms: widget.highlightTerms,
                   onTermTap: widget.onTermTap,
+                  accent: _numberAccent,
                 ),
               ],
 
@@ -356,6 +360,25 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
       HandbookUnitType.decision   => const Color(0xFF2ECC71),
       HandbookUnitType.checkpoint => const Color(0xFFF39C12),
     };
+  }
+
+  /// Accent for numeric fact pops (visual-first pass rec #3): the
+  /// owning manual's identity color from [kBarrioTrainingAccents],
+  /// resolved by the longest doc-id prefix of the unit id (training
+  /// unit ids are `<docId>_cN_uM`). Units outside the training
+  /// registry (curated handbook, fixtures) reuse the badge accent,
+  /// the same plumbing the type badge already resolves.
+  Color get _numberAccent {
+    Color? best;
+    var bestLength = -1;
+    for (final entry in kBarrioTrainingAccents.entries) {
+      if (entry.key.length > bestLength &&
+          widget.unit.id.startsWith('${entry.key}_')) {
+        best = entry.value;
+        bestLength = entry.key.length;
+      }
+    }
+    return best ?? _badgeColor;
   }
 
   void _selectOption(int index) {
@@ -586,8 +609,14 @@ class _UnitBody extends StatelessWidget {
   /// exactly as before.
   final void Function(BarrioTermCard card)? onTermTap;
 
+  /// Accent for numeric fact pops (visual-first rec #3): number+unit
+  /// tokens in the body render bold in this color. Styling only; the
+  /// body string is never altered (verbatim law).
+  final Color accent;
+
   const _UnitBody({
     required this.unit,
+    required this.accent,
     this.highlightTerms = const [],
     this.onTermTap,
   });
@@ -610,6 +639,21 @@ class _UnitBody extends StatelessWidget {
     final paragraphs = unit.body.split('\n\n');
     if (unit.images.isEmpty) {
       return _renderRun(paragraphs, linked);
+    }
+    // Picture-first TERM cards (visual-first pass rec #1, 2026-07-24):
+    // glossary definition cards show the dish/ingredient BEFORE the
+    // words, so every image renders above the body regardless of its
+    // afterParagraph anchor (this early return replaces interleaving,
+    // so no image can double-render). Non-TERM cards keep the exact
+    // source interleaving below.
+    if (unit.badgeHint == 'TERM') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final image in unit.images) _UnitImage(image: image),
+          _renderRun(paragraphs, linked),
+        ],
+      );
     }
     final byBoundary = <int, List<HandbookUnitImage>>{};
     for (final image in unit.images) {
@@ -771,13 +815,14 @@ class _UnitBody extends StatelessWidget {
     );
   }
 
-  /// One text chunk: plain, search-highlighted, and/or term-linked.
-  /// The search fold is length-preserving per code unit, so fold-space
-  /// match offsets index the original string directly. Search
-  /// highlights win over term links: a term occurrence overlapping a
-  /// highlighted span is never styled as a link (the matcher drops
-  /// it via [blockedRanges]). The text itself is NEVER altered:
-  /// styling only (verbatim law).
+  /// One text chunk: plain, search-highlighted, term-linked, and/or
+  /// number-popped. The search fold is length-preserving per code
+  /// unit, so fold-space match offsets index the original string
+  /// directly. Precedence: search highlights win over term links (the
+  /// matcher drops overlaps via [blockedRanges]), and both win over
+  /// numeric pops (a number+unit token overlapping either is dropped
+  /// whole, so text inside a term link is never re-styled). The text
+  /// itself is NEVER altered: styling only (verbatim law).
   Widget _bodyText(String text, TextStyle style, Set<String> linked) {
     final highlightRanges = highlightTerms.isEmpty
         ? const <List<int>>[]
@@ -789,13 +834,23 @@ class _UnitBody extends StatelessWidget {
             alreadyLinked: linked,
             blockedRanges: highlightRanges,
           );
-    if (highlightRanges.isEmpty && termMatches.isEmpty) {
+    final numericMatches = BarrioNumericHighlight.matchesIn(
+      text,
+      blockedRanges: [
+        ...highlightRanges,
+        for (final t in termMatches) [t.start, t.end],
+      ],
+    );
+    if (highlightRanges.isEmpty &&
+        termMatches.isEmpty &&
+        numericMatches.isEmpty) {
       return Text(text, style: style);
     }
     return Text.rich(
       TextSpan(
         style: style,
-        children: _composeSpans(text, highlightRanges, termMatches, style),
+        children: _composeSpans(
+            text, highlightRanges, termMatches, numericMatches, style),
       ),
     );
   }
@@ -829,22 +884,32 @@ class _UnitBody extends StatelessWidget {
     return merged;
   }
 
-  /// Interleaves the highlight ranges and term-link matches (both
-  /// sorted, mutually non-overlapping) into one span run over [text].
+  /// Interleaves the highlight ranges, term-link matches, and numeric
+  /// fact tokens (all sorted, mutually non-overlapping) into one span
+  /// run over [text].
   List<InlineSpan> _composeSpans(
     String text,
     List<List<int>> highlights,
     List<BarrioTermMatch> terms,
+    List<BarrioNumericMatch> numerics,
     TextStyle style,
   ) {
     final segments = <_BodySegment>[
       for (final r in highlights) _BodySegment(r[0], r[1], null),
       for (final t in terms) _BodySegment(t.start, t.end, t),
+      for (final n in numerics)
+        _BodySegment(n.start, n.end, null, numeric: true),
     ]..sort((a, b) => a.start.compareTo(b.start));
     final mark = style.copyWith(
       color: BarrioColors.textPrimary,
       fontWeight: FontWeight.w700,
       backgroundColor: BarrioColors.tealWarm.withValues(alpha: 0.28),
+    );
+    // Numeric fact pop (rec #3): bold + the manual's accent, colors
+    // only; the verbatim substring renders unchanged.
+    final numberPop = style.copyWith(
+      fontWeight: FontWeight.w700,
+      color: accent,
     );
     final spans = <InlineSpan>[];
     var cursor = 0;
@@ -854,9 +919,13 @@ class _UnitBody extends StatelessWidget {
       }
       final segText = text.substring(seg.start, seg.end);
       final term = seg.term;
-      spans.add(term == null
-          ? TextSpan(text: segText, style: mark)
-          : _termLinkSpan(segText, term, style));
+      if (term != null) {
+        spans.add(_termLinkSpan(segText, term, style));
+      } else if (seg.numeric) {
+        spans.add(TextSpan(text: segText, style: numberPop));
+      } else {
+        spans.add(TextSpan(text: segText, style: mark));
+      }
       cursor = seg.end;
     }
     if (cursor < text.length) {
@@ -900,12 +969,13 @@ class _UnitBody extends StatelessWidget {
 }
 
 /// One styled segment inside a text chunk: a search highlight
-/// ([term] null) or a term link.
+/// ([term] null), a term link, or a numeric fact pop ([numeric] true).
 class _BodySegment {
   final int start;
   final int end;
   final BarrioTermMatch? term;
-  const _BodySegment(this.start, this.end, this.term);
+  final bool numeric;
+  const _BodySegment(this.start, this.end, this.term, {this.numeric = false});
 }
 
 /// One content picture inside a unit body: rounded corners, full card
