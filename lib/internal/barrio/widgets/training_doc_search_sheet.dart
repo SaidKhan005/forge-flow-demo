@@ -21,6 +21,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../search/barrio_training_search.dart';
 import 'barrio_chapter_icons.dart';
 import 'barrio_destination_scaffold.dart';
+import 'barrio_row_thumbnail.dart';
 
 /// Scoped search sheet for one open training manual.
 class TrainingDocSearchSheet extends StatefulWidget {
@@ -196,6 +197,10 @@ class _TrainingDocSearchSheetState extends State<TrainingDocSearchSheet> {
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       itemCount: results.length,
       itemBuilder: (context, index) => _ResultRow(
+        key: ValueKey<String>(
+          'training_doc_search_row_${results[index].destinationId}_'
+          '${results[index].chapterIndex}_${results[index].unitIndex}',
+        ),
         result: results[index],
         accent: widget.accent,
         onTap: () => widget.onResultTap(results[index], _trimmedQuery),
@@ -263,6 +268,7 @@ class _ResultRow extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ResultRow({
+    super.key,
     required this.result,
     required this.accent,
     required this.onTap,
@@ -270,6 +276,17 @@ class _ResultRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Visual-first pass (rec #9): when the matched card carries a photo,
+    // the row leads with a small thumbnail of it IN PLACE OF the chapter
+    // wayfinding icon (a visual learner recognizes the real picture
+    // faster than a generic glyph). A hit whose card has no photo keeps
+    // the inline chapter icon exactly as before (Metric Honesty: no
+    // placeholder art).
+    final imageAsset = barrioUnitFirstImageAt(
+      result.destinationId,
+      result.chapterIndex,
+      result.unitIndex,
+    );
     // Accessibility (rec #12): one merged button per hit (section,
     // card title, and snippet read as one row).
     return Padding(
@@ -287,58 +304,77 @@ class _ResultRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0x24FFFFFF)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  // Chapter wayfinding icon (recs 2+5): search here is
-                  // in-manual, so the hit's CHAPTER icon disambiguates
-                  // (the manual icon would repeat on every row). Always
-                  // beside the chapter title, never replacing it: the
-                  // icon shape carries the signal, not color alone.
-                  Icon(
-                    barrioChapterIconAt(
-                      result.destinationId,
-                      result.chapterIndex,
-                    ),
-                    size: 14,
-                    color: accent.withValues(alpha: 0.85),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      result.chapterTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.ibmPlexMono(
-                        fontSize: 10.5,
-                        letterSpacing: 0.6,
-                        color: accent.withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                result.unitTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.ibmPlexSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: BarrioColors.textPrimary,
+          child: imageAsset == null
+              ? _content(showChapterIcon: true)
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    BarrioRowThumbnail(assetPath: imageAsset),
+                    const SizedBox(width: 12),
+                    Expanded(child: _content(showChapterIcon: false)),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 6),
-              _snippetText(),
-            ],
-          ),
         ),
         ),
         ),
       ),
+    );
+  }
+
+  /// The result's text stack. The chapter kicker leads with the
+  /// wayfinding icon only when [showChapterIcon] is true; when a
+  /// thumbnail already leads the row, the photo carries the wayfinding
+  /// signal and the kicker is chapter-title text alone.
+  Widget _content({required bool showChapterIcon}) {
+    final chapterTitle = Text(
+      result.chapterTitle,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: GoogleFonts.ibmPlexMono(
+        fontSize: 10.5,
+        letterSpacing: 0.6,
+        color: accent.withValues(alpha: 0.85),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (showChapterIcon)
+          Row(
+            children: [
+              // Chapter wayfinding icon (recs 2+5): search here is
+              // in-manual, so the hit's CHAPTER icon disambiguates
+              // (the manual icon would repeat on every row). Always
+              // beside the chapter title, never replacing it: the
+              // icon shape carries the signal, not color alone.
+              Icon(
+                barrioChapterIconAt(
+                  result.destinationId,
+                  result.chapterIndex,
+                ),
+                size: 14,
+                color: accent.withValues(alpha: 0.85),
+              ),
+              const SizedBox(width: 6),
+              Expanded(child: chapterTitle),
+            ],
+          )
+        else
+          chapterTitle,
+        const SizedBox(height: 4),
+        Text(
+          result.unitTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.ibmPlexSans(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: BarrioColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        _snippetText(),
+      ],
     );
   }
 

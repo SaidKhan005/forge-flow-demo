@@ -39,6 +39,7 @@ import '../../services/barrio_reading_time.dart';
 import '../../services/barrio_refresher_scheduler.dart';
 import '../barrio_chapter_icons.dart';
 import '../barrio_destination_scaffold.dart';
+import '../barrio_row_thumbnail.dart';
 import 'barrio_home_bubble.dart';
 import 'barrio_home_destination_visuals.dart';
 
@@ -578,10 +579,13 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
       if (bookmark.unitInChapter >= units.length) continue;
       final dest = _findVisibleDestination(visible, bookmark.docId);
       if (dest == null) continue;
+      final savedUnit = units[bookmark.unitInChapter];
       rows.add(_SavedRowData(
         bookmark: bookmark,
         destination: dest,
-        cardTitle: units[bookmark.unitInChapter].title,
+        cardTitle: savedUnit.title,
+        imageAsset:
+            savedUnit.images.isEmpty ? null : savedUnit.images.first.assetPath,
       ));
     }
     return rows;
@@ -1048,10 +1052,15 @@ class _SavedRowData {
   final BarrioDestination destination;
   final String cardTitle;
 
+  /// First bundled image asset of the saved card, or null when it has
+  /// no picture (the row then keeps its manual wayfinding icon).
+  final String? imageAsset;
+
   const _SavedRowData({
     required this.bookmark,
     required this.destination,
     required this.cardTitle,
+    this.imageAsset,
   });
 }
 
@@ -1121,18 +1130,28 @@ class _SavedRow extends StatelessWidget {
             ),
             child: Row(
               children: [
-                // Manual wayfinding icon (recs 2+5): the Saved section
-                // is cross-manual, so each row leads with its manual's
-                // identity icon in the manual accent. Decorative for
-                // screen readers: the row label already names the
+                // Visual-first pass (rec #9): a saved card with a photo
+                // leads with a small thumbnail of it, so a visual
+                // learner recognizes the card before tapping. A saved
+                // card with no photo keeps the manual wayfinding icon
+                // (recs 2+5): the Saved section is cross-manual, so each
+                // such row leads with its manual's identity icon in the
+                // manual accent (Metric Honesty: no placeholder art).
+                // Either way the leading visual is decorative for screen
+                // readers: the row label already names the card and its
                 // manual (rec #12).
-                Icon(
-                  barrioManualIconOrNull(row.destination.id) ??
-                      Icons.bookmark_rounded,
-                  size: 14,
-                  color: accent.withValues(alpha: 0.85),
-                ),
-                const SizedBox(width: 10),
+                if (row.imageAsset != null) ...[
+                  BarrioRowThumbnail(assetPath: row.imageAsset!),
+                  const SizedBox(width: 12),
+                ] else ...[
+                  Icon(
+                    barrioManualIconOrNull(row.destination.id) ??
+                        Icons.bookmark_rounded,
+                    size: 14,
+                    color: accent.withValues(alpha: 0.85),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 Expanded(child: ExcludeSemantics(child: _texts())),
                 if (onRemove != null) _removeButton(),
               ],

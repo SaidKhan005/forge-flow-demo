@@ -239,13 +239,17 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('cross-manual Saved rows lead with the manual icon in the '
-        'manual accent', (tester) async {
+    testWidgets('cross-manual Saved rows for an imageless card lead with '
+        'the manual icon in the manual accent', (tester) async {
+      // Tequila carries no card photos, so this row exercises the
+      // manual-icon fallback branch. A saved card WITH a photo leads
+      // with a thumbnail instead (visual-first pass, rec #9); that
+      // branch is covered in barrio_visual_thumbnails_test.dart.
       await pumpShelf(
         tester,
         bookmarks: const [
           BarrioBookmark(
-            docId: 'training_coffee',
+            docId: 'training_tequila',
             chapterIndex: 0,
             unitInChapter: 0,
           ),
@@ -253,17 +257,17 @@ void main() {
       );
 
       final row = find.byKey(
-        const ValueKey<String>('barrio_saved_training_coffee_0_0'),
+        const ValueKey<String>('barrio_saved_training_tequila_0_0'),
       );
       expect(row, findsOneWidget);
       expect(
         find.descendant(
           of: row,
-          matching: find.byIcon(Icons.local_cafe_rounded),
+          matching: find.byIcon(Icons.local_bar_rounded),
         ),
         findsOneWidget,
-        reason: 'the Saved list is cross-manual, so each row leads with '
-            'its manual identity icon; the manual name text stays too',
+        reason: 'the Saved list is cross-manual, so an imageless row leads '
+            'with its manual identity icon; the manual name text stays too',
       );
       expect(tester.takeException(), isNull);
     });
