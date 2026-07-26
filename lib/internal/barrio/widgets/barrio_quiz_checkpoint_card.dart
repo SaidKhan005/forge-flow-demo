@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../content/quiz/barrio_quiz_models.dart';
+import 'barrio_chapter_icons.dart';
 import 'barrio_destination_scaffold.dart';
 
 /// Amber accent shared with the handbook card family's CHECK badge.
@@ -70,11 +71,28 @@ class BarrioQuizCheckpointCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Chapter wayfinding icon (recs 2+5): ties the checkpoint back to
+    // the chapter it quizzes. Null for fixture docs outside the routed
+    // corpus: render nothing rather than a bogus glyph.
+    final chapterIcon =
+        barrioChapterIconOrManual(question.docId, question.chapterId);
     return _QuizGlassShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _QuickCheckBadge(),
+          Row(
+            children: [
+              const _QuickCheckBadge(),
+              if (chapterIcon != null) ...[
+                const Spacer(),
+                Icon(
+                  chapterIcon,
+                  size: 16,
+                  color: _kQuizAccent.withValues(alpha: 0.75),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: 14),
           Text(
             question.prompt,

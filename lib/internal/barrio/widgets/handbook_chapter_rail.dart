@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'barrio_chapter_icons.dart';
 import 'barrio_destination_scaffold.dart';
 import '../content/company_handbook_content.dart';
 
 /// Constant icon lookup for handbook chapter rail icons.
 /// Maps each known iconCodePoint to its tree-shake-friendly Icons constant
 /// so that release builds can eliminate unused glyphs from MaterialIcons.
+/// Generated chapters all carry the generator's placeholder code point,
+/// which is deliberately NOT in this map: they resolve through the
+/// curated chapter icon map instead (visual wayfinding, recs 2+5).
 const _chapterIcons = <int, IconData>{
   0xe533: Icons.restaurant_menu,
   0xe556: Icons.schedule,
@@ -123,8 +127,12 @@ class _ChapterRailTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
+                  // Fallback chain (visual wayfinding, recs 2+5):
+                  // curated code-point icon (original handbook screen)
+                  // -> curated chapter icon -> manual identity icon ->
+                  // circle_outlined only when nothing resolves.
                   _chapterIcons[chapter.iconCodePoint] ??
-                      Icons.circle_outlined,
+                      barrioChapterIconFor(chapter.id),
                   size: 16,
                   color: isActive ? activeAccent : BarrioColors.textMuted,
                 ),
