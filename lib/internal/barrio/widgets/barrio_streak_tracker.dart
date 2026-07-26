@@ -245,9 +245,13 @@ class _BarrioStreakChipState extends State<BarrioStreakChip> {
     }
 
     return Semantics(
-      label: 'Learning streak: ${info.count} days'
+      label: 'Learning streak: ${info.count} '
+          '${info.count == 1 ? 'day' : 'days'}'
           '${info.dayOffCovered ? ', day off covered' : ''}',
-      child: Container(
+      // The label above says everything; the visible count + note are
+      // excluded so screen readers never hear the facts twice (rec #12).
+      child: ExcludeSemantics(
+        child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: chipColor.withValues(alpha: 0.12),
@@ -278,6 +282,7 @@ class _BarrioStreakChipState extends State<BarrioStreakChip> {
               ),
             ],
           ],
+        ),
         ),
       ),
     );

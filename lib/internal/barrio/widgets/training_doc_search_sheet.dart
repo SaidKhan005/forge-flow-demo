@@ -162,15 +162,19 @@ class _TrainingDocSearchSheetState extends State<TrainingDocSearchSheet> {
             ),
           ),
           if (_controller.text.isNotEmpty)
-            GestureDetector(
-              onTap: _clear,
-              behavior: HitTestBehavior.opaque,
-              child: const Padding(
-                padding: EdgeInsets.all(10),
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: BarrioColors.textMuted,
+            Semantics(
+              button: true,
+              label: 'Clear search',
+              child: GestureDetector(
+                onTap: _clear,
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: BarrioColors.textMuted,
+                  ),
                 ),
               ),
             )
@@ -266,9 +270,14 @@ class _ResultRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Accessibility (rec #12): one merged button per hit (section,
+    // card title, and snippet read as one row).
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: GestureDetector(
+      child: MergeSemantics(
+        child: Semantics(
+        button: true,
+        child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
@@ -326,6 +335,8 @@ class _ResultRow extends StatelessWidget {
               _snippetText(),
             ],
           ),
+        ),
+        ),
         ),
       ),
     );

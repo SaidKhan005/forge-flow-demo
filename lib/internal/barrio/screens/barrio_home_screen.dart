@@ -17,6 +17,7 @@ import '../services/barrio_refresher_scheduler.dart';
 import '../widgets/barrio_ambient_leaves.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/barrio_streak_tracker.dart';
+import '../widgets/barrio_text_size_sheet.dart';
 import '../widgets/home/barrio_home_search.dart';
 import '../widgets/home/barrio_home_shelf.dart';
 import 'el_podio_screen.dart';
@@ -248,6 +249,16 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     );
   }
 
+  /// Opens the text-size stepper sheet (accessibility pass, rec #12).
+  void _openTextSizeSheet() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const BarrioTextSizeSheet(),
+    );
+  }
+
   void _onSearchQueryChanged(String raw) {
     final trimmed = raw.trim();
     if (trimmed == _searchQuery) return;
@@ -398,6 +409,7 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
         child: _BarrioHeader(
           previewRole: role,
           onRoleChanged: (r) => setState(() => _previewRoleOverride = r),
+          onTextSizeTap: _openTextSizeSheet,
         ),
       ),
       if (_streakInfo != null && _streakInfo!.count > 0)
@@ -584,7 +596,14 @@ class _BarrioHeader extends StatefulWidget {
   final BarrioPreviewRole previewRole;
   final ValueChanged<BarrioPreviewRole> onRoleChanged;
 
-  const _BarrioHeader({required this.previewRole, required this.onRoleChanged});
+  /// Opens the text-size stepper sheet (accessibility pass, rec #12).
+  final VoidCallback onTextSizeTap;
+
+  const _BarrioHeader({
+    required this.previewRole,
+    required this.onRoleChanged,
+    required this.onTextSizeTap,
+  });
 
   @override
   State<_BarrioHeader> createState() => _BarrioHeaderState();
@@ -635,7 +654,16 @@ class _BarrioHeaderState extends State<_BarrioHeader>
       builder: (context, _) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: Column(
+          child: Stack(
+            children: [
+              // Quiet 'Aa' entry to the text-size stepper (rec #12):
+              // top-right of the header, clear of the centered wordmark.
+              Positioned(
+                top: 0,
+                right: 0,
+                child: _TextSizeButton(onTap: widget.onTextSizeTap),
+              ),
+              Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _wordmark(),
@@ -655,6 +683,8 @@ class _BarrioHeaderState extends State<_BarrioHeader>
                   onChanged: widget.onRoleChanged,
                 ),
               ],
+                ],
+              ),
             ],
           ),
         );
@@ -703,6 +733,51 @@ class _BarrioHeaderState extends State<_BarrioHeader>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Quiet 'Aa' text-size entry (accessibility pass, rec #12): a small
+/// glass chip in the header's top-right corner opening the stepper
+/// sheet. 44x44 hit target via padding around the compact chip.
+class _TextSizeButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _TextSizeButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Text size',
+      child: GestureDetector(
+        key: const ValueKey<String>('barrio_text_size_button'),
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          // Grows the tap target to at least 44x44 around the chip.
+          padding: const EdgeInsets.all(8),
+          child: ExcludeSemantics(
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0x14FFFFFF),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0x28FFFFFF)),
+              ),
+              child: Text(
+                'Aa',
+                style: GoogleFonts.ibmPlexSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: BarrioColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

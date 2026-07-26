@@ -100,7 +100,14 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
 
     final carousel = widget.isCarouselMode;
 
-    return GestureDetector(
+    // Accessibility (rec #12): a collapsed interactive card is one big
+    // tap target, so ONLY that state gets a button-role wrapper (its
+    // texts merge into one actionable node). Explainer and expanded
+    // cards get NO wrapper: their title, body, toggle, and images stay
+    // separate granular semantics nodes.
+    final wrapAsButton = _isInteractive && !_expanded;
+
+    final card = GestureDetector(
       onTapDown: _isInteractive && !_expanded
           ? (_) {
               HapticFeedback.lightImpact();
@@ -352,6 +359,8 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
         ),
       ),
     );
+    if (!wrapAsButton) return card;
+    return Semantics(button: true, child: card);
   }
 
   Color get _badgeColor {
@@ -460,30 +469,60 @@ class _OptionTile extends StatelessWidget {
     this.onTap,
   });
 
+  bool get _isSelected => selectedIndex == index;
+  bool get _isRevealed => selectedIndex != null;
+
+  /// (border, background) colors for the current reveal state. Split
+  /// out of [build] to honor the 80-line engineering bar.
+  (Color, Color) _stateColors(bool showCorrect, bool showWrong) {
+    if (showCorrect) {
+      return (
+        const Color(0xFF2ECC71).withValues(alpha: 0.55),
+        const Color(0xFF2ECC71).withValues(alpha: 0.10),
+      );
+    }
+    if (showWrong) {
+      return (
+        const Color(0xFFE74C3C).withValues(alpha: 0.55),
+        const Color(0xFFE74C3C).withValues(alpha: 0.10),
+      );
+    }
+    return (const Color(0x1AFFFFFF), const Color(0x08FFFFFF));
+  }
+
+  /// Merged screen-reader label (rec #12): one button per option, with
+  /// the honest state appended after reveal.
+  String _semanticsLabel(bool showCorrect, bool showWrong) {
+    final letter = String.fromCharCode(0x41 + index);
+    var built = '$letter: ${option.label}';
+    if (!_isRevealed) return built;
+    if (showCorrect) {
+      built = _isSelected
+          ? '$built, your pick, correct answer'
+          : '$built, correct answer';
+    } else if (showWrong) {
+      built = '$built, your pick, not correct. ${option.feedback}';
+    }
+    return built;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isSelected = selectedIndex == index;
-    final isRevealed = selectedIndex != null;
-    final showCorrect = isRevealed && option.isCorrect;
+    final isSelected = _isSelected;
+    final showCorrect = _isRevealed && option.isCorrect;
     final showWrong = isSelected && !option.isCorrect;
-
-    Color borderColor;
-    Color bgColor;
-    if (showCorrect) {
-      borderColor = const Color(0xFF2ECC71).withValues(alpha: 0.55);
-      bgColor = const Color(0xFF2ECC71).withValues(alpha: 0.10);
-    } else if (showWrong) {
-      borderColor = const Color(0xFFE74C3C).withValues(alpha: 0.55);
-      bgColor = const Color(0xFFE74C3C).withValues(alpha: 0.10);
-    } else {
-      borderColor = const Color(0x1AFFFFFF);
-      bgColor = const Color(0x08FFFFFF);
-    }
+    final (borderColor, bgColor) = _stateColors(showCorrect, showWrong);
+    final semanticsLabel = _semanticsLabel(showCorrect, showWrong);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: GestureDetector(
+      child: Semantics(
+        button: true,
+        selected: isSelected,
+        label: semanticsLabel,
+        child: GestureDetector(
         onTap: onTap,
+        child: ExcludeSemantics(
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -542,6 +581,8 @@ class _OptionTile extends StatelessWidget {
               ],
             ],
           ),
+        ),
+        ),
         ),
       ),
     );
@@ -650,7 +691,8 @@ class _UnitBody extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final image in unit.images) _UnitImage(image: image),
+          for (final image in unit.images)
+            _UnitImage(image: image, cardTitle: unit.title),
           _renderRun(paragraphs, linked),
         ],
       );
@@ -682,7 +724,7 @@ class _UnitBody extends StatelessWidget {
   void _addImages(List<Widget> out, List<HandbookUnitImage>? images) {
     if (images == null) return;
     for (final image in images) {
-      out.add(_UnitImage(image: image));
+      out.add(_UnitImage(image: image, cardTitle: unit.title));
     }
   }
 
@@ -981,9 +1023,17 @@ class _BodySegment {
 /// One content picture inside a unit body: rounded corners, full card
 /// width, tap to open the full-screen viewer. The [Image.asset]
 /// errorBuilder keeps widget tests (no bundled assets) from throwing.
+///
+/// Screen-reader contract (rec #12): the literal source caption when
+/// the picture has one, else `Photo: <card title>`. Descriptions are
+/// never invented (verbatim law).
 class _UnitImage extends StatelessWidget {
   final HandbookUnitImage image;
-  const _UnitImage({required this.image});
+
+  /// Owning card title, the honest fallback when there is no caption.
+  final String cardTitle;
+
+  const _UnitImage({required this.image, required this.cardTitle});
 
   @override
   Widget build(BuildContext context) {
@@ -992,7 +1042,11 @@ class _UnitImage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
+          Semantics(
+            button: true,
+            image: true,
+            label: image.caption ?? 'Photo: $cardTitle',
+            child: GestureDetector(
             onTap: () => BarrioTrainingImageViewer.open(
               context,
               assetPath: image.assetPath,
@@ -1017,14 +1071,19 @@ class _UnitImage extends StatelessWidget {
               ),
             ),
           ),
+          ),
           if (image.caption != null) ...[
             const SizedBox(height: 6),
-            Text(
-              image.caption!,
-              style: GoogleFonts.ibmPlexSans(
-                fontSize: 11,
-                fontStyle: FontStyle.italic,
-                color: BarrioColors.textMuted,
+            // Excluded from semantics: the thumbnail's label above IS
+            // this literal caption, so it must not read twice (rec #12).
+            ExcludeSemantics(
+              child: Text(
+                image.caption!,
+                style: GoogleFonts.ibmPlexSans(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: BarrioColors.textMuted,
+                ),
               ),
             ),
           ],
@@ -1097,9 +1156,19 @@ class _StaggeredOptionState extends State<_StaggeredOption>
     end: Offset.zero,
   ).animate(_fade);
 
+  bool _motionDecided = false;
+
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionDecided) return;
+    _motionDecided = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      // Accessibility (rec #12): reduce motion shows the options
+      // settled immediately, no stagger.
+      _ctrl.value = 1.0;
+      return;
+    }
     Future.delayed(Duration(milliseconds: 100 * widget.index), () {
       if (mounted) _ctrl.forward();
     });

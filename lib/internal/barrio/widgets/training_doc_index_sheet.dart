@@ -299,27 +299,37 @@ class _SheetHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Accessibility (rec #12): both texts sit in flexible slots so
+    // large text scales wrap instead of overflowing the header row.
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Text(
-            'Jump to a term',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: BarrioColors.textPrimary,
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: Text(
+                'Jump to a term',
+                style: GoogleFonts.playfairDisplay(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: BarrioColors.textPrimary,
+                ),
+              ),
             ),
           ),
-          const Spacer(),
-          Text(
-            '$termCount $countNoun',
-            style: GoogleFonts.ibmPlexMono(
-              fontSize: 11,
-              letterSpacing: 0.5,
-              color: accent.withValues(alpha: 0.7),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              '$termCount $countNoun',
+              textAlign: TextAlign.right,
+              style: GoogleFonts.ibmPlexMono(
+                fontSize: 11,
+                letterSpacing: 0.5,
+                color: accent.withValues(alpha: 0.7),
+              ),
             ),
           ),
         ],
@@ -387,29 +397,34 @@ class _TogglePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? accent.withValues(alpha: 0.14)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(
+    // Accessibility (rec #12): button role + honest selected state.
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
             color: selected
-                ? accent.withValues(alpha: 0.55)
-                : Colors.white.withValues(alpha: 0.18),
+                ? accent.withValues(alpha: 0.14)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: selected
+                  ? accent.withValues(alpha: 0.55)
+                  : Colors.white.withValues(alpha: 0.18),
+            ),
           ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.ibmPlexMono(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.1,
-            color: selected ? accent : BarrioColors.textSecondary,
+          child: Text(
+            label,
+            style: GoogleFonts.ibmPlexMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.1,
+              color: selected ? accent : BarrioColors.textSecondary,
+            ),
           ),
         ),
       ),
@@ -433,9 +448,17 @@ class _PhotoTile extends StatelessWidget {
     // Half the sheet width per column: decode at display size so a
     // 100+ photo glossary never holds full-size bitmaps in memory.
     final cacheWidth = (MediaQuery.sizeOf(context).width / 2 * dpr).round();
-    return GestureDetector(
+    // Accessibility (rec #12): one button per tile, labeled with the
+    // FULL term (the visible strip may ellipsize); the photo itself
+    // stays unlabeled (no invented descriptions).
+    return Semantics(
+      button: true,
+      image: true,
+      label: entry.title,
+      child: GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
+      child: ExcludeSemantics(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Column(
@@ -478,6 +501,8 @@ class _PhotoTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+      ),
       ),
     );
   }
@@ -527,18 +552,26 @@ class _EntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-        child: Text(
-          entry.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.ibmPlexSans(
-            fontSize: 14,
-            color: BarrioColors.textPrimary,
+    // Accessibility (rec #12): a proper button whose label always
+    // carries the FULL term even when the visible line ellipsizes.
+    return Semantics(
+      button: true,
+      label: entry.title,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: ExcludeSemantics(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: Text(
+              entry.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 14,
+                color: BarrioColors.textPrimary,
+              ),
+            ),
           ),
         ),
       ),
