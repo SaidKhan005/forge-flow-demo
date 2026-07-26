@@ -7,6 +7,7 @@ import '../search/barrio_training_search.dart';
 import '../routes/barrio_preview_role.dart';
 import '../routes/barrio_route_map.dart';
 import '../services/barrio_bookmarks_service.dart';
+import '../services/barrio_flashcard_deck.dart';
 import '../services/barrio_reading_progress_service.dart';
 import '../services/barrio_reading_time.dart';
 import '../services/barrio_term_links.dart';
@@ -20,6 +21,7 @@ import '../widgets/handbook_lesson_card.dart';
 import '../widgets/learning_carousel.dart';
 import '../widgets/training_doc_index_sheet.dart';
 import '../widgets/training_doc_search_sheet.dart';
+import 'barrio_flashcard_review_screen.dart';
 
 /// Generic verbatim training-document surface (2026-07-11 training-drop
 /// slice). One screen renders any [BarrioTrainingDoc] with the same
@@ -334,6 +336,29 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
     );
   }
 
+  /// Pushes the flashcard review screen scoped to THIS manual only
+  /// (visual-first pass, rec #6: the glossaries' picture-first review
+  /// surface gets an entry inside the manual itself, not just the home
+  /// shelf pills). Deck material is only the three glossary manuals;
+  /// [barrioFlashcardDeckForManual] returns null for anything else, so
+  /// narrative manuals never reach here (the chip is not rendered).
+  void _openFlashcards() {
+    final deck = barrioFlashcardDeckForManual(
+      widget.doc.id,
+      title: widget.doc.title,
+    );
+    if (deck == null) return;
+    HapticFeedback.lightImpact();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BarrioFlashcardReviewScreen(
+          deck: deck,
+          accent: widget.accent,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _heroController.dispose();
@@ -464,6 +489,12 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
                   accent: accent,
                   sectionIndex: _activeChapter,
                   sectionCount: chapters.length,
+                  // Glossary manuals only: the flashcard chip rides the
+                  // hero's eyebrow row (no new persistent chrome).
+                  onFlashcardsTap:
+                      kBarrioFlashcardManualIds.contains(widget.doc.id)
+                          ? _openFlashcards
+                          : null,
                 ),
               ),
               const SizedBox(height: 8),
@@ -651,11 +682,16 @@ class _TrainingHero extends StatelessWidget {
   final int sectionIndex;
   final int sectionCount;
 
+  /// Non-null only on the glossary manuals: renders the compact
+  /// "Review as flashcards" chip on the eyebrow row.
+  final VoidCallback? onFlashcardsTap;
+
   const _TrainingHero({
     required this.chapter,
     required this.accent,
     required this.sectionIndex,
     required this.sectionCount,
+    this.onFlashcardsTap,
   });
 
   @override
@@ -663,20 +699,33 @@ class _TrainingHero extends StatelessWidget {
     // Learning-screen v2 chrome diet: eyebrow + one-line title + thin
     // progress bar only. The 'N cards' subtitle went (the footer's
     // 'X of N' already counts cards) and the title never wraps, so the
-    // card window below keeps one steady height mid-session.
+    // card window below keeps one steady height mid-session. The
+    // flashcard chip (glossaries only) shares the eyebrow row, so the
+    // hero height stays steady with or without it mid-session.
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'SECTION ${sectionIndex + 1} OF $sectionCount',
-            style: GoogleFonts.ibmPlexMono(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 1.2,
-              color: accent.withValues(alpha: 0.65),
-            ),
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  'SECTION ${sectionIndex + 1} OF $sectionCount',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.ibmPlexMono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 1.2,
+                    color: accent.withValues(alpha: 0.65),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (onFlashcardsTap != null)
+                _FlashcardsChip(accent: accent, onTap: onFlashcardsTap!),
+            ],
           ),
           const SizedBox(height: 6),
           Text(
@@ -701,6 +750,54 @@ class _TrainingHero extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Compact "Review as flashcards" chip on the hero eyebrow row
+/// (glossary manuals only). Same quiet pill idiom (and brevity) as the
+/// home shelf's REVIEW pills, in the hero's own mono/accent styling;
+/// the full "Review as flashcards" name rides the semantics label.
+class _FlashcardsChip extends StatelessWidget {
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _FlashcardsChip({required this.accent, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Review as flashcards',
+      child: GestureDetector(
+        key: const ValueKey<String>('training_doc_flashcards_chip'),
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: accent.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.style_rounded, size: 11, color: accent),
+              const SizedBox(width: 4),
+              Text(
+                'FLASHCARDS',
+                style: GoogleFonts.ibmPlexMono(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.1,
+                  color: accent,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
