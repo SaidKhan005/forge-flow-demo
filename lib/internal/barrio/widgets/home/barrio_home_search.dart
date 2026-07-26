@@ -136,15 +136,19 @@ class _BarrioHomeSearchFieldState extends State<BarrioHomeSearchField> {
             const SizedBox(width: 10),
             Expanded(child: _buildTextField()),
             if (_controller.text.isNotEmpty)
-              GestureDetector(
-                onTap: _clear,
-                behavior: HitTestBehavior.opaque,
-                child: const Padding(
-                  padding: EdgeInsets.all(10),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: BarrioColors.textMuted,
+              Semantics(
+                button: true,
+                label: 'Clear search',
+                child: GestureDetector(
+                  onTap: _clear,
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: BarrioColors.textMuted,
+                    ),
                   ),
                 ),
               )
@@ -304,28 +308,35 @@ class _SearchResultRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Accessibility (rec #12): one merged button per hit (manual,
+    // section, and snippet read as one row).
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            // Near-opaque dark card: the rows sit over the home photo,
-            // whose scrim is lightest mid-screen, so a translucent wash
-            // is unreadable there (operator report 2026-07-11).
-            color: BarrioColors.shellMid.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0x24FFFFFF)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _iconChip(context),
-              const SizedBox(width: 12),
-              Expanded(child: _texts()),
-            ],
+      child: MergeSemantics(
+        child: Semantics(
+          button: true,
+          child: GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                // Near-opaque dark card: the rows sit over the home photo,
+                // whose scrim is lightest mid-screen, so a translucent wash
+                // is unreadable there (operator report 2026-07-11).
+                color: BarrioColors.shellMid.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0x24FFFFFF)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _iconChip(context),
+                  const SizedBox(width: 12),
+                  Expanded(child: _texts()),
+                ],
+              ),
+            ),
           ),
         ),
       ),

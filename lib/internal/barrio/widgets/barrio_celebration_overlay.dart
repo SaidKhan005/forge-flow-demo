@@ -205,12 +205,30 @@ class _CorrectAnswerSparkleState extends State<CorrectAnswerSparkle>
     duration: const Duration(milliseconds: 800),
   )..forward();
 
+  bool _motionDecided = false;
+  bool _reduceMotion = false;
+
   @override
   void initState() {
     super.initState();
     _ctrl.addStatusListener((status) {
       if (status == AnimationStatus.completed) widget.onComplete?.call();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionDecided) return;
+    _motionDecided = true;
+    _reduceMotion = MediaQuery.of(context).disableAnimations;
+    if (_reduceMotion) {
+      // Accessibility (rec #12): reduce motion skips the particle
+      // burst entirely; completing instantly still fires onComplete so
+      // owners clean up exactly as they do after the animated burst.
+      _ctrl.duration = Duration.zero;
+      _ctrl.forward(from: 0);
+    }
   }
 
   @override
@@ -221,6 +239,7 @@ class _CorrectAnswerSparkleState extends State<CorrectAnswerSparkle>
 
   @override
   Widget build(BuildContext context) {
+    if (_reduceMotion) return const SizedBox.shrink();
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, _) {

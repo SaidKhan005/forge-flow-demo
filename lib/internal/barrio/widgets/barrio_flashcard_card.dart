@@ -74,13 +74,16 @@ class _BarrioFlashcardCardState extends State<BarrioFlashcardCard>
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _toggle,
-      child: AnimatedBuilder(
-        animation: _flip,
-        builder: (context, _) {
+    return AnimatedBuilder(
+      animation: _flip,
+      builder: (context, _) {
           final showFront = _flip.value < 0.5;
+          // Accessibility (rec #12): the whole card is one flip button
+          // whose label names the action the tap performs; the visible
+          // face content merges in after it (Semantics sits OUTSIDE
+          // the GestureDetector so the tap action lands on the labeled
+          // node, same pattern as the bookmark toggle).
+          final flipLabel = showFront ? 'Show definition' : 'Show term';
           // Back content is pre-mirrored so the Y-rotation past 90
           // degrees reads it the right way around.
           final face = showFront
@@ -97,15 +100,22 @@ class _BarrioFlashcardCardState extends State<BarrioFlashcardCard>
                     accent: widget.accent,
                   ),
                 );
-          return Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.0012)
-              ..rotateY(_flip.value * math.pi),
-            child: face,
+          return Semantics(
+            button: true,
+            label: flipLabel,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggle,
+              child: Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.0012)
+                  ..rotateY(_flip.value * math.pi),
+                child: face,
+              ),
+            ),
           );
-        },
-      ),
+      },
     );
   }
 }
@@ -184,11 +194,15 @@ class _FlashcardFront extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
-            'Tap to flip',
-            style: GoogleFonts.ibmPlexSans(
-              fontSize: 11.5,
-              color: BarrioColors.textMuted,
+          // Excluded from semantics: the card's flip-button label
+          // already says what a tap does (rec #12).
+          ExcludeSemantics(
+            child: Text(
+              'Tap to flip',
+              style: GoogleFonts.ibmPlexSans(
+                fontSize: 11.5,
+                color: BarrioColors.textMuted,
+              ),
             ),
           ),
         ],
@@ -197,18 +211,24 @@ class _FlashcardFront extends StatelessWidget {
   }
 
   Widget _picture(String imagePath) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Image.asset(
-        imagePath,
-        fit: BoxFit.contain,
-        // Test environments load no real asset bytes: fall back to a
-        // quiet icon instead of throwing (same pattern as the home
-        // bubble visuals).
-        errorBuilder: (_, __, ___) => Icon(
-          Icons.image_outlined,
-          size: 56,
-          color: accent.withValues(alpha: 0.55),
+    // Screen-reader label (rec #12): the literal source caption when
+    // present, else 'Photo: <term>'. Never an invented description.
+    return Semantics(
+      image: true,
+      label: card.imageCaption ?? 'Photo: ${card.term}',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Image.asset(
+          imagePath,
+          fit: BoxFit.contain,
+          // Test environments load no real asset bytes: fall back to a
+          // quiet icon instead of throwing (same pattern as the home
+          // bubble visuals).
+          errorBuilder: (_, __, ___) => Icon(
+            Icons.image_outlined,
+            size: 56,
+            color: accent.withValues(alpha: 0.55),
+          ),
         ),
       ),
     );

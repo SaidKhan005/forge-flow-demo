@@ -126,9 +126,10 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
   late final AnimationController _heroController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
-  )..forward();
+  );
   late final Animation<double> _heroFade =
       CurvedAnimation(parent: _heroController, curve: Curves.easeOutCubic);
+  bool _heroMotionDecided = false;
 
   /// True when the caller supplied an explicit deep link (search or the
   /// home Continue Reading card). Deep links always win over resume.
@@ -357,6 +358,19 @@ class _TrainingDocScreenState extends State<TrainingDocScreen>
         ),
       ),
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_heroMotionDecided) return;
+    _heroMotionDecided = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      // Accessibility (rec #12): reduce motion lands the hero settled.
+      _heroController.value = 1.0;
+    } else {
+      _heroController.forward();
+    }
   }
 
   @override
@@ -702,6 +716,19 @@ class _TrainingHero extends StatelessWidget {
     // card window below keeps one steady height mid-session. The
     // flashcard chip (glossaries only) shares the eyebrow row, so the
     // hero height stays steady with or without it mid-session.
+    //
+    // Accessibility pass (rec #12): screen readers get one merged
+    // header carrying the FULL section title even when the visible
+    // one-line title ellipsizes (the header rides the eyebrow so the
+    // flashcards chip keeps its own tappable node), and the title's
+    // text scaling is CLAMPED at 1.45x. Clamp rationale (documented
+    // per the WCAG 1.4.4 "no loss of content or function" bar): the
+    // one-line cap is a deliberate v2 decision keeping the card window
+    // height steady mid-session; letting a 26px Playfair title scale
+    // to 2.0x would ellipsize almost every section title into
+    // meaninglessness, while at 1.45x the common titles still fit. The
+    // full title stays available in the header semantics label and on
+    // the rail tile labels, so no content is lost at any scale.
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
       child: Column(
@@ -710,15 +737,22 @@ class _TrainingHero extends StatelessWidget {
           Row(
             children: [
               Flexible(
-                child: Text(
-                  'SECTION ${sectionIndex + 1} OF $sectionCount',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.ibmPlexMono(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 1.2,
-                    color: accent.withValues(alpha: 0.65),
+                child: Semantics(
+                  header: true,
+                  label: 'Section ${sectionIndex + 1} of $sectionCount: '
+                      '${chapter.title}',
+                  child: ExcludeSemantics(
+                    child: Text(
+                      'SECTION ${sectionIndex + 1} OF $sectionCount',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.ibmPlexMono(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 1.2,
+                        color: accent.withValues(alpha: 0.65),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -728,25 +762,37 @@ class _TrainingHero extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            chapter.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              color: BarrioColors.textPrimary,
-              height: 1.15,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: (sectionIndex + 1) / sectionCount,
-              minHeight: 3,
-              backgroundColor: BarrioColors.shellSurface,
-              valueColor: AlwaysStoppedAnimation(accent),
+          // Excluded from semantics: the header label above already
+          // carries the full title and position (rec #12).
+          ExcludeSemantics(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MediaQuery.withClampedTextScaling(
+                  maxScaleFactor: 1.45,
+                  child: Text(
+                    chapter.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.playfairDisplay(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      color: BarrioColors.textPrimary,
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: (sectionIndex + 1) / sectionCount,
+                    minHeight: 3,
+                    backgroundColor: BarrioColors.shellSurface,
+                    valueColor: AlwaysStoppedAnimation(accent),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

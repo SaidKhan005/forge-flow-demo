@@ -46,6 +46,9 @@ class BarrioTrainingImageViewer extends StatelessWidget {
                 child: Center(
                   child: Image.asset(
                     assetPath,
+                    // Accessibility (rec #12): the literal caption when
+                    // present, else 'Photo'. Never invented.
+                    semanticLabel: caption ?? 'Photo',
                     errorBuilder: (context, error, stackTrace) => const Icon(
                       Icons.image_not_supported_outlined,
                       size: 48,

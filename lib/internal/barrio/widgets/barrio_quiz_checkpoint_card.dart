@@ -279,6 +279,21 @@ class _QuizOptionRow extends StatelessWidget {
     required this.onTap,
   });
 
+  /// Merged screen-reader label (rec #12): letter + option text, with
+  /// the honest state appended after reveal.
+  String get _semanticsLabel {
+    var built = '$letter: $label';
+    if (!revealed) return built;
+    if (isCorrect) {
+      built = isPicked
+          ? '$built, your pick, correct answer'
+          : '$built, correct answer';
+    } else if (isPicked) {
+      built = '$built, your pick, not correct';
+    }
+    return built;
+  }
+
   @override
   Widget build(BuildContext context) {
     final showCorrect = revealed && isCorrect;
@@ -304,13 +319,15 @@ class _QuizOptionRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Semantics(
         button: true,
-        label: label,
+        selected: isPicked,
+        label: _semanticsLabel,
         child: GestureDetector(
           // Locked rows absorb taps (no-op) instead of passing them to
           // the carousel's edge tap zones: re-reading an answer must
           // never turn the page by accident.
           onTap: revealed ? _noop : onTap,
           behavior: HitTestBehavior.opaque,
+          child: ExcludeSemantics(
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 250),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -353,6 +370,7 @@ class _QuizOptionRow extends StatelessWidget {
                   ),
               ],
             ),
+          ),
           ),
         ),
       ),

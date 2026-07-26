@@ -140,6 +140,9 @@ PreferredSizeWidget barrioAppBar({
       backgroundColor: BarrioColors.shellDeep,
       elevation: 0,
       leading: IconButton(
+        // Accessibility (rec #12): the tooltip doubles as the screen
+        // reader label for the otherwise unlabeled glyph.
+        tooltip: 'Back',
         icon: const Icon(Icons.arrow_back, color: BarrioColors.textSecondary),
         onPressed: () => Navigator.of(context).pop(),
       ),

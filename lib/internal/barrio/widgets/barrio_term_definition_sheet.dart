@@ -62,7 +62,14 @@ class BarrioTermDefinitionSheet extends StatelessWidget {
                   ),
                   if (unit.images.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _termImage(unit.images.first.assetPath),
+                    // Screen-reader label (rec #12): the literal source
+                    // caption when present, else 'Photo: <term>'.
+                    Semantics(
+                      image: true,
+                      label: unit.images.first.caption ??
+                          'Photo: ${unit.title}',
+                      child: _termImage(unit.images.first.assetPath),
+                    ),
                   ],
                   const SizedBox(height: 12),
                   Text(
@@ -119,7 +126,12 @@ class _OpenInManualLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    // Accessibility (rec #12): a proper button role; the visible text
+    // merges in as the label.
+    return MergeSemantics(
+      child: Semantics(
+      button: true,
+      child: GestureDetector(
       key: const ValueKey<String>('barrio_term_open_in_manual'),
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -146,6 +158,8 @@ class _OpenInManualLink extends StatelessWidget {
             ),
           ],
         ),
+      ),
+      ),
       ),
     );
   }

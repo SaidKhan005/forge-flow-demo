@@ -148,7 +148,15 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble>
             child: target,
           );
         }
-        return target;
+        // Accessibility (rec #12): one merged node per bubble, button
+        // role while interactive ('Dashboard' merges in as the label).
+        return MergeSemantics(
+          child: Semantics(
+            button: !widget.dimmed,
+            enabled: !widget.dimmed,
+            child: target,
+          ),
+        );
       },
     );
   }
@@ -272,7 +280,17 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble>
                   ),
                 ),
               ),
-              Center(child: _discContent(diameter)),
+              // Accessibility clamp (rec #12, documented): the glass
+              // disc is a fixed-diameter circle, so its label scales
+              // up to 1.35x and no further. The full label is always
+              // in the bubble's merged semantics and on the opened
+              // screen's app bar, so no content is lost at any scale.
+              Center(
+                child: MediaQuery.withClampedTextScaling(
+                  maxScaleFactor: 1.35,
+                  child: _discContent(diameter),
+                ),
+              ),
             ],
           ),
         ),
@@ -377,7 +395,15 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
         child: target,
       );
     }
-    return target;
+    // Accessibility (rec #12): one merged node per bubble; the label
+    // (and 'Coming Soon' tag when present) merges from the disc texts.
+    return MergeSemantics(
+      child: Semantics(
+        button: !widget.dimmed,
+        enabled: !widget.dimmed,
+        child: target,
+      ),
+    );
   }
 
   Widget _bubbleBody(BuildContext context) {
@@ -483,10 +509,18 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
               ),
               // Content: handbook uses a Stack so its leaf art sits
               // behind the label (hub-identical special case).
-              if (widget.destination.id == 'company_handbook')
-                _handbookContent(context, accent)
-              else
-                _centeredContent(context, accent),
+              // Accessibility clamp (rec #12, documented): the glass
+              // disc is a fixed-diameter circle, so the in-circle
+              // label scales up to 1.35x and no further (it already
+              // wraps to 2 lines). The full label is always in the
+              // bubble's merged semantics and on the opened screen's
+              // app bar, so no content is lost at any scale.
+              MediaQuery.withClampedTextScaling(
+                maxScaleFactor: 1.35,
+                child: widget.destination.id == 'company_handbook'
+                    ? _handbookContent(context, accent)
+                    : _centeredContent(context, accent),
+              ),
             ],
           ),
         ),
