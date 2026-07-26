@@ -31,17 +31,29 @@ import 'package:google_fonts/google_fonts.dart';
 import '../content/training/barrio_training_doc.dart';
 import '../search/barrio_training_search.dart';
 import 'barrio_destination_scaffold.dart';
+import 'barrio_row_thumbnail.dart';
 
 /// Strips a trailing continuation marker off a split card's title.
 final RegExp _kContSuffix = RegExp(r'\s*\(cont\.\)\s*$');
 
 /// One tappable index entry: the base card title and the flat-deck
-/// page of the first card carrying it.
+/// page of the first card carrying it, plus the term's first bundled
+/// photo when its card run has one (visual-first pass, rec #9). A term
+/// whose run carries no picture has a null [assetPath] and its A-Z row
+/// stays plain text (Metric Honesty: no placeholder art).
 class TrainingIndexEntry {
   final String title;
   final int page;
 
-  const TrainingIndexEntry({required this.title, required this.page});
+  /// First bundled image asset across the term's card run (first card of
+  /// the run with a picture wins), or null when the run has no photo.
+  final String? assetPath;
+
+  const TrainingIndexEntry({
+    required this.title,
+    required this.page,
+    this.assetPath,
+  });
 }
 
 /// One letter section of the index ('#' collects titles that do not
@@ -61,27 +73,41 @@ class TrainingIndexGroup {
 /// first letter. Digits and other non-letters group under '#', which
 /// sorts first, matching the glossaries' own "8 to C" reading order.
 List<TrainingIndexGroup> buildTrainingIndexGroups(BarrioTrainingDoc doc) {
-  // Insertion order keeps the FIRST card of every title run.
-  final byFoldedTitle = <String, TrainingIndexEntry>{};
+  // First card of every title run wins the title + page; the first card
+  // of the run carrying a photo wins the thumbnail asset (the base card
+  // may be imageless while a '(cont.)' card has the picture, so the
+  // asset is accumulated across the whole run, exactly like
+  // [buildTrainingIndexPhotoEntries]).
+  final titleByKey = <String, String>{};
+  final pageByKey = <String, int>{};
+  final assetByKey = <String, String>{};
   var page = 0;
   for (final chapter in doc.chapters) {
     for (final unit in chapter.units) {
       final base = unit.title.replaceFirst(_kContSuffix, '').trim();
       if (base.isNotEmpty) {
-        byFoldedTitle.putIfAbsent(
-          BarrioTrainingSearch.fold(base),
-          () => TrainingIndexEntry(title: base, page: page),
-        );
+        final key = BarrioTrainingSearch.fold(base);
+        titleByKey.putIfAbsent(key, () => base);
+        pageByKey.putIfAbsent(key, () => page);
+        if (unit.images.isNotEmpty) {
+          assetByKey.putIfAbsent(key, () => unit.images.first.assetPath);
+        }
       }
       page++;
     }
   }
-  final sortedKeys = byFoldedTitle.keys.toList()..sort();
+  final sortedKeys = titleByKey.keys.toList()..sort();
   // Folded keys sort digits before letters, so group insertion order is
   // already '#' first, then A to Z.
   final grouped = <String, List<TrainingIndexEntry>>{};
   for (final key in sortedKeys) {
-    grouped.putIfAbsent(_letterFor(key), () => []).add(byFoldedTitle[key]!);
+    grouped.putIfAbsent(_letterFor(key), () => []).add(
+          TrainingIndexEntry(
+            title: titleByKey[key]!,
+            page: pageByKey[key]!,
+            assetPath: assetByKey[key],
+          ),
+        );
   }
   return <TrainingIndexGroup>[
     for (final e in grouped.entries)
@@ -552,28 +578,46 @@ class _EntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final asset = entry.assetPath;
+    final title = Text(
+      entry.title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: GoogleFonts.ibmPlexSans(
+        fontSize: 14,
+        color: BarrioColors.textPrimary,
+      ),
+    );
+    // Visual-first pass (rec #9): a term whose card carries a photo
+    // leads its A-Z row with a small thumbnail of it, so a visual
+    // learner recognizes the term before tapping. A term with no photo
+    // keeps its plain text row exactly (Metric Honesty).
+    final Widget content = asset == null
+        ? Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: title,
+          )
+        : Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(
+              children: [
+                BarrioRowThumbnail(assetPath: asset),
+                const SizedBox(width: 12),
+                Expanded(child: title),
+              ],
+            ),
+          );
     // Accessibility (rec #12): a proper button whose label always
-    // carries the FULL term even when the visible line ellipsizes.
+    // carries the FULL term even when the visible line ellipsizes; the
+    // thumbnail stays decorative (it is inside ExcludeSemantics and is
+    // itself semantics-excluded), so it never adds a duplicate node.
     return Semantics(
       button: true,
       label: entry.title,
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
-        child: ExcludeSemantics(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-            child: Text(
-              entry.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.ibmPlexSans(
-                fontSize: 14,
-                color: BarrioColors.textPrimary,
-              ),
-            ),
-          ),
-        ),
+        child: ExcludeSemantics(child: content),
       ),
     );
   }
