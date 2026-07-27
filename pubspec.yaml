@@ -192,7 +192,9 @@ flutter:
     - assets/internal/barrio/training/food_safety_manual_diagrams/
     - assets/internal/barrio/training/labour_cost_understanding_the_levers/
     - assets/internal/barrio/training/latin_american_dishes/
+    - assets/internal/barrio/training/latin_american_dishes_diagrams/
     - assets/internal/barrio/training/latin_american_ingredients/
+    - assets/internal/barrio/training/latin_american_ingredients_diagrams/
     - assets/internal/barrio/training/push_employee_sop/
 
   # An image asset can refer to one or more resolution-specific "variants", see
