@@ -427,4 +427,38 @@ const List<BarrioDestination> barrioDestinations = [
     prominence: BarrioProminence.secondary,
     showOnHomeHub: true,
   ),
+
+  // -- SOP training bubbles (Scribe-format system SOPs) --------------------
+  // Picture-first step-by-step manuals rendered word-for-word by
+  // TrainingDocScreen: every step carries its source screenshot inline.
+  BarrioDestination(
+    id: 'training_clover_sop',
+    label: 'Clover POS',
+    description: 'Clover POS: point-of-sale system step-by-step SOP.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.companyAndCompliance,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xe4d8, // Icons.point_of_sale
+  ),
+  BarrioDestination(
+    id: 'training_push_sop',
+    label: 'Push Schedule',
+    description: 'Push Schedule: view your schedule and set availability.',
+    audiences: {
+      BarrioAudience.allStaff,
+      BarrioAudience.supervisor,
+      BarrioAudience.manager,
+      BarrioAudience.admin,
+    },
+    category: BarrioCategory.companyAndCompliance,
+    prominence: BarrioProminence.secondary,
+    showOnHomeHub: true,
+    iconCodePoint: 0xf06bb, // Icons.calendar_month
+  ),
 ];

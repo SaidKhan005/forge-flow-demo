@@ -95,6 +95,11 @@ DOCS = [
     dict(md='GENERAL WORDS TO KNOW.md', id='training_general_words',
          const='kTrainingGeneralWords', title='General Words To Know',
          kind='glossary'),
+    # SOP training manuals (Scribe-format point-of-sale + scheduling docs).
+    dict(md='Clover SOP.md', id='training_clover_sop',
+         const='kTrainingCloverSop', title='Clover POS', kind='prose'),
+    dict(md='Push Employee SOP.md', id='training_push_sop',
+         const='kTrainingPushSop', title='Push Schedule', kind='prose'),
 ]
 
 CHAPTER_ICON = '0xe865'  # Icons.menu_book glyph, used by the chapter rail

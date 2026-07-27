@@ -22,8 +22,10 @@ void main() {
         // docs/Knowledge_graph_docs/corpus_manifest.yaml changes.
         // 19 as of 2026-07-11: barrio_menu added (operator-authored
         // dinner menu + concept history, curated from the slide deck).
-        expect(result.manifest.documents, hasLength(19));
-        expect(result.activeMarkdownFiles, hasLength(19));
+        // 21 as of 2026-07-27: clover_sop + push_employee_sop added
+        // (Scribe-format point-of-sale + scheduling SOP training manuals).
+        expect(result.manifest.documents, hasLength(21));
+        expect(result.activeMarkdownFiles, hasLength(21));
         expect(
           result.activeMarkdownFiles,
           isNot(contains(excludedEmptyApronFileName)),

@@ -225,6 +225,11 @@ Widget _iconWidgetFor(
       return Icon(Icons.query_stats_rounded, size: size, color: color);
     case 'training_general_words':
       return Icon(Icons.translate_rounded, size: size, color: color);
+    // SOP training bubbles (Scribe-format system SOPs)
+    case 'training_clover_sop':
+      return Icon(Icons.point_of_sale, size: size, color: color);
+    case 'training_push_sop':
+      return Icon(Icons.calendar_month, size: size, color: color);
     default:
       return Icon(Icons.circle_outlined, size: size, color: color);
   }
