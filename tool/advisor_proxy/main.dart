@@ -2280,6 +2280,21 @@ Future<void> _runProxy(List<String> args) async {
             // regardless of auth_time freshness. Production wires the
             // router; every route in `kStepUpSensitiveRoutes` is gated.
             stepUpChallengeRouter: productionBindings.stepUpChallengeRouter,
+            // Slice A2b — corpus retrieval service + server-side query
+            // embedding gateway. Both are optional (null → 503) but wired
+            // here so /v1/advisor/retrieve goes live.
+            //
+            // HP #7: the Voyage key is resolved from [config] at the
+            // call site — it is NOT stored on [productionBindings].  The
+            // key's lifetime is bounded to the duration of each request
+            // by being passed as a positional argument through the call
+            // stack; it is never captured in a closure or returned to the
+            // client.
+            corpusRetrievalService: productionBindings.corpusRetrievalService,
+            corpusQueryEmbeddingGateway:
+                productionBindings.corpusQueryEmbeddingGateway,
+            voyageApiKeyForRetrieval:
+                config.secretFor(ProxySecretNames.voyageApiKey),
           );
         } catch (error, stack) {
           log(
