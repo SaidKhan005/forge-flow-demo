@@ -610,3 +610,63 @@ documents:
     heading_count: 12
     line_count: 83
     sha256: "65f009de10700484b2a52cd3e4afaedd64502cecb576ccc8367a14e0926a8066"
+
+  - doc_id: "clover_sop"
+    file_name: "Clover SOP.md"
+    source_path: "docs/Knowledge_graph_docs/Clover SOP.md"
+    title: "Clover POS"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "system_sop_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Procedure"
+    tags:
+      - "clover"
+      - "point_of_sale"
+      - "pos"
+      - "sop"
+      - "training"
+    word_count_estimate: 1938
+    heading_count: 81
+    line_count: 493
+    sha256: "3c067ece82576e136f7fac61657e719ac8a8174399bbb8930edeb682087e7604"
+
+  - doc_id: "push_employee_sop"
+    file_name: "Push Employee SOP.md"
+    source_path: "docs/Knowledge_graph_docs/Push Employee SOP.md"
+    title: "Push Schedule"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "system_sop_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_training_narrative"
+    graph_profiles:
+      - "Concept"
+      - "Procedure"
+    tags:
+      - "push"
+      - "scheduling"
+      - "shifts"
+      - "sop"
+      - "training"
+    word_count_estimate: 1010
+    heading_count: 31
+    line_count: 274
+    sha256: "a5b472db31fb0f4deb003673c3251469f2194566826dbe71d1330286f780fe81"

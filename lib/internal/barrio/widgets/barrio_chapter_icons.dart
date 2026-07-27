@@ -54,6 +54,8 @@ const Map<String, IconData> kBarrioManualIcons = <String, IconData>{
   'training_cheers_responsibility': Icons.wine_bar_rounded,
   'training_mastering_metrics': Icons.query_stats_rounded,
   'training_general_words': Icons.translate_rounded,
+  'training_clover_sop': Icons.point_of_sale,
+  'training_push_sop': Icons.calendar_month,
 };
 
 /// Curated per-chapter icons, keyed by the chapter's stable id (the

@@ -12,6 +12,7 @@ import 'interview_playbook_verbatim_content.dart';
 import 'jim_taylor_verbatim_content.dart';
 import 'training_bold_by_design_content.dart';
 import 'training_cheers_responsibility_content.dart';
+import 'training_clover_sop_content.dart';
 import 'training_coffee_content.dart';
 import 'training_food_safety_content.dart';
 import 'training_general_words_content.dart';
@@ -20,6 +21,7 @@ import 'training_latin_dishes_content.dart';
 import 'training_latin_ingredients_content.dart';
 import 'training_mastering_metrics_content.dart';
 import 'training_menu_content.dart';
+import 'training_push_sop_content.dart';
 import 'training_strong_foundation_content.dart';
 import 'training_suggestive_selling_content.dart';
 import 'training_table_manicuring_content.dart';
@@ -54,6 +56,9 @@ const Map<String, BarrioTrainingDoc> kBarrioTrainingDocs = {
   'training_cheers_responsibility': kTrainingCheersResponsibility,
   'training_mastering_metrics': kTrainingMasteringMetrics,
   'training_general_words': kTrainingGeneralWords,
+  // SOP training manuals (Scribe-format point-of-sale + scheduling docs).
+  'training_clover_sop': kTrainingCloverSop,
+  'training_push_sop': kTrainingPushSop,
 };
 
 /// Per-destination accent bloom color (same convention as the
@@ -78,4 +83,7 @@ const Map<String, Color> kBarrioTrainingAccents = {
   'training_cheers_responsibility': BarrioColors.gold,
   'training_mastering_metrics': BarrioColors.accentJimTaylor, // royal blue
   'training_general_words': BarrioColors.tealWarm,
+  // SOP training manuals (Scribe-format point-of-sale + scheduling docs).
+  'training_clover_sop': BarrioColors.accentSteel, // steel blue
+  'training_push_sop': BarrioColors.accentSeafoam,
 };

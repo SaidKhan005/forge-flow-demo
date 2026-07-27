@@ -72,6 +72,8 @@ PAIRS = [
     ('training_cheers_responsibility', 'OE Cheers to Responsibility.md'),
     ('training_mastering_metrics', 'OE MASTERING THE METRICS.md'),
     ('training_general_words', 'GENERAL WORDS TO KNOW.md'),
+    ('training_clover_sop', 'Clover SOP.md'),
+    ('training_push_sop', 'Push Employee SOP.md'),
 ]
 
 for doc_id, md_name in PAIRS:
