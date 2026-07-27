@@ -1,13 +1,13 @@
 // Wave A (Barrio Training Media + Search V1): content pictures inside the
 // verbatim training lesson cards.
 //
-// Covers: a unit with images renders its paragraphs and image widgets in
-// order (through the Image.asset errorBuilder path, since widget tests have
-// no bundled assets); tapping an image opens the full-screen viewer and the
-// viewer closes; a unit without images renders each blank-line paragraph as
-// its own structured Text block; bullet / numbered / table paragraphs render
-// with real list structure (no literal '- ' or ' | ' markers); no exceptions
-// at the 390x844 mobile surface.
+// Covers: a unit with images is picture-first (all its images render ABOVE
+// the body, in source list order, through the Image.asset errorBuilder path
+// since widget tests have no bundled assets); tapping an image opens the
+// full-screen viewer and the viewer closes; a unit without images renders
+// each blank-line paragraph as its own structured Text block; bullet /
+// numbered / table paragraphs render with real list structure (no literal
+// '- ' or ' | ' markers); no exceptions at the 390x844 mobile surface.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -66,7 +66,7 @@ Future<void> _setMobileSurface(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('unit with images renders paragraph runs and images in order',
+  testWidgets('unit with images is picture-first: all images above the body',
       (tester) async {
     await _setMobileSurface(tester);
     await tester.pumpWidget(
@@ -78,9 +78,8 @@ void main() {
     expect(find.byType(Image), findsNWidgets(2));
     expect(find.byIcon(Icons.image_not_supported_outlined), findsNWidgets(2));
 
-    // Structured rendering: each blank-line paragraph is its own Text
-    // block (even spacing), and the image sits at its afterParagraph
-    // boundary between paragraph 1 and paragraph 2.
+    // Structured rendering: each blank-line paragraph is still its own
+    // Text block (even spacing); the body words are unchanged.
     expect(find.text('First paragraph of the fixture body.'), findsOneWidget);
     expect(
       find.text('Second paragraph, which carries the picture.'),
@@ -93,18 +92,45 @@ void main() {
     // Caption renders under its image.
     expect(find.text('A literal source caption'), findsOneWidget);
 
-    // Order: image (afterParagraph -1) -> text run -> image -> text run.
-    final columnOrder = <Type>[];
-    for (final w in tester.widgetList(find.descendant(
-      of: find.byType(HandbookLessonCard),
-      matching: find.byWidgetPredicate((w) => w is Image || w is Text),
-    ))) {
-      columnOrder.add(w.runtimeType);
+    // Picture-first: BOTH images now render ABOVE the entire body. This
+    // card was previously interleaved (afterParagraph -1 image led, the
+    // afterParagraph 1 image sat between paragraphs 2 and 3); with the
+    // all-cards picture-first change, both sit above the first paragraph.
+    final order = tester
+        .widgetList(find.descendant(
+          of: find.byType(HandbookLessonCard),
+          matching: find.byWidgetPredicate((w) => w is Image || w is Text),
+        ))
+        .toList();
+    final imageIndexes = <int>[
+      for (var i = 0; i < order.length; i++)
+        if (order[i] is Image) i,
+    ];
+    int textIndex(String text) {
+      for (var i = 0; i < order.length; i++) {
+        final w = order[i];
+        if (w is Text && (w.data ?? w.textSpan?.toPlainText()) == text) {
+          return i;
+        }
+      }
+      return -1;
     }
-    final firstImage = columnOrder.indexOf(Image);
-    final lastImage = columnOrder.lastIndexOf(Image);
-    expect(firstImage, isNot(-1));
-    expect(lastImage, greaterThan(firstImage));
+
+    final para1 = textIndex('First paragraph of the fixture body.');
+    expect(imageIndexes, hasLength(2));
+    expect(para1, isNot(-1));
+    // Both images precede the first body paragraph.
+    expect(imageIndexes.last, lessThan(para1));
+    // Source list order is preserved: 01.webp renders above 02.webp.
+    final assetNames = <String>[
+      for (final w in order)
+        if (w is Image && w.image is AssetImage)
+          (w.image as AssetImage).assetName,
+    ];
+    expect(assetNames, <String>[
+      'assets/internal/barrio/training/fixture/01.webp',
+      'assets/internal/barrio/training/fixture/02.webp',
+    ]);
 
     expect(tester.takeException(), isNull);
   });

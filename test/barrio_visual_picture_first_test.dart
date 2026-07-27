@@ -1,12 +1,15 @@
-// Visual-first pass recs #1 + #3 (2026-07-24), render layer only.
+// Visual-first pass recs #1 + #3 (2026-07-24; picture-first extended to
+// all cards 2026-07-26), render layer only.
 //
 // Covers: TERM glossary cards render their picture ABOVE the definition
-// text (exactly once, credit caption and tap-to-zoom intact); non-TERM
-// cards keep the exact source interleaving; numeric fact tokens in body
-// prose render as bold accent spans while the concatenated visible
-// string stays byte-identical to the verbatim source; the per-manual
-// accent resolves from the unit id prefix; search highlights win over
-// the number pop; term links and number pops compose in one paragraph.
+// text (exactly once, credit caption and tap-to-zoom intact); every
+// non-TERM (READ) card with images is picture-first too, rendering all
+// of its images ABOVE the body in source list order; numeric fact tokens
+// in body prose render as bold accent spans while the concatenated
+// visible string stays byte-identical to the verbatim source; the
+// per-manual accent resolves from the unit id prefix; search highlights
+// win over the number pop; term links and number pops compose in one
+// paragraph.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -159,8 +162,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('non-TERM card keeps the source image interleaving',
-      (tester) async {
+  testWidgets(
+      'multi-image READ card is picture-first: all images above the body, '
+      'in list order', (tester) async {
     await _setMobileSurface(tester);
     await tester.pumpWidget(_host(const HandbookLessonCard(unit: _kReadUnit)));
     await tester.pumpAndSettle();
@@ -180,11 +184,36 @@ void main() {
     expect(para1, isNot(-1));
     expect(para2, isNot(-1));
     expect(para3, isNot(-1));
-    // afterParagraph -1 image leads, afterParagraph 1 image sits
-    // between paragraph 2 and paragraph 3: unchanged ordering.
-    expect(imageIndexes.first, lessThan(para1));
-    expect(para2, lessThan(imageIndexes.last));
-    expect(imageIndexes.last, lessThan(para3));
+    // Picture-first for every imaged card (extended from TERM-only on
+    // 2026-07-26): both images now render ABOVE the whole body. This
+    // card previously interleaved (afterParagraph -1 image led, the
+    // afterParagraph 1 image sat between paragraphs 2 and 3).
+    expect(imageIndexes.last, lessThan(para1));
+    expect(para1, lessThan(para2));
+    expect(para2, lessThan(para3));
+    // Source list order is preserved: 01.webp above 02.webp.
+    final assetNames = <String>[
+      for (final w in order)
+        if (w is Image && w.image is AssetImage)
+          (w.image as AssetImage).assetName,
+    ];
+    expect(assetNames, <String>[
+      'assets/internal/barrio/training/fixture/01.webp',
+      'assets/internal/barrio/training/fixture/02.webp',
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('no-image card renders its body with no image widgets',
+      (tester) async {
+    await _setMobileSurface(tester);
+    await tester
+        .pumpWidget(_host(const HandbookLessonCard(unit: _kNumericUnit)));
+    await tester.pumpAndSettle();
+
+    // A card with no images is unchanged: body renders, zero image widgets.
+    expect(find.byType(Image), findsNothing);
+    expect(find.text(_kNumericBody), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
