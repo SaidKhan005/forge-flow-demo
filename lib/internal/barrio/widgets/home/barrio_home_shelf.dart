@@ -8,17 +8,17 @@
 // Layout (single vertical scroll, no horizontal scrolling, no tabs):
 //   1. Caller-provided leading widgets (brand header, gated El Podio).
 //   2. Forge & Flow as the hub's center bubble (160px, centered, with
-//      the rotating arc + glow pulse + 'Dashboard' label).
+//      the 'Dashboard' label).
 //   3. Four fixed-order category sections, each rendering its
 //      destinations as round hub-style bubbles, 3 per row with the last
 //      partial row centered, built by filtering on
 //      `BarrioDestination.category`.
 //   4. 40px footer padding.
 //
-// Motion: a single one-time entrance (staggered fade + slide) plus the
-// bubbles' own looping glow/arc effects (operator decision overriding
-// the redesign plan's motion rule). `MediaQuery.disableAnimations`
-// skips the entrance and freezes the bubble loops.
+// Motion: a single one-time entrance (staggered fade + slide) only. The
+// bubbles themselves are now calm and static (2026-07-27 premium pass:
+// the neon glow halo, 6s pulse, and rotating arcs were removed).
+// `MediaQuery.disableAnimations` skips the entrance.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -86,8 +86,10 @@ const List<_ShelfSection> _kShelfSections = <_ShelfSection>[
 /// spec allows 150-170 for the scrolling composition).
 const double _kCenterBubbleDiameter = 160.0;
 
-/// Section bubble diameter and swipe-row height (glow halos need the
-/// extra vertical room so they never clip against the row bounds).
+/// Section bubble diameter and swipe-row height (the soft drop shadow
+/// needs a little vertical room so it never clips against the row
+/// bounds; the row height is unchanged from the earlier glow layout so
+/// the composition stays stable).
 const double _kBubbleDiameter = 100.0;
 const double _kSectionRowHeight = 150.0;
 
@@ -96,7 +98,7 @@ const double _kSectionRowHeight = 150.0;
 /// card has been read, and (flashcards, 2026-07-23) the prominent
 /// Flashcards pill on the three glossary manuals (made prominent
 /// 2026-07-26, so the zone carries a taller pill). Sits below the 150px
-/// bubble zone so the glow halos keep their full breathing room.
+/// bubble zone so the bubble's soft drop shadow keeps its room.
 const double _kBubbleMetaHeight = 78.0;
 
 /// Text-scale-aware meta-zone height (accessibility pass, rec #12):
@@ -568,8 +570,8 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
         child: _reveal(
           0,
           Padding(
-            // Extra top room so the rotating arcs + glow halo have space
-            // to breathe below the header.
+            // Comfortable top room so the center bubble and its soft
+            // drop shadow sit clear of the header.
             padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
             child: Center(
               child: BarrioHomeCenterBubble(
@@ -587,9 +589,9 @@ class _BarrioHomeShelfState extends State<BarrioHomeShelf>
 
   /// One section body: a single horizontal swipe row of bubbles
   /// (2026-07-11 operator decision: sections scroll left and right).
-  /// The bubble zone keeps its fixed 150px height so the glow halos
-  /// never clip; a quiet metadata zone (reading time + honest read
-  /// progress) sits below each bubble. Only the row scrolls
+  /// The bubble zone keeps its fixed 150px height so the bubble's soft
+  /// drop shadow never clips; a quiet metadata zone (reading time +
+  /// honest read progress) sits below each bubble. Only the row scrolls
   /// horizontally, never the page.
   Widget _sectionBubbles(List<BarrioDestination> dests, int slot) {
     // Accessibility (rec #12): the meta zone grows with the effective
@@ -1248,11 +1250,16 @@ class _BubbleMeta extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
+          // Operator request (2026-07-27): the reading-time line was too
+          // small and faint. Bumped a step (9.5 to 11.5) and darkened
+          // from muted to the clearly-readable slate secondary so it
+          // reads at a glance on the cream theme.
           BarrioReadingTime.label(minutes),
           maxLines: 1,
           style: GoogleFonts.ibmPlexSans(
-            fontSize: 9.5,
-            color: BarrioColors.textMuted.withValues(alpha: 0.85),
+            fontSize: 11.5,
+            fontWeight: FontWeight.w500,
+            color: BarrioColors.textSecondary,
           ),
         ),
         if (readCount >= 1 && totalCards > 0) ...[
@@ -1260,11 +1267,14 @@ class _BubbleMeta extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
+              // Same visibility bump (2026-07-27): larger and darkened to
+              // the primary navy so the honest progress reads clearly.
               '$readCount of $totalCards cards read',
               maxLines: 1,
               style: GoogleFonts.ibmPlexSans(
-                fontSize: 9.5,
-                color: BarrioColors.textMuted,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: BarrioColors.textPrimary,
               ),
             ),
           ),

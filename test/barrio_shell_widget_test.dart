@@ -93,10 +93,10 @@ void main() {
 
   // Widget tests
   //
-  // The round-bubble home screen runs looping ambient motion (falling
-  // leaves, scrim colour breathing, center-bubble arc + glow pulse) on
-  // top of the one-shot entrance animations. NEVER pumpAndSettle here;
-  // pump explicit durations only.
+  // The round-bubble home screen is calm now (the center bubble's glow
+  // pulse + arcs were removed 2026-07-27, along with the earlier falling
+  // leaves + colour-breathing scrim), so only the one-shot entrance
+  // animates. This suite still uses explicit pumps, never pumpAndSettle.
 
   group('Barrio home screen widget', () {
     testWidgets('builds and shows the Barrio Legado wordmark', (tester) async {

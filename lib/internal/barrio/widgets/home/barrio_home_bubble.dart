@@ -1,27 +1,30 @@
-// Barrio home revision (2026-07-11, operator decision): one-scroll
-// round-bubble layout with restored premium effects.
+// Barrio home bubbles: premium, restrained, brand-aligned (2026-07-27,
+// operator request: "I like the aesthetics, I just don't like the neon
+// lighting on all the bubbles: it makes it feel cheap and AI. I want
+// them to feel premium and elegant").
 //
-// The operator kept the Editorial Shelf's single-vertical-scroll
-// organization but replaced the rectangular hero + topic cards with the
-// ORIGINAL round glass bubbles from the parked orbit hub
-// (`../barrio_bubble_hub.dart`, which stays byte-identical on disk).
-// The recipes here mirror that hub verbatim:
+// This replaces the parked orbit hub's glowing recipe (a dual
+// blue/orange glow halo breathing on a 6s pulse, two rotating dual-color
+// arcs, and an orange-bordered blue-to-orange glass wash: the Forge &
+// Flow logo palette, which clashed with the Barrio brand on the light
+// theme) with a calm treatment tuned to the Barrio Legado app-icon
+// palette (warm cream page, deep navy text, teal accents):
 //
-//   * [BarrioHomeCenterBubble] mirrors `_buildCenterNode`: dual
-//     blue/orange glow halo breathing on a 6s reverse-repeat pulse, the
-//     rotating [_CenterArcPainter] arcs (elapsed-time repaint), the
-//     frosted glass disc (blur 14, orange border, blue-to-orange wash,
-//     top specular), and the logo icon + 'Dashboard' Playfair label.
-//   * [BarrioHomeOrbitBubble] mirrors `_buildOrbitNode`: accent glow
-//     halo, glass circle, radial accent gradient, icon + label INSIDE
-//     the circle, the coming-soon treatment (0.30 opacity + gold
-//     'Coming Soon' tag with the FittedBox scale-down fix), and the B18
-//     dimmed treatment (exactly 0.38 opacity, non-interactive).
+//   * [BarrioHomeCenterBubble] is a frosted near-white glass disc lifted
+//     by ONE soft, neutral navy drop shadow, ringed by a single thin
+//     teal hairline, carrying the crisp logo + 'Dashboard' Playfair
+//     label. No colored glow, no pulse, no rotating arcs.
+//   * [BarrioHomeOrbitBubble] is the same frosted disc, with each
+//     destination's accent expressed ONLY as a muted hairline ring plus
+//     a whisper-soft tint (never a saturated neon fill). It keeps the
+//     coming-soon treatment (0.30 opacity + gold 'Coming Soon' tag with
+//     the FittedBox scale-down fix) and the B18 dimmed treatment
+//     (exactly 0.38 opacity, non-interactive).
 //
-// This operator decision explicitly overrides the redesign plan's "no
-// looping/ambient animation" rule. `MediaQuery.disableAnimations`
-// freezes the looping glow pulse and arc rotation at their resting
-// frame.
+// There is no looping or ambient motion left on these bubbles: the
+// premium look is quiet and static. Press feedback stays a gentle scale
+// (no neon flare). The home screen's [TickerMode] gate remains upstream
+// but now wraps a still subtree, which is harmless.
 
 import 'dart:math';
 import 'dart:ui';
@@ -34,16 +37,39 @@ import '../../routes/barrio_destinations.dart';
 import '../barrio_destination_scaffold.dart';
 import 'barrio_home_destination_visuals.dart';
 
-/// Forge & Flow logo brand colors (mirror the hub's `_logoBlue` /
-/// `_logoOrange`).
-const Color _logoBlue = kBarrioHomeForgeAccent;
-const Color _logoOrange = Color(0xFFFF6B35);
+// ---------------------------------------------------------------------------
+// Shared premium surface tokens
+// ---------------------------------------------------------------------------
+
+/// Frosted disc base fill for the light theme: a clean, near-white glass
+/// so the navy label and accents stay crisp on the cream backdrop. Kept
+/// slightly translucent so the BackdropFilter frost still reads at the
+/// disc edges.
+const Color _kDiscFill = Color(0xE6FFFFFF);
+
+/// ONE soft, neutral drop shadow: the premium lift that replaced the old
+/// colored glow halos. Deep navy at low alpha so it reads as quiet
+/// elevation on the cream page, never as a colored glow. A single
+/// BoxShadow only: no double/triple stacked or colored shadows.
+List<BoxShadow> _neutralLift({
+  double blur = 24,
+  double dy = 8,
+  double alpha = 0.10,
+}) {
+  return [
+    BoxShadow(
+      color: BarrioColors.textPrimary.withValues(alpha: alpha),
+      blurRadius: blur,
+      offset: Offset(0, dy),
+    ),
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Center / primary bubble: frosted glass Dashboard
 // ---------------------------------------------------------------------------
 
-/// The Forge & Flow center bubble, lifted from the hub's primary node.
+/// The Forge & Flow center bubble.
 ///
 /// B18 dimming semantics match the hub: when [dimmed] is true the whole
 /// bubble renders at exactly 0.38 opacity and is fully non-interactive.
@@ -65,162 +91,77 @@ class BarrioHomeCenterBubble extends StatefulWidget {
   State<BarrioHomeCenterBubble> createState() => _BarrioHomeCenterBubbleState();
 }
 
-class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble>
-    with TickerProviderStateMixin {
-  // Stopwatch for arc rotation math: monotonically increasing, no wraps
-  // (hub-identical approach).
-  final _stopwatch = Stopwatch();
-
-  // Glow pulse: 6s reverse-repeat means velocity 0 at both ends.
-  late final AnimationController _pulseCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 6000),
-  );
-  late final Animation<double> _pulse = Tween<double>(begin: 0.0, end: 3.0)
-      .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
-
-  // Frame-rate ticker so the elapsed-time arc rotation repaints.
-  late final AnimationController _arcTicker = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 20),
-  );
-
+class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble> {
   bool _pressed = false;
-  bool _motionDecided = false;
-  bool _reduceMotion = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_motionDecided) return;
-    _motionDecided = true;
-    _reduceMotion = MediaQuery.of(context).disableAnimations;
-    if (!_reduceMotion) {
-      // Accessibility: with disableAnimations the loops never start, so
-      // the glow and arcs hold their resting frame.
-      _stopwatch.start();
-      _pulseCtrl.repeat(reverse: true);
-      _arcTicker.repeat();
-    }
-  }
-
-  @override
-  void dispose() {
-    _stopwatch.stop();
-    _pulseCtrl.dispose();
-    _arcTicker.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final diameter = widget.diameter;
-    return AnimatedBuilder(
-      animation: Listenable.merge([_pulseCtrl, _arcTicker]),
-      builder: (context, _) {
-        Widget bubble = _bubbleBody(diameter);
-        if (widget.dimmed) {
-          bubble = Opacity(opacity: 0.38, child: bubble);
-        }
-        // Press: scale to 0.92 with spring-back (hub-identical).
-        bubble = AnimatedScale(
-          scale: _pressed ? 0.92 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutBack,
-          child: bubble,
-        );
-        Widget target = RepaintBoundary(
-          child: SizedBox(width: diameter, height: diameter, child: bubble),
-        );
-        if (!widget.dimmed) {
-          target = GestureDetector(
-            onTapDown: (_) {
-              HapticFeedback.lightImpact();
-              setState(() => _pressed = true);
-            },
-            onTapUp: (_) {
-              // Primary bubble gets a more satisfying medium impact.
-              HapticFeedback.mediumImpact();
-              setState(() => _pressed = false);
-              widget.onTap();
-            },
-            onTapCancel: () => setState(() => _pressed = false),
-            child: target,
-          );
-        }
-        // Accessibility (rec #12): one merged node per bubble, button
-        // role while interactive ('Dashboard' merges in as the label).
-        return MergeSemantics(
-          child: Semantics(
-            button: !widget.dimmed,
-            enabled: !widget.dimmed,
-            child: target,
-          ),
-        );
-      },
+    Widget bubble = _bubbleBody(diameter);
+    if (widget.dimmed) {
+      bubble = Opacity(opacity: 0.38, child: bubble);
+    }
+    // Press: gentle scale to 0.92 with spring-back (no neon flare).
+    bubble = AnimatedScale(
+      scale: _pressed ? 0.92 : 1.0,
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOutBack,
+      child: bubble,
+    );
+    Widget target = RepaintBoundary(
+      child: SizedBox(width: diameter, height: diameter, child: bubble),
+    );
+    if (!widget.dimmed) {
+      target = GestureDetector(
+        onTapDown: (_) {
+          HapticFeedback.lightImpact();
+          setState(() => _pressed = true);
+        },
+        onTapUp: (_) {
+          // Primary bubble gets a more satisfying medium impact.
+          HapticFeedback.mediumImpact();
+          setState(() => _pressed = false);
+          widget.onTap();
+        },
+        onTapCancel: () => setState(() => _pressed = false),
+        child: target,
+      );
+    }
+    // Accessibility (rec #12): one merged node per bubble, button
+    // role while interactive ('Dashboard' merges in as the label).
+    return MergeSemantics(
+      child: Semantics(
+        button: !widget.dimmed,
+        enabled: !widget.dimmed,
+        child: target,
+      ),
     );
   }
 
   Widget _bubbleBody(double diameter) {
-    final time =
-        _reduceMotion ? 0.0 : _stopwatch.elapsedMilliseconds.toDouble();
     return Stack(
       clipBehavior: Clip.none,
       alignment: Alignment.center,
       children: [
-        // 1: glow halo, outside the ClipRRect so it spreads freely.
-        _glowHalo(diameter),
-        // 2: rotating arcs, outside the ClipRRect so they aren't blurred
-        //    away. One arc orange, one arc blue: the logo palette.
-        SizedBox(
-          width: diameter + 8,
-          height: diameter + 8,
-          child: CustomPaint(
-            painter: _CenterArcPainter(
-              radius: diameter / 2 + 4,
-              time: time,
-              color1: _logoOrange,
-              color2: _logoBlue,
-              isPressed: _pressed,
-            ),
-          ),
-        ),
-        // 3: glass disc.
+        // 1: the neutral drop shadow, outside the ClipRRect so it lifts
+        //    the disc freely against the cream page.
+        _lift(diameter),
+        // 2: the frosted glass disc + thin teal hairline ring.
         _glassDisc(diameter),
       ],
     );
   }
 
-  /// Dual-color halo: blue shadow left, orange shadow right, breathing
-  /// with the center pulse and flaring on press (hub-identical values).
-  Widget _glowHalo(double diameter) {
-    final glowBlur = (28.0 + _pulse.value * 4) * (_pressed ? 1.5 : 1.0);
-    final glowSpread = _pulse.value * 2;
-    final glowAlpha = _pressed ? 0.80 : 0.55;
+  /// The premium lift: a single soft, neutral navy shadow (see
+  /// [_neutralLift]). Drawn on an otherwise-transparent circle so only
+  /// the shadow shows around the disc.
+  Widget _lift(double diameter) {
     return Container(
       width: diameter,
       height: diameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: _logoBlue.withValues(alpha: glowAlpha),
-            blurRadius: glowBlur,
-            spreadRadius: glowSpread,
-            offset: const Offset(-4, 0),
-          ),
-          BoxShadow(
-            color: _logoOrange.withValues(alpha: glowAlpha * 0.85),
-            blurRadius: glowBlur,
-            spreadRadius: glowSpread,
-            offset: const Offset(4, 0),
-          ),
-          BoxShadow(
-            color: _logoBlue.withValues(alpha: 0.18),
-            blurRadius: glowBlur * 2,
-            spreadRadius: glowSpread + 8,
-          ),
-        ],
+        boxShadow: _neutralLift(),
       ),
     );
   }
@@ -229,53 +170,34 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble>
     return ClipRRect(
       borderRadius: BorderRadius.circular(diameter / 2),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           width: diameter,
           height: diameter,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
+            color: _kDiscFill,
             border: Border.fromBorderSide(
               BorderSide(
-                // Orange at 67%: visible against the blue fill.
-                color: Color(0xAAFF6B35),
+                // A single thin teal hairline: the Barrio brand accent,
+                // restrained (was a 67%-alpha orange F&F-logo border).
+                color: BarrioColors.tealDeep.withValues(alpha: 0.35),
                 width: 1.0,
               ),
             ),
           ),
           child: Stack(
             children: [
-              // Frosted white glass base (light theme) so the navy label
-              // and the blue/orange wash read on the cream backdrop.
-              Container(
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0xCCFFFFFF),
-                ),
-              ),
-              // Blue to orange diagonal fill: light wash, not opaque.
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: const Alignment(-0.8, -0.8),
-                    end: const Alignment(0.8, 0.8),
-                    colors: [
-                      _logoBlue.withValues(alpha: 0.28),
-                      _logoOrange.withValues(alpha: 0.22),
-                    ],
-                  ),
-                ),
-              ),
-              // Top specular: glass catching overhead light.
+              // Top specular: glass catching overhead light. Neutral
+              // white at low alpha, a premium sheen, not a colored glow.
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
-                    center: const Alignment(0.0, -0.65),
-                    radius: 0.55,
+                    center: const Alignment(0.0, -0.6),
+                    radius: 0.9,
                     colors: [
-                      Colors.white.withValues(alpha: 0.22),
+                      Colors.white.withValues(alpha: 0.45),
                       Colors.transparent,
                     ],
                   ),
@@ -331,15 +253,15 @@ class _BarrioHomeCenterBubbleState extends State<BarrioHomeCenterBubble>
 }
 
 // ---------------------------------------------------------------------------
-// Orbit / secondary bubble: 3D glassmorphism with per-dest accent color
+// Orbit / secondary bubble: frosted glass with a muted per-dest accent
 // ---------------------------------------------------------------------------
 
-/// A secondary destination bubble, lifted from the hub's orbit node.
+/// A secondary destination bubble.
 ///
 /// Coming-soon destinations render at 0.30 opacity with the gold
 /// 'Coming Soon' tag and KEEP their tap-through; B18 [dimmed]
 /// destinations render at exactly 0.38 opacity and are fully
-/// non-interactive (hub-identical semantics).
+/// non-interactive.
 class BarrioHomeOrbitBubble extends StatefulWidget {
   final BarrioDestination destination;
   final double diameter;
@@ -370,7 +292,7 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
     } else if (widget.dimmed) {
       bubble = Opacity(opacity: 0.38, child: bubble);
     }
-    // Press: scale to 0.92 with spring-back (hub-identical).
+    // Press: gentle scale to 0.92 with spring-back (no neon flare).
     bubble = AnimatedScale(
       scale: _pressed ? 0.92 : 1.0,
       duration: const Duration(milliseconds: 150),
@@ -413,36 +335,22 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
       clipBehavior: Clip.none,
       alignment: Alignment.center,
       children: [
-        _glowHalo(accent),
+        _lift(),
         _glassDisc(context, accent),
       ],
     );
   }
 
-  /// Accent halo, outside the ClipRRect so it isn't clipped away; glow
-  /// intensifies on press (hub-identical values).
-  Widget _glowHalo(Color accent) {
-    final innerGlowAlpha = _pressed ? 0.72 : 0.48;
-    final glowBlurMult = _pressed ? 1.5 : 1.0;
+  /// The premium lift: a single soft, neutral navy shadow, sized a touch
+  /// tighter for the smaller orbit discs. Dimmed bubbles get no shadow:
+  /// they recede rather than lift.
+  Widget _lift() {
     return Container(
       width: widget.diameter,
       height: widget.diameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        boxShadow: widget.dimmed
-            ? null
-            : [
-                BoxShadow(
-                  color: accent.withValues(alpha: innerGlowAlpha),
-                  blurRadius: 22 * glowBlurMult,
-                  spreadRadius: -2,
-                ),
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.18),
-                  blurRadius: 44 * glowBlurMult,
-                  spreadRadius: 4,
-                ),
-              ],
+        boxShadow: widget.dimmed ? null : _neutralLift(blur: 18, dy: 6),
       ),
     );
   }
@@ -459,26 +367,23 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
           height: diameter,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
+            // Frosted glass base (light theme): near-white for active
+            // bubbles, a faint navy grey for dimmed ones.
+            color: isDimmed ? const Color(0x0F16243B) : _kDiscFill,
             border: Border.all(
+              // A single muted accent hairline (was a 55%-alpha accent
+              // ring): the destination's identity, restrained.
               color: isDimmed
                   ? const Color(0x1416243B)
-                  : accent.withValues(alpha: 0.55),
+                  : accent.withValues(alpha: 0.38),
               width: 1.0,
             ),
           ),
           child: Stack(
             children: [
-              // Frosted glass base (light theme): near-white for active
-              // bubbles, a faint navy grey for dimmed ones.
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isDimmed
-                      ? const Color(0x0F16243B)
-                      : const Color(0xCCFFFFFF),
-                ),
-              ),
-              // Accent fill: weighted to bottom, low alpha = tint.
+              // Whisper-soft accent tint, weighted to the bottom: a hint
+              // of the destination's identity, never a saturated fill
+              // (was a 42%-alpha neon accent wash).
               if (!isDimmed)
                 Container(
                   decoration: BoxDecoration(
@@ -487,8 +392,8 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
                       center: const Alignment(0.15, 0.65),
                       radius: 1.0,
                       colors: [
-                        accent.withValues(alpha: 0.42),
-                        accent.withValues(alpha: 0.10),
+                        accent.withValues(alpha: 0.14),
+                        accent.withValues(alpha: 0.04),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.55, 1.0],
@@ -496,14 +401,15 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
                   ),
                 ),
               // Top specular: overhead light on the glass surface.
+              // Neutral white sheen, not a colored glow.
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
-                    center: const Alignment(0.0, -0.65),
-                    radius: 0.52,
+                    center: const Alignment(0.0, -0.6),
+                    radius: 0.85,
                     colors: [
-                      Colors.white.withValues(alpha: isDimmed ? 0.05 : 0.16),
+                      Colors.white.withValues(alpha: isDimmed ? 0.06 : 0.4),
                       Colors.transparent,
                     ],
                   ),
@@ -620,74 +526,4 @@ class _BarrioHomeOrbitBubbleState extends State<BarrioHomeOrbitBubble> {
       ),
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// Painter
-// ---------------------------------------------------------------------------
-
-/// Two symmetric 120 degree arcs rotating slowly around the center
-/// bubble. color1 (orange) and color2 (blue) alternate, mirroring the
-/// F&F logo palette. Drawn outside the glass ClipRRect so they sit at
-/// the correct depth (verbatim from the hub's `_CenterArcPainter`).
-class _CenterArcPainter extends CustomPainter {
-  final double radius; // bubble radius + 4px margin
-  final double time;
-  final Color color1; // first arc color  (orange)
-  final Color color2; // second arc color (blue)
-  final bool isPressed;
-
-  _CenterArcPainter({
-    required this.radius,
-    required this.time,
-    required this.color1,
-    required this.color2,
-    required this.isPressed,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final rotation = (time / 20000.0) * 2 * pi; // one revolution / 20 s
-    final rect = Rect.fromCircle(center: center, radius: radius);
-    const sweep = pi * 2 / 3; // 120 degrees
-
-    final crispAlpha = isPressed ? 0.90 : 0.65;
-
-    // Arc 1: color1 (orange). Arc 2: color2 (blue). 180 degrees apart.
-    for (var idx = 0; idx < 2; idx++) {
-      final color = idx == 0 ? color1 : color2;
-      final start = rotation + idx * pi - sweep / 2;
-
-      // Glow pass
-      canvas.drawArc(
-        rect,
-        start,
-        sweep,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 4.0
-          ..strokeCap = StrokeCap.round
-          ..color = color.withValues(alpha: 0.18),
-      );
-
-      // Crisp pass
-      canvas.drawArc(
-        rect,
-        start,
-        sweep,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
-          ..strokeCap = StrokeCap.round
-          ..color = color.withValues(alpha: crispAlpha),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_CenterArcPainter old) =>
-      old.time != time || old.isPressed != isPressed;
 }

@@ -18,10 +18,12 @@
 //       treatment and keeps its tap-through to the placeholder screen;
 //   (g) supervisor_content (showOnHomeHub: false) never renders.
 //
-// The center bubble's own arc + glow pulse loop forever (the falling
-// leaves and colour-breathing scrim were removed 2026-07-26 along with
-// the busy photo backdrop, in favour of a calm static gradient): NEVER
-// pumpAndSettle in this suite; pump explicit durations only.
+// The bubbles are now calm and static (2026-07-27 premium pass removed
+// the center bubble's glow pulse + rotating arcs, along with the earlier
+// removal of the falling leaves + colour-breathing scrim + busy photo
+// backdrop): home runs no looping motion at rest, only the one-shot
+// entrance. This suite still pumps explicit durations (never
+// pumpAndSettle) so the intent survives any future looping motion.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -272,14 +274,22 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('(h) all home motion pauses while another route covers home '
-      'and resumes on pop', (tester) async {
+  testWidgets('(h) the home TickerMode gate still toggles with route '
+      'coverage, and home is calm (no looping motion) at rest',
+      (tester) async {
+    // 2026-07-27 premium pass: the center bubble's glow pulse + rotating
+    // arcs were removed, so home no longer runs any looping motion at
+    // rest. The home screen still wraps its shelf subtree in a
+    // TickerMode gated on route currency (a structural battery guard);
+    // this test pins that the gate keeps toggling with route coverage
+    // and that home genuinely holds still (no running animations) both
+    // as the current route and once covered.
     await pumpHome(tester);
 
-    // Home's motion gate: the TickerMode wrapping the leaves + shelf
-    // subtree (first TickerMode under BarrioHomeScreen). While the home
-    // route is covered by an opaque pushed route it goes offstage, so
-    // the finder must not skip offstage widgets.
+    // Home's motion gate: the TickerMode wrapping the shelf subtree
+    // (first TickerMode under BarrioHomeScreen). While the home route is
+    // covered by an opaque pushed route it goes offstage, so the finder
+    // must not skip offstage widgets.
     TickerMode homeTickerMode() => tester.widget<TickerMode>(
           find
               .descendant(
@@ -290,9 +300,10 @@ void main() {
         );
 
     expect(homeTickerMode().enabled, isTrue,
-        reason: 'home motion runs while home is the current route');
-    expect(tester.hasRunningAnimations, isTrue,
-        reason: 'the center bubble arc + glow pulse run on the current home');
+        reason: 'the gate is enabled while home is the current route');
+    expect(tester.hasRunningAnimations, isFalse,
+        reason: 'the calm redesign runs no looping motion on the current '
+            'home once the one-shot entrance has settled');
 
     // Push a screen on top, like opening a manual from the shelf.
     final navigator = tester.state<NavigatorState>(find.byType(Navigator));
@@ -305,19 +316,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     expect(homeTickerMode().enabled, isFalse,
-        reason: 'the covered home must stop all TickerMode-gated motion');
+        reason: 'the covered home disables its TickerMode-gated subtree');
     expect(tester.hasRunningAnimations, isFalse,
-        reason: 'the covered home stops the center bubble arc + glow pulse '
-            '(TickerMode disabled); nothing else animates on home now');
+        reason: 'nothing animates on the covered home');
 
     navigator.pop();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
 
     expect(homeTickerMode().enabled, isTrue,
-        reason: 'home motion resumes when home becomes current again');
-    expect(tester.hasRunningAnimations, isTrue,
-        reason: 'the center bubble arc + glow pulse restart after pop');
+        reason: 'the gate re-enables when home becomes current again');
+    expect(tester.hasRunningAnimations, isFalse,
+        reason: 'home stays calm after pop: no looping motion to restart');
     expect(tester.takeException(), isNull);
   });
 
