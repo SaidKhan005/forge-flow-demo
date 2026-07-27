@@ -18,9 +18,10 @@
 //       treatment and keeps its tap-through to the placeholder screen;
 //   (g) supervisor_content (showOnHomeHub: false) never renders.
 //
-// The restored premium effects (falling leaves, scrim breathing, center
-// arc + glow pulse) loop forever: NEVER pumpAndSettle in this suite;
-// pump explicit durations only.
+// The center bubble's own arc + glow pulse loop forever (the falling
+// leaves and colour-breathing scrim were removed 2026-07-26 along with
+// the busy photo backdrop, in favour of a calm static gradient): NEVER
+// pumpAndSettle in this suite; pump explicit durations only.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,6 +30,7 @@ import 'package:forge_and_flow/internal/barrio/routes/barrio_preview_role.dart';
 import 'package:forge_and_flow/internal/barrio/screens/barrio_home_screen.dart';
 import 'package:forge_and_flow/internal/barrio/screens/preston_lee_model_coming_soon_screen.dart';
 import 'package:forge_and_flow/internal/barrio/screens/training_doc_screen.dart';
+import 'package:forge_and_flow/internal/barrio/widgets/barrio_ambient_leaves.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/home/barrio_home_bubble.dart';
 import 'package:forge_and_flow/internal/barrio/widgets/home/barrio_home_shelf.dart';
 
@@ -290,7 +292,7 @@ void main() {
     expect(homeTickerMode().enabled, isTrue,
         reason: 'home motion runs while home is the current route');
     expect(tester.hasRunningAnimations, isTrue,
-        reason: 'the looping ambient effects run on the current home');
+        reason: 'the center bubble arc + glow pulse run on the current home');
 
     // Push a screen on top, like opening a manual from the shelf.
     final navigator = tester.state<NavigatorState>(find.byType(Navigator));
@@ -305,8 +307,8 @@ void main() {
     expect(homeTickerMode().enabled, isFalse,
         reason: 'the covered home must stop all TickerMode-gated motion');
     expect(tester.hasRunningAnimations, isFalse,
-        reason: 'nothing keeps animating while home is covered: the scrim '
-            'controller (vsync above TickerMode) must be stopped too');
+        reason: 'the covered home stops the center bubble arc + glow pulse '
+            '(TickerMode disabled); nothing else animates on home now');
 
     navigator.pop();
     await tester.pump();
@@ -315,7 +317,56 @@ void main() {
     expect(homeTickerMode().enabled, isTrue,
         reason: 'home motion resumes when home becomes current again');
     expect(tester.hasRunningAnimations, isTrue,
-        reason: 'the scrim colour loop restarts after pop');
+        reason: 'the center bubble arc + glow pulse restart after pop');
     expect(tester.takeException(), isNull);
+  });
+
+  group('(i) calm static backdrop (2026-07-26)', () {
+    testWidgets('home no longer renders the falling-leaves overlay',
+        (tester) async {
+      await pumpHome(tester);
+      expect(find.byType(BarrioAmbientLeaves), findsNothing,
+          reason: 'the ambient leaves were dropped for the calm backdrop');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('home no longer renders the full-bleed home_bg photo layer',
+        (tester) async {
+      await pumpHome(tester);
+      // Walk every Image on the fresh home: none may be the old
+      // home_bg.webp full-bleed backdrop asset.
+      for (final image in tester.widgetList<Image>(find.byType(Image))) {
+        final provider = image.image;
+        if (provider is AssetImage) {
+          expect(provider.assetName, isNot(contains('home_bg')),
+              reason: 'the photo backdrop was removed from home');
+        }
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('home renders the calm two-layer gradient backdrop',
+        (tester) async {
+      await pumpHome(tester);
+      // The base backdrop layer is a LinearGradient carrying the
+      // darkest-at-top stop colour; its presence proves the new
+      // static backdrop replaced the animated scrim stack.
+      var foundBaseGradient = false;
+      for (final box in tester.widgetList<DecoratedBox>(
+          find.byType(DecoratedBox))) {
+        final decoration = box.decoration;
+        if (decoration is BoxDecoration &&
+            decoration.gradient is LinearGradient) {
+          final gradient = decoration.gradient as LinearGradient;
+          if (gradient.colors.contains(const Color(0xFF060B16))) {
+            foundBaseGradient = true;
+            break;
+          }
+        }
+      }
+      expect(foundBaseGradient, isTrue,
+          reason: 'the calm base gradient backdrop must be present');
+      expect(tester.takeException(), isNull);
+    });
   });
 }

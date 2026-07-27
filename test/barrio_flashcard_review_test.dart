@@ -6,10 +6,11 @@
 // later in the deck, the end state reports honest counts, reshuffle
 // restarts, exit pops.
 //
-// Home shelf entry: the quiet REVIEW pill renders only on the three
-// glossary manuals, the combined REVIEW BOTH pill only when both food
-// glossaries pass the same B18 visibility resolution as the bubbles,
-// and a resolver-hidden manual gets no review entry at all.
+// Home shelf entry: the prominent Flashcards pill renders only on the
+// three glossary manuals (2026-07-26: relabeled from REVIEW and made
+// prominent; the combined REVIEW BOTH header pill was removed by
+// operator request), and a resolver-hidden manual gets no flashcard
+// entry at all.
 //
 // The shelf runs looping bubble animations: NEVER pumpAndSettle in
 // the shelf tests; pump explicit durations only. Every test asserts
@@ -322,18 +323,21 @@ void main() {
       }
     }
 
-    testWidgets('the three glossary manuals and the Food & Drink header '
-        'carry review pills; other manuals do not', (tester) async {
+    testWidgets('the three glossary manuals carry a prominent Flashcards '
+        'pill; narrative manuals do not; the combined header pill is gone',
+        (tester) async {
       await pumpShelf(tester);
 
       await scrollTo(tester, find.text('Food & Drink'));
       expect(find.byKey(const Key('barrio_review_pill_combined')),
-          findsOneWidget,
-          reason: 'the combined deck rides the Food & Drink header');
+          findsNothing,
+          reason: 'the combined REVIEW BOTH header pill was removed');
+      expect(find.text('REVIEW BOTH'), findsNothing,
+          reason: 'the REVIEW BOTH wording is gone');
       expect(
           find.byKey(const Key('barrio_review_pill_training_tequila')),
           findsNothing,
-          reason: 'narrative manuals get no review entry');
+          reason: 'narrative manuals get no flashcard entry');
 
       await dragRowUntil(
         tester,
@@ -343,6 +347,16 @@ void main() {
       expect(
           find.byKey(const Key('barrio_review_pill_training_latin_dishes')),
           findsOneWidget);
+      // The visible label is the clear 'Flashcards' wording (relabeled
+      // from the old 'REVIEW' 2026-07-26).
+      expect(
+          find.descendant(
+            of: find.byKey(
+                const Key('barrio_review_pill_training_latin_dishes')),
+            matching: find.text('Flashcards'),
+          ),
+          findsOneWidget,
+          reason: 'the pill reads Flashcards, not REVIEW');
 
       await dragRowUntil(
         tester,
@@ -366,17 +380,12 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a resolver-hidden manual gets no review entry and hides '
-        'the combined deck; the visible half keeps its own', (tester) async {
+    testWidgets('a resolver-hidden manual gets no flashcard entry; the '
+        'visible half keeps its own', (tester) async {
       await pumpShelf(
         tester,
         resolver: const _DenyIdsResolver({'training_latin_dishes'}),
       );
-
-      await scrollTo(tester, find.text('Food & Drink'));
-      expect(find.byKey(const Key('barrio_review_pill_combined')),
-          findsNothing,
-          reason: 'the combined deck needs BOTH manuals visible');
 
       await dragRowUntil(
           tester, 'Food & Drink', find.text('Latin Dishes'));
@@ -385,7 +394,7 @@ void main() {
       expect(
           find.byKey(const Key('barrio_review_pill_training_latin_dishes')),
           findsNothing,
-          reason: 'a hidden manual gets no review entry');
+          reason: 'a hidden manual gets no flashcard entry');
 
       await dragRowUntil(
         tester,
@@ -401,7 +410,8 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('tapping a manual REVIEW pill pushes its deck', (tester) async {
+    testWidgets('tapping a manual Flashcards pill pushes its deck',
+        (tester) async {
       await pumpShelf(tester);
 
       const pillKey =
@@ -419,25 +429,6 @@ void main() {
       expect(tester.takeException(), isNull);
 
       // Dispose the covered shelf's looping animations cleanly.
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('tapping REVIEW BOTH pushes the combined interleaved deck',
-        (tester) async {
-      await pumpShelf(tester);
-
-      await scrollTo(tester, find.text('Food & Drink'));
-      await tester.tap(
-          find.byKey(const Key('barrio_review_pill_combined')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-
-      expect(find.byType(BarrioFlashcardReviewScreen), findsOneWidget);
-      expect(find.text('Dishes + Ingredients'), findsOneWidget);
-      expect(find.text('Card 1 of 113'), findsOneWidget,
-          reason: '59 dishes + 54 ingredients, honestly counted');
-      expect(tester.takeException(), isNull);
-
       await tester.pumpWidget(const SizedBox());
     });
   });
