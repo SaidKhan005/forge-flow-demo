@@ -28,8 +28,39 @@ final AdminBusinessTimingProfilesGateway _defaultTimingProfilesDemoGateway =
 /// production scope is mounted. Seeded with two fixture operators
 /// so the click path has something to show on first paint without
 /// asking the F&F admin to manually run onboarding.
+///
+/// Store-sync (location-ops-on-added fix): the demo operator gateway
+/// and the demo hierarchy gateway keep SEPARATE in-memory location
+/// stores, so a location added here used to be invisible to the
+/// hierarchy gateway and every hierarchy-tree action (delete / move /
+/// suspend / reactivate) 404'd on it. The `onLocationAdded` /
+/// `onLocationRemoved` hooks below mirror each add/remove into
+/// [_defaultRolesHierarchySessionsAdminDemoGateway] (downcast to the
+/// in-memory impl, which is exactly what this default wires) so the two
+/// stores stay in lockstep. Production (HTTP gateways) wires neither
+/// hook, so that path is byte-unchanged.
 final OperatorLocationAdminGateway _defaultDemoGateway =
     InMemoryOperatorLocationAdminGateway(
+      onLocationAdded: (location) {
+        final hierarchy = _defaultRolesHierarchySessionsAdminDemoGateway;
+        if (hierarchy is! InMemoryRolesHierarchySessionsAdminGateway) return;
+        final orgUnitId = location.parentOrgUnitId?.trim();
+        if (orgUnitId == null || orgUnitId.isEmpty) return;
+        hierarchy.registerDemoLocation(
+          operatorId: location.operatorId,
+          locationId: location.locationId,
+          name: location.name,
+          orgUnitId: orgUnitId,
+        );
+      },
+      onLocationRemoved: (operatorId, locationId) {
+        final hierarchy = _defaultRolesHierarchySessionsAdminDemoGateway;
+        if (hierarchy is! InMemoryRolesHierarchySessionsAdminGateway) return;
+        hierarchy.removeDemoLocation(
+          operatorId: operatorId,
+          locationId: locationId,
+        );
+      },
       seed: <OperatorAdminBundle>[
         OperatorAdminBundle(
           operator: OperatorAdminRecord(
