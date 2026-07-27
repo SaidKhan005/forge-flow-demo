@@ -546,6 +546,13 @@ const BarrioTrainingDoc kTrainingLatinIngredients = BarrioTrainingDoc(
               'earthy flavor and has a texture that binds instantly, thanks '
               'to its unique preparation process involving soaking corn in '
               'calcium hydroxide before grinding it into a fine powder.',
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c2_u5.webp',
+              caption: 'Photo: Artemisa Martinez, CC0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_ingredients_c2_u6',

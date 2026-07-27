@@ -313,5 +313,26 @@
       "assetPath": "assets/internal/barrio/training/food_safety_manual_diagrams/training_food_safety_c9_u0.webp",
       "caption": "Diagram: Temperature Danger Zone"
     }
+  ],
+  "training_latin_dishes_c0_u11": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c0_u11.webp",
+      "caption": "Photo: Waterloo1883, CC BY-SA 4.0, via Wikimedia Commons"
+    }
+  ],
+  "training_latin_dishes_c1_u11": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u11.webp",
+      "caption": "Photo: Horacio Cambeiro, CC BY-SA 3.0, via Wikimedia Commons"
+    }
+  ],
+  "training_latin_ingredients_c2_u5": [
+    {
+      "afterParagraph": -1,
+      "assetPath": "assets/internal/barrio/training/latin_american_ingredients_diagrams/training_latin_ingredients_c2_u5.webp",
+      "caption": "Photo: Artemisa Martinez, CC0, via Wikimedia Commons"
+    }
   ]
 }

@@ -250,6 +250,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'cucumber.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c0_u11.webp',
+              caption: 'Photo: Waterloo1883, CC BY-SA 4.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c0_u12',
@@ -504,6 +511,13 @@ const BarrioTrainingDoc kTrainingLatinDishes = BarrioTrainingDoc(
               'hard-boiled eggs.',
           runIndex: 1,
           runLength: 2,
+          images: [
+            HandbookUnitImage(
+              assetPath: 'assets/internal/barrio/training/latin_american_dishes_diagrams/training_latin_dishes_c1_u11.webp',
+              caption: 'Photo: Horacio Cambeiro, CC BY-SA 3.0, via Wikimedia Commons',
+              afterParagraph: -1,
+            ),
+          ],
         ),
         HandbookUnit(
           id: 'training_latin_dishes_c1_u12',
