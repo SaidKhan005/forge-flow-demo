@@ -82,6 +82,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'qualities of the coffee fruit are preserved, resulting in a '
               'cup that emphasizes the bean\'s unique origin and terroir '
               'rather than the influence of the roasting process itself.',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training/08.webp',
@@ -116,6 +118,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'come with a caveat: the high oil content can lead to potential '
               'buildup in brewing equipment, necessitating diligent '
               'maintenance to ensure optimal performance.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -259,6 +263,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'transportation methods like mules and jeeps to transport the '
               'harvested beans to processing centers, underscoring the '
               'labor-intensive nature of this agricultural practice.',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training/12.webp',
@@ -286,6 +292,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'microclimates, strict adherence to growing high-grade Arabica, '
               'and skilled manual labor allows Colombian coffee to continue '
               'to stand out in the global market.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -436,6 +444,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               '- DRIP TRAY AND RACK: Periodically, you should also remove the '
               'drip tray and rack, rinsing them before wiping clean with a '
               'soft cloth.',
+          runIndex: 1,
+          runLength: 4,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training/16.webp',
@@ -459,6 +469,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'initiate the water flow; after about five seconds, halt the '
               'flow and rinse the blind disk thoroughly. Repeat this process '
               'several times until no coffee grounds are visible.',
+          runIndex: 2,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'training_coffee_c9_u2',
@@ -479,6 +491,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'important to repeat this entire procedure for each group head, '
               'ensuring optimal maintenance every second day to uphold the '
               'quality of your espresso.',
+          runIndex: 3,
+          runLength: 4,
         ),
         HandbookUnit(
           id: 'training_coffee_c9_u3',
@@ -493,6 +507,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'soft cloth or brush can help you clear away any loose grinds, '
               'ensuring your equipment stays in top shape for optimal '
               'performance.',
+          runIndex: 4,
+          runLength: 4,
         ),
       ],
     ),
@@ -530,6 +546,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'Begin by placing an espresso cup beneath the espresso '
               'machine\'s head to extract a double shot. Once the espresso is '
               'ready, gently add a spoonful of hot milk',
+          runIndex: 1,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training/17.webp',
@@ -572,6 +590,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'a double shot of espresso into your cappuccino cup. Next, '
               'gently pour in the thicker, lightly textured milk, allowing it '
               'to seamlessly blend with the rich espresso beneath.',
+          runIndex: 2,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training/21.webp',
@@ -598,6 +618,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'Use the spoon to carefully incorporate the remaining thick '
               'milk into the cup, creating a delightful dome of foam that '
               'rises above the rim.',
+          runIndex: 3,
+          runLength: 3,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training/23.webp',
@@ -634,6 +656,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'impressions of cacao, crème brûlée, and cherry, reflecting not '
               'only the rich flavors of the beans but also the commitment to '
               'sustainability and social impact at its core.',
+          runIndex: 1,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training/01.webp',
@@ -663,6 +687,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'flavors and delightful layers of sweetness, it\'s the ideal cup '
               'to savor as you unwind, all without the worry of keeping you '
               'awake.',
+          runIndex: 2,
+          runLength: 2,
           images: [
             HandbookUnitImage(
               assetPath: 'assets/internal/barrio/training/coffee_training/02.webp',
@@ -746,6 +772,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'espresso machine\'s group head. Once in place, hot water is '
               'forcefully channeled through the filter at high pressure, '
               'expertly extracting a rich and flavorful shot of espresso.',
+          runIndex: 1,
+          runLength: 7,
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u1',
@@ -781,6 +809,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'permeates the coffee grounds, gravity facilitates the '
               'extraction, allowing the infused coffee to drip down into a '
               'pot or mug below.',
+          runIndex: 2,
+          runLength: 7,
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u2',
@@ -809,6 +839,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'mesh filter. You brew coffee by steeping coarse grounds '
               'directly in hot water, then pressing the plunger down to '
               'separate the grounds from the finished, full-bodied coffee.',
+          runIndex: 3,
+          runLength: 7,
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u3',
@@ -839,6 +871,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               '\n'
               '- HOPPER: The container on top of an espresso grinder that '
               'holds whole coffee beans before they are ground.',
+          runIndex: 4,
+          runLength: 7,
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u4',
@@ -866,6 +900,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               'poured over a bed of coffee grounds in a filter. Gravity pulls '
               'the water through the coffee and filter into a mug or carafe. '
               'This process highlights delicate flavour notes.',
+          runIndex: 5,
+          runLength: 7,
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u5',
@@ -898,6 +934,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               '- STRETCHING: The barista technique of introducing air into '
               'cold milk using an espresso machine\'s steam wand to create '
               'microfoam.',
+          runIndex: 6,
+          runLength: 7,
         ),
         HandbookUnit(
           id: 'training_coffee_c13_u6',
@@ -916,6 +954,8 @@ const BarrioTrainingDoc kTrainingCoffee = BarrioTrainingDoc(
               '\n'
               '- WHOLE BEAN: Roasted coffee beans left in their natural, full '
               'form before being ground.',
+          runIndex: 7,
+          runLength: 7,
         ),
       ],
     ),

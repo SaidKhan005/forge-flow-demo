@@ -143,6 +143,15 @@ class _HandbookChapterRailState extends State<HandbookChapterRail> {
     );
   }
 
+  /// True when the chapter at [index] opens a new named part (its
+  /// partIndex differs from the previous chapter's). False for manuals
+  /// without part grouping, so the rail renders exactly as before.
+  bool _startsNewPart(int index) {
+    final part = widget.chapters[index].partIndex;
+    if (part == null) return false;
+    return part != widget.chapters[index - 1].partIndex;
+  }
+
   @override
   Widget build(BuildContext context) {
     final minutes = widget.chapterMinutes;
@@ -159,7 +168,18 @@ class _HandbookChapterRailState extends State<HandbookChapterRail> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (var index = 0; index < widget.chapters.length; index++) ...[
-              if (index > 0) const SizedBox(width: 10),
+              // Part separator (structure pass): where a new named part
+              // begins, a slim accent rule replaces the plain gap so the
+              // reader sees the part boundary in the rail. Manuals without
+              // part grouping never hit this branch (plain gaps as before).
+              if (index > 0)
+                if (_startsNewPart(index))
+                  _PartRailSeparator(
+                    chapter: widget.chapters[index],
+                    accent: widget.activeAccent,
+                  )
+                else
+                  const SizedBox(width: 10),
               _ChapterRailTile(
                 key: _tileKeys[index],
                 chapter: widget.chapters[index],
@@ -314,6 +334,58 @@ class _ChapterRailTile extends StatelessWidget {
                 ],
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Slim part-boundary marker in the chapter rail (structure pass).
+/// Rendered before the first tile of each named part (except the very
+/// first): a small 'PART k' cap and a thin accent rule so the reader
+/// sees where a new part begins as they scroll the rail. The full part
+/// name rides the screen-reader label; the hero carries it visibly.
+class _PartRailSeparator extends StatelessWidget {
+  final HandbookChapter chapter;
+  final Color accent;
+
+  const _PartRailSeparator({required this.chapter, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Part ${chapter.partIndex} of ${chapter.partCount}: '
+          '${chapter.partTitle}',
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 4),
+              Text(
+                'PART ${chapter.partIndex}',
+                maxLines: 1,
+                style: GoogleFonts.ibmPlexMono(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: accent.withValues(alpha: 0.75),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: Container(
+                  width: 2,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.40),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+            ],
           ),
         ),
       ),

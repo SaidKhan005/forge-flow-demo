@@ -72,6 +72,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'demand a high level of effort and engagement, primarily '
               'centered around managing food costs, labor, and maintaining '
               'quality control.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c1_u1',
@@ -90,6 +92,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'By taking the initiative to connect with guests, restaurants '
               'can showcase their commitment to exceptional service, build '
               'loyalty, and ultimately drive sales.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -114,6 +118,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'recommendations are framed in a way that highlights their '
               'value, it can subtly encourage guests to indulge in '
               'higher-value options without feeling coerced.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c2_u1',
@@ -135,6 +141,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'being acknowledged and thoughtfully addressed. Under the '
               'umbrella of suggestive selling, both cross-selling and '
               'upselling serve as powerful sales tactics.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c2_u2',
@@ -194,6 +202,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'experience. When guests are bombarded with excessive options '
               'or feel pushed toward high-margin items that do not align with '
               'their needs, it may lead to confusion and irritation.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c3_u1',
@@ -221,6 +231,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'establishment\'s reputation. Recognizing and addressing these '
               'pitfalls is key for creating a more positive and impactful '
               'guest experience.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
@@ -358,6 +370,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'a complementary side dish, employing techniques like the '
               '"Assumption Close" where the server suggests upgrades with the '
               'expectation that the guest is already on board.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u6',
@@ -378,6 +392,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'to elevate the dining experience, creating memorable moments '
               'that lead to an increased check amount as an organic outcome '
               'rather than the primary objective.',
+          runIndex: 2,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c4_u7',
@@ -457,6 +473,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'beverage sales, can be monitored closely, while motivating '
               'employees with bonuses for hitting these benchmarks creates a '
               'sense of shared purpose and achievement.',
+          runIndex: 1,
+          runLength: 2,
         ),
         HandbookUnit(
           id: 'training_suggestive_selling_c5_u1',
@@ -477,6 +495,8 @@ const BarrioTrainingDoc kTrainingSuggestiveSelling = BarrioTrainingDoc(
               'Embracing these strategies leads to increased profitability '
               'and creates a win-win scenario for both the restaurant staff '
               'and its guests.',
+          runIndex: 2,
+          runLength: 2,
         ),
       ],
     ),
