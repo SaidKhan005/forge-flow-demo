@@ -29,6 +29,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       whyLine: 'Aguachile is a Mexican raw seafood dish whose name translates '
           'to "chili water".',
       sourceUnitId: 'training_latin_dishes_c0_u0',
+      answerEvidence: '"chili water."',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c0_q1',
@@ -44,6 +45,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Arroz con pollo translates to "rice with chicken".',
       sourceUnitId: 'training_latin_dishes_c0_u5',
+      answerEvidence: '"rice with chicken."',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c0_q2',
@@ -59,6 +61,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Ceviche is a celebrated national dish of Peru.',
       sourceUnitId: 'training_latin_dishes_c0_u11',
+      answerEvidence: 'a celebrated national dish of Peru',
     ),
 
     // ---- Chapter c1: C to E ---------------------------------------------
@@ -77,6 +80,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       whyLine: 'Chimichurri is an uncooked herb sauce hailing from Argentina '
           'and Uruguay.',
       sourceUnitId: 'training_latin_dishes_c1_u1',
+      answerEvidence: 'hailing from Argentina and Uruguay',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c1_q1',
@@ -93,6 +97,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       whyLine: 'Dulce de leche is made by slowly heating sweetened condensed '
           'milk into a thick, caramel-like spread.',
       sourceUnitId: 'training_latin_dishes_c1_u9',
+      answerEvidence: 'slowly heating sweetened condensed milk until it turns into a thick, creamy, smooth caramel-like spread',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c1_q2',
@@ -108,6 +113,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Elote is also known as Mexican street corn.',
       sourceUnitId: 'training_latin_dishes_c1_u10',
+      answerEvidence: 'also known as Mexican street corn',
     ),
 
     // ---- Chapter c2: E to M ---------------------------------------------
@@ -125,6 +131,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Ensalada is the Spanish word for salad.',
       sourceUnitId: 'training_latin_dishes_c2_u0',
+      answerEvidence: 'Spanish word for salad',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c2_q1',
@@ -141,6 +148,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       whyLine: 'Guacamole is made by mashing ripe avocados with sea salt and '
           'lime juice.',
       sourceUnitId: 'training_latin_dishes_c2_u5',
+      answerEvidence: 'mashing ripe avocados',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c2_q2',
@@ -158,6 +166,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       whyLine: 'Lomo saltado showcases the culinary fusion created by Chinese '
           'immigrants in Peru.',
       sourceUnitId: 'training_latin_dishes_c2_u10',
+      answerEvidence: 'the culinary fusion created by Chinese immigrants in Peru',
     ),
 
     // ---- Chapter c3: M to S ---------------------------------------------
@@ -176,6 +185,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       whyLine: 'Unlike blended salsas, pico de gallo has a dry consistency and '
           'relies on salt to draw out moisture.',
       sourceUnitId: 'training_latin_dishes_c3_u2',
+      answerEvidence: 'its dry consistency relies on salt to enhance the flavors and draw out moisture',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c3_q1',
@@ -192,6 +202,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       whyLine: 'Pupusas are a traditional Salvadoran dish of thick, handmade '
           'corn or rice flour flatbread.',
       sourceUnitId: 'training_latin_dishes_c3_u5',
+      answerEvidence: 'a traditional Salvadoran dish',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c3_q2',
@@ -207,6 +218,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Salsa inglesa is the Spanish term for Worcestershire sauce.',
       sourceUnitId: 'training_latin_dishes_c3_u9',
+      answerEvidence: 'the Spanish term for Worcestershire sauce',
     ),
 
     // ---- Chapter c4: S to T ---------------------------------------------
@@ -224,6 +236,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Sopa is the Spanish word for soup.',
       sourceUnitId: 'training_latin_dishes_c4_u0',
+      answerEvidence: 'the Spanish word for soup',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c4_q1',
@@ -240,6 +253,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       whyLine: 'Tamales are wrapped in a corn husk or banana leaf and steamed '
           'to perfection.',
       sourceUnitId: 'training_latin_dishes_c4_u2',
+      answerEvidence: 'wrapped in a corn husk or banana leaf and steamed',
     ),
     BarrioQuizQuestion(
       id: 'training_latin_dishes_c4_q2',
@@ -255,6 +269,7 @@ const BarrioQuizBank kBarrioQuizLatinDishes = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Taquito means "little taco" in Spanish.',
       sourceUnitId: 'training_latin_dishes_c4_u3',
+      answerEvidence: '"little taco"',
     ),
   ],
 );

@@ -28,6 +28,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'The two most prized coffee species for consumption are Arabica '
           'and Robusta.',
       sourceUnitId: 'training_coffee_c0_u0',
+      answerEvidence: 'Arabica and Robusta',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c0_q1',
@@ -44,6 +45,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Coffee is a central nervous system stimulant because of its '
           'caffeine content.',
       sourceUnitId: 'training_coffee_c0_u0',
+      answerEvidence: 'due to its caffeine content',
     ),
 
     // ---- Chapter c1: Roasting -------------------------------------------
@@ -62,6 +64,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'As beans are roasted, the caffeine content gradually '
           'decreases.',
       sourceUnitId: 'training_coffee_c1_u0',
+      answerEvidence: 'the caffeine content gradually decreases',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c1_q1',
@@ -79,6 +82,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Medium dark roast is particularly well-suited for espresso '
           'extraction thanks to its balanced taste and velvety crema.',
       sourceUnitId: 'training_coffee_c1_u1',
+      answerEvidence: 'particularly well-suited for espresso extraction',
     ),
 
     // ---- Chapter c2: Enemies of Coffee ----------------------------------
@@ -97,6 +101,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'The four main enemies of coffee freshness are oxygen, '
           'moisture, heat, and light.',
       sourceUnitId: 'training_coffee_c2_u0',
+      answerEvidence: 'oxygen, moisture, heat, and light',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c2_q1',
@@ -113,6 +118,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Coffee is at its prime immediately after grinding, when '
           'volatile oils are released.',
       sourceUnitId: 'training_coffee_c2_u0',
+      answerEvidence: 'coffee is at its prime immediately after grinding',
     ),
 
     // ---- Chapter c3: Proper Storage -------------------------------------
@@ -132,6 +138,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Buying whole beans instead of pre-ground coffee ensures '
           'maximum freshness and flavor retention.',
       sourceUnitId: 'training_coffee_c3_u0',
+      answerEvidence: 'purchase whole beans instead of pre-ground varieties',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c3_q1',
@@ -148,6 +155,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Store beans in a cool, dry, dark, airtight container away from '
           'direct sunlight, and avoid the fridge.',
       sourceUnitId: 'training_coffee_c3_u0',
+      answerEvidence: 'cool, dry, and dark environment, ideally in an airtight container away from direct sunlight',
     ),
 
     // ---- Chapter c4: Brazilian Coffee -----------------------------------
@@ -166,6 +174,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Brazil has been the leading coffee producer in the world since '
           '1840.',
       sourceUnitId: 'training_coffee_c4_u0',
+      answerEvidence: 'Brazil stands as the world\'s leading coffee producer',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c4_q1',
@@ -183,6 +192,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Brazil has held the title of leading coffee producer since '
           '1840.',
       sourceUnitId: 'training_coffee_c4_u0',
+      answerEvidence: 'since 1840',
     ),
 
     // ---- Chapter c5: Colombian Coffee -----------------------------------
@@ -200,6 +210,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Colombia ranks third globally in annual coffee production.',
       sourceUnitId: 'training_coffee_c5_u0',
+      answerEvidence: 'Colombia ranks third globally',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c5_q1',
@@ -217,6 +228,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'In 2011, UNESCO recognized the Colombian Coffee Cultural '
           'Landscape as a World Heritage Site.',
       sourceUnitId: 'training_coffee_c5_u1',
+      answerEvidence: 'UNESCO recognized Colombia\'s Coffee Cultural Landscape in the Andean foothills as a World Heritage Site',
     ),
 
     // ---- Chapter c6: Extracting Espresso --------------------------------
@@ -235,6 +247,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'A well-balanced espresso has a total extraction time of around '
           '25 seconds.',
       sourceUnitId: 'training_coffee_c6_u0',
+      answerEvidence: 'a total extraction time of around 25 seconds',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c6_q1',
@@ -251,6 +264,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Tamping applies firm and even pressure to form a flat surface '
           'that ensures uniform extraction.',
       sourceUnitId: 'training_coffee_c6_u0',
+      answerEvidence: 'apply firm and even pressure to form a solid, flat surface that ensures uniform extraction',
     ),
 
     // ---- Chapter c7: Milk -----------------------------------------------
@@ -269,6 +283,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'When steaming milk, aim for a temperature of 65 to 70 degrees '
           'Celsius.',
       sourceUnitId: 'training_coffee_c7_u0',
+      answerEvidence: '65-70 degrees Celsius',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c7_q1',
@@ -285,6 +300,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Fill the milk jug to about one-third to ensure optimal '
           'frothing.',
       sourceUnitId: 'training_coffee_c7_u0',
+      answerEvidence: 'about one-third to ensure optimal frothing',
     ),
 
     // ---- Chapter c8: Troubleshooting ------------------------------------
@@ -303,6 +319,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'An under-extracted espresso can occur if you run out of coffee '
           'or the grind is too coarse.',
       sourceUnitId: 'training_coffee_c8_u0',
+      answerEvidence: 'if you run out of coffee or if the grind is too course',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c8_q1',
@@ -319,6 +336,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'An over-extracted espresso drips slowly, is very dark, has no '
           'crema, and tastes sharp and burnt.',
       sourceUnitId: 'training_coffee_c8_u0',
+      answerEvidence: 'drip slowly and will be very dark with almost no coffee coming out of the spout and no crema',
     ),
 
     // ---- Chapter c9: Cleaning & Maintenance -----------------------------
@@ -338,6 +356,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Immerse steam arms in warm water for no longer than 10 '
           'minutes, and never soak them overnight.',
       sourceUnitId: 'training_coffee_c9_u0',
+      answerEvidence: 'no longer than 10 minutes',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c9_q1',
@@ -355,6 +374,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'During back flushing, the filter basket is replaced with a '
           'blind disk.',
       sourceUnitId: 'training_coffee_c9_u1',
+      answerEvidence: 'replace it with a blind disk',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c9_q2',
@@ -372,6 +392,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Regularly remove the filter baskets and soak them in hot, '
           'soapy water.',
       sourceUnitId: 'training_coffee_c9_u0',
+      answerEvidence: 'soak them in hot, soapy water',
     ),
 
     // ---- Chapter c10: Drinks --------------------------------------------
@@ -390,6 +411,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'A Short Black is a double shot of espresso extracted into an '
           'espresso cup.',
       sourceUnitId: 'training_coffee_c10_u0',
+      answerEvidence: 'extract double shot of espresso into an espresso cup',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c10_q1',
@@ -405,6 +427,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'A flat white uses smooth, velvety milk with minimal froth.',
       sourceUnitId: 'training_coffee_c10_u1',
+      answerEvidence: 'smooth and velvety with minimal froth',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c10_q2',
@@ -421,6 +444,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'A cappuccino is finished with a dome of foam that rises above '
           'the rim.',
       sourceUnitId: 'training_coffee_c10_u2',
+      answerEvidence: 'a delightful dome of foam that rises above the rim',
     ),
 
     // ---- Chapter c11: Our Coffee ----------------------------------------
@@ -439,6 +463,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Base Camp is sourced from the Las Rosas Women\'s Coffee '
           'Project in La Plata, Colombia.',
       sourceUnitId: 'training_coffee_c11_u0',
+      answerEvidence: 'Las Rosas Women\'s Coffee Project',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c11_q1',
@@ -454,6 +479,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Sleeper Cabin is the decaf Colombian coffee.',
       sourceUnitId: 'training_coffee_c11_u1',
+      answerEvidence: 'SLEEPER CABIN - DECAF',
     ),
 
     // ---- Chapter c12: Cup Types -----------------------------------------
@@ -488,6 +514,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'A cappuccino is served in a cappuccino cup, one of the three '
           'listed cup types.',
       sourceUnitId: 'training_coffee_c12_u0',
+      answerEvidence: 'CAPPUCCINO CUP',
     ),
 
     // ---- Chapter c13: Words to Know -------------------------------------
@@ -507,6 +534,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Arabica accounts for approximately 60% of global coffee '
           'production.',
       sourceUnitId: 'training_coffee_c13_u0',
+      answerEvidence: 'approximately 60% of global production',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c13_q1',
@@ -522,6 +550,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Crema is the golden-brown foam on top of an espresso.',
       sourceUnitId: 'training_coffee_c13_u1',
+      answerEvidence: 'The golden-brown foam on top of an espresso',
     ),
     BarrioQuizQuestion(
       id: 'training_coffee_c13_q2',
@@ -538,6 +567,7 @@ const BarrioQuizBank kBarrioQuizCoffee = BarrioQuizBank(
       whyLine: 'Robusta boasts nearly double the caffeine content of Arabica '
           'coffee.',
       sourceUnitId: 'training_coffee_c13_u5',
+      answerEvidence: 'nearly double the caffeine content of Arabica coffee',
     ),
   ],
 );
