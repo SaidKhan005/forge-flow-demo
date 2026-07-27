@@ -1,7 +1,9 @@
 // The two-sided flashcard for `BarrioFlashcardReviewScreen` (operator
 // rec #5, 2026-07-23). Front: the term (plus its source picture when
-// the unit has one). Back: the VERBATIM definition body, unchanged,
-// scrollable, with the literal source caption when present.
+// the unit has one, or a teal monogram medallion of the term's first
+// letter when the abstract-vocabulary card has no picture). Back: the
+// VERBATIM definition body, unchanged, scrollable, with the literal
+// source caption when present.
 //
 // Tap anywhere on the card to flip (simple perspective Y-rotation;
 // `MediaQuery.disableAnimations` makes the flip instant). The widget
@@ -150,6 +152,12 @@ class _FlashcardShell extends StatelessWidget {
   }
 }
 
+/// Front face: the REPEAT chip (when recycled), the term, and a
+/// "Tap to flip" hint. When the unit has a picture it sits above the
+/// term; when it has none (an abstract-vocabulary card such as "86" or
+/// "in the weeds", which cannot be photographed) a decorative teal
+/// monogram medallion of the term's first letter stands in its place,
+/// so a picture-less card reads as intentional, not broken.
 class _FlashcardFront extends StatelessWidget {
   final BarrioFlashcard card;
   final Color accent;
@@ -179,6 +187,14 @@ class _FlashcardFront extends StatelessWidget {
               children: [
                 if (imagePath != null) ...[
                   Flexible(child: _picture(imagePath)),
+                  const SizedBox(height: 18),
+                ] else ...[
+                  // No source picture (abstract-vocabulary card): a
+                  // branded monogram medallion stands in so the card
+                  // reads as intentional, not a broken missing photo.
+                  // Decorative only: the card's flip-button label
+                  // already carries the semantics (rec #12).
+                  ExcludeSemantics(child: _Monogram(term: card.term)),
                   const SizedBox(height: 18),
                 ],
                 Text(
@@ -229,6 +245,46 @@ class _FlashcardFront extends StatelessWidget {
             size: 56,
             color: accent.withValues(alpha: 0.55),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Decorative teal monogram medallion shown on the front of a
+/// picture-less card: a soft teal disc carrying the term's first
+/// character. Purely branding, so it is wrapped in `ExcludeSemantics`
+/// by its caller (the flip-button label carries the meaning, rec #12).
+class _Monogram extends StatelessWidget {
+  final String term;
+
+  const _Monogram({required this.term});
+
+  @override
+  Widget build(BuildContext context) {
+    // Safe first-character pick: never crash on an empty term, and use
+    // grapheme clusters so a multi-byte first character stays whole. A
+    // leading digit (e.g. "86" to "8") is intentionally fine.
+    final trimmed = term.trim();
+    final mono =
+        trimmed.isEmpty ? '•' : trimmed.characters.first.toUpperCase();
+    return Container(
+      width: 76,
+      height: 76,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: BarrioColors.tealDeep.withValues(alpha: 0.10),
+        border: Border.all(
+          color: BarrioColors.tealDeep.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Text(
+        mono,
+        style: GoogleFonts.playfairDisplay(
+          fontSize: 34,
+          fontWeight: FontWeight.w700,
+          color: BarrioColors.tealDeep,
         ),
       ),
     );
