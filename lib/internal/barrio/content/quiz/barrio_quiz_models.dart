@@ -54,6 +54,20 @@ class BarrioQuizQuestion {
   /// question. The correct option's key facts come from this card's text.
   final String sourceUnitId;
 
+  /// The SHORT, verbatim substring of the [sourceUnitId] card's body that
+  /// states this question's answer (the pinpoint phrase a scanner spots).
+  ///
+  /// Answer-highlight slice (operator request 2026-07-26): the training
+  /// reader highlights this phrase inside the reading card so the key fact
+  /// is easy to scan before the chapter-end quiz. It is copied
+  /// character-for-character from the card body, so it is always a true
+  /// substring (enforced by test/barrio_quiz_answer_evidence_test.dart).
+  ///
+  /// Null when the answer has no clean single verbatim phrase in the card
+  /// (e.g. it is spread across separate bullets); such questions render no
+  /// highlight. Styling only: it never alters the body text (verbatim law).
+  final String? answerEvidence;
+
   const BarrioQuizQuestion({
     required this.id,
     required this.docId,
@@ -63,6 +77,7 @@ class BarrioQuizQuestion {
     required this.correctIndex,
     required this.whyLine,
     required this.sourceUnitId,
+    this.answerEvidence,
   });
 
   /// The correct option text.
@@ -101,3 +116,26 @@ const Map<String, BarrioQuizBank> kBarrioQuizBanks = <String, BarrioQuizBank>{
   'training_coffee': kBarrioQuizCoffee,
   'training_latin_dishes': kBarrioQuizLatinDishes,
 };
+
+/// Every non-null [BarrioQuizQuestion.answerEvidence] phrase whose
+/// [BarrioQuizQuestion.sourceUnitId] equals [unitId], gathered across all
+/// registered quiz banks in question order.
+///
+/// Pure lookup with no UI dependencies: the training reader calls this with
+/// a rendering unit's id to know which answer phrases to highlight in that
+/// card's body. Returns an empty list for any unit with no quiz evidence
+/// (the default for the vast majority of cards), so callers need no
+/// special-casing. A unit can back several questions, so the list may hold
+/// more than one phrase.
+List<String> barrioAnswerEvidenceForUnit(String unitId) {
+  final evidence = <String>[];
+  for (final bank in kBarrioQuizBanks.values) {
+    for (final question in bank.questions) {
+      final phrase = question.answerEvidence;
+      if (phrase != null && question.sourceUnitId == unitId) {
+        evidence.add(phrase);
+      }
+    }
+  }
+  return evidence;
+}

@@ -45,6 +45,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'In a restaurant setting, each team member plays a vital role '
           'in upholding food safety standards.',
       sourceUnitId: 'training_food_safety_c0_u0',
+      answerEvidence: 'each team member plays a vital role',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c0_q2',
@@ -62,6 +63,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Chilling means keeping perishable food below 40 degrees '
           'Fahrenheit, which is 4 degrees Celsius.',
       sourceUnitId: 'training_food_safety_c0_u1',
+      answerEvidence: 'below 40 degrees Fahrenheit (4 degrees Celsius)',
     ),
 
     // ---- Chapter c1: Governing Laws And Regulations ---------------------
@@ -81,6 +83,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'At the federal level, the Canadian Food Inspection Agency and '
           'Health Canada set and enforce food safety standards.',
       sourceUnitId: 'training_food_safety_c1_u0',
+      answerEvidence: 'Canadian Food Inspection Agency (CFIA) and Health Canada',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c1_q1',
@@ -98,6 +101,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Statistics indicate that approximately 1 in 8 Canadians '
           'becomes ill each year from foodborne pathogens.',
       sourceUnitId: 'training_food_safety_c1_u1',
+      answerEvidence: 'approximately 1 in 8 Canadians',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c1_q2',
@@ -115,6 +119,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'The legal liability for food safety lies with the owner, '
           'operator, and person in charge.',
       sourceUnitId: 'training_food_safety_c1_u1',
+      answerEvidence: 'the owner, operator, and person in charge',
     ),
 
     // ---- Chapter c2: Personal Hygiene -----------------------------------
@@ -133,6 +138,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Scrub hands thoroughly for at least 20 seconds, including '
           'backs of hands, between fingers, and under fingernails.',
       sourceUnitId: 'training_food_safety_c2_u1',
+      answerEvidence: 'at least 20 seconds',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c2_q1',
@@ -149,6 +155,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Change gloves a minimum of every 4 hours, and whenever moving '
           'from raw to ready-to-eat food.',
       sourceUnitId: 'training_food_safety_c2_u4',
+      answerEvidence: 'Change gloves a minimum of every 4 hours',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c2_q2',
@@ -165,6 +172,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Gloves do not replace handwashing because small holes and '
           'tears can let bacteria escape.',
       sourceUnitId: 'training_food_safety_c2_u4',
+      answerEvidence: 'gloves DO NOT replace handwashing',
     ),
 
     // ---- Chapter c3: Foodborne Illness ----------------------------------
@@ -182,6 +190,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Foodborne illness is often referred to as food poisoning.',
       sourceUnitId: 'training_food_safety_c3_u0',
+      answerEvidence: 'often referred to as food poisoning',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c3_q1',
@@ -199,6 +208,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'The most common symptoms of foodborne illness include stomach '
           'cramps, nausea, vomiting, diarrhea, and fever.',
       sourceUnitId: 'training_food_safety_c3_u1',
+      answerEvidence: 'Diarrhea',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c3_q2',
@@ -216,6 +226,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Improper cooling is listed among the top causes of foodborne '
           'illness.',
       sourceUnitId: 'training_food_safety_c3_u3',
+      answerEvidence: 'Improper cooling',
     ),
 
     // ---- Chapter c4: Contamination --------------------------------------
@@ -235,6 +246,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
           'contact or indirectly through a vehicle that transfers '
           'contaminants.',
       sourceUnitId: 'training_food_safety_c4_u0',
+      answerEvidence: 'direct cross-contamination happens when there is physical contact between a hazardous source and food, while indirect cross-contamination occurs through a vehicle',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c4_q1',
@@ -251,6 +263,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Contamination is the unwanted presence of microbial, physical, '
           'chemical, or allergenic hazards in food.',
       sourceUnitId: 'training_food_safety_c4_u0',
+      answerEvidence: 'microbial, physical, chemical, or allergenic hazards',
     ),
 
     // ---- Chapter c5: Categories of Hazards ------------------------------
@@ -269,6 +282,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'A hazard is anything present in food with the potential to '
           'harm someone by causing illness or injury.',
       sourceUnitId: 'training_food_safety_c5_u0',
+      answerEvidence: 'anything present in food with the potential to harm someone',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c5_q1',
@@ -286,6 +300,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Bacteria, viruses, and parasites are biological hazards that '
           'could cause foodborne illness.',
       sourceUnitId: 'training_food_safety_c5_u1',
+      answerEvidence: 'Bacteria, viruses, or parasites that could cause foodborne illness',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c5_q2',
@@ -302,6 +317,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Protect food from physical hazards by conducting regular '
           'visual inspections.',
       sourceUnitId: 'training_food_safety_c5_u3',
+      answerEvidence: 'Conducting regular visual inspections',
     ),
 
     // ---- Chapter c6: Hazards In Food ------------------------------------
@@ -320,6 +336,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'A food hazard is any biological, chemical, or physical agent '
           'present in food that can potentially harm consumers.',
       sourceUnitId: 'training_food_safety_c6_u0',
+      answerEvidence: 'any biological, chemical, or physical agent present in food that can potentially harm consumers',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c6_q1',
@@ -337,6 +354,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Biological hazards account for most foodborne illnesses '
           'reported in Canada.',
       sourceUnitId: 'training_food_safety_c6_u1',
+      answerEvidence: 'Biological hazards account for most foodborne illnesses',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c6_q2',
@@ -354,6 +372,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'When in doubt about food safety, throw it out to prevent '
           'foodborne illness.',
       sourceUnitId: 'training_food_safety_c6_u6',
+      answerEvidence: 'When in doubt, throw it out',
     ),
 
     // ---- Chapter c7: Food Allergies -------------------------------------
@@ -372,6 +391,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'A food allergy occurs when the immune system mistakenly treats '
           'a food protein as if it is dangerous.',
       sourceUnitId: 'training_food_safety_c7_u0',
+      answerEvidence: 'immune system mistakenly treats something in a particular food',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c7_q1',
@@ -389,6 +409,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'An estimated 8% of children and 4% of adults have food '
           'allergies.',
       sourceUnitId: 'training_food_safety_c7_u0',
+      answerEvidence: 'An estimated 8% of children',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c7_q2',
@@ -405,6 +426,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'There is no cure for food allergies, though some children do '
           'outgrow them.',
       sourceUnitId: 'training_food_safety_c7_u0',
+      answerEvidence: 'There is no cure for allergies, however, some children do outgrow them',
     ),
 
     // ---- Chapter c8: Food Allergies: Keep Your Guests Safe --------------
@@ -440,6 +462,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Every 3 minutes, a food allergy reaction sends someone to the '
           'emergency room.',
       sourceUnitId: 'training_food_safety_c8_u0',
+      answerEvidence: 'Every 3 minutes',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c8_q2',
@@ -455,6 +478,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'Call 911 at the first sign of an allergic reaction.',
       sourceUnitId: 'training_food_safety_c8_u1',
+      answerEvidence: 'Call 911 at the first sign of a reaction',
     ),
 
     // ---- Chapter c9: Temperature Danger Zone ----------------------------
@@ -473,6 +497,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Bacteria thrive in the temperature danger zone, from 40 to '
           '140 degrees Fahrenheit, which is 4 to 60 degrees Celsius.',
       sourceUnitId: 'training_food_safety_c9_u0',
+      answerEvidence: '40 to 140 degrees Fahrenheit (4 to 60 degrees Celsius)',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c9_q1',
@@ -489,6 +514,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'In the temperature danger zone, bacteria can double in number '
           'in as little as 20 minutes.',
       sourceUnitId: 'training_food_safety_c9_u0',
+      answerEvidence: 'double in number in as little as 20 minutes',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c9_q2',
@@ -506,6 +532,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Perishable items should never be left out of refrigeration '
           'for longer than two hours.',
       sourceUnitId: 'training_food_safety_c9_u0',
+      answerEvidence: 'never be left out of refrigeration for longer than two hours',
     ),
 
     // ---- Chapter c10: Temperature Danger Zone Reference -----------------
@@ -524,6 +551,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'The refrigeration temperature range is 0 degrees C to 4 '
           'degrees C.',
       sourceUnitId: 'training_food_safety_c10_u0',
+      answerEvidence: '0 degrees C - 4 degrees C',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c10_q1',
@@ -541,6 +569,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Hot-holding temperature for thoroughly cooked foods is 57 '
           'degrees C and above.',
       sourceUnitId: 'training_food_safety_c10_u0',
+      answerEvidence: '57 degrees C and above',
     ),
 
     // ---- Chapter c11: Cooling And Reheating -----------------------------
@@ -560,6 +589,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'In step one of the two-step cooling method, food must cool '
           'from 57 degrees C to 21 degrees C within 2 hours.',
       sourceUnitId: 'training_food_safety_c11_u2',
+      answerEvidence: 'to 21 degrees C / 70 degrees F within 2 hours',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c11_q1',
@@ -577,6 +607,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'The entire two-step cooling process must be completed within a '
           'maximum of 6 hours.',
       sourceUnitId: 'training_food_safety_c11_u2',
+      answerEvidence: 'a maximum time of 6 hours',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c11_q2',
@@ -593,6 +624,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'When reheating, food should reach an internal temperature of '
           'at least 165 degrees F, which is 74 degrees C.',
       sourceUnitId: 'training_food_safety_c11_u3',
+      answerEvidence: 'at least 165 degrees F (74 degrees C)',
     ),
 
     // ---- Chapter c12: Thermometer Calibration ---------------------------
@@ -612,6 +644,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'An ice bath checks a thermometer against the freezing point '
           'of water, 32 degrees F or 0 degrees C.',
       sourceUnitId: 'training_food_safety_c12_u0',
+      answerEvidence: '32.0 degrees F/0 degrees C',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c12_q1',
@@ -628,6 +661,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Crushed ice is ideal for an ice bath because it creates a '
           'denser, more consistent temperature.',
       sourceUnitId: 'training_food_safety_c12_u1',
+      answerEvidence: 'Crushed ice is ideal',
     ),
 
     // ---- Chapter c13: Thermometer Ice Bath Calibration ------------------
@@ -646,6 +680,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Crushed ice is preferred because there are fewer gaps between '
           'the ice.',
       sourceUnitId: 'training_food_safety_c13_u0',
+      answerEvidence: 'there are fewer gaps between the ice',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c13_q1',
@@ -663,6 +698,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'In an ice bath, a correctly calibrated thermometer should read '
           '32 degrees F, which is 0 degrees C.',
       sourceUnitId: 'training_food_safety_c13_u1',
+      answerEvidence: '32 degrees F (0 degrees C)',
     ),
 
     // ---- Chapter c14: Safe Storage --------------------------------------
@@ -681,6 +717,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'In dry storage, food should be kept at least 6 inches, or 15 '
           'cm, off the floor.',
       sourceUnitId: 'training_food_safety_c14_u0',
+      answerEvidence: 'at least 6 inches (15 cm) off the floor',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c14_q1',
@@ -698,6 +735,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Store raw meat, poultry, and fish in sealed containers on the '
           'bottom shelf to prevent drips onto other foods.',
       sourceUnitId: 'training_food_safety_c14_u1',
+      answerEvidence: 'in sealed containers on the bottom shelf',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c14_q2',
@@ -714,6 +752,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'A refrigerator should be kept at or below 40 degrees F, which '
           'is 4 degrees C.',
       sourceUnitId: 'training_food_safety_c14_u1',
+      answerEvidence: 'at or below 40 degrees F (4 degrees C)',
     ),
 
     // ---- Chapter c15: FIFO ----------------------------------------------
@@ -732,6 +771,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'FIFO stands for First-In, First-Out, using the oldest stock '
           'before newer stock.',
       sourceUnitId: 'training_food_safety_c15_u0',
+      answerEvidence: 'First-In, First-Out',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c15_q1',
@@ -748,6 +788,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Under FIFO, the oldest items, with the earliest expiration '
           'dates, are used before newer stock.',
       sourceUnitId: 'training_food_safety_c15_u0',
+      answerEvidence: 'the oldest items are used or sold before newer stock',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c15_q2',
@@ -764,6 +805,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'A common FIFO mistake is restocking without proper rotation, '
           'placing new items in front of older ones.',
       sourceUnitId: 'training_food_safety_c15_u3',
+      answerEvidence: 'restocking without proper rotation, where new items are placed in front of older ones',
     ),
 
     // ---- Chapter c16: Labelling -----------------------------------------
@@ -782,6 +824,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Each label should include the product name, the date and time '
           'it was prepared or defrosted, the use-by date, and staff initials.',
       sourceUnitId: 'training_food_safety_c16_u2',
+      answerEvidence: 'the name of the product, the date and time it was prepared or defrosted, the "use by" date, and the initials of the staff member',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c16_q1',
@@ -799,6 +842,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'A "use first" sticker on open products helps team members use '
           'existing supplies before opening new ones.',
       sourceUnitId: 'training_food_safety_c16_u1',
+      answerEvidence: '"use first" sticker',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c16_q2',
@@ -816,6 +860,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
           'removed from its original packaging, or transferred to a different '
           'container.',
       sourceUnitId: 'training_food_safety_c16_u0',
+      answerEvidence: 'defrosted, prepared in-house, removed from its original packaging, or transferred to a different container',
     ),
 
     // ---- Chapter c17: Cleaning And Sanitation ---------------------------
@@ -851,6 +896,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'The final step of the five-step process is to air-dry the '
           'sanitized surface.',
       sourceUnitId: 'training_food_safety_c17_u1',
+      answerEvidence: 'Allow the sanitized surface to air dry',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c17_q2',
@@ -868,6 +914,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Clean and sanitize after 4 hours of continuous use, among '
           'other times.',
       sourceUnitId: 'training_food_safety_c17_u3',
+      answerEvidence: 'After 4 hours of continuous use',
     ),
 
     // ---- Chapter c18: HACCP ---------------------------------------------
@@ -885,6 +932,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       correctIndex: 0,
       whyLine: 'HACCP stands for Hazard Analysis Critical Control Point.',
       sourceUnitId: 'training_food_safety_c18_u0',
+      answerEvidence: 'Hazard Analysis Critical Control Point',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c18_q1',
@@ -901,6 +949,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'HACCP has a preventative focus, aiming to prevent hazards '
           'before they emerge rather than reacting afterward.',
       sourceUnitId: 'training_food_safety_c18_u1',
+      answerEvidence: 'aiming to prevent hazards before they emerge',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c18_q2',
@@ -917,6 +966,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'The first HACCP principle is to conduct a hazard analysis to '
           'identify potential food safety hazards.',
       sourceUnitId: 'training_food_safety_c18_u2',
+      answerEvidence: 'Conduct a Hazard Analysis',
     ),
 
     // ---- Chapter c19: Bar Food Safety -----------------------------------
@@ -935,6 +985,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Ice scoops should never be stored directly in the ice bin, to '
           'avoid introducing contaminants.',
       sourceUnitId: 'training_food_safety_c19_u3',
+      answerEvidence: 'never be stored directly in the ice bin',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c19_q1',
@@ -951,6 +1002,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Broken glass should be discarded immediately into a bin '
           'labelled for broken glass only.',
       sourceUnitId: 'training_food_safety_c19_u1',
+      answerEvidence: 'discarded immediately into a bin, labelled for broken glass only',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c19_q2',
@@ -967,6 +1019,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Never use glassware to scoop ice, because it can shatter and '
           'contaminate the ice supply.',
       sourceUnitId: 'training_food_safety_c19_u3',
+      answerEvidence: 'never glassware, to prevent the risk of glass shattering',
     ),
 
     // ---- Chapter c20: Food Servers Role ---------------------------------
@@ -986,6 +1039,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Servers should minimize bare hand contact with food and use '
           'utensils and food-safe gloves instead.',
       sourceUnitId: 'training_food_safety_c20_u2',
+      answerEvidence: 'minimizing bare hand contact with food is critical',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c20_q1',
@@ -1003,6 +1057,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Servers must be trained to inform guests about potential '
           'allergens in the food they serve.',
       sourceUnitId: 'training_food_safety_c20_u1',
+      answerEvidence: 'inform guests about potential allergens in the food',
     ),
     BarrioQuizQuestion(
       id: 'training_food_safety_c20_q2',
@@ -1019,6 +1074,7 @@ const BarrioQuizBank kBarrioQuizFoodSafety = BarrioQuizBank(
       whyLine: 'Proper handwashing is especially important after handling raw '
           'ingredients or using the restroom.',
       sourceUnitId: 'training_food_safety_c20_u2',
+      answerEvidence: 'after handling raw ingredients or using the restroom',
     ),
   ],
 );

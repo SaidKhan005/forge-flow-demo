@@ -5,6 +5,7 @@ import 'barrio_celebration_overlay.dart';
 import 'barrio_destination_scaffold.dart';
 import 'barrio_training_image_viewer.dart';
 import '../content/company_handbook_content.dart';
+import '../content/quiz/barrio_quiz_models.dart';
 import '../content/training/training_docs.dart';
 import '../search/barrio_training_search.dart';
 import '../services/barrio_numeric_highlight.dart';
@@ -99,6 +100,11 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
     final unit = widget.unit;
 
     final carousel = widget.isCarouselMode;
+
+    // Answer highlight (operator request 2026-07-26): the card looks up its
+    // own chapter-end quiz answer phrases by unit id, so no call site changes
+    // and no new constructor param. Empty for the vast majority of cards.
+    final answerEvidence = barrioAnswerEvidenceForUnit(unit.id);
 
     // Accessibility (rec #12): a collapsed interactive card is one big
     // tap target, so ONLY that state gets a button-role wrapper (its
@@ -283,6 +289,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                   highlightTerms: widget.highlightTerms,
                   onTermTap: widget.onTermTap,
                   accent: _numberAccent,
+                  answerEvidence: answerEvidence,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -316,6 +323,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                   highlightTerms: widget.highlightTerms,
                   onTermTap: widget.onTermTap,
                   accent: _numberAccent,
+                  answerEvidence: answerEvidence,
                 ),
               ],
 
@@ -655,11 +663,19 @@ class _UnitBody extends StatelessWidget {
   /// body string is never altered (verbatim law).
   final Color accent;
 
+  /// Verbatim chapter-end quiz answer phrases for this unit (operator
+  /// request 2026-07-26): each occurrence in the body gets a soft amber
+  /// highlighter wash so the answer is easy to scan before the quiz.
+  /// Styling only; the body string is never altered (verbatim law). Empty
+  /// for cards with no quiz evidence (the default), which render unchanged.
+  final List<String> answerEvidence;
+
   const _UnitBody({
     required this.unit,
     required this.accent,
     this.highlightTerms = const [],
     this.onTermTap,
+    this.answerEvidence = const [],
   });
 
   static const double _blockGap = 12;
@@ -883,18 +899,62 @@ class _UnitBody extends StatelessWidget {
         for (final t in termMatches) [t.start, t.end],
       ],
     );
+    // Answer highlight ranges are the LOWEST precedence: any that overlap a
+    // search highlight, term link, or numeric pop are dropped whole, so the
+    // amber wash never fights another span (verbatim substrings, so plain
+    // case-sensitive matching).
+    final answerRanges = answerEvidence.isEmpty
+        ? const <List<int>>[]
+        : _answerEvidenceRanges(
+            text,
+            blockedRanges: [
+              ...highlightRanges,
+              for (final t in termMatches) [t.start, t.end],
+              for (final n in numericMatches) [n.start, n.end],
+            ],
+          );
     if (highlightRanges.isEmpty &&
         termMatches.isEmpty &&
-        numericMatches.isEmpty) {
+        numericMatches.isEmpty &&
+        answerRanges.isEmpty) {
       return Text(text, style: style);
     }
     return Text.rich(
       TextSpan(
         style: style,
-        children: _composeSpans(
-            text, highlightRanges, termMatches, numericMatches, style),
+        children: _composeSpans(text, highlightRanges, termMatches,
+            numericMatches, answerRanges, style),
       ),
     );
+  }
+
+  /// Exact [start, end) ranges of every answer-evidence phrase in [text],
+  /// sorted and merged, dropping whole any range that intersects a
+  /// higher-precedence span in [blockedRanges] (search highlight, term
+  /// link, or numeric pop). Phrases are true verbatim substrings of the
+  /// source body, so matching is a plain case-sensitive indexOf.
+  List<List<int>> _answerEvidenceRanges(
+    String text, {
+    List<List<int>> blockedRanges = const [],
+  }) {
+    final raw = <List<int>>[];
+    for (final phrase in answerEvidence) {
+      if (phrase.isEmpty) continue;
+      var idx = text.indexOf(phrase);
+      while (idx >= 0) {
+        final range = <int>[idx, idx + phrase.length];
+        if (!_intersectsAny(range, blockedRanges)) raw.add(range);
+        idx = text.indexOf(phrase, idx + phrase.length);
+      }
+    }
+    return _mergeRanges(raw);
+  }
+
+  static bool _intersectsAny(List<int> range, List<List<int>> ranges) {
+    for (final other in ranges) {
+      if (range[0] < other[1] && range[1] > other[0]) return true;
+    }
+    return false;
   }
 
   /// All [start, end) fold-space match ranges of every term, unsorted.
@@ -934,6 +994,7 @@ class _UnitBody extends StatelessWidget {
     List<List<int>> highlights,
     List<BarrioTermMatch> terms,
     List<BarrioNumericMatch> numerics,
+    List<List<int>> answers,
     TextStyle style,
   ) {
     final segments = <_BodySegment>[
@@ -941,6 +1002,7 @@ class _UnitBody extends StatelessWidget {
       for (final t in terms) _BodySegment(t.start, t.end, t),
       for (final n in numerics)
         _BodySegment(n.start, n.end, null, numeric: true),
+      for (final r in answers) _BodySegment(r[0], r[1], null, answer: true),
     ]..sort((a, b) => a.start.compareTo(b.start));
     final mark = style.copyWith(
       color: BarrioColors.textPrimary,
@@ -952,6 +1014,14 @@ class _UnitBody extends StatelessWidget {
     final numberPop = style.copyWith(
       fontWeight: FontWeight.w700,
       color: accent,
+    );
+    // Answer highlight (operator request 2026-07-26): a soft amber/gold
+    // highlighter wash behind the quiz answer phrase, plus a medium weight
+    // so it never relies on color alone (accessibility). The verbatim
+    // substring renders unchanged; only style is added.
+    final answerMark = style.copyWith(
+      fontWeight: FontWeight.w500,
+      backgroundColor: BarrioColors.gold.withValues(alpha: 0.30),
     );
     final spans = <InlineSpan>[];
     var cursor = 0;
@@ -965,6 +1035,8 @@ class _UnitBody extends StatelessWidget {
         spans.add(_termLinkSpan(segText, term, style));
       } else if (seg.numeric) {
         spans.add(TextSpan(text: segText, style: numberPop));
+      } else if (seg.answer) {
+        spans.add(TextSpan(text: segText, style: answerMark));
       } else {
         spans.add(TextSpan(text: segText, style: mark));
       }
@@ -1010,14 +1082,17 @@ class _UnitBody extends StatelessWidget {
   }
 }
 
-/// One styled segment inside a text chunk: a search highlight
-/// ([term] null), a term link, or a numeric fact pop ([numeric] true).
+/// One styled segment inside a text chunk: a search highlight ([term] null
+/// and both flags false), a term link, a numeric fact pop ([numeric] true),
+/// or a quiz answer highlight ([answer] true).
 class _BodySegment {
   final int start;
   final int end;
   final BarrioTermMatch? term;
   final bool numeric;
-  const _BodySegment(this.start, this.end, this.term, {this.numeric = false});
+  final bool answer;
+  const _BodySegment(this.start, this.end, this.term,
+      {this.numeric = false, this.answer = false});
 }
 
 /// One content picture inside a unit body: rounded corners, full card
